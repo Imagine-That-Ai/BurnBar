@@ -34,6 +34,7 @@ import {
   EVIDENCE_CELLS,
   stackFor,
   HARNESS_LOGO,
+  MODEL_LOGO,
   monogramFor
 } from "@data/bench";
 
@@ -547,6 +548,18 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
                   data-ci-lo={s.ci95[0]}
                   data-ci-hi={s.ci95[1]}
                   data-n={s.n}
+                  data-tip
+                  data-tip-h={s.harness}
+                  data-tip-m={s.model}
+                  data-tip-lead={`${(s.solution_rate * 100).toFixed(1)}%`}
+                  data-tip-lead-label="solution rate"
+                  data-tip-rows={[
+                    `strict|${(s.strict_rate * 100).toFixed(1)}%`,
+                    `95% CI|${(s.ci95[0] * 100).toFixed(1)}–${(s.ci95[1] * 100).toFixed(1)}%`,
+                    `cost / task|${effCost(s) == null ? "—" : (effCost(s) as number) < 0.01 ? `$${(effCost(s) as number).toFixed(4)}` : `$${(effCost(s) as number).toFixed(2)}`}`,
+                    `quality|${s.quality_mean == null ? "—" : `${s.quality_mean.toFixed(2)} / 5`}`,
+                    `runs · tasks|${s.n} · ${stackTaskCount(s.harness, s.model)}`
+                  ].join(";")}
                 >
                   <span class="ins-row__rank ins-num">
                     {String(rank).padStart(2, "0")}
@@ -668,7 +681,19 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
                     <span
                       class:list={["ins-lensrow__dot", hcls(c.harness)]}
                       data-x={lensX(c.rate).toFixed(2)}
-                      title={`${harnessDisplay(c.harness)} · ${(c.rate * 100).toFixed(1)}%`}
+                      tabindex="0"
+                      role="img"
+                      aria-label={`${harnessDisplay(c.harness)} times ${modelDisplayShort(L.model.id)}: ${(c.rate * 100).toFixed(1)} percent solved`}
+                      data-tip
+                      data-tip-h={c.harness}
+                      data-tip-m={L.model.id}
+                      data-tip-lead={`${(c.rate * 100).toFixed(1)}%`}
+                      data-tip-lead-label="solution rate"
+                      data-tip-rows={[
+                        `strict|${(c.strict * 100).toFixed(1)}%`,
+                        `cost / task|${c.cost == null ? "—" : c.cost === 0 ? "free tier" : c.cost < 0.01 ? `$${c.cost.toFixed(4)}` : `$${c.cost.toFixed(2)}`}`,
+                        `confidence|${c.confidence}`
+                      ].join(";")}
                     >
                       <Chip id={c.harness} kind="harness" size="sm" />
                     </span>
@@ -719,10 +744,17 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
           </p>
         </header>
 
-        <div class="ins-glass ins-scatter">
-          <div class="ins-scatter__stage ins-scroll-x">
+        <figure class="ins-glass ins-scatter ins-fig" data-fig>
+          <div
+            class="ins-fig__viewport ins-scatter__stage"
+            data-fig-viewport
+            tabindex="0"
+            role="group"
+            aria-label="Cost versus quality scatter. Plus and minus zoom, arrow keys pan."
+          >
+            <div class="ins-fig__stage" data-fig-stage>
             <svg
-              class="ins-scatter__svg"
+              class="ins-scatter__svg ins-fig__svg"
               viewBox={`0 0 ${PLOT.w} ${PLOT.h}`}
               role="img"
               aria-label="Scatter plot of median cost per task against solution rate for every measured stack"
@@ -795,12 +827,20 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
                       tabindex="0"
                       role="img"
                       aria-label={`${harnessDisplay(p.s.harness)} times ${modelDisplay(p.s.model)}: ${(p.s.solution_rate * 100).toFixed(1)} percent solved at ${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)} dollars per task`}
+                      data-tip
+                      data-tip-h={p.s.harness}
+                      data-tip-m={p.s.model}
+                      data-tip-lead={`${(p.s.solution_rate * 100).toFixed(1)}%`}
+                      data-tip-lead-label="solution rate"
+                      data-tip-note={p.onFrontier ? "on the efficient frontier" : undefined}
+                      data-tip-rows={[
+                        `strict|${(p.s.strict_rate * 100).toFixed(1)}%`,
+                        `cost / task|${cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(2)}`}${isSubsidized(p.s) ? " std" : ""}`,
+                        `95% CI|${(p.s.ci95[0] * 100).toFixed(1)}–${(p.s.ci95[1] * 100).toFixed(1)}%`,
+                        `runs · tasks|${p.s.n} · ${stackTaskCount(p.s.harness, p.s.model)}`
+                      ].join(";")}
                     >
-                      <title>
-                        {harnessDisplay(p.s.harness)} × {modelDisplay(p.s.model)} —{" "}
-                        {(p.s.solution_rate * 100).toFixed(1)}% at{" "}
-                        {cost < 0.01 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(2)}`} per task
-                      </title>
+
                       <circle class="ins-dot__halo" r="16" />
                       <circle class="ins-dot__disc" r="13" />
                       {logo ? (
@@ -823,9 +863,23 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
                 })
               }
             </svg>
+            </div>
+            <div class="ins-fig__hint" data-fig-hint aria-hidden="true">
+              <span>⌘ / Ctrl + scroll to zoom · pinch on touch</span>
+            </div>
           </div>
 
-          <p class="ins-key ins-scatter__key">
+          <div class="ins-fig__bar">
+            <button class="ins-fig__btn" type="button" data-fig-out aria-label="Zoom out">−</button>
+            <button class="ins-fig__btn" type="button" data-fig-in aria-label="Zoom in">+</button>
+            <button class="ins-fig__btn" type="button" data-fig-reset>Reset</button>
+            <span class="ins-fig__level" data-fig-level>100%</span>
+            <span class="ins-fig__spacer"></span>
+            <span class="ins-fig__help">⌘ + scroll or pinch to zoom · drag to pan · double-click to focus</span>
+            <button class="ins-fig__btn" type="button" data-fig-expand aria-pressed="false">Expand</button>
+          </div>
+
+          <figcaption class="ins-key ins-scatter__key">
             <b>Ring</b> is the harness, <b>fill</b> is the model, and the logo inside is the harness
             again — no legend lookup needed. The dashed line is the efficient frontier: the
             {frontierSet.length} stacks nothing else beats on both price and rate. Vertical axis starts
@@ -834,8 +888,8 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
               <> Costs for the {repricedCount} subsidised contributor cells are shown at standard-tier
               rates, so the frontier reflects what you would actually pay.</>
             )}
-          </p>
-        </div>
+          </figcaption>
+        </figure>
       </div>
     </section>
 
@@ -927,17 +981,32 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
     }
 
     {/* ═══════════════ 6 · SYNTHESIS ═══════════════
-        Loaded client-side from /data/synthesis.json. */}
+        Loaded client-side from /data/synthesis.json and rendered as a grouped
+        carousel: pick an axis, pick a harness or model by its logo, then read
+        its pairings a few at a time. Twenty-five dense cards in one grid was a
+        wall; this is the same content at a readable dose. */}
     <section class="ins-section" id="synthesis" aria-labelledby="syn-h" data-br-synthesis>
       <div class="ins-wrap">
         <header class="ins-section__head">
           <p class="ins-eyebrow">Cross-cutting patterns</p>
           <h2 id="syn-h" class="ins-h">What the judge noticed, again and again.</h2>
           <p class="ins-lede">
-            The judge's rationales read across every task: what stays true of a harness regardless of
-            model, of a model regardless of harness, and of each pairing in between.
+            The judge's rationales read across every task. Pick a harness to see how it behaves
+            whichever model drives it — or pick a model to see what stays true of it whichever
+            harness runs it.
           </p>
         </header>
+
+        {/* Display names and marks for the ids the synthesis file uses. Inert
+            JSON, not a script — nothing to execute, nothing to hash. */}
+        <script type="application/json" data-bench-roster set:html={JSON.stringify({
+          harnesses: Object.fromEntries(
+            BENCH.harnesses.map((h) => [h.id, { display: harnessDisplay(h.id), logo: HARNESS_LOGO[h.id] ?? null, cls: `h--${classFor(HARNESS_CLASS, h.id)}` }])
+          ),
+          models: Object.fromEntries(
+            BENCH.models.map((m) => [m.id, { display: modelDisplayShort(m.id), logo: MODEL_LOGO[m.id] ?? null, cls: `m--${classFor(MODEL_CLASS, m.id)}` }])
+          )
+        })} />
 
         <div data-br-synthesis-status>
           <div class="ins-glass ins-glass--flush ins-synth__pending">
@@ -946,19 +1015,47 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
           </div>
         </div>
 
-        <div data-br-synthesis-body hidden>
-          <div class="ins-synth__group">
-            <h3 class="ins-h ins-h--sm">Per harness, across every model.</h3>
-            <div class="ins-cols ins-cols--2" data-br-synthesis-harnesses></div>
+        <div class="ins-synth" data-br-synthesis-body hidden>
+          <div class="ins-synth__controls">
+            <div class="ins-segment" role="tablist" aria-label="Group synthesis by" data-syn-axis>
+              <button class="ins-segment__btn" role="tab" aria-selected="true" data-axis="harness"
+                >By harness</button
+              >
+              <button class="ins-segment__btn" role="tab" aria-selected="false" data-axis="model"
+                >By model</button
+              >
+            </div>
           </div>
-          <div class="ins-synth__group">
-            <h3 class="ins-h ins-h--sm">Per model, across every harness.</h3>
-            <div class="ins-cols ins-cols--2" data-br-synthesis-models></div>
+
+          {/* Logo rail — the group picker. */}
+          <div class="ins-synth__rail ins-scroll-x" role="tablist" aria-label="Choose a group" data-syn-rail></div>
+
+          {/* Carousel of that group's cards. */}
+          <div class="ins-carousel" data-syn-carousel>
+            <button
+              class="ins-carousel__nav ins-carousel__nav--prev"
+              type="button"
+              data-syn-prev
+              aria-label="Previous"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
+                ><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg
+              >
+            </button>
+            <div class="ins-carousel__track ins-scroll-x" data-syn-track tabindex="0"></div>
+            <button
+              class="ins-carousel__nav ins-carousel__nav--next"
+              type="button"
+              data-syn-next
+              aria-label="Next"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"
+                ><path d="m6 3 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg
+              >
+            </button>
           </div>
-          <div class="ins-synth__group">
-            <h3 class="ins-h ins-h--sm">Per harness × model.</h3>
-            <div class="ins-cols ins-cols--2" data-br-synthesis-combos></div>
-          </div>
+
+          <div class="ins-carousel__dots" data-syn-dots aria-hidden="true"></div>
         </div>
       </div>
     </section>

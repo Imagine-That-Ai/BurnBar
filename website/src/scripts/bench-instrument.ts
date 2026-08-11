@@ -13,6 +13,8 @@
  *   - synthesis rendering from /data/synthesis.json
  */
 
+import { initFigures } from "./bench-figure";
+
 const isReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /* ── geometry ─────────────────────────────────────────────────────────── */
@@ -288,13 +290,19 @@ function initScatter(): void {
   });
 }
 
-/* ── synthesis ────────────────────────────────────────────────────────── */
+/* ── synthesis carousel ───────────────────────────────────────────────── */
 
 /**
  * /data/synthesis.json ships each slice as an object keyed by id — not an
- * array — with a distilled `summary` plus the `observations` behind it. The
- * job rewrites the file on its own schedule, so this stays a client fetch:
- * new synthesis lands without rebuilding the page.
+ * array — with a distilled `summary` plus the `observations` behind it.
+ *
+ * Twenty-five of those in one grid was a wall of text: correct, complete, and
+ * genuinely intimidating. Same content, grouped instead: choose an axis
+ * (harness or model), pick one by its logo, and read its pairings a few at a
+ * time. The detail stays one tap away rather than all on screen at once.
+ *
+ * Rendered client-side because the analysis job rewrites the file on its own
+ * schedule — new synthesis lands without rebuilding the page.
  */
 interface SynthSlice {
   summary?: string;
@@ -311,75 +319,280 @@ interface SynthDoc {
   models?: SynthGroup;
 }
 
-/** "claude/deepseek-v4-flash-0731" -> "claude × deepseek v4 flash 0731". */
-function prettyId(id: string): string {
-  return id
-    .split("/")
-    .map((part) => part.replace(/-/g, " "))
-    .join(" × ");
+interface RosterEntry {
+  display: string;
+  logo: string | null;
+  cls: string;
 }
 
-/** Alberto's note: only the strongest, most concrete takeaways — so the card
- *  leads with the summary and shows at most two supporting observations. */
-const MAX_OBSERVATIONS = 2;
+interface Roster {
+  harnesses: Record<string, RosterEntry>;
+  models: Record<string, RosterEntry>;
+}
 
-function synthCard(id: string, slice: SynthSlice): HTMLElement | null {
-  const summary = (slice.summary ?? "").trim();
-  if (!summary) return null;
+type Axis = "harness" | "model";
+
+interface Pairing {
+  harness: string;
+  model: string;
+  slice: SynthSlice;
+}
+
+const FALLBACK: RosterEntry = { display: "", logo: null, cls: "" };
+
+function readRoster(): Roster {
+  const el = document.querySelector<HTMLScriptElement>("[data-bench-roster]");
+  if (!el?.textContent) return { harnesses: {}, models: {} };
+  try {
+    return JSON.parse(el.textContent) as Roster;
+  } catch {
+    return { harnesses: {}, models: {} };
+  }
+}
+
+/** Prettify an id the roster doesn't know (new model mid-campaign, say). */
+function prettyId(id: string): string {
+  return id.replace(/-/g, " ");
+}
+
+function entryFor(roster: Roster, axis: "harnesses" | "models", id: string): RosterEntry {
+  return roster[axis][id] ?? { ...FALLBACK, display: prettyId(id) };
+}
+
+/** A logo chip at a size you can actually see and tap. */
+function chipEl(entry: RosterEntry, kind: "harness" | "model", size: "md" | "lg"): HTMLElement {
+  const chip = document.createElement("span");
+  chip.className = `ins-chip ins-chip--${size} ins-chip--${kind === "harness" ? "h" : "m"} ${entry.cls}`;
+  if (entry.logo) {
+    const img = document.createElement("img");
+    img.src = entry.logo;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    chip.append(img);
+  } else {
+    const mono = document.createElement("span");
+    mono.className = "ins-mono";
+    mono.textContent = (entry.display || "?").slice(0, 2).toUpperCase();
+    chip.append(mono);
+  }
+  return chip;
+}
+
+function synthCard(p: Pairing, roster: Roster): HTMLElement {
+  const h = entryFor(roster, "harnesses", p.harness);
+  const m = entryFor(roster, "models", p.model);
 
   const card = document.createElement("article");
-  card.className = "ins-glass ins-glass--flush ins-synthcard";
+  card.className = `ins-glass ins-synthcard ${m.cls} ${h.cls}`;
 
   const head = document.createElement("header");
   head.className = "ins-synthcard__head";
 
-  const title = document.createElement("span");
-  title.className = "ins-synthcard__t";
-  title.textContent = prettyId(id);
-  head.append(title);
+  // Row 1: the marks and the task count. Row 2: the full name across the
+  // whole card, so neither half of the pairing gets ellipsised.
+  const top = document.createElement("span");
+  top.className = "ins-synthcard__top";
 
-  const tasks = Number(slice.n_tasks);
+  const marks = document.createElement("span");
+  marks.className = "ins-synthcard__marks";
+  marks.append(chipEl(h, "harness", "lg"), chipEl(m, "model", "lg"));
+  top.append(marks);
+
+  const tasks = Number(p.slice.n_tasks);
   if (Number.isFinite(tasks) && tasks > 0) {
     const n = document.createElement("span");
     n.className = "ins-synthcard__n ins-num ins-num--xs";
     n.textContent = `${tasks} tasks`;
-    head.append(n);
+    top.append(n);
   }
+
+  const names = document.createElement("span");
+  names.className = "ins-synthcard__names";
+  const hn = document.createElement("span");
+  hn.className = "ins-row__h";
+  hn.textContent = h.display;
+  const mn = document.createElement("span");
+  mn.className = "ins-row__m";
+  mn.textContent = m.display;
+  // Harness above, model below — the two tracks read as two fields, and the
+  // logo pair already says these are a pairing. A dangling "x" at a line
+  // break says nothing.
+  names.append(hn, mn);
+
+  head.append(top, names);
 
   const body = document.createElement("p");
   body.className = "ins-synthcard__b";
-  body.textContent = summary;
+  body.textContent = (p.slice.summary ?? "").trim();
 
   card.append(head, body);
 
-  const obs = (slice.observations ?? []).filter((o) => typeof o === "string" && o.trim());
+  // The observations are the evidence behind the take. One tap away, so the
+  // card reads as a takeaway rather than a transcript.
+  const obs = (p.slice.observations ?? []).filter((o) => typeof o === "string" && o.trim());
   if (obs.length > 0) {
+    const det = document.createElement("details");
+    det.className = "ins-disc ins-synthcard__more";
+
+    const sum = document.createElement("summary");
+    const label = document.createElement("span");
+    label.textContent = `What the judge saw (${obs.length})`;
+    const caret = document.createElement("span");
+    caret.className = "ins-disc__caret";
+    caret.textContent = "⌄";
+    sum.append(label, caret);
+
     const list = document.createElement("ul");
     list.className = "ins-synthcard__obs";
-    for (const o of obs.slice(0, MAX_OBSERVATIONS)) {
+    for (const o of obs) {
       const li = document.createElement("li");
       li.textContent = o.trim();
       list.append(li);
     }
-    card.append(list);
+
+    det.append(sum, list);
+    card.append(det);
   }
 
   return card;
 }
 
-function renderGroup(host: HTMLElement | null, group: SynthGroup | undefined): number {
-  if (!host || !group) return 0;
-  let n = 0;
-  for (const [id, slice] of Object.entries(group)) {
-    const card = synthCard(id, slice);
-    if (card) {
-      host.append(card);
-      n++;
+function initSynthesisCarousel(doc: SynthDoc, roster: Roster, body: HTMLElement): number {
+  const rail = body.querySelector<HTMLElement>("[data-syn-rail]");
+  const track = body.querySelector<HTMLElement>("[data-syn-track]");
+  const dots = body.querySelector<HTMLElement>("[data-syn-dots]");
+  const axisTabs = body.querySelector<HTMLElement>("[data-syn-axis]");
+  if (!rail || !track) return 0;
+
+  // Combo ids look like "claude/deepseek-v4-flash-0731".
+  const pairings: Pairing[] = Object.entries(doc.combos ?? {})
+    .map(([id, slice]) => {
+      const slash = id.indexOf("/");
+      if (slash === -1) return null;
+      return { harness: id.slice(0, slash), model: id.slice(slash + 1), slice };
+    })
+    .filter((p): p is Pairing => p != null && Boolean((p.slice.summary ?? "").trim()));
+
+  if (pairings.length === 0) return 0;
+
+  let axis: Axis = "harness";
+  let selected = "";
+
+  const groupsFor = (a: Axis): string[] => {
+    const seen: string[] = [];
+    for (const p of pairings) {
+      const key = a === "harness" ? p.harness : p.model;
+      if (!seen.includes(key)) seen.push(key);
     }
-  }
-  const section = host.closest<HTMLElement>(".ins-synth__group");
-  if (section && n === 0) section.hidden = true;
-  return n;
+    return seen.sort((x, y) => x.localeCompare(y));
+  };
+
+  const renderTrack = (): void => {
+    track.textContent = "";
+    const cards = pairings.filter((p) => (axis === "harness" ? p.harness : p.model) === selected);
+    for (const p of cards) track.append(synthCard(p, roster));
+    track.scrollTo({ left: 0, behavior: "auto" });
+    renderDots();
+    updateNav();
+  };
+
+  const renderDots = (): void => {
+    if (!dots) return;
+    dots.textContent = "";
+    const n = track.children.length;
+    if (n < 2) return;
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("span");
+      d.className = "ins-carousel__dot";
+      dots.append(d);
+    }
+    syncDots();
+  };
+
+  const cardStep = (): number => {
+    const first = track.firstElementChild as HTMLElement | null;
+    if (!first) return track.clientWidth;
+    const gap = parseFloat(getComputedStyle(track).columnGap || "0") || 0;
+    return first.offsetWidth + gap;
+  };
+
+  const syncDots = (): void => {
+    if (!dots || dots.children.length === 0) return;
+    const idx = Math.round(track.scrollLeft / cardStep());
+    Array.from(dots.children).forEach((d, i) =>
+      d.classList.toggle("is-on", i === Math.max(0, Math.min(dots.children.length - 1, idx)))
+    );
+  };
+
+  const updateNav = (): void => {
+    const prev = body.querySelector<HTMLButtonElement>("[data-syn-prev]");
+    const next = body.querySelector<HTMLButtonElement>("[data-syn-next]");
+    const max = track.scrollWidth - track.clientWidth - 2;
+    if (prev) prev.disabled = track.scrollLeft <= 2;
+    if (next) next.disabled = track.scrollLeft >= max;
+    const single = track.scrollWidth <= track.clientWidth + 2;
+    body.querySelector("[data-syn-carousel]")?.classList.toggle("is-static", single);
+  };
+
+  const renderRail = (): void => {
+    rail.textContent = "";
+    const keys = groupsFor(axis);
+    if (!keys.includes(selected)) selected = keys[0] ?? "";
+    for (const key of keys) {
+      const entry = entryFor(roster, axis === "harness" ? "harnesses" : "models", key);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `ins-railchip ${entry.cls}`;
+      btn.setAttribute("role", "tab");
+      btn.setAttribute("aria-selected", String(key === selected));
+      btn.append(chipEl(entry, axis, "md"));
+      const label = document.createElement("span");
+      label.className = "ins-railchip__label";
+      label.textContent = entry.display;
+      const count = pairings.filter(
+        (p) => (axis === "harness" ? p.harness : p.model) === key
+      ).length;
+      const n = document.createElement("span");
+      n.className = "ins-railchip__n";
+      n.textContent = String(count);
+      btn.append(label, n);
+      btn.addEventListener("click", () => {
+        selected = key;
+        Array.from(rail.children).forEach((c) =>
+          c.setAttribute("aria-selected", String(c === btn))
+        );
+        renderTrack();
+      });
+      rail.append(btn);
+    }
+    renderTrack();
+  };
+
+  body.querySelector("[data-syn-prev]")?.addEventListener("click", () => {
+    track.scrollBy({ left: -cardStep(), behavior: isReduced ? "auto" : "smooth" });
+  });
+  body.querySelector("[data-syn-next]")?.addEventListener("click", () => {
+    track.scrollBy({ left: cardStep(), behavior: isReduced ? "auto" : "smooth" });
+  });
+  track.addEventListener("scroll", () => {
+    syncDots();
+    updateNav();
+  });
+
+  axisTabs?.addEventListener("click", (ev) => {
+    const btn = (ev.target as HTMLElement).closest<HTMLElement>("[data-axis]");
+    if (!btn) return;
+    axis = (btn.dataset.axis ?? "harness") as Axis;
+    axisTabs.querySelectorAll("[data-axis]").forEach((b) => {
+      b.setAttribute("aria-selected", String(b === btn));
+    });
+    selected = "";
+    renderRail();
+  });
+
+  renderRail();
+  return pairings.length;
 }
 
 async function initSynthesis(): Promise<void> {
@@ -395,12 +608,9 @@ async function initSynthesis(): Promise<void> {
     if (!res.ok) throw new Error(`synthesis ${res.status}`);
     const doc = (await res.json()) as SynthDoc;
 
-    const rendered =
-      renderGroup(body.querySelector("[data-br-synthesis-harnesses]"), doc.harnesses) +
-      renderGroup(body.querySelector("[data-br-synthesis-models]"), doc.models) +
-      renderGroup(body.querySelector("[data-br-synthesis-combos]"), doc.combos);
-
+    const rendered = initSynthesisCarousel(doc, readRoster(), body);
     if (rendered === 0) throw new Error("synthesis empty");
+
     status.hidden = true;
     body.hidden = false;
   } catch {
@@ -413,6 +623,171 @@ async function initSynthesis(): Promise<void> {
       "Synthesis isn't available yet — the cross-cutting analysis job publishes it on the next run.";
     status.append(note);
   }
+}
+
+/* ── hover stats ──────────────────────────────────────────────────────── */
+
+/**
+ * One tooltip, shared by every mark on the page — leaderboard rows, model-lens
+ * dots, scatter points. Native `title` tooltips are slow to appear, unstyled,
+ * and invisible on touch; this is instant, carries the logos, and sets its
+ * figures in the same tabular grammar as the rest of the page.
+ *
+ * Marks opt in with:
+ *   data-tip
+ *   data-tip-h / data-tip-m     harness + model ids (for the logos)
+ *   data-tip-lead               the headline figure
+ *   data-tip-lead-label         what it measures
+ *   data-tip-rows               "label|value;label|value"
+ *   data-tip-note               optional footnote
+ */
+function initTooltips(): void {
+  const marks = document.querySelectorAll<HTMLElement>("[data-tip]");
+  if (marks.length === 0) return;
+
+  const roster = readRoster();
+
+  const tip = document.createElement("div");
+  tip.className = "ins-tip ins-glass ins-glass--flush";
+  tip.setAttribute("role", "tooltip");
+  tip.hidden = true;
+  // Mount inside .ins, not <body>: every design token lives on that element,
+  // and a tooltip parented outside it renders as an unstyled transparent box.
+  // .ins carries no transform or filter, so position: fixed stays
+  // viewport-relative.
+  (document.querySelector<HTMLElement>(".ins") ?? document.body).append(tip);
+
+  const build = (el: HTMLElement): void => {
+    tip.textContent = "";
+    tip.className = "ins-tip ins-glass ins-glass--flush";
+
+    const hId = el.dataset.tipH ?? "";
+    const mId = el.dataset.tipM ?? "";
+    const h = entryFor(roster, "harnesses", hId);
+    const m = entryFor(roster, "models", mId);
+    if (m.cls) tip.classList.add(m.cls);
+    if (h.cls) tip.classList.add(h.cls);
+
+    const head = document.createElement("div");
+    head.className = "ins-tip__head";
+    const marksEl = document.createElement("span");
+    marksEl.className = "ins-tip__marks";
+    marksEl.append(chipEl(h, "harness", "md"), chipEl(m, "model", "md"));
+    const names = document.createElement("span");
+    names.className = "ins-tip__names";
+    const hn = document.createElement("span");
+    hn.className = "ins-row__h";
+    hn.textContent = h.display;
+    const mn = document.createElement("span");
+    mn.className = "ins-row__m";
+    mn.textContent = m.display;
+    names.append(hn, mn);
+    head.append(marksEl, names);
+    tip.append(head);
+
+    const lead = el.dataset.tipLead;
+    if (lead) {
+      const box = document.createElement("div");
+      box.className = "ins-tip__lead";
+      const v = document.createElement("span");
+      v.className = "ins-num ins-num--xl";
+      renderNum(v, lead);
+      const l = document.createElement("span");
+      l.className = "ins-tip__leadlabel";
+      l.textContent = el.dataset.tipLeadLabel ?? "";
+      box.append(v, l);
+      tip.append(box);
+    }
+
+    const rows = (el.dataset.tipRows ?? "").split(";").filter(Boolean);
+    if (rows.length > 0) {
+      const dl = document.createElement("dl");
+      dl.className = "ins-ledger ins-tip__rows";
+      for (const row of rows) {
+        const sep = row.indexOf("|");
+        if (sep === -1) continue;
+        const wrap = document.createElement("div");
+        wrap.className = "ins-ledger__row";
+        const dt = document.createElement("dt");
+        dt.className = "ins-ledger__k";
+        dt.textContent = row.slice(0, sep);
+        const dd = document.createElement("dd");
+        dd.className = "ins-ledger__v";
+        dd.textContent = row.slice(sep + 1);
+        wrap.append(dt, dd);
+        dl.append(wrap);
+      }
+      tip.append(dl);
+    }
+
+    const note = el.dataset.tipNote;
+    if (note) {
+      const n = document.createElement("p");
+      n.className = "ins-tip__note";
+      n.textContent = note;
+      tip.append(n);
+    }
+  };
+
+  /** Anchor above the mark, flipping below and nudging inside the viewport. */
+  const place = (el: HTMLElement): void => {
+    const r = el.getBoundingClientRect();
+    const t = tip.getBoundingClientRect();
+    const pad = 10;
+
+    let left = r.left + r.width / 2 - t.width / 2;
+    left = Math.max(pad, Math.min(window.innerWidth - t.width - pad, left));
+
+    let top = r.top - t.height - pad;
+    if (top < pad) top = r.bottom + pad;
+
+    tip.style.left = `${Math.round(left)}px`;
+    tip.style.top = `${Math.round(top)}px`;
+  };
+
+  let current: HTMLElement | null = null;
+
+  const show = (el: HTMLElement): void => {
+    current = el;
+    build(el);
+    tip.hidden = false;
+    // Measure after paint so the flip logic sees the real height.
+    requestAnimationFrame(() => {
+      if (current === el) place(el);
+    });
+  };
+
+  const hide = (): void => {
+    current = null;
+    tip.hidden = true;
+  };
+
+  marks.forEach((el) => {
+    el.addEventListener("pointerenter", () => show(el));
+    el.addEventListener("pointerleave", hide);
+    el.addEventListener("focus", () => show(el));
+    el.addEventListener("blur", hide);
+  });
+
+  // Touch: a tap shows the stats, a tap elsewhere dismisses them.
+  document.addEventListener(
+    "pointerdown",
+    (ev) => {
+      const el = (ev.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+      if (el) {
+        if (ev.pointerType === "touch") show(el);
+      } else if (current) {
+        hide();
+      }
+    },
+    { passive: true }
+  );
+
+  window.addEventListener("scroll", () => current && place(current), { passive: true });
+  window.addEventListener("resize", hide, { passive: true });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") hide();
+  });
 }
 
 /* ── atmosphere ───────────────────────────────────────────────────────── */
@@ -450,6 +825,8 @@ function initAtmosphere(): void {
 
 function boot(): void {
   initAtmosphere();
+  initFigures();
+  initTooltips();
   paintBars();
   paintLens();
   initLeaderboard();

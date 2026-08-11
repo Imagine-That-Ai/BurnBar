@@ -1198,11 +1198,10 @@ body:has(.ins)::before {
   display: grid;
   gap: var(--ins-5);
   justify-items: start;
-  /* Cap the measure without centring the block — the hero has to share the
-     same left rail as every section below it, or the page reads as two
-     different documents stacked. */
-  max-width: none;
 }
+/* Cap the measure on the children, never on .ins-hero__inner itself — that
+   element also carries .ins-wrap, and overriding its max-width there
+   un-centres the whole hero while every section below stays centred. */
 .ins-hero__inner > * {
   max-width: 900px;
 }
@@ -2184,4 +2183,581 @@ body:has(.ins)::before {
   height: 4px;
   border-radius: 50%;
   background: var(--mc, var(--ins-ink-4));
+}
+
+/* ============================================================
+   15. FIGURE — zoomable, pannable charts and tables
+   ------------------------------------------------------------
+   Shared shell for every chart, table and infographic. Driven by
+   bench-figure.ts; see that file for the gesture contract. The
+   short version: at 1× the page owns scrolling, and zoom is
+   anchored to the pointer so it never throws your place.
+   ============================================================ */
+
+.ins-fig {
+  position: relative;
+  display: grid;
+  gap: var(--ins-3);
+}
+
+.ins-fig__viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--ins-r);
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid transparent;
+  /* Overridden by the script: pan-y at 1×, none when zoomed. */
+  touch-action: pan-y pinch-zoom;
+  cursor: default;
+  outline-offset: 2px;
+}
+:root[data-theme="light"] .ins-fig__viewport {
+  background: rgba(12, 16, 24, 0.015);
+}
+.ins-fig.is-zoomed .ins-fig__viewport {
+  cursor: grab;
+  border-color: var(--ins-rule);
+}
+.ins-fig.is-grabbing .ins-fig__viewport {
+  cursor: grabbing;
+}
+
+.ins-fig__stage {
+  transform-origin: 0 0;
+  will-change: transform;
+}
+/* Button and keyboard zooms glide; gesture zooms are driven frame-by-frame
+   and set their own transform, so the easing only shows on discrete steps. */
+.ins-fig__stage--eased {
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ins-fig.is-grabbing .ins-fig__stage--eased {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-fig__stage {
+    transition: none !important;
+  }
+}
+
+/* -- control bar ------------------------------------------------------- */
+
+.ins-fig__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-2);
+  flex-wrap: wrap;
+}
+.ins-fig__spacer {
+  flex: 1;
+}
+
+.ins-fig__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 var(--ins-3);
+  border-radius: 11px;
+  border: 1px solid var(--ins-rim);
+  background: rgba(255, 255, 255, 0.045);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  color: var(--ins-ink-2);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease,
+    border-color 200ms ease,
+    opacity 200ms ease;
+}
+:root[data-theme="light"] .ins-fig__btn {
+  background: rgba(255, 255, 255, 0.7);
+}
+.ins-fig__btn:hover:not(:disabled) {
+  color: var(--ins-ink);
+  border-color: var(--ins-rule-2);
+  background: var(--ins-glass-hi);
+}
+.ins-fig__btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.ins-fig__level {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-4);
+  min-width: 42px;
+  font-variant-numeric: tabular-nums lining-nums slashed-zero;
+}
+
+.ins-fig__help {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--ins-ink-4);
+  letter-spacing: 0.01em;
+}
+
+/* -- "use ⌘ + scroll" nudge -------------------------------------------- */
+
+.ins-fig__hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease;
+  z-index: 3;
+  border-radius: inherit;
+  background: rgba(6, 8, 12, 0.42);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+:root[data-theme="light"] .ins-fig__hint {
+  background: rgba(250, 250, 252, 0.5);
+}
+.ins-fig__hint.is-on {
+  opacity: 1;
+}
+.ins-fig__hint span {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--ins-ink);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--ins-glass);
+  border: 1px solid var(--ins-rim);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-fig__hint {
+    transition: none;
+  }
+}
+
+/* -- expanded ---------------------------------------------------------- */
+
+.ins-fig:fullscreen,
+.ins-fig.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  margin: 0;
+  padding: var(--ins-4);
+  background: var(--surface-base, #07080b);
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: var(--ins-3);
+}
+:root[data-theme="light"] .ins-fig:fullscreen,
+:root[data-theme="light"] .ins-fig.is-expanded {
+  background: #f7f7f9;
+}
+.ins-fig:fullscreen .ins-fig__viewport,
+.ins-fig.is-expanded .ins-fig__viewport {
+  height: 100%;
+  min-height: 0;
+}
+.ins-fig:fullscreen .ins-fig__svg,
+.ins-fig.is-expanded .ins-fig__svg {
+  height: 100%;
+  max-height: none;
+}
+
+/* The scatter fills its viewport rather than scrolling inside it — panning
+   replaces the sideways scrollbar entirely. */
+.ins-fig__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 640px) {
+  .ins-fig__help {
+    display: none;
+  }
+  .ins-fig__bar {
+    gap: 6px;
+  }
+}
+
+/* ============================================================
+   16. SYNTHESIS CAROUSEL — grouped, logo-forward, a dose at a time
+   ------------------------------------------------------------
+   Twenty-five dense cards in one grid read as a wall. The same
+   content grouped by harness or model, paged through a snapping
+   carousel, reads as a briefing. Detail lives behind a tap.
+   ============================================================ */
+
+.ins-synth {
+  display: grid;
+  gap: var(--ins-4);
+}
+.ins-synth__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ins-3);
+  align-items: center;
+}
+
+/* -- logo rail: the group picker -------------------------------------- */
+
+.ins-synth__rail {
+  display: flex;
+  gap: var(--ins-2);
+  padding-bottom: var(--ins-2);
+  scroll-snap-type: x proximity;
+  /* Fade the trailing edge so an overflowing rail reads as scrollable
+     rather than as a chip that got clipped. */
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 40px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 40px), transparent 100%);
+}
+
+.ins-railchip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ins-2);
+  flex: none;
+  padding: 6px 12px 6px 6px;
+  min-height: 48px;
+  border-radius: 999px;
+  border: 1px solid var(--ins-rim);
+  background: rgba(255, 255, 255, 0.035);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(170%);
+  color: var(--ins-ink-3);
+  font-size: 0.875rem;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition:
+    background-color 240ms ease,
+    border-color 240ms ease,
+    color 240ms ease,
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+:root[data-theme="light"] .ins-railchip {
+  background: rgba(255, 255, 255, 0.66);
+}
+.ins-railchip:hover {
+  color: var(--ins-ink);
+  border-color: var(--ins-rule-2);
+}
+.ins-railchip[aria-selected="true"] {
+  color: var(--ins-ink);
+  /* The selected group takes its own identity colour — harness stroke or
+     model fill, matching the grammar every chart uses. */
+  border-color: color-mix(in oklab, var(--hc, var(--mc, #fff)) 55%, transparent);
+  background: color-mix(in oklab, var(--hc, var(--mc, #fff)) 14%, transparent);
+  transform: translateY(-1px);
+}
+.ins-railchip__label {
+  white-space: nowrap;
+  font-weight: 500;
+}
+.ins-railchip__n {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--ins-ink-4);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font-variant-numeric: tabular-nums;
+}
+:root[data-theme="light"] .ins-railchip__n {
+  background: rgba(12, 16, 24, 0.07);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ins-railchip {
+    transition: none;
+  }
+  .ins-railchip[aria-selected="true"] {
+    transform: none;
+  }
+}
+
+/* -- carousel ---------------------------------------------------------- */
+
+.ins-carousel {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ins-2);
+}
+
+.ins-carousel__track {
+  /* Flex, not grid: a grid track sized minmax(0, ...) lets eight cards
+     squeeze to 127px each instead of overflowing into a scroller. A flex
+     basis with flex-shrink: 0 always overflows, which is what a carousel
+     wants. */
+  display: flex;
+  gap: var(--ins-4);
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--ins-1);
+  padding: var(--ins-1);
+  /* Native horizontal scrolling keeps touch momentum and never fights the
+     page's vertical scroll — no gesture handling needed. */
+  overscroll-behavior-x: contain;
+}
+.ins-carousel__track > * {
+  scroll-snap-align: start;
+  flex: 0 0 clamp(260px, 82%, 460px);
+}
+.ins-carousel__track:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ember-core, #ff9f0a) 78%, transparent);
+  outline-offset: 4px;
+  border-radius: var(--ins-r);
+}
+
+@media (min-width: 900px) {
+  .ins-carousel__track > * {
+    flex-basis: calc(50% - var(--ins-4) / 2);
+  }
+}
+@media (min-width: 1180px) {
+  .ins-carousel__track > * {
+    flex-basis: calc(33.333% - var(--ins-4) * 2 / 3);
+  }
+}
+
+.ins-carousel__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--ins-rim);
+  background: var(--ins-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  backdrop-filter: blur(20px) saturate(170%);
+  color: var(--ins-ink-2);
+  cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease,
+    opacity 200ms ease;
+}
+.ins-carousel__nav:hover:not(:disabled) {
+  color: var(--ins-ink);
+  background: var(--ins-glass-hi);
+}
+.ins-carousel__nav:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.ins-carousel.is-static .ins-carousel__nav {
+  display: none;
+}
+.ins-carousel.is-static {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* On a phone the arrows are dead weight — the track swipes. */
+@media (max-width: 700px) {
+  .ins-carousel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ins-carousel__nav {
+    display: none;
+  }
+  .ins-carousel__track > * {
+    flex-basis: 88%;
+  }
+}
+
+.ins-carousel__dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.ins-carousel__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ins-rule-2);
+  transition:
+    background-color 240ms ease,
+    transform 240ms ease;
+}
+.ins-carousel__dot.is-on {
+  background: var(--ins-ink-3);
+  transform: scale(1.4);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-carousel__dot {
+    transition: none;
+  }
+}
+
+/* -- card -------------------------------------------------------------- */
+
+.ins-synthcard {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: var(--ins-3);
+  padding: var(--ins-5);
+  align-content: start;
+  min-height: 100%;
+}
+.ins-synthcard__head {
+  display: grid;
+  gap: var(--ins-3);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+}
+.ins-synthcard__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ins-3);
+}
+.ins-synthcard__marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+/* The name gets the full card width on its own line — neither half of a
+   pairing should ever ellipsise to "DeepS…". */
+.ins-synthcard__names {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.3;
+}
+.ins-synthcard__names .ins-row__h {
+  font-size: 1rem;
+}
+.ins-synthcard__names .ins-row__m {
+  font-size: 0.9375rem;
+  white-space: normal;
+  overflow: visible;
+}
+.ins-synthcard__n {
+  white-space: nowrap;
+  align-self: start;
+}
+.ins-synthcard__b {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.62;
+  color: var(--ins-ink-2);
+  text-wrap: pretty;
+}
+
+/* Evidence behind the take — one tap, not always on. */
+.ins-synthcard__more {
+  border-top: 1px solid var(--ins-rule);
+  margin-top: auto;
+}
+.ins-synthcard__more > summary {
+  padding: var(--ins-3) 0 0;
+  min-height: 40px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ins-ink-3);
+}
+.ins-synthcard__more > summary:hover {
+  color: var(--ins-ink);
+}
+.ins-synthcard__more[open] > summary {
+  color: var(--ins-ink-2);
+}
+
+/* ============================================================
+   17. HOVER STATS — one tooltip for every mark
+   ============================================================ */
+
+.ins-tip {
+  position: fixed;
+  z-index: 300;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: var(--ins-4);
+  display: grid;
+  gap: var(--ins-3);
+  pointer-events: none;
+  animation: ins-tip-in 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes ins-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ins-tip {
+    animation: none;
+  }
+}
+
+.ins-tip__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+}
+.ins-tip__marks {
+  display: inline-flex;
+  gap: 4px;
+  flex: none;
+}
+.ins-tip__names {
+  display: grid;
+  gap: 0;
+  line-height: 1.25;
+  min-width: 0;
+}
+.ins-tip__names .ins-row__h {
+  font-size: 0.875rem;
+}
+.ins-tip__names .ins-row__m {
+  font-size: 0.8125rem;
+  white-space: normal;
+}
+
+.ins-tip__lead {
+  display: grid;
+  gap: 2px;
+}
+.ins-tip__lead .ins-num--xl {
+  color: color-mix(in oklab, var(--mc, #fff) 34%, var(--ins-ink));
+}
+.ins-tip__leadlabel {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ins-ink-4);
+}
+
+.ins-tip__rows .ins-ledger__row {
+  padding-block: 5px;
+}
+.ins-tip__note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ember-core, #ff9f0a);
+}
+
+/* Marks advertise that they carry more. */
+[data-tip] {
+  cursor: pointer;
+}
+.ins-lensrow__dot[data-tip]:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ember-core, #ff9f0a) 78%, transparent);
+  outline-offset: 2px;
+  border-radius: 10px;
 }
