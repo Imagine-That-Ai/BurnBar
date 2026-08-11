@@ -1,7 +1,7 @@
 {
   "name": "@openburnbar/website",
   "version": "1.0.0",
-  "description": "OpenBurnBar launch website \u2014 burnbar.ai",
+  "description": "OpenBurnBar launch website — burnbar.ai",
   "private": true,
   "type": "module",
   "scripts": {

@@ -790,6 +790,189 @@ function initTooltips(): void {
   });
 }
 
+/* ── live human verdict ───────────────────────────────────────────────── */
+
+/**
+ * The Arena's Bradley-Terry ratings ship inside bench.json, which is baked at
+ * build time — so a vote cast today wouldn't show until the next deploy.
+ * This reads /data/arena-live.json instead, which the ratings pipeline can
+ * rewrite on its own cadence, and falls back to the baked numbers.
+ *
+ * The honest case matters here: ratings are only published once a stack has
+ * enough votes to mean anything. Until then this panel says how far off that
+ * is rather than rendering a leaderboard built on four votes.
+ */
+interface ArenaRating {
+  harness: string;
+  model: string;
+  bt: number;
+  ci95?: [number, number];
+  votes: number;
+}
+interface ArenaLive {
+  votes?: number;
+  min_votes_per_stack?: number;
+  ratings?: ArenaRating[];
+}
+
+const ARENA_MIN_VOTES = 30;
+
+function arenaEmpty(votes: number, needed: number): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "ins-glass ins-arena__empty";
+
+  const lead = document.createElement("div");
+  lead.className = "ins-arena__lead";
+  const n = document.createElement("span");
+  n.className = "ins-num ins-num--xl";
+  renderNum(n, String(votes));
+  const label = document.createElement("span");
+  label.className = "ins-tip__leadlabel";
+  label.textContent = votes === 1 ? "vote so far" : "votes so far";
+  lead.append(n, label);
+
+  const bar = document.createElement("div");
+  bar.className = "ins-bar ins-bar--lg ins-arena__bar";
+  const fill = document.createElement("span");
+  fill.className = "ins-bar__fill";
+  fill.style.width = `${Math.min(100, (votes / Math.max(1, needed)) * 100).toFixed(1)}%`;
+  bar.append(fill);
+
+  const note = document.createElement("p");
+  note.className = "ins-key ins-arena__note";
+  note.textContent =
+    votes === 0
+      ? `No blind votes have been cast yet. Ratings publish once a stack clears ${needed} votes — until then there is nothing here worth ranking, so nothing is shown.`
+      : `Ratings publish at ${needed} votes per stack. ${Math.max(0, needed - votes)} to go.`;
+
+  const cta = document.createElement("a");
+  cta.className = "ins-cta ins-cta--primary ins-arena__cta";
+  cta.href = "/bench/arena";
+  cta.textContent = "Judge a pair →";
+
+  box.append(lead, bar, note, cta);
+  return box;
+}
+
+function arenaTable(ratings: ArenaRating[], roster: Roster, total: number): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "ins-glass ins-arena";
+
+  const head = document.createElement("p");
+  head.className = "ins-key ins-arena__head";
+  head.textContent = `${total.toLocaleString("en-US")} blind votes · Bradley–Terry rating, higher is preferred`;
+  box.append(head);
+
+  const max = Math.max(...ratings.map((r) => r.bt), 1);
+  const min = Math.min(...ratings.map((r) => r.bt), 0);
+  const span = max - min || 1;
+
+  const list = document.createElement("div");
+  list.className = "ins-rows";
+
+  ratings
+    .slice()
+    .sort((a, b) => b.bt - a.bt)
+    .forEach((r, i) => {
+      const h = entryFor(roster, "harnesses", r.harness);
+      const m = entryFor(roster, "models", r.model);
+
+      const row = document.createElement("div");
+      row.className = `ins-row ${m.cls} ${h.cls}`;
+      row.dataset.tip = "";
+      row.dataset.tipH = r.harness;
+      row.dataset.tipM = r.model;
+      row.dataset.tipLead = r.bt.toFixed(2);
+      row.dataset.tipLeadLabel = "Bradley-Terry rating";
+      row.dataset.tipRows = [
+        `votes|${r.votes}`,
+        r.ci95 ? `95% CI|${r.ci95[0].toFixed(2)}-${r.ci95[1].toFixed(2)}` : ""
+      ]
+        .filter(Boolean)
+        .join(";");
+
+      const rank = document.createElement("span");
+      rank.className = "ins-row__rank ins-num";
+      rank.textContent = String(i + 1).padStart(2, "0");
+
+      const id = document.createElement("span");
+      id.className = "ins-row__id";
+      id.append(chipEl(h, "harness", "md"), chipEl(m, "model", "md"));
+      const text = document.createElement("span");
+      text.className = "ins-row__text";
+      const name = document.createElement("span");
+      name.className = "ins-row__name";
+      const hn = document.createElement("span");
+      hn.className = "ins-row__h";
+      hn.textContent = h.display;
+      const mn = document.createElement("span");
+      mn.className = "ins-row__m";
+      mn.textContent = m.display;
+      name.append(hn, mn);
+      const meta = document.createElement("span");
+      meta.className = "ins-row__meta";
+      meta.textContent = `${r.votes} votes`;
+      text.append(name, meta);
+      id.append(text);
+
+      const plot = document.createElement("span");
+      plot.className = "ins-row__plot";
+      const bar = document.createElement("span");
+      bar.className = "ins-bar";
+      const fill = document.createElement("span");
+      fill.className = "ins-bar__fill";
+      fill.style.width = `${(((r.bt - min) / span) * 92 + 8).toFixed(1)}%`;
+      bar.append(fill);
+      plot.append(bar);
+
+      const val = document.createElement("span");
+      val.className = "ins-row__val";
+      const num = document.createElement("span");
+      num.className = "ins-num ins-num--lg";
+      renderNum(num, r.bt.toFixed(2));
+      val.append(num);
+
+      row.append(rank, id, plot, val);
+      list.append(row);
+    });
+
+  box.append(list);
+  return box;
+}
+
+async function initArenaLive(): Promise<void> {
+  const section = document.querySelector<HTMLElement>("[data-arena-live]");
+  const body = section?.querySelector<HTMLElement>("[data-arena-live-body]");
+  if (!section || !body) return;
+
+  let doc: ArenaLive = {};
+  try {
+    const res = await fetch("/data/arena-live.json", { cache: "no-cache" });
+    if (res.ok) doc = (await res.json()) as ArenaLive;
+  } catch {
+    // No live file yet — fall through to the baked numbers below.
+  }
+
+  // Fall back to whatever the build baked in.
+  if (doc.votes == null) {
+    const baked = document.querySelector<HTMLElement>("[data-arena-baked]");
+    doc = {
+      votes: Number(baked?.dataset.votes ?? 0),
+      ratings: []
+    };
+  }
+
+  const needed = doc.min_votes_per_stack ?? ARENA_MIN_VOTES;
+  const ratings = (doc.ratings ?? []).filter((r) => r.votes >= needed);
+
+  body.textContent = "";
+  body.append(
+    ratings.length > 0
+      ? arenaTable(ratings, readRoster(), doc.votes ?? 0)
+      : arenaEmpty(doc.votes ?? 0, needed)
+  );
+}
+
 /* ── atmosphere ───────────────────────────────────────────────────────── */
 
 /**
@@ -827,6 +1010,7 @@ function boot(): void {
   initAtmosphere();
   initFigures();
   initTooltips();
+  void initArenaLive();
   paintBars();
   paintLens();
   initLeaderboard();

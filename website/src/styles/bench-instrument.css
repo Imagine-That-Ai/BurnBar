@@ -64,6 +64,13 @@
   --ins-measure: 62ch;
   --ins-max: 1180px;
 
+  /* Bench runs on the grotesque, not the serif: with every figure set in
+     mono, the serif was doing purely editorial work and the page read as a
+     magazine rather than an instrument. Geist ships with the site already,
+     so this costs nothing to load. */
+  --font-display: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+    sans-serif;
+
   color: var(--ins-ink-2);
   font-family: var(--font-body);
 }
@@ -317,34 +324,28 @@ body:has(.ins)::before {
   margin-inline-end: 0.06em;
 }
 
-/* The headline statistic — Fraunces at display optical size. This is
-   the one place the serif is allowed to carry a number, and it is
-   what makes the page feel typeset rather than dashboarded. */
+/* The headline statistic. Mono, so every figure on the page — hero stat
+   down to axis tick — sits on one grid and columns align to the glyph. */
 .ins-num--hero {
-  font-family: var(--font-display);
-  font-variation-settings:
-    "opsz" 120,
-    "SOFT" 0,
-    "WONK" 0;
-  font-weight: 460;
-  font-size: clamp(3.4rem, 2.2rem + 5vw, 6.2rem);
-  line-height: 0.86;
-  letter-spacing: -0.035em;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: clamp(3rem, 2rem + 4.4vw, 5.2rem);
+  line-height: 0.92;
+  letter-spacing: -0.045em;
   color: var(--ins-ink);
 }
 .ins-num--hero .ins-num__dec {
   font-weight: 380;
 }
 .ins-num--hero .ins-num__unit {
-  font-size: 0.34em;
-  vertical-align: 0.62em;
+  font-size: 0.38em;
+  vertical-align: 0.5em;
   letter-spacing: 0.02em;
 }
 
 .ins-num--xl {
-  font-family: var(--font-display);
-  font-variation-settings: "opsz" 72;
-  font-weight: 480;
+  font-family: var(--font-mono);
+  font-weight: 500;
   font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
   line-height: 0.94;
   letter-spacing: -0.03em;
@@ -426,11 +427,10 @@ body:has(.ins)::before {
 
 .ins-h {
   font-family: var(--font-display);
-  font-variation-settings: "opsz" 60;
-  font-weight: 460;
-  font-size: clamp(1.8rem, 1.3rem + 1.9vw, 2.75rem);
-  line-height: 1.04;
-  letter-spacing: -0.028em;
+  font-weight: 600;
+  font-size: clamp(1.7rem, 1.25rem + 1.8vw, 2.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
   color: var(--ins-ink);
   text-wrap: balance;
   max-width: 22ch;
@@ -1207,21 +1207,17 @@ body:has(.ins)::before {
 }
 .ins-hero__h {
   font-family: var(--font-display);
-  font-variation-settings: "opsz" 144;
-  font-weight: 420;
-  font-size: clamp(2.6rem, 1.6rem + 4.4vw, 5rem);
-  line-height: 0.98;
-  letter-spacing: -0.04em;
+  font-weight: 620;
+  font-size: clamp(2.5rem, 1.6rem + 4.2vw, 4.6rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
   color: var(--ins-ink);
   margin: 0;
   text-wrap: balance;
 }
 .ins-hero__h em {
   display: block;
-  font-style: italic;
-  font-variation-settings:
-    "opsz" 144,
-    "WONK" 1;
+  font-style: normal;
   color: var(--ember-core, #ff9f0a);
 }
 .ins-hero__lede {
@@ -1818,9 +1814,8 @@ body:has(.ins)::before {
 }
 .ins-next__h {
   font-family: var(--font-display);
-  font-variation-settings: "opsz" 40;
   font-size: 1.25rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ins-ink);
 }
@@ -2760,4 +2755,196 @@ body:has(.ins)::before {
   outline: 2px solid color-mix(in oklab, var(--ember-core, #ff9f0a) 78%, transparent);
   outline-offset: 2px;
   border-radius: 10px;
+}
+
+/* ============================================================
+   18. INSIGHTS — derived findings
+   ============================================================ */
+
+.ins-insight {
+  display: grid;
+  gap: var(--ins-4);
+  margin-bottom: var(--ins-8);
+}
+.ins-insight__head {
+  display: grid;
+  gap: var(--ins-2);
+}
+
+/* -- slope: rank on one metric vs rank on another --------------------- */
+
+.ins-slope {
+  padding: var(--ins-4) var(--ins-5) var(--ins-5);
+}
+.ins-slope__cols {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.1fr) 42px minmax(80px, 1fr) 42px 52px;
+  gap: var(--ins-3);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ins-ink-4);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+  margin-bottom: var(--ins-2);
+}
+/* The two labels sit over the ends of the wire, not over the 42px rank
+   columns — otherwise "rank by solution rate" wraps into four lines. */
+.ins-slope__cols > :first-child {
+  grid-column: 2 / 4;
+}
+.ins-slope__cols > :last-child {
+  grid-column: 4 / 6;
+  text-align: right;
+}
+
+.ins-slope__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--ins-1);
+}
+.ins-slope__row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.1fr) 42px minmax(80px, 1fr) 42px 52px;
+  align-items: center;
+  gap: var(--ins-3);
+  padding: var(--ins-2) var(--ins-3);
+  border-radius: var(--ins-r);
+  transition: background-color 200ms ease;
+}
+.ins-slope__row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+:root[data-theme="light"] .ins-slope__row:hover {
+  background: rgba(12, 16, 24, 0.03);
+}
+.ins-slope__id {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-2);
+  min-width: 0;
+}
+.ins-slope__name {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  line-height: 1.2;
+  font-size: 0.8125rem;
+}
+.ins-slope__from,
+.ins-slope__to {
+  color: var(--ins-ink-3);
+  text-align: center;
+}
+.ins-slope__wire {
+  display: block;
+  height: 40px;
+}
+.ins-slope__wire svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.ins-slope__wire line {
+  stroke: var(--mc, var(--ins-ink-4));
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+.ins-slope__delta {
+  text-align: right;
+  font-weight: 600;
+}
+/* Gaining places on quality is the good direction. */
+.ins-slope__row.is-up .ins-slope__delta {
+  color: #3ddc84;
+}
+.ins-slope__row.is-down .ins-slope__delta {
+  color: #ff8f6b;
+}
+
+@media (max-width: 760px) {
+  .ins-slope__cols {
+    display: none;
+  }
+  .ins-slope__row {
+    grid-template-columns: minmax(0, 1fr) 36px minmax(60px, 0.8fr) 36px 44px;
+    gap: var(--ins-2);
+    font-size: 0.75rem;
+  }
+  .ins-slope__id .ins-chip {
+    display: none;
+  }
+  .ins-slope__id .ins-chip:first-child {
+    display: inline-flex;
+  }
+}
+
+/* -- model edge cards -------------------------------------------------- */
+
+.ins-edge {
+  padding: var(--ins-5);
+  display: grid;
+  gap: var(--ins-3);
+  align-content: start;
+}
+.ins-edge__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  padding-bottom: var(--ins-3);
+  border-bottom: 1px solid var(--ins-rule);
+}
+.ins-edge__name {
+  font-size: 1rem;
+  font-weight: 560;
+  color: var(--ins-ink);
+}
+.ins-edge__edge {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  margin-inline-start: var(--ins-2);
+}
+
+/* -- live human verdict ------------------------------------------------ */
+
+.ins-arena {
+  padding: var(--ins-4);
+  display: grid;
+  gap: var(--ins-3);
+}
+.ins-arena__head {
+  padding-inline: var(--ins-3);
+}
+.ins-arena__pending {
+  display: flex;
+  align-items: center;
+  gap: var(--ins-3);
+  padding: var(--ins-5);
+  font-size: 0.875rem;
+  color: var(--ins-ink-2);
+}
+
+.ins-arena__empty {
+  display: grid;
+  gap: var(--ins-4);
+  padding: var(--ins-6);
+  justify-items: start;
+}
+.ins-arena__lead {
+  display: grid;
+  gap: 2px;
+}
+.ins-arena__bar {
+  width: 100%;
+  max-width: 420px;
+}
+.ins-arena__note {
+  max-width: 60ch;
+}
+.ins-arena__cta {
+  margin-top: var(--ins-1);
 }
