@@ -7,7 +7,7 @@
     "remote": "origin",
     "ownerRepo": "Imagine-That-Ai/BurnBar",
     "branch": "main",
-    "originMain": "8425376138f8c1e9f5501eb949f7f353a9e7ddbe",
+    "originMain": "0d746441b5acf0ea6d83621598796711a75f10a3",
     "releaseTag": "v1.0.34"
   },
   "purpose": "Owner-attested emergency release evidence for the v1.0.34 public release boundary. This cut unblocks OpenBurnBar Release after v1.0.33 Preflight passed and hydrated expired Actions artifacts, but Shared Rust verify failed because protected signer run validation expected a path@ref suffix the GitHub Actions API does not return. The release must be cut from protected main only.",
