@@ -73,8 +73,11 @@ protocol HermesStreamingCoordinating: AnyObject {
 /// turns raw SSE payloads into mutations of an in-flight
 /// `HermesChatMessage`: event framing, typed-event application, card
 /// absorption, tool-call delta folding, and the deliberate 80ms commit
-/// throttle for visible-text deltas (see `project_hermes_streaming_throttle`
-/// — do NOT restore per-token freshness).
+/// throttle for streamed deltas — visible text, reasoning, refusal, and
+/// tool-call argument growth all pace through the same clock (see
+/// `project_hermes_streaming_throttle` — do NOT restore per-token
+/// freshness). Structural events (a new tool pill, errors, cards, model
+/// confirmation) and end-of-stream finalization always commit immediately.
 ///
 /// The engine never touches `HermesService` state directly. Its three
 /// observable side effects are injected at init:
@@ -92,13 +95,27 @@ protocol HermesStreamingCoordinating: AnyObject {
 @MainActor
 final class HermesStreamingEngine {
     private var streamEventParser = HermesOpenAICompatibleStreamParser()
-    /// Last time a streaming text delta was committed via `commitMessage`.
-    /// `appendVisibleContent` throttles those commits so per-token SSE
-    /// events don't invalidate every `@Observable` reader; structural
-    /// events and end-of-stream finalization still commit immediately.
+    /// Last time a streaming delta was committed via `commitMessage`.
+    /// `appendVisibleContent`, the reasoning/refusal appenders, and the
+    /// tool-call argument folder all throttle their commits through this
+    /// clock so per-token SSE events don't invalidate every `@Observable`
+    /// reader; structural events (new tool pill, errors, cards) and
+    /// end-of-stream finalization still commit immediately.
     private var lastStreamCommit = ContinuousClock.now
-    /// Minimum spacing between throttled streaming text commits.
+    /// Minimum spacing between throttled streaming commits.
     private static let streamCommitInterval: Duration = .milliseconds(80)
+
+    /// Shared throttle gate for per-delta commits. `force` commits
+    /// unconditionally (first visible chunk, structural changes) and also
+    /// resets the clock so a burst following a forced commit stays paced.
+    private func shouldCommitThrottled(force: Bool) -> Bool {
+        let now = ContinuousClock.now
+        guard force || now - lastStreamCommit >= Self.streamCommitInterval else {
+            return false
+        }
+        lastStreamCommit = now
+        return true
+    }
 
     private let commitMessage: (HermesChatMessage) -> Void
     private let setLastError: (String) -> Void
@@ -383,7 +400,16 @@ final class HermesStreamingEngine {
         guard !content.isEmpty else { return }
         message.markFirstResponseChunk()
         let isFirstChunk = message.text.isEmpty
-        if message.text.isEmpty || content.hasPrefix(message.text) {
+        // O(1)-amortized delta fold. `content.hasPrefix(message.text)` (the
+        // cumulative-stream detector) walks the entire accumulated text, so
+        // gate it behind an O(1) UTF-8 length check: a chunk that isn't
+        // strictly longer than the accumulated text can never be a
+        // cumulative snapshot that extends it. Delta-mode streams therefore
+        // never pay the O(n) prefix scan; cumulative-mode streams still do,
+        // but their input is inherently O(n) per chunk anyway.
+        if message.text.isEmpty {
+            message.text = content
+        } else if content.utf8.count > message.text.utf8.count, content.hasPrefix(message.text) {
             message.text = content
         } else if content != message.text {
             message.text += content
@@ -394,9 +420,7 @@ final class HermesStreamingEngine {
         // staged copy keeps accumulating either way, and structural events
         // plus the end-of-stream finalize commit unconditionally, so no
         // trailing text is ever lost.
-        let now = ContinuousClock.now
-        guard isFirstChunk || now - lastStreamCommit >= Self.streamCommitInterval else { return }
-        lastStreamCommit = now
+        guard shouldCommitThrottled(force: isFirstChunk) else { return }
         commitMessage(message)
     }
 
@@ -409,21 +433,38 @@ final class HermesStreamingEngine {
 
     private func appendStreamedRefusal(_ chunk: String, to message: inout HermesChatMessage) {
         guard !chunk.isEmpty else { return }
-        if message.streamedRefusal.isEmpty || chunk.hasPrefix(message.streamedRefusal) {
+        let isFirstChunk = message.streamedRefusal.isEmpty
+        if message.streamedRefusal.isEmpty {
+            message.streamedRefusal = chunk
+        } else if chunk.utf8.count > message.streamedRefusal.utf8.count,
+                  chunk.hasPrefix(message.streamedRefusal) {
             message.streamedRefusal = chunk
         } else if chunk != message.streamedRefusal {
             message.streamedRefusal += chunk
         }
+        // Same ~80ms commit pacing as visible text: refusal chunks used to
+        // commit unconditionally, re-invalidating every `@Observable`
+        // reader per token. The staged copy stays complete regardless and
+        // end-of-stream finalization always commits, so nothing is lost.
+        guard shouldCommitThrottled(force: isFirstChunk) else { return }
         commitMessage(message)
     }
 
     private func appendStreamedReasoning(_ chunk: String, to message: inout HermesChatMessage) {
         guard !chunk.isEmpty else { return }
-        if message.streamedReasoning.isEmpty || chunk.hasPrefix(message.streamedReasoning) {
+        let isFirstChunk = message.streamedReasoning.isEmpty
+        if message.streamedReasoning.isEmpty {
+            message.streamedReasoning = chunk
+        } else if chunk.utf8.count > message.streamedReasoning.utf8.count,
+                  chunk.hasPrefix(message.streamedReasoning) {
             message.streamedReasoning = chunk
         } else if chunk != message.streamedReasoning {
             message.streamedReasoning += chunk
         }
+        // Reasoning channels on thinking models can carry the entire answer
+        // token by token — the unthrottled per-chunk commit here was one of
+        // the dominant O(n²) contributors. Same pacing contract as text.
+        guard shouldCommitThrottled(force: isFirstChunk) else { return }
         commitMessage(message)
     }
 
@@ -491,6 +532,15 @@ final class HermesStreamingEngine {
         if !rawToolCalls.isEmpty {
             message.markFirstResponseChunk()
         }
+        // Structural changes (a new pill, a resolved name) commit
+        // immediately; pure argument-fragment growth is folded in O(1)
+        // (string append) and only pays the `summarizeToolArguments`
+        // re-parse of the accumulated JSON — O(arguments) — plus a commit
+        // on the shared ~80ms throttle. The end-of-stream finalizers
+        // re-summarize from the full argument string, so the pill's detail
+        // is always exact once the turn settles.
+        var hasStructuralChange = false
+        var didAppendArguments = false
         for raw in rawToolCalls {
             let function = raw["function"] as? [String: Any]
             let nameFragment = stringValue(function?["name"]) ?? stringValue(raw["name"])
@@ -514,16 +564,19 @@ final class HermesStreamingEngine {
             }
 
             if let index = message.toolCalls.firstIndex(where: { $0.id == resolvedID }) {
-                if let nameFragment, !nameFragment.isEmpty {
+                if let nameFragment, !nameFragment.isEmpty,
+                   message.toolCalls[index].name != nameFragment {
                     message.toolCalls[index].name = nameFragment
+                    hasStructuralChange = true
                 }
                 if let argsFragment, !argsFragment.isEmpty {
                     message.toolCalls[index].arguments += argsFragment
+                    didAppendArguments = true
                 }
-                message.toolCalls[index].status = "running"
-                message.toolCalls[index].detail = Self.summarizeToolArguments(
-                    message.toolCalls[index].arguments
-                ) ?? message.toolCalls[index].detail
+                if message.toolCalls[index].status != "running" {
+                    message.toolCalls[index].status = "running"
+                    hasStructuralChange = true
+                }
             } else {
                 let name = nameFragment?.isEmpty == false ? nameFragment! : "Hermes tool"
                 let arguments = argsFragment ?? ""
@@ -536,6 +589,20 @@ final class HermesStreamingEngine {
                         detail: Self.summarizeToolArguments(arguments)
                     )
                 )
+                hasStructuralChange = true
+            }
+        }
+        guard hasStructuralChange || didAppendArguments else { return }
+        guard shouldCommitThrottled(force: hasStructuralChange) else { return }
+        if didAppendArguments {
+            // Refresh the human-readable detail preview only when we're
+            // actually about to commit — running the JSON/regex summarizer
+            // over the whole accumulated argument string per fragment was
+            // O(n²) across a long tool-argument stream.
+            for index in message.toolCalls.indices where message.toolCalls[index].status == "running" {
+                message.toolCalls[index].detail = Self.summarizeToolArguments(
+                    message.toolCalls[index].arguments
+                ) ?? message.toolCalls[index].detail
             }
         }
         commitMessage(message)
@@ -705,7 +772,11 @@ final class HermesStreamingEngine {
                 name: $0.name,
                 status: "done",
                 arguments: $0.arguments,
-                detail: $0.detail ?? Self.summarizeToolArguments($0.arguments)
+                // Prefer a fresh summary of the FULL argument string: the
+                // throttled delta path may have left `detail` a few
+                // fragments stale. Falls back to the last streamed preview
+                // when the summarizer finds nothing meaningful.
+                detail: Self.summarizeToolArguments($0.arguments) ?? $0.detail
             )
         }
         if assistantMessage.text.isEmpty && assistantMessage.toolCalls.isEmpty {
@@ -929,7 +1000,11 @@ final class HermesStreamingEngine {
                 name: $0.name,
                 status: "done",
                 arguments: $0.arguments,
-                detail: $0.detail ?? Self.summarizeToolArguments($0.arguments)
+                // Prefer a fresh summary of the FULL argument string: the
+                // throttled delta path may have left `detail` a few
+                // fragments stale. Falls back to the last streamed preview
+                // when the summarizer finds nothing meaningful.
+                detail: Self.summarizeToolArguments($0.arguments) ?? $0.detail
             )
         }
         if assistantMessage.text.isEmpty && assistantMessage.toolCalls.isEmpty {

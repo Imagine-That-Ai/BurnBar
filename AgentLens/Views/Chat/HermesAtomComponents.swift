@@ -340,6 +340,12 @@ struct HermesRichBubble: View {
     var codeColor: Color = DesignSystem.Colors.textPrimary
     var codeBackground: Color = DesignSystem.Colors.surfaceElevated
     var lineHeight: CGFloat?
+    /// True while the owning message is still streaming. Switches the
+    /// measure key to the O(1), monotonically-growing UTF-8 length instead
+    /// of hashing the whole accumulated text on every body evaluation
+    /// (O(n) per commit → O(n²) per stream). Finalized bubbles keep the
+    /// content hash so post-stream rewrites always re-measure.
+    var isStreaming: Bool = false
 
     @State private var runs: [HermesRichRun] = []
     @State private var lines: [PretextRichLine] = []
@@ -366,7 +372,14 @@ struct HermesRichBubble: View {
     }
 
     private var fallbackLineEstimate: Int {
-        max(1, Int((Double(text.count) / 60.0).rounded(.up)))
+        // While streaming, approximate with the O(1) UTF-8 length — the
+        // grapheme count walks the whole accumulated text per body
+        // evaluation. The estimate only feeds a `minHeight` floor and the
+        // exact Pretext layout replaces it as soon as `measure` lands, so a
+        // transient overestimate on multi-byte text is harmless. Finalized
+        // bubbles keep the exact character count.
+        let characterEstimate = isStreaming ? text.utf8.count : text.count
+        return max(1, Int((Double(characterEstimate) / 60.0).rounded(.up)))
     }
 
     @ViewBuilder
@@ -506,7 +519,12 @@ struct HermesRichBubble: View {
         // re-wraps at the bucket width, which is visually indistinguishable from
         // the exact width at this granularity.
         let bucket = ChatMeasurementWidthSanitizer.bucketKey(width)
-        return "\(text.hashValue)|\(baseSize)|\(bucket)|\(resolvedLineHeight)"
+        // Streaming: key on the O(1) monotonically-growing UTF-8 length —
+        // hashing the whole accumulated text per body evaluation was O(n²)
+        // across a stream. Finalized: keep the content hash so any rewrite
+        // (same-length or not) re-measures.
+        let contentKey = isStreaming ? "s\(text.utf8.count)" : "h\(text.hashValue)"
+        return "\(contentKey)|\(baseSize)|\(bucket)|\(resolvedLineHeight)"
     }
 
     private func measure(at width: CGFloat) async {
@@ -619,9 +637,15 @@ struct StreamingBubble<Content: View>: View {
     }
 
     private func trigger(width: CGFloat) -> String {
-        let bucket = isStreaming ? text.count / 32 : -1
+        // Streaming: key on the O(1) monotonically-growing UTF-8 length
+        // (same 32-unit re-measure bucketing as before) — `text.hashValue`
+        // and `text.count` both walked the whole accumulated text on every
+        // body evaluation, O(n) per commit → O(n²) per stream. Finalized
+        // bubbles keep the content hash so post-stream rewrites re-measure.
+        let contentKey = isStreaming ? "s\(text.utf8.count)" : "h\(text.hashValue)"
+        let bucket = isStreaming ? text.utf8.count / 32 : -1
         let widthBucket = ChatMeasurementWidthSanitizer.bucketKey(width)
-        return "\(text.hashValue)|\(widthBucket)|\(isStreaming ? 1 : 0)|\(isError ? 1 : 0)|\(bucket)"
+        return "\(contentKey)|\(widthBucket)|\(isStreaming ? 1 : 0)|\(isError ? 1 : 0)|\(bucket)"
     }
 
     private func measure(at width: CGFloat) async {
