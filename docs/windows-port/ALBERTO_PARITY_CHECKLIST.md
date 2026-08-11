@@ -1,13 +1,13 @@
 # Windows parity — Alberto's exact checklist
 
 **Date:** 2026-07-08
-**Last refreshed:** 2026-08-10
+**Last refreshed:** 2026-08-11
 **Historical context:** The agent lanes drove the Windows port from ~40% to
 ~55% honest parity during the 2026-07-06 session. The original prerequisite
 list is retained below; use the refreshed current-status section for the work
 that still needs Alberto.
 
-## Current status - 2026-08-10
+## Current status - 2026-08-11
 
 This checklist is retained as the original external-prerequisite runbook. Its
 July 8 blocking state has materially advanced.
@@ -22,12 +22,20 @@ The simple current result is:
 - **Automated Windows proof is done:** the exact source passed 65/65 local
   certification commands plus hosted x64, ARM64, engine, candidate-export,
   distribution, MSIX, security, and shared-domain gates.
-- **Release certification is not done:** the exact source has not yet produced
-  a signed `windows-v1.0.39` candidate, and five blocking external receipt
+- **The staging infrastructure deployment is done:** run
+  [31439802683](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31439802683)
+  deployed exact candidate
+  `0b8c208537bcf7786ff43370ffb28d0d4becb0f4` to `burnbar-staging` with
+  Hosting off and exactly the four approved Functions. All four are active,
+  identify that candidate, and deny anonymous calls with HTTP `401`.
+  Production and Hosting stayed unchanged.
+- **Release certification is not done:** there is no signed
+  `windows-v1.0.39` release candidate yet. Five blocking external receipt
   groups are still open — physical x64 performance, accessibility/display,
-  staging cloud, paired media/Computer Use safety, and Store/update lifecycle.
-  Physical ARM64 is open too, but it does not block: it may ship as a clearly
-  stated beta limitation. The honest verdict is **NO-GO**.
+  the signed-in OAuth/App Check/physical TPM/CloudVault staging protocol,
+  paired media/Computer Use safety, and Store/update lifecycle. Physical ARM64
+  is open too, but it does not block: it may ship as a clearly stated beta
+  limitation. The honest verdict is **NO-GO**.
 
 **Nothing public ships before certification.** Pushing the `windows-v1.0.39` tag
 signs the candidate *and* publishes a public GitHub Release in one run unless
@@ -37,35 +45,32 @@ last.
 What Alberto needs to approve or provide next, in order:
 
 1. **Hold the publication gate before the tag exists.** Settings → Environments
-   → `windows-release` → add a required reviewer. Verified 2026-08-10, that
+   → `windows-release` → add a required reviewer. Verified 2026-08-11, that
    environment has no protection rules at all, so one tag push would sign and
    publish with no second approval. With a reviewer, signing and publication
    each need their own approval.
-2. Type the exact phrase **`approve staging deployment`** when ready for the
-   reviewed four-function deployment to `burnbar-staging`. Nothing blocks this
-   step today: the project is billing-linked and `STAGING_ENABLED=true` is set
-   in the protected `staging` Environment, so the
-   `EXT-STAGING-BILLING-PROJECT-QUOTA` blocker recorded in the 2026-07-12
-   external-certification receipt is history, not a live prerequisite. See
-   [`docs/ops/STAGING.md`](../ops/STAGING.md).
-3. After staging passes, separately approve creation and push of protected tag
-   `windows-v1.0.39`, then approve the `build-sign` deployment only. That yields
-   the signed candidate as a private workflow artifact and publishes nothing. PR
-   approval does not authorize the tag.
-4. Make the physical Intel x64 Windows laptop and paired Mac/iPhone available
+2. After release engineering rebinds the final candidate to then-current
+   `main` and re-runs the candidate gates, separately approve creation and push
+   of protected tag `windows-v1.0.39`, then approve the `build-sign` deployment
+   only. That yields the signed candidate as a private workflow artifact and
+   publishes nothing. PR approval and the completed staging deployment do not
+   authorize the tag.
+3. Make the physical Intel x64 Windows laptop and paired Mac/iPhone available
    for performance, accessibility/display, media, Computer Use, panic, and
-   safety protocols against that private signed candidate.
-5. Explicitly authorize a private Partner Center flight after the signed
+   safety protocols against that private signed candidate. The signed-in
+   staging protocol on this machine must cover OAuth, App Check, physical TPM,
+   CloudVault, offline recovery, revocation, sign-out, and fixture restoration.
+4. Explicitly authorize a private Partner Center flight after the signed
    physical x64 candidate passes.
-6. Only once 4 and 5 have passed, approve the held publication deployment. That
+5. Only once 3 and 4 have passed, approve the held publication deployment. That
    approval is what publishes the public GitHub Release. The tag approval, the
    `staging` Environment prompt, and the private-flight authorization are each a
    different decision and none of them is this one.
-7. Provide physical ARM64 Windows hardware, or retain ARM64 as a clearly stated
+6. Provide physical ARM64 Windows hardware, or retain ARM64 as a clearly stated
    beta limitation. This item does not block the release.
 
 If item 1 is skipped there is no private signing path, and the tag push is
-itself the public release. In that case the tag waits until items 4 and 5 have
+itself the public release. In that case the tag waits until items 3 and 4 have
 passed, and no candidate is ever tagged on the assumption that the release can
 be deleted afterwards.
 

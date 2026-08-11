@@ -8,7 +8,9 @@ struct DaemonCredentialSlotAccountProjection {
         now: Date = Date()
     ) -> [ProviderAccountDoc] {
         configurations.flatMap { configuration -> [ProviderAccountDoc] in
-            let providerID = ProviderID(rawValue: configuration.providerID)
+            let providerID = QuotaCapableProviderMap.canonicalProviderID(
+                forDaemonProviderID: configuration.providerID
+            )
             let defaultSlotID = configuration.preferredCredentialSlotID
                 ?? configuration.credentialSlots.first(where: \.isEnabled)?.slotID
 
@@ -46,6 +48,16 @@ struct DaemonCredentialSlotAccountProjection {
 
     static func accountID(providerID: ProviderID, slotID: String) -> String {
         "\(providerID.rawValue)-\(ProviderID.normalize(slotID))"
+    }
+
+    /// Account id for a slot addressed by its *daemon-config* provider id.
+    /// Callers holding the configured string (which may be an alias) must go
+    /// through here so they address the same row `accounts(from:)` writes.
+    static func accountID(daemonProviderID: String, slotID: String) -> String {
+        accountID(
+            providerID: QuotaCapableProviderMap.canonicalProviderID(forDaemonProviderID: daemonProviderID),
+            slotID: slotID
+        )
     }
 
     private static func accountStatus(
@@ -458,15 +470,19 @@ final class ProviderQuotaService {
         }
     }
 
+    /// Canonical id first, then every daemon alias for the provider.
+    ///
+    /// Snapshots are written under the canonical id, but records persisted
+    /// before that was true — and records synced from a device still on the old
+    /// build — carry the alias, so reads stay alias-tolerant. This used to be a
+    /// hand-written `kimi`/`claude-code` special case that never learned about
+    /// xAI's aliases; it now reads the same table the projection canonicalizes
+    /// against, so the two cannot drift.
     private static func snapshotProviderIDs(for provider: AgentProvider) -> [ProviderID] {
-        switch provider {
-        case .kimi:
-            return [provider.providerID, ProviderID(rawValue: "moonshot")]
-        case .claudeCode:
-            return [provider.providerID, ProviderID(rawValue: "anthropic")]
-        default:
-            return [provider.providerID]
-        }
+        let aliases = QuotaCapableProviderMap.daemonProviderIDs(for: provider)
+            .subtracting([provider.providerID])
+            .sorted { $0.rawValue < $1.rawValue }
+        return [provider.providerID] + aliases
     }
 
     var accountsByProvider: [ProviderID: [ProviderQuotaSnapshot]] {

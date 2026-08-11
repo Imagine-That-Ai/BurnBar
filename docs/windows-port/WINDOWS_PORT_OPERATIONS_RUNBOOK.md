@@ -2,7 +2,7 @@
 
 **Owner:** OpenBurnBar release engineering
 
-**Last verified:** 2026-08-10
+**Last verified:** 2026-08-11
 
 **Applies to:** Windows x64 and ARM64 source, CI, staging, signing, physical certification, and Microsoft Store flights
 
@@ -59,13 +59,39 @@ candidate-export, distribution/MSIX, staging dry-run, and shared domain-core
 gates.
 
 Five open external receipt groups block the release: physical x64 performance,
-accessibility/display, staging cloud, paired media/Computer Use safety, and
-Store/update lifecycle. Physical ARM64 is a sixth open group but is not
-blocking. Section 7 and
+accessibility/display, the signed-in OAuth/App Check/physical TPM/CloudVault
+staging protocol, paired media/Computer Use safety, and Store/update lifecycle.
+The staging deployment and infrastructure portion passed on 2026-08-11; the
+person-and-device protocol did not run. Physical ARM64 is a sixth open group
+but is not blocking. Section 7 and
 [`ALBERTO_PARITY_CHECKLIST.md`](ALBERTO_PARITY_CHECKLIST.md) both allow shipping
 it as an explicit, uncertified beta limitation, so never hold a release waiting
 for ARM64 hardware; state the limitation instead. Historical signed artifacts do
 not satisfy any of these gates for the current exact source.
+
+### Exact staging infrastructure checkpoint
+
+This is current staging-infrastructure proof, not signed Windows release
+certification:
+
+- Candidate: `0b8c208537bcf7786ff43370ffb28d0d4becb0f4`, retained on
+  open, unmerged PR #2208
+- Trusted dispatch head: `b5f927866ede91795fa2dadb1f1f915e42b98ab5`
+- Successful run:
+  [31439802683](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31439802683),
+  completed `2026-08-11T02:13:37Z`
+- Scope: `dry_run=false`, Functions on, Hosting off, and exactly four approved
+  selectors
+- Result: Firestore/Storage drift and all 12 TTL checks passed; exactly four
+  candidate-bound Node 22 Functions became active and denied anonymous calls
+- Isolation: non-target staging, production, Hosting, and Azure state matched
+  their saved pre-deploy fingerprints
+
+This proves the bounded cloud deployment path. It does not replace the
+signed-in OAuth, App Check, physical TPM, CloudVault,
+offline/revocation/sign-out, secret-scan, and fixture-restoration protocol on
+the exact signed Windows candidate. Step 3 contains the detailed receipt and
+the reusable procedure.
 
 ### Historical signed-candidate checkpoint
 
@@ -235,6 +261,30 @@ a newer run as evidence for the older candidate.
 First run the safe dry run, then deploy the reviewed four-function Windows
 surface. The `staging` Environment approval is intentional.
 
+The current release campaign completed this infrastructure step in run
+`31439802683` for candidate
+`0b8c208537bcf7786ff43370ffb28d0d4becb0f4`. Trusted job `93656565440`
+deployed Firestore indexes/rules, Storage rules, and exactly the four selectors
+below with Hosting off. Post-deploy drift and all 12 TTL checks passed. Live
+readback found
+revisions `issuewindowsappcheckchallenge-00003-lix`,
+`mintwindowsappchecktoken-00003-tol`,
+`getwindowsruntimesafetyconfig-00003-mov`, and
+`submitdomaincoreshadowsamples-00003-sax`; all were `ACTIVE`, candidate-bound,
+had no configured minimum instance count, and returned `401` to anonymous
+callable POSTs. Saved non-target staging, production, Hosting, TTL, and Azure
+fingerprints stayed unchanged. The 92-index production JSON hashed to
+`8bcfaac80d623481b061737aca15d3de1ef5c03430b63d8aa676deec01570873`
+with its final newline and
+`793a9e4a66211992218506c39962809b6e5250d6e9d0b227d424bb1740fa8ac0`
+without it. Firestore Admin audit logs recorded zero production index changes
+during the staging window. The earlier zero-step job `93622386842` was
+cancelled after receiving no runner, and the pending production Firestore guard
+remained at zero jobs.
+
+Keep the procedure below for every later exact candidate. A past approval or
+successful run never authorizes a future staging mutation.
+
 **Stop after the dry run until the operator explicitly types
 `approve staging deployment`.** Approval of a pull request, merge, CI run, or
 release-preparation task is not staging-deployment approval. Neither is the
@@ -247,6 +297,7 @@ Dry run. This block is safe to run as a unit:
 
 ```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=true -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken,functions:getWindowsRuntimeSafetyConfig,functions:submitDomainCoreShadowSamples'
 ```
@@ -259,6 +310,7 @@ single standalone command once the operator has typed
 
 ```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=false -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken,functions:getWindowsRuntimeSafetyConfig,functions:submitDomainCoreShadowSamples'
 ```
@@ -276,7 +328,8 @@ gcloud firestore fields ttls list --project burnbar-staging
 Required live checks:
 
 - source SHA equals `CANDIDATE_SHA` on all four Functions;
-- all four are active, `minInstances=0`, and unauthenticated calls return `401`;
+- all four are active, have no configured minimum instance count (effective
+  `minInstances=0`), and unauthenticated calls return `401`;
 - Firestore/Storage drift checks and TTL checks pass;
 - Remote Config equals the reviewed baseline after any kill-switch drill;
 - Azure verifier `/healthz` returns `200` and unauthenticated `/verify` returns
@@ -530,7 +583,7 @@ A Windows release is `GO` only when this table is true for one exact candidate:
 | Signed release | checksums, exact signer/timestamp, lifecycle, feed, SBOM, OpenVEX, and Sigstore `PASS` |
 | Physical x64 performance | `PASS` |
 | Accessibility/display | `PASS`; an unavailable physical setup remains `BLOCKED` and keeps the candidate `NO-GO`, never silently waived |
-| Staging cloud | `PASS` |
+| Staging cloud | `PASS` for both the bounded deployment and the exact signed candidate's physical signed-in OAuth/App Check/TPM/CloudVault protocol |
 | Media/Computer Use safety | `PASS` |
 | Store/update lifecycle | `PASS` in an authorized private flight |
 | Evidence validator | `PASS` with no identity or secret-leak error |
