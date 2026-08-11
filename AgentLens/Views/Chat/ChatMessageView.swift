@@ -471,6 +471,31 @@ struct ChatMessageView: View {
     }
 }
 
+// remediation(chat-streaming-o2): identity-stable, diffable transcript rows.
+// The row carries an `onJumpToLocal` closure, which SwiftUI's
+// reflection-based change detection can never prove equal — so every ~80ms
+// streaming commit re-rendered EVERY row in the transcript, making each
+// commit O(total transcript). This semantic equality (used via
+// `.equatable()` in `ChatMessagesStream`) compares the render inputs and
+// treats the closure by presence only: nil-ness is what gates the disabled
+// chip state, and the closure body always routes to the same controller
+// jump call.
+// `nonisolated`: the Equatable witness must not inherit the struct's
+// View-conformance MainActor isolation. Safe — both operands are value
+// copies and SwiftUI performs the comparison during main-actor rendering.
+extension ChatMessageView: Equatable {
+    nonisolated static func == (lhs: ChatMessageView, rhs: ChatMessageView) -> Bool {
+        lhs.message == rhs.message
+            && lhs.isStreaming == rhs.isStreaming
+            && lhs.showViaBadge == rhs.showViaBadge
+            && lhs.isHermes == rhs.isHermes
+            && lhs.assistantModelKey == rhs.assistantModelKey
+            && lhs.viewMode == rhs.viewMode
+            && lhs.memoryCitations == rhs.memoryCitations
+            && (lhs.onJumpToLocal == nil) == (rhs.onJumpToLocal == nil)
+    }
+}
+
 /// Reports the agent bubble row's available width up to `ChatMessageView`
 /// so the opposite-side gutter can ease down on narrow panels.
 private struct AgentRowWidthKey: PreferenceKey {
@@ -497,7 +522,13 @@ enum ChatMessageTextLimiter {
         expanded: Bool,
         visibleCharacterLimit: Int = defaultVisibleCharacterLimit
     ) -> ChatMessageTextPresentation {
-        guard !expanded, visibleCharacterLimit > 0, text.count > visibleCharacterLimit else {
+        // `text.utf8.count` is O(1) and always ≥ `text.count`, so a text
+        // whose UTF-8 length fits the limit can never exceed it in
+        // characters — skip the O(n) grapheme walk for the common case.
+        guard !expanded,
+              visibleCharacterLimit > 0,
+              text.utf8.count > visibleCharacterLimit,
+              text.count > visibleCharacterLimit else {
             return ChatMessageTextPresentation(visibleText: text, hiddenCharacterCount: 0)
         }
 
@@ -517,6 +548,13 @@ private struct ChatLimitedProseTextView: View {
     let isUser: Bool
 
     @State private var isExpanded = false
+    /// Incremental markdown renderer for the non-rich assistant path.
+    /// Parses only the bytes that arrived since the previous streaming
+    /// commit plus the trailing partial line, instead of re-parsing the
+    /// entire accumulated reply per commit (O(n²) across a long stream).
+    /// One renderer per prose piece identity (`@State`); it self-resets
+    /// when the text shrinks or is replaced (e.g. collapse after stream).
+    @State private var streamedMarkdownRenderer = HermesStreamingMarkdownRenderer()
 
     private var presentation: ChatMessageTextPresentation {
         ChatMessageTextLimiter.presentation(
@@ -552,8 +590,8 @@ private struct ChatLimitedProseTextView: View {
 
     @ViewBuilder
     private var renderedText: some View {
-        let display = presentation.visibleText + (appendCaret ? "▍" : "")
         if useHermesRichRendering {
+            let display = presentation.visibleText + (appendCaret ? "▍" : "")
             StreamingBubble(
                 text: display,
                 isStreaming: appendCaret,
@@ -566,23 +604,37 @@ private struct ChatLimitedProseTextView: View {
                     baseColor: DesignSystem.Colors.textPrimary,
                     mentionColor: DesignSystem.Colors.hermesAureate,
                     codeColor: DesignSystem.Colors.textPrimary,
-                    codeBackground: DesignSystem.Colors.surfaceElevated
+                    codeBackground: DesignSystem.Colors.surfaceElevated,
+                    isStreaming: appendCaret
                 )
             }
+        } else if isUser {
+            // User turns stay verbatim (and never stream a caret).
+            Text(AttributedString(presentation.visibleText + (appendCaret ? "▍" : "")))
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
+                .textSelection(.enabled)
         } else {
             // Non-Hermes assistant turns (mirrored CLI agents, Pi, …) arrive
             // as markdown too — resolve inline emphasis instead of showing
-            // raw `**` markers. User turns stay verbatim.
+            // raw `**` markers. The incremental renderer keeps the
+            // per-commit parse cost O(delta + partial line) instead of
+            // O(full accumulated text), and the caret rides as a suffix so
+            // it never forces a full copy of the accumulated string. The
+            // animation keys on the O(1) UTF-8 length instead of the O(n)
+            // grapheme count — both grow monotonically per append.
             Text(
-                isUser
-                    ? AttributedString(display)
-                    : HermesInlineMarkdown.attributedString(display)
+                streamedMarkdownRenderer.attributedString(
+                    for: presentation.visibleText,
+                    suffix: appendCaret ? "▍" : ""
+                )
             )
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textPrimary)
                 .multilineTextAlignment(alignment == .trailing ? .trailing : .leading)
                 .textSelection(.enabled)
-                .animation(.easeOut(duration: 0.12), value: display.count)
+                .animation(.easeOut(duration: 0.12), value: presentation.visibleText.utf8.count)
         }
     }
 }

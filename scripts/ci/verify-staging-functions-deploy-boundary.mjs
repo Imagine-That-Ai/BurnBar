@@ -49,6 +49,54 @@ if (
 }
 requireText(
   caller,
+  `      candidate_sha:
+        description: "Optional exact candidate SHA; overrides are accepted only when this workflow runs from main"
+        required: false
+        type: string
+        default: ""`,
+  "candidate workflow must expose an exact candidate_sha promotion input",
+);
+requireText(
+  caller,
+  "          INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}",
+  "candidate workflow must pass candidate_sha through a non-interpolated environment variable",
+);
+requireText(
+  caller,
+  'if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]; then',
+  "candidate workflow must require a full lowercase Git SHA",
+);
+requireText(
+  caller,
+  'if [[ -n "$INPUT_CANDIDATE_SHA" && "$DISPATCH_REF" != "refs/heads/main" ]]; then',
+  "explicit candidate promotion must be restricted to a workflow dispatched from main",
+);
+const exactCandidateCheckout =
+  "          ref: ${{ needs.resolve-candidate.outputs.candidate_sha }}";
+if (caller.split(exactCandidateCheckout).length !== 4) {
+  failures.push(
+    "rules, Hosting, and Functions candidate builds must each check out the exact resolved candidate SHA",
+  );
+}
+const exactCandidateEnvironment =
+  "          CANDIDATE_SHA: ${{ needs.resolve-candidate.outputs.candidate_sha }}";
+if (caller.split(exactCandidateEnvironment).length !== 4) {
+  failures.push(
+    "rules, Hosting, and Functions packages must each record the exact resolved candidate SHA",
+  );
+}
+requireText(
+  caller,
+  "      candidate_sha: ${{ needs.resolve-candidate.outputs.candidate_sha }}",
+  "trusted deployment must receive the exact resolved candidate SHA",
+);
+requireText(
+  caller,
+  "needs.resolve-candidate.result == 'success'",
+  "deployment must fail closed unless exact candidate resolution succeeds",
+);
+requireText(
+  caller,
   "      id-token: write",
   "caller must explicitly delegate only the OIDC permission needed by the reusable workflow",
 );
@@ -69,12 +117,12 @@ requireText(
 );
 requireText(
   caller,
-  "staging-hosting-${{ github.sha }}",
+  "staging-hosting-${{ needs.resolve-candidate.outputs.candidate_sha }}",
   "candidate Hosting artifact identity must be bound to the candidate SHA",
 );
 requireText(
   caller,
-  `          name: staging-hosting-\${{ github.sha }}
+  `          name: staging-hosting-\${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: \${{ runner.temp }}/staging-hosting
           include-hidden-files: true`,
   "candidate Hosting artifact must preserve hidden website files",
@@ -108,10 +156,20 @@ requireText(
 );
 requireText(
   caller,
-  `          name: staging-functions-\${{ github.sha }}
+  `          name: staging-functions-\${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: \${{ runner.temp }}/staging-functions
           include-hidden-files: true`,
   "candidate Functions artifact must preserve hidden runtime files",
+);
+requireText(
+  caller,
+  "staging-rules-${{ needs.resolve-candidate.outputs.candidate_sha }}",
+  "candidate rules artifact identity must be bound to the exact resolved candidate SHA",
+);
+reject(
+  caller,
+  /staging-(?:rules|hosting|functions)-\$\{\{\s*github\.sha\s*\}\}/u,
+  "candidate artifact identities must not fall back to the dispatch workflow SHA",
 );
 requireText(
   caller,

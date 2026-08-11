@@ -111,6 +111,26 @@ final class HermesConversationStateStore {
         history.upsert(thread)
     }
 
+    // MARK: - Streaming commit hot path
+
+    /// Replace the staged copy of the in-flight streamed message, mutating
+    /// the stored array in place (one `@Observable` mutation, no
+    /// whole-array proxy round trip). Hot path: the streaming message is
+    /// the last transcript entry on every transport until its turn
+    /// finalizes, so check it first (O(1)) before falling back to the id
+    /// scan. Same semantics as the historical `firstIndex` commit — a
+    /// message that is no longer part of the transcript is dropped
+    /// silently.
+    func commitStreamedMessage(_ message: HermesChatMessage) {
+        if let lastIndex = messages.indices.last, messages[lastIndex].id == message.id {
+            messages[lastIndex] = message
+            return
+        }
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            messages[index] = message
+        }
+    }
+
     // MARK: - Transcript windowing cap
 
     // remediation(chat-cap): keep the most recent `maxRetainedMessages`

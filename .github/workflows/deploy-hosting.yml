@@ -675,7 +675,7 @@ jobs:
     needs: [build-hosting-artifacts, deploy-hosting]
     if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: write
