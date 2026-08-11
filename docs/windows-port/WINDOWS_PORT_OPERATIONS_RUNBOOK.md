@@ -297,6 +297,7 @@ Dry run. This block is safe to run as a unit:
 
 ```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=true -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken,functions:getWindowsRuntimeSafetyConfig,functions:submitDomainCoreShadowSamples'
 ```
@@ -309,6 +310,7 @@ single standalone command once the operator has typed
 
 ```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=false -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken,functions:getWindowsRuntimeSafetyConfig,functions:submitDomainCoreShadowSamples'
 ```
