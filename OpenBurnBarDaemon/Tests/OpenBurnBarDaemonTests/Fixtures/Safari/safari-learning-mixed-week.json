@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "days": [
+    {
+      "day": 1,
+      "events": [
+        {
+          "id": "correction-table-density",
+          "trigger": "user_correction",
+          "actionCount": 1,
+          "contentParts": [
+            "The user prefers compact comparison tables with the total shown before supporting detail."
+          ],
+          "tags": ["preference", "presentation"],
+          "sourceURL": "https://catalog.example/products?session=discarded",
+          "sourceTitle": "Catalog products",
+          "expected": "staged",
+          "expectedKind": "memory"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "events": [
+        {
+          "id": "repeat-price-workflow-1",
+          "trigger": "repeated_workflow",
+          "actionCount": 4,
+          "contentParts": [
+            "Filter products by size, sort by total price, and copy the least expensive in-stock result."
+          ],
+          "tags": ["workflow", "catalog"],
+          "sourceURL": "https://catalog.example/products",
+          "sourceTitle": "Catalog products",
+          "expected": "threshold"
+        },
+        {
+          "id": "noise-acknowledgement",
+          "trigger": "user_correction",
+          "actionCount": 1,
+          "contentParts": ["done"],
+          "tags": ["noise"],
+          "sourceURL": "https://catalog.example/products",
+          "sourceTitle": "Catalog products",
+          "expected": "noise_rejected"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "events": [
+        {
+          "id": "correction-exact-dates",
+          "trigger": "user_correction",
+          "actionCount": 1,
+          "contentParts": [
+            "The user prefers delivery estimates written with the weekday and exact calendar date."
+          ],
+          "tags": ["preference", "dates"],
+          "sourceURL": "https://orders.example/history",
+          "sourceTitle": "Order history",
+          "expected": "staged",
+          "expectedKind": "memory"
+        }
+      ]
+    },
+    {
+      "day": 4,
+      "events": [
+        {
+          "id": "recovered-checkout-failure",
+          "trigger": "recovered_failure",
+          "actionCount": 6,
+          "contentParts": [
+            "When the checkout quantity control ignores direct typing, focus it, select the existing value, type the replacement, and verify the order total before continuing."
+          ],
+          "tags": ["recovery", "checkout"],
+          "sourceURL": "https://shop.example/checkout",
+          "sourceTitle": "Checkout",
+          "expected": "staged",
+          "expectedKind": "site_rule"
+        },
+        {
+          "id": "repeat-price-workflow-2",
+          "trigger": "repeated_workflow",
+          "actionCount": 4,
+          "contentParts": [
+            "Filter products by size, sort by total price, and copy the least expensive in-stock result."
+          ],
+          "tags": ["workflow", "catalog"],
+          "sourceURL": "https://catalog.example/products",
+          "sourceTitle": "Catalog products",
+          "expected": "threshold"
+        }
+      ]
+    },
+    {
+      "day": 5,
+      "events": [
+        {
+          "id": "correction-receipt-destination",
+          "trigger": "user_correction",
+          "actionCount": 1,
+          "contentParts": [
+            "The user prefers purchase receipts sent to alberto@example.com only after explicitly confirming the destination."
+          ],
+          "tags": ["preference", "receipts"],
+          "sourceURL": "https://shop.example/orders",
+          "sourceTitle": "Order receipts",
+          "expected": "staged",
+          "expectedKind": "memory"
+        }
+      ]
+    },
+    {
+      "day": 6,
+      "events": [
+        {
+          "id": "repeat-price-workflow-3",
+          "trigger": "repeated_workflow",
+          "actionCount": 4,
+          "contentParts": [
+            "Filter products by size, sort by total price, and copy the least expensive in-stock result."
+          ],
+          "tags": ["workflow", "catalog"],
+          "sourceURL": "https://catalog.example/products",
+          "sourceTitle": "Catalog products",
+          "expected": "staged",
+          "expectedKind": "skill"
+        }
+      ]
+    },
+    {
+      "day": 7,
+      "events": [
+        {
+          "id": "secret-checkout-token",
+          "trigger": "user_correction",
+          "actionCount": 1,
+          "contentParts": [
+            "Always use API token ",
+            "sk-",
+            "abcdefghijklmnopqrstuvwxyz123456",
+            " for checkout requests."
+          ],
+          "tags": ["credential", "checkout"],
+          "sourceURL": "https://shop.example/checkout",
+          "sourceTitle": "Checkout",
+          "expected": "secret_rejected"
+        }
+      ]
+    }
+  ]
+}

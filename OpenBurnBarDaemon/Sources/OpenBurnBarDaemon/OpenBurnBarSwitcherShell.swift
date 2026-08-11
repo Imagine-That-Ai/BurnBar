@@ -385,18 +385,14 @@ public struct BurnBarSwitcherKeychainCredentialStore: BurnBarSwitcherCredentialP
 
     private func keychainString(service: String, account: String) throws -> String? {
         #if os(macOS)
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-            ,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationContext as String: nonInteractiveKeychainAuthenticationContext()
         ]
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        query[kSecUseAuthenticationContext as String] = context
 
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {

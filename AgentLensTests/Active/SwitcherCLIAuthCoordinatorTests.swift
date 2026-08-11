@@ -22,12 +22,12 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
         return directory
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         for directory in tempDirectories {
             try? FileManager.default.removeItem(at: directory)
         }
         tempDirectories.removeAll()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Reconnect Result Tests
@@ -125,7 +125,6 @@ final class SwitcherCLIAuthCoordinatorTests: XCTestCase {
     // MARK: - Missing Executable Path
 
     func test_reconnect_returnsFailedWhenExecutableNotFound() async {
-        let coordinator = SwitcherCLIAuthCoordinator()
         let codexProfile = SwitcherProfileRecord(
             targetKind: .cli,
             cliType: .codex,
@@ -791,12 +790,12 @@ final class SwitcherDiscoveryServiceTests: XCTestCase {
         return directory
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         for directory in tempDirectories {
             try? FileManager.default.removeItem(at: directory)
         }
         tempDirectories.removeAll()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Discovery Source Tests
@@ -1030,14 +1029,14 @@ final class SwitcherAuthStoreTests: XCTestCase {
 
     private var testBackend: SwitcherAuthStoreTestKeychainBackend!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         testBackend = SwitcherAuthStoreTestKeychainBackend()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         testBackend = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - API Key Storage Tests
@@ -1995,26 +1994,58 @@ final class KeychainStoreCredentialAccessorTests: XCTestCase {
 // MARK: - Test Keychain Backend
 
 private final class SwitcherAuthStoreTestKeychainBackend: KeychainStoreBackend {
-    var storage: [String: [String: Data]] = [:]
-    var readErrors: [String: Error] = [:]
-    var deleteErrors: [String: Error] = [:]
+    private struct State: Sendable {
+        var storage: [String: [String: Data]] = [:]
+        var readErrors: [String: KeychainStoreError] = [:]
+        var deleteErrors: [String: KeychainStoreError] = [:]
+    }
+
+    private let state = OpenBurnBarCore.Locked(State())
+
+    var storage: [String: [String: Data]] {
+        state.read().storage
+    }
+
+    var readErrors: [String: KeychainStoreError] {
+        get { state.read().readErrors }
+        set { state.withLock { $0.readErrors = newValue } }
+    }
+
+    var deleteErrors: [String: KeychainStoreError] {
+        get { state.read().deleteErrors }
+        set { state.withLock { $0.deleteErrors = newValue } }
+    }
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        state.withLock { $0.storage[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        if let error = readErrors[service] {
+        let result = state.withLock { state -> Result<Data?, KeychainStoreError> in
+            if let error = state.readErrors[service] {
+                return .failure(error)
+            }
+            return .success(state.storage[service]?[account])
+        }
+        switch result {
+        case .success(let data):
+            return data
+        case .failure(let error):
             throw error
         }
-        return storage[service]?[account]
     }
 
     func delete(service: String, account: String) throws {
-        if let error = deleteErrors[service] {
+        let error = state.withLock { state -> KeychainStoreError? in
+            if let error = state.deleteErrors[service] {
+                return error
+            }
+            state.storage[service]?[account] = nil
+            return nil
+        }
+        if let error {
             throw error
         }
-        storage[service]?[account] = nil
     }
 }
 

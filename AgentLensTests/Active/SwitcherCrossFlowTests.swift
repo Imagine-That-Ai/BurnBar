@@ -29,10 +29,10 @@ final class SwitcherCrossFlowTests: XCTestCase {
         store = SwitcherProfileStore(dbQueue: dbQueue)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         dbQueue = nil
         store = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Migration Helper
@@ -74,7 +74,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
     // MARK: - Runtime Log Capture for VAL-CROSS-006
 
     /// Captured log messages from the production log emitter for verification
-    private var capturedLogMessages: [String] = []
+    private let capturedLogMessages = OpenBurnBarCore.Locked<[String]>([])
     /// The log emitter with capture handler for intercepting production logs
     private var logEmitter: LogEmitter!
 
@@ -142,11 +142,10 @@ final class SwitcherCrossFlowTests: XCTestCase {
     }
 
     private func setUpLogEmitter() {
-        capturedLogMessages = []
-        logEmitter = LogEmitter { [weak self] message in
-            Task { @MainActor [weak self] in
-                self?.capturedLogMessages.append(message)
-            }
+        capturedLogMessages.write([])
+        let capturedLogMessages = capturedLogMessages
+        logEmitter = LogEmitter { message in
+            capturedLogMessages.withLock { $0.append(message) }
         }
     }
 
@@ -765,7 +764,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
             sortKey: profile.sortKey,
             createdAt: profile.createdAt
         )
-        try store.update(updated)
+        _ = try store.update(updated)
 
         // Verify update persisted
         let afterUpdate = try store.fetchProfile(id: profile.id)
@@ -897,7 +896,7 @@ final class SwitcherCrossFlowTests: XCTestCase {
 
         // Simulate Popover setting active
         try store.setActiveProfile(profile.id)
-        var state = try store.fetchActiveProfileState()
+        let state = try store.fetchActiveProfileState()
         XCTAssertEqual(state.activeProfileID, profile.id)
 
         // Simulate Dashboard reading state (handoff from Popover)
@@ -1011,10 +1010,9 @@ extension SwitcherCrossFlowTests {
         )
 
         // Create the Dashboard view
-        var settingsCallbackFired = false
         let view = DashboardQuickSwitchView(
             dataStore: dataStore,
-            onOpenSettings: { settingsCallbackFired = true },
+            onOpenSettings: {},
             skipLoadData: true
         )
 
@@ -1057,10 +1055,9 @@ extension SwitcherCrossFlowTests {
         )
 
         // Create the Popover view
-        var settingsCallbackFired = false
         let view = PopoverQuickSwitchView(
             dataStore: dataStore,
-            onOpenSettings: { settingsCallbackFired = true },
+            onOpenSettings: {},
             skipLoadData: true
         )
 
@@ -1097,12 +1094,6 @@ extension SwitcherCrossFlowTests {
         // Create DataStore for view testing
         let dbQueue = try DatabaseQueue()
         try await Self.addMigrationv32(to: dbQueue)
-        let dataStore = try DataStore(
-            databaseQueue: dbQueue,
-            runMigrations: false,
-            refreshOnInit: false
-        )
-
         // Create profile and set as active
         let localStore = SwitcherProfileStore(dbQueue: dbQueue)
         let profile = try localStore.create(SwitcherProfileRecord(
@@ -1355,7 +1346,7 @@ extension SwitcherCrossFlowTests {
         logCapture.captureDebugDescription("redacted env: \(redactedEnv)")
 
         // Combine captured production logs with test helper captures
-        var allLogs = capturedLogMessages
+        var allLogs = capturedLogMessages.read()
         allLogs.append(contentsOf: logCapture.capturedLogs)
 
         // Now verify captured logs don't contain raw secrets
@@ -1393,13 +1384,10 @@ extension SwitcherCrossFlowTests {
             refreshOnInit: false
         )
 
-        // Track settings callback
-        var settingsCallbackCount = 0
-
         // Create Dashboard view
         let view = DashboardQuickSwitchView(
             dataStore: dataStore,
-            onOpenSettings: { settingsCallbackCount += 1 },
+            onOpenSettings: {},
             skipLoadData: true
         )
 
@@ -1425,13 +1413,10 @@ extension SwitcherCrossFlowTests {
             refreshOnInit: false
         )
 
-        // Track settings callback
-        var settingsCallbackFired = false
-
         // Create Popover view
         let view = PopoverQuickSwitchView(
             dataStore: dataStore,
-            onOpenSettings: { settingsCallbackFired = true },
+            onOpenSettings: {},
             skipLoadData: true
         )
 
@@ -1457,13 +1442,10 @@ extension SwitcherCrossFlowTests {
             refreshOnInit: false
         )
 
-        // Track settings callback
-        var settingsCallbackCount = 0
-
         // Create Dashboard view with injected error state
         let view = DashboardQuickSwitchView(
             dataStore: dataStore,
-            onOpenSettings: { settingsCallbackCount += 1 },
+            onOpenSettings: {},
             testInjectedError: "Database connection failed",
             skipLoadData: true
         )
@@ -1492,13 +1474,10 @@ extension SwitcherCrossFlowTests {
             refreshOnInit: false
         )
 
-        // Track settings callback
-        var settingsCallbackCount = 0
-
         // Create Popover view with injected error state
         let view = PopoverQuickSwitchView(
             dataStore: dataStore,
-            onOpenSettings: { settingsCallbackCount += 1 },
+            onOpenSettings: {},
             testInjectedError: "Connection refused",
             skipLoadData: true
         )
@@ -1538,7 +1517,7 @@ extension SwitcherCrossFlowTests {
         let sut = try view.inspect()
 
         // Should have at least 2 buttons: Retry + Open Settings
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(buttons.count >= 2, "Error state should have at least 2 buttons (Retry and Open Settings)")
     }
 
@@ -1693,7 +1672,7 @@ extension SwitcherCrossFlowTests {
 
         // ACTIONABLE: Get all buttons and identify by tapping
         // The error state has 2 buttons: Retry (index 0) and Open Settings (index 1)
-        let allButtons = try sut.findAll(ViewType.Button.self)
+        let allButtons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(allButtons.count >= 2, "Error state should have at least 2 buttons")
 
         // Tap each button until we find the one that fires onOpenSettings
@@ -1755,7 +1734,7 @@ extension SwitcherCrossFlowTests {
         XCTAssertNotNil(failedText, "Popover error state should be rendered")
 
         // ACTIONABLE: Get all buttons and identify by tapping
-        let allButtons = try sut.findAll(ViewType.Button.self)
+        let allButtons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(allButtons.count >= 2, "Popover error state should have at least 2 buttons")
 
         // Tap each button until we find the one that fires onOpenSettings
@@ -1827,7 +1806,7 @@ extension SwitcherCrossFlowTests {
         XCTAssertNotNil(failedText, "Error state should be rendered")
 
         // ACTIONABLE: Find all buttons and identify by tapping - Retry doesn't fire onOpenSettings
-        let allButtons = try sut.findAll(ViewType.Button.self)
+        let allButtons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(allButtons.count >= 2, "Error state should have at least 2 buttons")
 
         var retryButton: InspectableView<ViewType.Button>?
@@ -2247,7 +2226,7 @@ extension SwitcherCrossFlowTests {
         let sut = try view.inspect()
 
         // ACTIONABLE: Get all buttons and identify by tapping behavior
-        let allButtons = try sut.findAll(ViewType.Button.self)
+        let allButtons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(allButtons.count >= 2, "Error state should have at least 2 buttons")
 
         var retryButton: InspectableView<ViewType.Button>?
@@ -2302,7 +2281,7 @@ extension SwitcherCrossFlowTests {
         let sut = try view.inspect()
 
         // ACTIONABLE: Get all buttons and identify by tapping behavior
-        let allButtons = try sut.findAll(ViewType.Button.self)
+        let allButtons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(allButtons.count >= 2, "Popover error state should have at least 2 buttons")
 
         var retryButton: InspectableView<ViewType.Button>?
@@ -2614,7 +2593,7 @@ extension SwitcherCrossFlowTests {
         XCTAssertNotNil(failedText, "Error state should be rendered")
 
         // Find Open Settings button and tap it
-        let allButtons = try sut.findAll(ViewType.Button.self)
+        let allButtons = sut.findAll(ViewType.Button.self)
         var openSettingsButton: InspectableView<ViewType.Button>?
         for button in allButtons {
             let countBefore = settingsCallbackFired ? 1 : 0
@@ -2672,7 +2651,7 @@ extension SwitcherCrossFlowTests {
         XCTAssertNotNil(failedText, "Popover error state should be rendered")
 
         // Find Settings button and tap it
-        let allButtons = try sut.findAll(ViewType.Button.self)
+        let allButtons = sut.findAll(ViewType.Button.self)
         var settingsButton: InspectableView<ViewType.Button>?
         for button in allButtons {
             let countBefore = settingsCallbackFired ? 1 : 0
@@ -2917,7 +2896,7 @@ private final class SpySwitcherProfileStoreAdapter: SwitcherProfileStoreAdapter,
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {
-        try? store.update(profile)
+        _ = try? store.update(profile)
     }
 }
 

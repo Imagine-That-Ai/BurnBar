@@ -8,7 +8,7 @@ import CSQLite
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 // DispatchSpecificKey is not Sendable; access is confined to the search serial queue.
-private nonisolated(unsafe) let indexedSearchQueueKey = DispatchSpecificKey<UUID>()
+private let indexedSearchQueueKey = DispatchSpecificKey<UUID>()
 
 // AUDIT(@unchecked Sendable): Mutable state (snapshotContext) and raw SQLite pointer
 // are serialized through dbQueue DispatchQueue; manual thread safety is correct.
@@ -60,7 +60,8 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         logger: BurnBarDaemonLogger,
         semanticConfig: BurnBarSemanticSearchConfig = .default,
         snapshotBackend: (any BurnBarPersistentVectorIndexBackend)? = nil,
-        snapshotPageSize: Int = 1_000
+        snapshotPageSize: Int = 1_000,
+        databaseKeyOverride: String? = nil
     ) throws {
         var handle: OpaquePointer?
         let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
@@ -78,7 +79,10 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         // SQLCipher codec is linked. On a stock-SQLite build this is a deliberate
         // no-op (the file stays disclosed-plaintext) so we never brick the open.
         do {
-            try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: handle)
+            try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(
+                to: handle,
+                key: databaseKeyOverride
+            )
         } catch {
             sqlite3_close(handle)
             throw error

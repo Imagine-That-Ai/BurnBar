@@ -198,9 +198,6 @@ final class ConversationParsingTests: XCTestCase {
     func test_claudeAccumulator_truncateToUTF8Bytes_preservesScalarBoundaries() {
         // Test the UTF-8 truncation with multi-byte characters.
         // "héllo" = h(1) + é(2) + l(1) + l(1) + o(1) = 6 bytes
-        let text = "héllo"
-        let truncated = text // Would call the private method, but we test via behavior
-
         // We test the behavior indirectly: ingest a message with multi-byte
         // chars and a tight cap, then verify fullText doesn't have broken UTF-8.
         let acc = ClaudeConversationAccumulator(maxFullTextBytes: 2)
@@ -274,7 +271,7 @@ final class ConversationParsingTests: XCTestCase {
             fileModifiedAt: past
         )
         try await store.upsertConversation(rec)
-        try await ConversationIndexer.shared.index([rec], in: store)
+        _ = try await ConversationIndexer.shared.index([rec], in: store)
         let row = try await store.fetchConversation(id: rec.id)
         XCTAssertNotNil(row)
     }
@@ -295,7 +292,7 @@ final class ConversationParsingTests: XCTestCase {
             indexedAt: indexedAt.addingTimeInterval(300),
             fileModifiedAt: mtime.addingTimeInterval(0.0006)
         )
-        try await ConversationIndexer.shared.index([incoming], in: store)
+        _ = try await ConversationIndexer.shared.index([incoming], in: store)
 
         guard let row = try await store.fetchConversation(id: stored.id) else {
             XCTFail("Expected existing conversation row.")
@@ -319,7 +316,7 @@ final class ConversationParsingTests: XCTestCase {
             indexedAt: indexedAt.addingTimeInterval(600),
             fileModifiedAt: nil
         )
-        try await ConversationIndexer.shared.index([incoming], in: store)
+        _ = try await ConversationIndexer.shared.index([incoming], in: store)
 
         guard let row = try await store.fetchConversation(id: stored.id) else {
             XCTFail("Expected existing conversation row.")

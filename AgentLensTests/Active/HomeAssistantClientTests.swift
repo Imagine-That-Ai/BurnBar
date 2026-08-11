@@ -224,17 +224,17 @@ final class HomeAssistantClientTests: XCTestCase {
     // MARK: - Upsert automation
 
     func testUpsertAutomation_postsPayloadToConfigEndpoint() async throws {
-        let configReceived = OpenBurnBarCore.Locked<[String: Any]?>(nil)
-        let bodyReceived = OpenBurnBarCore.Locked<Data?>(nil)
+        let aliasReceived = OpenBurnBarCore.Locked<String?>(nil)
         let methodReceived = OpenBurnBarCore.Locked<String?>(nil)
         let urlReceived = OpenBurnBarCore.Locked<URL?>(nil)
         HomeAssistantStubURLProtocol.handler = { request in
             urlReceived.write(request.url)
             methodReceived.write(request.httpMethod)
             let body = request.httpBody ?? request.bodyStreamData()
-            bodyReceived.write(body)
-            if let body, let parsed = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
-                configReceived.write(parsed)
+            if let body,
+               let parsed = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+               let alias = parsed["alias"] as? String {
+                aliasReceived.write(alias)
             }
             let response = HTTPURLResponse(
                 url: request.url!,
@@ -262,7 +262,7 @@ final class HomeAssistantClientTests: XCTestCase {
             urlReceived.read()?.absoluteString,
             "http://homeassistant.local:8123/api/config/automation/config/openburnbar_smart_display_recovery"
         )
-        XCTAssertEqual(configReceived.read()?["alias"] as? String, "OpenBurnBar Smart Display Recovery")
+        XCTAssertEqual(aliasReceived.read(), "OpenBurnBar Smart Display Recovery")
     }
 }
 
@@ -286,7 +286,7 @@ extension URLRequest {
 
 // MARK: - URLProtocol stub for HA tests
 
-final class HomeAssistantStubURLProtocol: URLProtocol, @unchecked Sendable {
+final class HomeAssistantStubURLProtocol: URLProtocol {
     static let handlerLock = OpenBurnBarCore.Locked<(@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?>(nil)
 
     static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))? {

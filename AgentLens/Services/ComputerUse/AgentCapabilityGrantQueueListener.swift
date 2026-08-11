@@ -164,7 +164,7 @@ final class AgentCapabilityGrantQueueListener {
             )
         )
         let request = try AgentCapabilityGrantRequest(wire: wireRequest)
-        return await AgentCapabilityGrantStore.shared.apply(request)
+        return AgentCapabilityGrantStore.shared.apply(request)
     }
 
     nonisolated static func daemonPinProvisionRequest(

@@ -9,6 +9,8 @@ This roadmap reflects OpenBurnBar's current product direction: from local-first 
 - Menu bar app, dashboard, chat panel, and insight surfaces
 - Optional Firebase sync with sealed chat/session domains; raw iCloud session mirroring disabled until sealed archive support exists
 - OpenBurnBar daemon plus Cursor / VS Code extension shell
+- Safari Web Extension foundation for page-aware Q&A, safety-gated real-tab
+  actions, and in-browser run approvals
 
 ## Now
 
@@ -62,7 +64,9 @@ This roadmap reflects OpenBurnBar's current product direction: from local-first 
 - Add project registry and scheduled review automation
 - Launch real review runs from controller commands and UI actions
 - Deepen question workflow, auto-takeover, and mission execution linkage
-- Ship the connector/browser control plane and operator CLI over the daemon
+- Complete the connector/browser control plane and operator CLI over the daemon,
+  including candidate-bound real-Safari certification, provider/vision QA, and
+  App Store rollout for the Safari extension
 
 ## Later
 

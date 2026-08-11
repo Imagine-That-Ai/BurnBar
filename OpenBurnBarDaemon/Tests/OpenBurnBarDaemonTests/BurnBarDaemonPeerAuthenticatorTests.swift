@@ -183,7 +183,7 @@ struct DaemonTestUnixSocketConnection {
         address.sun_family = sa_family_t(AF_UNIX)
         let pathCapacity = MemoryLayout.size(ofValue: address.sun_path)
         _ = socketPath.withCString { path -> Int in
-            withUnsafeMutablePointer(to: &address.sun_path) { pointer in
+            _ = withUnsafeMutablePointer(to: &address.sun_path) { pointer in
                 pointer.withMemoryRebound(to: CChar.self, capacity: pathCapacity) {
                     strncpy($0, path, pathCapacity - 1)
                 }

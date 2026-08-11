@@ -270,6 +270,8 @@ final class SwitcherPopoverUITests: XCTestCase {
         // Verify profiles are available
         let profiles = try store.fetchAllProfiles()
         XCTAssertEqual(profiles.count, 2)
+        XCTAssertTrue(profiles.contains(where: { $0.id == chromeProfile.id }))
+        XCTAssertTrue(profiles.contains(where: { $0.id == safariProfile.id }))
 
         // Keyboard equivalent (command) should work - set via store
         try store.setActiveProfile(safariProfile.id)
@@ -514,8 +516,8 @@ final class SwitcherPopoverUITests: XCTestCase {
     /// Final active state is non-corrupt after burst inputs.
     func test_burstInputs_nonCorrupt() throws {
         // Create multiple profiles
-        let profiles = try store.createBatch {
-            try [
+        let profiles = store.createBatch {
+            [
                 SwitcherProfileRecord(
                     targetKind: .browser,
                     browserType: .chrome,
@@ -1227,6 +1229,11 @@ final class SwitcherPopoverUITests: XCTestCase {
         // Verify switch success announcement was made
         XCTAssertTrue(capturedAnnouncements.contains("Launch default updated"),
             "Should announce 'Launch default updated', got: \(capturedAnnouncements)")
+        XCTAssertEqual(
+            try localStore.fetchActiveProfileState().activeProfileID,
+            p2.id,
+            "The view-level switch should advance from the first profile to the second profile."
+        )
     }
 
     @MainActor
@@ -1459,7 +1466,7 @@ private final class PopoverTestSwitcherProfileAdapter: SwitcherProfileStoreAdapt
     }
 
     func updateProfile(_ profile: SwitcherProfileRecord) {
-        try? store.update(profile)
+        _ = try? store.update(profile)
     }
 }
 

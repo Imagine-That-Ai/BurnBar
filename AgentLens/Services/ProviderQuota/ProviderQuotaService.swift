@@ -238,11 +238,11 @@ final class ProviderQuotaService {
     var inFlightRefresh: InFlightRefresh?
 
     var quotaHomeDirectoryURL: URL { homeDirectoryURL }
-    internal(set) var activeProviders: Set<AgentProvider> = []  // pure-move: was private
-    internal(set) var lastFetch: Date?  // pure-move: was private
-    internal(set) var claudeBridgeStatus: ClaudeQuotaBridgeStatus  // pure-move: was private
-    internal(set) var routingStatesByProviderID: [ProviderID: ProviderRoutingStateSnapshot] = [:]  // pure-move: was private
-    internal(set) var routingEvents: [ProviderRoutingDecisionEvent] = []  // pure-move: was private
+    var activeProviders: Set<AgentProvider> = []  // pure-move: was private
+    var lastFetch: Date?  // pure-move: was private
+    var claudeBridgeStatus: ClaudeQuotaBridgeStatus  // pure-move: was private
+    var routingStatesByProviderID: [ProviderID: ProviderRoutingStateSnapshot] = [:]  // pure-move: was private
+    var routingEvents: [ProviderRoutingDecisionEvent] = []  // pure-move: was private
     var onSnapshotsPersistedForCloudSync: (@Sendable ([ProviderQuotaSnapshot]) -> Void)?
     /// Codex rollout-scan cache. A `Locked` box (not a plain stored property) so
     /// the `@Sendable` write-back handed to off-actor adapters can update it

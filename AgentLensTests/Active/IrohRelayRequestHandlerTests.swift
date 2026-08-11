@@ -413,6 +413,51 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
         let sentFrames = await stream.sentFrames
         XCTAssertTrue(sentFrames.isEmpty)
     }
+
+    @MainActor
+    func test_safariSessionFramesRemainOwnedBySafariSessionBroker() async throws {
+        let suiteName = "iroh.handler.safari-session-routing.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults, flushDelayNanoseconds: 0)
+        let stream = HandlerRecordingIrohStream(frames: [
+            HermesRealtimeRelayFrame(
+                type: .signalSessionMessage,
+                uid: "uid-1",
+                connectionId: "relay-route"
+            ),
+            HermesRealtimeRelayFrame(
+                type: .controlSessionGrantChallenge,
+                uid: "uid-1",
+                connectionId: "relay-route"
+            )
+        ])
+        let dispatches = IrohFrameDispatchRecorder()
+        let handler = IrohRelayRequestHandler(
+            relayKeyStore: HermesRelayKeyStore(),
+            urlSession: .shared,
+            settingsManager: settings,
+            mediaDispatcher: { _, _ in
+                await dispatches.recordMedia()
+            },
+            controlDispatcher: { _, _ in
+                await dispatches.recordControl()
+            }
+        )
+
+        let disposition = try await handler.serve(
+            stream: stream,
+            uid: "uid-1",
+            connectionID: "relay-route"
+        )
+
+        XCTAssertEqual(disposition, .callerOwnsStream)
+        let counts = await dispatches.counts
+        XCTAssertEqual(counts.media, 0)
+        XCTAssertEqual(counts.control, 0)
+        let sentFrames = await stream.sentFrames
+        XCTAssertTrue(sentFrames.isEmpty)
+    }
 }
 
 private final class IrohPairingFaultInjectingKeychainStore:
@@ -450,6 +495,23 @@ private actor MediaControlRegistrarRecorder {
 
     func record(stream _: any IrohRelayStream, uid: String, connectionID: String) {
         registrations.append(Registration(uid: uid, connectionID: connectionID))
+    }
+}
+
+private actor IrohFrameDispatchRecorder {
+    private var mediaCount = 0
+    private var controlCount = 0
+
+    var counts: (media: Int, control: Int) {
+        (mediaCount, controlCount)
+    }
+
+    func recordMedia() {
+        mediaCount += 1
+    }
+
+    func recordControl() {
+        controlCount += 1
     }
 }
 
@@ -693,7 +755,7 @@ private final class TestIrohRelayTransport: IrohRelayTransport, @unchecked Senda
 private func waitUntil(
     timeout: TimeInterval,
     pollInterval: UInt64 = 50_000_000,
-    condition: () async throws -> Bool
+    condition: @Sendable () async throws -> Bool
 ) async throws {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {

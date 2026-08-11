@@ -6,8 +6,125 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib/openburnbar-app-test-classifier.sh
 source "$repo_root/scripts/lib/openburnbar-app-test-classifier.sh"
 
-tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/openburnbar-app-classifier.XXXXXX")"
+classifier_tmp_root="${OPENBURNBAR_APP_TEST_CLASSIFIER_TMPDIR:-/tmp}"
+mkdir -p "$classifier_tmp_root"
+tmpdir="$(mktemp -d "${classifier_tmp_root%/}/openburnbar-app-classifier.XXXXXX")"
 trap 'rm -rf "$tmpdir"' EXIT
+timeout_supervisor="$repo_root/scripts/lib/run_xcodebuild_with_timeout_containment.py"
+
+fake_xcodebuild="$tmpdir/fake_xcodebuild.py"
+cat >"$fake_xcodebuild" <<'PY'
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import signal
+import sys
+import time
+
+
+def exit_for_signal(exit_code: int):
+    def handler(_signum, _frame):
+        raise SystemExit(exit_code)
+
+    return handler
+
+
+signal.signal(signal.SIGINT, exit_for_signal(130))
+signal.signal(signal.SIGTERM, exit_for_signal(143))
+
+mode = sys.argv[1]
+if mode == "timeout-restart":
+    print("Test Suite 'Selected tests' started.", flush=True)
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_one]' started.", flush=True)
+    print(
+        "Test Case '-[OpenBurnBarTests.VisualTests test_one]' exceeded execution "
+        "time allowance of 10 minutes. The test may have hung.",
+        flush=True,
+    )
+    print(
+        "Restarting after unexpected exit, crash, or test timeout; summary will "
+        "include totals from previous launches.",
+        flush=True,
+    )
+    time.sleep(0.5)
+    for test_number in range(2, 24):
+        print(
+            "Test Case "
+            f"'-[OpenBurnBarTests.VisualTests test_{test_number}]' started.",
+            flush=True,
+        )
+        time.sleep(0.1)
+elif mode == "timeout-without-restart":
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_one]' started.", flush=True)
+    print(
+        "Test Case '-[OpenBurnBarTests.VisualTests test_one]' exceeded execution "
+        "time allowance of 10 minutes. The test may have hung.",
+        flush=True,
+    )
+    time.sleep(1)
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_two]' started.", flush=True)
+elif mode == "restart-before-timeout":
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_one]' started.", flush=True)
+    print(
+        "Restarting after unexpected exit, crash, or test timeout; summary will "
+        "include totals from previous launches.",
+        flush=True,
+    )
+    print(
+        "Test Case '-[OpenBurnBarTests.VisualTests test_one]' exceeded execution "
+        "time allowance of 10 minutes. The test may have hung.",
+        flush=True,
+    )
+    time.sleep(1)
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_two]' started.", flush=True)
+elif mode == "timeout-ignore-int":
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_one]' started.", flush=True)
+    print(
+        "Test Case '-[OpenBurnBarTests.VisualTests test_one]' exceeded execution "
+        "time allowance of 10 minutes. The test may have hung.",
+        flush=True,
+    )
+    print(
+        "Restarting after unexpected exit, crash, or test timeout; summary will "
+        "include totals from previous launches.",
+        flush=True,
+    )
+    time.sleep(2)
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_two]' started.", flush=True)
+elif mode == "timeout-ignore-int-term":
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_one]' started.", flush=True)
+    print(
+        "Test Case '-[OpenBurnBarTests.VisualTests test_one]' exceeded execution "
+        "time allowance of 10 minutes. The test may have hung.",
+        flush=True,
+    )
+    print(
+        "Restarting after unexpected exit, crash, or test timeout; summary will "
+        "include totals from previous launches.",
+        flush=True,
+    )
+    time.sleep(2)
+    print("Test Case '-[OpenBurnBarTests.VisualTests test_two]' started.", flush=True)
+elif mode == "silent-hang":
+    time.sleep(2)
+elif mode == "assertion":
+    print("Test Suite 'Selected tests' started.", flush=True)
+    print(
+        "Test Case '-[OpenBurnBarTests.SecurityTests test_realRegression]' failed "
+        "(0.123 seconds).",
+        flush=True,
+    )
+    print("Executed 1 test, with 1 failure (0 unexpected).", flush=True)
+    raise SystemExit(65)
+elif mode == "pass":
+    print("Test Suite 'Selected tests' passed.", flush=True)
+    print("Executed 1 test, with 0 failures (0 unexpected).", flush=True)
+else:
+    raise SystemExit(f"unknown fixture mode: {mode}")
+PY
 
 write_fixture() {
     local name="$1"
@@ -280,6 +397,24 @@ Uncaught Exception: *** -[NSMutableArray insertObjects:atIndexes:]: count of arr
 LOG
 )"
 
+xcode_build_service_crash_log="$(write_fixture xcode-build-service-crash <<'LOG'
+error: unexpected service error: The Xcode build system has crashed. Build again to continue.
+Testing failed:
+    unexpected service error: The Xcode build system has crashed. Build again to continue.
+    Command SwiftCompile failed with a nonzero exit code
+Testing cancelled because the build failed.
+** TEST FAILED **
+LOG
+)"
+
+xcode_build_service_crash_with_test_failure_log="$(write_fixture xcode-build-service-crash-with-test-failure <<'LOG'
+Test Case '-[OpenBurnBarTests.SafariLearningTimelineViewModelTests testMutationFailurePreservesSelection]' failed (0.123 seconds).
+Executed 1 test, with 1 failure (0 unexpected) in 0.123 (0.124) seconds
+error: unexpected service error: The Xcode build system has crashed. Build again to continue.
+** TEST FAILED **
+LOG
+)"
+
 interleaved_security_failure_log="$(write_fixture interleaved-security-failure <<'LOG'
 Test Suite 'Selected tests' started at 2026-06-19 03:17:42.489.
 2026-06-19 03:20:49.210291+0000 OpenBurnBar[80/Users/runner/work/BurnBar/BurnBar/AgentLensTests/Active/ComputerUse/PhoneControlReceiverTests.swift:1449: error: -[OpenBurnBarTests.PhoneControlReceiverTests testStrictAttestationDeniesClipboardBeforePasteboardOrInputMutation] : XCTAssertEqual failed: ("accepted") is not equal to ("denied")
@@ -324,7 +459,285 @@ assert_true "SwiftPM package clone network timeout is retryable infrastructure" 
 assert_false "SwiftPM timeout does not hide concrete XCTest failure" is_swiftpm_dependency_resolution_transient "$swiftpm_timeout_with_xctest_failure_log"
 assert_true "SwiftPM cache race plus Signal FFI mapping miss is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_cache_and_signal_ffi_mapping_log"
 assert_true "Xcode SwiftPM package graph internal crash is retryable infrastructure" is_swiftpm_dependency_resolution_transient "$swiftpm_xcode_internal_package_graph_crash_log"
+assert_true "Xcode build-service crash without XCTest failure is retryable infrastructure" is_xcode_build_service_transient "$xcode_build_service_crash_log"
+assert_false "Xcode build-service crash does not hide a concrete XCTest failure" is_xcode_build_service_transient "$xcode_build_service_crash_with_test_failure_log"
 assert_false "unknown failure is not a SwiftPM dependency transient" is_swiftpm_dependency_resolution_transient "$unknown_failure_log"
+
+timeout_log="$tmpdir/supervised-timeout.log"
+timeout_receipt="$tmpdir/supervised-timeout.json"
+set +e
+OPENBURNBAR_APP_TEST_TIMEOUT_RESTART_GRACE_SECONDS=0.1 \
+OPENBURNBAR_APP_TEST_TIMEOUT_INTERRUPT_GRACE_SECONDS=0.2 \
+    python3 "$timeout_supervisor" \
+        --log "$timeout_log" \
+        --receipt "$timeout_receipt" \
+        -- \
+        python3 "$fake_xcodebuild" timeout-restart \
+        >"$tmpdir/supervised-timeout.out" 2>&1
+timeout_status=$?
+set -e
+assert_equals "timeout containment preserves the exact supervised command status" "130" "$timeout_status"
+assert_true "timeout containment writes a durable receipt" test -s "$timeout_receipt"
+assert_true "timeout containment records the explicit restart reason" \
+    grep -Fq '"reason": "execution_timeout_restart"' "$timeout_receipt"
+assert_equals "one timed-out test does not cascade into the remaining 22 methods" \
+    "1" \
+    "$(grep -c "Test Case .* started" "$timeout_log")"
+assert_true "contained timeout remains retryable infrastructure" is_known_hang "$timeout_log"
+assert_true "validated containment receipt makes timeout retryable" \
+    openburnbar_app_test_timeout_containment_is_retryable \
+    "$timeout_log" \
+    "$timeout_receipt"
+assert_false "containment receipt never hides a concrete assertion" \
+    openburnbar_app_test_timeout_containment_is_retryable \
+    "$timeout_restart_with_assertion_log" \
+    "$timeout_receipt"
+
+retry_log="$tmpdir/supervised-retry.log"
+retry_receipt="$tmpdir/supervised-retry.json"
+python3 "$timeout_supervisor" \
+    --log "$retry_log" \
+    --receipt "$retry_receipt" \
+    -- \
+    python3 "$fake_xcodebuild" pass \
+    >"$tmpdir/supervised-retry.out" 2>&1
+assert_false "normal retry completion does not emit a containment receipt" test -e "$retry_receipt"
+assert_true "normal retry output remains an unmodified green XCTest log" \
+    grep -Fq "Executed 1 test, with 0 failures" "$retry_log"
+
+timeout_without_restart_log="$tmpdir/supervised-timeout-without-restart.log"
+timeout_without_restart_receipt="$tmpdir/supervised-timeout-without-restart.json"
+set +e
+OPENBURNBAR_APP_TEST_TIMEOUT_RESTART_GRACE_SECONDS=0.1 \
+OPENBURNBAR_APP_TEST_TIMEOUT_INTERRUPT_GRACE_SECONDS=0.2 \
+    python3 "$timeout_supervisor" \
+        --log "$timeout_without_restart_log" \
+        --receipt "$timeout_without_restart_receipt" \
+        -- \
+        python3 "$fake_xcodebuild" timeout-without-restart \
+        >"$tmpdir/supervised-timeout-without-restart.out" 2>&1
+timeout_without_restart_status=$?
+set -e
+assert_equals "missing Xcode restart marker still has bounded containment" \
+    "130" \
+    "$timeout_without_restart_status"
+assert_true "restart-grace fallback is explicit in the receipt" \
+    grep -Fq '"reason": "execution_timeout_restart_grace_expired"' \
+    "$timeout_without_restart_receipt"
+assert_equals "restart-grace fallback also prevents a second method launch" \
+    "1" \
+    "$(grep -c "Test Case .* started" "$timeout_without_restart_log")"
+
+reordered_markers_log="$tmpdir/supervised-reordered-markers.log"
+reordered_markers_receipt="$tmpdir/supervised-reordered-markers.json"
+set +e
+OPENBURNBAR_APP_TEST_TIMEOUT_RESTART_GRACE_SECONDS=0.1 \
+OPENBURNBAR_APP_TEST_TIMEOUT_INTERRUPT_GRACE_SECONDS=0.2 \
+    python3 "$timeout_supervisor" \
+        --log "$reordered_markers_log" \
+        --receipt "$reordered_markers_receipt" \
+        -- \
+        python3 "$fake_xcodebuild" restart-before-timeout \
+        >"$tmpdir/supervised-reordered-markers.out" 2>&1
+reordered_markers_status=$?
+set -e
+assert_equals "buffer-reordered timeout and restart markers are still contained" \
+    "130" \
+    "$reordered_markers_status"
+assert_true "buffer-reordered markers retain the explicit restart reason" \
+    grep -Fq '"reason": "execution_timeout_restart"' "$reordered_markers_receipt"
+assert_equals "buffer-reordered markers do not launch a second method" \
+    "1" \
+    "$(grep -c "Test Case .* started" "$reordered_markers_log")"
+
+timeout_ignore_int_log="$tmpdir/supervised-timeout-ignore-int.log"
+timeout_ignore_int_receipt="$tmpdir/supervised-timeout-ignore-int.json"
+set +e
+OPENBURNBAR_APP_TEST_TIMEOUT_RESTART_GRACE_SECONDS=0.1 \
+OPENBURNBAR_APP_TEST_TIMEOUT_INTERRUPT_GRACE_SECONDS=0.1 \
+OPENBURNBAR_APP_TEST_TIMEOUT_TERMINATE_GRACE_SECONDS=0.1 \
+    python3 "$timeout_supervisor" \
+        --log "$timeout_ignore_int_log" \
+        --receipt "$timeout_ignore_int_receipt" \
+        -- \
+        python3 "$fake_xcodebuild" timeout-ignore-int \
+        >"$tmpdir/supervised-timeout-ignore-int.out" 2>&1
+timeout_ignore_int_status=$?
+set -e
+assert_equals "SIGINT-resistant command is terminated with its exact SIGTERM status" \
+    "143" \
+    "$timeout_ignore_int_status"
+assert_true "SIGTERM escalation is recorded for diagnostics" \
+    grep -Fq '"escalatedSignal": "SIGTERM"' "$timeout_ignore_int_receipt"
+assert_equals "SIGTERM escalation still prevents timeout cascade" \
+    "1" \
+    "$(grep -c "Test Case .* started" "$timeout_ignore_int_log")"
+
+timeout_ignore_signals_log="$tmpdir/supervised-timeout-ignore-signals.log"
+timeout_ignore_signals_receipt="$tmpdir/supervised-timeout-ignore-signals.json"
+set +e
+OPENBURNBAR_APP_TEST_TIMEOUT_RESTART_GRACE_SECONDS=0.1 \
+OPENBURNBAR_APP_TEST_TIMEOUT_INTERRUPT_GRACE_SECONDS=0.1 \
+OPENBURNBAR_APP_TEST_TIMEOUT_TERMINATE_GRACE_SECONDS=0.1 \
+    python3 "$timeout_supervisor" \
+        --log "$timeout_ignore_signals_log" \
+        --receipt "$timeout_ignore_signals_receipt" \
+        -- \
+        python3 "$fake_xcodebuild" timeout-ignore-int-term \
+        >"$tmpdir/supervised-timeout-ignore-signals.out" 2>&1
+timeout_ignore_signals_status=$?
+set -e
+assert_equals "SIGINT-and-SIGTERM-resistant command is force-killed exactly" \
+    "137" \
+    "$timeout_ignore_signals_status"
+assert_true "SIGKILL fallback is recorded for diagnostics" \
+    grep -Fq '"forcedSignal": "SIGKILL"' "$timeout_ignore_signals_receipt"
+assert_equals "SIGKILL fallback prevents timeout cascade" \
+    "1" \
+    "$(grep -c "Test Case .* started" "$timeout_ignore_signals_log")"
+
+assertion_log="$tmpdir/supervised-assertion.log"
+assertion_receipt="$tmpdir/supervised-assertion.json"
+set +e
+python3 "$timeout_supervisor" \
+    --log "$assertion_log" \
+    --receipt "$assertion_receipt" \
+    -- \
+    python3 "$fake_xcodebuild" assertion \
+    >"$tmpdir/supervised-assertion.out" 2>&1
+assertion_status=$?
+set -e
+assert_equals "real XCTest assertion preserves its exact failing exit status" "65" "$assertion_status"
+assert_false "real XCTest assertion is never relabeled as timeout containment" test -e "$assertion_receipt"
+assert_true "real XCTest assertion remains terminal" \
+    openburnbar_app_test_has_terminal_concrete_xctest_failure "$assertion_log"
+assert_false "real XCTest assertion remains non-retryable" is_known_hang "$assertion_log"
+
+normal_log="$tmpdir/supervised-normal.log"
+normal_receipt="$tmpdir/supervised-normal.json"
+python3 "$timeout_supervisor" \
+    --log "$normal_log" \
+    --receipt "$normal_receipt" \
+    --wall-timeout-seconds 5 \
+    -- \
+    python3 "$fake_xcodebuild" pass \
+    >"$tmpdir/supervised-normal.out" 2>&1
+assert_false "normal passing invocation is unaffected by containment" test -e "$normal_receipt"
+assert_true "normal passing invocation retains its green summary" \
+    grep -Fq "Executed 1 test, with 0 failures" "$normal_log"
+
+wall_timeout_log="$tmpdir/supervised-wall-timeout.log"
+wall_timeout_receipt="$tmpdir/supervised-wall-timeout.json"
+set +e
+OPENBURNBAR_APP_TEST_TIMEOUT_INTERRUPT_GRACE_SECONDS=0.2 \
+    python3 "$timeout_supervisor" \
+        --log "$wall_timeout_log" \
+        --receipt "$wall_timeout_receipt" \
+        --wall-timeout-seconds 0.1 \
+        -- \
+        python3 "$fake_xcodebuild" silent-hang \
+        >"$tmpdir/supervised-wall-timeout.out" 2>&1
+wall_timeout_status=$?
+set -e
+assert_equals "silent wall timeout preserves the exact supervised command status" \
+    "130" \
+    "$wall_timeout_status"
+assert_true "silent wall timeout writes a durable receipt" \
+    test -s "$wall_timeout_receipt"
+python3 - "$wall_timeout_receipt" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+receipt_path = Path(sys.argv[1])
+with receipt_path.open(encoding="utf-8") as handle:
+    receipt = json.load(handle)
+
+expected = {
+    "assertionFailurePresent": False,
+    "initialSignal": "SIGINT",
+    "reason": "wall_timeout",
+    "restartMarkerObserved": False,
+    "schemaVersion": 1,
+    "timeoutMarkerObserved": False,
+    "wallTimeoutSeconds": 0.1,
+}
+for key, expected_value in expected.items():
+    actual_value = receipt.get(key)
+    if actual_value != expected_value:
+        raise SystemExit(
+            f"unexpected durable wall-timeout receipt field {key}: "
+            f"expected {expected_value!r}, found {actual_value!r}"
+        )
+if not isinstance(receipt.get("commandPid"), int) or receipt["commandPid"] <= 0:
+    raise SystemExit("wall-timeout receipt lacks a positive command PID")
+if not receipt.get("detectedAt"):
+    raise SystemExit("wall-timeout receipt lacks a detection timestamp")
+PY
+assert_false "wall timeout is never classified as retryable XCTest containment" \
+    openburnbar_app_test_timeout_containment_is_retryable \
+    "$wall_timeout_log" \
+    "$wall_timeout_receipt"
+assert_false "silent wall timeout does not invent an XCTest hang marker" \
+    is_known_hang "$wall_timeout_log"
+
+for invalid_wall_timeout in 0 -1 nan inf; do
+    invalid_wall_timeout_slug="${invalid_wall_timeout//-/_}"
+    set +e
+    python3 "$timeout_supervisor" \
+        --log "$tmpdir/invalid-wall-timeout-$invalid_wall_timeout_slug.log" \
+        --receipt "$tmpdir/invalid-wall-timeout-$invalid_wall_timeout_slug.json" \
+        --wall-timeout-seconds "$invalid_wall_timeout" \
+        -- \
+        python3 "$fake_xcodebuild" pass \
+        >"$tmpdir/invalid-wall-timeout-$invalid_wall_timeout_slug.out" 2>&1
+    invalid_wall_timeout_status=$?
+    set -e
+    assert_equals "invalid wall timeout $invalid_wall_timeout fails closed before launch" \
+        "64" \
+        "$invalid_wall_timeout_status"
+    assert_true "invalid wall timeout $invalid_wall_timeout reports its contract" \
+        grep -Fq "must be a positive number" \
+        "$tmpdir/invalid-wall-timeout-$invalid_wall_timeout_slug.out"
+    assert_false "invalid wall timeout $invalid_wall_timeout never launches the command" \
+        test -e "$tmpdir/invalid-wall-timeout-$invalid_wall_timeout_slug.log"
+done
+
+set +e
+OPENBURNBAR_APP_TEST_TIMEOUT_RESTART_GRACE_SECONDS=nan \
+    python3 "$timeout_supervisor" \
+        --log "$tmpdir/invalid-grace.log" \
+        --receipt "$tmpdir/invalid-grace.json" \
+        -- \
+        python3 "$fake_xcodebuild" pass \
+        >"$tmpdir/invalid-grace.out" 2>&1
+invalid_grace_status=$?
+set -e
+assert_equals "non-finite timeout grace fails closed before launch" \
+    "64" \
+    "$invalid_grace_status"
+assert_true "invalid timeout grace reports its contract" \
+    grep -Fq "must be a positive number" "$tmpdir/invalid-grace.out"
+assert_false "invalid timeout grace never launches the supervised command" \
+    test -e "$tmpdir/invalid-grace.log"
+
+set +e
+python3 "$timeout_supervisor" \
+    --log "$tmpdir/shared-output-path" \
+    --receipt "$tmpdir/shared-output-path" \
+    -- \
+    python3 "$fake_xcodebuild" pass \
+    >"$tmpdir/shared-output-path.out" 2>&1
+shared_output_status=$?
+set -e
+assert_equals "shared log and receipt path fails closed before launch" \
+    "64" \
+    "$shared_output_status"
+assert_true "shared output-path rejection is explicit" \
+    grep -Fq -- "--log and --receipt must name different paths" \
+    "$tmpdir/shared-output-path.out"
+assert_false "shared output-path rejection creates no ambiguous artifact" \
+    test -e "$tmpdir/shared-output-path"
 
 media_admission_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
 media_retry_isolated_filter="OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
@@ -401,5 +814,46 @@ custom_plan="$(
 assert_equals "focused app tests remain a single-host plan" \
     $'main-only\tOpenBurnBarTests/MediaSessionCoordinatorTests' \
     "$custom_plan"
+
+single_job_plan="$(
+    OPENBURNBAR_APP_TEST_XCODEBUILD_JOBS=1 \
+        "$repo_root/scripts/test-openburnbar-app.sh" \
+        -only-testing:OpenBurnBarTests/SafariLearningTimelineViewModelTests \
+        --print-xcodebuild-plan
+)"
+assert_equals "explicit Xcode job limit is represented in the dry-run plan" \
+    $'main-only\tOpenBurnBarTests/SafariLearningTimelineViewModelTests\nxcodebuild-jobs\t1' \
+    "$single_job_plan"
+
+snapshot_plan="$(
+    OPENBURNBAR_SNAPSHOT_RECORD=all \
+        "$repo_root/scripts/test-openburnbar-app.sh" \
+        -only-testing:OpenBurnBarTests/AdaptiveColorSnapshotTests \
+        --print-xcodebuild-plan
+)"
+assert_equals "validated snapshot record mode is represented in the dry-run plan" \
+    $'main-only\tOpenBurnBarTests/AdaptiveColorSnapshotTests\nsnapshot-record-mode\tall' \
+    "$snapshot_plan"
+
+if OPENBURNBAR_SNAPSHOT_RECORD=invalid \
+    "$repo_root/scripts/test-openburnbar-app.sh" \
+    --print-xcodebuild-plan >"$tmpdir/invalid-snapshot-mode.out" 2>"$tmpdir/invalid-snapshot-mode.err"; then
+    echo "FAIL: invalid snapshot record mode unexpectedly passed validation" >&2
+    exit 1
+fi
+assert_true "invalid snapshot record mode reports the fail-closed contract" \
+    grep -Fqx \
+    "error: OPENBURNBAR_SNAPSHOT_RECORD must be one of: all, failed, missing, never" \
+    "$tmpdir/invalid-snapshot-mode.err"
+
+if OPENBURNBAR_APP_TEST_XCODEBUILD_JOBS=0 \
+    "$repo_root/scripts/test-openburnbar-app.sh" \
+    --print-xcodebuild-plan >"$tmpdir/invalid-jobs.out" 2>"$tmpdir/invalid-jobs.err"; then
+    echo "FAIL: zero Xcode job limit unexpectedly passed validation" >&2
+    exit 1
+fi
+assert_true "invalid Xcode job limit reports the fail-closed contract" \
+    grep -Fqx "error: OPENBURNBAR_APP_TEST_XCODEBUILD_JOBS must be a positive integer" \
+    "$tmpdir/invalid-jobs.err"
 
 echo "OpenBurnBar app-test classifier fixtures passed."

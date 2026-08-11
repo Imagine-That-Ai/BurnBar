@@ -43,6 +43,7 @@ export const LANES = [
   "daemon",
   "functions",
   "web",
+  "safari",
   "console",
 ];
 
@@ -79,7 +80,12 @@ const LANE_PATTERNS = {
   macos: [
     /^AgentLens\//,
     /^AgentLensTests\//,
+    /^OpenBurnBarSafariExtension\//,
+    /^extensions\/safari\//,
     /^scripts\/(?:test-openburnbar-app|diff-coverage)(?:[^/]*)$/,
+    /^scripts\/test-openburnbar-safari-extension\.sh$/,
+    /^scripts\/ci\/(?:sign|verify)-openburnbar-safari-extension(?:\.test)?\.sh$/,
+    /^scripts\/ci\/verify-openburnbar-safari-extension-layout\.py$/,
     /^\.github\/workflows\/app-pr-gate\.yml$/,
   ],
   mobile: [
@@ -113,7 +119,17 @@ const LANE_PATTERNS = {
     /^scripts\/(?:test-functions|verify-functions)/,
     ...NODE_SIGNAL_ENVELOPE_CONTRACTS,
   ],
-  web: [/^(website|web|extensions\/openburnbar)\//],
+  web: [
+    /^(website|web|extensions\/openburnbar|extensions\/safari)\//,
+    /^scripts\/test-openburnbar-safari-extension\.sh$/,
+  ],
+  safari: [
+    /^OpenBurnBarSafariExtension\//,
+    /^extensions\/safari\//,
+    /^scripts\/test-openburnbar-safari-extension\.sh$/,
+    /^scripts\/ci\/(?:sign|verify)-openburnbar-safari-extension(?:\.test)?\.sh$/,
+    /^scripts\/ci\/verify-openburnbar-safari-extension-layout\.py$/,
+  ],
   console: [/^(apps\/console|console)\//],
 };
 

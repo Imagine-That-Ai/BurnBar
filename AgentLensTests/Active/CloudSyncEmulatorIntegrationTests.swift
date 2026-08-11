@@ -17,8 +17,8 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
     private var collaborationSync: CollaborationSyncService!
     private var coordinator: CloudSyncCoordinator!
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    override func setUp() async throws {
+        try await super.setUp()
         dataStore = try makeDiscoveryInMemoryStore()
         accountManager = FakeAccountManager.makeSignedIn()
         settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
@@ -47,7 +47,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         )
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         coordinator = nil
         collaborationSync = nil
         context = nil
@@ -57,7 +57,7 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
         dataStore = nil
         vaultKeyProvider = nil
 
-        try super.tearDownWithError()
+        try await super.tearDown()
     }
 
     // MARK: - Collaboration push
@@ -536,39 +536,34 @@ final class CloudSyncEmulatorIntegrationTests: XCTestCase {
     }
 }
 
-private final class CountingConversationVaultKeyProvider: ConversationCloudVaultKeyProviding, @unchecked Sendable {
+private final class CountingConversationVaultKeyProvider: ConversationCloudVaultKeyProviding {
+    private struct CallCounts: Sendable {
+        var writing = 0
+        var reading = 0
+    }
+
     private let keyData: Data
-    private let lock = NSLock()
-    private var writeCalls = 0
-    private var readCalls = 0
+    private let callCounts = Locked(CallCounts())
 
     init(keyData: Data = Data(repeating: 0x42, count: 32)) {
         self.keyData = keyData
     }
 
     var keyForWritingCallCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return writeCalls
+        callCounts.read().writing
     }
 
     var keyForReadingCallCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return readCalls
+        callCounts.read().reading
     }
 
     func keyForWriting(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey {
-        lock.lock()
-        writeCalls += 1
-        lock.unlock()
+        callCounts.withLock { $0.writing += 1 }
         return try resolvedKey()
     }
 
     func keyForReading(uid: String, deviceId: String) async throws -> CloudVaultResolvedKey? {
-        lock.lock()
-        readCalls += 1
-        lock.unlock()
+        callCounts.withLock { $0.reading += 1 }
         return try resolvedKey()
     }
 

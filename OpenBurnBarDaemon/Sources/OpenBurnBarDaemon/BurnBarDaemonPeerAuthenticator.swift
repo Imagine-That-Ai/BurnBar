@@ -75,6 +75,7 @@ public enum BurnBarDaemonPeerAuthenticationFailure: Error, Equatable, Sendable {
 /// First-party daemon RPC peer identity after code-signature validation.
 public enum BurnBarDaemonPeerIdentity: String, CaseIterable, Codable, Sendable {
     case app = "com.openburnbar.app"
+    case safariExtension = "com.openburnbar.app.safari-extension"
     case daemon = "com.openburnbar.daemon"
     case cli = "com.openburnbar.cli"
 
@@ -82,6 +83,8 @@ public enum BurnBarDaemonPeerIdentity: String, CaseIterable, Codable, Sendable {
         switch self {
         case .app, .daemon:
             return .full
+        case .safariExtension:
+            return .safariExtension
         case .cli:
             return .cliSupport
         }

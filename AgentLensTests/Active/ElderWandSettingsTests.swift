@@ -17,16 +17,20 @@ final class ElderWandSettingsTests: XCTestCase {
     private var defaults: UserDefaults!
     private let suiteName = "ElderWandSettingsTests.\(UUID().uuidString)"
 
-    override func setUp() {
-        super.setUp()
-        defaults = UserDefaults(suiteName: suiteName)
-        defaults.removePersistentDomain(forName: suiteName)
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run {
+            defaults = UserDefaults(suiteName: suiteName)
+            defaults.removePersistentDomain(forName: suiteName)
+        }
     }
 
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        defaults = nil
-        super.tearDown()
+    override func tearDown() async throws {
+        await MainActor.run {
+            defaults.removePersistentDomain(forName: suiteName)
+            defaults = nil
+        }
+        try await super.tearDown()
     }
 
     // MARK: - Helpers

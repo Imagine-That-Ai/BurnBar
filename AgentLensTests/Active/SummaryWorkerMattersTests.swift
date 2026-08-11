@@ -158,7 +158,7 @@ final class SummaryWorkerMattersTests: XCTestCase {
     /// credential is configured, so no real secret is required to exercise the gate).
     private func makeWorker(spendReader: any SummaryDailySpendReading) async throws -> SummaryWorker {
         let summaryStore = SummaryWorkerNoopStore()
-        let providerStore = await makeEmptyProviderStore()
+        let providerStore = await Self.makeEmptyProviderStore()
         let resolver = SummaryAPIKeyResolver(
             providerAPIKeyStore: providerStore,
             keychainStoreProvider: {
@@ -181,7 +181,7 @@ final class SummaryWorkerMattersTests: XCTestCase {
     /// and the resolver degrades to an empty key, keeping the cloud gate the only
     /// thing under test.
     @MainActor
-    private func makeEmptyProviderStore() -> ProviderAPIKeyStore {
+    private static func makeEmptyProviderStore() -> ProviderAPIKeyStore {
         let keychain = KeychainStore(
             service: "com.openburnbar.summaryworker-matters-tests.provider",
             legacyServices: [],
@@ -238,26 +238,23 @@ final class SummaryWorkerMattersTests: XCTestCase {
 /// Models a DB fault on the daily-spend read. Conforms to the production
 /// `SummaryDailySpendReading` seam so the worker's cost gate exercises the
 /// real fail-closed branch.
-private final class FaultyDailySpendReader: SummaryDailySpendReading, @unchecked Sendable {
-    private let lock = NSLock()
-    private var _callCount = 0
+private final class FaultyDailySpendReader: SummaryDailySpendReading {
+    private let callCountBox = Locked(0)
 
     var callCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return _callCount
+        callCountBox.read()
     }
 
     func summarySpendToday(now _: Date) async throws -> Double {
-        lock.lock(); _callCount += 1; lock.unlock()
+        callCountBox.withLock { $0 += 1 }
         throw SummaryWorkerTestError.spendReadFailed
     }
 }
 
 /// A healthy spend read returning a fixed value, used to drive the under-cap and
 /// over-cap branches deterministically.
-private final class FixedDailySpendReader: SummaryDailySpendReading, @unchecked Sendable {
-    private let lock = NSLock()
-    private var _callCount = 0
+private final class FixedDailySpendReader: SummaryDailySpendReading {
+    private let callCountBox = Locked(0)
     private let spentToday: Double
 
     init(spentToday: Double) {
@@ -265,12 +262,11 @@ private final class FixedDailySpendReader: SummaryDailySpendReading, @unchecked 
     }
 
     var callCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return _callCount
+        callCountBox.read()
     }
 
     func summarySpendToday(now _: Date) async throws -> Double {
-        lock.lock(); _callCount += 1; lock.unlock()
+        callCountBox.withLock { $0 += 1 }
         return spentToday
     }
 }
@@ -315,16 +311,14 @@ private final class EmptyKeychainBackend: KeychainStoreBackend {
 /// hermetic. The recorded count is the network-free signal that distinguishes
 /// "gate blocked the paid call" from "gate let it through".
 private final class SummaryWorkerNetworkRecorder: URLProtocol {
-    private static let lock = NSLock()
-    private static var _paidCompletionRequestCount = 0
+    private static let paidCompletionRequestCountBox = Locked(0)
 
     static var paidCompletionRequestCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return _paidCompletionRequestCount
+        paidCompletionRequestCountBox.read()
     }
 
     static func reset() {
-        lock.lock(); _paidCompletionRequestCount = 0; lock.unlock()
+        paidCompletionRequestCountBox.write(0)
     }
 
     override static func canInit(with request: URLRequest) -> Bool {
@@ -335,7 +329,7 @@ private final class SummaryWorkerNetworkRecorder: URLProtocol {
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.lock.lock(); Self._paidCompletionRequestCount += 1; Self.lock.unlock()
+        Self.paidCompletionRequestCountBox.withLock { $0 += 1 }
         client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
     }
 

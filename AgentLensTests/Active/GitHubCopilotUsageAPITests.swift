@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 final class GitHubCopilotUsageAPITests: XCTestCase {
@@ -110,31 +111,24 @@ final class GitHubCopilotUsageAPITests: XCTestCase {
     }
 }
 
-private class GitHubCopilotUsageStubURLProtocol: URLProtocol, @unchecked Sendable {
-    private struct State {
+private final class GitHubCopilotUsageStubURLProtocol: URLProtocol {
+    private struct State: Sendable {
         var responseData = Data()
         var requestCount = 0
     }
 
-    private static let lock = NSLock()
-    private nonisolated(unsafe) static var state = State()
+    private static let state = Locked(State())
 
     static var requestCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return state.requestCount
+        state.read().requestCount
     }
 
     static func configure(json: String) {
-        lock.lock()
-        state = State(responseData: Data(json.utf8), requestCount: 0)
-        lock.unlock()
+        state.write(State(responseData: Data(json.utf8), requestCount: 0))
     }
 
     static func reset() {
-        lock.lock()
-        state = State()
-        lock.unlock()
+        state.write(State())
     }
 
     override class func canInit(with _: URLRequest) -> Bool { true }
@@ -142,10 +136,10 @@ private class GitHubCopilotUsageStubURLProtocol: URLProtocol, @unchecked Sendabl
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.lock.lock()
-        Self.state.requestCount += 1
-        let data = Self.state.responseData
-        Self.lock.unlock()
+        let data = Self.state.withLock { state in
+            state.requestCount += 1
+            return state.responseData
+        }
 
         guard let url = request.url else {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))

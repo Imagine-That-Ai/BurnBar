@@ -682,15 +682,30 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
     }
 
     func testFactoryStandardExhaustionHidesOnlyStandardModelAndKeepsDroidCoreCustomModels() async throws {
-        let runner = RecordingFactoryDroidRunner(
+        let executionRunner = RecordingFactoryDroidRunner(
             result: FactoryDroidProcessResult(
                 exitCode: 0,
                 stdout: #"{"result":"Using Droid Core after Standard Usage is exhausted"}"#,
                 stderr: ""
             )
         )
+        let catalogRunner = RecordingFactoryDroidRunner(
+            result: FactoryDroidProcessResult(
+                exitCode: 0,
+                stdout: """
+                Available Models:
+                  gpt-5.5                                                   GPT-5.5
+                  glm-5.1                                                   Droid Core (GLM-5.1)
+                """,
+                stderr: ""
+            )
+        )
         let harness = try GatewayHarness(
-            factoryExecutor: FactoryDroidProviderExecutor(runner: runner, timeout: 1)
+            factoryExecutor: FactoryDroidProviderExecutor(
+                runner: executionRunner,
+                timeout: 1
+            ),
+            modelCatalogDroidProcessRunner: catalogRunner
         )
         try await harness.configureFactoryProviderForGateway()
         try await harness.start()
@@ -714,14 +729,17 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
 
         XCTAssertEqual(modelsResponse.statusCode, 200)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: modelsBody) as? [String: Any])
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: modelsBody) as? [String: Any],
+            "Expected a JSON object from /v1/models; body: \(String(decoding: modelsBody, as: UTF8.self))"
+        )
         let data = try XCTUnwrap(object["data"] as? [[String: Any]])
         XCTAssertFalse(data.contains {
             ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "gpt-5.5"
         })
         let droidCore = try XCTUnwrap(data.first {
             ($0["provider_id"] as? String) == "factory" && ($0["id"] as? String) == "glm-5.1"
-        })
+        }, "Expected the independently eligible Droid Core row; data: \(data)")
         XCTAssertEqual(droidCore["usage_lane"] as? String, "droid_core")
         XCTAssertEqual(droidCore["route_eligible"] as? Bool, true)
     }
@@ -5711,8 +5729,7 @@ extension BurnBarHTTPGatewayServerTests {
 }
 
 final class GatewayHarness: @unchecked Sendable {
-    private static let portLock = NSLock()
-    private static var nextCandidatePort = Int.random(in: 49_152...60_999)
+    private static let nextCandidatePort = Locked(Int.random(in: 49_152...60_999))
 
     private(set) var port: Int
     let configStore: BurnBarConfigStore
@@ -5974,15 +5991,14 @@ final class GatewayHarness: @unchecked Sendable {
     }
 
     fileprivate static func nextPortCandidate() -> Int {
-        portLock.lock()
-        defer { portLock.unlock() }
-
-        let candidate = nextCandidatePort
-        nextCandidatePort += 1
-        if nextCandidatePort > 60_999 {
-            nextCandidatePort = 49_152
+        nextCandidatePort.withLock { nextPort in
+            let candidate = nextPort
+            nextPort += 1
+            if nextPort > 60_999 {
+                nextPort = 49_152
+            }
+            return candidate
         }
-        return candidate
     }
 
     private static func verifyCanBind(port: Int) throws {

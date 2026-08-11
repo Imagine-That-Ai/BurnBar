@@ -7,7 +7,7 @@ final class ProjectMemoryDetailSheetTests: XCTestCase {
 
     private func makeInsightController(
         chat: ChatSessionController,
-        sendAction: @escaping @MainActor (ChatSessionController) async -> Void = { _ in }
+        sendAction: @escaping @Sendable @MainActor (ChatSessionController) async -> Void = { _ in }
     ) -> ProjectMemoryInsightController {
         ProjectMemoryInsightController(chatController: chat, sendAction: sendAction)
     }

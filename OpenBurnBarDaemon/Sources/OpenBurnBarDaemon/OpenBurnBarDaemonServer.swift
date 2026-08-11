@@ -99,6 +99,10 @@ public actor BurnBarDaemonServer {
     let toolingProxy: BurnBarToolingProxyService
     let computerUseService: ComputerUseService
     let computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry
+    let safariSessionBroker: BurnBarSafariSessionBroker
+    let safariTrustStore: BurnBarSafariTrustStore
+    let safariAppGroupPayloadResolver: BurnBarSafariAppGroupPayloadResolver?
+    let learningCoordinator: LearningCoordinator
     #if os(Linux)
     let mediaService: MercuryLinuxMediaSessionController
     let linuxPrivacyService: BurnBarLinuxPrivacyService
@@ -112,6 +116,7 @@ public actor BurnBarDaemonServer {
     /// opening this store only during daemon init would leave code/memory RPCs
     /// unavailable until the next restart.
     private var projectCodeMemoryStorage: BurnBarProjectCodeMemoryStore?
+    private let projectCodeMemoryReference: BurnBarProjectCodeMemoryStoreReference
     private var projectCodeMemoryBootstrapAttempted = false
     private var projectCodeMemoryBootstrapFailure: String?
     var projectCodeMemory: BurnBarProjectCodeMemoryStore? {
@@ -120,6 +125,7 @@ public actor BurnBarDaemonServer {
     let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
     let textExpansionService: BurnBarTextExpansionService?
     var resumeService: BurnBarResumeService?
+    var safariHandoffService: BurnBarResumeService
     /// The AI Inbox is opened lazily for the same reason as code memory: chat
     /// owns first-use database creation on a fresh profile, so binding it at
     /// init would leave the inbox unavailable until the next daemon restart.
@@ -160,6 +166,7 @@ public actor BurnBarDaemonServer {
     private var heartbeatTask: Task<Void, Never>?
     private var oauthRefreshTask: Task<Void, Never>?
     private var localUsageIngestionTask: Task<Void, Never>?
+    var safariRunResumeTasks: [String: Task<Void, Never>] = [:]
     private var aiInboxStartedLoop = false
     public init(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
@@ -173,6 +180,10 @@ public actor BurnBarDaemonServer {
         runService: BurnBarRunService? = nil,
         computerUseService: ComputerUseService? = nil,
         computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry? = nil,
+        safariSessionBroker: BurnBarSafariSessionBroker? = nil,
+        safariTrustStore: BurnBarSafariTrustStore? = nil,
+        safariAppGroupPayloadResolver: BurnBarSafariAppGroupPayloadResolver? = nil,
+        learningCoordinator: LearningCoordinator? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         membershipService: (any BurnBarMembershipServing)? = nil,
         rateLimiter: BurnBarRateLimiter? = nil,
@@ -199,6 +210,9 @@ public actor BurnBarDaemonServer {
         self.connectionGate = BurnBarConnectionGate()
         self.peerAuthenticator = peerAuthenticator
         self.capabilityProfile = capabilityProfile
+        self.safariHandoffService = BurnBarResumeService(
+            logger: BurnBarDaemonLogger(category: "safari-handoff")
+        )
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
         #if os(Linux)
@@ -265,6 +279,72 @@ public actor BurnBarDaemonServer {
         #endif
         let resolvedClientRegistry = clientRegistry ?? BurnBarClientRegistry(
             logger: BurnBarDaemonLogger(category: "client-registry")
+        )
+        let resolvedMembershipService =
+            membershipService ?? BurnBarMembershipService()
+        let resolvedSafariSessionBroker =
+            safariSessionBroker ?? BurnBarSafariSessionBroker()
+        let resolvedSafariTrustStore =
+            safariTrustStore ?? BurnBarSafariTrustStore()
+        let resolvedSafariAppGroupPayloadResolver: BurnBarSafariAppGroupPayloadResolver?
+        if let safariAppGroupPayloadResolver {
+            resolvedSafariAppGroupPayloadResolver = safariAppGroupPayloadResolver
+        } else if let appGroupRoot = BurnBarSafariSharedContainer.liveRoot() {
+            resolvedSafariAppGroupPayloadResolver = BurnBarSafariAppGroupPayloadResolver(
+                trustedRoot: appGroupRoot
+            )
+        } else {
+            resolvedSafariAppGroupPayloadResolver = nil
+        }
+        let resolvedProjectCodeMemoryReference =
+            BurnBarProjectCodeMemoryStoreReference()
+        let resolvedLearningCoordinator = learningCoordinator ?? LearningCoordinator(
+            eligibilityProvider: {
+                let membership = await resolvedMembershipService.status()
+                return SafariLearningEligibility.canonical(
+                    tier: membership.membership.tier
+                )
+            },
+            sourcePolicy: { sourceURL in
+                guard sourceURL.scheme?.lowercased() == "https",
+                      sourceURL.host?.isEmpty == false,
+                      sourceURL.user == nil,
+                      sourceURL.password == nil,
+                      (try? OpenBurnBarBrowserTargetPolicy.validatedResolvedURL(
+                          sourceURL.absoluteString
+                      )) != nil else {
+                    return false
+                }
+                let outcome = ComputerUseScopeMatcher().evaluate(
+                    rules: ComputerUseDenyRegistry.builtInRules,
+                    context: ComputerUseScopeContext(
+                        url: sourceURL.absoluteString,
+                        bundleId: "com.apple.Safari"
+                    )
+                )
+                if case .denied = outcome {
+                    return false
+                }
+                return true
+            },
+            memoryWriter: { request in
+                guard let store = resolvedProjectCodeMemoryReference.current() else {
+                    throw SafariLearningCoordinatorError.memoryIntegrationUnavailable
+                }
+                return try store.remember(request)
+            },
+            memoryForgetter: { request in
+                guard let store = resolvedProjectCodeMemoryReference.current() else {
+                    throw SafariLearningCoordinatorError.memoryIntegrationUnavailable
+                }
+                return try store.forget(request)
+            },
+            memoryRecaller: { request in
+                guard let store = resolvedProjectCodeMemoryReference.current() else {
+                    throw SafariLearningCoordinatorError.memoryRecallUnavailable
+                }
+                return try store.recall(request)
+            }
         )
         let resolvedComputerUseAuthorizationRegistry = computerUseAuthorizationRegistry
             ?? ComputerUseAuthorizationRegistry(enforcementEnabled: localAuthProofVerifier != nil)
@@ -392,18 +472,23 @@ public actor BurnBarDaemonServer {
             sessionEndedObserver = nil
         }
         let resolvedComputerUseService = computerUseService ?? ComputerUseService(
+            safariSessionBroker: resolvedSafariSessionBroker,
             authorizationRegistry: resolvedComputerUseAuthorizationRegistry,
             approvalPublisher: approvalPublisher,
             sessionEndedObserver: sessionEndedObserver
         )
         #else
         let resolvedComputerUseService = computerUseService ?? ComputerUseService(
+            safariSessionBroker: resolvedSafariSessionBroker,
             authorizationRegistry: resolvedComputerUseAuthorizationRegistry
         )
         #endif
         let computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher?
         let computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker?
         let computerUseRunRevoker: BurnBarComputerUseRunRevoker?
+        let safariComputerUseRunDispatcher: BurnBarSafariComputerUseRunDispatcher?
+        let safariComputerUseRunBindingChecker: BurnBarSafariComputerUseRunBindingChecker?
+        let safariComputerUseRunRevoker: BurnBarSafariComputerUseRunRevoker?
         #if os(Linux)
         computerUseBrowserDispatcher = { invocation in
             guard let sessionID = await resolvedComputerUseService.sessionID(for: invocation.runID),
@@ -438,10 +523,53 @@ public actor BurnBarDaemonServer {
                 )
             )
         }
+        safariComputerUseRunDispatcher = nil
+        safariComputerUseRunBindingChecker = nil
+        safariComputerUseRunRevoker = nil
+        #elseif os(macOS)
+        computerUseBrowserDispatcher = nil
+        computerUseRunBindingChecker = nil
+        computerUseRunRevoker = nil
+        safariComputerUseRunDispatcher = { requirement in
+            guard await resolvedClientRegistry.sessionID(
+                for: requirement.clientID
+            ) == requirement.sessionID else {
+                throw ComputerUseService.ServiceError.clientIdentityMismatch(
+                    expected: requirement.sessionID.rawValue,
+                    actual: await resolvedClientRegistry.sessionID(
+                        for: requirement.clientID
+                    )?.rawValue ?? "detached"
+                )
+            }
+            return try await resolvedComputerUseService.invokeForSafariRun(
+                requirement
+            )
+        }
+        safariComputerUseRunBindingChecker = { requirement in
+            guard await resolvedClientRegistry.sessionID(
+                for: requirement.clientID
+            ) == requirement.sessionID else {
+                return false
+            }
+            return await resolvedComputerUseService.safariRunBindingSessionID(
+                requirement
+            ) != nil
+        }
+        safariComputerUseRunRevoker = { requirement in
+            guard await resolvedClientRegistry.sessionID(
+                for: requirement.clientID
+            ) == requirement.sessionID else {
+                return
+            }
+            await resolvedComputerUseService.revokeSafariRun(requirement)
+        }
         #else
         computerUseBrowserDispatcher = nil
         computerUseRunBindingChecker = nil
         computerUseRunRevoker = nil
+        safariComputerUseRunDispatcher = nil
+        safariComputerUseRunBindingChecker = nil
+        safariComputerUseRunRevoker = nil
         #endif
         let resolvedRunService = runService ?? BurnBarRunService(
             router: BurnBarProviderRouter(
@@ -454,6 +582,31 @@ public actor BurnBarDaemonServer {
             computerUseBrowserDispatcher: computerUseBrowserDispatcher,
             computerUseRunBindingChecker: computerUseRunBindingChecker,
             computerUseRunRevoker: computerUseRunRevoker,
+            safariComputerUseRunDispatcher: safariComputerUseRunDispatcher,
+            safariComputerUseRunBindingChecker: safariComputerUseRunBindingChecker,
+            safariComputerUseRunRevoker: safariComputerUseRunRevoker,
+            safariLearningRecallProvider: { query, limit in
+                try await resolvedLearningCoordinator.recallForPrompt(
+                    query: query,
+                    limit: limit
+                )
+            },
+            safariLearningObservationSink: { observation in
+                do {
+                    _ = try await resolvedLearningCoordinator.propose(
+                        BurnBarSafariLearningProposalRequest(
+                            observation: observation
+                        )
+                    )
+                } catch SafariLearningCoordinatorError.triggerThresholdNotMet {
+                    // Repeated-workflow observations intentionally stage only
+                    // on occurrence three; the first two are durable signals,
+                    // not run failures.
+                } catch SafariLearningCoordinatorError.duplicateObservation {
+                    // Deterministic run observation IDs make completion
+                    // retries idempotent.
+                }
+            },
             logger: BurnBarDaemonLogger(category: "run-service")
         )
 
@@ -473,6 +626,11 @@ public actor BurnBarDaemonServer {
         )
         self.computerUseService = resolvedComputerUseService
         self.computerUseAuthorizationRegistry = resolvedComputerUseAuthorizationRegistry
+        self.safariSessionBroker = resolvedSafariSessionBroker
+        self.safariTrustStore = resolvedSafariTrustStore
+        self.safariAppGroupPayloadResolver = resolvedSafariAppGroupPayloadResolver
+        self.learningCoordinator = resolvedLearningCoordinator
+        self.projectCodeMemoryReference = resolvedProjectCodeMemoryReference
         #if os(Linux)
         let mediaLogger = BurnBarDaemonLogger(category: "linux-media")
         self.mediaService = MercuryLinuxMediaSessionController(
@@ -548,7 +706,7 @@ public actor BurnBarDaemonServer {
             },
             executionReadinessGate: executionReadinessGate
         )
-        self.membershipService = membershipService ?? BurnBarMembershipService()
+        self.membershipService = resolvedMembershipService
 
         if let path = configuration.indexDatabasePath?.trimmingCharacters(in: .whitespacesAndNewlines),
            path.isEmpty == false {
@@ -615,6 +773,9 @@ public actor BurnBarDaemonServer {
                     self.projectCodeMemoryStorage = try BurnBarProjectCodeMemoryStore(
                         databasePath: path,
                         logger: BurnBarDaemonLogger(category: "project-code-memory")
+                    )
+                    resolvedProjectCodeMemoryReference.update(
+                        self.projectCodeMemoryStorage
                     )
                     self.projectCodeMemoryBootstrapAttempted = true
                 } catch {
@@ -802,6 +963,7 @@ public actor BurnBarDaemonServer {
                 logger: BurnBarDaemonLogger(category: "project-code-memory")
             )
             projectCodeMemoryStorage = store
+            projectCodeMemoryReference.update(store)
             projectCodeMemoryBootstrapFailure = nil
             logger.info(
                 "project_code_memory_lazy_bootstrap_succeeded",
@@ -1289,6 +1451,7 @@ public actor BurnBarDaemonServer {
     }
 
     public func stop() async {
+        cancelAllSafariRunResumeTasks()
         guard let listenerFileDescriptor else {
             logger.debug(
                 "shutdown_skipped",
@@ -1380,7 +1543,7 @@ public actor BurnBarDaemonServer {
     }
 
     private func responseData(
-        for requestData: Data,
+        for rawRequestData: Data,
         peerPID: pid_t?,
         peerCapabilityProfile: BurnBarPeerCapabilityProfile? = nil
     ) async -> Data {
@@ -1393,7 +1556,10 @@ public actor BurnBarDaemonServer {
         }
         do {
             let decoder = JSONDecoder()
-            let incomingRequest = try decoder.decode(IncomingRequestEnvelope.self, from: requestData)
+            let incomingRequest = try decoder.decode(
+                IncomingRequestEnvelope.self,
+                from: rawRequestData
+            )
             BurnBarDaemonMetricsCounters.recordRPCRequest()
 
             if let requiredToken = configuration.socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
@@ -1478,6 +1644,20 @@ public actor BurnBarDaemonServer {
                         message: "Rate limit exceeded. Retry after \(String(format: "%.1f", retryAfter)) seconds."
                     )
                 }
+            }
+
+            let requestData: Data
+            do {
+                requestData = try resolveAuthenticatedSafariExternalizedRequestData(
+                    method: method,
+                    decoder: decoder,
+                    request: incomingRequest,
+                    requestData: rawRequestData,
+                    peerCapabilityProfile: peerCapabilityProfile
+                )
+            } catch {
+                BurnBarDaemonMetricsCounters.recordRPCError()
+                return safariRPCErrorResponse(id: incomingRequest.id, error: error)
             }
 
             let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method, authToken: incomingRequest.authToken)
@@ -1592,6 +1772,29 @@ public actor BurnBarDaemonServer {
                     decoder: decoder,
                     requestData: requestData,
                     peerPID: peerPID
+                )
+            case .safariBootstrap, .safariUISnapshot, .safariHandoff,
+                 .safariApprovalRespond, .safariTrustUpdate,
+                 .safariSessionAttach, .safariSessionDetach, .safariSessionStatus,
+                 .safariCommandPoll, .safariCommandComplete,
+                 .safariPageContext, .safariScreenshot,
+                 .safariFullPageScreenshot, .safariClick, .safariType,
+                 .safariPressKey, .safariScroll, .safariHover, .safariFocus,
+                 .safariSelectOption, .safariNavigate, .safariOpenTab,
+                 .safariCloseTab, .safariListTabs, .safariWaitFor,
+                 .safariRunJavaScript, .safariExtract, .safariAbort:
+                return try await handleSafariRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .learningPropose, .learningRecall, .learningList, .learningOptIn,
+                 .learningUpdate, .learningApprove, .learningReject, .learningForget,
+                 .learningRollback, .learningTimeline, .learningOptOut:
+                return try await handleLearningRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
                 )
             case .daemonMediaSessionState, .daemonMediaCallAccept,
                  .daemonMediaCallDecline, .daemonMediaCallEnd,

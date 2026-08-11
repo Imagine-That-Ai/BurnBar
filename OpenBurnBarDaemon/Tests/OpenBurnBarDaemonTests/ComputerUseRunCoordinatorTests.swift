@@ -1154,22 +1154,28 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         let activeManifest = manifest(sessionId: sessionId, mode: .system, trustMode: .manual)
         _ = try await coordinator.startSession(manifest: activeManifest)
 
+        let pendingInvocation = invocation(tool: .macInputClick, arguments: macClickArguments())
+        let scopeContext = ComputerUseScopeContext(bundleId: "com.apple.finder")
+        let scopeOutcome = ComputerUseScopeOutcome.notMatched
+        let capabilitySnapshot = capability(
+            for: makeState(sessionId: sessionId, manifest: activeManifest),
+            accessibilityTrusted: true
+        )
         let invocationTask = Task {
             await coordinator.invoke(
                 sessionId: sessionId,
-                invocation: invocation(tool: .macInputClick, arguments: macClickArguments()),
-                scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
-                scopeOutcome: .notMatched,
+                invocation: pendingInvocation,
+                scopeContext: scopeContext,
+                scopeOutcome: scopeOutcome,
                 accessibilityDeny: nil,
-                capability: capability(
-                    for: makeState(sessionId: sessionId, manifest: activeManifest),
-                    accessibilityTrusted: true
-                )
+                capability: capabilitySnapshot
             )
         }
 
         await approvalBarrier.waitUntilSuspended()
-        await coordinator.panicHalt(sessionId: sessionId, source: .revoked)
+        let panicRecord = await coordinator.panicHalt(sessionId: sessionId, source: .revoked)
+        XCTAssertEqual(panicRecord?.sessionId, sessionId.rawValue)
+        XCTAssertEqual(panicRecord?.reason, .entitlementLost)
         await approvalBarrier.release()
         let response = await invocationTask.value
 
@@ -1195,22 +1201,30 @@ final class ComputerUseRunCoordinatorTests: XCTestCase {
         let activeManifest = manifest(sessionId: sessionId, mode: .system, trustMode: .trusted)
         _ = try await coordinator.startSession(manifest: activeManifest)
 
+        let pendingInvocation = invocation(tool: .macInputClick, arguments: macClickArguments())
+        let scopeContext = ComputerUseScopeContext(bundleId: "com.apple.finder")
+        let scopeOutcome = ComputerUseScopeOutcome.allowed(
+            rule: ComputerUseScopeRuleID("dispatch-revoke-test")
+        )
+        let capabilitySnapshot = capability(
+            for: makeState(sessionId: sessionId, manifest: activeManifest),
+            accessibilityTrusted: true
+        )
         let invocationTask = Task {
             await coordinator.invoke(
                 sessionId: sessionId,
-                invocation: invocation(tool: .macInputClick, arguments: macClickArguments()),
-                scopeContext: ComputerUseScopeContext(bundleId: "com.apple.finder"),
-                scopeOutcome: .allowed(rule: ComputerUseScopeRuleID("dispatch-revoke-test")),
+                invocation: pendingInvocation,
+                scopeContext: scopeContext,
+                scopeOutcome: scopeOutcome,
                 accessibilityDeny: nil,
-                capability: capability(
-                    for: makeState(sessionId: sessionId, manifest: activeManifest),
-                    accessibilityTrusted: true
-                )
+                capability: capabilitySnapshot
             )
         }
 
         await dispatchBarrier.waitUntilSuspended()
-        await coordinator.panicHalt(sessionId: sessionId, source: .revoked)
+        let panicRecord = await coordinator.panicHalt(sessionId: sessionId, source: .revoked)
+        XCTAssertEqual(panicRecord?.sessionId, sessionId.rawValue)
+        XCTAssertEqual(panicRecord?.reason, .entitlementLost)
         await dispatchBarrier.release()
         let response = await invocationTask.value
 

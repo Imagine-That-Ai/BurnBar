@@ -15,6 +15,7 @@ openburnbar_app_test_hang_substrings=(
     "Lost connection to the test runner"
     "Could not attach to pid"
     "TestRunner crashed"
+    "exceeded execution time allowance"
     "Restarting after unexpected exit, crash, or test timeout"
     "freed pointer was not the last allocation"
 )
@@ -72,8 +73,7 @@ openburnbar_app_test_has_assertion_failure() {
 openburnbar_app_test_has_execution_timeout_restart() {
     local log_path="$1"
 
-    grep -Fq "exceeded execution time allowance" "$log_path" || return 1
-    grep -Fq "Restarting after unexpected exit, crash, or test timeout" "$log_path" || return 1
+    openburnbar_app_test_has_execution_timeout_restart_markers "$log_path" || return 1
 
     # A timed-out/crashed test host can leave a stale "Failing tests:" footer
     # even after Xcode relaunches the host and reports a clean selected-suite
@@ -84,6 +84,28 @@ openburnbar_app_test_has_execution_timeout_restart() {
     fi
 
     return 0
+}
+
+openburnbar_app_test_has_execution_timeout_restart_markers() {
+    local log_path="$1"
+
+    grep -Fq "exceeded execution time allowance" "$log_path" || return 1
+    grep -Fq "Restarting after unexpected exit, crash, or test timeout" "$log_path"
+}
+
+openburnbar_app_test_timeout_containment_is_retryable() {
+    local log_path="$1"
+    local receipt_path="$2"
+
+    [[ -s "$receipt_path" ]] || return 1
+    grep -Fq '"schemaVersion": 1' "$receipt_path" || return 1
+    grep -Fq '"timeoutMarkerObserved": true' "$receipt_path" || return 1
+    grep -Fq "exceeded execution time allowance" "$log_path" || return 1
+
+    # The supervisor only bounds process lifetime. Classification remains
+    # fail-closed here: a concrete XCTest assertion in the same attempt always
+    # wins over an otherwise retryable execution timeout.
+    ! openburnbar_app_test_has_assertion_failure "$log_path"
 }
 
 openburnbar_app_test_final_selected_summary_is_green() {
@@ -144,6 +166,16 @@ is_swiftpm_dependency_resolution_transient() {
 
     grep -Eq "Could not resolve package dependencies|failed downloading .* which is required by binary target|Failed to clone repository|fatal: unable to access|Git command .* config --get remote\\.origin\\.url|binary target .*OpenBurnBarSignalFfi.* could not be mapped" "$log_path" || return 1
     grep -Eiq "downloadError\\(\"The request timed out\\.\"\\)|Failed to connect to .* port 443|Couldn'?t connect to server|Connection (reset|timed out)|network connection was lost|TLS handshake timeout|HTTP (502|503|504)|Bad Gateway|Service Unavailable|Gateway Timeout|fatal: cannot change to .+: No such file or directory|binary target .*OpenBurnBarSignalFfi.* could not be mapped to an artifact with expected name .*OpenBurnBarSignalFfi" "$log_path"
+}
+
+is_xcode_build_service_transient() {
+    local log_path="$1"
+
+    if openburnbar_app_test_has_concrete_xctest_failure "$log_path"; then
+        return 1
+    fi
+
+    grep -Fq "unexpected service error: The Xcode build system has crashed. Build again to continue." "$log_path"
 }
 
 openburnbar_app_test_has_concrete_failure_after_final_selected_green_summary() {

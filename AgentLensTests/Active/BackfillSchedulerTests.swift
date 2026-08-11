@@ -237,7 +237,7 @@ final class BackfillSchedulerTests: XCTestCase {
 
         // Simulate sequential backfill runs with larger stride to avoid clamping
         // Using stride(from: 60, through: 20, by: -10) gives: [60, 50, 40, 30, 20]
-        for dayOffset in stride(from: 60, through: 20, by: -10) {
+        for _ in stride(from: 60, through: 20, by: -10) {
             guard let window = try await cursorStore.nextBackfillWindow(for: .factory, currentDate: now) else {
                 break
             }
@@ -419,7 +419,6 @@ final class BackfillSchedulerTests: XCTestCase {
     /// Tests that backfill cannot overwrite exact live ingestion rows with lower confidence.
     func test_backfill_cannotDowngradeExactLiveRows() async throws {
         let store = try makeInMemoryDataStore()
-        let cursorStore = makeBackfillCursorStore(store)
         let now = Date()
         let sixDaysAgo = now.addingTimeInterval(-6 * 24 * 60 * 60)
 
@@ -943,7 +942,6 @@ final class BackfillSchedulerTests: XCTestCase {
         // Verify that BackfillCursorStore.swift contains no literal absolute paths
         // that would break on different machines. The store uses only Date-based
         // cursor tracking and GRDB database operations (no file path strings).
-        let bundle = Bundle(for: type(of: inMemoryStore))
         // Smoke-check: cursor operations work through DataStore without path coupling
         let claudeWindow = try await cursorStore.nextBackfillWindow(for: .claudeCode, currentDate: now)
         XCTAssertNotNil(claudeWindow, "BackfillCursorStore window computation must work without filesystem paths")

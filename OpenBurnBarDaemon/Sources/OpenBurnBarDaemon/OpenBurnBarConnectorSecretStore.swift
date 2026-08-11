@@ -48,8 +48,6 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
 
     public func secret(for connector: BurnBarConnectorKind) async throws -> String? {
 #if canImport(Security) && canImport(LocalAuthentication)
-        let context = LAContext()
-        context.interactionNotAllowed = true
         let account = "connector.\(connector.rawValue).credential"
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -57,8 +55,7 @@ public actor BurnBarConnectorKeychainSecretStore: BurnBarConnectorSecretStoring 
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
-            kSecUseAuthenticationContext as String: context
+            kSecUseAuthenticationContext as String: nonInteractiveKeychainAuthenticationContext()
         ]
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {

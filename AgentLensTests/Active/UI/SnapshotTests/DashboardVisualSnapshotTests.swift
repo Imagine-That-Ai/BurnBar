@@ -12,16 +12,6 @@ import OpenBurnBarCore
 final class DashboardVisualSnapshotTests: XCTestCase {
 
     func test_castleGreatHall_mixedVerdicts() {
-        let previousSkin = UserDefaults.standard.string(forKey: AppSkin.storageKey)
-        UserDefaults.standard.set(AppSkin.aurora.rawValue, forKey: AppSkin.storageKey)
-        defer {
-            if let previousSkin {
-                UserDefaults.standard.set(previousSkin, forKey: AppSkin.storageKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: AppSkin.storageKey)
-            }
-        }
-
         let view = CastleGreatHallView(
             snapshot: CastleRunSnapshot(workers: [
                 CastleWorkerStatus(runtime: "claude", modelArg: "claude-opus-4-8", phase: .landed, landsCommit: true, headSHA: "585c803db1d7"),

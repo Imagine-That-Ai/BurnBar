@@ -216,6 +216,15 @@ extension ComputerUseSessionCoordinator {
         case .browser(let browser):
             if let url = browser.url { return ComputerUseScopeContext(url: url) }
             return macDispatcher.currentScopeContext()
+        case .safari(let safari):
+            // The daemon resolves the live Safari page before dispatch. This
+            // app-side coordinator does not own Safari sessions, so preserve
+            // only explicit descriptor metadata rather than borrowing an
+            // unrelated frontmost-window context.
+            return ComputerUseScopeContext(
+                url: safari.url,
+                bundleId: "com.apple.Safari"
+            )
         case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
             return macDispatcher.currentScopeContext()
         }

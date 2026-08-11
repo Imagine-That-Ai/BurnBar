@@ -383,14 +383,14 @@ struct CloudStoreSettingsView: View {
 
     private var backupQueueSummaryText: String {
         switch (pendingBackupSessionLogs, pendingBackupChatThreads) {
+        case (0, 0):
+            return "Everything is backed up."
         case (let logs, 0):
             return "\(logs) conversation\(logs == 1 ? "" : "s") waiting to back up."
         case (0, let threads):
             return "\(threads) chat thread\(threads == 1 ? "" : "s") ready to sync."
         case (let logs, let threads):
             return "\(logs) conversation\(logs == 1 ? "" : "s") and \(threads) chat thread\(threads == 1 ? "" : "s") waiting."
-        default:
-            return "Everything is backed up."
         }
     }
 

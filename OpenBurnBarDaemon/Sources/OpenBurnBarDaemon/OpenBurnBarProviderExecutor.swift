@@ -1148,16 +1148,13 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 
     private func secret(forService service: String, account: String) throws -> String? {
 #if canImport(Security) && canImport(LocalAuthentication)
-        let context = LAContext()
-        context.interactionNotAllowed = true
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
-            kSecUseAuthenticationContext as String: context
+            kSecUseAuthenticationContext as String: nonInteractiveKeychainAuthenticationContext()
         ]
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {

@@ -110,6 +110,7 @@ final class LiquidGlassTransparencyTests: XCTestCase {
         )
     }
 
+    @MainActor
     func testWindowBlendUsesBehindWindowMaterial() {
         let view = LiquidGlassWindowBlend.makeVisualEffectView()
 

@@ -56,7 +56,7 @@ final class KnowledgeSyncServiceSignalEnvelopeEncodingTests: XCTestCase {
 
         let result = try await service.syncPreparedBatchPayloads([["vectors": []]])
 
-        let committedPayloadCount = await callable.committedPayloadCount
+        let committedPayloadCount = callable.committedPayloadCount
         XCTAssertEqual(committedPayloadCount, 1)
         XCTAssertEqual(result?.written, 4)
         XCTAssertEqual(result?.skipped, 1)
@@ -106,13 +106,13 @@ final class KnowledgeSyncServiceSignalEnvelopeEncodingTests: XCTestCase {
     }
 }
 
-private actor FakeKnowledgeSyncCallable: KnowledgeSyncCallable {
+private final class FakeKnowledgeSyncCallable: KnowledgeSyncCallable {
     private let commitResult: KnowledgeCommitResult
     private let error: KnowledgeSyncError?
-    private var committedPayloadCounter = 0
+    private let committedPayloadCounter = Locked(0)
 
     var committedPayloadCount: Int {
-        committedPayloadCounter
+        committedPayloadCounter.read()
     }
 
     init(
@@ -137,7 +137,7 @@ private actor FakeKnowledgeSyncCallable: KnowledgeSyncCallable {
     }
 
     func commitKnowledgeBatch(_ payload: [String: Any]) async throws -> KnowledgeCommitResult {
-        committedPayloadCounter += 1
+        committedPayloadCounter.withLock { $0 += 1 }
         if let error {
             throw error
         }

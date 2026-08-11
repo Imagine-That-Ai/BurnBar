@@ -485,21 +485,32 @@ final class SettingsManagerSecretStorageTests: XCTestCase {
 /// read (keyed by service), used to prove `SettingsSecretPersistence` surfaces
 /// such faults via `credentialIfPresent` instead of silently swallowing them.
 private final class ReadFaultKeychainBackend: KeychainStoreBackend {
-    var storage: [String: [String: Data]] = [:]
-    var readErrors: [String: Error] = [:]
+    private struct State: Sendable {
+        var storage: [String: [String: Data]] = [:]
+        var readErrors: [String: KeychainStoreError] = [:]
+    }
+
+    private let state = Locked(State())
+
+    var readErrors: [String: KeychainStoreError] {
+        get { state.read().readErrors }
+        set { state.withLock { $0.readErrors = newValue } }
+    }
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        state.withLock { $0.storage[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        if let error = readErrors[service] {
-            throw error
+        try state.withLock { state in
+            if let error = state.readErrors[service] {
+                throw error
+            }
+            return state.storage[service]?[account]
         }
-        return storage[service]?[account]
     }
 
     func delete(service: String, account: String) throws {
-        storage[service]?[account] = nil
+        state.withLock { $0.storage[service]?[account] = nil }
     }
 }

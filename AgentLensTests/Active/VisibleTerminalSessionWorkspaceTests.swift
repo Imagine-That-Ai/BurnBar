@@ -107,7 +107,7 @@ final class VisibleTerminalSessionWorkspaceTests: XCTestCase {
 
 // MARK: - Test doubles
 
-private final class FailingCreateFileManager: FileManager {
+private final class FailingCreateFileManager: FileManager, @unchecked Sendable {
     override func createFile(
         atPath path: String,
         contents data: Data?,

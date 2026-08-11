@@ -187,14 +187,12 @@ final class MimoQuotaAdapterTests: XCTestCase {
     }
 }
 
-private final class CountingMimoSecretStore: SecretStore, @unchecked Sendable {
+private final class CountingMimoSecretStore: SecretStore {
     private let value: String?
-    private let lock = NSLock()
-    private var _readCallCount = 0
+    private let readCallCountBox = OpenBurnBarCore.Locked(0)
 
     var readCallCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return _readCallCount
+        readCallCountBox.read()
     }
 
     init(value: String?) {
@@ -202,15 +200,20 @@ private final class CountingMimoSecretStore: SecretStore, @unchecked Sendable {
     }
 
     func string(for account: String, service: String) -> String? {
-        lock.lock()
-        _readCallCount += 1
-        lock.unlock()
+        readCallCountBox.withLock { $0 += 1 }
         return value
     }
 }
 
 private final class MimoMockURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var responder: ((URLRequest) -> (URLResponse, Data))?
+    private static let responderBox = OpenBurnBarCore.Locked<
+        (@Sendable (URLRequest) -> (URLResponse, Data))?
+    >(nil)
+
+    static var responder: (@Sendable (URLRequest) -> (URLResponse, Data))? {
+        get { responderBox.read() }
+        set { responderBox.write(newValue) }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool { true }
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -234,25 +237,43 @@ private final class MimoMockURLProtocol: URLProtocol {
 /// In-memory `KeychainStoreBackend` whose `data(for:)` throws a configured fault,
 /// letting tests model a locked/unavailable Keychain through the production seam.
 private final class MimoFaultInjectingKeychainBackend: KeychainStoreBackend {
-    var storage: [String: [String: Data]] = [:]
-    var readErrors: [String: Error] = [:]
-    var deleteErrors: [String: Error] = [:]
+    private struct State: Sendable {
+        var storage: [String: [String: Data]] = [:]
+        var readErrors: [String: KeychainStoreError] = [:]
+        var deleteErrors: [String: KeychainStoreError] = [:]
+    }
+
+    private let state = OpenBurnBarCore.Locked(State())
+
+    var readErrors: [String: KeychainStoreError] {
+        get { state.read().readErrors }
+        set { state.withLock { $0.readErrors = newValue } }
+    }
+
+    var deleteErrors: [String: KeychainStoreError] {
+        get { state.read().deleteErrors }
+        set { state.withLock { $0.deleteErrors = newValue } }
+    }
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        state.withLock { $0.storage[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        if let error = readErrors[service] {
-            throw error
+        try state.withLock { state in
+            if let error = state.readErrors[service] {
+                throw error
+            }
+            return state.storage[service]?[account]
         }
-        return storage[service]?[account]
     }
 
     func delete(service: String, account: String) throws {
-        if let error = deleteErrors[service] {
-            throw error
+        try state.withLock { state in
+            if let error = state.deleteErrors[service] {
+                throw error
+            }
+            state.storage[service]?[account] = nil
         }
-        storage[service]?[account] = nil
     }
 }

@@ -370,10 +370,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: extensions/openburnbar/package-lock.json
+          cache-dependency-path: |
+            extensions/openburnbar/package-lock.json
+            extensions/safari/package-lock.json
 
       - name: Install extension dependencies
         run: npm ci --prefix extensions/openburnbar
+
+      - name: Run Safari extension quality, tests, and build
+        run: ./scripts/test-openburnbar-safari-extension.sh
 
       - name: Run TypeScript tests
         run: ./scripts/test-openburnbar-ts.sh
@@ -403,11 +408,16 @@ jobs:
           cache-dependency-path: |
             functions/package-lock.json
             extensions/openburnbar/package-lock.json
+            extensions/safari/package-lock.json
 
       - name: Install audit dependencies
         run: |
           npm ci --prefix functions
           npm ci --prefix extensions/openburnbar
+          npm ci --prefix extensions/safari
+
+      - name: Audit Safari extension dependencies
+        run: npm --prefix extensions/safari audit --audit-level=high
 
       - name: Run supply chain audit
         run: ./scripts/supply-chain-audit.sh
@@ -1215,6 +1225,8 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          OPENBURNBAR_APP_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_APP_PROFILE_BASE64 }}
+          OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
@@ -1227,6 +1239,8 @@ jobs:
             APPLE_SIGNING_IDENTITY \
             APPLE_CERTIFICATE_P12 \
             APPLE_CERTIFICATE_PASSWORD \
+            OPENBURNBAR_APP_PROFILE_BASE64 \
+            OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 \
             APPLE_NOTARY_KEY_ID \
             APPLE_NOTARY_ISSUER_ID \
             APPLE_NOTARY_API_KEY_P8 \
@@ -1268,7 +1282,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: extensions/openburnbar/package-lock.json
+          cache-dependency-path: |
+            extensions/openburnbar/package-lock.json
+            extensions/safari/package-lock.json
 
       - name: Download verified Shared Rust release inputs
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0 (node24-native)
@@ -1620,6 +1636,11 @@ jobs:
       - name: Build extension
         run: npm run --prefix extensions/openburnbar build
 
+      - name: Build Safari extension payload from locked dependencies
+        run: |
+          npm ci --prefix extensions/safari
+          npm run build --prefix extensions/safari
+
       - name: Build daemon (SPM release binaries)
         run: |
           swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarDaemon
@@ -1837,6 +1858,7 @@ jobs:
         env:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           OPENBURNBAR_APP_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_APP_PROFILE_BASE64 }}
+          OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 }}
         run: |
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
@@ -1845,9 +1867,11 @@ jobs:
           APP_PROFILE="$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.provisionprofile"
           APP_PROFILE_PLIST="$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.plist"
           APP_SIGNING_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBarRelease-signing.entitlements"
+          SAFARI_EXTENSION_PROFILE="$RUNNER_TEMP/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile"
+          EXPECTED_APP_GROUP="group.com.openburnbar.app"
           PRIVILEGED_INPUT_ENTITLEMENTS="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
           VIRTUAL_HID_BRIDGE_ENTITLEMENTS="OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements"
-          export APP_PROFILE
+          export APP_PROFILE SAFARI_EXTENSION_PROFILE
 
           if [[ ! -d "$APP_PATH" ]]; then
             echo "::error::App bundle not found at $APP_PATH"
@@ -1855,6 +1879,10 @@ jobs:
           fi
           if [[ -z "${OPENBURNBAR_APP_PROFILE_BASE64:-}" ]]; then
             echo "::error::OPENBURNBAR_APP_PROFILE_BASE64 is required. Store the com.openburnbar.app MAC_APP_DIRECT profile as a GitHub Actions secret."
+            exit 1
+          fi
+          if [[ -z "${OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64:-}" ]]; then
+            echo "::error::OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 is required. Store the dedicated com.openburnbar.app.safari-extension MAC_APP_DIRECT profile as a GitHub Actions secret."
             exit 1
           fi
 
@@ -1866,6 +1894,12 @@ jobs:
 
           payload = "".join(os.environ["OPENBURNBAR_APP_PROFILE_BASE64"].split())
           Path(os.environ["APP_PROFILE"]).write_bytes(base64.b64decode(payload))
+          safari_payload = "".join(
+              os.environ["OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64"].split()
+          )
+          Path(os.environ["SAFARI_EXTENSION_PROFILE"]).write_bytes(
+              base64.b64decode(safari_payload)
+          )
           PY
           security cms -D -i "$APP_PROFILE" > "$APP_PROFILE_PLIST"
           if [[ "$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$APP_PROFILE_PLIST" 2>/dev/null || true)" != "true" ]]; then
@@ -1883,6 +1917,12 @@ jobs:
           if ! grep -q "${APP_PROFILE_TEAM_ID}\\.\\*\\|${EXPECTED_APP_IDENTIFIER}" <<<"$APP_PROFILE_KEYCHAIN_GROUPS"; then
             echo "::error::App profile does not authorize the $EXPECTED_APP_IDENTIFIER Keychain access group."
             printf '%s\n' "$APP_PROFILE_KEYCHAIN_GROUPS"
+            exit 1
+          fi
+          APP_PROFILE_APP_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" "$APP_PROFILE_PLIST" 2>/dev/null || true)"
+          if ! grep -Fq "$EXPECTED_APP_GROUP" <<<"$APP_PROFILE_APP_GROUPS"; then
+            echo "::error::App profile does not authorize shared Safari App Group $EXPECTED_APP_GROUP."
+            printf '%s\n' "$APP_PROFILE_APP_GROUPS"
             exit 1
           fi
           python3 - "$ENTITLEMENTS" "$APP_SIGNING_ENTITLEMENTS" "$APP_PROFILE_TEAM_ID" "$BUNDLE_ID" <<'PY'
@@ -1992,6 +2032,12 @@ jobs:
             "runtime,library" \
             "com.openburnbar.privileged-input-killswitch-watchdog"
 
+          bash scripts/ci/sign-openburnbar-safari-extension.sh \
+            "$APP_PATH" \
+            "$SIGNING_IDENTITY" \
+            "$SAFARI_EXTENSION_PROFILE" \
+            "$APP_PROFILE_TEAM_ID"
+
           cp "$APP_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"
           codesign --force --timestamp --options runtime,library \
             --entitlements "$APP_SIGNING_ENTITLEMENTS" \
@@ -2006,12 +2052,18 @@ jobs:
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputKillSwitchWatchdog" "com.openburnbar.privileged-input-killswitch-watchdog"
+          bash scripts/ci/verify-openburnbar-safari-extension.sh \
+            "$APP_PATH" \
+            direct \
+            "$APP_PROFILE_TEAM_ID" \
+            "$SAFARI_EXTENSION_PROFILE"
           bash scripts/ci/verify-daemon-release-signing.sh "$APP_PATH" "$APP_PROFILE_TEAM_ID"
           ACTUAL_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBar-signed-entitlements.plist"
           codesign -d --entitlements :- "$APP_PATH" > "$ACTUAL_ENTITLEMENTS" 2>/dev/null
           ACTUAL_APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :com.apple.application-identifier" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
           ACTUAL_TEAM_IDENTIFIER="$(/usr/libexec/PlistBuddy -c "Print :com.apple.developer.team-identifier" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
           ACTUAL_KEYCHAIN_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :keychain-access-groups" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
+          ACTUAL_APP_GROUPS="$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.application-groups" "$ACTUAL_ENTITLEMENTS" 2>/dev/null || true)"
           if [[ "$ACTUAL_APP_IDENTIFIER" != "$EXPECTED_APP_IDENTIFIER" || "$ACTUAL_TEAM_IDENTIFIER" != "$APP_PROFILE_TEAM_ID" ]]; then
             echo "::error::Direct-download app identity entitlements are wrong: app='${ACTUAL_APP_IDENTIFIER:-missing}' team='${ACTUAL_TEAM_IDENTIFIER:-missing}' expected app='$EXPECTED_APP_IDENTIFIER' team='$APP_PROFILE_TEAM_ID'."
             exit 1
@@ -2019,6 +2071,11 @@ jobs:
           if ! grep -q "$EXPECTED_APP_IDENTIFIER" <<<"$ACTUAL_KEYCHAIN_GROUPS"; then
             echo "::error::Direct-download app is missing Firebase Auth Keychain group $EXPECTED_APP_IDENTIFIER."
             printf '%s\n' "$ACTUAL_KEYCHAIN_GROUPS"
+            exit 1
+          fi
+          if ! grep -Fq "$EXPECTED_APP_GROUP" <<<"$ACTUAL_APP_GROUPS"; then
+            echo "::error::Direct-download app is missing shared Safari App Group $EXPECTED_APP_GROUP."
+            printf '%s\n' "$ACTUAL_APP_GROUPS"
             exit 1
           fi
           spctl --assess --type execute -vv "$APP_PATH" || true

@@ -24,7 +24,7 @@ final class DaemonSocketClientBufferTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func makeQuestion(index: Int, now: Date) -> BurnBarPendingQuestionSnapshot {
+    private static func makeQuestion(index: Int, now: Date) -> BurnBarPendingQuestionSnapshot {
         BurnBarPendingQuestionSnapshot(
             id: BurnBarQuestionID(rawValue: "question-\(index)"),
             projectSlug: "apollo",
@@ -61,7 +61,7 @@ final class DaemonSocketClientBufferTests: XCTestCase {
                 ),
                 freshness: .fresh
             ),
-            questions: (0..<questionCount).map { makeQuestion(index: $0, now: now) },
+            questions: (0..<questionCount).map { Self.makeQuestion(index: $0, now: now) },
             followups: [],
             missions: [],
             notificationHealth: BurnBarNotificationHealthSnapshot(checkedAt: now, channels: []),
@@ -199,7 +199,7 @@ final class DaemonSocketClientBufferTests: XCTestCase {
                     BurnBarRPCResponseEnvelope(
                         id: requestID,
                         result: BurnBarQuestionAnswerResponse(
-                            question: self.makeQuestion(index: 0, now: now),
+                            question: Self.makeQuestion(index: 0, now: now),
                             runtimeSnapshot: payload
                         )
                     )
@@ -242,7 +242,7 @@ final class DaemonSocketClientBufferTests: XCTestCase {
                     BurnBarRPCResponseEnvelope(
                         id: requestID,
                         result: BurnBarQuestionAnswerResponse(
-                            question: self.makeQuestion(index: 0, now: now)
+                            question: Self.makeQuestion(index: 0, now: now)
                         )
                     )
                 )
@@ -408,6 +408,196 @@ final class DaemonSocketClientBufferTests: XCTestCase {
             "Without an embedded snapshot the client must fetch one explicitly"
         )
     }
+
+    // MARK: - Safari learning request envelopes
+
+    func testSafariLearningMethods_sendAuthenticatedTypedRequestShapes() throws {
+        let now = Date(timeIntervalSince1970: 1_786_322_400)
+        let proposal = BurnBarSafariLearningProposal(
+            proposalId: "proposal-typed-envelope",
+            version: 4,
+            kind: .memory,
+            title: "Prefer compact comparison tables",
+            content: "Use a compact table when comparing three or more options.",
+            reason: "The user corrected this presentation repeatedly.",
+            expectedOutcome: "Future comparisons are easier to scan.",
+            sourceURL: "https://example.com/catalog",
+            sourceObservationId: "observation-typed-envelope",
+            reviewStatus: .approved,
+            createdAt: now,
+            updatedAt: now
+        )
+
+        let server = try FakeDaemonSocketServer { method, requestID in
+            let encoder = JSONEncoder()
+            switch method {
+            case BurnBarRPCMethod.learningTimeline.rawValue:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: requestID,
+                        result: BurnBarSafariLearningTimelineResponse(
+                            enabled: true,
+                            tier: "Pro",
+                            proposals: [proposal]
+                        )
+                    )
+                )
+            case BurnBarRPCMethod.learningOptIn.rawValue,
+                 BurnBarRPCMethod.learningForget.rawValue,
+                 BurnBarRPCMethod.learningOptOut.rawValue:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: requestID,
+                        result: BurnBarSafariLearningStateResponse(
+                            enabled: method
+                                != BurnBarRPCMethod.learningOptOut.rawValue,
+                            tier: "Pro",
+                            deletedEntryCount: method
+                                == BurnBarRPCMethod.learningForget.rawValue ? 1 : 0
+                        )
+                    )
+                )
+            case BurnBarRPCMethod.learningUpdate.rawValue,
+                 BurnBarRPCMethod.learningApprove.rawValue,
+                 BurnBarRPCMethod.learningReject.rawValue,
+                 BurnBarRPCMethod.learningRollback.rawValue:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope(
+                        id: requestID,
+                        result: BurnBarSafariLearningProposalResponse(
+                            proposal: proposal
+                        )
+                    )
+                )
+            default:
+                return try encoder.encode(
+                    BurnBarRPCResponseEnvelope<BurnBarSafariLearningStateResponse>(
+                        id: requestID,
+                        error: BurnBarRPCError(
+                            code: -32_601,
+                            message: "unexpected method \(method)"
+                        )
+                    )
+                )
+            }
+        }
+        defer { server.stop() }
+
+        _ = try OpenBurnBarDaemonSocketClient.safariLearningTimeline(
+            at: server.socketURL
+        )
+        _ = try OpenBurnBarDaemonSocketClient.optInToSafariLearning(
+            at: server.socketURL
+        )
+        _ = try OpenBurnBarDaemonSocketClient.updateSafariLearning(
+            BurnBarSafariLearningUpdateRequest(
+                proposalId: proposal.proposalId,
+                expectedVersion: 3,
+                title: proposal.title,
+                content: proposal.content
+            ),
+            at: server.socketURL
+        )
+        _ = try OpenBurnBarDaemonSocketClient.approveSafariLearning(
+            BurnBarSafariLearningMutationRequest(
+                proposalId: proposal.proposalId,
+                expectedVersion: 4
+            ),
+            at: server.socketURL
+        )
+        _ = try OpenBurnBarDaemonSocketClient.rejectSafariLearning(
+            BurnBarSafariLearningMutationRequest(
+                proposalId: proposal.proposalId,
+                expectedVersion: 4
+            ),
+            at: server.socketURL
+        )
+        _ = try OpenBurnBarDaemonSocketClient.forgetSafariLearning(
+            BurnBarSafariLearningForgetRequest(
+                proposalId: proposal.proposalId,
+                expectedVersion: 4
+            ),
+            at: server.socketURL
+        )
+        _ = try OpenBurnBarDaemonSocketClient.rollbackSafariLearning(
+            BurnBarSafariLearningRollbackRequest(
+                proposalId: proposal.proposalId,
+                targetVersion: 2
+            ),
+            at: server.socketURL
+        )
+        _ = try OpenBurnBarDaemonSocketClient.optOutOfSafariLearning(
+            BurnBarSafariLearningOptOutRequest(deleteLearnedProfile: true),
+            at: server.socketURL
+        )
+
+        let expectedMethods = [
+            BurnBarRPCMethod.learningTimeline.rawValue,
+            BurnBarRPCMethod.learningOptIn.rawValue,
+            BurnBarRPCMethod.learningUpdate.rawValue,
+            BurnBarRPCMethod.learningApprove.rawValue,
+            BurnBarRPCMethod.learningReject.rawValue,
+            BurnBarRPCMethod.learningForget.rawValue,
+            BurnBarRPCMethod.learningRollback.rawValue,
+            BurnBarRPCMethod.learningOptOut.rawValue
+        ]
+        XCTAssertEqual(server.requestedMethods, expectedMethods)
+
+        let requests = try server.rawRequests.map { data in
+            try XCTUnwrap(
+                JSONSerialization.jsonObject(with: data) as? [String: Any]
+            )
+        }
+        XCTAssertEqual(requests.count, expectedMethods.count)
+        for (request, expectedMethod) in zip(requests, expectedMethods) {
+            XCTAssertEqual(request["method"] as? String, expectedMethod)
+            XCTAssertEqual(request["authToken"] as? String, "test-token")
+            XCTAssertFalse((request["id"] as? String ?? "").isEmpty)
+            XCTAssertNotNil(
+                request["params"],
+                "\(expectedMethod) must carry an explicit params object"
+            )
+        }
+
+        let timelineParams = try XCTUnwrap(
+            requests[0]["params"] as? [String: Any]
+        )
+        XCTAssertTrue(
+            timelineParams.isEmpty,
+            "daemon.learning.timeline must encode params as exact {}"
+        )
+        XCTAssertEqual(
+            (requests[1]["params"] as? [String: Any])?["consentVersion"] as? Int,
+            1
+        )
+        let updateParams = try XCTUnwrap(
+            requests[2]["params"] as? [String: Any]
+        )
+        XCTAssertEqual(updateParams["proposalId"] as? String, proposal.proposalId)
+        XCTAssertEqual(updateParams["expectedVersion"] as? Int, 3)
+        XCTAssertEqual(updateParams["title"] as? String, proposal.title)
+        XCTAssertEqual(updateParams["content"] as? String, proposal.content)
+        XCTAssertEqual(
+            (requests[3]["params"] as? [String: Any])?["expectedVersion"] as? Int,
+            4
+        )
+        XCTAssertEqual(
+            (requests[4]["params"] as? [String: Any])?["expectedVersion"] as? Int,
+            4
+        )
+        XCTAssertEqual(
+            (requests[5]["params"] as? [String: Any])?["expectedVersion"] as? Int,
+            4
+        )
+        XCTAssertEqual(
+            (requests[6]["params"] as? [String: Any])?["targetVersion"] as? Int,
+            2
+        )
+        XCTAssertEqual(
+            (requests[7]["params"] as? [String: Any])?["deleteLearnedProfile"] as? Bool,
+            true
+        )
+    }
 }
 
 // MARK: - Fake daemon socket server
@@ -422,10 +612,15 @@ private final class FakeDaemonSocketServer: @unchecked Sendable {
     private let respond: @Sendable (_ method: String, _ requestID: String) throws -> Data
     private let lock = NSLock()
     private var methods: [String] = []
+    private var requests: [Data] = []
     private var stopped = false
 
     var requestedMethods: [String] {
         lock.withLock { methods }
+    }
+
+    var rawRequests: [Data] {
+        lock.withLock { requests }
     }
 
     init(respond: @escaping @Sendable (_ method: String, _ requestID: String) throws -> Data) throws {
@@ -498,7 +693,10 @@ private final class FakeDaemonSocketServer: @unchecked Sendable {
             let method = object["method"] as? String
         else { return }
         let requestID = object["id"] as? String ?? "unknown"
-        lock.withLock { methods.append(method) }
+        lock.withLock {
+            methods.append(method)
+            requests.append(request)
+        }
 
         guard let body = try? respond(method, requestID) else { return }
         let payload = body + Data([0x0A])

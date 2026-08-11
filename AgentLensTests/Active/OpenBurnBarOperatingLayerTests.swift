@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import GRDB
 import SwiftUI
+import ViewInspector
 import XCTest
 @testable import OpenBurnBar
 
@@ -14,26 +15,30 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
     private var savedControllerCalendarIntegrationEnabled = false
     private var savedControllerSimulatorToolsEnabled = false
 
-    override func setUp() {
-        super.setUp()
-        let settings = SettingsManager.shared
-        savedConversationIndexingEnabled = settings.conversationIndexingEnabled
-        savedConversationCloudBackupEnabled = settings.conversationCloudBackupEnabled
-        savedICloudSessionMirrorEnabled = settings.iCloudSessionMirrorEnabled
-        savedControllerTelegramEnabled = settings.controllerTelegramEnabled
-        savedControllerCalendarIntegrationEnabled = settings.controllerCalendarIntegrationEnabled
-        savedControllerSimulatorToolsEnabled = settings.controllerSimulatorToolsEnabled
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run {
+            let settings = SettingsManager.shared
+            savedConversationIndexingEnabled = settings.conversationIndexingEnabled
+            savedConversationCloudBackupEnabled = settings.conversationCloudBackupEnabled
+            savedICloudSessionMirrorEnabled = settings.iCloudSessionMirrorEnabled
+            savedControllerTelegramEnabled = settings.controllerTelegramEnabled
+            savedControllerCalendarIntegrationEnabled = settings.controllerCalendarIntegrationEnabled
+            savedControllerSimulatorToolsEnabled = settings.controllerSimulatorToolsEnabled
+        }
     }
 
-    override func tearDown() {
-        let settings = SettingsManager.shared
-        settings.conversationIndexingEnabled = savedConversationIndexingEnabled
-        settings.conversationCloudBackupEnabled = savedConversationCloudBackupEnabled
-        settings.iCloudSessionMirrorEnabled = savedICloudSessionMirrorEnabled
-        settings.controllerTelegramEnabled = savedControllerTelegramEnabled
-        settings.controllerCalendarIntegrationEnabled = savedControllerCalendarIntegrationEnabled
-        settings.controllerSimulatorToolsEnabled = savedControllerSimulatorToolsEnabled
-        super.tearDown()
+    override func tearDown() async throws {
+        await MainActor.run {
+            let settings = SettingsManager.shared
+            settings.conversationIndexingEnabled = savedConversationIndexingEnabled
+            settings.conversationCloudBackupEnabled = savedConversationCloudBackupEnabled
+            settings.iCloudSessionMirrorEnabled = savedICloudSessionMirrorEnabled
+            settings.controllerTelegramEnabled = savedControllerTelegramEnabled
+            settings.controllerCalendarIntegrationEnabled = savedControllerCalendarIntegrationEnabled
+            settings.controllerSimulatorToolsEnabled = savedControllerSimulatorToolsEnabled
+        }
+        try await super.tearDown()
     }
 
     func testOperatingLayerRepresentsSparseDirectionWhenIndexingIsOff() async throws {
@@ -114,15 +119,16 @@ final class OpenBurnBarOperatingLayerTests: XCTestCase {
         let layer = makeLayer(dataStore: store)
         await layer.refreshControlPlaneCache()
 
-        let text = renderedText(
-            OpenBurnBarCompactOperatingHomeCard(layer: layer, onOpenDashboard: {}),
-            size: CGSize(width: 420, height: 520)
-        )
-        let bodyDescription = String(reflecting: OpenBurnBarCompactOperatingHomeCard(layer: layer, onOpenDashboard: {}).body)
+        let view = OpenBurnBarCompactOperatingHomeCard(layer: layer, onOpenDashboard: {})
+        let inspected = try view.inspect()
+        let bodyDescription = String(reflecting: view.body)
         let snapshot = layer.snapshot
 
         XCTAssertEqual(snapshot.projectName, "Apollo")
-        XCTAssertFalse((snapshot.pendingHighlight ?? "").isEmpty)
+        let pendingHighlight = try XCTUnwrap(snapshot.pendingHighlight?.nonEmpty)
+        XCTAssertNoThrow(try inspected.find(text: "Apollo"))
+        XCTAssertNoThrow(try inspected.find(text: pendingHighlight))
+        XCTAssertNoThrow(try inspected.find(text: "Open Dashboard"))
         XCTAssertTrue(bodyDescription.contains("GlassCard"))
         XCTAssertTrue(bodyDescription.contains("OpenBurnBarControllerCompactSummary"))
         XCTAssertTrue(bodyDescription.contains("OpenBurnBarOperatingActionBar"))

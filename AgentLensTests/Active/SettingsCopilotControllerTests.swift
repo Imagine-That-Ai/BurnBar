@@ -18,8 +18,8 @@ final class SettingsCopilotControllerTests: XCTestCase {
     private var registry: SettingsActionRegistry!
     private var copilot: SettingsCopilotController!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         settings = SettingsManager()
         router = SettingsRouter()
         registry = SettingsActionRegistry(settingsManager: settings, router: router)
@@ -91,8 +91,7 @@ final class SettingsCopilotControllerTests: XCTestCase {
         [{"id":"setAppearanceDark","reason":"test"}]
         ```
         """
-        copilot.testParseProposedActions(from: text)
-        // Manually populate proposedActions since ask() needs a backend.
+        // Parse directly because ask() needs a backend.
         let actions = copilot.testParseProposedActions(from: text)
         // Use the parsing result to populate proposed actions via reflection
         // on the testParseProposedActions result.

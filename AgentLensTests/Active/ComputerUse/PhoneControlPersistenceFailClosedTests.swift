@@ -140,16 +140,23 @@ final class PhoneControlPersistenceFailClosedTests: XCTestCase {
     /// A `FileManager` that writes/reads normally but refuses to harden the
     /// 0o600 permission on the replay-counter file, modelling a sandbox/ACL
     /// denial or a hostile actor that pre-creates the path with locked owner.
-    private final class HardenDenyingFileManager: FileManager {
+    /// `FileManager` is `@unchecked Sendable`; the only added mutable state is
+    /// mediated by `Locked`, so inherited operations and attempt accounting are
+    /// safe when the persistence service invokes this test double concurrently.
+    private final class HardenDenyingFileManager: FileManager, @unchecked Sendable {
         struct HardenDenied: Error {}
-        private(set) var setAttributesAttempts = 0
+        private let setAttributesAttemptsBox = Locked(0)
+
+        var setAttributesAttempts: Int {
+            setAttributesAttemptsBox.read()
+        }
 
         override func setAttributes(
             _ attributes: [FileAttributeKey: Any],
             ofItemAtPath path: String
         ) throws {
             if attributes[.posixPermissions] != nil {
-                setAttributesAttempts += 1
+                setAttributesAttemptsBox.withLock { $0 += 1 }
                 throw HardenDenied()
             }
             try super.setAttributes(attributes, ofItemAtPath: path)

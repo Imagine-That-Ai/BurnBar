@@ -65,10 +65,10 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         }
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         dbQueue = nil
         dataStore = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Helper Methods
@@ -243,15 +243,12 @@ final class ContextPackSessionDetailSurfaceTests: XCTestCase {
         let conversation = try await dataStore.fetchConversation(id: stableId)
         XCTAssertNotNil(conversation)
 
-        var presentedAnchor: (id: String?, project: String?) = (nil, nil)
         let row = SessionDetailContextPackRow(
             session: session,
             conversation: conversation,
             dataStore: dataStore,
             isIndexingEnabled: SettingsManager.shared.conversationIndexingEnabled
-        ) { anchorId, anchorProject in
-            presentedAnchor = (anchorId, anchorProject)
-        }
+        ) { _, _ in }
 
         let view = try row.inspect()
         XCTAssertNoThrow(view, "ContextPackRow should render without crashing")

@@ -19,7 +19,7 @@ final class RemoteClipboardControllerMattersTests: XCTestCase {
     private var temporaryFiles: [URL] = []
     private var temporaryDefaultsSuites: [String] = []
 
-    override func tearDown() {
+    override func tearDown() async throws {
         for url in temporaryFiles {
             try? FileManager.default.removeItem(at: url)
         }
@@ -28,7 +28,7 @@ final class RemoteClipboardControllerMattersTests: XCTestCase {
         }
         temporaryFiles.removeAll()
         temporaryDefaultsSuites.removeAll()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Fakes

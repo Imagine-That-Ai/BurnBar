@@ -139,6 +139,7 @@ if [[ ! "$expected_team_id" =~ ^[A-Z0-9]{10}$ ]]; then
   echo "::error::Expected Apple team id is missing or invalid. Set OPENBURNBAR_EXPECTED_APPLE_TEAM_ID or project.yml DEVELOPMENT_TEAM." >&2
   exit 66
 fi
+expected_app_group="group.com.openburnbar.app"
 
 tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/openburnbar-public-mac-trust.XXXXXX")"
 dmg_path="$tmpdir/OpenBurnBar-public-macOS.dmg"
@@ -239,6 +240,7 @@ expected_app_identifier="${expected_team_id}.${bundle_id}"
 actual_app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.application-identifier' "$entitlements_plist" 2>/dev/null || true)"
 actual_team_identifier="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.developer.team-identifier' "$entitlements_plist" 2>/dev/null || true)"
 actual_keychain_groups="$(/usr/libexec/PlistBuddy -c 'Print :keychain-access-groups' "$entitlements_plist" 2>/dev/null || true)"
+actual_app_groups="$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups' "$entitlements_plist" 2>/dev/null || true)"
 if [[ "$actual_app_identifier" != "$expected_app_identifier" || "$actual_team_identifier" != "$expected_team_id" ]]; then
   echo "::error::Public app identity entitlements are wrong: app='${actual_app_identifier:-missing}' team='${actual_team_identifier:-missing}' expected app='$expected_app_identifier' team='$expected_team_id'." >&2
   exit 1
@@ -248,6 +250,11 @@ if ! grep -q "$expected_app_identifier" <<<"$actual_keychain_groups"; then
   printf '%s\n' "$actual_keychain_groups" >&2
   exit 1
 fi
+if ! grep -Fq "$expected_app_group" <<<"$actual_app_groups"; then
+  echo "::error::Public app is missing shared Safari App Group $expected_app_group." >&2
+  printf '%s\n' "$actual_app_groups" >&2
+  exit 1
+fi
 
 daemon_path="$app_path/Contents/Helpers/OpenBurnBarDaemon"
 if [[ ! -x "$daemon_path" ]]; then
@@ -255,6 +262,10 @@ if [[ ! -x "$daemon_path" ]]; then
   exit 1
 fi
 bash "$repo_root/scripts/ci/verify-daemon-release-signing.sh" "$app_path" "$expected_team_id"
+bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
+  "$app_path" \
+  direct \
+  "$expected_team_id"
 
 embedded_profile="$app_path/Contents/embedded.provisionprofile"
 if [[ ! -f "$embedded_profile" ]]; then
@@ -266,6 +277,7 @@ security cms -D -i "$embedded_profile" > "$embedded_profile_plist"
 profile_all_devices="$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$embedded_profile_plist" 2>/dev/null || true)"
 profile_app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$embedded_profile_plist" 2>/dev/null || true)"
 profile_keychain_groups="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:keychain-access-groups' "$embedded_profile_plist" 2>/dev/null || true)"
+profile_app_groups="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$embedded_profile_plist" 2>/dev/null || true)"
 if [[ "$profile_all_devices" != "true" || "$profile_app_identifier" != "$expected_app_identifier" ]]; then
   echo "::error::Embedded profile must be all-devices and authorize $expected_app_identifier; found allDevices='${profile_all_devices:-missing}' app='${profile_app_identifier:-missing}'." >&2
   exit 1
@@ -273,6 +285,11 @@ fi
 if ! grep -q "${expected_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$profile_keychain_groups"; then
   echo "::error::Embedded profile does not authorize the $expected_app_identifier Keychain group." >&2
   printf '%s\n' "$profile_keychain_groups" >&2
+  exit 1
+fi
+if ! grep -Fq "$expected_app_group" <<<"$profile_app_groups"; then
+  echo "::error::Embedded profile does not authorize shared Safari App Group $expected_app_group." >&2
+  printf '%s\n' "$profile_app_groups" >&2
   exit 1
 fi
 bash "$repo_root/scripts/ci/verify-signing-profile-certificate.sh" \
@@ -303,4 +320,4 @@ fi
 fail_gate "Gatekeeper app execution assessment" \
   spctl -a -vv --type execute "$app_path"
 
-echo "PASS: public macOS download is Developer ID signed by team $expected_team_id, version $expected_version, notarized, stapled, Firebase-configured, App-Check-clean, Firebase-Keychain-profiled, and Gatekeeper accepted."
+echo "PASS: public macOS download is Developer ID signed by team $expected_team_id, version $expected_version, notarized, stapled, Firebase-configured, App-Check-clean, shared Keychain/App-Group-profiled, Safari-appex verified, and Gatekeeper accepted."

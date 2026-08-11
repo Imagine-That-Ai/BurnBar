@@ -169,9 +169,13 @@ final class WarpQuotaAdapterMattersTests: XCTestCase {
 /// A `FileManager` that reports configured paths as existing but throws from
 /// `contentsOfDirectory(at:includingPropertiesForKeys:options:)`, simulating a
 /// sandbox/permission/IO fault on an otherwise-present directory.
-private final class ThrowingEnumerationFileManager: FileManager {
+private final class ThrowingEnumerationFileManager: FileManager, @unchecked Sendable {
     private let existingPaths: Set<String>
-    private(set) var didAttemptEnumeration = false
+    private let didAttemptEnumerationBox = Locked(false)
+
+    var didAttemptEnumeration: Bool {
+        didAttemptEnumerationBox.read()
+    }
 
     init(existingPaths: [String]) {
         self.existingPaths = Set(existingPaths)
@@ -187,7 +191,7 @@ private final class ThrowingEnumerationFileManager: FileManager {
         includingPropertiesForKeys keys: [URLResourceKey]?,
         options mask: FileManager.DirectoryEnumerationOptions = []
     ) throws -> [URL] {
-        didAttemptEnumeration = true
+        didAttemptEnumerationBox.write(true)
         throw CocoaError(.fileReadNoPermission)
     }
 }

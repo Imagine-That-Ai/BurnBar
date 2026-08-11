@@ -1,7 +1,12 @@
 import SwiftUI
 import SnapshotTesting
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
+
+let openBurnBarSnapshotRecordModeInfoKey = "OpenBurnBarSnapshotRecordMode"
+
+private final class OpenBurnBarSnapshotBundleLocator: NSObject {}
 
 func openBurnBarIsGitHubActionsRunner(sourceFile: StaticString = #filePath) -> Bool {
     let environment = ProcessInfo.processInfo.environment
@@ -29,27 +34,51 @@ func openBurnBarShouldSkipVisualSnapshots(sourceFile: StaticString = #filePath) 
 
 // MARK: - Visual Regression Support
 
+let openBurnBarSnapshotBackingScale: CGFloat = 2
+
 /// Renders a SwiftUI view into an NSImage at a fixed size and color scheme,
-/// disabling animations for deterministic snapshot capture.
+/// disabling animations and pinning the skin and backing scale for deterministic capture.
 @MainActor
 func renderViewSnapshot<V: View>(
     _ view: V,
     size: CGSize,
-    colorScheme: ColorScheme
+    colorScheme: ColorScheme,
+    skin: AppSkin = .aurora
 ) -> NSImage {
-    let appearance = NSAppearance(
-        named: colorScheme == .dark ? .darkAqua : .aqua
-    )
+    return withSnapshotSkin(skin) {
+        let appearance = NSAppearance(
+            named: colorScheme == .dark ? .darkAqua : .aqua
+        )
 
-    var image = NSImage(size: size)
-    if let appearance {
-        appearance.performAsCurrentDrawingAppearance {
-            image = renderViewSnapshotBody(view, size: size, colorScheme: colorScheme, appearance: appearance)
+        var image = NSImage(size: size)
+        if let appearance {
+            appearance.performAsCurrentDrawingAppearance {
+                image = renderViewSnapshotBody(view, size: size, colorScheme: colorScheme, appearance: appearance)
+            }
+            return image
         }
-        return image
+
+        return renderViewSnapshotBody(view, size: size, colorScheme: colorScheme, appearance: nil)
+    }
+}
+
+@MainActor
+private func withSnapshotSkin<Result>(
+    _ skin: AppSkin,
+    operation: () -> Result
+) -> Result {
+    let defaults = UserDefaults.standard
+    let previousValue = defaults.object(forKey: AppSkin.storageKey)
+    defaults.set(skin.rawValue, forKey: AppSkin.storageKey)
+    defer {
+        if let previousValue {
+            defaults.set(previousValue, forKey: AppSkin.storageKey)
+        } else {
+            defaults.removeObject(forKey: AppSkin.storageKey)
+        }
     }
 
-    return renderViewSnapshotBody(view, size: size, colorScheme: colorScheme, appearance: nil)
+    return operation()
 }
 
 @MainActor
@@ -73,12 +102,33 @@ private func renderViewSnapshotBody<V: View>(
     // Force layout so AutoLayout / SwiftUI sizing resolves before capture.
     hostingView.layoutSubtreeIfNeeded()
 
-    guard let bitmapRep = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else {
+    let pixelWidth = max(1, Int((size.width * openBurnBarSnapshotBackingScale).rounded(.up)))
+    let pixelHeight = max(1, Int((size.height * openBurnBarSnapshotBackingScale).rounded(.up)))
+    guard let sourceBitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: pixelWidth,
+        pixelsHigh: pixelHeight,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .calibratedRGB,
+        bitmapFormat: [],
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else {
         XCTFail("Failed to create bitmap rep for snapshot")
         return NSImage(size: size)
     }
+    sourceBitmap.size = size
 
-    hostingView.cacheDisplay(in: hostingView.bounds, to: bitmapRep)
+    hostingView.cacheDisplay(in: hostingView.bounds, to: sourceBitmap)
+
+    guard let bitmapRep = sourceBitmap.converting(to: .sRGB, renderingIntent: .default) else {
+        XCTFail("Failed to convert snapshot bitmap to sRGB")
+        return NSImage(size: size)
+    }
+    bitmapRep.size = size
 
     let image = NSImage(size: size)
     image.addRepresentation(bitmapRep)
@@ -91,6 +141,7 @@ func XCTAssertAdaptiveSnapshot<V: View>(
     of view: V,
     size: CGSize,
     named: String,
+    skin: AppSkin = .aurora,
     precision: Float = 0.95,
     file: StaticString = #file,
     testName: String = #function,
@@ -101,13 +152,12 @@ func XCTAssertAdaptiveSnapshot<V: View>(
     }
 
     for scheme in [ColorScheme.dark, ColorScheme.light] {
-        let image = renderViewSnapshot(view, size: size, colorScheme: scheme)
+        let image = renderViewSnapshot(view, size: size, colorScheme: scheme, skin: skin)
         let suffix = scheme == .dark ? "dark" : "light"
-        assertSnapshot(
+        assertOpenBurnBarSnapshot(
             of: image,
-            as: .image(precision: precision),
             named: "\(named).\(suffix)",
-            record: snapshotRecordMode(),
+            precision: precision,
             file: file,
             testName: testName,
             line: line
@@ -122,6 +172,7 @@ func assertViewSnapshot<V: View>(
     size: CGSize,
     colorScheme: ColorScheme,
     named: String,
+    skin: AppSkin = .aurora,
     precision: Float = 0.95,
     file: StaticString = #file,
     testName: String = #function,
@@ -131,22 +182,86 @@ func assertViewSnapshot<V: View>(
         return
     }
 
-    let image = renderViewSnapshot(view, size: size, colorScheme: colorScheme)
-    assertSnapshot(
+    let image = renderViewSnapshot(view, size: size, colorScheme: colorScheme, skin: skin)
+    assertOpenBurnBarSnapshot(
         of: image,
-        as: .image(precision: precision),
         named: named,
-        record: snapshotRecordMode(),
+        precision: precision,
         file: file,
         testName: testName,
         line: line
     )
 }
 
-private func snapshotRecordMode() -> SnapshotTestingConfiguration.Record? {
-    let environment = ProcessInfo.processInfo.environment
-    return environment["SNAPSHOT_TESTING_RECORD"].flatMap(SnapshotTestingConfiguration.Record.init(rawValue:))
-        ?? environment["TEST_RUNNER_SNAPSHOT_TESTING_RECORD"].flatMap(SnapshotTestingConfiguration.Record.init(rawValue:))
+@MainActor
+private func assertOpenBurnBarSnapshot(
+    of image: NSImage,
+    named name: String,
+    precision: Float,
+    file: StaticString,
+    testName: String,
+    line: UInt
+) {
+    let bundle = Bundle(for: OpenBurnBarSnapshotBundleLocator.self)
+    guard let snapshotDirectory = openBurnBarSnapshotReferenceDirectory(
+        resourceURL: bundle.resourceURL
+    ) else {
+        XCTFail(
+            "OpenBurnBarTests has no file-backed resource directory for snapshot references",
+            file: file,
+            line: line
+        )
+        return
+    }
+
+    if let failure = verifySnapshot(
+        of: image,
+        as: .image(precision: precision),
+        named: name,
+        record: snapshotRecordMode(bundleInfo: bundle.infoDictionary ?? [:]),
+        snapshotDirectory: snapshotDirectory,
+        file: file,
+        testName: testName,
+        line: line
+    ) {
+        XCTFail(failure, file: file, line: line)
+    }
+}
+
+func openBurnBarSnapshotReferenceDirectory(resourceURL: URL?) -> String? {
+    guard let resourceURL, resourceURL.isFileURL else {
+        return nil
+    }
+    return resourceURL.standardizedFileURL.path
+}
+
+private func snapshotRecordMode(
+    bundleInfo: [String: Any]
+) -> SnapshotTestingConfiguration.Record? {
+    return openBurnBarSnapshotRecordMode(
+        environment: ProcessInfo.processInfo.environment,
+        bundleInfo: bundleInfo
+    )
+}
+
+func openBurnBarSnapshotRecordMode(
+    environment: [String: String],
+    bundleInfo: [String: Any]
+) -> SnapshotTestingConfiguration.Record? {
+    if let mode = environment["SNAPSHOT_TESTING_RECORD"]
+        .flatMap(SnapshotTestingConfiguration.Record.init(rawValue:))
+        ?? environment["TEST_RUNNER_SNAPSHOT_TESTING_RECORD"]
+        .flatMap(SnapshotTestingConfiguration.Record.init(rawValue:))
+    {
+        return mode
+    }
+
+    guard let configuredValue = bundleInfo[openBurnBarSnapshotRecordModeInfoKey] as? String else {
+        return nil
+    }
+    let rawValue = configuredValue
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    return SnapshotTestingConfiguration.Record(rawValue: rawValue)
 }
 
 // MARK: - Snapshot Naming

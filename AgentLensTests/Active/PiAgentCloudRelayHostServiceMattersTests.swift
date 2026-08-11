@@ -177,21 +177,43 @@ final class PiAgentCloudRelayHostServiceMattersTests: XCTestCase {
 /// configured error so corrupt-stored, read-fault, and write-fault paths are
 /// exercisable; absence is the empty `storage`.
 private final class MattersTestKeychainBackend: KeychainStoreBackend {
-    var storage: [String: [String: Data]] = [:]
-    var readError: Error?
-    var writeError: Error?
+    private struct State: Sendable {
+        var storage: [String: [String: Data]] = [:]
+        var readError: KeychainStoreError?
+        var writeError: KeychainStoreError?
+    }
+
+    private let state = Locked(State())
+
+    var storage: [String: [String: Data]] {
+        state.read().storage
+    }
+
+    var readError: KeychainStoreError? {
+        get { state.read().readError }
+        set { state.withLock { $0.readError = newValue } }
+    }
+
+    var writeError: KeychainStoreError? {
+        get { state.read().writeError }
+        set { state.withLock { $0.writeError = newValue } }
+    }
 
     func set(_ value: Data, service: String, account: String) throws {
-        if let writeError { throw writeError }
-        storage[service, default: [:]][account] = value
+        try state.withLock { state in
+            if let writeError = state.writeError { throw writeError }
+            state.storage[service, default: [:]][account] = value
+        }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        if let readError { throw readError }
-        return storage[service]?[account]
+        try state.withLock { state in
+            if let readError = state.readError { throw readError }
+            return state.storage[service]?[account]
+        }
     }
 
     func delete(service: String, account: String) throws {
-        storage[service]?[account] = nil
+        state.withLock { $0.storage[service]?[account] = nil }
     }
 }

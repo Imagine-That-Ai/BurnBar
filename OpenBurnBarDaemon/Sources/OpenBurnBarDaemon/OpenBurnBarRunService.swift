@@ -57,6 +57,8 @@ struct BurnBarManagedRun: Sendable {
 
 struct BurnBarInterruptedComputerUseNormalization: Sendable {
     let interruptedGeneration: UInt64
+    let interruptedTool: BurnBarToolKind
+    let revocationRequirement: BurnBarComputerUseRunRequirement?
     var revocationCompleted = false
     var journalEventPersisted = false
 }
@@ -108,6 +110,20 @@ public struct BurnBarComputerUseRunRequirement: Sendable, Equatable {
     public let sessionID: BurnBarSessionID
     public let invocation: BurnBarToolInvocation
     public let generation: UInt64
+
+    public init(
+        runID: BurnBarRunID,
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID,
+        invocation: BurnBarToolInvocation,
+        generation: UInt64
+    ) {
+        self.runID = runID
+        self.clientID = clientID
+        self.sessionID = sessionID
+        self.invocation = invocation
+        self.generation = generation
+    }
 }
 
 public typealias BurnBarComputerUseBrowserDispatcher = @Sendable (
@@ -121,6 +137,28 @@ public typealias BurnBarComputerUseRunRevoker = @Sendable (
     _ runID: BurnBarRunID,
     _ expectedGeneration: UInt64
 ) async -> Void
+/// Dispatches one Safari action under the exact run binding that admitted it.
+///
+/// Unlike the legacy Linux browser dispatcher, the Safari seam receives the
+/// complete immutable requirement so the composition root can verify the
+/// run, tool call, client, browser-extension session, and generation before
+/// handing the invocation to `ComputerUseService`.
+public typealias BurnBarSafariComputerUseRunDispatcher = @Sendable (
+    _ requirement: BurnBarComputerUseRunRequirement
+) async throws -> BurnBarComputerUseBrowserDispatchResult
+public typealias BurnBarSafariComputerUseRunBindingChecker = @Sendable (
+    _ requirement: BurnBarComputerUseRunRequirement
+) async -> Bool
+public typealias BurnBarSafariComputerUseRunRevoker = @Sendable (
+    _ requirement: BurnBarComputerUseRunRequirement
+) async -> Void
+public typealias BurnBarSafariLearningRecallProvider = @Sendable (
+    _ query: String,
+    _ limit: Int
+) async throws -> String?
+public typealias BurnBarSafariLearningObservationSink = @Sendable (
+    _ observation: BurnBarSafariLearningObservation
+) async throws -> Void
 
 public actor BurnBarRunService {
     public static let controllerRuntimeClientID = BurnBarClientID(rawValue: "openburnbar-controller-runtime")
@@ -142,10 +180,17 @@ public actor BurnBarRunService {
     let computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher?
     let computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker?
     let computerUseRunRevoker: BurnBarComputerUseRunRevoker?
+    let safariComputerUseRunDispatcher: BurnBarSafariComputerUseRunDispatcher?
+    let safariComputerUseRunBindingChecker: BurnBarSafariComputerUseRunBindingChecker?
+    let safariComputerUseRunRevoker: BurnBarSafariComputerUseRunRevoker?
+    let safariLearningRecallProvider: BurnBarSafariLearningRecallProvider?
+    let safariLearningObservationSink: BurnBarSafariLearningObservationSink?
     let logger: BurnBarDaemonLogger
 
     var runs: [BurnBarRunID: BurnBarManagedRun] = [:]
     var runOrder: [BurnBarRunID] = []
+    var safariHandoffRuns: [BurnBarRunID: BurnBarRunStateSnapshot] = [:]
+    var safariHandoffRunOrder: [BurnBarRunID] = []
     var computerUseResumeClaims: [BurnBarRunID: UUID] = [:]
     var pendingInterruptedComputerUseNormalizations:
         [BurnBarRunID: BurnBarInterruptedComputerUseNormalization] = [:]
@@ -171,6 +216,11 @@ public actor BurnBarRunService {
         computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher? = nil,
         computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker? = nil,
         computerUseRunRevoker: BurnBarComputerUseRunRevoker? = nil,
+        safariComputerUseRunDispatcher: BurnBarSafariComputerUseRunDispatcher? = nil,
+        safariComputerUseRunBindingChecker: BurnBarSafariComputerUseRunBindingChecker? = nil,
+        safariComputerUseRunRevoker: BurnBarSafariComputerUseRunRevoker? = nil,
+        safariLearningRecallProvider: BurnBarSafariLearningRecallProvider? = nil,
+        safariLearningObservationSink: BurnBarSafariLearningObservationSink? = nil,
         maxInMemoryRuns: Int = 200,
         evictionPolicy: BurnBarRunRegistryEvictionPolicy = .maxCount(200),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "run-service")
@@ -191,6 +241,11 @@ public actor BurnBarRunService {
         self.computerUseBrowserDispatcher = computerUseBrowserDispatcher
         self.computerUseRunBindingChecker = computerUseRunBindingChecker
         self.computerUseRunRevoker = computerUseRunRevoker
+        self.safariComputerUseRunDispatcher = safariComputerUseRunDispatcher
+        self.safariComputerUseRunBindingChecker = safariComputerUseRunBindingChecker
+        self.safariComputerUseRunRevoker = safariComputerUseRunRevoker
+        self.safariLearningRecallProvider = safariLearningRecallProvider
+        self.safariLearningObservationSink = safariLearningObservationSink
         self.maxInMemoryRuns = max(maxInMemoryRuns, 1)
         self.evictionPolicy = evictionPolicy
         self.logger = logger
@@ -232,6 +287,9 @@ public actor BurnBarRunService {
     }
 
     public func snapshot(for runID: BurnBarRunID) async -> BurnBarRunStateSnapshot? {
+        if let handoff = safariHandoffRuns[runID] {
+            return handoff
+        }
         do {
             try await restorePersistedRunsIfNeeded()
             try await restoreSingleRunIfNeeded(runID: runID)
@@ -244,6 +302,80 @@ public actor BurnBarRunService {
         return runs[runID]?.snapshot
     }
 
+    /// Records a successfully launched, read-only Safari CLI hand-off in the
+    /// ordinary run projection. The external CLI is not an agent-loop process,
+    /// so launch completion is terminal; `run.poll` still receives an exact,
+    /// Safari-owned identity instead of a synthetic browser-only token.
+    public func recordCompletedSafariHandoff(
+        runID: BurnBarRunID,
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID,
+        targetHarness: String
+    ) async throws -> BurnBarRunStateSnapshot {
+        try await restorePersistedRunsIfNeeded()
+        try await clientRegistry.requireAttached(clientID, sessionID: sessionID)
+        guard runs[runID] == nil, safariHandoffRuns[runID] == nil else {
+            throw BurnBarRunServiceError.externalRunAlreadyExists(runID)
+        }
+
+        let snapshot = BurnBarRunStateSnapshot(
+            runID: runID,
+            clientID: clientID,
+            sessionID: sessionID,
+            phase: .completed,
+            modelID: "cli:\(targetHarness)",
+            updatedAt: Date()
+        )
+        safariHandoffRuns[runID] = snapshot
+        safariHandoffRunOrder.append(runID)
+        evictSafariHandoffRunsIfNeeded()
+
+        do {
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: runID,
+                    kind: .runCreated,
+                    phase: .waitingOnCompanion,
+                    payload: .object([
+                        "surface": .string("safari_extension"),
+                        "kind": .string("cli_handoff"),
+                        "targetHarness": .string(targetHarness)
+                    ]),
+                    emittedAt: snapshot.updatedAt
+                )
+            )
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: runID,
+                    kind: .runCompleted,
+                    phase: .completed,
+                    payload: .object([
+                        "outcome": .string("handoff_launched")
+                    ]),
+                    emittedAt: snapshot.updatedAt
+                )
+            )
+        } catch {
+            logger.warning(
+                "safari_handoff_run_journal_failed",
+                metadata: [
+                    "run_id": runID.rawValue,
+                    "error": error.localizedDescription
+                ]
+            )
+        }
+
+        logger.notice(
+            "safari_handoff_run_recorded",
+            metadata: [
+                "run_id": runID.rawValue,
+                "client_id": clientID.rawValue,
+                "target_harness": targetHarness
+            ]
+        )
+        return snapshot
+    }
+
     public func computerUseRequirement(
         for runID: BurnBarRunID
     ) async -> BurnBarComputerUseRunRequirement? {
@@ -253,7 +385,8 @@ public actor BurnBarRunService {
               run.snapshot.phase == .awaitingComputerUseSession,
               let invocation = run.pendingComputerUseInvocation,
               invocation.runID == runID,
-              invocation.tool.isBrowserComputerUse else {
+              invocation.requestedBy == run.snapshot.clientID,
+              isRunManagedComputerUse(invocation.tool) else {
             return nil
         }
         return BurnBarComputerUseRunRequirement(
@@ -272,7 +405,8 @@ public actor BurnBarRunService {
                   run.snapshot.phase == .awaitingComputerUseSession,
                   let invocation = run.pendingComputerUseInvocation,
                   invocation.runID == runID,
-                  invocation.tool.isBrowserComputerUse else {
+                  invocation.requestedBy == run.snapshot.clientID,
+                  isRunManagedComputerUse(invocation.tool) else {
                 return nil
             }
             return ComputerUseRunRequirementSummary(
@@ -303,10 +437,16 @@ public actor BurnBarRunService {
               let invocation = run.pendingComputerUseInvocation,
               invocation.runID == runID,
               invocation.callID == expectedCallID,
+              invocation.requestedBy == run.snapshot.clientID,
               run.computerUseGeneration == expectedGeneration,
-              invocation.tool.isBrowserComputerUse else {
+              isRunManagedComputerUse(invocation.tool) else {
             return false
         }
+        let requirement = makeComputerUseRequirement(
+            for: run,
+            invocation: invocation,
+            generation: expectedGeneration
+        )
         guard computerUseResumeClaims[runID] == nil else { return false }
         let claimID = UUID()
         computerUseResumeClaims[runID] = claimID
@@ -315,14 +455,15 @@ public actor BurnBarRunService {
                 computerUseResumeClaims.removeValue(forKey: runID)
             }
         }
-        if let computerUseRunBindingChecker,
-           await computerUseRunBindingChecker(runID, expectedGeneration) == false {
+        guard await computerUseBindingPermits(requirement) else {
             return false
         }
 
         guard let current = runs[runID],
               current.snapshot.phase == .awaitingComputerUseSession,
-              current.pendingComputerUseInvocation?.callID == expectedCallID,
+              current.snapshot.clientID == requirement.clientID,
+              current.snapshot.sessionID == requirement.sessionID,
+              current.pendingComputerUseInvocation == invocation,
               current.computerUseGeneration == expectedGeneration,
               computerUseResumeClaims[runID] == claimID else {
             return false
@@ -352,7 +493,12 @@ public actor BurnBarRunService {
                 return false
             }
             run = claimed
-            try await executeBrowserToolInvocation(invocation, for: &run, alreadyClaimed: true)
+            try await executeBrowserToolInvocation(
+                invocation,
+                for: &run,
+                alreadyClaimed: true,
+                bindingRequirement: requirement
+            )
             guard let stillClaimed = runs[runID],
                   stillClaimed.snapshot.phase == .executingTool,
                   stillClaimed.activeToolCallID == expectedCallID,
@@ -387,7 +533,7 @@ public actor BurnBarRunService {
                 )
                 try? await writeCheckpoint(for: failed)
                 computerUseResumeClaims.removeValue(forKey: runID)
-                await computerUseRunRevoker?(runID, expectedGeneration)
+                await revokeComputerUseBinding(requirement)
             }
             throw error
         }
@@ -403,7 +549,7 @@ public actor BurnBarRunService {
             if computerUseResumeClaims[runID] == claimID {
                 computerUseResumeClaims.removeValue(forKey: runID)
             }
-            await computerUseRunRevoker?(runID, expectedGeneration)
+            await revokeComputerUseBinding(requirement)
         }
         return true
     }
@@ -411,8 +557,10 @@ public actor BurnBarRunService {
     public func listRuns(_ request: BurnBarRunListRequest) async throws -> BurnBarRunListResponse {
         try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireAttached(request.clientID)
-        let snapshots = runOrder
-            .compactMap { runs[$0]?.snapshot }
+        let snapshots = (
+            runOrder.compactMap { runs[$0]?.snapshot }
+                + safariHandoffRunOrder.compactMap { safariHandoffRuns[$0] }
+        )
             .sorted { $0.updatedAt > $1.updatedAt }
             .dropFirst(request.offset)
             .prefix(request.limit)
@@ -423,6 +571,12 @@ public actor BurnBarRunService {
         try await restorePersistedRunsIfNeeded()
         try await restoreSingleRunIfNeeded(runID: request.runID)
         try await clientRegistry.requireAttached(request.clientID)
+        if let handoff = safariHandoffRuns[request.runID] {
+            return BurnBarRunDetailResponse(
+                run: handoff,
+                arbitration: await clientRegistry.arbitration()
+            )
+        }
         guard let run = runs[request.runID] else {
             throw BurnBarRunServiceError.runNotFound(request.runID)
         }
@@ -442,6 +596,19 @@ public actor BurnBarRunService {
 
         let scopedRuns: [BurnBarManagedRun]
         if let runID = request.runID {
+            if let handoff = safariHandoffRuns[runID] {
+                guard handoff.clientID == request.clientID,
+                      handoff.sessionID == request.sessionID else {
+                    throw BurnBarRunServiceError.runNotFound(runID)
+                }
+                return BurnBarRunEventBatch(
+                    runs: [handoff],
+                    approvals: [],
+                    pendingToolCalls: [],
+                    arbitration: await clientRegistry.arbitration(),
+                    emittedAt: Date()
+                )
+            }
             try await restoreSingleRunIfNeeded(runID: runID)
             guard let run = runs[runID] else {
                 throw BurnBarRunServiceError.runNotFound(runID)
@@ -458,8 +625,18 @@ public actor BurnBarRunService {
         let approvals = scopedRuns.compactMap(\.approvalRequest)
         let pendingToolCalls = await workspaceBridgeBroker.activeCallsList(for: runIDs)
 
+        let handoffSnapshots = request.runID == nil
+            ? safariHandoffRunOrder.compactMap { safariHandoffRuns[$0] }
+                .filter {
+                    $0.clientID == request.clientID
+                        && $0.sessionID == request.sessionID
+                }
+            : []
         return BurnBarRunEventBatch(
-            runs: scopedRuns.map(\.snapshot),
+            runs: (scopedRuns.map(\.snapshot) + handoffSnapshots)
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .prefix(request.limit)
+                .map { $0 },
             approvals: approvals,
             pendingToolCalls: pendingToolCalls,
             arbitration: await clientRegistry.arbitration(),
@@ -545,12 +722,66 @@ public actor BurnBarRunService {
     public func cancelRun(_ request: BurnBarRunCancelRequest) async throws -> BurnBarRunDetailResponse {
         try await restorePersistedRunsIfNeeded()
         try await clientRegistry.requireController(request.clientID)
+        if let handoff = safariHandoffRuns[request.runID] {
+            return BurnBarRunDetailResponse(
+                run: handoff,
+                arbitration: await clientRegistry.arbitration()
+            )
+        }
         try await restoreSingleRunIfNeeded(runID: request.runID)
-        guard var run = runs[request.runID] else {
-            throw BurnBarRunServiceError.runNotFound(request.runID)
+        return try await cancelManagedRun(
+            runID: request.runID,
+            requestedBy: request.clientID,
+            reason: request.reason ?? "Cancelled by controller."
+        )
+    }
+
+    /// Cancels a run only when it is still owned by the exact attached Safari
+    /// client/session pair. This is the non-interactive Stop path: it bypasses
+    /// controller arbitration, but it never grants one Safari session authority
+    /// over another client's run.
+    @discardableResult
+    public func cancelSafariRun(
+        _ runID: BurnBarRunID,
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID,
+        reason: String
+    ) async throws -> Bool {
+        try await restorePersistedRunsIfNeeded()
+        try await clientRegistry.requireAttached(clientID, sessionID: sessionID)
+        if let handoff = safariHandoffRuns[runID] {
+            return handoff.clientID == clientID && handoff.sessionID == sessionID
+        }
+        try await restoreSingleRunIfNeeded(runID: runID)
+        guard let run = runs[runID],
+              run.snapshot.clientID == clientID,
+              run.snapshot.sessionID == sessionID else {
+            return false
+        }
+        if [.completed, .failed, .cancelled].contains(run.snapshot.phase) {
+            return true
+        }
+        _ = try await cancelManagedRun(
+            runID: runID,
+            requestedBy: clientID,
+            reason: reason
+        )
+        return true
+    }
+
+    private func cancelManagedRun(
+        runID: BurnBarRunID,
+        requestedBy clientID: BurnBarClientID,
+        reason message: String
+    ) async throws -> BurnBarRunDetailResponse {
+        guard var run = runs[runID] else {
+            throw BurnBarRunServiceError.runNotFound(runID)
         }
 
-        let message = request.reason ?? "Cancelled by controller."
+        let revocationRequirement = computerUseRequirementForRevocation(
+            run,
+            generation: run.computerUseGeneration
+        )
         try transition(&run, to: .cancelled, errorMessage: message, activeApprovalID: nil)
         run.approvalRequest = nil
         run.activeToolCallID = nil
@@ -560,9 +791,13 @@ public actor BurnBarRunService {
         let cancellationGeneration = run.computerUseGeneration
         // Publish revocation state before the first await. A concurrent resume
         // must observe cancellation even while external session cleanup blocks.
-        runs[request.runID] = run
-        await computerUseRunRevoker?(request.runID, revokedComputerUseGeneration)
-        _ = await workspaceBridgeBroker.cancelActiveCall(for: request.runID)
+        runs[runID] = run
+        if let revocationRequirement {
+            await revokeComputerUseBinding(revocationRequirement)
+        } else {
+            await computerUseRunRevoker?(runID, revokedComputerUseGeneration)
+        }
+        _ = await workspaceBridgeBroker.cancelActiveCall(for: runID)
         try await appendJournalEvent(
             BurnBarRunJournalEvent(
                 runID: run.runID,
@@ -572,7 +807,7 @@ public actor BurnBarRunService {
                 emittedAt: Date()
             )
         )
-        if let current = runs[request.runID],
+        if let current = runs[runID],
            current.snapshot.phase == .cancelled,
            current.computerUseGeneration == cancellationGeneration {
             try await writeCheckpoint(for: current)
@@ -581,12 +816,19 @@ public actor BurnBarRunService {
         logger.notice(
             "run_cancelled",
             metadata: [
-                "run_id": request.runID.rawValue,
-                "client_id": request.clientID.rawValue
+                "run_id": runID.rawValue,
+                "client_id": clientID.rawValue
             ]
         )
 
-        return try await getRun(BurnBarRunGetRequest(runID: request.runID, clientID: request.clientID))
+        let current = runs[runID] ?? run
+        return BurnBarRunDetailResponse(
+            run: current.snapshot,
+            approvalRequest: current.approvalRequest,
+            pendingToolCall: await workspaceBridgeBroker.activeCall(for: runID),
+            loopState: current.loopState,
+            arbitration: await clientRegistry.arbitration()
+        )
     }
 
     public func retryRun(_ request: BurnBarRunRetryRequest) async throws -> BurnBarRunDetailResponse {
@@ -789,6 +1031,24 @@ public actor BurnBarRunService {
         }
     }
 
+    private func evictSafariHandoffRunsIfNeeded() {
+        let limit = max(maxInMemoryRuns, 1)
+        guard safariHandoffRuns.count > limit else { return }
+        let ordered = safariHandoffRunOrder
+            .compactMap { runID -> (BurnBarRunID, Date)? in
+                guard let snapshot = safariHandoffRuns[runID] else {
+                    return nil
+                }
+                return (runID, snapshot.updatedAt)
+            }
+            .sorted { $0.1 < $1.1 }
+        for (runID, _) in ordered {
+            guard safariHandoffRuns.count > limit else { break }
+            safariHandoffRuns.removeValue(forKey: runID)
+            safariHandoffRunOrder.removeAll { $0 == runID }
+        }
+    }
+
     private func restoreSingleRunIfNeeded(runID: BurnBarRunID) async throws {
         if runs[runID] != nil {
             try await finalizeInterruptedComputerUseNormalizationIfNeeded(for: runID)
@@ -858,14 +1118,12 @@ public actor BurnBarRunService {
             lastRecoveryDecision: checkpoint.lastRecoveryDecision,
             loopState: checkpoint.loopState
         )
-        let interruptedGeneration = try normalizeInterruptedBrowserComputerUse(&restoredRun)
+        let interruptedNormalization = try normalizeInterruptedBrowserComputerUse(&restoredRun)
         runs[checkpoint.runID] = restoredRun
-        if let interruptedGeneration {
+        if let interruptedNormalization {
             restoredPersistedRuns = false
             pendingInterruptedComputerUseNormalizations[checkpoint.runID] =
-                BurnBarInterruptedComputerUseNormalization(
-                    interruptedGeneration: interruptedGeneration
-                )
+                interruptedNormalization
         }
         if !runOrder.contains(checkpoint.runID) {
             runOrder.append(checkpoint.runID)
@@ -910,7 +1168,7 @@ public actor BurnBarRunService {
     /// no stale session or resume token can reattach.
     func normalizeInterruptedBrowserComputerUse(
         _ run: inout BurnBarManagedRun
-    ) throws -> UInt64? {
+    ) throws -> BurnBarInterruptedComputerUseNormalization? {
         guard run.snapshot.phase == .executingTool,
               run.pendingComputerUseInvocation == nil,
               let lastToolCall = run.lastToolCall,
@@ -918,6 +1176,10 @@ public actor BurnBarRunService {
             return nil
         }
         let interruptedGeneration = run.computerUseGeneration
+        let revocationRequirement = computerUseRequirementForRevocation(
+            run,
+            generation: interruptedGeneration
+        )
         run.computerUseGeneration &+= 1
         run.activeToolCallID = nil
         run.lastToolCall = BurnBarToolCallSnapshot(
@@ -937,7 +1199,11 @@ public actor BurnBarRunService {
             )
         )
         try transition(&run, to: .failed, errorMessage: Self.interruptedComputerUseMessage)
-        return interruptedGeneration
+        return BurnBarInterruptedComputerUseNormalization(
+            interruptedGeneration: interruptedGeneration,
+            interruptedTool: lastToolCall.tool,
+            revocationRequirement: revocationRequirement
+        )
     }
 
     private func findRunIDByApprovalID(_ approvalID: BurnBarApprovalID) async throws -> BurnBarRunID? {
