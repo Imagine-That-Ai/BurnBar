@@ -29,9 +29,7 @@ const { id, kind, size = "md", class: cls = "" } = Astro.props;
 
 const isHarness = kind === "harness";
 const logo = isHarness ? (HARNESS_LOGO[id] ?? null) : (MODEL_LOGO[id] ?? null);
-const setter = isHarness
-  ? `h--${classFor(HARNESS_CLASS, id)}`
-  : `m--${classFor(MODEL_CLASS, id)}`;
+const setter = isHarness ? `h--${classFor(HARNESS_CLASS, id)}` : `m--${classFor(MODEL_CLASS, id)}`;
 const display = isHarness ? harnessDisplay(id) : modelDisplay(id);
 const mono = monogramFor(id, display);
 ---

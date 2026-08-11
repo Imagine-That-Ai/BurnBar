@@ -266,9 +266,8 @@ const primaryCount = PROVIDERS_PRIMARY.length;
     font-family: var(--font-display);
     color: var(--text-bright);
     font-size: 1.2rem;
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
   }
   .legend__card p {
     color: var(--text-base);
@@ -315,9 +314,8 @@ const primaryCount = PROVIDERS_PRIMARY.length;
     color: var(--text-bright);
     font-size: 1.05rem;
     margin-bottom: var(--s-2);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
   }
   .caveats p {
     color: var(--text-base);
@@ -398,9 +396,8 @@ const primaryCount = PROVIDERS_PRIMARY.length;
     font-family: var(--font-display);
     font-size: 1.15rem;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
     letter-spacing: -0.014em;
     line-height: 1.18;
     text-wrap: balance;
@@ -442,5 +439,33 @@ const primaryCount = PROVIDERS_PRIMARY.length;
     .accountrouting__grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  /* ---------- light theme ----------
+
+     These cards hardcode the dark fill, white hairline borders and a black
+     drop shadow instead of leaning on --glass-bg. That is invisible on a
+     black canvas and wrong on paper: the values outrank the themed
+     `[data-theme="light"] .glass-pane` block in globals.css, so the cards
+     stayed dark windows while the page around them relit. The accent borders
+     already ride themed tokens (--status-*, --ember-core, --mercury-bright)
+     and are left alone; only the fill, hairline and shadow are restated. */
+  :root[data-theme="light"] .legend__card,
+  :root[data-theme="light"] .accountrouting__card {
+    background: var(--glass-bg-elevated);
+    border-color: var(--ink-line);
+    border-top-color: var(--ink-line-bright);
+    box-shadow:
+      0 1px 2px rgba(22, 19, 14, 0.04),
+      0 24px 48px -30px rgba(22, 19, 14, 0.4);
+  }
+  :root[data-theme="light"] .caveats li {
+    background: color-mix(in oklab, var(--ember-core) 5%, var(--glass-bg-elevated));
+    border-top-color: var(--ink-line-bright);
+    border-right-color: var(--ink-line);
+    border-bottom-color: var(--ink-line);
+    box-shadow:
+      0 1px 2px rgba(22, 19, 14, 0.04),
+      0 24px 48px -30px rgba(22, 19, 14, 0.4);
   }
 </style>

@@ -973,41 +973,14 @@ async function initArenaLive(): Promise<void> {
   );
 }
 
-/* ── atmosphere ───────────────────────────────────────────────────────── */
-
-/**
- * Fade the ember swarm out as the hero leaves. The canvas is position:fixed,
- * so CSS alone can't tie it to page position — without this it would sit
- * behind the leaderboard, and nothing animates behind a number.
- */
-function initAtmosphere(): void {
-  if (isReduced) return;
-  const root = document.documentElement;
-  const PEAK = 0.32;
-  let queued = false;
-
-  const update = (): void => {
-    queued = false;
-    const fade = Math.min(1, window.scrollY / (window.innerHeight * 0.72));
-    root.style.setProperty("--ins-atmo", (PEAK * (1 - fade)).toFixed(3));
-  };
-
-  window.addEventListener(
-    "scroll",
-    () => {
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(update);
-    },
-    { passive: true }
-  );
-  update();
-}
+/* Atmosphere — fading the background field out as the hero leaves — used to
+   live here as initAtmosphere(). It is now scripts/atmosphere.ts, loaded by
+   BaseLayout on every page: what this page needed turned out to be what every
+   page needed. */
 
 /* ── boot ─────────────────────────────────────────────────────────────── */
 
 function boot(): void {
-  initAtmosphere();
   initFigures();
   initTooltips();
   void initArenaLive();

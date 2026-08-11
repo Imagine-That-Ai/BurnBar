@@ -368,25 +368,19 @@ const faqEntries = [
     line-height: 0.98;
     letter-spacing: -0.04em;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 460;
+    font-weight: var(--wght-display);
+    --opsz: var(--opsz-h1);
   }
   .pagehead__hb {
     display: block;
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 360,
-      "ital" 1;
+    font-weight: var(--wght-light);
   }
   .pagehead__hsm {
     display: block;
     color: var(--text-mute);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 380;
+    font-weight: var(--wght-light);
     font-size: 0.52em;
     letter-spacing: 0.02em;
     margin-top: 0.4em;
@@ -468,9 +462,8 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
@@ -524,9 +517,8 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
@@ -577,6 +569,7 @@ const faqEntries = [
     line-height: 1.18;
     letter-spacing: -0.014em;
     text-wrap: balance;
+    --opsz: var(--opsz-body);
   }
   .exactstep p {
     color: var(--text-base);
@@ -623,9 +616,8 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
@@ -684,9 +676,8 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: 1.1rem;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
     letter-spacing: -0.014em;
     line-height: 1.2;
     margin-bottom: var(--s-2);
@@ -694,6 +685,7 @@ const faqEntries = [
   }
   .wontno--headline .wontno__h {
     font-size: 1.4rem;
+    --opsz: var(--opsz-lead);
   }
   .wontno p {
     color: var(--text-base);
@@ -711,9 +703,7 @@ const faqEntries = [
   .wontno p em {
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings:
-      "opsz" 36,
-      "ital" 1;
+    --opsz: var(--opsz-lead);
   }
   @media (max-width: 880px) {
     .wontdo__grid {
@@ -737,9 +727,8 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
@@ -759,9 +748,8 @@ const faqEntries = [
     font-family: var(--font-display);
     font-size: 1.1rem;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
     letter-spacing: -0.014em;
     margin-bottom: var(--s-2);
   }
@@ -791,9 +779,8 @@ const faqEntries = [
     margin-bottom: var(--s-3);
     font-family: var(--font-display);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
   }
   .endcta__ctas {
     display: flex;
@@ -808,5 +795,25 @@ const faqEntries = [
     gap: var(--s-5);
     justify-items: center;
     padding: var(--s-7) var(--s-6);
+  }
+
+  /* ---------- light theme ----------
+
+     .wontno hardcodes a dark red-tinted fill and a black drop shadow, which
+     reads as a dark window punched into a cream page. Keep the burn tint —
+     it is what marks these as the "will not" list — but carry it on paper
+     stock instead of on ink. --status-burn is themed, so the mix works in
+     both directions; only the fill and shadow need restating. */
+  :root[data-theme="light"] .wontno {
+    background: color-mix(in oklab, var(--status-burn) 5%, var(--glass-bg-elevated));
+    box-shadow:
+      0 1px 2px rgba(22, 19, 14, 0.04),
+      0 24px 48px -30px rgba(22, 19, 14, 0.4);
+  }
+  :root[data-theme="light"] .wontno--headline {
+    background: color-mix(in oklab, var(--status-burn) 9%, var(--glass-bg-elevated));
+    box-shadow:
+      0 16px 40px -28px color-mix(in oklab, var(--status-burn) 40%, transparent),
+      0 24px 48px -30px rgba(22, 19, 14, 0.4);
   }
 </style>

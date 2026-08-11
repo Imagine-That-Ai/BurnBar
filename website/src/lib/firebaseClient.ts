@@ -12,7 +12,9 @@ import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 // app.burnbar.ai; the website uses the project's default firebaseapp.com domain,
 // which is an authorized domain for signInWithPopup on burnbar.ai). Security is
 // enforced server-side (Firestore rules + App Check), not by hiding these.
-const firebaseConfig = {
+// Exported so public, anonymous surfaces (e.g. the Arena vote page) can build
+// a dedicated app instance without App Check — see bench-arena.ts.
+export const firebaseConfig = {
   apiKey: import.meta.env.PUBLIC_FIREBASE_API_KEY || "AIzaSyBiAIHwf1MKZ6LN5HrsaPYsAR3UTe8hyw4",
   authDomain: import.meta.env.PUBLIC_FIREBASE_AUTH_DOMAIN || "burnbar.firebaseapp.com",
   projectId: import.meta.env.PUBLIC_FIREBASE_PROJECT_ID || "burnbar",

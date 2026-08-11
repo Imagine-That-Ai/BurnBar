@@ -495,12 +495,7 @@ const detectedCount = totalCount - primaryCount;
                   stroke="#ff8a3d"
                   stroke-width="1.5"
                   fill="none"></path>
-                <g
-                  font-family="ui-monospace, JetBrains Mono, Menlo, monospace"
-                  font-size="9"
-                  fill="#8b8275"
-                  text-anchor="middle"
-                >
+                <g font-family="var(--font-mono)" font-size="9" fill="#8b8275" text-anchor="middle">
                   <text x="14" y="80">M</text><text x="50" y="80">T</text><text x="86" y="80"
                     >W</text
                   >
@@ -710,9 +705,8 @@ const detectedCount = totalCount - primaryCount;
     font-size: var(--t-display);
     line-height: 0.97;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 460;
+    font-weight: var(--wght-display);
+    --opsz: var(--opsz-display);
     letter-spacing: -0.04em;
     text-wrap: balance;
   }
@@ -720,10 +714,7 @@ const detectedCount = totalCount - primaryCount;
     display: block;
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 360,
-      "ital" 1;
+    font-weight: var(--wght-light);
     letter-spacing: -0.04em;
   }
   .hero .lead {
@@ -758,7 +749,8 @@ const detectedCount = totalCount - primaryCount;
     font-size: 10px;
     color: var(--text-mute);
     letter-spacing: 0.12em;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
+    --opsz: var(--opsz-caption);
   }
   .hero__providers-list {
     display: flex;
@@ -848,9 +840,8 @@ const detectedCount = totalCount - primaryCount;
     font-family: var(--font-display);
     font-size: clamp(2rem, 1.4rem + 2vw, 3.4rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 420;
+    font-weight: var(--wght-regular);
+    --opsz: var(--opsz-h1);
     line-height: 0.9;
     letter-spacing: -0.04em;
   }
@@ -863,7 +854,7 @@ const detectedCount = totalCount - primaryCount;
     color: var(--ember-bright);
     letter-spacing: 0.04em;
     margin-left: 0.2em;
-    font-variation-settings: "wght" 500;
+    font-weight: var(--wght-medium);
   }
   .band__lbl {
     color: var(--text-mute);
@@ -1033,10 +1024,7 @@ const detectedCount = totalCount - primaryCount;
   .hydrantsec__hb {
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 360,
-      "ital" 1;
+    font-weight: var(--wght-light);
     display: block;
   }
   .hydrantsec__sub {
@@ -1090,9 +1078,8 @@ const detectedCount = totalCount - primaryCount;
   .hydrantsec__mode strong {
     color: var(--text-bright);
     font-family: var(--font-display);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
     font-size: 0.98rem;
     letter-spacing: -0.014em;
     grid-column: 2;
@@ -1133,9 +1120,8 @@ const detectedCount = totalCount - primaryCount;
     font-family: var(--font-display);
     font-size: var(--t-h3);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-medium);
+    --opsz: var(--opsz-h3);
     letter-spacing: -0.02em;
     text-wrap: balance;
   }
@@ -1187,7 +1173,7 @@ const detectedCount = totalCount - primaryCount;
   }
   .hydrantsec__rulesl strong {
     color: var(--text-bright);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
     font-size: 0.96rem;
     display: block;
   }
@@ -1269,7 +1255,7 @@ const detectedCount = totalCount - primaryCount;
   }
   .hermes__listbody strong {
     color: var(--text-bright);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
     margin-right: 0.35em;
   }
   .hermes__mark {
@@ -1341,7 +1327,7 @@ const detectedCount = totalCount - primaryCount;
     padding: 1px 6px;
     border-radius: 4px;
     color: var(--text-bright);
-    font-variation-settings: "wght" 500;
+    font-weight: var(--wght-medium);
     font-size: 0.88em;
   }
   .atom--ember {
@@ -1401,9 +1387,8 @@ const detectedCount = totalCount - primaryCount;
     font-size: var(--t-h3);
     line-height: 1.2;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 400;
+    font-weight: var(--wght-regular);
+    --opsz: var(--opsz-h3);
     letter-spacing: -0.018em;
   }
   .trust__pull em {
@@ -1477,18 +1462,14 @@ const detectedCount = totalCount - primaryCount;
     font-size: var(--t-display);
     line-height: 0.97;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 460;
+    font-weight: var(--wght-display);
+    --opsz: var(--opsz-display);
     letter-spacing: -0.04em;
   }
   .endcta__h .ember {
     color: var(--ember-bright);
     font-style: italic;
-    font-variation-settings:
-      "opsz" 144,
-      "wght" 360,
-      "ital" 1;
+    font-weight: var(--wght-light);
   }
   .endcta__ctas {
     display: flex;

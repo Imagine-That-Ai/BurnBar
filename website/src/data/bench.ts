@@ -127,6 +127,30 @@ export interface BenchDoc {
 const raw = readFileSync(join(process.cwd(), "public", "data", "bench.json"), "utf8");
 export const BENCH: BenchDoc = JSON.parse(raw) as BenchDoc;
 
+/**
+ * **`source.cells_measured` is a TRIAL count, not a cell count.**
+ *
+ * The pipeline's field name is a misnomer the site must not repeat: the value
+ * equals `evidence.global.n`, i.e. the sum of every measured cell's `n`, so it
+ * counts individual runs. On the current export it is 3,070 — against 658
+ * distinct (harness × model × task) cells (`TASK_CELLS`).
+ *
+ * Read this constant wherever the number is displayed, and label it *trials*.
+ * `test/bench-data.test.ts` pins the identity, so if a future export ever
+ * changes the field to mean what it says, the tests fail and the labels get
+ * revisited instead of silently flipping meaning under the copy.
+ */
+export const TRIALS_MEASURED: number = BENCH.source.cells_measured;
+
+/**
+ * Trials the pipeline dropped (superseded reruns, invalid runs). Same caveat
+ * as `TRIALS_MEASURED`: the export's `cells_excluded` name is the pipeline's,
+ * and the unit is not independently verifiable from the published files — so
+ * render it without asserting a noun ("368 excluded by policy"), never as
+ * "368 cells".
+ */
+export const EXCLUDED_MEASURED: number = BENCH.source.cells_excluded;
+
 /* ---------- presentation maps ----------
    Pinned entries cover the contract §5b roster (the pipeline's target
    harness/model ids) plus the ids in the current export. Anything else
@@ -257,6 +281,64 @@ export function monogramFor(id: string, display?: string): string {
     .join("");
 }
 
+/* ---------- statistics ---------- */
+
+/**
+ * True median: the middle value on odd-length input, the **mean of the two
+ * middle values** on even-length input.
+ *
+ * This replaces the `xs[Math.floor(xs.length / 2)]` idiom that used to be
+ * copied around this file. That idiom silently reports the *upper* middle
+ * value whenever the input has even length, which biases every published
+ * median upward — and every model in the current export has exactly 8 stack
+ * cells, so the bias applied to all of them, all the time.
+ *
+ * Returns `null` on empty input rather than 0: "no measurement" and "zero
+ * dollars" are different claims and must not render as the same number.
+ */
+export function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  if (sorted.length % 2 === 1) return sorted[mid] ?? null;
+  const lo = sorted[mid - 1];
+  const hi = sorted[mid];
+  return lo == null || hi == null ? null : (lo + hi) / 2;
+}
+
+/* ---------- Amendment 12: subsidized pricing ----------
+   The muse-spark contributor tier is free under a data-sharing agreement, so
+   its measured cost is a true $0.00 that almost nobody actually pays. The
+   export republishes those cells at standard non-contributor rates as
+   `cost_standard_usd_median`.
+
+   House rule: a subsidized $0 must NEVER render on its own. Every cost render
+   site pairs it with the standard-tier equivalent, so "$0" can never be read
+   as "free for everyone". These two helpers are the single definition of
+   "what it would actually cost" and "is this $0 a subsidy" — use them instead
+   of re-deriving the test at each call site. */
+
+/** What a row costs at standard (non-contributor) prices. */
+export function effectiveCost(s: {
+  cost_usd_median: number | null;
+  cost_standard_usd_median?: number | null;
+}): number | null {
+  return s.cost_standard_usd_median ?? s.cost_usd_median;
+}
+
+/**
+ * True when a row's $0 is a subsidy with a published standard-tier price.
+ * A $0 with no standard-tier equivalent (e.g. a derived cost over zero
+ * recorded tokens) is *not* subsidized — there is nothing to disclose, and
+ * inventing a comparison price would be a fabrication.
+ */
+export function isSubsidized(s: {
+  cost_usd_median: number | null;
+  cost_standard_usd_median?: number | null;
+}): boolean {
+  return s.cost_usd_median === 0 && s.cost_standard_usd_median != null;
+}
+
 /* ---------- derived accessors ---------- */
 
 /** True for the stack's headline row: no family/language/platform slice. */
@@ -320,7 +402,16 @@ export interface ModelStat {
   meanSolution: number;
   meanStrict: number;
   bestStack: BenchStack | undefined;
+  /** Median measured cost per task across the model's stack cells. */
   medianCost: number | null;
+  /** Amendment 12: the same median at standard (non-contributor) prices —
+      each cell's standard-tier equivalent where one exists, its measured cost
+      otherwise. null when no cell carries a price at all. */
+  medianStandardCost: number | null;
+  /** True when `medianCost` is $0 only because of the contributor subsidy,
+      i.e. a standard-tier equivalent exists. Render sites must show
+      `medianStandardCost` alongside the $0 whenever this is true. */
+  subsidized: boolean;
   strongestFamily: { family: string; rate: number } | undefined;
   cells: number;
 }
@@ -332,11 +423,12 @@ export function modelStat(modelId: string): ModelStat | undefined {
   const meanSolution = cells.reduce((a, s) => a + s.solution_rate, 0) / (cells.length || 1);
   const meanStrict = cells.reduce((a, s) => a + s.strict_rate, 0) / (cells.length || 1);
   const bestStack = cells[0];
-  const costs = cells
-    .map((s) => s.cost_usd_median)
-    .filter((c): c is number => c != null)
-    .sort((a, b) => a - b);
-  const medianCost = costs.length > 0 ? (costs[Math.floor(costs.length / 2)] ?? 0) : null;
+  const costs = cells.map((s) => s.cost_usd_median).filter((c): c is number => c != null);
+  const medianCost = median(costs);
+  // Amendment 12 companion: the same slice repriced at standard rates, so a
+  // subsidized $0 median always has an honest number to sit next to.
+  const medianStandardCost = median(cells.map(effectiveCost).filter((c): c is number => c != null));
+  const subsidized = medianCost === 0 && cells.some(isSubsidized) && medianStandardCost != null;
 
   let strongestFamily: ModelStat["strongestFamily"];
   for (const fam of FAMILIES) {
@@ -351,6 +443,8 @@ export function modelStat(modelId: string): ModelStat | undefined {
     meanStrict,
     bestStack,
     medianCost,
+    medianStandardCost,
+    subsidized,
     strongestFamily,
     cells: cells.length
   };
@@ -470,8 +564,13 @@ export function frontierPoints(): BenchFrontierPoint[] {
 /** Headline KPIs for the strip under the hero. */
 export interface BenchKpis {
   stacks: number;
-  cellsMeasured: number;
-  cellsExcluded: number;
+  /** Measured **trials** (`source.cells_measured` is misnamed upstream — see
+      TRIALS_MEASURED). Label it "trials", never "cells". */
+  trialsMeasured: number;
+  /** Distinct measured (harness × model × task) cells — the real cell count. */
+  taskCells: number;
+  /** Trials excluded by policy. Render without a noun (see EXCLUDED_MEASURED). */
+  excludedMeasured: number;
   topStack: BenchStack | undefined;
   cheapestFrontier: BenchFrontierPoint | undefined;
   arenaVotes: number;
@@ -482,8 +581,9 @@ export function benchKpis(): BenchKpis {
   const frontier = frontierPoints();
   return {
     stacks: RANKED_STACKS.length,
-    cellsMeasured: BENCH.source.cells_measured,
-    cellsExcluded: BENCH.source.cells_excluded,
+    trialsMeasured: TRIALS_MEASURED,
+    taskCells: TASK_CELLS,
+    excludedMeasured: EXCLUDED_MEASURED,
     topStack: eligible[0] ?? RANKED_STACKS[0],
     cheapestFrontier: frontier[0],
     arenaVotes: BENCH.arena.votes
@@ -810,6 +910,11 @@ export interface EvidenceCell {
   cost_source: BenchCostSource;
   cost_input_usd_median: number | null;
   cost_output_usd_median: number | null;
+  /** Amendment 12: standard-tier (non-contributor) equivalent for subsidized
+      cells — the export ships it per cell as well as per stack. null when the
+      cell's price carries no subsidy (including a $0 that is simply a derived
+      cost over zero recorded tokens, which has nothing to disclose). */
+  cost_standard_usd_median: number | null;
   wall_seconds_median: number | null;
   tokens_median: number | null;
   /** Runs that ended with zero source edits (diff touched only harness
@@ -897,6 +1002,14 @@ export const EVIDENCE: EvidenceDoc = JSON.parse(evidenceRaw) as EvidenceDoc;
 
 /** Measured cells only — the export never mixes inferred rows into cells. */
 export const EVIDENCE_CELLS: EvidenceCell[] = EVIDENCE.cells;
+
+/**
+ * The genuine distinct-cell count: one entry per measured
+ * (harness × model × task) cell. This — not `TRIALS_MEASURED` — is the number
+ * to put behind the word "cells". 658 on the current export against 3,070
+ * trials; `test/bench-data.test.ts` pins the distinctness invariant.
+ */
+export const TASK_CELLS: number = EVIDENCE_CELLS.length;
 
 /** Trials in a cell that strict failed but the abandoned workspace passed. */
 export function flipTrials(cell: EvidenceCell): number {
@@ -1080,6 +1193,9 @@ export interface ReportMatrixCell {
   strict: number;
   flips: number;
   cost: number | null;
+  /** Amendment 12: the same median at standard (non-contributor) prices, so a
+      subsidized $0 is never published without its honest equivalent. */
+  costStandard: number | null;
   /** Kimi-judge median quality_mean across the pair's judged cells (1-5);
       null when no trials were judged. */
   quality: number | null;
@@ -1099,7 +1215,15 @@ export interface ReportMatrix {
 export function reportMatrix(): ReportMatrix {
   const agg = new Map<
     string,
-    ReportMatrixCell & { sp: number; stp: number; costs: number[]; qPairs: [number, number][] }
+    ReportMatrixCell & {
+      sp: number;
+      stp: number;
+      costs: number[];
+      /** Repriced costs, nulls included — filtered where the median is taken
+          so the hot loop stays branch-free. */
+      stdCosts: (number | null)[];
+      qPairs: [number, number][];
+    }
   >();
   for (const c of EVIDENCE_CELLS) {
     const key = `${c.harness}|${c.model}`;
@@ -1114,11 +1238,13 @@ export function reportMatrix(): ReportMatrix {
         strict: 0,
         flips: 0,
         cost: null,
+        costStandard: null,
         quality: null,
         qualityN: 0,
         sp: 0,
         stp: 0,
         costs: [],
+        stdCosts: [],
         qPairs: []
       };
       agg.set(key, a);
@@ -1129,6 +1255,7 @@ export function reportMatrix(): ReportMatrix {
     a.stp += c.strict_passes;
     a.flips += flipTrials(c);
     if (c.cost_usd_median != null) a.costs.push(c.cost_usd_median);
+    a.stdCosts.push(effectiveCost(c));
     if (c.quality_mean != null && c.quality_n != null && c.quality_n > 0) {
       a.qPairs.push([c.quality_mean, c.quality_n]);
       a.qualityN += c.quality_n;
@@ -1136,8 +1263,14 @@ export function reportMatrix(): ReportMatrix {
   }
   const cells = new Map<string, ReportMatrixCell>();
   for (const [key, a] of agg) {
-    const sorted = [...a.costs].sort((x, y) => x - y);
-    // n-weighted median of per-cell quality_means (1-5).
+    /* n-weighted median of per-cell quality_means (1-5).
+
+       NOTE: this weighted median deliberately reports an observed value
+       rather than interpolating between the two straddling the halfway
+       weight — a 1-5 rubric score is a judged grade, not a continuous
+       quantity, and averaging two grades invents a score no judge gave.
+       That is a different question from the plain-median bug fixed in
+       `median()`, which applies to the cost aggregations below. */
     let quality: number | null = null;
     if (a.qPairs.length > 0) {
       const clean = [...a.qPairs].sort((x, y) => x[0] - y[0]);
@@ -1160,7 +1293,8 @@ export function reportMatrix(): ReportMatrix {
       solution: a.n > 0 ? a.sp / a.n : 0,
       strict: a.n > 0 ? a.stp / a.n : 0,
       flips: a.flips,
-      cost: sorted.length > 0 ? (sorted[Math.floor(sorted.length / 2)] ?? null) : null,
+      cost: median(a.costs),
+      costStandard: median(a.stdCosts.filter((v): v is number => v != null)),
       quality,
       qualityN: a.qualityN
     });
@@ -1195,6 +1329,11 @@ export interface ReportModel {
   strict: number;
   flips: number;
   medianCost: number | null;
+  /** Amendment 12 companion to `medianCost` — see ModelStat. */
+  medianStandardCost: number | null;
+  /** True when `medianCost` is a subsidized $0; render sites must then show
+      `medianStandardCost` alongside it. */
+  subsidized: boolean;
   bestHarness: { harness: string; rate: number } | undefined;
   strongestFamily: { family: string; rate: number } | undefined;
 }
@@ -1218,6 +1357,8 @@ export function reportModels(): ReportModel[] {
       strict: n > 0 ? stp / n : 0,
       flips,
       medianCost: stat?.medianCost ?? null,
+      medianStandardCost: stat?.medianStandardCost ?? null,
+      subsidized: stat?.subsidized ?? false,
       bestHarness: bestCell
         ? { harness: bestCell.harness, rate: bestCell.solution_rate }
         : undefined,
@@ -1351,8 +1492,7 @@ export interface ReportQuality {
 export function reportQuality(): ReportQuality | null {
   type JudgedCell = EvidenceCell & { quality_mean: number; quality_n: number };
   const judgedCells = EVIDENCE_CELLS.filter(
-    (c): c is JudgedCell =>
-      c.quality_mean != null && c.quality_n != null && c.quality_n > 0
+    (c): c is JudgedCell => c.quality_mean != null && c.quality_n != null && c.quality_n > 0
   );
   if (judgedCells.length === 0) return null;
   let trials = 0;
@@ -1361,8 +1501,13 @@ export function reportQuality(): ReportQuality | null {
     trials += c.quality_n;
     allTrialMeans.push(c.quality_mean);
   }
+  /* Rubric-grade median. Like the weighted median in reportMatrix, this
+     reports an observed 1-5 grade on even-length input instead of averaging
+     the two middle ones: a judge score is a grade, and "4.5" would be a score
+     no judge assigned. Continuous quantities (costs) use `median()` instead,
+     which does average the middle pair. */
   const medianOf = (vals: number[]): number =>
-    vals.length === 0 ? 0 : [...vals].sort((a, b) => a - b)[Math.floor(vals.length / 2)] ?? 0;
+    vals.length === 0 ? 0 : ([...vals].sort((a, b) => a - b)[Math.floor(vals.length / 2)] ?? 0);
 
   // Per-stack: n-weighted median of per-cell quality_means + per-dimension
   // medians (the component scores behind the headline number).
@@ -1522,9 +1667,10 @@ export interface ReportQualityCommentary {
 /** Pick the best and worst rationale across a task's cells. The "best" is
     the highest quality_mean among the cells' "best" rationales; the "worst"
     is the lowest quality_mean among the cells' "worst" rationales. */
-function pickTaskSides(
-  cells: EvidenceCell[]
-): { best: QualityCommentarySide | null; worst: QualityCommentarySide | null } {
+function pickTaskSides(cells: EvidenceCell[]): {
+  best: QualityCommentarySide | null;
+  worst: QualityCommentarySide | null;
+} {
   const bests: QualityCommentarySide[] = [];
   const worsts: QualityCommentarySide[] = [];
   for (const c of cells) {
@@ -1548,12 +1694,10 @@ function pickTaskSides(
       else worsts.push(side);
     }
   }
-  const best = bests.length > 0
-    ? bests.reduce((a, b) => (b.qualityMean > a.qualityMean ? b : a))
-    : null;
-  const worst = worsts.length > 0
-    ? worsts.reduce((a, b) => (b.qualityMean < a.qualityMean ? b : a))
-    : null;
+  const best =
+    bests.length > 0 ? bests.reduce((a, b) => (b.qualityMean > a.qualityMean ? b : a)) : null;
+  const worst =
+    worsts.length > 0 ? worsts.reduce((a, b) => (b.qualityMean < a.qualityMean ? b : a)) : null;
   return { best, worst };
 }
 
@@ -1592,12 +1736,12 @@ export function reportQualityCommentary(): ReportQualityCommentary | null {
   for (const [task, cells] of byTask) {
     const { best, worst } = pickTaskSides(cells);
     const meta = EVIDENCE.tasks[task];
-    const qmeans = cells
-      .map((c) => c.quality_mean)
-      .filter((v): v is number => v != null);
+    const qmeans = cells.map((c) => c.quality_mean).filter((v): v is number => v != null);
+    // Rubric-grade median — observed grade on even-length input, matching
+    // reportQuality's medianOf. See the note there.
     const quality =
       qmeans.length > 0
-        ? [...qmeans].sort((a, b) => a - b)[Math.floor(qmeans.length / 2)] ?? 0
+        ? ([...qmeans].sort((a, b) => a - b)[Math.floor(qmeans.length / 2)] ?? 0)
         : 0;
     const n = cells.reduce((a, c) => a + (c.quality_n ?? 0), 0);
     const spread =
@@ -1742,9 +1886,12 @@ export function reportStats(): ReportStats {
     models: EVIDENCE.models.length,
     stacks: RANKED_STACKS.length,
     tasks: tasks.length,
-    cells: EVIDENCE_CELLS.length,
+    // `cells` is the genuine distinct-cell count; `trials` is the run count
+    // that bench.json misnames `cells_measured`. They are 658 and 3,070 on
+    // the current export — never interchangeable in copy.
+    cells: TASK_CELLS,
     trials: EVIDENCE.global.n,
-    excluded: BENCH.source.cells_excluded,
+    excluded: EXCLUDED_MEASURED,
     globalSolution: EVIDENCE.global.solution_rate,
     globalStrict: EVIDENCE.global.strict_rate,
     flipTrials: flipTrialsTotal,
@@ -1798,6 +1945,11 @@ export function reportDataset(): unknown {
       strict: m.strict,
       flips: m.flips,
       medianCost: m.medianCost,
+      // Amendment 12: the projection publishes the standard-tier equivalent
+      // next to every median, so an auditor reading the JSON sees the same
+      // disclosure the page renders.
+      medianStandardCost: m.medianStandardCost,
+      subsidized: m.subsidized,
       bestHarness: m.bestHarness,
       strongestFamily: m.strongestFamily
     })),
@@ -1809,8 +1961,11 @@ export function reportDataset(): unknown {
  * Slim projection for /data/bench-cells.json — the cell explorer's dataset.
  * Ids are table indices; rates ship as integer pass counts (never rounded
  * floats) so the client filters exactly. Costs rounded to 1e-4, wall to 0.1s.
- * Row: [h, m, t, n, solutionPasses, strictPasses, cost, wall, tokens, noopRuns]
- * — noopRuns is 0 until the export ships per-cell noop_runs.
+ * Row: [h, m, t, n, solutionPasses, strictPasses, cost, wall, tokens, noopRuns,
+ * costStandard] — noopRuns is 0 until the export ships per-cell noop_runs;
+ * costStandard is the Amendment 12 standard-tier equivalent (null unless the
+ * cell's price is subsidized), so the explorer can show a subsidized $0.00
+ * with the price a non-contributor would actually pay.
  */
 export function cellsDataset(): unknown {
   const harnessIds = [...new Set(EVIDENCE_CELLS.map((c) => c.harness))].sort();
@@ -1844,7 +1999,8 @@ export function cellsDataset(): unknown {
       round(c.cost_usd_median, 4),
       round(c.wall_seconds_median, 1),
       c.tokens_median == null ? null : Math.round(c.tokens_median),
-      c.noop_runs ?? 0
+      c.noop_runs ?? 0,
+      round(c.cost_standard_usd_median, 4)
     ])
   };
 }

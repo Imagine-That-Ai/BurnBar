@@ -68,8 +68,8 @@
      mono, the serif was doing purely editorial work and the page read as a
      magazine rather than an instrument. Geist ships with the site already,
      so this costs nothing to load. */
-  --font-display: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
-    sans-serif;
+  --font-display:
+    "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 
   color: var(--ins-ink-2);
   font-family: var(--font-body);
@@ -96,26 +96,17 @@
   --ins-ci: rgba(12, 16, 24, 0.24);
 }
 
-/* The ember swarm is atmosphere, not wallpaper. It burns behind the hero and
+/* The ember swarm is atmosphere, not wallpaper: it burns behind the hero and
    is gone by the time the first number arrives.
 
-   The canvas is position:fixed, so a viewport-relative mask would re-reveal it
-   at every scroll position — the swarm would end up behind the leaderboard,
-   which is exactly what this page exists to stop. Opacity is therefore driven
-   from scroll position by bench-instrument.ts, which sets --ins-atmo on
-   <html>. The default covers the pre-hydration first paint. */
-:root {
-  --ins-atmo: 0.32;
-}
-
-body:has(.ins) #bgCanvas,
-body:has(.ins) #bgDots {
-  opacity: var(--ins-atmo);
-  transition: opacity 180ms linear;
-  -webkit-mask-image: radial-gradient(125% 92% at 46% 14%, #000 30%, transparent 70%);
-  mask-image: radial-gradient(125% 92% at 46% 14%, #000 30%, transparent 70%);
-}
-
+   That rule used to live here, scoped to `body:has(.ins)`, because bench was
+   the only surface that couldn't afford a field burning behind its data. It
+   is now the site default — the mask and the scroll-driven `--atmo` live in
+   globals.css, driven by scripts/atmosphere.ts, and every page gets the same
+   backdrop this page had. Nothing bench-specific is left except the line
+   below: on this page reduced motion drops the canvases entirely rather than
+   leaving a static frame, because a still field over a leaderboard is just
+   texture on the numbers. */
 @media (prefers-reduced-motion: reduce) {
   body:has(.ins) #bgCanvas,
   body:has(.ins) #bgDots {
@@ -206,11 +197,7 @@ body:has(.ins)::before {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: radial-gradient(
-    120% 70% at 50% -12%,
-    rgba(255, 255, 255, 0.09),
-    transparent 62%
-  );
+  background: radial-gradient(120% 70% at 50% -12%, rgba(255, 255, 255, 0.09), transparent 62%);
   pointer-events: none;
   z-index: 0;
 }
@@ -300,7 +287,7 @@ body:has(.ins)::before {
    before it reads as digits. */
 .ins-num__dec {
   color: color-mix(in oklab, var(--ins-ink) 66%, transparent);
-  font-weight: 400;
+  font-weight: var(--wght-regular);
 }
 /* Values below 1 ($0.05, 0.42) carry their magnitude in the decimals, so the
    de-emphasis inverts — the leading zero steps back and the decimals get the
@@ -311,7 +298,7 @@ body:has(.ins)::before {
 }
 .ins-num__lead {
   color: var(--ins-ink-4);
-  font-weight: 400;
+  font-weight: var(--wght-regular);
 }
 .ins-num__unit {
   color: var(--ins-ink-3);
@@ -328,14 +315,14 @@ body:has(.ins)::before {
    down to axis tick — sits on one grid and columns align to the glyph. */
 .ins-num--hero {
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: var(--wght-medium);
   font-size: clamp(3rem, 2rem + 4.4vw, 5.2rem);
   line-height: 0.92;
   letter-spacing: -0.045em;
   color: var(--ins-ink);
 }
 .ins-num--hero .ins-num__dec {
-  font-weight: 380;
+  font-weight: var(--wght-light);
 }
 .ins-num--hero .ins-num__unit {
   font-size: 0.38em;
@@ -345,7 +332,7 @@ body:has(.ins)::before {
 
 .ins-num--xl {
   font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: var(--wght-medium);
   font-size: clamp(2rem, 1.4rem + 2.4vw, 3rem);
   line-height: 0.94;
   letter-spacing: -0.03em;
@@ -357,12 +344,12 @@ body:has(.ins)::before {
 
 .ins-num--lg {
   font-size: 1.375rem;
-  font-weight: 500;
+  font-weight: var(--wght-medium);
   line-height: 1.1;
 }
 .ins-num--md {
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: var(--wght-medium);
 }
 .ins-num--sm {
   font-size: 0.8125rem;
@@ -412,7 +399,7 @@ body:has(.ins)::before {
   gap: var(--ins-2);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
-  font-weight: 500;
+  font-weight: var(--wght-medium);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ins-ink-3);
@@ -427,7 +414,7 @@ body:has(.ins)::before {
 
 .ins-h {
   font-family: var(--font-display);
-  font-weight: 600;
+  font-weight: var(--wght-bold);
   font-size: clamp(1.7rem, 1.25rem + 1.8vw, 2.5rem);
   line-height: 1.1;
   letter-spacing: -0.035em;
@@ -464,7 +451,7 @@ body:has(.ins)::before {
 }
 .ins-key b {
   color: var(--ins-ink-2);
-  font-weight: 500;
+  font-weight: var(--wght-medium);
 }
 
 .ins-label {
@@ -594,7 +581,7 @@ body:has(.ins)::before {
 .ins-mono {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
-  font-weight: 600;
+  font-weight: var(--wght-bold);
   letter-spacing: 0.02em;
   color: var(--ins-ink-2);
 }
@@ -917,11 +904,12 @@ body:has(.ins)::before {
 .ins-row__name {
   font-size: 0.9375rem;
   color: var(--ins-ink);
-  font-weight: 500;
+  font-weight: var(--wght-medium);
   letter-spacing: -0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  --opsz: var(--opsz-body);
 }
 .ins-row__meta {
   font-family: var(--font-mono);
@@ -1207,7 +1195,7 @@ body:has(.ins)::before {
 }
 .ins-hero__h {
   font-family: var(--font-display);
-  font-weight: 620;
+  font-weight: var(--wght-bold);
   font-size: clamp(2.5rem, 1.6rem + 4.2vw, 4.6rem);
   line-height: 1.02;
   letter-spacing: -0.045em;
@@ -1223,6 +1211,7 @@ body:has(.ins)::before {
 .ins-hero__lede {
   font-size: 1.0625rem;
   max-width: 58ch;
+  --opsz: var(--opsz-body);
 }
 
 .ins-hero__nav {
@@ -1259,7 +1248,7 @@ body:has(.ins)::before {
   background: linear-gradient(180deg, #ffb340, var(--ember-core, #ff9f0a));
   border-color: transparent;
   color: #1a1206;
-  font-weight: 600;
+  font-weight: var(--wght-bold);
   box-shadow: 0 6px 20px -8px rgba(255, 159, 10, 0.7);
 }
 .ins-cta--primary:hover {
@@ -1329,7 +1318,7 @@ body:has(.ins)::before {
   margin-inline-start: var(--ins-1);
 }
 .ins-pair__h {
-  font-weight: 560;
+  font-weight: var(--wght-semibold);
 }
 .ins-pair__m {
   color: var(--ins-ink-2);
@@ -1444,7 +1433,8 @@ body:has(.ins)::before {
 .ins-lensrow__name {
   font-size: 0.875rem;
   color: var(--ins-ink);
-  font-weight: 500;
+  font-weight: var(--wght-medium);
+  --opsz: var(--opsz-body);
 }
 .ins-lensrow__spread {
   font-family: var(--font-mono);
@@ -1603,7 +1593,7 @@ body:has(.ins)::before {
 .ins-dot__mono {
   font-family: var(--font-mono);
   font-size: 9px;
-  font-weight: 600;
+  font-weight: var(--wght-bold);
   fill: #fff;
   pointer-events: none;
 }
@@ -1815,9 +1805,10 @@ body:has(.ins)::before {
 .ins-next__h {
   font-family: var(--font-display);
   font-size: 1.25rem;
-  font-weight: 600;
+  font-weight: var(--wght-bold);
   letter-spacing: -0.02em;
   color: var(--ins-ink);
+  --opsz: var(--opsz-lead);
 }
 .ins-next__d {
   font-size: 0.875rem;
@@ -1898,15 +1889,16 @@ body:has(.ins)::before {
 }
 .ins-row__h {
   color: var(--ins-ink);
-  font-weight: 580;
+  font-weight: var(--wght-semibold);
 }
 .ins-row__m {
   color: var(--ins-ink-2);
-  font-weight: 420;
+  font-weight: var(--wght-regular);
 }
 .ins-row__name .ins-pair__x {
   font-size: 0.75em;
   color: var(--ins-ink-4);
+  --opsz: var(--opsz-caption);
 }
 
 /* A hairline between the harness chip and the model chip, so the pair reads
@@ -2107,6 +2099,7 @@ body:has(.ins)::before {
   }
   .ins-row__h {
     font-size: 0.9375rem;
+    --opsz: var(--opsz-body);
   }
   .ins-row__m {
     font-size: 0.875rem;
@@ -2452,7 +2445,7 @@ body:has(.ins)::before {
 }
 .ins-railchip__label {
   white-space: nowrap;
-  font-weight: 500;
+  font-weight: var(--wght-medium);
 }
 .ins-railchip__n {
   font-family: var(--font-mono);
@@ -2628,6 +2621,7 @@ body:has(.ins)::before {
 }
 .ins-synthcard__names .ins-row__h {
   font-size: 1rem;
+  --opsz: var(--opsz-body);
 }
 .ins-synthcard__names .ins-row__m {
   font-size: 0.9375rem;
@@ -2714,6 +2708,7 @@ body:has(.ins)::before {
 }
 .ins-tip__names .ins-row__h {
   font-size: 0.875rem;
+  --opsz: var(--opsz-body);
 }
 .ins-tip__names .ins-row__m {
   font-size: 0.8125rem;
@@ -2833,6 +2828,7 @@ body:has(.ins)::before {
   min-width: 0;
   line-height: 1.2;
   font-size: 0.8125rem;
+  --opsz: var(--opsz-body);
 }
 .ins-slope__from,
 .ins-slope__to {
@@ -2856,7 +2852,7 @@ body:has(.ins)::before {
 }
 .ins-slope__delta {
   text-align: right;
-  font-weight: 600;
+  font-weight: var(--wght-bold);
 }
 /* Gaining places on quality is the good direction. */
 .ins-slope__row.is-up .ins-slope__delta {
@@ -2900,8 +2896,9 @@ body:has(.ins)::before {
 }
 .ins-edge__name {
   font-size: 1rem;
-  font-weight: 560;
+  font-weight: var(--wght-semibold);
   color: var(--ins-ink);
+  --opsz: var(--opsz-body);
 }
 .ins-edge__edge {
   font-family: var(--font-mono);
