@@ -149,6 +149,14 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
         for statement in BurnBarAIInboxSchema.founderLensStatements {
             try execute(statement, [])
         }
+        // `CREATE TABLE IF NOT EXISTS` cannot add columns to a database first
+        // opened by v59. The daemon self-heals before the app migration runs,
+        // matching the existing fresh-profile ownership contract.
+        let planStepColumns = try queryRows("PRAGMA table_info(ai_inbox_plan_steps)", [])
+            .compactMap { $0.optionalString(1) }
+        if planStepColumns.contains("memory_id") == false {
+            try execute("ALTER TABLE ai_inbox_plan_steps ADD COLUMN memory_id TEXT", [])
+        }
     }
 
     // MARK: - Items

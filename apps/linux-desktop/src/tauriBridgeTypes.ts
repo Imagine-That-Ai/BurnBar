@@ -1934,6 +1934,7 @@ export type AIInboxPlanStep = {
   evidenceIDs: string[];
   missionID?: string;
   followupID?: string;
+  memoryID?: string;
   inboxFingerprint?: string;
   grade?: number;
   gradeNoteMarkdown?: string;
@@ -1986,6 +1987,40 @@ export type AIInboxPlanGradeRequest = {
 export type AIInboxPlanGradeResponse = {
   step: AIInboxPlanStep;
   planGradeAverage?: number;
+};
+export type AIInboxMemoryCandidateApproveRequest = {
+  itemID: string;
+  fingerprint: string;
+  candidateID: string;
+  projectPath?: string;
+};
+export type AIInboxMemoryApprovalResponse = {
+  memoryID: string;
+  provenance: string;
+  quarantineAuditHash?: string;
+  approvalAuditHash: string;
+};
+export type AIInboxPlanRememberStepRequest = {
+  stepID: string;
+  projectPath?: string;
+};
+export type AIInboxPlanRememberStepResponse = {
+  plan: AIInboxPlan;
+  step: AIInboxPlanStep;
+  memory: AIInboxMemoryApprovalResponse;
+};
+export type AIInboxPlanCreateFollowupRequest = {
+  stepID: string;
+  projectSlug: string;
+  dueAt?: string;
+};
+export type AIInboxPlanCreateFollowupResponse = {
+  plan: AIInboxPlan;
+  step: AIInboxPlanStep;
+  followupID: string;
+  projectSlug: string;
+  title: string;
+  dueAt: string;
 };
 export type AIInboxMemoryExportEntry = {
   memoryID: string;
@@ -2067,6 +2102,15 @@ export interface LinuxShellBridge {
     request: AIInboxPlanUpdateStepRequest
   ): Promise<AIInboxPlanUpdateStepResponse>;
   inboxPlansGrade(request: AIInboxPlanGradeRequest): Promise<AIInboxPlanGradeResponse>;
+  inboxMemoryCandidateApprove(
+    request: AIInboxMemoryCandidateApproveRequest
+  ): Promise<AIInboxMemoryApprovalResponse>;
+  inboxPlansRememberStep(
+    request: AIInboxPlanRememberStepRequest
+  ): Promise<AIInboxPlanRememberStepResponse>;
+  inboxPlansCreateFollowup(
+    request: AIInboxPlanCreateFollowupRequest
+  ): Promise<AIInboxPlanCreateFollowupResponse>;
   inboxMemoryExport(request: AIInboxMemoryExportRequest): Promise<AIInboxMemoryExportResponse>;
   usageInsights(): Promise<UsageInsights>;
   missionList(): Promise<MissionListResult>;

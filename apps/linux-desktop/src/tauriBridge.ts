@@ -124,10 +124,13 @@ import {
   decodeAIInboxConfig,
   decodeAIInboxGetResponse,
   decodeAIInboxListResponse,
+  decodeAIInboxMemoryCandidateApproveResponse,
   decodeAIInboxMemoryExportResponse,
   decodeAIInboxPlanAcceptResponse,
   decodeAIInboxPlanGetResponse,
   decodeAIInboxPlanGradeResponse,
+  decodeAIInboxPlanCreateFollowupResponse,
+  decodeAIInboxPlanRememberStepResponse,
   decodeAIInboxPlansListResponse,
   decodeAIInboxPlanUpdateStepResponse,
   decodeAIInboxPresentationGetResponse,
@@ -141,10 +144,13 @@ import {
   encodeAIInboxConfig,
   encodeAIInboxGetRequest,
   encodeAIInboxListRequest,
+  encodeAIInboxMemoryCandidateApproveRequest,
   encodeAIInboxMemoryExportRequest,
   encodeAIInboxPlanAcceptRequest,
   encodeAIInboxPlanGetRequest,
   encodeAIInboxPlanGradeRequest,
+  encodeAIInboxPlanCreateFollowupRequest,
+  encodeAIInboxPlanRememberStepRequest,
   encodeAIInboxPlansListRequest,
   encodeAIInboxPlanUpdateStepRequest,
   encodeAIInboxPresentationGetRequest,
@@ -427,6 +433,24 @@ export async function loadShellBridge(): Promise<LinuxShellBridge | null> {
       decodeAIInboxPlanGradeResponse(
         await invoke<RawJsonValue>('inbox_plans_grade', {
           request: encodeAIInboxPlanGradeRequest(request)
+        })
+      ),
+    inboxMemoryCandidateApprove: async (request) =>
+      decodeAIInboxMemoryCandidateApproveResponse(
+        await invoke<RawJsonValue>('inbox_memory_candidate_approve', {
+          request: encodeAIInboxMemoryCandidateApproveRequest(request)
+        })
+      ),
+    inboxPlansRememberStep: async (request) =>
+      decodeAIInboxPlanRememberStepResponse(
+        await invoke<RawJsonValue>('inbox_plans_remember_step', {
+          request: encodeAIInboxPlanRememberStepRequest(request)
+        })
+      ),
+    inboxPlansCreateFollowup: async (request) =>
+      decodeAIInboxPlanCreateFollowupResponse(
+        await invoke<RawJsonValue>('inbox_plans_create_followup', {
+          request: encodeAIInboxPlanCreateFollowupRequest(request)
         })
       ),
     inboxMemoryExport: async (request) =>

@@ -277,6 +277,38 @@ actor BurnBarAIInboxService {
         return BurnBarInboxPlanGradeResponse(step: step, planGradeAverage: average)
     }
 
+    func planAndStep(stepID: String) throws -> (plan: BurnBarInboxPlan, step: BurnBarInboxPlanStep)? {
+        try store.planAndStep(stepID: stepID)
+    }
+
+    func bindPlanStepMemory(
+        stepID: String,
+        memoryID: String
+    ) throws -> BurnBarInboxPlanStep {
+        try store.bindPlanStepMemory(stepID: stepID, memoryID: memoryID, now: clock())
+    }
+
+    func upsertApprovedMemory(
+        memoryID: String,
+        provenance: String,
+        snippetMarkdown: String,
+        approvedAt: Date
+    ) throws {
+        try store.upsertMemoryExport(
+            entry: BurnBarInboxMemoryExportEntry(
+                memoryID: memoryID,
+                provenance: provenance,
+                snippetMarkdown: snippetMarkdown,
+                approvedAt: approvedAt
+            ),
+            now: clock()
+        )
+    }
+
+    func removeApprovedMemory(memoryID: String) throws {
+        try store.removeMemoryExport(memoryID: memoryID)
+    }
+
     func memoryExport(_ request: BurnBarInboxMemoryExportRequest) throws -> BurnBarInboxMemoryExportResponse {
         BurnBarInboxMemoryExportResponse(
             stored: try store.replaceMemoryExport(entries: request.entries, now: clock())

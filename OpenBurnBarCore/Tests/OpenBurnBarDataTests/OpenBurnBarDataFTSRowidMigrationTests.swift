@@ -8,19 +8,20 @@ import XCTest
 /// `SearchIndexFTSRowidTests` exercises the identical migration through the
 /// app `DataStore`; these tests exercise the Core `OpenBurnBarDatabase`
 /// migrator directly so the SwiftPM diff-coverage gate sees the changed Core
-/// lines. They cover: (1) the migrator registers v58 as the last migration,
-/// (2) the backfill records ftsRowid for pre-existing chunks, (3) the orphan
-/// sweep deletes stale/duplicate FTS rows, (4) the content-gated documents
-/// FTS update trigger skips metadata-only updates, and (5) the content-gated
+/// lines. They cover: (1) the migrator registers v60 as the last migration,
+/// (2) v60 upgrades a legacy Founder Lens plan-step table idempotently,
+/// (3) the backfill records ftsRowid for pre-existing chunks, (4) the orphan
+/// sweep deletes stale/duplicate FTS rows, (5) the content-gated documents
+/// FTS update trigger skips metadata-only updates, and (6) the content-gated
 /// conversations FTS update trigger skips metadata-only updates.
 final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
 
     // MARK: - Migrator wiring
 
-    func test_migrator_latestIdentifier_isV59FounderLens() {
+    func test_migrator_latestIdentifier_isV60FounderLensAuthority() {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
-            "v59_founder_lens"
+            "v60_founder_lens_authority"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v56_parser_checkpoint_file_manifest"),
@@ -37,6 +38,48 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v59_founder_lens"),
             "registerFounderLensMigration must be wired into the migrator"
+        )
+        XCTAssertTrue(
+            OpenBurnBarDatabase.migrator.migrations.contains("v60_founder_lens_authority"),
+            "registerFounderLensAuthorityMigration must be wired into the migrator"
+        )
+    }
+
+    func test_v60Migration_addsMemoryIDToLegacyFounderPlanSteps_andIsIdempotent() throws {
+        let queue = try DatabaseQueue(path: ":memory:")
+        var migrator = DatabaseMigrator()
+        migrator.eraseDatabaseOnSchemaChange = false
+        migrator.registerMigration("v59_founder_lens") { db in
+            try db.execute(
+                sql: """
+                CREATE TABLE ai_inbox_plan_steps (
+                    id TEXT PRIMARY KEY,
+                    plan_id TEXT NOT NULL,
+                    title TEXT NOT NULL
+                )
+                """
+            )
+        }
+        OpenBurnBarDatabase.registerFounderLensAuthorityMigration(on: &migrator)
+
+        try migrator.migrate(queue, upTo: "v59_founder_lens")
+        let legacyColumns = try queue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(ai_inbox_plan_steps)")
+                .compactMap { $0["name"] as String? }
+        }
+        XCTAssertFalse(legacyColumns.contains("memory_id"))
+
+        try migrator.migrate(queue)
+        try migrator.migrate(queue)
+
+        let upgradedColumns = try queue.read { db in
+            try Row.fetchAll(db, sql: "PRAGMA table_info(ai_inbox_plan_steps)")
+                .compactMap { $0["name"] as String? }
+        }
+        XCTAssertEqual(
+            upgradedColumns.filter { $0 == "memory_id" },
+            ["memory_id"],
+            "v60 must add exactly one nullable canonical-memory binding column"
         )
     }
 

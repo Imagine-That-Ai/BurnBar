@@ -202,16 +202,24 @@ function actionButtonLabel(action: AIInboxAction): string {
 }
 
 function MemoryCandidateCard({
-  candidate
+  candidate,
+  itemID,
+  fingerprint
 }: {
   candidate: AIInboxItemDetail['payload']['memoryCandidates'][number];
+  itemID: string;
+  fingerprint: string;
 }) {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) {
+  const approveMemoryCandidate = useInboxStore((state) => state.approveMemoryCandidate);
+  const busy = useInboxStore(
+    (state) => state.busy[`memory:${itemID}:${candidate.id}`] ?? false
+  );
+  const [state, setState] = useState<'pending' | 'approved' | 'dismissed'>('pending');
+  if (state === 'dismissed') {
     return (
       <article className="inbox-memory-candidate inbox-memory-candidate--dismissed">
         <strong>Proposal dismissed</strong>
-        <button type="button" className="ghost" onClick={() => setDismissed(false)}>Undo</button>
+        <button type="button" className="ghost" onClick={() => setState('pending')}>Undo</button>
       </article>
     );
   }
@@ -224,14 +232,27 @@ function MemoryCandidateCard({
         <button
           type="button"
           className="ghost"
-          disabled
-          title="Linux still needs a daemon-authoritative candidate approval API. The export RPC is a full-set replacement and is not safe for one proposal."
+          disabled={busy || state === 'approved'}
+          aria-busy={busy}
+          onClick={() => {
+            void approveMemoryCandidate(itemID, fingerprint, candidate.id).then((approved) => {
+              if (approved) setState('approved');
+            });
+          }}
         >
-          Remember this
+          {state === 'approved' ? 'Saved to memory' : busy ? 'Remembering…' : 'Remember this'}
         </button>
-        <button type="button" className="ghost" onClick={() => setDismissed(true)}>Dismiss</button>
+        {state === 'pending' ? (
+          <button type="button" className="ghost" disabled={busy} onClick={() => setState('dismissed')}>
+            Dismiss
+          </button>
+        ) : null}
       </div>
-      <small className="muted">Approval stays unavailable until Linux can use the same quarantine-and-approve authority as macOS.</small>
+      <small className="muted">
+        {state === 'approved'
+          ? 'Saved through the same quarantine-first memory authority used by the rest of OpenBurnBar.'
+          : 'Nothing enters memory until you approve it.'}
+      </small>
     </article>
   );
 }
@@ -336,6 +357,13 @@ function PlanStepRow({ plan, step }: { plan: AIInboxPlan; step: AIInboxPlanStep 
   const promoteStep = useInboxStore((state) => state.promoteStep);
   const updateStep = useInboxStore((state) => state.updateStep);
   const gradeStep = useInboxStore((state) => state.gradeStep);
+  const rememberStep = useInboxStore((state) => state.rememberStep);
+  const createFollowup = useInboxStore((state) => state.createFollowup);
+  const hasSelectedProject = useInboxStore((state) =>
+    state.rows.some(
+      (row) => row.item.summary.id === state.selectedID && Boolean(row.item.summary.projectID)
+    )
+  );
   const [grade, setGrade] = useState(step.grade ?? 75);
   return (
     <div className="inbox-plan-step">
@@ -359,19 +387,23 @@ function PlanStepRow({ plan, step }: { plan: AIInboxPlan; step: AIInboxPlanStep 
           <button
             type="button"
             className="ghost"
-            disabled
-            title="Linux can bind an existing follow-up ID but cannot create the follow-up record yet."
+            disabled={busy || !hasSelectedProject}
+            title={hasSelectedProject ? 'Create a Mission Control follow-up from this step' : 'This item has no project attribution'}
+            onClick={() => void createFollowup(step.id)}
           >
-            Follow up
+            {busy ? 'Working…' : 'Follow up'}
           </button>
+        ) : step.followupID ? (
+          <span className="inbox-plan-state" title={step.followupID}>Follow-up created</span>
         ) : null}
         <button
           type="button"
           className="ghost"
-          disabled
-          title="Linux still needs the daemon-authoritative memory approval path used by macOS."
+          disabled={busy || Boolean(step.memoryID)}
+          title={step.memoryID ? `Saved as ${step.memoryID}` : 'Save this step through the quarantine-first memory authority'}
+          onClick={() => void rememberStep(step.id)}
         >
-          Remember
+          {step.memoryID ? 'Remembered' : busy ? 'Working…' : 'Remember'}
         </button>
         <label className="inbox-grade">
           <span>Grade</span>
@@ -560,7 +592,12 @@ function InboxDetail({ row }: { row: AIInboxPresentationRow }) {
           <h3>Worth remembering</h3>
           <p className="muted">These are proposals. Nothing enters memory until you explicitly approve it.</p>
           {detail.payload.memoryCandidates.map((candidate) => (
-            <MemoryCandidateCard key={candidate.id} candidate={candidate} />
+            <MemoryCandidateCard
+              key={candidate.id}
+              candidate={candidate}
+              itemID={detail.summary.id}
+              fingerprint={detail.summary.fingerprint}
+            />
           ))}
         </section>
       ) : null}

@@ -236,6 +236,9 @@ enum BurnBarDaemonSocketRPCCoverage {
         .inboxPlansAccept,
         .inboxPlansUpdateStep,
         .inboxPlansGrade,
+        .inboxMemoryCandidateApprove,
+        .inboxPlansRememberStep,
+        .inboxPlansCreateFollowup,
         .inboxMemoryExport
     ]
 

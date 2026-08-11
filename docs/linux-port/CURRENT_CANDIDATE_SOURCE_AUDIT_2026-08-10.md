@@ -1,6 +1,6 @@
 # Linux/macOS parity: current candidate source audit
 
-Date: 2026-08-10
+Date: 2026-08-11
 macOS gold standard: OpenBurnBar for macOS
 Audited implementation parent: `228215d47bf614e2cd62d60ee4f8ee52385d73e8`
 Exact source candidate: the local commit containing this report
@@ -24,17 +24,19 @@ renderer does not invent durable state. The shared Swift contracts, daemon
 SQLite store, RPC capability boundary, Rust/Tauri layer, strict TypeScript
 codec, React store, UI, and tests all use the same contract.
 
-The implementation deliberately leaves three buttons disabled instead of
-pretending they work:
+The Linux Inbox now also closes the three daemon-authority gaps that were
+deliberately disabled in the previous checkpoint:
 
-- Approving an Inbox memory candidate.
-- Remembering a Founder Plan step.
-- Creating a follow-up from a Founder Plan step.
+- “Remember this” approves one canonical Inbox memory candidate.
+- “Remember” turns one canonical Founder Plan step into approved memory and
+  binds its durable memory ID.
+- “Follow up” idempotently creates and binds a Mission Control follow-up.
 
-Those actions need new daemon-authoritative APIs. The existing memory export
-RPC replaces the complete export set and is unsafe as a one-item approval
-shortcut; the current plan-step RPC can bind an existing follow-up ID but
-cannot create the follow-up record.
+All three actions reload canonical daemon state. The renderer cannot author
+memory bodies, IDs, hashes, timestamps, or follow-up IDs. Memory goes through
+the normal secret gate, quarantine, approval, approved-only export, and
+reject/forget removal path. Retries reuse deterministic authority records and
+do not replace unrelated approved memories.
 
 The strict release result is still **0/40 product rows and 0/7 environments**.
 That does not mean the implementation is empty. It means this exact candidate
@@ -120,7 +122,7 @@ the feature passed in an installed Linux package.
 | P-15 | Account and billing | PKCE, membership state, portal routing, export, erasure handoff, and safe URLs exist | Production OAuth/App Check, membership, checkout/portal, recovery, erasure, and exact-candidate proof | High |
 | P-16 | Cloud and devices | Encrypted replica, sync, conflict handling, remote read, escrow, and trusted-device controls exist | Production callable execution, two-device approval/revoke, conflict/recovery, and signed installed proof | High |
 | P-17 | Activity and session logs | Search, detail, body, replay, resume, export, and source-resolution safety exist | Populated real history, complete-history proof, provider runtime, restart, and installed UI proof | High |
-| P-18 | Memory review | Pending/approve/reject/forget, quarantine feed, tombstones, and audit hashes exist; Inbox memory proposals are shown honestly | Linux AI Inbox cannot yet approve one candidate or remember one Founder Plan step through daemon authority; installed persistence, normal-recall exclusion, cross-device replication, and cloud authority also remain | High |
+| P-18 | Memory review | Pending/approve/reject/forget, quarantine feed, tombstones, and audit hashes exist; Linux can approve one canonical Inbox candidate and remember one Founder Plan step through daemon authority without replacing unrelated exports | Installed persistence, normal-recall exclusion, cross-device replication, and cloud authority remain | High |
 | P-19 | Projects | CRUD, associations, delete/reassign, migration, tombstones, and replay protection exist | Real populated migration, restart, collision, deletion, and installed proof | Medium |
 | P-20 | Missions | Create, approve, answer, cancel, detail, evidence, history, and health exist | Installed full lifecycle through restart/reconnect with real integrations | Medium |
 | P-21 | Insights | Canvas, widgets, citations, compare, follow-up, audit, and stale-response fencing exist | Real ledger data, macOS qualitative comparison, restart/reconnect, and installed evidence | Medium |
@@ -201,65 +203,70 @@ The 40-row matrix above is the complete release scope. The gaps below are the
 directly observed product differences that still require engineering or live
 proof. Each item states the permanent fix and how QA should close it.
 
-### G-01 — AI Inbox memory-candidate approval
+### G-01 — AI Inbox memory-candidate approval — source closed
 
-- **Difference:** macOS can route one Inbox memory proposal through the normal
-  quarantine-first memory authority and then approve it. Linux shows the same
-  proposal but keeps “Remember this” disabled.
+- **Difference:** The previous Linux checkpoint showed the same proposal but
+  kept “Remember this” disabled. The current source now routes one canonical
+  proposal through the normal quarantine-first memory authority.
 - **Why it matters:** memory is a trust boundary. Using the existing Linux
   `inboxMemoryExport` call as a shortcut would replace the complete approved
   export set and could revoke unrelated approved entries by omission.
-- **Recommended solution:** add a daemon-authoritative
-  `daemon.inbox.memory_candidate.approve` operation keyed by item fingerprint
-  and candidate ID. It must create a quarantined authority record, run the
-  secret/PII gate, write provenance and audit events, approve only that record,
-  refresh the daemon export, and return the canonical memory ID.
+- **Recommended solution:** implemented as daemon-authoritative
+  `daemon.inbox.memory_candidate.approve`, keyed by item fingerprint and
+  candidate ID. It creates or reuses a quarantined authority record, runs the
+  secret gate, writes provenance and audit events, approves only that record,
+  upserts only its approved export, and returns the canonical memory ID.
 - **Priority:** High.
 - **Implementation notes:** reuse the same authority and audit path as
   `InboxMemoryApprovalHandler`; do not let the renderer provide approval
   timestamps, memory IDs, hashes, or an entire replacement set. Make retries
   idempotent by candidate provenance.
-- **QA verification:** approve one proposal; prove quarantine precedes
+- **QA verification:** local authority, socket, retry, secret-rejection, export
+  isolation, and reject/forget tests pass. Installed QA must approve one
+  proposal; prove quarantine precedes
   approval; verify normal recall includes it only after approval; retry the
   same request; inject a secret and prove rejection; interrupt between
   quarantine and approval and prove no unapproved fact enters recall; verify
   unrelated approved memories remain unchanged; restart and repeat readback.
 
-### G-02 — Founder Plan “Remember”
+### G-02 — Founder Plan “Remember” — source closed
 
-- **Difference:** macOS can turn an accepted Founder Plan step into approved
-  memory and bind the returned memory ID to the plan step. Linux keeps
-  “Remember” disabled.
+- **Difference:** The previous Linux checkpoint kept “Remember” disabled. The
+  current source turns an accepted Founder Plan step into approved memory and
+  binds the returned canonical memory ID to the plan step.
 - **Why it matters:** Founder Plans are meant to become durable operating
   knowledge. A visual control without the same authority would either lose the
   memory or bypass the memory safety model.
-- **Recommended solution:** add a daemon transaction or recoverable saga that
+- **Recommended solution:** implemented as a daemon-owned recoverable saga that
   creates the plan-derived quarantined memory, approves it, exports the
   refreshed approved set, and binds the canonical memory ID to the step.
 - **Priority:** High.
 - **Implementation notes:** preserve provenance
   `ai-inbox:plan:<planID>:step:<stepID>`, deduplicate retries, and define
   rollback/recovery when memory approval succeeds but plan binding fails.
-- **QA verification:** remember a step; prove exact provenance and audit
+- **QA verification:** local migration, binding, authority, retry, and
+  production-socket tests pass. Installed QA must remember a step; prove exact
+  provenance and audit
   ordering; retry; restart; verify plan readback contains the memory ID; prove
   the memory appears in normal recall; simulate binding failure and verify a
   repairable, non-duplicated state.
 
-### G-03 — Founder Plan follow-up creation
+### G-03 — Founder Plan follow-up creation — source closed
 
-- **Difference:** macOS creates a follow-up record from a plan step and then
-  links it to the step. Linux can link an existing `followupID` but cannot
-  create the follow-up, so the button is disabled.
+- **Difference:** The previous Linux checkpoint could bind an existing
+  `followupID` but could not create one. The current source creates the
+  canonical follow-up and binds it to the step.
 - **Why it matters:** the accepted plan loop is incomplete when a user cannot
   turn a step into a scheduled follow-up.
-- **Recommended solution:** expose daemon-authoritative follow-up creation from
+- **Recommended solution:** implemented as daemon-authoritative follow-up creation from
   a plan step, return the canonical follow-up ID, and bind it atomically or
   through an idempotent saga.
 - **Priority:** High.
 - **Implementation notes:** require project attribution and an explicit due
   date/default policy; never invent an ID in the renderer. Reuse the existing
   follow-up store and notification scheduling path.
-- **QA verification:** create a follow-up; verify project, title, body, due
+- **QA verification:** local production-socket creation and retry tests pass.
+  Installed QA must create a follow-up; verify project, title, body, due
   date, notification, and plan binding; double-click/retry; restart; cancel;
   simulate create-success/bind-failure and verify recovery without duplicates.
 
@@ -406,7 +413,8 @@ Engineering tasks:
 - Finish the AI Inbox shared contracts, daemon presentation store/RPCs,
   Rust/Tauri bridge, strict codecs, renderer store, UI, Settings, navigation,
   and native safe-link opening.
-- Keep unsupported memory/follow-up authority visibly disabled.
+- Keep memory/follow-up authority daemon-owned and visibly report pending,
+  success, unavailable, and failure states.
 - Update the parity report with the exact source gaps and implementation order.
 - Run frontend, type, lint, production build, Rust, Swift, canon, suppression,
   and diff-hygiene checks.
@@ -663,9 +671,11 @@ Acceptance criteria:
 
 - [ ] AI Inbox filters, item deep links, read/unread, archive, snooze,
   feedback, mark-all-read, settings, telemetry, discussion, plans, grading,
-  mission promotion, and safe external links.
-- [ ] Unsupported Inbox memory/follow-up controls remain disabled and explain
-  the missing authority.
+  mission promotion, memory-candidate approval, plan-step memory, follow-up
+  creation, and safe external links.
+- [ ] Memory approval proves quarantine-before-approval, secret rejection,
+  retry idempotency, reject/forget revocation, restart persistence, and
+  unrelated-memory preservation.
 - [ ] Usage and quota.
 - [ ] Onboarding and provider credentials.
 - [ ] Chat, attachments, citations, approvals, export, resume, and pop-out.

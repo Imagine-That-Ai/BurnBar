@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  AIInboxPlan,
   AIInboxPresentationListRequest,
   AIInboxPresentationRow,
   LinuxShellBridge
@@ -38,6 +39,32 @@ function row(overrides: Partial<AIInboxPresentationRow['presentation']> = {}): A
       tickID: 'tick-1'
     },
     presentation: overrides
+  };
+}
+
+function plan(stepOverrides: Partial<AIInboxPlan['steps'][number]> = {}): AIInboxPlan {
+  const timestamp = '2026-08-10T12:00:00.000Z';
+  return {
+    id: 'plan-1',
+    title: 'Ship Linux parity',
+    horizon: 'week',
+    pack: 'engOps',
+    status: 'active',
+    summaryMarkdown: 'Close the remaining gaps.',
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    steps: [{
+      id: 'step-1',
+      planID: 'plan-1',
+      ordinal: 1,
+      title: 'Close the authority gap',
+      bodyMarkdown: 'Use daemon truth.',
+      status: 'accepted',
+      evidenceIDs: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      ...stepOverrides
+    }]
   };
 }
 
@@ -222,5 +249,88 @@ describe('inboxStore durable presentation state', () => {
     expect(inboxPresentationMarkAllRead).toHaveBeenCalledOnce();
     expect(useInboxStore.getState().activeUnreadCount).toBe(0);
     expect(useInboxStore.getState().rows[0]?.presentation.readAt).toBe(read.presentation.readAt);
+  });
+
+  it('approves one canonical memory candidate by identity only', async () => {
+    const inboxMemoryCandidateApprove = vi.fn(async () => ({
+      memoryID: 'mem-1',
+      provenance: 'ai-inbox:item:stuck_pr:burnbar:2172:candidate:candidate-1',
+      quarantineAuditHash: 'quarantine-hash',
+      approvalAuditHash: 'approval-hash'
+    }));
+    useShellStore.setState({
+      bridge: { inboxMemoryCandidateApprove } as unknown as LinuxShellBridge
+    });
+
+    const approved = await useInboxStore.getState().approveMemoryCandidate(
+      'inbox-1',
+      'stuck_pr:burnbar:2172',
+      'candidate-1'
+    );
+
+    expect(approved).toBe(true);
+    expect(inboxMemoryCandidateApprove).toHaveBeenCalledWith({
+      itemID: 'inbox-1',
+      fingerprint: 'stuck_pr:burnbar:2172',
+      candidateID: 'candidate-1'
+    });
+    expect(useInboxStore.getState().busy['memory:inbox-1:candidate-1']).toBe(false);
+  });
+
+  it('consumes daemon readback when remembering a Founder Plan step', async () => {
+    const original = plan();
+    const updated = plan({ memoryID: 'mem-plan-1' });
+    const inboxPlansRememberStep = vi.fn(async () => ({
+      plan: updated,
+      step: updated.steps[0]!,
+      memory: {
+        memoryID: 'mem-plan-1',
+        provenance: 'ai-inbox:plan:plan-1:step:step-1',
+        quarantineAuditHash: 'quarantine-hash',
+        approvalAuditHash: 'approval-hash'
+      }
+    }));
+    useShellStore.setState({
+      bridge: { inboxPlansRememberStep } as unknown as LinuxShellBridge
+    });
+    useInboxStore.setState({ plans: [original] });
+
+    const remembered = await useInboxStore.getState().rememberStep('step-1');
+
+    expect(remembered).toBe(true);
+    expect(inboxPlansRememberStep).toHaveBeenCalledWith({ stepID: 'step-1' });
+    expect(useInboxStore.getState().plans[0]?.steps[0]?.memoryID).toBe('mem-plan-1');
+  });
+
+  it('creates and binds a follow-up using selected daemon project attribution', async () => {
+    const original = plan();
+    const updated = plan({ followupID: 'followup-inbox-step-1' });
+    const inboxPlansCreateFollowup = vi.fn(async () => ({
+      plan: updated,
+      step: updated.steps[0]!,
+      followupID: 'followup-inbox-step-1',
+      projectSlug: 'burnbar',
+      title: 'Close the authority gap',
+      dueAt: '2026-08-11T12:00:00.000Z'
+    }));
+    useShellStore.setState({
+      bridge: { inboxPlansCreateFollowup } as unknown as LinuxShellBridge
+    });
+    useInboxStore.setState({
+      rows: [row()],
+      selectedID: 'inbox-1',
+      plans: [original]
+    });
+
+    const created = await useInboxStore.getState().createFollowup('step-1');
+
+    expect(created).toBe(true);
+    expect(inboxPlansCreateFollowup).toHaveBeenCalledWith({
+      stepID: 'step-1',
+      projectSlug: 'burnbar'
+    });
+    expect(useInboxStore.getState().plans[0]?.steps[0]?.followupID).toBe(
+      'followup-inbox-step-1'
+    );
   });
 });

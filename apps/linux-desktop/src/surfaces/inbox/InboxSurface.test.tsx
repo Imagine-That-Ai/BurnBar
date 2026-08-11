@@ -113,21 +113,37 @@ describe('InboxSurface', () => {
     expect(await screen.findByRole('button', { name: 'Archive' })).toBeTruthy();
   });
 
-  it('does not fake memory, follow-up, or plan-memory authority', async () => {
+  it('routes memory and plan actions through the daemon-authoritative store actions', async () => {
+    const approveMemoryCandidate = vi.fn(async () => true);
+    const createFollowup = vi.fn(async () => true);
+    const rememberPlanStep = vi.fn(async () => true);
+    useInboxStore.setState({
+      approveMemoryCandidate,
+      createFollowup,
+      rememberStep: rememberPlanStep
+    });
     render(<InboxSurface />);
     await screen.findByRole('heading', { name: 'PR #2172 is waiting on one approval' });
 
     const rememberCandidate = screen.getByRole('button', { name: 'Remember this' });
-    expect(rememberCandidate.hasAttribute('disabled')).toBe(true);
-    expect(rememberCandidate.getAttribute('title')).toMatch(/daemon-authoritative/i);
+    expect(rememberCandidate.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(rememberCandidate);
+    expect(await screen.findByRole('button', { name: 'Saved to memory' })).toBeTruthy();
+    expect(approveMemoryCandidate).toHaveBeenCalledWith(
+      'fixture-inbox-1',
+      'fixture:stuck-pr:2172',
+      'fixture-memory-1'
+    );
 
     const followUp = screen.getByRole('button', { name: 'Follow up' });
-    expect(followUp.hasAttribute('disabled')).toBe(true);
-    expect(followUp.getAttribute('title')).toMatch(/cannot create/i);
+    expect(followUp.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(followUp);
+    expect(createFollowup).toHaveBeenCalledWith('fixture-step-1');
 
-    const rememberStep = screen.getByRole('button', { name: 'Remember' });
-    expect(rememberStep.hasAttribute('disabled')).toBe(true);
-    expect(rememberStep.getAttribute('title')).toMatch(/daemon-authoritative/i);
+    const rememberStepButton = screen.getByRole('button', { name: 'Remember' });
+    expect(rememberStepButton.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(rememberStepButton);
+    expect(rememberPlanStep).toHaveBeenCalledWith('fixture-step-1');
   });
 
   it('never falls back to renderer-level navigation for external evidence', async () => {

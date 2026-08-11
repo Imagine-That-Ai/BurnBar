@@ -300,7 +300,7 @@ extension BurnBarAIInboxStore {
         let stepRows = try queryRows(
             """
             SELECT id, plan_id, parent_step_id, ordinal, title, body_md, status, next_move_md,
-                   evidence_ids_json, mission_id, followup_id, inbox_fingerprint, grade,
+                   evidence_ids_json, mission_id, followup_id, memory_id, inbox_fingerprint, grade,
                    grade_note_md, graded_at, created_at, updated_at, completed_at
             FROM ai_inbox_plan_steps WHERE plan_id = ? ORDER BY ordinal ASC
             """,
@@ -341,13 +341,14 @@ extension BurnBarAIInboxStore {
             evidenceIDs: evidence,
             missionID: row.optionalString(9),
             followupID: row.optionalString(10),
-            inboxFingerprint: row.optionalString(11),
-            grade: row.optionalString(12).flatMap(Int.init),
-            gradeNoteMarkdown: row.optionalString(13),
-            gradedAt: row.date(14),
-            createdAt: row.date(15) ?? Date(timeIntervalSince1970: 0),
-            updatedAt: row.date(16) ?? Date(timeIntervalSince1970: 0),
-            completedAt: row.date(17)
+            memoryID: row.optionalString(11),
+            inboxFingerprint: row.optionalString(12),
+            grade: row.optionalString(13).flatMap(Int.init),
+            gradeNoteMarkdown: row.optionalString(14),
+            gradedAt: row.date(15),
+            createdAt: row.date(16) ?? Date(timeIntervalSince1970: 0),
+            updatedAt: row.date(17) ?? Date(timeIntervalSince1970: 0),
+            completedAt: row.date(18)
         )
     }
 
@@ -510,12 +511,77 @@ extension BurnBarAIInboxStore {
         try queryRows(
             """
             SELECT id, plan_id, parent_step_id, ordinal, title, body_md, status, next_move_md,
-                   evidence_ids_json, mission_id, followup_id, inbox_fingerprint, grade,
+                   evidence_ids_json, mission_id, followup_id, memory_id, inbox_fingerprint, grade,
                    grade_note_md, graded_at, created_at, updated_at, completed_at
             FROM ai_inbox_plan_steps WHERE id = ? LIMIT 1
             """,
             [.text(id)]
         ).first.flatMap(Self.planStep(from:))
+    }
+
+    /// Returns the canonical plan and step for one opaque step id.
+    func planAndStep(stepID: String) throws -> (plan: BurnBarInboxPlan, step: BurnBarInboxPlanStep)? {
+        try databaseSync {
+            guard let step = try stepLocked(id: stepID),
+                  let plan = try planLocked(id: step.planID) else {
+                return nil
+            }
+            return (plan, step)
+        }
+    }
+
+    /// Binds the canonical memory id produced by the daemon authority. This is
+    /// intentionally separate from the renderer-facing generic step update so
+    /// a client cannot invent a memory id.
+    func bindPlanStepMemory(stepID: String, memoryID: String, now: Date) throws -> BurnBarInboxPlanStep {
+        try databaseSync {
+            try execute("BEGIN IMMEDIATE", [])
+            do {
+                guard let existing = try queryRows(
+                    "SELECT plan_id, memory_id FROM ai_inbox_plan_steps WHERE id = ? LIMIT 1",
+                    [.text(stepID)]
+                ).first else {
+                    throw BurnBarAIInboxStoreError.sqlite("No plan step with id \(stepID).")
+                }
+                let planID = existing.string(0)
+                if let bound = existing.optionalString(1) {
+                    guard bound == memoryID else {
+                        throw BurnBarAIInboxStoreError.sqlite(
+                            "Plan step \(stepID) is already bound to a different memory."
+                        )
+                    }
+                    try execute("COMMIT", [])
+                    guard let step = try stepLocked(id: stepID) else {
+                        throw BurnBarAIInboxStoreError.sqlite("Memory-bound step did not read back.")
+                    }
+                    return step
+                }
+                let stamp = Self.string(from: now)
+                try execute(
+                    "UPDATE ai_inbox_plan_steps SET memory_id = ?, updated_at = ? WHERE id = ?",
+                    [.text(memoryID), .text(stamp), .text(stepID)]
+                )
+                try execute(
+                    "UPDATE ai_inbox_plans SET updated_at = ? WHERE id = ?",
+                    [.text(stamp), .text(planID)]
+                )
+                try appendPlanEventLocked(
+                    planID: planID,
+                    stepID: stepID,
+                    event: "memory_bound",
+                    detail: ["memory_id": memoryID],
+                    now: now
+                )
+                try execute("COMMIT", [])
+            } catch {
+                try? execute("ROLLBACK", [])
+                throw error
+            }
+            guard let step = try stepLocked(id: stepID) else {
+                throw BurnBarAIInboxStoreError.sqlite("Memory-bound step did not read back.")
+            }
+            return step
+        }
     }
 
     private func appendPlanEventLocked(
@@ -642,6 +708,41 @@ extension BurnBarAIInboxStore {
                 try? execute("ROLLBACK", [])
                 throw error
             }
+        }
+    }
+
+    /// Upserts one daemon-approved memory without replacing unrelated entries.
+    /// Linux Inbox actions use this path; the macOS app keeps the full-set
+    /// replacement path so revocations from its chat authority still propagate.
+    func upsertMemoryExport(entry: BurnBarInboxMemoryExportEntry, now: Date) throws {
+        try databaseSync {
+            try execute(
+                """
+                INSERT INTO ai_inbox_memory_export(memory_id, provenance, snippet_md, approved_at, exported_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(memory_id) DO UPDATE SET
+                    provenance = excluded.provenance,
+                    snippet_md = excluded.snippet_md,
+                    approved_at = excluded.approved_at,
+                    exported_at = excluded.exported_at
+                """,
+                [
+                    .text(entry.memoryID),
+                    .text(entry.provenance),
+                    .text(entry.snippetMarkdown),
+                    .text(Self.string(from: entry.approvedAt)),
+                    .text(Self.string(from: now))
+                ]
+            )
+        }
+    }
+
+    func removeMemoryExport(memoryID: String) throws {
+        try databaseSync {
+            try execute(
+                "DELETE FROM ai_inbox_memory_export WHERE memory_id = ?",
+                [.text(memoryID)]
+            )
         }
     }
 }

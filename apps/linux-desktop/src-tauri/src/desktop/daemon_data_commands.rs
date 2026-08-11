@@ -308,6 +308,25 @@ fn inbox_plans_grade(request: serde_json::Value) -> Result<serde_json::Value, St
 }
 
 #[tauri::command]
+fn inbox_memory_candidate_approve(
+    request: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.memory_candidate.approve", Some(request))
+}
+
+#[tauri::command]
+fn inbox_plans_remember_step(request: serde_json::Value) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.plans.remember_step", Some(request))
+}
+
+#[tauri::command]
+fn inbox_plans_create_followup(
+    request: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    call_daemon_method("daemon.inbox.plans.create_followup", Some(request))
+}
+
+#[tauri::command]
 fn inbox_memory_export(request: serde_json::Value) -> Result<serde_json::Value, String> {
     call_daemon_method("daemon.inbox.memory.export", Some(request))
 }

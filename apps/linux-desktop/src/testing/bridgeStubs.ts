@@ -17,6 +17,8 @@ import type {
   AIInboxGetResponse,
   AIInboxListRequest,
   AIInboxListResponse,
+  AIInboxMemoryApprovalResponse,
+  AIInboxMemoryCandidateApproveRequest,
   AIInboxMemoryExportRequest,
   AIInboxMemoryExportResponse,
   AIInboxPlanAcceptRequest,
@@ -24,8 +26,12 @@ import type {
   AIInboxPlanGetResponse,
   AIInboxPlanGradeRequest,
   AIInboxPlanGradeResponse,
+  AIInboxPlanCreateFollowupRequest,
+  AIInboxPlanCreateFollowupResponse,
   AIInboxPlansListRequest,
   AIInboxPlansListResponse,
+  AIInboxPlanRememberStepRequest,
+  AIInboxPlanRememberStepResponse,
   AIInboxPlanUpdateStepRequest,
   AIInboxPlanUpdateStepResponse,
   AIInboxPresentationGetResponse,
@@ -341,6 +347,18 @@ export const emptyAIInboxPlansGrade = (
   _request: AIInboxPlanGradeRequest
 ): Promise<AIInboxPlanGradeResponse> => unavailableAIInboxMutation();
 
+export const emptyAIInboxMemoryCandidateApprove = (
+  _request: AIInboxMemoryCandidateApproveRequest
+): Promise<AIInboxMemoryApprovalResponse> => unavailableAIInboxMutation();
+
+export const emptyAIInboxPlansRememberStep = (
+  _request: AIInboxPlanRememberStepRequest
+): Promise<AIInboxPlanRememberStepResponse> => unavailableAIInboxMutation();
+
+export const emptyAIInboxPlansCreateFollowup = (
+  _request: AIInboxPlanCreateFollowupRequest
+): Promise<AIInboxPlanCreateFollowupResponse> => unavailableAIInboxMutation();
+
 export const emptyAIInboxMemoryExport = (
   _request: AIInboxMemoryExportRequest
 ): Promise<AIInboxMemoryExportResponse> => Promise.resolve({ stored: 0 });
@@ -498,6 +516,9 @@ export const bridgeStubDefaults = {
   inboxPlansAccept: emptyAIInboxPlansAccept,
   inboxPlansUpdateStep: emptyAIInboxPlansUpdateStep,
   inboxPlansGrade: emptyAIInboxPlansGrade,
+  inboxMemoryCandidateApprove: emptyAIInboxMemoryCandidateApprove,
+  inboxPlansRememberStep: emptyAIInboxPlansRememberStep,
+  inboxPlansCreateFollowup: emptyAIInboxPlansCreateFollowup,
   inboxMemoryExport: emptyAIInboxMemoryExport,
   mediaStatus: emptyMediaStatus,
   mediaSessionState: emptyMediaSessionState,

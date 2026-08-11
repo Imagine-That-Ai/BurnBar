@@ -222,6 +222,7 @@ describe('VAL-RPC-002 bridge behavior', () => {
       evidenceIDs: ['workflow:42'],
       missionID: null,
       followupID: null,
+      memoryID: null,
       inboxFingerprint: 'ci_waste:linux',
       grade: null,
       gradeNoteMarkdown: null,
@@ -262,6 +263,36 @@ describe('VAL-RPC-002 bridge behavior', () => {
         step: { ...step, grade: 100, gradeNoteMarkdown: 'Shipped.' },
         planGradeAverage: 100
       })
+      .mockResolvedValueOnce({
+        memoryID: 'mem_candidate',
+        provenance: 'ai-inbox:item:ci_waste:linux:candidate:candidate_1',
+        quarantineAuditHash: 'quarantine-candidate',
+        approvalAuditHash: 'approval-candidate'
+      })
+      .mockResolvedValueOnce({
+        plan: {
+          ...plan,
+          steps: [{ ...step, memoryID: 'mem_step' }]
+        },
+        step: { ...step, memoryID: 'mem_step' },
+        memory: {
+          memoryID: 'mem_step',
+          provenance: 'ai-inbox:plan:plan_1:step:step_1',
+          quarantineAuditHash: 'quarantine-step',
+          approvalAuditHash: 'approval-step'
+        }
+      })
+      .mockResolvedValueOnce({
+        plan: {
+          ...plan,
+          steps: [{ ...step, followupID: 'followup-inbox-step_1' }]
+        },
+        step: { ...step, followupID: 'followup-inbox-step_1' },
+        followupID: 'followup-inbox-step_1',
+        projectSlug: 'burnbar',
+        title: 'Land the gate',
+        dueAt: 86_400
+      })
       .mockResolvedValueOnce({ stored: 1 });
 
     const b = await bridge();
@@ -296,6 +327,17 @@ describe('VAL-RPC-002 bridge behavior', () => {
       missionID: 'mission_1'
     });
     await b.inboxPlansGrade({ stepID: 'step_1', grade: 999, noteMarkdown: 'Shipped.' });
+    await b.inboxMemoryCandidateApprove({
+      itemID: 'inb_1',
+      fingerprint: 'ci_waste:linux',
+      candidateID: 'candidate_1'
+    });
+    await b.inboxPlansRememberStep({ stepID: 'step_1' });
+    await b.inboxPlansCreateFollowup({
+      stepID: 'step_1',
+      projectSlug: 'burnbar',
+      dueAt: '2001-01-02T00:00:00.000Z'
+    });
     await b.inboxMemoryExport({
       entries: [{
         memoryID: 'mem_1',
@@ -348,7 +390,24 @@ describe('VAL-RPC-002 bridge behavior', () => {
     expect(invoke).toHaveBeenNthCalledWith(13, 'inbox_plans_grade', {
       request: { stepID: 'step_1', grade: 100, noteMarkdown: 'Shipped.' }
     });
-    expect(invoke).toHaveBeenNthCalledWith(14, 'inbox_memory_export', {
+    expect(invoke).toHaveBeenNthCalledWith(14, 'inbox_memory_candidate_approve', {
+      request: {
+        itemID: 'inb_1',
+        fingerprint: 'ci_waste:linux',
+        candidateID: 'candidate_1'
+      }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(15, 'inbox_plans_remember_step', {
+      request: { stepID: 'step_1' }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(16, 'inbox_plans_create_followup', {
+      request: {
+        stepID: 'step_1',
+        projectSlug: 'burnbar',
+        dueAt: 86_400
+      }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(17, 'inbox_memory_export', {
       request: {
         entries: [{
           memoryID: 'mem_1',

@@ -71,6 +71,12 @@ enum BurnBarProjectCodeMemoryStoreError: Error, LocalizedError {
 // AUDIT(@unchecked Sendable): raw SQLite access is serialized through `dbQueue`.
 // sendable-allowlist: sqlite-raw-pointer
 final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
+    struct MemoryAuthorityState: Equatable {
+        let memoryID: String
+        let reviewStatus: MemoryReviewStatus
+        let latestAuditHash: String
+    }
+
     struct SQLiteRow {
         let values: [String?]
     }
@@ -366,6 +372,62 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
         }
     }
 
+    /// Read-only idempotency probe for trusted daemon-owned workflows that
+    /// derive memory identity from canonical text. The renderer cannot call
+    /// this surface or supply the resulting id.
+    func memoryAuthorityState(
+        text: String,
+        projectPath: String?
+    ) throws -> MemoryAuthorityState? {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard body.isEmpty == false else { throw BurnBarProjectCodeMemoryStoreError.emptyText }
+        let root = try projectRoot(projectPath)
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        let bodyRef = Self.sha256Hex(body)
+        let memoryID = "mem_" + String(Self.sha256Hex("\(projectID):\(bodyRef)").prefix(32))
+        return try memoryAuthorityState(
+            memoryID: memoryID,
+            projectID: projectID
+        )
+    }
+
+    func memoryAuthorityState(
+        memoryID: String,
+        projectPath: String?
+    ) throws -> MemoryAuthorityState? {
+        let root = try projectRoot(projectPath)
+        let projectID = try resolveProjectIdentity(root: root).projectID
+        return try memoryAuthorityState(memoryID: memoryID, projectID: projectID)
+    }
+
+    private func memoryAuthorityState(
+        memoryID: String,
+        projectID: String
+    ) throws -> MemoryAuthorityState? {
+        try databaseSync {
+            guard let row = try queryRows(
+                "SELECT review_status FROM agent_memories WHERE id = ? AND project_id = ? LIMIT 1",
+                [.text(memoryID), .text(projectID)]
+            ).first,
+            let status = MemoryReviewStatus(rawValue: row.string(0)) else {
+                return nil
+            }
+            let auditHash = try queryRows(
+                """
+                SELECT hash FROM memory_audit
+                WHERE project_id = ? AND subject_id = ?
+                ORDER BY seq DESC LIMIT 1
+                """,
+                [.text(projectID), .text(memoryID)]
+            ).first?.string(0) ?? ""
+            return MemoryAuthorityState(
+                memoryID: memoryID,
+                reviewStatus: status,
+                latestAuditHash: auditHash
+            )
+        }
+    }
+
     func recall(_ request: BurnBarProjectMemoryRecallRequest) throws -> BurnBarProjectMemoryRecallResponse {
         let traceID = TraceContextBridge.currentContext().traceID
         let query = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -468,6 +530,7 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     memoryID: memoryID,
                     now: Self.isoNow()
                 )
+                try removeInboxApprovedMemoryReferencesIfPresent(memoryID: memoryID)
                 // Keep a metadata tombstone so every forget remains visible to the
                 // daemon-owned review/audit feed across reloads and devices. The sealed
                 // body is removed above and the row is excluded from normal recall.
@@ -526,6 +589,9 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                     "UPDATE agent_memories SET review_status = ?, updated_at = ? WHERE id = ? AND project_id = ?",
                     [.text(request.status.rawValue), .text(Self.isoNow()), .text(memoryID), .text(projectID)]
                 )
+                if request.status != .approved {
+                    try removeInboxApprovedMemoryReferencesIfPresent(memoryID: memoryID)
+                }
                 let auditHash = try auditEvent(
                     action: "memory.review_status",
                     domain: "memory",
@@ -545,6 +611,32 @@ final class BurnBarProjectCodeMemoryStore: @unchecked Sendable {
                 try? execute("ROLLBACK", [])
                 throw error
             }
+        }
+    }
+
+    /// Rejecting or forgetting a memory removes both approved-only prompt
+    /// export and Founder Plan binding in the same SQLite transaction as the
+    /// authority mutation. Both tables are optional for older profiles.
+    private func removeInboxApprovedMemoryReferencesIfPresent(memoryID: String) throws {
+        let exportExists = try fetchInt(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'ai_inbox_memory_export'",
+            []
+        ) > 0
+        if exportExists {
+            try execute(
+                "DELETE FROM ai_inbox_memory_export WHERE memory_id = ?",
+                [.text(memoryID)]
+            )
+        }
+        let planStepsExist = try fetchInt(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'ai_inbox_plan_steps'",
+            []
+        ) > 0
+        if planStepsExist {
+            try execute(
+                "UPDATE ai_inbox_plan_steps SET memory_id = NULL WHERE memory_id = ?",
+                [.text(memoryID)]
+            )
         }
     }
 

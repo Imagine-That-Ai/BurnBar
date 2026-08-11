@@ -171,6 +171,47 @@ final class FounderPlanLedgerTests: XCTestCase {
         XCTAssertEqual(overflowing.planAverage ?? -1, 70, accuracy: 0.01)
     }
 
+    func test_memoryBindingIsDurableAndIdempotent() throws {
+        let now = Date()
+        let (_, step) = try store.acceptPlan(
+            candidate: BurnBarInboxPlanCandidate(
+                title: "Keep the release gate",
+                bodyMarkdown: "Require exact candidate proof."
+            ),
+            pack: "engOps",
+            now: now
+        )
+
+        let first = try store.bindPlanStepMemory(
+            stepID: step.id,
+            memoryID: "mem_release_gate",
+            now: now
+        )
+        let retry = try store.bindPlanStepMemory(
+            stepID: step.id,
+            memoryID: "mem_release_gate",
+            now: now.addingTimeInterval(1)
+        )
+
+        XCTAssertEqual(first.memoryID, "mem_release_gate")
+        XCTAssertEqual(retry.memoryID, "mem_release_gate")
+        XCTAssertEqual(
+            try store.queryRows(
+                "SELECT COUNT(*) FROM ai_inbox_plan_events WHERE step_id = ? AND event = 'memory_bound'",
+                [.text(step.id)]
+            ).first?.int(0),
+            1,
+            "An idempotent retry must not append a duplicate binding event."
+        )
+        XCTAssertThrowsError(
+            try store.bindPlanStepMemory(
+                stepID: step.id,
+                memoryID: "mem_different",
+                now: now
+            )
+        )
+    }
+
     // MARK: - Standing commitments
 
     func test_standingCommitmentsRenderActivePlansAndExportedFacts() throws {
@@ -282,5 +323,46 @@ final class FounderPlanLedgerTests: XCTestCase {
         ).map { ($0.string(0), $0.string(1)) }
         XCTAssertEqual(rows.map(\.0), ["mem_b"])
         XCTAssertEqual(rows.map(\.1), ["B2"])
+    }
+
+    func test_singleMemoryExportUpsertAndRemovalDoNotReplaceUnrelatedRows() throws {
+        let now = Date()
+        _ = try store.replaceMemoryExport(
+            entries: [
+                BurnBarInboxMemoryExportEntry(
+                    memoryID: "mem_existing",
+                    provenance: "existing",
+                    snippetMarkdown: "Keep me.",
+                    approvedAt: now
+                )
+            ],
+            now: now
+        )
+
+        try store.upsertMemoryExport(
+            entry: BurnBarInboxMemoryExportEntry(
+                memoryID: "mem_new",
+                provenance: "ai-inbox:item:fp:candidate:c1",
+                snippetMarkdown: "New approved memory.",
+                approvedAt: now
+            ),
+            now: now
+        )
+        XCTAssertEqual(
+            try store.queryRows(
+                "SELECT memory_id FROM ai_inbox_memory_export ORDER BY memory_id",
+                []
+            ).map { $0.string(0) },
+            ["mem_existing", "mem_new"]
+        )
+
+        try store.removeMemoryExport(memoryID: "mem_new")
+        XCTAssertEqual(
+            try store.queryRows(
+                "SELECT memory_id FROM ai_inbox_memory_export ORDER BY memory_id",
+                []
+            ).map { $0.string(0) },
+            ["mem_existing"]
+        )
     }
 }

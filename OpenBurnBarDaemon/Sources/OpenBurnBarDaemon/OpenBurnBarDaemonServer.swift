@@ -1555,7 +1555,9 @@ public actor BurnBarDaemonServer {
                  .inboxConfigGet, .inboxConfigUpdate, .inboxRunNow,
                  .inboxThreadGet, .inboxReply,
                  .inboxPlansList, .inboxPlansGet, .inboxPlansAccept,
-                 .inboxPlansUpdateStep, .inboxPlansGrade, .inboxMemoryExport:
+                 .inboxPlansUpdateStep, .inboxPlansGrade,
+                 .inboxMemoryCandidateApprove, .inboxPlansRememberStep,
+                 .inboxPlansCreateFollowup, .inboxMemoryExport:
                 return try await handleInboxRPC(
                     method: method,
                     decoder: decoder,

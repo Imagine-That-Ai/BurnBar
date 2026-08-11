@@ -90,6 +90,7 @@ extension OpenBurnBarDatabase {
             evidence_ids_json TEXT,
             mission_id TEXT,
             followup_id TEXT,
+            memory_id TEXT,
             inbox_fingerprint TEXT,
             grade INTEGER,
             grade_note_md TEXT,

@@ -3,11 +3,14 @@ import {
   decodeAIInboxConfig,
   decodeAIInboxGetResponse,
   decodeAIInboxListResponse,
+  decodeAIInboxMemoryCandidateApproveResponse,
   decodeAIInboxMemoryExportResponse,
   decodeAIInboxPlanAcceptResponse,
+  decodeAIInboxPlanCreateFollowupResponse,
   decodeAIInboxPlanGetResponse,
   decodeAIInboxPlanGradeResponse,
   decodeAIInboxPlansListResponse,
+  decodeAIInboxPlanRememberStepResponse,
   decodeAIInboxPlanUpdateStepResponse,
   decodeAIInboxPresentationGetResponse,
   decodeAIInboxPresentationListResponse,
@@ -20,10 +23,13 @@ import {
   decodeSwiftDate,
   encodeAIInboxConfig,
   encodeAIInboxListRequest,
+  encodeAIInboxMemoryCandidateApproveRequest,
   encodeAIInboxMemoryExportRequest,
   encodeAIInboxPlanAcceptRequest,
+  encodeAIInboxPlanCreateFollowupRequest,
   encodeAIInboxPlanGradeRequest,
   encodeAIInboxPlansListRequest,
+  encodeAIInboxPlanRememberStepRequest,
   encodeAIInboxPlanUpdateStepRequest,
   encodeAIInboxPresentationListRequest,
   encodeAIInboxPresentationMarkAllReadRequest,
@@ -512,6 +518,39 @@ describe('Founder Lens thread and plan decoding', () => {
       step: planStep(),
       planGradeAverage: 101
     }).planGradeAverage).toBe(100);
+    expect(decodeAIInboxMemoryCandidateApproveResponse({
+      memoryID: 'mem_candidate',
+      provenance: 'ai-inbox:item:ci_waste:linux:candidate:candidate_1',
+      quarantineAuditHash: 'quarantine-hash',
+      approvalAuditHash: 'approval-hash'
+    })).toEqual({
+      memoryID: 'mem_candidate',
+      provenance: 'ai-inbox:item:ci_waste:linux:candidate:candidate_1',
+      quarantineAuditHash: 'quarantine-hash',
+      approvalAuditHash: 'approval-hash'
+    });
+    expect(decodeAIInboxPlanRememberStepResponse({
+      plan: plan(),
+      step: { ...planStep(), memoryID: 'mem_step' },
+      memory: {
+        memoryID: 'mem_step',
+        provenance: 'ai-inbox:plan:plan_1:step:step_1',
+        quarantineAuditHash: null,
+        approvalAuditHash: 'approval-step'
+      }
+    }).step.memoryID).toBe('mem_step');
+    expect(decodeAIInboxPlanCreateFollowupResponse({
+      plan: plan(),
+      step: { ...planStep(), followupID: 'followup-inbox-step_1' },
+      followupID: 'followup-inbox-step_1',
+      projectSlug: 'burnbar',
+      title: 'Land gate',
+      dueAt: SWIFT_DATE
+    })).toMatchObject({
+      followupID: 'followup-inbox-step_1',
+      projectSlug: 'burnbar',
+      dueAt: ISO
+    });
   });
 
   it('rejects unknown Founder Lens packs and plan statuses', () => {
@@ -581,6 +620,27 @@ describe('AI Inbox outbound request normalization', () => {
       stepID: 'step_1',
       grade: 100,
       noteMarkdown: 'Done.'
+    });
+    expect(encodeAIInboxMemoryCandidateApproveRequest({
+      itemID: 'inb_1',
+      fingerprint: 'ci_waste:linux',
+      candidateID: 'candidate_1'
+    })).toEqual({
+      itemID: 'inb_1',
+      fingerprint: 'ci_waste:linux',
+      candidateID: 'candidate_1'
+    });
+    expect(encodeAIInboxPlanRememberStepRequest({ stepID: 'step_1' })).toEqual({
+      stepID: 'step_1'
+    });
+    expect(encodeAIInboxPlanCreateFollowupRequest({
+      stepID: 'step_1',
+      projectSlug: 'burnbar',
+      dueAt: ISO
+    })).toEqual({
+      stepID: 'step_1',
+      projectSlug: 'burnbar',
+      dueAt: SWIFT_DATE
     });
   });
 

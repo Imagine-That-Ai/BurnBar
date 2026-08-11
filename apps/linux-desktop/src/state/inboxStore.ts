@@ -55,6 +55,13 @@ export type InboxState = {
   ): Promise<boolean>;
   gradeStep(stepID: string, grade: number, noteMarkdown?: string): Promise<boolean>;
   promoteStep(plan: AIInboxPlan, stepID: string): Promise<boolean>;
+  approveMemoryCandidate(
+    itemID: string,
+    fingerprint: string,
+    candidateID: string
+  ): Promise<boolean>;
+  rememberStep(stepID: string): Promise<boolean>;
+  createFollowup(stepID: string): Promise<boolean>;
   mutatePresentation(
     itemID: string,
     action: AIInboxPresentationMutationAction,
@@ -87,6 +94,12 @@ function filterRequest(filter: InboxFilter): AIInboxPresentationListRequest {
     isSnoozed: false,
     limit: 200
   };
+}
+
+function replacePlan(plans: AIInboxPlan[], updated: AIInboxPlan): AIInboxPlan[] {
+  const index = plans.findIndex((plan) => plan.id === updated.id);
+  if (index < 0) return [...plans, updated];
+  return plans.map((plan) => (plan.id === updated.id ? updated : plan));
 }
 
 function fixtureData(): {
@@ -528,6 +541,94 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
     } catch (cause) {
       set((state) => ({
         actionError: errorMessage(cause, 'Could not promote this step to Mission Control.'),
+        busy: { ...state.busy, [key]: false }
+      }));
+      return false;
+    }
+  },
+
+  async approveMemoryCandidate(itemID, fingerprint, candidateID) {
+    const bridge = inboxBridge();
+    if (!bridge?.inboxMemoryCandidateApprove || useShellStore.getState().fixtureMode) {
+      set({
+        actionError: useShellStore.getState().fixtureMode
+          ? null
+          : 'Memory approval is unavailable in this shell.'
+      });
+      return useShellStore.getState().fixtureMode;
+    }
+    const key = `memory:${itemID}:${candidateID}`;
+    set((state) => ({ busy: { ...state.busy, [key]: true }, actionError: null }));
+    try {
+      await bridge.inboxMemoryCandidateApprove({ itemID, fingerprint, candidateID });
+      set((state) => ({ busy: { ...state.busy, [key]: false } }));
+      return true;
+    } catch (cause) {
+      set((state) => ({
+        actionError: errorMessage(cause, 'Could not remember this proposal.'),
+        busy: { ...state.busy, [key]: false }
+      }));
+      return false;
+    }
+  },
+
+  async rememberStep(stepID) {
+    const bridge = inboxBridge();
+    if (!bridge?.inboxPlansRememberStep || useShellStore.getState().fixtureMode) {
+      set({
+        actionError: useShellStore.getState().fixtureMode
+          ? null
+          : 'Founder Plan memory is unavailable in this shell.'
+      });
+      return useShellStore.getState().fixtureMode;
+    }
+    const key = `step:${stepID}`;
+    set((state) => ({ busy: { ...state.busy, [key]: true }, actionError: null }));
+    try {
+      const response = await bridge.inboxPlansRememberStep({ stepID });
+      set((state) => ({
+        plans: replacePlan(state.plans, response.plan),
+        busy: { ...state.busy, [key]: false }
+      }));
+      return true;
+    } catch (cause) {
+      set((state) => ({
+        actionError: errorMessage(cause, 'Could not remember this plan step.'),
+        busy: { ...state.busy, [key]: false }
+      }));
+      return false;
+    }
+  },
+
+  async createFollowup(stepID) {
+    const projectSlug = get().rows.find(
+      (row) => row.item.summary.id === get().selectedID
+    )?.item.summary.projectID;
+    const bridge = inboxBridge();
+    if (!projectSlug) {
+      set({ actionError: 'This item needs a project before it can create a follow-up.' });
+      return false;
+    }
+    if (!bridge?.inboxPlansCreateFollowup || useShellStore.getState().fixtureMode) {
+      set({
+        actionError: useShellStore.getState().fixtureMode
+          ? null
+          : 'Founder Plan follow-up creation is unavailable in this shell.'
+      });
+      return useShellStore.getState().fixtureMode;
+    }
+    const key = `step:${stepID}`;
+    set((state) => ({ busy: { ...state.busy, [key]: true }, actionError: null }));
+    try {
+      const response = await bridge.inboxPlansCreateFollowup({ stepID, projectSlug });
+      set((state) => ({
+        plans: replacePlan(state.plans, response.plan),
+        busy: { ...state.busy, [key]: false }
+      }));
+      return true;
+    } catch (cause) {
+      set((state) => ({
+        actionError: errorMessage(cause, 'Could not create a follow-up from this plan step.'),
         busy: { ...state.busy, [key]: false }
       }));
       return false;

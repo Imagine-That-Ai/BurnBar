@@ -212,6 +212,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case inboxPlansAccept = "daemon.inbox.plans.accept"
     case inboxPlansUpdateStep = "daemon.inbox.plans.update_step"
     case inboxPlansGrade = "daemon.inbox.plans.grade"
+    /// Single daemon-owned sagas for the three human-confirmed Founder Lens
+    /// actions that must not be assembled from renderer-authored state.
+    case inboxMemoryCandidateApprove = "daemon.inbox.memory_candidate.approve"
+    case inboxPlansRememberStep = "daemon.inbox.plans.remember_step"
+    case inboxPlansCreateFollowup = "daemon.inbox.plans.create_followup"
     /// App → daemon push of approved chat-authority snippets (full-set
     /// replacement, so revocations propagate by omission).
     case inboxMemoryExport = "daemon.inbox.memory.export"

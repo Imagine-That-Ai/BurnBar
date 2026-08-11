@@ -591,6 +591,143 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertTrue(audit.events.contains { $0.action == "memory.forget" && $0.labels.contains("review_status:forgotten") })
     }
 
+    func testRejectAndForgetAtomicallyRemoveInboxApprovedExport() throws {
+        let fixture = try makeFixture()
+        let inbox = try BurnBarAIInboxStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-export-test")
+        )
+        let store = try BurnBarProjectCodeMemoryStore(
+            databasePath: fixture.database.path,
+            logger: BurnBarDaemonLogger(category: "memory-export-test")
+        )
+        let text = "Exact candidate receipts must match the installed package digest."
+        let remembered = try store.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: text,
+                projectPath: fixture.project.path,
+                sourcePath: "ai-inbox:item:release:candidate:one",
+                reviewStatus: .approved
+            )
+        )
+        try inbox.upsertMemoryExport(
+            entry: BurnBarInboxMemoryExportEntry(
+                memoryID: remembered.memoryID,
+                provenance: "ai-inbox:item:release:candidate:one",
+                snippetMarkdown: text,
+                approvedAt: Date()
+            ),
+            now: Date()
+        )
+        try inbox.execute(
+            """
+            INSERT INTO ai_inbox_plans(
+                id, title, horizon, pack, status, summary_md, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                .text("plan-memory-revocation"),
+                .text("Keep release proof exact"),
+                .text("now"),
+                .text("engOps"),
+                .text("active"),
+                .text("Bind every claim to one candidate."),
+                .text("2026-08-11T00:00:00.000Z"),
+                .text("2026-08-11T00:00:00.000Z")
+            ]
+        )
+        try inbox.execute(
+            """
+            INSERT INTO ai_inbox_plan_steps(
+                id, plan_id, ordinal, title, body_md, status, memory_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                .text("step-memory-revocation"),
+                .text("plan-memory-revocation"),
+                .int(0),
+                .text("Verify the package digest"),
+                .text(text),
+                .text("accepted"),
+                .text(remembered.memoryID),
+                .text("2026-08-11T00:00:00.000Z"),
+                .text("2026-08-11T00:00:00.000Z")
+            ]
+        )
+        XCTAssertEqual(
+            try inbox.queryRows(
+                "SELECT COUNT(*) FROM ai_inbox_memory_export WHERE memory_id = ?",
+                [.text(remembered.memoryID)]
+            ).first?.int(0),
+            1
+        )
+
+        _ = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: remembered.memoryID,
+                projectPath: fixture.project.path,
+                status: .rejected
+            )
+        )
+        XCTAssertEqual(
+            try inbox.queryRows(
+                "SELECT COUNT(*) FROM ai_inbox_memory_export WHERE memory_id = ?",
+                [.text(remembered.memoryID)]
+            ).first?.int(0),
+            0,
+            "A rejected memory must leave the daemon's approved-only Inbox export."
+        )
+        XCTAssertNil(
+            try inbox.queryRows(
+                "SELECT memory_id FROM ai_inbox_plan_steps WHERE id = ?",
+                [.text("step-memory-revocation")]
+            ).first?.optionalString(0),
+            "A rejected memory must clear stale Founder Plan binding."
+        )
+
+        _ = try store.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: remembered.memoryID,
+                projectPath: fixture.project.path,
+                status: .approved
+            )
+        )
+        try inbox.upsertMemoryExport(
+            entry: BurnBarInboxMemoryExportEntry(
+                memoryID: remembered.memoryID,
+                provenance: "ai-inbox:item:release:candidate:one",
+                snippetMarkdown: text,
+                approvedAt: Date()
+            ),
+            now: Date()
+        )
+        try inbox.execute(
+            "UPDATE ai_inbox_plan_steps SET memory_id = ? WHERE id = ?",
+            [.text(remembered.memoryID), .text("step-memory-revocation")]
+        )
+        _ = try store.forget(
+            BurnBarProjectMemoryForgetRequest(
+                memoryID: remembered.memoryID,
+                projectPath: fixture.project.path
+            )
+        )
+        XCTAssertEqual(
+            try inbox.queryRows(
+                "SELECT COUNT(*) FROM ai_inbox_memory_export WHERE memory_id = ?",
+                [.text(remembered.memoryID)]
+            ).first?.int(0),
+            0,
+            "A forgotten memory must leave the daemon's approved-only Inbox export."
+        )
+        XCTAssertNil(
+            try inbox.queryRows(
+                "SELECT memory_id FROM ai_inbox_plan_steps WHERE id = ?",
+                [.text("step-memory-revocation")]
+            ).first?.optionalString(0),
+            "A forgotten memory must clear stale Founder Plan binding."
+        )
+    }
+
     func testRememberStoresBodyInProjectMemorySnapshotNotAgentIndex() throws {
         let fixture = try makeFixture()
         let store = try BurnBarProjectCodeMemoryStore(databasePath: fixture.database.path, logger: BurnBarDaemonLogger(category: "test"))

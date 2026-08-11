@@ -131,7 +131,11 @@ pre-v59 rows load):
 | `maxThreadTurns` | `40` | 2–200 |
 
 The lens only *shapes* synthesis. It cannot spend money or write memory on
-its own: egress, budget, and approval gates are all upstream of it.
+its own: egress, budget, and explicit human approval gates are all upstream
+of it. Linux's `daemon.inbox.memory_candidate.approve` operation reloads the
+canonical item and candidate, verifies the item fingerprint, and uses the
+same quarantine-first memory authority; the renderer cannot supply memory
+text, provenance, IDs, hashes, or approval timestamps.
 
 ## Versioning
 

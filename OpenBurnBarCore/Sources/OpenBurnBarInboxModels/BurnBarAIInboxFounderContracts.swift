@@ -180,6 +180,9 @@ public struct BurnBarInboxPlanStep: Codable, Hashable, Sendable, Identifiable {
     public let evidenceIDs: [String]
     public let missionID: String?
     public let followupID: String?
+    /// Canonical daemon memory authority id created by the explicit
+    /// quarantine-first "Remember" action for this step.
+    public let memoryID: String?
     public let inboxFingerprint: String?
     /// 0–100 when graded.
     public let grade: Int?
@@ -201,6 +204,7 @@ public struct BurnBarInboxPlanStep: Codable, Hashable, Sendable, Identifiable {
         evidenceIDs: [String] = [],
         missionID: String? = nil,
         followupID: String? = nil,
+        memoryID: String? = nil,
         inboxFingerprint: String? = nil,
         grade: Int? = nil,
         gradeNoteMarkdown: String? = nil,
@@ -220,6 +224,7 @@ public struct BurnBarInboxPlanStep: Codable, Hashable, Sendable, Identifiable {
         self.evidenceIDs = evidenceIDs
         self.missionID = missionID
         self.followupID = followupID
+        self.memoryID = memoryID
         self.inboxFingerprint = inboxFingerprint
         self.grade = grade
         self.gradeNoteMarkdown = gradeNoteMarkdown
@@ -380,6 +385,122 @@ public struct BurnBarInboxPlanGradeResponse: Codable, Hashable, Sendable {
     public init(step: BurnBarInboxPlanStep, planGradeAverage: Double?) {
         self.step = step
         self.planGradeAverage = planGradeAverage
+    }
+}
+
+// MARK: - Daemon-authoritative memory and follow-up actions
+
+/// Approves one canonical memory proposal from one canonical inbox item.
+///
+/// The renderer supplies identity only. The daemon reloads the item, verifies
+/// the fingerprint and candidate id, and owns the candidate text, kind,
+/// confidence, provenance, quarantine, approval, and export writes.
+public struct BurnBarInboxMemoryCandidateApproveRequest: Codable, Hashable, Sendable {
+    public let itemID: String
+    public let fingerprint: String
+    public let candidateID: String
+    /// Optional project root used by the existing project-memory authority.
+    /// Nil preserves the authority's established default-scope behavior.
+    public let projectPath: String?
+
+    public init(
+        itemID: String,
+        fingerprint: String,
+        candidateID: String,
+        projectPath: String? = nil
+    ) {
+        self.itemID = itemID
+        self.fingerprint = fingerprint
+        self.candidateID = candidateID
+        self.projectPath = projectPath
+    }
+}
+
+public struct BurnBarInboxMemoryApprovalResponse: Codable, Hashable, Sendable {
+    public let memoryID: String
+    public let provenance: String
+    /// Nil only on an idempotent retry of a step that was already bound.
+    public let quarantineAuditHash: String?
+    public let approvalAuditHash: String
+
+    public init(
+        memoryID: String,
+        provenance: String,
+        quarantineAuditHash: String?,
+        approvalAuditHash: String
+    ) {
+        self.memoryID = memoryID
+        self.provenance = provenance
+        self.quarantineAuditHash = quarantineAuditHash
+        self.approvalAuditHash = approvalAuditHash
+    }
+}
+
+/// Turns one canonical Founder Plan step into approved durable memory. The
+/// daemon reloads plan/step content and binds the resulting memory id back to
+/// the step; the renderer cannot author the memory body or id.
+public struct BurnBarInboxPlanRememberStepRequest: Codable, Hashable, Sendable {
+    public let stepID: String
+    public let projectPath: String?
+
+    public init(stepID: String, projectPath: String? = nil) {
+        self.stepID = stepID
+        self.projectPath = projectPath
+    }
+}
+
+public struct BurnBarInboxPlanRememberStepResponse: Codable, Hashable, Sendable {
+    public let plan: BurnBarInboxPlan
+    public let step: BurnBarInboxPlanStep
+    public let memory: BurnBarInboxMemoryApprovalResponse
+
+    public init(
+        plan: BurnBarInboxPlan,
+        step: BurnBarInboxPlanStep,
+        memory: BurnBarInboxMemoryApprovalResponse
+    ) {
+        self.plan = plan
+        self.step = step
+        self.memory = memory
+    }
+}
+
+/// Creates and binds a Mission Control follow-up from canonical plan content.
+/// `dueAt` is optional so the daemon can apply its stable default policy.
+public struct BurnBarInboxPlanCreateFollowupRequest: Codable, Hashable, Sendable {
+    public let stepID: String
+    public let projectSlug: String
+    public let dueAt: Date?
+
+    public init(stepID: String, projectSlug: String, dueAt: Date? = nil) {
+        self.stepID = stepID
+        self.projectSlug = projectSlug
+        self.dueAt = dueAt
+    }
+}
+
+public struct BurnBarInboxPlanCreateFollowupResponse: Codable, Hashable, Sendable {
+    public let plan: BurnBarInboxPlan
+    public let step: BurnBarInboxPlanStep
+    public let followupID: String
+    public let projectSlug: String
+    public let title: String
+    public let dueAt: Date
+
+    public init(
+        plan: BurnBarInboxPlan,
+        step: BurnBarInboxPlanStep,
+        followupID: String,
+        projectSlug: String,
+        title: String,
+        dueAt: Date
+    ) {
+        self.plan = plan
+        self.step = step
+        self.followupID = followupID
+        self.projectSlug = projectSlug
+        self.title = title
+        self.dueAt = dueAt
     }
 }
 

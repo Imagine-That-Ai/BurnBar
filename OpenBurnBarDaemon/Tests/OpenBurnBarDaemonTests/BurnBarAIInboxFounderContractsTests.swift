@@ -81,6 +81,7 @@ final class BurnBarAIInboxFounderContractsTests: XCTestCase {
             evidenceIDs: ["item:a"],
             missionID: "mission_1",
             followupID: "followup_1",
+            memoryID: "mem_step_1",
             inboxFingerprint: "fp",
             grade: 85,
             gradeNoteMarkdown: "Auto-seeded.",
@@ -107,6 +108,7 @@ final class BurnBarAIInboxFounderContractsTests: XCTestCase {
         let decoded = try roundTrip(plan)
         XCTAssertEqual(decoded, plan)
         XCTAssertEqual(decoded.steps.first?.status, .inProgress)
+        XCTAssertEqual(decoded.steps.first?.memoryID, "mem_step_1")
     }
 
     func test_planStepStatusRawValuesAreWireStable() {
@@ -171,5 +173,78 @@ final class BurnBarAIInboxFounderContractsTests: XCTestCase {
         )
         XCTAssertEqual(try roundTrip(request), request)
         XCTAssertEqual(try roundTrip(BurnBarInboxMemoryExportResponse(stored: 1)).stored, 1)
+    }
+
+    func test_daemonAuthoritativeMemoryAndFollowupActionsRoundTrip() throws {
+        let now = Date(timeIntervalSince1970: 1_754_700_000)
+        let step = BurnBarInboxPlanStep(
+            id: "step_1",
+            planID: "plan_1",
+            ordinal: 1,
+            title: "Land the gate",
+            bodyMarkdown: "Make it required.",
+            status: .accepted,
+            memoryID: "mem_step_1",
+            createdAt: now,
+            updatedAt: now
+        )
+        let plan = BurnBarInboxPlan(
+            id: "plan_1",
+            title: "Ship parity",
+            horizon: .week,
+            pack: "engOps",
+            status: .active,
+            summaryMarkdown: "Close the remaining gaps.",
+            createdAt: now,
+            updatedAt: now,
+            steps: [step]
+        )
+        let memory = BurnBarInboxMemoryApprovalResponse(
+            memoryID: "mem_step_1",
+            provenance: "ai-inbox:plan:plan_1:step:step_1",
+            quarantineAuditHash: "quarantine-hash",
+            approvalAuditHash: "approval-hash"
+        )
+
+        XCTAssertEqual(
+            try roundTrip(
+                BurnBarInboxMemoryCandidateApproveRequest(
+                    itemID: "inb_1",
+                    fingerprint: "ci_waste:linux",
+                    candidateID: "candidate_1",
+                    projectPath: "/tmp/project"
+                )
+            ).candidateID,
+            "candidate_1"
+        )
+        XCTAssertEqual(
+            try roundTrip(
+                BurnBarInboxPlanRememberStepResponse(
+                    plan: plan,
+                    step: step,
+                    memory: memory
+                )
+            ).memory,
+            memory
+        )
+        let followup = BurnBarInboxPlanCreateFollowupResponse(
+            plan: plan,
+            step: step,
+            followupID: "followup-inbox-step_1",
+            projectSlug: "burnbar",
+            title: step.title,
+            dueAt: now
+        )
+        XCTAssertEqual(try roundTrip(followup), followup)
+        XCTAssertEqual(
+            try roundTrip(
+                BurnBarInboxPlanCreateFollowupRequest(
+                    stepID: step.id,
+                    projectSlug: "burnbar",
+                    dueAt: now
+                )
+            ).dueAt,
+            now
+        )
     }
 }

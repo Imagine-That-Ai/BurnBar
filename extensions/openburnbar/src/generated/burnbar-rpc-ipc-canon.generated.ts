@@ -752,6 +752,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.inbox.memory_candidate.approve",
+    "caseName": "inboxMemoryCandidateApprove",
+    "domain": "inbox",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.memory_candidate.approve",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.inbox.memory.export",
     "caseName": "inboxMemoryExport",
     "domain": "inbox",
@@ -769,6 +779,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.inbox.plans.accept",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.plans.create_followup",
+    "caseName": "inboxPlansCreateFollowup",
+    "domain": "inbox",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable mutation response for daemon.inbox.plans",
     "error": "BurnBarRPCError"
   },
   {
@@ -799,6 +819,16 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.inbox.plans",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.inbox.plans.remember_step",
+    "caseName": "inboxPlansRememberStep",
+    "domain": "inbox",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.inbox.plans.remember_step",
     "error": "BurnBarRPCError"
   },
   {

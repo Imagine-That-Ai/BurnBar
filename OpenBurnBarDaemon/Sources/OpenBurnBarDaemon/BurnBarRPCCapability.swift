@@ -98,7 +98,9 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // memory export changes what the daemon may cite as approved
              // fact. All operator actions.
              .inboxReply, .inboxPlansAccept, .inboxPlansUpdateStep,
-             .inboxPlansGrade, .inboxMemoryExport:
+             .inboxPlansGrade, .inboxMemoryCandidateApprove,
+             .inboxPlansRememberStep, .inboxPlansCreateFollowup,
+             .inboxMemoryExport:
             return .config
         case .usageRecord, .usageRecent, .usageProjection, .usageRecount,
              .usageHistory, .usageInsights,

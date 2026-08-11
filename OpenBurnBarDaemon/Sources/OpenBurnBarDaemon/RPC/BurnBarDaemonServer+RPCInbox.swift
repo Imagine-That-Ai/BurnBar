@@ -1,6 +1,18 @@
 import Foundation
 import OpenBurnBarEngine
 
+private enum BurnBarInboxAuthorityError: Error, LocalizedError {
+    case invalid(String)
+    case unavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalid(let message), .unavailable(let message):
+            return message
+        }
+    }
+}
+
 extension BurnBarDaemonServer {
     /// AI Inbox RPCs.
     ///
@@ -315,6 +327,51 @@ extension BurnBarDaemonServer {
                 )
             }
 
+        case .inboxMemoryCandidateApprove:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxMemoryCandidateApproveRequest>.self,
+                from: requestData
+            )
+            do {
+                let result = try await approveInboxMemoryCandidate(
+                    typedRequest.params,
+                    inbox: inbox
+                )
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: result))
+            } catch {
+                return encodeInboxAuthorityErrorResponse(id: typedRequest.id, error: error)
+            }
+
+        case .inboxPlansRememberStep:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPlanRememberStepRequest>.self,
+                from: requestData
+            )
+            do {
+                let result = try await rememberInboxPlanStep(
+                    typedRequest.params,
+                    inbox: inbox
+                )
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: result))
+            } catch {
+                return encodeInboxAuthorityErrorResponse(id: typedRequest.id, error: error)
+            }
+
+        case .inboxPlansCreateFollowup:
+            let typedRequest = try decoder.decode(
+                BurnBarRPCRequestEnvelopeWithParams<BurnBarInboxPlanCreateFollowupRequest>.self,
+                from: requestData
+            )
+            do {
+                let result = try await createInboxPlanFollowup(
+                    typedRequest.params,
+                    inbox: inbox
+                )
+                return encode(BurnBarRPCResponseEnvelope(id: typedRequest.id, result: result))
+            } catch {
+                return encodeInboxAuthorityErrorResponse(id: typedRequest.id, error: error)
+            }
+
         // MARK: Founder Lens — memory export
 
         case .inboxMemoryExport:
@@ -355,5 +412,316 @@ extension BurnBarDaemonServer {
             code = BurnBarRPCErrorCode.internalError
         }
         return encodeErrorResponse(id: id, code: code, message: error.localizedDescription)
+    }
+
+    private func encodeInboxAuthorityErrorResponse(id: String, error: Error) -> Data {
+        let code: Int
+        switch error {
+        case BurnBarInboxAuthorityError.invalid:
+            code = BurnBarRPCErrorCode.invalidParams
+        case BurnBarInboxAuthorityError.unavailable:
+            code = BurnBarRPCErrorCode.internalError
+        case let storeError as BurnBarProjectCodeMemoryStoreError:
+            switch storeError {
+            case .emptyText, .emptyQuery, .memoryNotFound, .invalidMemoryReviewStatus,
+                 .projectPathUnavailable, .secretRejected:
+                code = BurnBarRPCErrorCode.invalidParams
+            case .databaseSnapshotUnavailable, .databaseSnapshotInvalidPath,
+                 .databaseSnapshotTooLarge, .databaseSnapshotPermissions,
+                 .databaseSnapshotFailed, .sqlite:
+                code = BurnBarRPCErrorCode.internalError
+            }
+        case let storeError as BurnBarAIInboxStoreError:
+            switch storeError {
+            case .itemNotFound, .invalidPresentationMutation:
+                code = BurnBarRPCErrorCode.invalidParams
+            case .sqlite, .closed:
+                code = BurnBarRPCErrorCode.internalError
+            }
+        case let missionError as BurnBarMissionControlError:
+            switch missionError {
+            case .projectNotFound, .invalidProjectIdentifier, .ambiguousProjectIdentifier,
+                 .projectIdentityConflict, .projectDeleted, .followupNotFound:
+                code = BurnBarRPCErrorCode.invalidParams
+            case .questionNotFound, .missionNotFound, .missionNotApproved, .missionTerminal,
+                 .enterprisePolicyBlocked, .performanceGuardrailExceeded,
+                 .simulatorRunNotFound, .missingPayload, .executionReadinessFailed:
+                code = BurnBarRPCErrorCode.internalError
+            }
+        default:
+            code = BurnBarRPCErrorCode.internalError
+        }
+        return encodeErrorResponse(id: id, code: code, message: error.localizedDescription)
+    }
+
+    private func approveInboxMemoryCandidate(
+        _ request: BurnBarInboxMemoryCandidateApproveRequest,
+        inbox: BurnBarAIInboxService
+    ) async throws -> BurnBarInboxMemoryApprovalResponse {
+        guard projectCodeMemory != nil else {
+            throw BurnBarInboxAuthorityError.unavailable(
+                "Memory authority is unavailable. Configure the index database and retry."
+            )
+        }
+        guard let item = try await inbox.item(id: request.itemID) else {
+            throw BurnBarInboxAuthorityError.invalid("No inbox item with id \(request.itemID).")
+        }
+        guard item.summary.fingerprint == request.fingerprint else {
+            throw BurnBarInboxAuthorityError.invalid(
+                "Inbox item fingerprint changed; reload the item before approving memory."
+            )
+        }
+        guard let candidate = item.payload.memoryCandidates.first(where: { $0.id == request.candidateID }) else {
+            throw BurnBarInboxAuthorityError.invalid(
+                "No memory proposal \(request.candidateID) exists on this inbox item."
+            )
+        }
+        let text = candidate.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.isEmpty == false else {
+            throw BurnBarInboxAuthorityError.invalid("This memory proposal has no text.")
+        }
+        let provenance = "ai-inbox:item:\(item.summary.fingerprint):candidate:\(candidate.id)"
+        return try await approveInboxMemoryText(
+            text,
+            kind: Self.inboxMemoryKind(candidate.kind),
+            confidence: candidate.confidence,
+            provenance: provenance,
+            tags: [
+                "ai-inbox",
+                "candidate:\(candidate.id)",
+                "item:\(item.summary.fingerprint)"
+            ] + candidate.citationConversationIDs.prefix(6).map { "conversation:\($0)" },
+            projectPath: request.projectPath,
+            inbox: inbox
+        )
+    }
+
+    private func rememberInboxPlanStep(
+        _ request: BurnBarInboxPlanRememberStepRequest,
+        inbox: BurnBarAIInboxService
+    ) async throws -> BurnBarInboxPlanRememberStepResponse {
+        guard let memory = projectCodeMemory else {
+            throw BurnBarInboxAuthorityError.unavailable(
+                "Memory authority is unavailable. Configure the index database and retry."
+            )
+        }
+        guard let canonical = try await inbox.planAndStep(stepID: request.stepID) else {
+            throw BurnBarInboxAuthorityError.invalid("No plan step with id \(request.stepID).")
+        }
+        let text = "\(canonical.plan.title): \(canonical.step.title). \(canonical.step.bodyMarkdown)"
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.isEmpty == false else {
+            throw BurnBarInboxAuthorityError.invalid("This plan step has no text to remember.")
+        }
+        let provenance = "ai-inbox:plan:\(canonical.plan.id):step:\(canonical.step.id)"
+
+        let approval: BurnBarInboxMemoryApprovalResponse
+        if let existingMemoryID = canonical.step.memoryID {
+            let authority = try memory.memoryAuthorityState(
+                memoryID: existingMemoryID,
+                projectPath: request.projectPath
+            )
+            let approvalAuditHash: String
+            if authority?.reviewStatus == .approved {
+                approvalAuditHash = authority?.latestAuditHash ?? ""
+            } else {
+                approvalAuditHash = try memory.setReviewStatus(
+                    BurnBarProjectMemoryReviewStatusRequest(
+                        memoryID: existingMemoryID,
+                        projectPath: request.projectPath,
+                        status: .approved
+                    )
+                ).auditHash
+            }
+            let approvedAt = Date()
+            try await inbox.upsertApprovedMemory(
+                memoryID: existingMemoryID,
+                provenance: provenance,
+                snippetMarkdown: text,
+                approvedAt: approvedAt
+            )
+            approval = BurnBarInboxMemoryApprovalResponse(
+                memoryID: existingMemoryID,
+                provenance: provenance,
+                quarantineAuditHash: nil,
+                approvalAuditHash: approvalAuditHash
+            )
+        } else {
+            approval = try await approveInboxMemoryText(
+                text,
+                kind: "fact",
+                confidence: 0.9,
+                provenance: provenance,
+                tags: ["ai-inbox", "founder-plan", "plan:\(canonical.plan.id)", "step:\(canonical.step.id)"],
+                projectPath: request.projectPath,
+                inbox: inbox
+            )
+            _ = try await inbox.bindPlanStepMemory(
+                stepID: canonical.step.id,
+                memoryID: approval.memoryID
+            )
+        }
+
+        guard let refreshed = try await inbox.planAndStep(stepID: canonical.step.id) else {
+            throw BurnBarAIInboxStoreError.sqlite("Remembered plan step did not read back.")
+        }
+        return BurnBarInboxPlanRememberStepResponse(
+            plan: refreshed.plan,
+            step: refreshed.step,
+            memory: approval
+        )
+    }
+
+    private func approveInboxMemoryText(
+        _ text: String,
+        kind: String,
+        confidence: Double,
+        provenance: String,
+        tags: [String],
+        projectPath: String?,
+        inbox: BurnBarAIInboxService
+    ) async throws -> BurnBarInboxMemoryApprovalResponse {
+        guard let memory = projectCodeMemory else {
+            throw BurnBarInboxAuthorityError.unavailable("Memory authority is unavailable.")
+        }
+        if let existing = try memory.memoryAuthorityState(
+            text: text,
+            projectPath: projectPath
+        ), existing.reviewStatus != .forgotten {
+            let approvalAuditHash: String
+            if existing.reviewStatus == .approved, existing.latestAuditHash.isEmpty == false {
+                approvalAuditHash = existing.latestAuditHash
+            } else {
+                approvalAuditHash = try memory.setReviewStatus(
+                    BurnBarProjectMemoryReviewStatusRequest(
+                        memoryID: existing.memoryID,
+                        projectPath: projectPath,
+                        status: .approved
+                    )
+                ).auditHash
+            }
+            try await inbox.upsertApprovedMemory(
+                memoryID: existing.memoryID,
+                provenance: provenance,
+                snippetMarkdown: text,
+                approvedAt: Date()
+            )
+            return BurnBarInboxMemoryApprovalResponse(
+                memoryID: existing.memoryID,
+                provenance: provenance,
+                quarantineAuditHash: existing.reviewStatus == .quarantined
+                    ? existing.latestAuditHash
+                    : nil,
+                approvalAuditHash: approvalAuditHash
+            )
+        }
+        // Deliberately two authority writes. A crash after the first leaves a
+        // quarantined row which normal recall excludes; retry is deterministic.
+        let quarantined = try memory.remember(
+            BurnBarProjectMemoryRememberRequest(
+                text: text,
+                projectPath: projectPath,
+                kind: kind,
+                scope: "personal",
+                tags: Array(tags.prefix(16)),
+                confidence: min(max(confidence, 0), 1),
+                sourcePath: provenance,
+                reviewStatus: .quarantined
+            )
+        )
+        let approved = try memory.setReviewStatus(
+            BurnBarProjectMemoryReviewStatusRequest(
+                memoryID: quarantined.memoryID,
+                projectPath: projectPath,
+                status: .approved
+            )
+        )
+        let approvedAt = Date()
+        try await inbox.upsertApprovedMemory(
+            memoryID: approved.memoryID,
+            provenance: provenance,
+            snippetMarkdown: text,
+            approvedAt: approvedAt
+        )
+        return BurnBarInboxMemoryApprovalResponse(
+            memoryID: approved.memoryID,
+            provenance: provenance,
+            quarantineAuditHash: quarantined.auditHash,
+            approvalAuditHash: approved.auditHash
+        )
+    }
+
+    private func createInboxPlanFollowup(
+        _ request: BurnBarInboxPlanCreateFollowupRequest,
+        inbox: BurnBarAIInboxService
+    ) async throws -> BurnBarInboxPlanCreateFollowupResponse {
+        let projectSlug = request.projectSlug.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard projectSlug.isEmpty == false, projectSlug.count <= 128 else {
+            throw BurnBarInboxAuthorityError.invalid("A bounded project id is required for this follow-up.")
+        }
+        guard let canonical = try await inbox.planAndStep(stepID: request.stepID) else {
+            throw BurnBarInboxAuthorityError.invalid("No plan step with id \(request.stepID).")
+        }
+
+        let followupID = canonical.step.followupID ?? "followup-inbox-\(canonical.step.id)"
+        let existing = try await missionControlService.followupsList(
+            BurnBarFollowupsListRequest(
+                projectSlug: projectSlug,
+                statuses: BurnBarFollowupStatus.allCases,
+                limit: 500
+            )
+        ).followups.first { $0.id.rawValue == followupID }
+        let dueAt = existing?.nextNudgeAt ?? request.dueAt ?? Date().addingTimeInterval(24 * 60 * 60)
+
+        if existing == nil {
+            _ = try await missionControlService.followupCreate(
+                BurnBarFollowupCreateRequest(
+                    followup: BurnBarFollowupSnapshot(
+                        id: BurnBarFollowupID(rawValue: followupID),
+                        projectSlug: projectSlug,
+                        title: canonical.step.title,
+                        summary: "\(canonical.plan.title): \(canonical.step.bodyMarkdown)",
+                        status: .open,
+                        kind: .controllerNudge,
+                        createdAt: Date(),
+                        nextNudgeAt: dueAt,
+                        metadata: [
+                            "ai_inbox_plan_id": .string(canonical.plan.id),
+                            "ai_inbox_step_id": .string(canonical.step.id)
+                        ]
+                    )
+                )
+            )
+        }
+
+        _ = try await inbox.planUpdateStep(
+            BurnBarInboxPlanUpdateStepRequest(
+                stepID: canonical.step.id,
+                status: nil,
+                missionID: nil,
+                followupID: followupID
+            )
+        )
+        guard let refreshed = try await inbox.planAndStep(stepID: canonical.step.id) else {
+            throw BurnBarAIInboxStoreError.sqlite("Follow-up-bound plan step did not read back.")
+        }
+        return BurnBarInboxPlanCreateFollowupResponse(
+            plan: refreshed.plan,
+            step: refreshed.step,
+            followupID: followupID,
+            projectSlug: projectSlug,
+            title: canonical.step.title,
+            dueAt: dueAt
+        )
+    }
+
+    private static func inboxMemoryKind(_ hint: String) -> String {
+        switch hint.lowercased() {
+        case "preference": return "preference"
+        case "decision", "event": return "event"
+        case "profile": return "profile"
+        case "relationship": return "relationship"
+        default: return "fact"
+        }
     }
 }

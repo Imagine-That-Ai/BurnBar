@@ -328,6 +328,238 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
         XCTAssertEqual(export.result?.stored, 1)
     }
 
+    func test_daemonAuthoritativeMemoryAndFollowupRPCsAreIdempotentThroughServerSocket() async throws {
+        let rootURL = try makeTemporaryRoot(name: "inbox-authority-rpc")
+        let databasePath = rootURL.appendingPathComponent("openburnbar.sqlite").path
+        let projectURL = rootURL.appendingPathComponent("project", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+
+        let inboxStore = try BurnBarAIInboxStore(
+            databasePath: databasePath,
+            logger: BurnBarDaemonLogger(category: "test")
+        )
+        let approvedCandidate = BurnBarInboxMemoryCandidate(
+            id: "candidate-safe",
+            text: "Linux parity requires the exact candidate to pass its native package smoke test.",
+            kind: "decision",
+            confidence: 0.95,
+            citationConversationIDs: ["conversation-safe"]
+        )
+        let safeItem = try inboxStore.upsertItem(
+            AIInboxFixtures.itemWrite(
+                fingerprint: "parity:authority-safe",
+                title: "Remember the exact-candidate rule",
+                payload: BurnBarInboxItemPayload(memoryCandidates: [approvedCandidate])
+            ),
+            now: Date()
+        )
+        let secretCandidate = BurnBarInboxMemoryCandidate(
+            id: "candidate-secret",
+            text: "generic api_key=abcdefghijklmnopqrstuvwxyz123456",
+            kind: "gotcha",
+            confidence: 0.9,
+            citationConversationIDs: []
+        )
+        let secretItem = try inboxStore.upsertItem(
+            AIInboxFixtures.itemWrite(
+                fingerprint: "parity:authority-secret",
+                title: "Never remember credentials",
+                payload: BurnBarInboxItemPayload(memoryCandidates: [secretCandidate])
+            ),
+            now: Date()
+        )
+
+        let missionStore = BurnBarMissionControlStore(
+            eventsFileURL: rootURL.appendingPathComponent("controller-events.jsonl"),
+            projectionFileURL: rootURL.appendingPathComponent("controller-projection.json"),
+            logger: BurnBarDaemonLogger(category: "inbox-authority-rpc-tests")
+        )
+        let missionService = BurnBarMissionControlService(
+            store: missionStore,
+            logger: BurnBarDaemonLogger(category: "inbox-authority-rpc-tests"),
+            activitySnapshotURL: nil,
+            reviewRunLauncher: nil,
+            runSnapshotLookup: nil,
+            usageLedgerURL: rootURL.appendingPathComponent("usage-events.jsonl")
+        )
+        _ = try await missionService.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: makeMissionControlProject(slug: "burnbar"))
+        )
+
+        let socketPath = makeSocketPath(name: "inbox-authority")
+        let server = makeServer(
+            rootURL: rootURL,
+            socketPath: socketPath,
+            indexDatabasePath: databasePath,
+            missionControlService: missionService
+        )
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let staleFingerprint: BurnBarRPCResponseEnvelope<BurnBarInboxMemoryApprovalResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "memory-stale-fingerprint",
+                method: .inboxMemoryCandidateApprove,
+                authToken: authToken,
+                params: BurnBarInboxMemoryCandidateApproveRequest(
+                    itemID: safeItem.id,
+                    fingerprint: "parity:stale",
+                    candidateID: approvedCandidate.id,
+                    projectPath: projectURL.path
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(staleFingerprint.result)
+        XCTAssertEqual(staleFingerprint.error?.code, BurnBarRPCErrorCode.invalidParams)
+
+        let approvalRequest = BurnBarInboxMemoryCandidateApproveRequest(
+            itemID: safeItem.id,
+            fingerprint: "parity:authority-safe",
+            candidateID: approvedCandidate.id,
+            projectPath: projectURL.path
+        )
+        let approval: BurnBarRPCResponseEnvelope<BurnBarInboxMemoryApprovalResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "memory-approve",
+                method: .inboxMemoryCandidateApprove,
+                authToken: authToken,
+                params: approvalRequest
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(approval.error)
+        let approvedMemory = try XCTUnwrap(approval.result)
+        XCTAssertNotNil(approvedMemory.quarantineAuditHash)
+        XCTAssertFalse(approvedMemory.approvalAuditHash.isEmpty)
+
+        let approvalRetry: BurnBarRPCResponseEnvelope<BurnBarInboxMemoryApprovalResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "memory-approve-retry",
+                method: .inboxMemoryCandidateApprove,
+                authToken: authToken,
+                params: approvalRequest
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(approvalRetry.error)
+        XCTAssertEqual(approvalRetry.result?.memoryID, approvedMemory.memoryID)
+        XCTAssertNil(
+            approvalRetry.result?.quarantineAuditHash,
+            "An already-approved deterministic memory must not be quarantined again"
+        )
+        XCTAssertEqual(approvalRetry.result?.approvalAuditHash, approvedMemory.approvalAuditHash)
+
+        let secret: BurnBarRPCResponseEnvelope<BurnBarInboxMemoryApprovalResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "memory-secret",
+                method: .inboxMemoryCandidateApprove,
+                authToken: authToken,
+                params: BurnBarInboxMemoryCandidateApproveRequest(
+                    itemID: secretItem.id,
+                    fingerprint: "parity:authority-secret",
+                    candidateID: secretCandidate.id,
+                    projectPath: projectURL.path
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(secret.result)
+        XCTAssertEqual(secret.error?.code, BurnBarRPCErrorCode.invalidParams)
+        XCTAssertTrue(secret.error?.message.localizedCaseInsensitiveContains("secret") == true)
+
+        let accepted: BurnBarRPCResponseEnvelope<BurnBarInboxPlanAcceptResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "authority-plan-accept",
+                method: .inboxPlansAccept,
+                authToken: authToken,
+                params: BurnBarInboxPlanAcceptRequest(
+                    candidate: BurnBarInboxPlanCandidate(
+                        title: "Finish Linux parity",
+                        bodyMarkdown: "Build, install, and verify the exact candidate.",
+                        horizon: .week
+                    ),
+                    pack: "engOps"
+                )
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(accepted.error)
+        let acceptedStep = try XCTUnwrap(accepted.result?.step)
+
+        let rememberRequest = BurnBarInboxPlanRememberStepRequest(
+            stepID: acceptedStep.id,
+            projectPath: projectURL.path
+        )
+        let remembered: BurnBarRPCResponseEnvelope<BurnBarInboxPlanRememberStepResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "authority-plan-remember",
+                method: .inboxPlansRememberStep,
+                authToken: authToken,
+                params: rememberRequest
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(remembered.error)
+        let rememberedResult = try XCTUnwrap(remembered.result)
+        XCTAssertEqual(rememberedResult.step.memoryID, rememberedResult.memory.memoryID)
+
+        let rememberedRetry: BurnBarRPCResponseEnvelope<BurnBarInboxPlanRememberStepResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "authority-plan-remember-retry",
+                method: .inboxPlansRememberStep,
+                authToken: authToken,
+                params: rememberRequest
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(rememberedRetry.error)
+        XCTAssertEqual(rememberedRetry.result?.memory.memoryID, rememberedResult.memory.memoryID)
+        XCTAssertEqual(rememberedRetry.result?.step.memoryID, rememberedResult.memory.memoryID)
+
+        let dueAt = Date(timeIntervalSince1970: 1_786_500_000)
+        let followupRequest = BurnBarInboxPlanCreateFollowupRequest(
+            stepID: acceptedStep.id,
+            projectSlug: "burnbar",
+            dueAt: dueAt
+        )
+        let followup: BurnBarRPCResponseEnvelope<BurnBarInboxPlanCreateFollowupResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "authority-plan-followup",
+                method: .inboxPlansCreateFollowup,
+                authToken: authToken,
+                params: followupRequest
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(followup.error)
+        let followupResult = try XCTUnwrap(followup.result)
+        XCTAssertEqual(followupResult.step.followupID, followupResult.followupID)
+        XCTAssertEqual(followupResult.dueAt, dueAt)
+
+        let followupRetry: BurnBarRPCResponseEnvelope<BurnBarInboxPlanCreateFollowupResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "authority-plan-followup-retry",
+                method: .inboxPlansCreateFollowup,
+                authToken: authToken,
+                params: followupRequest
+            ),
+            socketPath: socketPath
+        )
+        XCTAssertNil(followupRetry.error)
+        XCTAssertEqual(followupRetry.result?.followupID, followupResult.followupID)
+        XCTAssertEqual(followupRetry.result?.dueAt, dueAt)
+
+        let storedFollowups = try await missionService.followupsList(
+            BurnBarFollowupsListRequest(
+                projectSlug: "burnbar",
+                statuses: BurnBarFollowupStatus.allCases,
+                limit: 10
+            )
+        )
+        XCTAssertEqual(storedFollowups.followups.map(\.id.rawValue), [followupResult.followupID])
+    }
+
     func test_presentationStateRPCsDispatchAndReturnPersistedDaemonTruth() async throws {
         let rootURL = try makeTemporaryRoot(name: "inbox-presentation-rpc")
         let databasePath = rootURL.appendingPathComponent("openburnbar.sqlite").path
@@ -516,7 +748,8 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
     private func makeServer(
         rootURL: URL,
         socketPath: String,
-        indexDatabasePath: String?
+        indexDatabasePath: String?,
+        missionControlService: (any BurnBarMissionControlServing)? = nil
     ) -> BurnBarDaemonServer {
         BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
@@ -533,7 +766,24 @@ final class BurnBarDaemonServerInboxRPCTests: XCTestCase {
             ),
             usageRecorder: BurnBarUsageRecorder(
                 fileURL: rootURL.appendingPathComponent("usage-events.jsonl")
-            )
+            ),
+            missionControlService: missionControlService
+        )
+    }
+
+    private func makeMissionControlProject(slug: String) -> BurnBarReviewProjectSnapshot {
+        BurnBarReviewProjectSnapshot(
+            id: "project-\(slug)",
+            projectSlug: slug,
+            displayName: slug.capitalized,
+            summary: "OpenBurnBar Linux parity socket test project.",
+            status: .healthy,
+            preferredCadence: .daily,
+            freshness: .provisional,
+            pendingQuestionCount: 0,
+            openFollowupCount: 0,
+            activeMissionCount: 0,
+            needsOperatorAttention: false
         )
     }
 

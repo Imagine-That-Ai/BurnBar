@@ -827,6 +827,18 @@
                 "daemon.inbox.plans.update_step",
             ),
             ("inbox_plans_grade", "daemon.inbox.plans.grade"),
+            (
+                "inbox_memory_candidate_approve",
+                "daemon.inbox.memory_candidate.approve",
+            ),
+            (
+                "inbox_plans_remember_step",
+                "daemon.inbox.plans.remember_step",
+            ),
+            (
+                "inbox_plans_create_followup",
+                "daemon.inbox.plans.create_followup",
+            ),
             ("inbox_memory_export", "daemon.inbox.memory.export"),
         ] {
             assert!(

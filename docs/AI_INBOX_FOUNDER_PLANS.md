@@ -28,7 +28,7 @@ flowchart LR
   Pensieve --> Recall
 ```
 
-## Storage (migration `v59_founder_lens`)
+## Storage (migrations `v59_founder_lens` and `v60_founder_lens_authority`)
 
 Daemon-owned SQLite, mirrored byte-identically across the daemon schema
 (`BurnBarAIInboxSchema.founderLensStatements`) and both migration trees
@@ -37,7 +37,7 @@ Daemon-owned SQLite, mirrored byte-identically across the daemon schema
 | Table | Role |
 |---|---|
 | `ai_inbox_plans` | Plan head: title, horizon, pack, status, rolling `grade_avg`, `memory_id` / `pensieve_vector_id` links |
-| `ai_inbox_plan_steps` | Steps: status lifecycle, `mission_id` / `followup_id` bindings, grade + note |
+| `ai_inbox_plan_steps` | Steps: status lifecycle, `mission_id` / `followup_id` / canonical `memory_id` bindings, grade + note |
 | `ai_inbox_plan_events` | Append-only audit: accepted, step_updated, graded |
 | `ai_inbox_threads` / `ai_inbox_thread_messages` | Reply dialogue (see `AI_INBOX_FOUNDER_LENS.md`) |
 | `ai_inbox_memory_export` | App→daemon bridge of approved snippets |
@@ -64,7 +64,7 @@ human-confirmed RPCs. The app never touches these tables directly.
 | Action | Mechanism |
 |---|---|
 | **Promote to mission** | `daemon.mission.create` (capability `mission_control`) with `recommendation: .review` — Mission Control's own approval flow stays the execution authority. `mission_id` binds back onto the step, status → `in_progress`. `InboxPlanPromoteService`. |
-| **Create follow-up** | `daemon.followup.create` (capability `mission_control`), kind `controller_nudge`, `followup_id` binds back onto the step. |
+| **Create follow-up** | `daemon.inbox.plans.create_followup` reloads canonical plan content, creates an idempotent `controller_nudge` through Mission Control, and binds the returned `followup_id` back onto the step. |
 
 Both carry `ai_inbox_plan_id` / `ai_inbox_step_id` metadata so the trace
 suggestion → plan → mission → grade survives in Mission Control's journal.
@@ -73,8 +73,8 @@ suggestion → plan → mission → grade survives in Mission Control's journal.
 
 | Stage | Path |
 |---|---|
-| Remember | `InboxMemoryApprovalHandler.approvePlanStep` → `addChatMemoryAuthorityRecord` **quarantined** → `setChatMemoryReviewStatus(.approved)` — the same two-step every chat memory takes; the PII/secret gate applies identically. Provenance `ai-inbox:plan:<planId>:step:<stepId>`. |
-| Export to daemon | After each approval, `InboxMemoryExportService` pushes the **full set** of approved `ai-inbox:*` snippets via `daemon.inbox.memory.export` (loophole L21: the authority lives in the app's SQLCipher store; the daemon ticks headless). Full-set replacement means revocation propagates by omission. Best-effort: approval never fails on daemon-down; the next push heals. |
+| Remember | macOS uses `InboxMemoryApprovalHandler.approvePlanStep`; Linux uses `daemon.inbox.plans.remember_step`. Both reload canonical plan content, write the memory **quarantined**, then call the same approved-memory review transition with the same PII/secret gate. Provenance is `ai-inbox:plan:<planId>:step:<stepId>`. Linux binds the canonical `memory_id` to the step in v60 so retries are durable and idempotent. |
+| Export to daemon | The macOS app pushes the **full set** of approved `ai-inbox:*` snippets via `daemon.inbox.memory.export`, so revocation propagates by omission. Daemon-owned Linux approvals upsert only their canonical entry and rejection/forget removes that entry in the same SQL transaction as the authority mutation, preserving unrelated approved memories. |
 | Cloud (Pro Max / Ultra) | Approved snippets are eligible for Pensieve `commitKnowledgeBatch` with `sourceKind: chat_memory`. The callable **rejects non-approved chat_memory vectors** and requires full provenance + `approvedAt` (`knowledgeMemory.ts`). The commit gate accepts only `burnbar_pro_max` / `burnbar_ultra`; legacy plain-Pro can search via hosted MCP (`burnbar_search_knowledge`) but can never commit. |
 | Recall | Ticks + replies load **standing commitments**: active plans (always, local) + exported approved snippets — fenced as untrusted data (L20). Hosted recall via `burnbar_search_knowledge` after Pensieve sync. |
 
@@ -90,7 +90,10 @@ it). mem0 is a wiki agent cache, not user memory.
 | `daemon.inbox.plans.accept` | config | Human-confirmed create/append |
 | `daemon.inbox.plans.update_step` | config | Status + mission/followup binding |
 | `daemon.inbox.plans.grade` | config | Grade + note + audit |
+| `daemon.inbox.plans.remember_step` | config | Quarantine, approve, export, and bind one canonical step memory |
+| `daemon.inbox.plans.create_followup` | config | Idempotently create and bind one Mission Control follow-up |
 | `daemon.inbox.thread.get` / `daemon.inbox.reply` | observability / config | Dialogue |
+| `daemon.inbox.memory_candidate.approve` | config | Approve one canonical item proposal without replacing the export set |
 | `daemon.inbox.memory.export` | config | App pushes approved snippets |
 
 All registered through the canon pipeline (enum → capability → coverage →

@@ -15,6 +15,8 @@ import type {
   AIInboxListRequest,
   AIInboxListResponse,
   AIInboxMemoryCandidate,
+  AIInboxMemoryApprovalResponse,
+  AIInboxMemoryCandidateApproveRequest,
   AIInboxMemoryExportRequest,
   AIInboxMemoryExportResponse,
   AIInboxFeedback,
@@ -34,9 +36,13 @@ import type {
   AIInboxPlanGetResponse,
   AIInboxPlanGradeRequest,
   AIInboxPlanGradeResponse,
+  AIInboxPlanCreateFollowupRequest,
+  AIInboxPlanCreateFollowupResponse,
   AIInboxPlanHorizon,
   AIInboxPlansListRequest,
   AIInboxPlansListResponse,
+  AIInboxPlanRememberStepRequest,
+  AIInboxPlanRememberStepResponse,
   AIInboxPlanStatus,
   AIInboxPlanStep,
   AIInboxPlanStepStatus,
@@ -701,6 +707,7 @@ function decodePlanStep(raw: RawJsonValue, label: string): AIInboxPlanStep {
   );
   optionalField(step, 'missionID', optionalString(value.missionID, `${label}.missionID`));
   optionalField(step, 'followupID', optionalString(value.followupID, `${label}.followupID`));
+  optionalField(step, 'memoryID', optionalString(value.memoryID, `${label}.memoryID`));
   optionalField(
     step,
     'inboxFingerprint',
@@ -797,6 +804,52 @@ export function decodeAIInboxPlanGradeResponse(raw: RawJsonValue): AIInboxPlanGr
     )
   );
   return response;
+}
+
+function decodeMemoryApproval(raw: RawJsonValue, label: string): AIInboxMemoryApprovalResponse {
+  const value = requireObject(raw, label);
+  const response: AIInboxMemoryApprovalResponse = {
+    memoryID: requireString(value.memoryID, `${label}.memoryID`),
+    provenance: requireString(value.provenance, `${label}.provenance`),
+    approvalAuditHash: requireString(value.approvalAuditHash, `${label}.approvalAuditHash`)
+  };
+  optionalField(
+    response,
+    'quarantineAuditHash',
+    optionalString(value.quarantineAuditHash, `${label}.quarantineAuditHash`)
+  );
+  return response;
+}
+
+export function decodeAIInboxMemoryCandidateApproveResponse(
+  raw: RawJsonValue
+): AIInboxMemoryApprovalResponse {
+  return decodeMemoryApproval(raw, 'inbox.memory_candidate.approve response');
+}
+
+export function decodeAIInboxPlanRememberStepResponse(
+  raw: RawJsonValue
+): AIInboxPlanRememberStepResponse {
+  const value = requireObject(raw, 'inbox.plans.remember_step response');
+  return {
+    plan: decodePlan(value.plan, 'inbox.plans.remember_step.plan'),
+    step: decodePlanStep(value.step, 'inbox.plans.remember_step.step'),
+    memory: decodeMemoryApproval(value.memory, 'inbox.plans.remember_step.memory')
+  };
+}
+
+export function decodeAIInboxPlanCreateFollowupResponse(
+  raw: RawJsonValue
+): AIInboxPlanCreateFollowupResponse {
+  const value = requireObject(raw, 'inbox.plans.create_followup response');
+  return {
+    plan: decodePlan(value.plan, 'inbox.plans.create_followup.plan'),
+    step: decodePlanStep(value.step, 'inbox.plans.create_followup.step'),
+    followupID: requireString(value.followupID, 'inbox.plans.create_followup.followupID'),
+    projectSlug: requireString(value.projectSlug, 'inbox.plans.create_followup.projectSlug'),
+    title: requireString(value.title, 'inbox.plans.create_followup.title'),
+    dueAt: decodeSwiftDate(value.dueAt, 'inbox.plans.create_followup.dueAt')
+  };
 }
 
 export function decodeAIInboxMemoryExportResponse(raw: RawJsonValue): AIInboxMemoryExportResponse {
@@ -1014,6 +1067,58 @@ export function encodeAIInboxPlanGradeRequest(
     'noteMarkdown',
     optionalString(request.noteMarkdown, 'inbox.plans.grade.noteMarkdown')
   );
+  return encoded;
+}
+
+export function encodeAIInboxMemoryCandidateApproveRequest(
+  request: AIInboxMemoryCandidateApproveRequest
+): AIInboxMemoryCandidateApproveRequest {
+  const encoded: AIInboxMemoryCandidateApproveRequest = {
+    itemID: requireString(request.itemID, 'inbox.memory_candidate.approve.itemID'),
+    fingerprint: requireString(
+      request.fingerprint,
+      'inbox.memory_candidate.approve.fingerprint'
+    ),
+    candidateID: requireString(
+      request.candidateID,
+      'inbox.memory_candidate.approve.candidateID'
+    )
+  };
+  optionalField(
+    encoded,
+    'projectPath',
+    optionalString(request.projectPath, 'inbox.memory_candidate.approve.projectPath')
+  );
+  return encoded;
+}
+
+export function encodeAIInboxPlanRememberStepRequest(
+  request: AIInboxPlanRememberStepRequest
+): AIInboxPlanRememberStepRequest {
+  const encoded: AIInboxPlanRememberStepRequest = {
+    stepID: requireString(request.stepID, 'inbox.plans.remember_step.stepID')
+  };
+  optionalField(
+    encoded,
+    'projectPath',
+    optionalString(request.projectPath, 'inbox.plans.remember_step.projectPath')
+  );
+  return encoded;
+}
+
+export function encodeAIInboxPlanCreateFollowupRequest(
+  request: AIInboxPlanCreateFollowupRequest
+): Record<string, unknown> {
+  const encoded: Record<string, unknown> = {
+    stepID: requireString(request.stepID, 'inbox.plans.create_followup.stepID'),
+    projectSlug: requireString(
+      request.projectSlug,
+      'inbox.plans.create_followup.projectSlug'
+    )
+  };
+  if (request.dueAt !== undefined) {
+    encoded.dueAt = encodeSwiftDate(request.dueAt, 'inbox.plans.create_followup.dueAt');
+  }
   return encoded;
 }
 
