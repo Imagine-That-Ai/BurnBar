@@ -36,7 +36,7 @@ jobs:
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
     # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Cold cache + libsignal FFI build on a slow runner needs headroom; the
     # daemon package alone is far lighter than the full Swift suite (~40 min cap).
     timeout-minutes: 40
@@ -91,7 +91,7 @@ jobs:
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
     # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     timeout-minutes: 40
     needs: classify
     if: needs.classify.outputs.daemon == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)

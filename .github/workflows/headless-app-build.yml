@@ -55,7 +55,7 @@ jobs:
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
     # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Build-only (no XCTest host launch), so far lighter than the 120-min
     # app-build-test lane; the cap still covers a cold SPM cache + libsignal FFI
     # build on a hosted runner.
