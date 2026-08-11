@@ -8,6 +8,81 @@ import AppKit
 
 extension ChatSessionController {
 
+    struct ChatStreamConsumptionResult {
+        let pieces: [ChatTranscriptPiece]
+        let joinedText: String
+        let usageSnapshot: CLIUsageSnapshot?
+    }
+
+    /// Consumes one desktop chat stream while keeping transcript work bounded.
+    /// The callbacks make the performance-critical state machine testable
+    /// without booting a real CLI or HTTP gateway.
+    @MainActor
+    static func consumeChatStream(
+        _ stream: AsyncThrowingStream<CLIChatStreamEvent, Error>,
+        commitInterval: Duration = .milliseconds(80),
+        onCommit: @escaping (String, [ChatTranscriptPiece]) async -> Void,
+        onStructuralEvent: @escaping (CLIChatStreamEvent) async -> Void = { _ in }
+    ) async throws -> ChatStreamConsumptionResult {
+        var pieces: [ChatTranscriptPiece] = []
+        var usageSnapshot: CLIUsageSnapshot?
+        var joinedText = ""
+        var lastCommit = ContinuousClock.now - commitInterval
+
+        func commit() async {
+            await onCommit(joinedText, pieces)
+        }
+
+        do {
+            for try await event in stream {
+                var forceCommit = false
+                switch event {
+                case .text(let chunk):
+                    forceCommit = pieces.isEmpty
+                    appendStreamingText(chunk, to: &pieces)
+                    joinedText += chunk
+                case .reasoning(let chunk):
+                    forceCommit = pieces.isEmpty
+                    appendStreamingTranscriptChunk(chunk, kind: .reasoning, to: &pieces)
+                case .refusal(let chunk):
+                    forceCommit = pieces.isEmpty
+                    appendStreamingTranscriptChunk(chunk, kind: .refusal, to: &pieces)
+                case .toolUse(let name, let detail):
+                    pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
+                    forceCommit = true
+                    await onStructuralEvent(event)
+                case .toolResult(let name, let detail):
+                    pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
+                    forceCommit = true
+                    await onStructuralEvent(event)
+                case .usage(let usage):
+                    if let previous = usageSnapshot {
+                        usageSnapshot = usage.totalTokens >= previous.totalTokens ? usage : previous
+                    } else {
+                        usageSnapshot = usage
+                    }
+                    continue
+                }
+
+                let now = ContinuousClock.now
+                if forceCommit || now - lastCommit >= commitInterval {
+                    lastCommit = now
+                    await commit()
+                }
+            }
+        } catch {
+            await commit()
+            throw error
+        }
+
+        await commit()
+        return ChatStreamConsumptionResult(
+            pieces: pieces,
+            joinedText: joinedText,
+            usageSnapshot: usageSnapshot
+        )
+    }
+
     /// Builds the pinned focus-session prompt section (empty when no context is selected).
     private func focusSessionSection(retrievalResults: [RetrievalResult]) -> String {
         guard let ctx = selectedContext else { return "" }
@@ -370,8 +445,6 @@ extension ChatSessionController {
             guard let self else { return }
             var didRouteThroughFusion = false
             do {
-                var pieces: [ChatTranscriptPiece] = []
-                var usageSnapshot: CLIUsageSnapshot?
                 let elderWandPlugins = await MainActor.run {
                     self.settingsManager.elderWandPluginsPayload()
                 }
@@ -521,60 +594,49 @@ extension ChatSessionController {
                         )
                     }
                 }
-                for try await event in stream {
-                    switch event {
-                    case .text(let chunk):
-                        Self.appendStreamingText(chunk, to: &pieces)
-                    case .reasoning(let chunk):
-                        Self.appendStreamingTranscriptChunk(chunk, kind: .reasoning, to: &pieces)
-                    case .refusal(let chunk):
-                        Self.appendStreamingTranscriptChunk(chunk, kind: .refusal, to: &pieces)
-                    case .toolUse(let name, let detail):
-                        pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
-                        Task { @MainActor in
-                            Analytics.shared.track(.chatToolInvoked, [
-                                "tool_name": .string(AnalyticsBuckets.toolName(name)),
-                                "backend": .string(self.chatBackend.rawValue)
-                            ])
-                        }
-                    case .toolResult(let name, let detail):
-                        pieces.append(ChatTranscriptPiece(kind: .toolResult, value: name, detail: detail))
-                        #if canImport(AppKit) && !DISTRIBUTION_MAS
-                        if let detail {
-                            Task { @MainActor in
-                                await SystemPermissionToolFailureWatcher.shared.observe(
-                                    toolName: name,
-                                    detail: detail,
-                                    toolCallId: assistantId
-                                )
+                let consumption = try await Self.consumeChatStream(
+                    stream,
+                    onCommit: { [weak self] joined, snapshot in
+                        guard let self else { return }
+                        await Task { @MainActor in
+                            if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
+                                // In-place mutation keeps each commit bounded
+                                // while the streaming tick remains the single
+                                // observation broadcast for mirror views.
+                                self.messages[idx].content = joined
+                                self.messages[idx].transcriptPieces = snapshot
+                                self.streamingTick &+= 1
                             }
-                        }
-                        #endif
-                    case .usage(let usage):
-                        if let prev = usageSnapshot {
-                            usageSnapshot = usage.totalTokens >= prev.totalTokens ? usage : prev
-                        } else {
-                            usageSnapshot = usage
+                        }.value
+                    },
+                    onStructuralEvent: { [weak self] event in
+                        guard let self else { return }
+                        switch event {
+                        case .toolUse(let name, _):
+                            Task { @MainActor in
+                                Analytics.shared.track(.chatToolInvoked, [
+                                    "tool_name": .string(AnalyticsBuckets.toolName(name)),
+                                    "backend": .string(self.chatBackend.rawValue)
+                                ])
+                            }
+                        case .toolResult(let name, let detail):
+                            #if canImport(AppKit) && !DISTRIBUTION_MAS
+                            if let detail {
+                                Task { @MainActor in
+                                    await SystemPermissionToolFailureWatcher.shared.observe(
+                                        toolName: name,
+                                        detail: detail,
+                                        toolCallId: assistantId
+                                    )
+                                }
+                            }
+                            #endif
+                        default:
+                            break
                         }
                     }
-                    let joined = ChatMessageRecord.joinedText(from: pieces)
-                    let snapshot = pieces
-                    await Task { @MainActor in
-                        if let idx = self.messages.firstIndex(where: { $0.id == assistantId }) {
-                            // Per-token mutation: assigning `content` and
-                            // `transcriptPieces` in place avoids allocating a
-                            // fresh `ChatMessageRecord` per chunk. The
-                            // `streamingTick` bump remains the single
-                            // observation broadcast for views that mirror
-                            // the in-flight content without reading
-                            // `messages` directly (e.g.
-                            // `ProjectMemoryInsightController`).
-                            self.messages[idx].content = joined
-                            self.messages[idx].transcriptPieces = snapshot
-                            self.streamingTick &+= 1
-                        }
-                    }.value
-                }
+                )
+                let usageSnapshot = consumption.usageSnapshot
                 await Task { @MainActor in
                     self.isStreaming = false
                     self.activeStreamMessageId = nil
