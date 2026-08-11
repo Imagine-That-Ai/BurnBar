@@ -32,10 +32,19 @@ extension ProviderQuotaService {
         from inputs: [ProviderQuotaSnapshot],
         now: Date = Date()
     ) -> ProviderQuotaSnapshot? {
-        // `.localOnly`-scope sources are device-only scrape caches (Codex
-        // rollout, etc.) — adding them across accounts double-counts the
-        // same machine's usage. Drop them from the sum.
-        let candidateSnapshots = inputs.filter { $0.accountStorageScope != .localOnly }
+        // Drop only records that restate a measurement already in the list.
+        // The synthetic "Current <CLI> login" is the provider-level rollup
+        // re-badged as an account, so summing it double-counts one machine.
+        //
+        // This used to drop every `.localOnly` snapshot, which also discarded
+        // real switcher-profile logins: `fetchSwitcherProfileSnapshot` marks
+        // all of them `.localOnly` even though each is an isolated
+        // `CODEX_HOME` / `CLAUDE_CONFIG_DIR` account with its own numbers. Two
+        // daemon accounts plus one switcher profile therefore merged as two,
+        // and the panel reported an understated total — the worst possible
+        // failure mode for a spend readout — under a confident "Combined 2
+        // accounts" label.
+        let candidateSnapshots = inputs.filter { !ProviderQuotaAccountDisplay.isCurrentCLIMirror($0) }
         guard candidateSnapshots.count > 1 else { return nil }
 
         // Prefer fresh snapshots. If every account is stale, fall back to
@@ -88,7 +97,10 @@ extension ProviderQuotaService {
             managementURL: managementURL,
             statusMessage: statusMessage,
             buckets: mergedBuckets,
-            schemaVersion: mergedInputs.first?.schemaVersion ?? 2
+            schemaVersion: mergedInputs.first?.schemaVersion ?? 2,
+            // Structured, so surfaces downstream of the collapse read the
+            // footprint instead of counting one record and reporting "1".
+            mergedAccountCount: accountCount
         )
     }
 
@@ -142,7 +154,7 @@ extension ProviderQuotaService {
         }
 
         let currentAccountID = "current-\(currentCLIType.rawValue)"
-        let currentSourceID = "switcher-cli-current:\(currentCLIType.rawValue)"
+        let currentSourceID = ProviderQuotaAccountDisplay.currentCLISourceIDPrefix + currentCLIType.rawValue
         let alreadyIncluded = accountSnapshots.contains { snapshot in
             snapshot.accountID == currentAccountID || snapshot.sourceId == currentSourceID
         }
@@ -165,7 +177,7 @@ extension ProviderQuotaService {
         case .codex:
             return CLIAuthDiscovery.discoverAuthState(for: cliType).accountDescription
                 ?? "Current \(cliType.displayName) login"
-        case .claude, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .claude, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             return "Current \(cliType.displayName) login"
         }
     }
@@ -186,6 +198,10 @@ extension ProviderQuotaService {
             return .grok
         case .junie:
             return .junie
+        case .primeAgent:
+            return .primeAgent
+        case .muse:
+            return nil
         default:
             return nil
         }

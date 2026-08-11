@@ -16,6 +16,7 @@ on:
       - "scripts/ci/prepare-firebase-tools.sh"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/check-firestore-deploy-drift.mjs"
+      - "scripts/ci/check-firestore-deploy-drift.test.mjs"
       - "scripts/ci/check-firestore-rules-size.mjs"
       - "scripts/ci/compact-firestore-rules-inplace.mjs"
       - "scripts/ci/repair-firestore-rules-release.mjs"
@@ -81,6 +82,9 @@ jobs:
 
       - name: Test Firestore release conflict repair path
         run: node --test scripts/ci/repair-firestore-rules-release.test.mjs
+
+      - name: Test Firestore drift-gate local source resolution
+        run: node --test scripts/ci/check-firestore-deploy-drift.test.mjs
 
       - name: Prepare Firebase deploy config and CLI before auth
         run: |
@@ -229,7 +233,7 @@ jobs:
     needs: firestore-rules-and-indexes
     if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: write

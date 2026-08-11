@@ -35,9 +35,18 @@ jobs:
     needs: classify
     if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 15 rather than 10: the job's own work takes ~3 min, but this job hit the
+    # same slow-fetch pathology as functions-correctness (see its comment
+    # below): actions/checkout alone took 8m30s+ on two consecutive
+    # pull_request attempts on run 31023061437 (most sibling jobs fetched the
+    # same commit in <30s), leaving vitest under a minute before the 10-minute
+    # cap cancelled it. The work is unchanged; only the fetch is slow.
+    timeout-minutes: 15
     steps:
+      # This job only reads the worktree, so history is unnecessary weight.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 1
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -97,7 +106,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -146,7 +155,7 @@ jobs:
   diff-coverage-ts:
     name: diff-coverage (PR)
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -252,7 +261,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -332,7 +341,7 @@ jobs:
   sqlite-schema-doc:
     name: SQLite schema doc drift
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -355,7 +364,7 @@ jobs:
   migrator-parity:
     name: Swift↔Windows↔Linux migrator parity
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -392,9 +401,9 @@ jobs:
   sqlcipher-codec-policy:
     name: SQLCipher codec policy
     runs-on: ubuntu-latest
-    # Checkout can consume nearly two minutes during GitHub fetch degradation;
-    # leave enough time for the required policy check to run afterward.
-    timeout-minutes: 6
+    # Checkout can consume 6-7 minutes during GitHub fetch degradation (observed
+    # Aug 2026); leave enough time for the required policy check to run afterward.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -405,8 +414,10 @@ jobs:
     name: AGPL compliance
     runs-on: ubuntu-latest
     # 3 minutes started timing out as the tree grew (checkout + verify ran
-    # 2m18s-3m15s in July 2026); job timeout reports as "cancelled" in the UI.
-    timeout-minutes: 6
+    # 2m18s-3m15s in July 2026), and GitHub fetch degradation pushed checkout
+    # alone to 6-7 minutes in Aug 2026; job timeout reports as "cancelled" in
+    # the UI.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -423,7 +434,7 @@ jobs:
   libsignal-bridge:
     name: Signal crypto proof
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -462,7 +473,7 @@ jobs:
   shell-syntax:
     name: Shell syntax validation
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -541,7 +552,7 @@ jobs:
   python-lint:
     name: Python lint (ruff)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -562,7 +573,7 @@ jobs:
   schema-drift:
     name: Schema sync drift
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -585,7 +596,7 @@ jobs:
   chunker-parity:
     name: Verbatim chunker parity (wiki + Pensieve)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -609,7 +620,7 @@ jobs:
   control-center-foundations:
     name: Control Center foundations (registry + tokens)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -712,9 +723,33 @@ jobs:
     needs: classify
     if: needs.classify.outputs.console == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # 15 rather than 8: every step of real work here takes 50 seconds total,
+    # but actions/checkout alone consumed 7m21s of the old 8-minute budget on a
+    # merge_group ref and the static build was cancelled 16 seconds in (run
+    # 31049085466), failing the REQUIRED Fast Feedback Gate and ejecting the
+    # queue candidate on a fetch rather than on code.
+    timeout-minutes: 15
     steps:
+      # Only apps/console is built; the two domain-core profile scripts read
+      # config/domain-core-build-profiles.json, their scripts/lib helpers, and
+      # crates/openburnbar-domain-core/union-abi-manifest.json.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          filter: blob:none
+          sparse-checkout: |
+            apps/console
+            scripts
+            config
+            crates/openburnbar-domain-core
+            packages/data-domains
+            packages/design-tokens
+            packages/gl-engine
+            tests/fixtures/domain-core
+            docs/analytics
+          # firebase.json (csp.test.ts) needs no entry: cone-mode sparse
+          # checkout always materializes repo-root files, and a leading-slash
+          # pattern is rejected outright in cone mode ("specify directories
+          # rather than patterns").
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -751,7 +786,7 @@ jobs:
   version-consistency:
     name: Version consistency
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -775,7 +810,7 @@ jobs:
   agents-md-fast:
     name: AGENTS.md quick validation
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -807,7 +842,7 @@ jobs:
   fast-feedback-path-filter:
     name: Fast Feedback path filter
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     outputs:
       rust_changed: ${{ steps.changed.outputs.rust_changed }}
     steps:
@@ -849,9 +884,27 @@ jobs:
     needs: fast-feedback-path-filter
     if: always() && (needs.fast-feedback-path-filter.result != 'success' || needs.fast-feedback-path-filter.outputs.rust_changed != 'false')
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # 15 rather than 8: this job feeds the REQUIRED Fast Feedback Gate, and a
+    # full clone of this repo's 8.6 GiB history consumed the whole budget and
+    # cancelled it inside actions/checkout on a merge_group ref with zero Rust
+    # work done (run 31041261148: 7m59s in checkout), which fails the gate and
+    # ejects the queue candidate on infrastructure rather than on code.
+    timeout-minutes: 15
     steps:
+      # fmt/clippy/cargo-deny read only the three crates below plus the
+      # workspace manifests; history and the other ~13k files are dead weight.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          filter: blob:none
+          # There is no workspace root manifest: each crate under crates/ owns
+          # its Cargo.toml, Cargo.lock, deny.toml, and rust-toolchain.toml.
+          # openburnbar-domain-core additionally compiles repo-root KAT
+          # fixtures into its tests via include_str!(../../../../tests/
+          # fixtures/domain-core/...), so clippy --all-targets needs them
+          # present (run 31042545006 failed without them).
+          sparse-checkout: |
+            crates
+            tests/fixtures/domain-core
 
       - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1, pinned via toolchain below
         with:
@@ -931,7 +984,7 @@ jobs:
     name: Functions (security vitest)
     needs: classify
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -966,7 +1019,7 @@ jobs:
   signal-honesty-copy:
     name: Signal honesty copy
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -986,7 +1039,9 @@ jobs:
   services-fast:
     name: "Services (relay + hosted-MCP: types + tests)"
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    # Checkout can consume 6-7 minutes during GitHub fetch degradation (observed
+    # Aug 2026); leave headroom for the install + test steps afterward.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -1036,7 +1091,7 @@ jobs:
   no-suppressions:
     name: No new suppressions
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
@@ -1112,7 +1167,7 @@ jobs:
   twin-basenames:
     name: Swift twin basenames
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -1134,7 +1189,7 @@ jobs:
   budget-fork-drift:
     name: Budget fork drift
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -1153,7 +1208,7 @@ jobs:
   env-no-secrets:
     name: Production env has no secrets
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -1180,7 +1235,7 @@ jobs:
   windows-storage-architecture:
     name: Windows storage architecture (WPD-0005)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -1205,7 +1260,7 @@ jobs:
   windows-parity-ledger:
     name: Windows parity ledger (Phase 0)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
@@ -1234,9 +1289,16 @@ jobs:
     needs: classify
     if: needs.classify.outputs.functions == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    # Healthy runs finish in ~2 minutes, but GitHub fetch degradation pushed
+    # checkout alone to 6-7 minutes in Aug 2026 (and cancelled merge_group
+    # attempts mid-fetch), which killed this lane at the old 6-minute timeout
+    # repeatedly before any code ran.
+    timeout-minutes: 15
     steps:
+      # This job only reads the worktree, so history is unnecessary weight.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          fetch-depth: 1
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
         with:
@@ -1284,7 +1346,7 @@ jobs:
   debt-budgets:
     name: Debt budgets (shrink-only ratchets)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 

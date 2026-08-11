@@ -1,5 +1,15 @@
 name: Public Linux Download Trust
 
+concurrency:
+  group: public-linux-download-trust-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('run-{0}', github.run_id) }}
+  # Only pull_request runs share a group and get cancelled. merge_group runs are
+  # the merge-queue's own proof and `push` runs are the per-commit post-merge
+  # record, so both get a unique per-run group that can never collide: a shared
+  # group evicts a *pending* run even with cancel-in-progress false, because
+  # GitHub keeps at most one queued run per group. Same pattern and reasoning as
+  # `.github/workflows/security-pr.yml`.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -65,7 +75,7 @@ jobs:
     needs: detect-public-linux-download-change
     if: ${{ needs.detect-public-linux-download-change.outputs.gate_changed == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Install SITE parser dependency

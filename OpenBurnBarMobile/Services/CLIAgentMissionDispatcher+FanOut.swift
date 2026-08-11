@@ -142,7 +142,7 @@ extension CLIAgentMissionDispatcher {
         // batch commits, so a Mac listener can never claim a child while its
         // parent group and initial event exist only in an uncommitted batch,
         // and a batch failure leaves nothing behind.
-        var stagedSignalChildren: [(missionID: String, payload: [String: Any])] = []
+        var stagedSignalChildren: [(missionID: String, payload: NSDictionary)] = []
 
         // Child missions: each gets the existing payload plus group hints +
         // optional persona scope.
@@ -217,7 +217,7 @@ extension CLIAgentMissionDispatcher {
             if signalWrite {
                 var callablePayload = payload
                 callablePayload["updatedAt"] = ISO8601DateFormatter().string(from: Date())
-                stagedSignalChildren.append((missionID: missionID, payload: callablePayload))
+                stagedSignalChildren.append((missionID: missionID, payload: callablePayload as NSDictionary))
             } else {
                 batch.setData(
                     payload,

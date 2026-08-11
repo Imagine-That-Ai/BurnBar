@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "status": "passed",
-  "generatedAt": "2026-08-04T06:58:00Z",
+  "generatedAt": "2026-08-09T04:47:21Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
   "candidateReleaseTag": "v1.0.30",
-  "testedSourceCommit": "377c73c75909e6d1f27e5de0b11d90479959ba9f",
+  "testedSourceCommit": "e174d0db78cf92887495e053bdff560e95d87227",
   "artifactDigests": [
     {
       "path": "OpenBurnBarCore/Package.swift",
-      "sha256": "349e95a28e436e0c1a154c57215f9133dffe588a7005db6971e1f0cfd5c86ced"
+      "sha256": "19cd6b55d0236274214e815451e83ed4da08c5f289c79dd2359635aba86ad7b0"
     },
     {
       "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",
@@ -44,7 +44,7 @@
     },
     {
       "path": "android/app/build.gradle.kts",
-      "sha256": "1ac4f9eb5d7574a4ed4ee967f66dc3897a528ba3b51f0cf2daa7bef5417c34aa"
+      "sha256": "17653608a6b78c63e7c39e37523963bc52e18e0427caebd0334b8f5b5c9014a4"
     },
     {
       "path": "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",

@@ -4,7 +4,7 @@ name: PR Windows Full Suite
 #
 # Replaces the pr-windows-fast.yml skeleton placeholders with REAL dotnet build
 # + dotnet test over the full windows/ solution. The app builds to full
-# XamlCompiler completion (proven on physical Windows by #1248) and the ~2,545
+# XamlCompiler completion (proven on physical Windows by #1248) and the 4,083+
 # C# test fixtures run natively on windows-latest (x64) and windows-11-arm
 # (ARM64). This is the gate that makes a Windows regression un-mergeable once
 # Alberto flips it to a required status check (WS-A2).
@@ -16,14 +16,14 @@ name: PR Windows Full Suite
 #   - openburnbar-engine-windows.yml builds the Swift Engine subset on Windows
 #     (x64 + ARM64) + the G2 parser-parity harness. That lane is unchanged.
 #   - THIS workflow builds the C# WinUI app + all C# test projects and runs the
-#     full dotnet test suite — the ~2,545 fixtures that the physical Windows
+#     full dotnet test suite — the 4,083+ fixtures that the physical Windows
 #     validation proved green (after #1249's 5 fixes).
 #
 # Architectures: two parallel legs, mirroring openburnbar-engine-windows.yml.
 #   • x64  — windows-latest (free, GA). Builds + tests the full solution.
 #   • ARM64 — windows-11-arm (free for public repos). Builds + tests natively.
-# The ARM64 leg's first green run must happen on a real windows-11-arm runner;
-# it is authored lint-clean and cannot be exercised on the macOS/x64 dev host.
+# Every exact candidate's ARM64 result must come from a real windows-11-arm
+# runner; it cannot be exercised on the macOS/x64 development host.
 
 permissions:
   contents: read
@@ -34,12 +34,25 @@ on:
     branches: [main]
     paths:
       - "windows/**"
-      # The sln's native-shim projects reference the committed uniffi C# bindings
-      # that live crate-side (decision 0001), so binding changes must run the
-      # full suite too.
-      - "crates/burnbar-remote/bindings/csharp/**"
-      - "crates/openburnbar-iroh/bindings/csharp/**"
+      # The full gate builds and executes both Rust cdylibs through the C#
+      # native shims, so every source or binding change in either crate reruns
+      # the exact x64 + ARM64 loopback proof.
+      - "crates/burnbar-remote/**"
+      - "crates/openburnbar-iroh/**"
       - "crates/openburnbar-domain-core/**"
+      - "scripts/lib/atomic-regular-file.mjs"
+      - "scripts/lib/domain-core-release-evidence.mjs"
+      - "scripts/ci/canonical-candidate-commit.mjs"
+      - "scripts/ci/verify-domain-core-observed-identity.mjs"
+      - "scripts/windows-port/allowed-not-executed-full.json"
+      - "scripts/windows-port/native-library-staging.mjs"
+      - "scripts/windows-port/native-library-staging.test.mjs"
+      - "scripts/windows-port/stage-local-rust-cdylib.mjs"
+      - "scripts/windows-port/stage-local-rust-cdylib.test.mjs"
+      - "scripts/windows-port/verify-local-domain-core-identity.mjs"
+      - "scripts/windows-port/verify-local-domain-core-identity.test.mjs"
+      - "scripts/windows-port/verify-trx-results.mjs"
+      - "scripts/windows-port/verify-trx-results.test.mjs"
       - ".github/workflows/pr-windows-full.yml"
   pull_request:
     branches: [main]
@@ -56,7 +69,7 @@ jobs:
   detect-windows-full-changes:
     name: Detect Windows full-suite changes
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       windows: ${{ steps.filter.outputs.windows }}
     steps:
@@ -111,7 +124,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|crates/burnbar-remote/bindings/csharp/|crates/openburnbar-iroh/bindings/csharp/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/|AgentLensTests/Fixtures/|\.github/workflows/pr-windows-full\.yml)'; then
+            '^(windows/|crates/burnbar-remote/|crates/openburnbar-iroh/|crates/openburnbar-domain-core/|OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/|AgentLensTests/Fixtures/|scripts/lib/(atomic-regular-file|domain-core-release-evidence)\.mjs|scripts/ci/(canonical-candidate-commit|verify-domain-core-observed-identity)\.mjs|scripts/windows-port/(allowed-not-executed-full\.json|(native-library-staging|stage-local-rust-cdylib)(\.test)?\.mjs|verify-(local-domain-core-identity|trx-results)(\.test)?\.mjs)|\.github/workflows/pr-windows-full\.yml)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows full-suite surface changed: running x64 + ARM64 full-suite legs."
           else
@@ -127,7 +140,7 @@ jobs:
     needs: detect-windows-full-changes
     if: needs.detect-windows-full-changes.outputs.windows == 'true'
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     defaults:
       run:
         shell: pwsh
@@ -137,6 +150,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       # Set up .NET 10 + 8 SDKs. The storage + PAL projects target net10.0; the
       # WinUI app targets net8.0-windows. windows-latest ships both net8 and
@@ -148,10 +162,54 @@ jobs:
             8.0.x
             10.0.x
 
-      - name: Install Rust toolchain
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+
+      - name: Resolve canonical candidate commit
+        id: candidate
+        run: node scripts/ci/canonical-candidate-commit.mjs
+
+      - name: Verify canonical candidate checkout
+        env:
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          if ($env:CANDIDATE_COMMIT -notmatch '^[0-9a-f]{40}$') {
+            throw "Canonical candidate output is missing or malformed."
+          }
+          $checkedOutCommit = (git rev-parse HEAD).Trim()
+          if ($checkedOutCommit -ne $env:CANDIDATE_COMMIT) {
+            throw "Checked-out commit $checkedOutCommit does not match canonical candidate $env:CANDIDATE_COMMIT."
+          }
+
+      - name: Install NASM
+        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1.5.2
+
+      - name: Install Rust 1.96 toolchain
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
         with:
           toolchain: "1.96.0"
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install Rust 1.94 toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.94.0"
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache native Rust builds
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/openburnbar-domain-core/target
+            crates/burnbar-remote/target
+            crates/openburnbar-iroh/target
+          key: windows-full-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/openburnbar-domain-core/Cargo.lock', 'crates/burnbar-remote/Cargo.lock', 'crates/openburnbar-iroh/Cargo.lock') }}
+          restore-keys: |
+            windows-full-native-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify Windows solution
         run: |
@@ -160,14 +218,39 @@ jobs:
           }
           Write-Host "Windows solution present."
 
+      - name: Verify native candidate helpers
+        run: |
+          node --test `
+            scripts/windows-port/native-library-staging.test.mjs `
+            scripts/windows-port/stage-local-rust-cdylib.test.mjs `
+            scripts/windows-port/verify-local-domain-core-identity.test.mjs `
+            scripts/windows-port/verify-trx-results.test.mjs
+
       # Restore the full solution. This resolves all ProjectReferences + NuGet
       # packages (WindowsAppSDK 1.8, Win2D 1.3, CommunityToolkit, Microsoft.Data.Sqlite,
       # SQLitePCLRaw.bundle_e_sqlcipher, xunit) in one pass.
       - name: Restore (dotnet restore)
         run: dotnet restore windows/OpenBurnBar.sln
 
-      - name: Build native shared domain core
-        run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+      - name: Build exact-candidate native libraries
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --target x86_64-pc-windows-msvc
+          rustup run 1.94.0 cargo build --locked --manifest-path crates/burnbar-remote/Cargo.toml -p burnbar-remote-ffi --target x86_64-pc-windows-msvc
+          rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-iroh/Cargo.toml --target x86_64-pc-windows-msvc
+
+      - name: Stage exact native libraries
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/openburnbar-domain-core/Cargo.toml --toolchain 1.96.0 --logical-name openburnbar_domain_ffi --target x86_64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll
+          node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/burnbar-remote/Cargo.toml --toolchain 1.94.0 --logical-name burnbar_remote --target x86_64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/burnbar_remote.dll
+          node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/openburnbar-iroh/Cargo.toml --toolchain 1.96.0 --logical-name openburnbar_iroh --target x86_64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/openburnbar_iroh.dll
 
       # Build the full solution in Debug. The WinUI app builds to full
       # XamlCompiler completion (proven by #1248 on physical Windows). The
@@ -175,7 +258,7 @@ jobs:
       - name: Build (dotnet build — full solution, Debug)
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=x64
 
-      # Run the full C# test suite. The ~2,545 fixtures cover: storage (14 DB
+      # Run the full C# test suite. The 4,083+ fixtures cover: storage (14 DB
       # open/read/FTS5/byte-compat), cloudsync (Firestore gateway, CloudVault,
       # App Check, offline queue), computeruse, particles, pretext, pal/ipc,
       # integrations, dist (hardening + updater feed), quota (4-mechanism value
@@ -184,16 +267,20 @@ jobs:
       - name: Test (dotnet test — full suite)
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-x64.trx" --results-directory TestResults-x64
+          OPENBURNBAR_REQUIRE_NATIVE_SHIMS: "1"
+          OPENBURNBAR_NATIVE_DIR: ${{ github.workspace }}\crates\openburnbar-domain-core\target\debug
+          DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}\crates\openburnbar-domain-core\target\debug\openburnbar_domain_ffi.dll
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}\domain-core-observed-identity-x64.json
+        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger trx --results-directory TestResults-x64
 
-      - name: Set up Node.js for live Playwright bridge proof
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
-        with:
-          node-version: "20"
+      - name: Verify loaded domain-core identity
+        run: node scripts/windows-port/verify-local-domain-core-identity.mjs --expected-commit ${{ steps.candidate.outputs.candidate_commit }} --observed-identity "${{ runner.temp }}\domain-core-observed-identity-x64.json" --binary "${{ github.workspace }}\crates\openburnbar-domain-core\target\debug\openburnbar_domain_ffi.dll"
 
       - name: Live Windows Playwright bridge lifecycle
         run: |
           $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           $browsersPath = Join-Path $PWD ".playwright-browsers"
           $nodeRoot = Join-Path $PWD ".playwright-node"
           $env:PLAYWRIGHT_BROWSERS_PATH = $browsersPath
@@ -207,7 +294,12 @@ jobs:
           dotnet test windows/tests/computeruse/OpenBurnBar.ComputerUse.Tests.csproj `
             --configuration Debug `
             --no-build `
-            --filter "FullyQualifiedName~ProcessDriver_LivePlaywrightBridge_NavigatesEvaluatesAndCloses"
+            --filter "FullyQualifiedName~ProcessDriver_LivePlaywrightBridge_NavigatesEvaluatesAndCloses" `
+            --logger trx `
+            --results-directory TestResults-x64
+
+      - name: Verify complete x64 test evidence
+        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-x64 --minimum-files 41 --minimum-tests 4084 --maximum-not-executed 2 --allowed-not-executed-file scripts/windows-port/allowed-not-executed-full.json
 
       # Publish the TRX results so a red fixture is inspectable in the Actions UI.
       - name: Upload test results
@@ -224,17 +316,16 @@ jobs:
   # win-arm64; WindowsAppSDK 1.8 supports ARM64. The ARM64 leg gives build +
   # test parity with NO hardware (the master plan's G-gates require ARM64).
   #
-  # AUTHORED, not yet run green: windows-11-arm is GA + free for public repos,
-  # but this leg's first real run must happen on that hosted runner (it cannot
-  # be exercised on the macOS/x64 dev host). Until then it is lint-clean
-  # scaffolding — the first green run is the evidence the suite is ARM64-true.
+  # windows-11-arm is GA + free for public repos. Prior hosted runs prove that
+  # this lane is executable, but each candidate still needs its own fresh green
+  # result. Hosted ARM64 CI is build/test proof, not physical-device proof.
   # ──────────────────────────────────────────────────────────────────────────
   build-test-arm64:
     name: Windows full suite (ARM64)
     needs: detect-windows-full-changes
     if: needs.detect-windows-full-changes.outputs.windows == 'true'
     runs-on: windows-11-arm
-    timeout-minutes: 45
+    timeout-minutes: 75
     defaults:
       run:
         shell: pwsh
@@ -244,6 +335,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
@@ -252,10 +344,54 @@ jobs:
             8.0.x
             10.0.x
 
-      - name: Install Rust toolchain
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+
+      - name: Resolve canonical candidate commit
+        id: candidate
+        run: node scripts/ci/canonical-candidate-commit.mjs
+
+      - name: Verify canonical candidate checkout
+        env:
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          if ($env:CANDIDATE_COMMIT -notmatch '^[0-9a-f]{40}$') {
+            throw "Canonical candidate output is missing or malformed."
+          }
+          $checkedOutCommit = (git rev-parse HEAD).Trim()
+          if ($checkedOutCommit -ne $env:CANDIDATE_COMMIT) {
+            throw "Checked-out commit $checkedOutCommit does not match canonical candidate $env:CANDIDATE_COMMIT."
+          }
+
+      - name: Install NASM
+        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1.5.2
+
+      - name: Install Rust 1.96 toolchain
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
         with:
           toolchain: "1.96.0"
+          targets: aarch64-pc-windows-msvc
+
+      - name: Install Rust 1.94 toolchain
+        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+        with:
+          toolchain: "1.94.0"
+          targets: aarch64-pc-windows-msvc
+
+      - name: Cache native Rust builds
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/openburnbar-domain-core/target
+            crates/burnbar-remote/target
+            crates/openburnbar-iroh/target
+          key: windows-full-native-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/openburnbar-domain-core/Cargo.lock', 'crates/burnbar-remote/Cargo.lock', 'crates/openburnbar-iroh/Cargo.lock') }}
+          restore-keys: |
+            windows-full-native-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Verify Windows solution
         run: |
@@ -264,11 +400,36 @@ jobs:
           }
           Write-Host "Windows solution present."
 
+      - name: Verify native candidate helpers
+        run: |
+          node --test `
+            scripts/windows-port/native-library-staging.test.mjs `
+            scripts/windows-port/stage-local-rust-cdylib.test.mjs `
+            scripts/windows-port/verify-local-domain-core-identity.test.mjs `
+            scripts/windows-port/verify-trx-results.test.mjs
+
       - name: Restore (dotnet restore)
         run: dotnet restore windows/OpenBurnBar.sln
 
-      - name: Build native shared domain core
-        run: cargo build --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi
+      - name: Build exact-candidate native libraries
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-domain-core/Cargo.toml -p openburnbar-domain-ffi --target aarch64-pc-windows-msvc
+          rustup run 1.94.0 cargo build --locked --manifest-path crates/burnbar-remote/Cargo.toml -p burnbar-remote-ffi --target aarch64-pc-windows-msvc
+          rustup run 1.96.0 cargo build --locked --manifest-path crates/openburnbar-iroh/Cargo.toml --target aarch64-pc-windows-msvc
+
+      - name: Stage exact native libraries
+        env:
+          OPENBURNBAR_DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/openburnbar-domain-core/Cargo.toml --toolchain 1.96.0 --logical-name openburnbar_domain_ffi --target aarch64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/openburnbar_domain_ffi.dll
+          node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/burnbar-remote/Cargo.toml --toolchain 1.94.0 --logical-name burnbar_remote --target aarch64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/burnbar_remote.dll
+          node scripts/windows-port/stage-local-rust-cdylib.mjs --manifest-path crates/openburnbar-iroh/Cargo.toml --toolchain 1.96.0 --logical-name openburnbar_iroh --target aarch64-pc-windows-msvc --destination crates/openburnbar-domain-core/target/debug/openburnbar_iroh.dll
 
       - name: Build (dotnet build — full solution, Debug)
         run: dotnet build windows/OpenBurnBar.sln --configuration Debug --no-restore -p:Platform=ARM64
@@ -276,7 +437,18 @@ jobs:
       - name: Test (dotnet test — full suite)
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-full-arm64.trx" --results-directory TestResults-arm64
+          OPENBURNBAR_REQUIRE_NATIVE_SHIMS: "1"
+          OPENBURNBAR_NATIVE_DIR: ${{ github.workspace }}\crates\openburnbar-domain-core\target\debug
+          DOMAIN_CORE_NATIVE_LIBRARY_PATH: ${{ github.workspace }}\crates\openburnbar-domain-core\target\debug\openburnbar_domain_ffi.dll
+          DOMAIN_CORE_CANDIDATE_COMMIT: ${{ steps.candidate.outputs.candidate_commit }}
+          DOMAIN_CORE_OBSERVED_IDENTITY_REPORT: ${{ runner.temp }}\domain-core-observed-identity-arm64.json
+        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger trx --results-directory TestResults-arm64
+
+      - name: Verify loaded domain-core identity
+        run: node scripts/windows-port/verify-local-domain-core-identity.mjs --expected-commit ${{ steps.candidate.outputs.candidate_commit }} --observed-identity "${{ runner.temp }}\domain-core-observed-identity-arm64.json" --binary "${{ github.workspace }}\crates\openburnbar-domain-core\target\debug\openburnbar_domain_ffi.dll"
+
+      - name: Verify complete ARM64 test evidence
+        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-arm64 --minimum-files 40 --minimum-tests 4083 --maximum-not-executed 2 --allowed-not-executed-file scripts/windows-port/allowed-not-executed-full.json
 
       - name: Upload test results
         if: always()
@@ -333,7 +505,7 @@ jobs:
           fi
 
           if [[ "${WINDOWS_CHANGED}" == "true" ]]; then
-            echo "### PR Windows Full Gate: full-suite build + ~2,545 tests green on x64 + ARM64" >> "$GITHUB_STEP_SUMMARY"
+            echo "### PR Windows Full Gate: full-suite build + 4,083+ tests green on x64 + ARM64" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### PR Windows Full Gate: no Windows full-suite surface changed - x64 + ARM64 legs skipped" >> "$GITHUB_STEP_SUMMARY"
           fi

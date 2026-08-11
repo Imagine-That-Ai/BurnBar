@@ -153,6 +153,21 @@ struct PrivacyIndexingSettingsView: View {
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
 
+                Divider().background(DesignSystem.Colors.border)
+
+                // Drill via the shared page route (also a Look & Feel sidebar tab)
+                // so Indexing does not mount the daemon probe inline.
+                NavigationLink(value: SettingsPageRoute.aiInboxRoot) {
+                    SettingsDrillRow(
+                        icon: "tray.full.fill",
+                        iconTint: DesignSystem.Colors.ember,
+                        title: "AI Inbox",
+                        subtitle: "Background analyst, egress, and cadence"
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+
                 if !retrievalHealthSnapshot.degradedModes.isEmpty {
                     Divider().background(DesignSystem.Colors.border)
 
@@ -426,13 +441,20 @@ struct PrivacyIndexingSettingsView: View {
             }
         }
         .onAppear {
-            refreshStorage()
-            refreshSourceArtifactCount()
-            refreshSearchCounts()
-            refreshHealth()
-            refreshEmbeddingLineage()
+            // Keychain + selection first (cheap), then stagger DB fan-out so the
+            // Indexing screen does not stampede MainActor bookkeeping with the
+            // AI Inbox daemon probe that also mounts on this page.
             refreshOpenAIKey()
             normalizeCrossEncoderSelection()
+            refreshStorage()
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                refreshSourceArtifactCount()
+                refreshSearchCounts()
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                refreshHealth()
+                refreshEmbeddingLineage()
+            }
         }
         .onChange(of: settingsManager.conversationIndexingEnabled) { _, newValue in
             Analytics.shared.track(.settingsChanged, [

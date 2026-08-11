@@ -2252,6 +2252,128 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
   );
 });
 
+test("owners can mirror sealed AI Inbox items for mobile", async () => {
+  const macDb = authedDb("iris");
+  const otherDb = authedDb("mallory");
+  const itemPath = "users/iris/ai_inbox_items/inb_alpha";
+  await seedCloudVaultState("iris");
+
+  const validItem = (id, overrides = {}) => ({
+    id,
+    fingerprint: `stuck_pr:${id}`,
+    kind: "stuck_pr",
+    priority: 2,
+    state: "new",
+    occurrenceCount: 1,
+    firstSeenAt: serverTimestamp(),
+    lastSeenAt: serverTimestamp(),
+    modelProvenance: "local-rules",
+    hasMemoryCandidates: false,
+    schemaVersion: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("iris", "ai_inbox_items", id, "sealedPayload")),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  });
+
+  await assertSucceeds(setDoc(doc(macDb, itemPath), validItem("inb_alpha")));
+  await assertSucceeds(getDoc(doc(macDb, itemPath)));
+  await assertFails(getDoc(doc(otherDb, itemPath)));
+
+  // The whole point of the sealed split: the title/body/evidence may never ride
+  // top-level, and no key outside the codec allowlist is accepted.
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_title"), validItem("inb_title", { title: "PR #1975 has stalled" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_summary"), validItem("inb_summary", { summary: "leaked body" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_project"), validItem("inb_project", { projectName: "BurnBar" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_extra"), validItem("inb_extra", { notInAllowlist: true }))
+  );
+
+  // Enum + range constraints.
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_kind"), validItem("inb_kind", { kind: "not_a_kind" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_state"), validItem("inb_state", { state: "archived" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_p0"), validItem("inb_p0", { priority: 0 }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_p5"), validItem("inb_p5", { priority: 5 }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_neg"), validItem("inb_neg", { occurrenceCount: -1 }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_unsealed"), validItem("inb_unsealed", { contentSealed: false }))
+  );
+  // The doc id must match the payload id, so an item cannot be filed under another's key.
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_mismatch"), validItem("inb_alpha"))
+  );
+  // AAD is path-bound: a payload sealed for a different doc must not transplant.
+  await assertFails(
+    setDoc(
+      doc(macDb, "users/iris/ai_inbox_items/inb_aad"),
+      validItem("inb_aad", {
+        sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("iris", "ai_inbox_items", "inb_alpha", "sealedPayload")),
+      })
+    )
+  );
+
+  await assertSucceeds(deleteDoc(doc(macDb, itemPath)));
+});
+
+test("any owner device may write AI Inbox item state, with a constrained feedback enum", async () => {
+  const phoneDb = authedDb("ivan");
+  const otherDb = authedDb("mallory");
+  const statePath = "users/ivan/ai_inbox_item_state/inb_alpha";
+
+  const validState = (id, overrides = {}) => ({
+    id,
+    readAt: serverTimestamp(),
+    archivedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    updatedByDeviceID: "iphone-1",
+    ...overrides,
+  });
+
+  await assertSucceeds(setDoc(doc(phoneDb, statePath), validState("inb_alpha")));
+  await assertSucceeds(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_useful"), validState("inb_useful", { feedback: "useful" }))
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_wrong"), validState("inb_wrong", { feedback: "wrong" }))
+  );
+  await assertSucceeds(getDoc(doc(phoneDb, statePath)));
+  await assertFails(getDoc(doc(otherDb, statePath)));
+
+  // Feedback must not become a free-text side channel.
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_free"), validState("inb_free", { feedback: "a sentence of private text" }))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_extra"), validState("inb_extra", { note: "not allowlisted" }))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_mismatch"), validState("inb_alpha"))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_stamp"), validState("inb_stamp", { updatedAt: "2026-08-04" }))
+  );
+
+  await assertSucceeds(deleteDoc(doc(phoneDb, statePath)));
+});
+
 test("conversation and session-log backup require hosted cloud entitlement", async () => {
   const db = authedDb("carol");
   await seedCloudVaultState("carol");

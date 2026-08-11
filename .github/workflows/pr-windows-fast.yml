@@ -29,7 +29,7 @@ jobs:
   detect-windows-changes:
     name: Detect Windows changes
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       windows: ${{ steps.filter.outputs.windows }}
     steps:
@@ -73,7 +73,7 @@ jobs:
           echo "${changed}"
 
           if echo "${changed}" | grep -Eq \
-            '^(windows/|crates/openburnbar-domain-core/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger|scripts/windows-port/)'; then
+            '^(windows/|crates/openburnbar-domain-core/|\.github/workflows/pr-windows-fast\.yml|budgets/windows-tree-baseline\.json|scripts/debt/check-windows-tree-budget\.sh|docs/windows-port/|scripts/ci/verify-windows-parity-ledger|scripts/lib/atomic-regular-file\.mjs|scripts/windows-port/)'; then
             echo "windows=true" >> "$GITHUB_OUTPUT"
             echo "Windows surface changed: running the skeleton, x64, and parity ledger lanes."
           else
@@ -141,6 +141,11 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
@@ -243,6 +248,13 @@ jobs:
             Write-Host "Supplemental template OK: $gate ($(@($results.assertions).Count) assertions)"
           }
 
+      - name: Verify native candidate helpers on Windows
+        run: |
+          node --test `
+            scripts/windows-port/native-library-staging.test.mjs `
+            scripts/windows-port/stage-local-rust-cdylib.test.mjs `
+            scripts/windows-port/verify-local-domain-core-identity.test.mjs
+
       - name: Restore Windows solution
         run: dotnet restore windows/OpenBurnBar.sln
 
@@ -291,7 +303,10 @@ jobs:
       - name: Run Windows test suite
         env:
           OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE: "1"
-        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger "trx;LogFileName=windows-pr-x64.trx" --results-directory TestResults-x64
+        run: dotnet test windows/OpenBurnBar.sln --configuration Debug --no-build --logger trx --results-directory TestResults-x64
+
+      - name: Verify complete Windows test evidence
+        run: node scripts/windows-port/verify-trx-results.mjs --results-directory TestResults-x64 --minimum-files 40 --minimum-tests 4082 --maximum-not-executed 15
 
       - name: Upload Windows test results
         if: always()
@@ -309,7 +324,7 @@ jobs:
     needs: detect-windows-changes
     if: needs.detect-windows-changes.outputs.windows == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -328,6 +343,10 @@ jobs:
           node scripts/windows-port/test-validate-release-certification-evidence.mjs
           node scripts/windows-port/test-physical-release-certification.mjs
           node scripts/windows-port/test-stage-exact-candidate-rehearsal.mjs
+          node --test scripts/windows-port/native-library-staging.test.mjs
+          node --test scripts/windows-port/stage-local-rust-cdylib.test.mjs
+          node --test scripts/windows-port/verify-local-domain-core-identity.test.mjs
+          node --test scripts/windows-port/verify-trx-results.test.mjs
 
       - name: Install PyYAML for ledger scanner
         run: python3 -m pip install --user 'pyyaml>=6,<7'

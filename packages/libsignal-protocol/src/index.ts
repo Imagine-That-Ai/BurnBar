@@ -249,7 +249,9 @@ export class InMemorySessionStore extends SessionStore {
   }
 
   restore(entries: Array<{ name: string; deviceId: number; recordB64: string }>): void {
-    for (const entry of entries) this.sessions.set(addressKey(ProtocolAddress.new(entry.name, entry.deviceId)), SessionRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    for (const entry of entries) {
+      this.sessions.set(addressKey(ProtocolAddress.new(entry.name, entry.deviceId)), SessionRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    }
   }
 }
 
@@ -277,7 +279,9 @@ export class InMemoryPreKeyStore extends PreKeyStore {
   }
 
   restore(entries: Array<{ id: number; recordB64: string }>): void {
-    for (const entry of entries) this.preKeys.set(entry.id, PreKeyRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    for (const entry of entries) {
+      this.preKeys.set(entry.id, PreKeyRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    }
   }
 }
 
@@ -304,7 +308,9 @@ export class InMemorySignedPreKeyStore extends SignedPreKeyStore {
   }
 
   restore(entries: Array<{ id: number; recordB64: string }>): void {
-    for (const entry of entries) this.signedPreKeys.set(entry.id, SignedPreKeyRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    for (const entry of entries) {
+      this.signedPreKeys.set(entry.id, SignedPreKeyRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    }
   }
 }
 
@@ -350,7 +356,9 @@ export class InMemoryKyberPreKeyStore extends KyberPreKeyStore {
   restore(entries: Array<{ id: number; recordB64: string; used?: boolean }>): void {
     for (const entry of entries) {
       this.kyberPreKeys.set(entry.id, KyberPreKeyRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
-      if (entry.used) this.used.add(entry.id);
+      if (entry.used) {
+        this.used.add(entry.id);
+      }
     }
   }
 }

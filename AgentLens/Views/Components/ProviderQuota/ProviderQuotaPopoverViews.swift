@@ -30,12 +30,10 @@ struct QuotaPopoverBar: View {
     @State private var localMimoRegion: ProviderEndpointRegion = .sgp
     @State private var localMimoTier: MimoTokenPlanTier = .standard
     @State private var localMimoBillingCycle: MimoTokenPlanBillingCycle = .monthly
-    @State private var customizeHover = false
-    @State private var customizePressed = false
     @State private var availableProviders: [AgentProvider] = []
     @State private var connectedProviderIDs: Set<ProviderID> = []
 
-    private let maximumCollapsedProviderRows = 4
+    private let maximumCollapsedProviderRows = 6
 
     private func visibleRows(from providers: [AgentProvider]) -> [AgentProvider] {
         if let expandedProvider {
@@ -48,9 +46,10 @@ struct QuotaPopoverBar: View {
 
     private var quotaRowsMaxHeight: CGFloat {
         // A tray should feel like a glanceable control, not a dashboard.
-        // Keep quota detail scrollable inside the quota rail so connected
-        // accounts cannot stretch the whole MenuBarExtra down the screen.
-        expandedProvider == nil ? 146 : 220
+        // The collapsed rail fits six single-bar rows; anything beyond that
+        // scrolls inside the rail so connected accounts cannot stretch the
+        // whole MenuBarExtra down the screen.
+        expandedProvider == nil ? 340 : 440
     }
 
     private func hiddenProviderSummaryText(selectionHidden: Int, collapseHidden: Int) -> String {
@@ -145,55 +144,31 @@ struct QuotaPopoverBar: View {
 
                 Spacer()
 
-                if quotaService.isFetching {
-                    ProgressView()
-                        .controlSize(.mini)
-                }
-
-                Button(action: onCustomizeQuotas) {
+                GlassIconButton(action: onCustomizeQuotas) {
                     Image(systemName: "eye")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(customizePressed ? DesignSystem.Colors.amber.opacity(0.85) : DesignSystem.Colors.amber)
-                        .frame(width: 22, height: 22)
-                        .background(
-                            Circle()
-                                .fill(DesignSystem.Colors.amber.opacity(customizePressed ? 0.22 : customizeHover ? 0.18 : 0.10))
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(DesignSystem.Colors.amber.opacity(customizePressed ? 0.55 : customizeHover ? 0.45 : 0.30), lineWidth: 0.8)
-                        )
-                        .scaleEffect(customizePressed ? 0.92 : 1.0)
-                        .animation(DesignSystem.Animation.snappy, value: customizePressed)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
-                .buttonStyle(.plain)
-                .onHover { customizeHover = $0 }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in customizePressed = true }
-                        .onEnded { _ in customizePressed = false }
-                )
                 .accessibilityLabel("Customize quota popover")
                 .popoverTooltip("Choose which quotas appear in the menu bar popover")
 
-                Button {
+                GlassIconButton(isLoading: quotaService.isFetching) {
                     Task {
                         await quotaService.refreshAll(dataStore: dataStore)
                         await refreshProviderState()
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
-                .buttonStyle(.plain)
-                .disabled(quotaService.isFetching)
+                .popoverTooltip("Refresh all provider quotas")
             }
             .padding(.horizontal, DesignSystem.Spacing.lg)
 
-            // Provider rows — each shows logo + dual-window bars + expandable setup
+            // Provider rows — logo + primary bar; tap to expand full detail
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: DesignSystem.Spacing.xs) {
+                VStack(spacing: DesignSystem.Spacing.xxs) {
                     if providers.isEmpty {
                         emptyStateView(
                             hasAvailableProviders: !availableProviders.isEmpty,
@@ -273,102 +248,96 @@ struct QuotaPopoverBar: View {
         let canExtend = isConnected
             && snapshot?.hasDisplayableQuotaSignal == true
             && (snapshot?.hourlyBucket?.resetsAt != nil || snapshot?.weeklyBucket?.resetsAt != nil)
+        let hasWindowDetail = snapshot?.hourlyBucket != nil || snapshot?.weeklyBucket != nil
+        let isExpandable = needsSetup || hasRoutingDetail || canExtend || hasWindowDetail
 
         VStack(spacing: 0) {
-            // Main row — always visible
+            // Main row — always visible: logo + single primary bar.
             Button {
-                if needsSetup || isExpanded || hasRoutingDetail || canExtend {
+                if isExpandable || isExpanded {
                     withAnimation(DesignSystem.Animation.gentle) {
                         expandedProvider = isExpanded ? nil : provider
                         if !isExpanded { loadLocalState(for: provider) }
                     }
                 }
             } label: {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    // Provider logo
-                    ZStack {
-                        Circle()
-                            .fill(theme.primaryColor.opacity(needsSetup ? 0.28 : 0.18))
-                            .frame(width: 28, height: 28)
-                        ProviderLogoView(provider: provider, size: 16, useFallbackColor: false)
-                    }
+                QuotaRowHoverWash {
+                    HStack(alignment: .center, spacing: DesignSystem.Spacing.sm + 2) {
+                        // Provider logo — tint nudged legible per appearance so
+                        // near-white (Warp) and near-black (xAI) brands keep a
+                        // visible glass disc in both modes.
+                        ZStack {
+                            Circle()
+                                .fill(quotaLegibleProviderColor(theme.primaryColor, in: colorScheme).opacity(needsSetup ? 0.28 : 0.16))
+                                .frame(width: 30, height: 30)
+                            ProviderLogoView(provider: provider, size: 17, useFallbackColor: false)
+                        }
 
-                    // Dual-window bars
-                    VStack(alignment: .leading, spacing: 2) {
-                        QuotaDualWindowStrip(
-                            hourlyBucket: snapshot?.hourlyBucket,
-                            weeklyBucket: snapshot?.weeklyBucket,
-                            fallbackBucket: snapshot?.primaryDisplayableBucket,
+                        QuotaPrimaryBar(
+                            bucket: snapshot?.primaryDisplayableBucket,
                             provider: provider,
                             isActive: isActive
                         )
 
-                        if let routingState, hasRoutingDetail {
-                            routingHintLine(provider: provider, state: routingState)
-                        }
-                    }
-
-                    // Setup / action indicator for unconfigured providers
-                    if needsSetup {
-                        HStack(spacing: DesignSystem.Spacing.xxs) {
-                            Text(provider == .claudeCode ? "Unavailable" : "Set up")
-                                .font(DesignSystem.Typography.tiny)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(.white)
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.right")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.8))
-                        }
-                        .padding(.horizontal, DesignSystem.Spacing.sm)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(provider == .claudeCode ? DesignSystem.Colors.coral : DesignSystem.Colors.blaze))
-                    } else if canExtend && !isExpanded {
-                        HStack(spacing: DesignSystem.Spacing.xxs) {
-                            Text("Extend")
-                                .font(DesignSystem.Typography.tiny)
-                                .fontWeight(.semibold)
+                        // Setup / expand indicator
+                        if needsSetup {
+                            HStack(spacing: DesignSystem.Spacing.xxs) {
+                                Text(provider == .claudeCode ? "Unavailable" : "Set up")
+                                    .font(DesignSystem.Typography.tiny)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.white)
+                                Image(systemName: isExpanded ? "chevron.up" : "chevron.right")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.8))
+                            }
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(provider == .claudeCode ? DesignSystem.Colors.coral : DesignSystem.Colors.blaze))
+                        } else if isExpanded {
+                            Image(systemName: "chevron.up")
+                                .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(DesignSystem.Colors.textMuted)
+                        } else if isExpandable {
+                            // Subtle chevron so the user can tell the row is
+                            // tappable. Muted so it doesn't compete with the
+                            // active refresh badge or "Set up" call-to-action.
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.8))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.65))
                         }
-                        .padding(.horizontal, DesignSystem.Spacing.sm)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(DesignSystem.Colors.surface.opacity(0.6)))
-                        .overlay(
-                            Capsule()
-                                .stroke(DesignSystem.Colors.border, lineWidth: 0.5)
-                        )
-                    } else if isExpanded {
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
-                    } else if hasRoutingDetail {
-                        // Subtle chevron so the user can tell the row is
-                        // tappable when routing complexity exists. We render
-                        // it muted so it doesn't compete with the active
-                        // refresh badge or "Set up" call-to-action.
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(DesignSystem.Colors.textMuted.opacity(0.65))
-                    }
 
-                    // Activity indicator
-                    if isActive {
-                        ProviderQuotaActivityBadge(provider: provider, compact: true)
+                        // Activity indicator
+                        if isActive {
+                            ProviderQuotaActivityBadge(provider: provider, compact: true)
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            // Expanded inline detail
+            // Expanded inline detail — both windows, routing, reset times, setup.
             if isExpanded {
                 VStack(spacing: DesignSystem.Spacing.sm) {
+                    if !needsSetup, let snapshot, hasWindowDetail {
+                        QuotaDualWindowStrip(
+                            hourlyBucket: snapshot.hourlyBucket,
+                            weeklyBucket: snapshot.weeklyBucket,
+                            fallbackBucket: snapshot.primaryDisplayableBucket,
+                            provider: provider,
+                            isActive: isActive
+                        )
+                        .padding(.leading, DesignSystem.Spacing.xl)
+                        .padding(.trailing, DesignSystem.Spacing.sm)
+                    }
+
                     if let routingState, hasRoutingDetail {
-                        ProviderRoutingCockpit(provider: provider, state: routingState, compact: true)
-                            .padding(.leading, DesignSystem.Spacing.xl)
-                            .padding(.trailing, DesignSystem.Spacing.sm)
+                        VStack(spacing: DesignSystem.Spacing.xs) {
+                            routingHintLine(provider: provider, state: routingState)
+                            ProviderRoutingCockpit(provider: provider, state: routingState, compact: true)
+                        }
+                        .padding(.leading, DesignSystem.Spacing.xl)
+                        .padding(.trailing, DesignSystem.Spacing.sm)
                     }
 
                     if needsSetup {
@@ -884,5 +853,31 @@ struct QuotaPopoverBar: View {
         if quotaService.snapshot(for: .claudeCode)?.hasDisplayableQuotaSignal == true {
             expandedProvider = nil
         }
+    }
+}
+
+// MARK: - Row Hover Wash
+
+/// Faint adaptive wash on hover — the only chrome the cardless popover rows
+/// need. Renders nothing at rest so rows sit directly on the glass plate.
+private struct QuotaRowHoverWash<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovered = false
+
+    var body: some View {
+        content()
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                    .fill(
+                        colorScheme == .dark
+                            ? Color.white.opacity(isHovered ? 0.045 : 0)
+                            : Color.black.opacity(isHovered ? 0.035 : 0)
+                    )
+            )
+            .animation(DesignSystem.Animation.hover, value: isHovered)
+            .onHover { isHovered = $0 }
     }
 }

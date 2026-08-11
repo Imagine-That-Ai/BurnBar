@@ -94,6 +94,8 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "approval_policies",
       "agent_identities",
       "subscription_topics",
+      "ai_inbox_items",
+      "ai_inbox_item_state",
     ],
     storagePrefixes: [],
   },

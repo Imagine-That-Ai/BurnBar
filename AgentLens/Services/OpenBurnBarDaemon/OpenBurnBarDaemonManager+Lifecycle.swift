@@ -415,6 +415,16 @@ extension OpenBurnBarDaemonManager {
         _ = try launchAgentPlistStep("rotate_socket_token") {
             try rotateDaemonSocketAuthToken()
         }
+        // Share the SQLCipher key with the daemon via an owner-only file. The
+        // LaunchAgent (especially an adhoc Debug build) often cannot read the
+        // Keychain item the app created and otherwise fails with
+        // "file is not a database" on the encrypted index.
+        _ = try launchAgentPlistStep("sync_database_encryption_key") {
+            DatabaseEncryptionService.syncDaemonReadableKeyMaterial(
+                to: paths.databaseEncryptionKeyFileURL,
+                fileManager: dependencies.fileManager
+            )
+        }
 
         // SECURITY: pass the daemon socket token through an owner-only file path,
         // never argv or LaunchAgent environment. CLI arguments are visible to any

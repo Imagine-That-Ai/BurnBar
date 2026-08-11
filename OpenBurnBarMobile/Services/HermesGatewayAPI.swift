@@ -96,7 +96,7 @@ final class HermesGatewayAPI: HermesGatewayRepository {
         if let phoneSignalPrekeyBundle {
             let encoded = try JSONEncoder().encode(phoneSignalPrekeyBundle)
             guard
-                let object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+                let object = try JSONSerialization.jsonObject(with: encoded) as? NSDictionary
             else {
                 throw FunctionsError.gatewaySignalUnavailable
             }

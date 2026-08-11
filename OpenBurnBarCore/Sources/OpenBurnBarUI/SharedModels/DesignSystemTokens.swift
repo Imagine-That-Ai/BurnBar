@@ -141,6 +141,8 @@ public enum DesignSystemColors {
         case .openCode:    return "2563EB"
         case .xAI:         return "1A1A1A"
         case .mimo:        return "FF6900"
+        case .primeAgent:  return "582CFF"
+        case .muse: return "0668E1"
         case .openBurnBar: return "FA5053"
         }
     }

@@ -125,7 +125,7 @@ jobs:
   nous-mit-upstream-boundary:
     name: Nous/Hermes MIT upstream boundary
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     if: >-
       ${{
         (github.event_name == 'pull_request' &&

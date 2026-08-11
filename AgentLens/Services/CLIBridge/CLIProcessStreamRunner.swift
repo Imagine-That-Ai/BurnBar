@@ -452,6 +452,8 @@ struct CLIProcessStreamRunner: Sendable {
             return .piAgent
         case .junie:
             return .junie
+        case .primeAgent:
+            return .primeAgent
         }
     }
 

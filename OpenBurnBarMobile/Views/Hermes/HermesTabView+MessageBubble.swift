@@ -31,10 +31,32 @@ struct HermesMessageBubble: View {
     /// only for the most recent assistant turn whose outcome supports
     /// retry — the bubble renders the inline "Try again" pill in that
     /// case. Earlier turns and successful replies pass nil (no pill).
-    var onRetry: (() -> Void)?
+    ///
+    /// Takes the retry context as a parameter instead of capturing it, so the
+    /// closure captures nothing that can drift — see `retryContext`.
+    var onRetry: ((String?) -> Void)?
+    /// Dashboard context handed to `onRetry` when the pill is tapped.
+    ///
+    /// Deliberately an equatable *input* rather than a value captured inside
+    /// `onRetry`. The semantic `==` below compares retry actions by presence
+    /// only, which is safe exactly as long as two non-nil actions cannot
+    /// behave differently — and a captured context would be precisely such a
+    /// difference. Carrying it here makes that provable instead of assumed:
+    /// if the context changes, the bubble compares unequal, so SwiftUI
+    /// installs the fresh action rather than keeping a stale one. `nil`
+    /// whenever `onRetry` is nil, so rows without a pill never re-render on
+    /// dashboard refreshes.
+    var retryContext: String?
 
     @State private var permissionSheetItem: SystemPermissionItem?
     @State private var permissionStore = SystemPermissionInboxStore.shared
+    /// Incremental markdown renderer for the streaming/attributed text
+    /// path. Parses only the bytes that arrived since the previous commit
+    /// plus the trailing partial line, instead of re-parsing the entire
+    /// accumulated reply on every ~80ms streaming commit (O(n²) across a
+    /// long stream). One renderer per bubble identity (`@State`), reset
+    /// automatically when the row's message text is replaced.
+    @State private var streamedMarkdownRenderer = HermesStreamingMarkdownRenderer()
 
     var isUser: Bool { message.role == .user }
 
@@ -195,7 +217,7 @@ struct HermesMessageBubble: View {
             }
 
             if let onRetry, message.outcome.supportsRetry {
-                retryPill(onRetry: onRetry)
+                retryPill(onRetry: { onRetry(retryContext) })
                     .padding(.leading, 6)
                     .padding(.top, 2)
             }
@@ -483,11 +505,16 @@ struct HermesMessageBubble: View {
             // Errors render exactly what the server returned. Non-error text
             // with Pretext off still resolves markdown emphasis — opting out
             // of chips and engine layout is not opting into raw `**` markers.
+            // The incremental renderer keeps the per-commit parse cost
+            // O(delta + partial line) instead of O(full accumulated text),
+            // and the caret is passed as a suffix so it never forces a full
+            // copy of the accumulated string.
             Text(
                 message.isError
                     ? AttributedString(message.text)
-                    : HermesInlineMarkdown.attributedString(
-                        message.text + (message.isStreaming ? "▍" : "")
+                    : streamedMarkdownRenderer.attributedString(
+                        for: message.text,
+                        suffix: message.isStreaming ? "▍" : ""
                     )
             )
                 .font(MobileTheme.Typography.body)
@@ -618,5 +645,39 @@ struct HermesMessageBubble: View {
 
     private var assistantBubbleShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: 18, style: .continuous)
+    }
+}
+
+// remediation(chat-streaming-o2): identity-stable, diffable transcript rows.
+// The bubble carries an `onRetry` closure, which SwiftUI's reflection-based
+// change detection can never prove equal — so every ~80ms streaming commit
+// re-rendered EVERY row in the transcript, making each commit O(total
+// transcript). This semantic equality (used via `.equatable()` at the
+// `ForEach` call site) compares the render inputs and treats the retry action
+// by presence only.
+//
+// Comparing an action by presence is sound only while two non-nil actions
+// cannot behave differently, so the bubble is built so they cannot: the retry
+// closure takes its context as a parameter (`(String?) -> Void`) instead of
+// capturing it, and the context travels as the equatable `retryContext` input
+// compared below. Anything that would change what a tap does therefore changes
+// a compared value, and SwiftUI installs the new action. What remains inside
+// the closure is a fixed route to one service call.
+//
+// The service reference is compared by identity — bubbles never re-bind to a
+// different service in place.
+// `nonisolated`: the Equatable witness must not inherit the struct's
+// View-conformance MainActor isolation. Safe — both operands are value
+// copies, the service is compared by reference identity only, and SwiftUI
+// performs the comparison during main-actor rendering anyway.
+extension HermesMessageBubble: Equatable {
+    nonisolated static func == (lhs: HermesMessageBubble, rhs: HermesMessageBubble) -> Bool {
+        lhs.message == rhs.message
+            && lhs.hermesService === rhs.hermesService
+            && lhs.showTPS == rhs.showTPS
+            && lhs.usePretextRendering == rhs.usePretextRendering
+            && lhs.viewMode == rhs.viewMode
+            && (lhs.onRetry == nil) == (rhs.onRetry == nil)
+            && lhs.retryContext == rhs.retryContext
     }
 }

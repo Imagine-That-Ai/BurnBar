@@ -305,6 +305,50 @@ enum DatabaseEncryptionService {
         return String(data: data, encoding: .utf8)
     }
 
+    /// DEBUG-ONLY: writes the current SQLCipher key to an owner-only file so an
+    /// adhoc Debug daemon (which cannot satisfy the Keychain ACL and fails with
+    /// `errSecAuthFailed` / -25293) can open the encrypted index during local
+    /// development. Compiled out of Release builds entirely: SECURITY.md
+    /// guarantees the key exists only in Keychain with no plaintext recovery
+    /// file, and a signed production daemon must use the Keychain path — if it
+    /// cannot, the inbox fails closed rather than weakening the key's storage.
+    @discardableResult
+    static func syncDaemonReadableKeyMaterial(
+        to fileURL: URL,
+        fileManager: FileManager = .default
+    ) -> Bool {
+#if !DEBUG
+        // Release: never materialize key material on disk. Remove any file a
+        // previous Debug run left behind so the weaker artifact does not
+        // outlive the build that needed it.
+        try? fileManager.removeItem(at: fileURL) // try?-ok(best-effort cleanup of a possibly-absent Debug leftover; Release never reads this path)
+        return false
+#else
+        guard let key = getKey(), key.isEmpty == false else {
+            return false
+        }
+        do {
+            try fileManager.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try Data(key.utf8).write(to: fileURL, options: [.atomic])
+            try fileManager.setAttributes(
+                [.posixPermissions: NSNumber(value: 0o600)],
+                ofItemAtPath: fileURL.path
+            )
+            return true
+        } catch {
+            AppLogger.dataStore.error(
+                "database_encryption_daemon_key_file_write_failed",
+                metadata: ["error": "\(error)"]
+            )
+            return false
+        }
+#endif
+    }
+
     /// Generates a new 256-bit AES key, stores it in the Keychain, and returns it.
     /// If a key already exists, returns the existing key without generating a new one.
     ///

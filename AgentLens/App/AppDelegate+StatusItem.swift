@@ -203,6 +203,12 @@ extension AppDelegate {
         popover.performClose(sender)
     }
 
+    /// Called when the app resigns active so the status-bar tray does not stay
+    /// glued above other apps (`hidesOnDeactivate = false` + `.statusBar` level).
+    func closePopoverOnResignActive() {
+        closePopover(nil)
+    }
+
     /// Builds a brand-new content controller from the CURRENT router
     /// factory and installs it. Shared by the click-path fallback and the
     /// off-click prewarm.

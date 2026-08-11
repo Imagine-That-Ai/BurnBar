@@ -105,6 +105,9 @@ No current migration is classified as independently reversible. SQL snippets pri
 | 56 | `v55_search_chunks_fts_rowid` | atomic | unapplied-only | backup-restore | Backfill search_chunks ftsRowid and sweep orphaned FTS rows for rowid-targeted deletes |
 | 57 | `v56_parser_checkpoint_file_manifest` | atomic | unapplied-only | backup-restore | Normalized parser checkpoint file-identity manifest |
 | 58 | `v57_execution_source_attribution` | atomic | unapplied-only | backup-restore | Execution-source columns, index, and evidence-backed historical attribution |
+| 59 | `v58_ai_inbox` | atomic | unapplied-only | backup-restore | AI Inbox items, delivery state, and routing indexes |
+| 60 | `v59_founder_lens` | atomic | unapplied-only | backup-restore | Founder Lens reply threads, plan ledger, and memory export |
+| 61 | `v60_billing_kind` | atomic | unapplied-only | backup-restore | Billing provenance column (api vs subscription spend) with deterministic backfill |
 <!-- END GENERATED MIGRATION CATALOG -->
 
 Regenerate and verify the table with:

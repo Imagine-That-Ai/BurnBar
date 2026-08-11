@@ -124,6 +124,7 @@ val AgentProvider.logoRes: Int
             AgentProvider.FORGE_DEV -> R.drawable.logo_forge
             AgentProvider.AUGMENT -> R.drawable.logo_augment
             AgentProvider.HERMES -> R.drawable.logo_hermes
+            AgentProvider.PRIME_AGENT -> R.drawable.logo_prime_agent
             AgentProvider.JUNIE -> R.drawable.logo_junie
             AgentProvider.PI_AGENT -> R.drawable.pi_agent_logo
             AgentProvider.GEMINI_CLI -> R.drawable.logo_gemini_cli
@@ -136,4 +137,5 @@ val AgentProvider.logoRes: Int
             AgentProvider.XAI -> R.drawable.logo_grok
             AgentProvider.ANTIGRAVITY -> R.drawable.logo_antigravity
             AgentProvider.MIMO -> R.drawable.mimo_logo
+            AgentProvider.MUSE -> R.drawable.logo_meta
         }

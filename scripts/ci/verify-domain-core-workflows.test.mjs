@@ -830,8 +830,8 @@ test("domain-core-pr-gate trusts the merge-group base and budgets both full-hist
   const timeout = gate.match(/^    timeout-minutes: (\d+)$/mu);
   assert.ok(timeout, "domain-core-pr-gate must declare a timeout");
   assert.ok(
-    Number.parseInt(timeout[1], 10) >= 60,
-    "domain-core-pr-gate must leave enough time for two degraded full-history checkouts and absence verification",
+    Number.parseInt(timeout[1], 10) >= 120,
+    "domain-core-pr-gate must leave at least two hours for degraded full-history checkouts and absence verification",
   );
   assert.match(
     gate,

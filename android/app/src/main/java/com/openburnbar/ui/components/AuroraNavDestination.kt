@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.openburnbar.ui.components.aurora.BurnGlyph
 import com.openburnbar.ui.components.aurora.HermesGlyph
+import com.openburnbar.ui.components.aurora.InboxGlyph
 import com.openburnbar.ui.components.aurora.InsightsGlyph
 import com.openburnbar.ui.components.aurora.PulseGlyph
 import com.openburnbar.ui.components.aurora.StreamsGlyph
@@ -21,11 +22,11 @@ import com.openburnbar.ui.theme.AuroraColors
 import com.openburnbar.ui.theme.AuroraGradients
 
 /**
- * Five tab icons for the OpenBurnBar bottom navigation tray. Each branch
- * delegates to a custom Compose Canvas glyph in `components/aurora/` that
- * mirrors the iOS `AuroraNavigationIcons` Path/Canvas drawings (heartbeat,
- * living-fire flame, vintage CRT TV with SMPTE bars, robot face with antenna
- * heart, avatar + rotating halo).
+ * Tab icons for the OpenBurnBar bottom navigation tray. Each branch delegates to
+ * a custom Compose Canvas glyph in `components/aurora/` that mirrors the iOS
+ * `AuroraNavigationIcons` Path/Canvas drawings (heartbeat, living-fire flame,
+ * vintage CRT TV with SMPTE bars, robot face with antenna heart, avatar +
+ * rotating halo, letter tray catching a signal).
  */
 enum class AuroraNavDestination(val label: String) {
     PULSE("Pulse"),
@@ -37,6 +38,7 @@ enum class AuroraNavDestination(val label: String) {
     // but the surfaced label flips to "Assistants" to reflect the dual-runtime
     // landing screen (Hermes + Pi).
     HERMES("Assistants"),
+    INBOX("Inbox"),
     YOU("You"),
     ;
 
@@ -48,6 +50,7 @@ enum class AuroraNavDestination(val label: String) {
                 INSIGHTS -> AuroraColors.purple
                 STREAMS -> AuroraColors.whimsy
                 HERMES -> AuroraColors.hermesAureate
+                INBOX -> AuroraColors.ember
                 YOU -> AuroraColors.blaze
             }
 
@@ -59,6 +62,7 @@ enum class AuroraNavDestination(val label: String) {
                 INSIGHTS -> "Insights"
                 STREAMS -> "Streams"
                 HERMES -> "Agents"
+                INBOX -> "Inbox"
                 YOU -> "Store"
             }
 
@@ -70,6 +74,7 @@ enum class AuroraNavDestination(val label: String) {
                 INSIGHTS -> listOf(AuroraColors.purple, AuroraColors.whimsy)
                 STREAMS -> listOf(AuroraColors.whimsy, AuroraColors.whimsy.copy(alpha = 0.55f))
                 HERMES -> AuroraGradients.mercuryGradient
+                INBOX -> listOf(AuroraColors.ember, AuroraColors.amber)
                 YOU -> listOf(AuroraColors.blaze, AuroraColors.ember)
             }
 }
@@ -112,6 +117,7 @@ fun AuroraNavIcon(
             AuroraNavDestination.INSIGHTS -> InsightsGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.STREAMS -> StreamsGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.HERMES -> HermesGlyph(size = size.dp, isSelected = isSelected)
+            AuroraNavDestination.INBOX -> InboxGlyph(size = size.dp, isSelected = isSelected)
             AuroraNavDestination.YOU -> {
                 val initials =
                     userDisplayName

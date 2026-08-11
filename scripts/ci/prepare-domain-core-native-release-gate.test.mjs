@@ -6,7 +6,9 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  materializeCandidateBoundRollback,
   run,
+  selectCommittedCandidateBundle,
   selectExactSourceRun,
   validateProtectedSignerRun,
 } from "./prepare-domain-core-native-release-gate.mjs";
@@ -309,6 +311,44 @@ test("full gate resolves the signed public profile against the exact candidate",
       JSON.parse(readFileSync(result.profilePath, "utf8")).candidateIdentity
         .candidateCommit,
       COMMIT,
+    );
+  } finally {
+    rmSync(outputDirectory, { recursive: true, force: true });
+  }
+});
+
+test("expired Actions artifacts hydrate from committed promotion evidence", () => {
+  const REAL_CANDIDATE = "99ba1f66b02d4721077bbce652b84c2304bacf7c";
+  const REAL_SOURCE_RUN = { runId: 30754893279, runAttempt: 1 };
+  const selected = selectCommittedCandidateBundle({
+    repoRoot: process.cwd(),
+    candidateCommit: REAL_CANDIDATE,
+    sourceRun: REAL_SOURCE_RUN,
+  });
+  assert.match(selected.path, /promotion-bundles\//u);
+  assert.equal(selected.bundle.candidate.candidateCommit, REAL_CANDIDATE);
+
+  const outputDirectory = mkdtempSync(join(tmpdir(), "native-gate-expired-"));
+  const sourceDirectory = join(outputDirectory, "source");
+  try {
+    const materialized = materializeCandidateBoundRollback({
+      repoRoot: process.cwd(),
+      candidateCommit: REAL_CANDIDATE,
+      sourceRun: REAL_SOURCE_RUN,
+      sourceDirectory,
+    });
+    assert.equal(materialized.source, "committed");
+    assert.equal(
+      createHash("sha256")
+        .update(readFileSync(materialized.candidatePath))
+        .digest("hex"),
+      createHash("sha256").update(readFileSync(selected.path)).digest("hex"),
+    );
+    assert.equal(
+      createHash("sha256")
+        .update(readFileSync(materialized.rollbackPath))
+        .digest("hex"),
+      selected.bundle.rollback.restoredArtifactSha256,
     );
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });

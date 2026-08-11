@@ -498,6 +498,12 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                 let providerID = (data["providerID"] as? String).map { ProviderID(rawValue: $0) } ?? provider.providerID
                 let providerAccountSource = (data["providerAccountSource"] as? String)
                     .flatMap { ProviderAccountStorageScope(rawValue: $0) }
+                // Billing provenance travels with the row. Absent only on docs
+                // uploaded before the field existed; those stay `.unknown` here
+                // and the store derives the same kind the local v60 backfill
+                // would have, rather than this device guessing differently.
+                let billingKind = (data["billingKind"] as? String)
+                    .flatMap { BurnBarBillingKind(rawValue: $0) } ?? .unknown
 
                 // Partition the local row id by origin device: local rows hash
                 // their identity with sourceDeviceId == nil, so preserving the
@@ -537,7 +543,8 @@ final class DownloadSyncService: CloudSyncDomain, Sendable {
                     providerAccountLabel: data["providerAccountLabel"] as? String,
                     providerAccountSource: providerAccountSource,
                     provenanceMethod: .cloudSync,
-                    provenanceConfidence: .exact
+                    provenanceConfidence: .exact,
+                    billingKind: billingKind
                 )
                 try await context.dataStore.insertRemoteUsage(usage)
 

@@ -298,7 +298,7 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
     }
 
     @MainActor
-    func test_mediaControlClassifyRejectsConnectionIDDrift() async throws {
+    func test_mediaControlClassifyAcceptsPersistedConnectionIDDrift() async throws {
         let suiteName = "iroh.handler.media-control.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
@@ -329,11 +329,89 @@ final class IrohRelayRequestHandlerTests: XCTestCase {
             connectionID: "relay-current-mac-route"
         )
 
+        XCTAssertEqual(disposition, .transferredStreamOwnership)
+        let registrations = await registrar.registrations
+        XCTAssertEqual(registrations.count, 1)
+        XCTAssertEqual(registrations.first?.uid, "uid-1")
+        XCTAssertEqual(registrations.first?.connectionID, "relay-persisted-phone-route")
+        let sentFrames = await stream.sentFrames
+        XCTAssertTrue(sentFrames.isEmpty)
+    }
+
+    @MainActor
+    func test_mediaControlClassifyRejectsWrongUID() async throws {
+        let suiteName = "iroh.handler.media-control.wrong-uid.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults, flushDelayNanoseconds: 0)
+        let stream = HandlerRecordingIrohStream(frames: [
+            HermesRealtimeRelayFrame(
+                type: .mediaClassify,
+                uid: "uid-other",
+                connectionId: "relay-persisted-phone-route",
+                media: HermesRealtimeRelayMediaPayload(
+                    streamClass: MediaStreamClass.control.rawValue
+                )
+            )
+        ])
+        let registrar = MediaControlRegistrarRecorder()
+        let handler = IrohRelayRequestHandler(
+            relayKeyStore: HermesRelayKeyStore(),
+            urlSession: .shared,
+            settingsManager: settings,
+            mediaControlRegistrar: { stream, uid, connectionID in
+                await registrar.record(stream: stream, uid: uid, connectionID: connectionID)
+            }
+        )
+
+        let disposition = try await handler.serve(
+            stream: stream,
+            uid: "uid-1",
+            connectionID: "relay-current-mac-route"
+        )
+
         XCTAssertEqual(disposition, .callerOwnsStream)
         let registrations = await registrar.registrations
         XCTAssertTrue(registrations.isEmpty)
         let sentFrames = await stream.sentFrames
-        XCTAssertEqual(sentFrames.last?.type, .responseError)
+        XCTAssertTrue(sentFrames.isEmpty)
+    }
+
+    @MainActor
+    func test_nonClassificationConnectionIDMismatchDoesNotTransferOwnership() async throws {
+        let suiteName = "iroh.handler.media-control.non-classification.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = SettingsManager(defaults: defaults, flushDelayNanoseconds: 0)
+        let stream = HandlerRecordingIrohStream(frames: [
+            HermesRealtimeRelayFrame(
+                type: .requestStart,
+                uid: "uid-1",
+                connectionId: "relay-persisted-phone-route",
+                requestId: "request-1"
+            )
+        ])
+        let registrar = MediaControlRegistrarRecorder()
+        let handler = IrohRelayRequestHandler(
+            relayKeyStore: HermesRelayKeyStore(),
+            urlSession: .shared,
+            settingsManager: settings,
+            mediaControlRegistrar: { stream, uid, connectionID in
+                await registrar.record(stream: stream, uid: uid, connectionID: connectionID)
+            }
+        )
+
+        let disposition = try await handler.serve(
+            stream: stream,
+            uid: "uid-1",
+            connectionID: "relay-current-mac-route"
+        )
+
+        XCTAssertEqual(disposition, .callerOwnsStream)
+        let registrations = await registrar.registrations
+        XCTAssertTrue(registrations.isEmpty)
+        let sentFrames = await stream.sentFrames
+        XCTAssertTrue(sentFrames.isEmpty)
     }
 }
 

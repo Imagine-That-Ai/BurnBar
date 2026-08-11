@@ -61,7 +61,7 @@ final class RollbackService {
                 )?.keyData
                 let parsed: [RollbackSnapshot] = documents.compactMap { doc in
                     Self.decodeSnapshot(
-                        data: doc.data(),
+                        data: doc.data() as NSDictionary,
                         documentID: doc.documentID,
                         sessionID: sessionID,
                         vaultKey: vaultKey
@@ -117,7 +117,7 @@ final class RollbackService {
                         )
                     }
                     return Self.decodeRequest(
-                        data: doc.data(),
+                        data: doc.data() as NSDictionary,
                         documentID: doc.documentID,
                         vaultKey: resolvedKey?.keyData,
                         signalPlaintext: signalData ?? nil
@@ -144,7 +144,7 @@ final class RollbackService {
         let signalState = MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat")
         if signalState != .off {
             let scopeData = try JSONEncoder().encode(request.scope)
-            let privatePayload: [String: Any] = [
+            let privatePayload: NSDictionary = [
                 "id": request.id,
                 "sessionID": request.sessionID,
                 "scopeJSON": String(data: scopeData, encoding: .utf8) ?? "{}",
@@ -187,7 +187,7 @@ final class RollbackService {
     // MARK: - Decoding
 
     static func decodeSnapshot(
-        data: [String: Any],
+        data: NSDictionary,
         documentID: String,
         sessionID: String,
         vaultKey: Data?
@@ -233,24 +233,25 @@ final class RollbackService {
     }
 
     static func decodeRequest(
-        data: [String: Any],
+        data: NSDictionary,
         documentID: String,
         vaultKey: Data?,
         signalPlaintext: Data? = nil
     ) -> RollbackRequest? {
-        var signal: [String: Any] = [:]
+        var signal: NSDictionary = [:]
         if let signalPlaintext,
            let object = try? JSONSerialization.jsonObject(with: signalPlaintext),
-           let dictionary = object as? [String: Any] {
+           let dictionary = object as? NSDictionary {
             signal = dictionary
         } else if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
             return nil
         }
-        let source = signal.isEmpty ? data : signal
+        let signalIsEmpty = signal.allKeys.isEmpty
+        let source = signalIsEmpty ? data : signal
         guard
             let sessionID = source["sessionID"] as? String,
             let scopeRaw = openSealedString(
-                data: signal.isEmpty ? data : ["scopeJSON": source["scopeJSON"] as Any],
+                data: signalIsEmpty ? data : NSDictionary(dictionary: ["scopeJSON": source["scopeJSON"] as Any]),
                 sealedField: "sealedScope",
                 legacyField: "scopeJSON",
                 vaultKey: vaultKey
@@ -317,7 +318,7 @@ final class RollbackService {
     /// when the sealed field is absent. A present sealed field is authoritative:
     /// decrypt it or fail closed instead of leaking a stale plaintext sibling.
     private static func openSealedString(
-        data: [String: Any],
+        data: NSDictionary,
         sealedField: String,
         legacyField: String,
         vaultKey: Data?
@@ -332,7 +333,7 @@ final class RollbackService {
     /// Opens a sealed `[String]` (sealed as one JSON array), falling back to a
     /// legacy plaintext `[String]` field only when the sealed field is absent.
     private static func openSealedStringArray(
-        data: [String: Any],
+        data: NSDictionary,
         sealedField: String,
         legacyField: String,
         vaultKey: Data?

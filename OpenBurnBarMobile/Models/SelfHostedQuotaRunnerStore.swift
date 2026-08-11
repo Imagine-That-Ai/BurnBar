@@ -118,13 +118,8 @@ private final class KeychainSelfHostedQuotaRunnerSecrets: SelfHostedQuotaRunnerS
 
     func save(_ value: String, accountID: String) throws {
         let data = Data(value.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: accountID
-        ]
-        let attrs: [String: Any] = [kSecValueData as String: data]
-        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        let query = KeychainGenericPasswordQuery.base(service: keychainService, account: accountID)
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
             var create = query
             create[kSecValueData as String] = data
@@ -137,12 +132,7 @@ private final class KeychainSelfHostedQuotaRunnerSecrets: SelfHostedQuotaRunnerS
     }
 
     func load(accountID: String) throws -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: accountID,
-            kSecReturnData as String: true
-        ]
+        let query = KeychainGenericPasswordQuery.read(service: keychainService, account: accountID)
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { return nil }
@@ -154,11 +144,7 @@ private final class KeychainSelfHostedQuotaRunnerSecrets: SelfHostedQuotaRunnerS
     }
 
     func delete(accountID: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: accountID
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: keychainService, account: accountID)
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw SelfHostedQuotaRunnerError.keychain(status)

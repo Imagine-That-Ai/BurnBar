@@ -26,7 +26,7 @@ extension ProviderPlanWizardView {
             candidates = [["login"], ["auth", "login"]]
         case .claude:
             candidates = [["auth", "login"], ["login"]]
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             candidates = []
         }
 
@@ -215,7 +215,7 @@ extension ProviderPlanWizardView {
             )
             if removed {
                 let accountID = DaemonCredentialSlotAccountProjection.accountID(
-                    providerID: ProviderID(rawValue: target.providerID),
+                    daemonProviderID: target.providerID,
                     slotID: target.slotID
                 )
                 try? await dataStore.deleteProviderAccount(id: accountID)

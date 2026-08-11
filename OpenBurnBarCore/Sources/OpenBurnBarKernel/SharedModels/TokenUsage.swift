@@ -225,6 +225,8 @@ public enum UsageExecutionSourceResolver {
         case .warp: return known("warp", "Warp", .cli, .derivedExact)
         case .xAI: return known("grok-build", "Grok Build", .cli, .derivedExact)
         case .junie: return known("junie", "Junie", .ide, .derivedExact)
+        case .primeAgent: return known("prime-agent", "Prime Agent", .automation, .derivedExact)
+        case .muse: return known("muse", "Muse", .cli, .derivedExact)
         case .openAI, .openBurnBar, .deepSeek, .mimo: return nil
         }
     }
@@ -321,6 +323,13 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     /// migration adds a nullable `parentRequestID` column so imported rows can
     /// carry it, making the period fusion/normal partition a real SQL query.
     public let parentRequestID: String?
+    /// Billing provenance: real per-token API dollars (`api`) vs the imputed
+    /// list-price value of plan-covered work (`subscription`). `unknown` is
+    /// the honest default for rows that predate v60 or resist classification —
+    /// consumers surface it as its own bucket. Writers that cannot stamp a
+    /// kind leave `.unknown` and the store derives one via
+    /// `BurnBarBillingProvenance.classify(provider:usageSource:)`.
+    public let billingKind: BurnBarBillingKind
 
     public var costUSD: Double { cost }
 
@@ -366,7 +375,8 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         provenanceMethod: UsageProvenanceMethod = .unknown,
         provenanceConfidence: UsageProvenanceConfidence = .unknown,
         estimatorVersion: String = "",
-        parentRequestID: String? = nil
+        parentRequestID: String? = nil,
+        billingKind: BurnBarBillingKind = .unknown
     ) {
         self.id = id ?? Self.deterministicID(
             provider: provider,
@@ -424,6 +434,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         self.provenanceConfidence = provenanceConfidence
         self.estimatorVersion = estimatorVersion
         self.parentRequestID = parentRequestID
+        self.billingKind = billingKind
     }
 
     public static func deterministicID(
@@ -510,6 +521,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         case currency, recordedAt, eventKind, idempotencyKey
         case provenanceMethod, provenanceConfidence, estimatorVersion
         case parentRequestID
+        case billingKind
     }
 
     public init(from decoder: Decoder) throws {
@@ -569,6 +581,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         provenanceConfidence = try c.decodeIfPresent(UsageProvenanceConfidence.self, forKey: .provenanceConfidence) ?? .unknown
         estimatorVersion = try c.decodeIfPresent(String.self, forKey: .estimatorVersion) ?? ""
         parentRequestID = try c.decodeIfPresent(String.self, forKey: .parentRequestID)
+        billingKind = try c.decodeIfPresent(BurnBarBillingKind.self, forKey: .billingKind) ?? .unknown
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -610,6 +623,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encode(provenanceConfidence, forKey: .provenanceConfidence)
         try c.encode(estimatorVersion, forKey: .estimatorVersion)
         try c.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
+        try c.encode(billingKind, forKey: .billingKind)
     }
 
     public var duration: TimeInterval {

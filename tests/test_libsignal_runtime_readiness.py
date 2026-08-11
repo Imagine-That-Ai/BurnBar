@@ -8,6 +8,7 @@ completed evidence must all fail.
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -21,7 +22,7 @@ from scripts.ci.check_libsignal_runtime_readiness import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-v1.0.30.json")
+RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-v1.0.33.json")
 
 
 def _valid_manifest(*, status: str = "not_ready", complete_ids: tuple[str, ...] = ()) -> dict:
@@ -74,6 +75,13 @@ def _git_stdout(repo_root: Path, *args: str) -> bytes | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def _allows_synthetic_merge_history() -> bool:
+    """Allow protected squash candidates while retaining strict tree binding."""
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+    ref = os.environ.get("GITHUB_REF", "")
+    return event_name == "merge_group" or (event_name == "push" and ref == "refs/heads/main")
+
+
 def _write(tmp_path: Path, data: dict) -> Path:
     path = tmp_path / "runtime-readiness.json"
     path.write_text(json.dumps(data), encoding="utf-8")
@@ -87,6 +95,22 @@ def test_tracked_manifest_is_internally_consistent() -> None:
 def test_tracked_manifest_normalizes_gates() -> None:
     data = load_manifest(DEFAULT_MANIFEST, repo_root=REPO_ROOT)
     assert set(REQUIRED_GATE_IDS) <= set(data["gates"])
+
+
+def test_synthetic_merge_history_requires_protected_context(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "merge_group")
+    monkeypatch.delenv("GITHUB_REF", raising=False)
+    assert _allows_synthetic_merge_history()
+
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    assert _allows_synthetic_merge_history()
+
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/feature")
+    assert not _allows_synthetic_merge_history()
+
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    assert not _allows_synthetic_merge_history()
 
 
 def test_tracked_rust_core_bridge_gate_has_commit_bound_cross_platform_evidence() -> None:
@@ -160,11 +184,22 @@ def test_tracked_rust_core_bridge_gate_has_commit_bound_cross_platform_evidence(
     # are covered by the working-tree digest check above).
     tested_commit = evidence["testedSourceCommit"]
     if _git_stdout(REPO_ROOT, "cat-file", "-e", f"{tested_commit}^{{commit}}") is not None:
-        assert _git_stdout(REPO_ROOT, "merge-base", "--is-ancestor", tested_commit, "HEAD") is not None
-        for artifact, digest in recorded.items():
-            blob = _git_stdout(REPO_ROOT, "cat-file", "blob", f"{tested_commit}:{artifact}")
-            if blob is not None:
-                assert hashlib.sha256(blob).hexdigest() == digest, artifact
+        is_ancestor = _git_stdout(REPO_ROOT, "merge-base", "--is-ancestor", tested_commit, "HEAD") is not None
+        if not is_ancestor:
+            # GitHub's protected merge queue evaluates a synthetic one-parent
+            # squash candidate, so the evidence source commit is not retained
+            # in that candidate's history. The current-tree digest checks above
+            # remain authoritative for the candidate content; unknown contexts
+            # still fail closed.
+            assert _allows_synthetic_merge_history(), (
+                "testedSourceCommit is not reachable from HEAD outside a protected "
+                "merge-group or post-merge main evaluation"
+            )
+        else:
+            for artifact, digest in recorded.items():
+                blob = _git_stdout(REPO_ROOT, "cat-file", "blob", f"{tested_commit}:{artifact}")
+                if blob is not None:
+                    assert hashlib.sha256(blob).hexdigest() == digest, artifact
 
     # Tag binding: the candidate tag may not exist yet, but once it does it
     # must name the tested commit; evidence claiming an unrelated tag fails.

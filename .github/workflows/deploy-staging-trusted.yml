@@ -94,6 +94,12 @@ jobs:
             [[ "$FUNCTIONS_ARTIFACT" == "staging-functions-$CANDIDATE_SHA" ]] || {
               echo "::error::Functions artifact identity does not match candidate SHA."; exit 1;
             }
+            # The candidate artifact is always scoped to explicit reviewed
+            # targets, so an unscoped deploy would ask the non-interactive
+            # Firebase CLI to delete every other remote function and abort.
+            [[ -n "${FUNCTION_TARGETS:-}" ]] || {
+              echo "::error::deploy_functions requires the resolved function_targets selectors from the candidate build."; exit 1;
+            }
           fi
           if [[ -n "${FUNCTION_TARGETS:-}" ]] &&
              [[ ! "$FUNCTION_TARGETS" =~ ^functions:[A-Za-z][A-Za-z0-9_-]*(,functions:[A-Za-z][A-Za-z0-9_-]*)*$ ]]; then
@@ -213,13 +219,29 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          deploy_log="$(mktemp)"
+          deploy_status=0
           "$FIREBASE_TOOLS_BIN" deploy \
             --only firestore,storage \
             --project "$FIREBASE_PROJECT" \
             --config "$FIREBASE_CONFIG_PATH" \
-            --non-interactive
-          node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT"
-          node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT"
+            --non-interactive 2>&1 | tee "$deploy_log" || deploy_status=$?
+          if [[ "$deploy_status" -ne 0 ]]; then
+            if grep -q "409" "$deploy_log" && grep -qi "Requested entity already exists" "$deploy_log"; then
+              echo "::warning::Firestore rules release hit 409; running targeted repair"
+              node scripts/ci/repair-firestore-rules-release.mjs "$FIREBASE_PROJECT" \
+                "$RUNNER_TEMP/staging-deploy/firestore.rules"
+            else
+              cat "$deploy_log"
+              exit "$deploy_status"
+            fi
+          fi
+          # Verify the live release against the exact candidate artifacts this
+          # job deployed, not the trusted checkout's main files.
+          node scripts/ci/check-firestore-deploy-drift.mjs "$FIREBASE_PROJECT" \
+            "$RUNNER_TEMP/staging-deploy"
+          node scripts/ci/verify-firestore-ttl-state.mjs "$FIREBASE_PROJECT" \
+            "$RUNNER_TEMP/staging-deploy"
 
       - name: Deploy reviewed Functions artifact
         if: ${{ inputs.deploy_functions }}
@@ -243,10 +265,7 @@ jobs:
           } > "$env_temp"
           mv "$env_temp" "$env_file"
           trap - EXIT
-          deploy_scope="functions"
-          if [[ -n "${FUNCTION_TARGETS:-}" ]]; then
-            deploy_scope="$FUNCTION_TARGETS"
-          fi
+          deploy_scope="$FUNCTION_TARGETS"
           "$FIREBASE_TOOLS_BIN" deploy \
             --only "$deploy_scope" \
             --project "$FIREBASE_PROJECT" \
@@ -383,5 +402,5 @@ jobs:
             echo "- Project: \`$FIREBASE_PROJECT\`"
             echo "- Hosting included: \`$DEPLOY_HOSTING\`"
             echo "- Functions included: \`$DEPLOY_FUNCTIONS\`"
-            echo "- Function targets: \`${FUNCTION_TARGETS:-all}\`"
+            echo "- Function targets: \`${FUNCTION_TARGETS:-none}\`"
           } >> "$GITHUB_STEP_SUMMARY"

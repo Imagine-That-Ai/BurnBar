@@ -35,6 +35,7 @@ export {
   onMobileAssistantAgentReplyNotification,
   retryStuckAgentReplyEvents,
 } from "./agentNotifications.js";
+export { onAIInboxItemNotification } from "./aiInboxNotifications.js";
 export { submitAgentNotificationReply } from "./callables/agentNotifications.js";
 
 export {

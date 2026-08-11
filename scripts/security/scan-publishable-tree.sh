@@ -160,6 +160,52 @@ if [[ "$trufflehog_status" -ne 0 ]]; then
   exit "$trufflehog_status"
 fi
 
+# TruffleHog's Lob detector treats XCTest/Jest/docs identifiers like
+# `test_everyMacEventIsRegisteredInTaxonomy` as "verified" Lob test API keys
+# (including camelCase names with no extra underscores, and mentions in docs /
+# Vendor / skills). Drop Lob findings whose Raw looks like a test identifier,
+# but keep real Lob *test-mode* API keys (`test_` + hex only) fail-closed.
+filtered_report="$artifact_dir/trufflehog-publishable-tree.filtered.jsonl"
+python3 - "$trufflehog_report" "$filtered_report" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+dst = Path(sys.argv[2])
+# Real Lob test-mode keys are `test_` + hexadecimal payload.
+lob_test_api_key = re.compile(r"^test_[0-9a-f]+$", re.IGNORECASE)
+# XCTest / Jest / harness ids: test_ + identifier chars (letters required so
+# pure-hex Lob keys stay outside this class via lob_test_api_key above).
+test_identifier = re.compile(r"^test_[A-Za-z_][A-Za-z0-9_]*$")
+kept = []
+dropped = 0
+if src.exists() and src.stat().st_size:
+    for line in src.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        finding = json.loads(line)
+        detector = str(finding.get("DetectorName") or "")
+        raw = str(finding.get("Raw") or "")
+        path = str(
+            (((finding.get("SourceMetadata") or {}).get("Data") or {}).get("Filesystem") or {}).get("file")
+            or ""
+        )
+        if (
+            detector == "Lob"
+            and test_identifier.fullmatch(raw)
+            and not lob_test_api_key.fullmatch(raw)
+        ):
+            dropped += 1
+            print(f"Ignoring Lob false positive on test identifier in {path}: {raw}", file=sys.stderr)
+            continue
+        kept.append(line)
+dst.write_text(("\n".join(kept) + ("\n" if kept else "")), encoding="utf-8")
+print(f"trufflehog findings kept={len(kept)} dropped_lob_test_ids={dropped}")
+PY
+trufflehog_report="$filtered_report"
+
 if [[ -s "$trufflehog_report" ]]; then
   echo "trufflehog found verified secrets in publishable files:" >&2
   cat "$trufflehog_report" >&2

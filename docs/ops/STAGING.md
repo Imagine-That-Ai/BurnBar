@@ -19,7 +19,7 @@ Read-only inspection produced this fail-closed state:
 | GCP project `burnbar-staging` | Active; Firebase APIs are attached                                                                                                                                                                                             |
 | Deploy service account        | `burnbar-staging-deployer` exists with all nine documented project roles; secret metadata access is granted only per deployed staging secret                                                                                   |
 | GitHub OIDC                   | `github-pool/github-provider` is active and repository-scoped                                                                                                                                                                  |
-| GitHub Environment            | `staging` requires review; candidate branches may enter only through the reusable deployment workflow pinned to `main`                                                                                                         |
+| GitHub Environment            | `staging` requires review and permits only `main`; trusted `main` may build and promote an explicitly supplied full candidate SHA through the reusable deployment workflow                                                      |
 | Billing                       | Enabled through the approved company billing account                                                                                                                                                                           |
 | Firestore database            | Native-mode `(default)` database active in `us-central1`                                                                                                                                                                       |
 | Firebase Storage bucket       | `burnbar-staging.firebasestorage.app` active in `us-central1`; uniform bucket-level access and public-access prevention enforced                                                                                               |
@@ -37,8 +37,10 @@ Read-only inspection produced this fail-closed state:
 Do not recreate the project, service account, OIDC pool/provider, GitHub
 Environment, Firebase resources, or environment secrets. Deploy only explicit
 Functions targets until each target's Secret Manager dependencies point to a
-non-production or sandbox account. An empty `function_targets` input still means
-"all Functions" and therefore requires the complete staging secret inventory.
+non-production or sandbox account. An empty `function_targets` input resolves
+to every reviewed target in `functions/staging-deploy-targets.json` and
+therefore requires the staging secret inventory for that whole manifest; the
+full production Functions export graph is never deployed to staging.
 
 ## Why this exists
 
@@ -345,11 +347,13 @@ gcloud secrets add-iam-policy-binding WINDOWS_TPM_VERIFIER_TOKEN \
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
   --ref "$FEATURE_BRANCH" -f dry_run=true
 
-# Real rules/indexes/storage rehearsal from the feature branch. Candidate code
-# receives no credentials; the deploy job is defined by the reusable workflow
-# pinned to main and consumes the artifact only as bounded data.
+# Real rehearsals run the reviewed workflow definition from main while checking
+# out and packaging the exact feature-branch commit as uncredentialed candidate
+# data. This satisfies the staging environment's main-only branch policy without
+# merging the candidate into production.
+CANDIDATE_SHA="$(git rev-parse "$FEATURE_BRANCH^{commit}")"
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
-  --ref "$FEATURE_BRANCH" -f dry_run=false
+  --ref main -f candidate_sha="$CANDIDATE_SHA" -f dry_run=false
 
 # Deploy the reviewed staging marketing build. The candidate artifact is built
 # with the burnbar-staging Firebase/Auth/App Check identifiers. Trusted main
@@ -360,7 +364,8 @@ gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
 # CSP + noindex headers. On the first run, deploy the four rewrite targets in
 # the same invocation:
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
-  --ref "$FEATURE_BRANCH" \
+  --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=false \
   -f deploy_hosting=true \
   -f deploy_functions=true \
@@ -372,14 +377,19 @@ gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
 # scoped to every reviewed target in functions/staging-deploy-targets.json;
 # blank never falls back to the full production Functions export graph.
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
-  --ref "$FEATURE_BRANCH" \
+  --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=false \
   -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken'
 
-# Deliberately deploy every Function only after every staging secret exists:
+# Deliberately deploy the complete reviewed staging manifest only after every
+# manifest target's staging secrets exist. The blank input resolves to explicit
+# functions:<name> selectors for functions/staging-deploy-targets.json, so the
+# trusted deploy never touches Functions outside the reviewed manifest:
 gh workflow run deploy-staging.yml --repo Imagine-That-Ai/BurnBar \
-  --ref "$FEATURE_BRANCH" \
+  --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=false -f deploy_functions=true -f function_targets=''
 ```
 
@@ -443,11 +453,13 @@ cleanup path; inspect and clean any reported provider artifact before retrying.
 1. Edit `firestore.rules` (and/or `firestore.indexes.json` / `storage.rules`) on
    a branch.
 2. `npm --prefix functions run test:firestore-rules` locally against the emulator.
-3. Push the branch, then dispatch `deploy-staging.yml` at that exact branch with
-   `dry_run=false`. The branch builds and tests bounded artifacts without
-   credentials. `deploy-staging-trusted.yml@main` verifies those artifacts,
-   obtains WIF credentials, deploys them to **staging**, drift-checks the live
-   project, and verifies every declared `ttl:true` override.
+3. Push the branch, record its full commit SHA, then dispatch
+   `deploy-staging.yml` from `main` with `candidate_sha=<full SHA>` and
+   `dry_run=false`. Trusted `main` checks out that exact commit, builds and
+   tests bounded artifacts without credentials, and passes them to
+   `deploy-staging-trusted.yml@main`. The reusable workflow verifies the
+   artifacts, obtains WIF credentials, deploys them to **staging**, drift-checks
+   the live project, and verifies every declared `ttl:true` override.
 4. Exercise the change against `burnbar-staging` (console client pointed at the
    staging project, or ad-hoc reads/writes) to confirm intended allow/deny.
 5. Only then merge to `main`. `deploy-firestore.yml` promotes the identical files
@@ -470,8 +482,10 @@ cleanup path; inspect and clean any reported provider artifact before retrying.
   before authentication, so candidate-controlled lifecycle code never runs
   under staging deploy credentials.
 - **Environment-gated:** the `staging` GitHub Environment provides an approval
-  gate. Its deployment branch policy must allow reviewed rehearsal branches;
-  reusable-workflow identity, not the caller ref, is the immutable code boundary.
+  gate and allows only `main`. Real rehearsals therefore dispatch the reviewed
+  workflow from `main` with a full `candidate_sha`; candidate builds check out
+  that immutable commit while the reusable-workflow identity remains the
+  credentialed code boundary.
 - **Candidate code stays uncredentialed:** candidate jobs run tests/builds,
   validate explicit function targets, and upload short-lived bounded artifacts.
   The trusted workflow verifies path, size, file count, SHA-256, and

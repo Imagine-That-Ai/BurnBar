@@ -28,15 +28,36 @@ struct ChartCardView: View {
     let onToggleSpan: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    /// Spend lens for the burn card: combined / split / overlay. Persisted so
+    /// the chosen way of seeing money survives relaunch.
+    @AppStorage("charts.spendLensMode") private var spendLensRaw = SpendLensMode.combined.rawValue
 
     private var kind: ChartKind { config.kind }
+
+    private var spendLens: SpendLensMode { SpendLensMode(rawValue: spendLensRaw) ?? .combined }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             header
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 150)
+            // The lens picker shares the card's fixed 150pt body with the
+            // chart rather than sitting above it, so a card carrying the
+            // control is exactly as tall as one that does not and rows stay
+            // aligned. It is a sibling of the summarized chart, which is what
+            // keeps it reachable by VoiceOver.
+            VStack(alignment: .trailing, spacing: 4) {
+                if showsLensPicker {
+                    SpendLensPicker(mode: Binding(
+                        get: { SpendLensMode(rawValue: spendLensRaw) ?? .combined },
+                        set: { spendLensRaw = $0.rawValue }
+                    ))
+                }
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(chartSummaryLabel)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: 150)
             Text(kind.whyItMatters)
                 .font(.system(size: 10, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -69,8 +90,14 @@ struct ChartCardView: View {
             Button(config.span == 2 ? "Make Half Width" : "Make Full Width", action: onToggleSpan)
             Button("Hide Chart", action: onHide)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(kind.title). \(headline). \(kind.whyItMatters)")
+        // `contain`, not `ignore`. A chart body is a wall of shapes with no
+        // readable text, so it still collapses into one synthesized summary —
+        // but that summary is applied to the chart body itself (see `content`),
+        // not to the whole card. Ignoring the card discarded every control
+        // inside it: the Spend Lens mode buttons were operable by mouse and
+        // keyboard and completely unreachable by VoiceOver.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(kind.title)
     }
 
     // MARK: Header
@@ -98,10 +125,22 @@ struct ChartCardView: View {
     private var headline: String {
         switch kind {
         case .burnOverTime:
-            let trend = snapshot.burnTrendPercent.map {
-                " · " + $0.formatted(.number.precision(.fractionLength(0)).sign(strategy: .always())) + "%"
-            } ?? ""
-            return snapshot.totalCost.formatAsCost() + trend
+            switch spendLens {
+            case .combined:
+                let trend = snapshot.burnTrendPercent.map {
+                    " · " + $0.formatted(.number.precision(.fractionLength(0)).sign(strategy: .always())) + "%"
+                } ?? ""
+                return snapshot.totalCost.formatAsCost() + trend
+            case .split, .overlay:
+                // Unclassified spend is named here too. Omitting it made the
+                // headline understate the window whenever anything resisted
+                // classification, so the two lens modes reported different
+                // totals for the same data.
+                let base = "API " + snapshot.apiCost.formatAsCost()
+                    + " · Plan " + snapshot.subscriptionCost.formatAsCost()
+                guard snapshot.unknownBillingCost > SpendLensBurnBody.disclosureFloor else { return base }
+                return base + " · ? " + snapshot.unknownBillingCost.formatAsCost()
+            }
         case .providerMix:
             guard let top = snapshot.providerShares.first, snapshot.totalCost > 0 else { return "—" }
             return "\(top.provider.displayName) \(Int((top.cost / snapshot.totalCost * 100).rounded()))%"
@@ -136,6 +175,14 @@ struct ChartCardView: View {
 
     // MARK: Content
 
+    /// The one summary VoiceOver hears in place of the chart marks.
+    private var chartSummaryLabel: String {
+        "\(kind.title). \(headline). \(kind.whyItMatters)"
+    }
+
+    /// Whether this card carries the Spend Lens mode control.
+    private var showsLensPicker: Bool { kind == .burnOverTime && !isKindEmpty }
+
     @ViewBuilder
     private var content: some View {
         if isKindEmpty {
@@ -143,7 +190,7 @@ struct ChartCardView: View {
         } else {
             switch kind {
             case .burnOverTime:
-                ChartKitLine(values: snapshot.burnSeries.map(\.value), accent: kind.accent)
+                SpendLensBurnBody(snapshot: snapshot, mode: spendLens)
             case .providerMix:
                 ChartKitDonut(
                     segments: snapshot.providerShares.map {

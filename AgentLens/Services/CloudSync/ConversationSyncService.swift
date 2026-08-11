@@ -65,8 +65,8 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
                     vaultKey: vaultKey
                 )
                 data["source"] = "macos-agentlens"
-                data = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
-                    to: data,
+                let signalData = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+                    to: data as NSDictionary,
                     domainID: "conversations_chat",
                     uid: uid,
                     firestore: Firestore.firestore(),
@@ -77,6 +77,7 @@ final class ConversationSyncService: CloudSyncDomain, Sendable {
                     legacyPrivateFields: ["sealedPayload", "sealedSchemaVersion", "vaultKeyID", "contentSealed"],
                     mergeWrite: true
                 )
+                data = CloudSyncFirestoreLiveGateway.firestoreData(signalData)
                 batch.setData(data, forDocument: docRef, merge: true)
             }
 

@@ -5,6 +5,12 @@
  * Runtime execution remains client-owned: inline notification replies are
  * stored as idempotent reply commands so the platform that already knows how
  * to talk to Hermes/Pi/CLI relay can drain them through the normal chat path.
+ *
+ * The event collection is shared by every "something happened while you were
+ * away" surface — agent replies and AI Inbox P1 alerts — so all of them inherit
+ * one device fan-out, one per-device error containment policy, and one stuck
+ * event sweeper. `sourceKind` is the discriminator; see `aiInboxNotifications.ts`
+ * for the inbox producer.
  */
 
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
@@ -38,7 +44,21 @@ const AGENT_FANOUT_SWEEP_BATCH_LIMIT = 50;
 
 export const AGENT_NOTIFICATION_EVENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat";
+// Module-private: consumers pass string literals that are checked against
+// this union through createNotificationEvent's parameter type.
+type AgentNotificationSourceKind = "cli_session" | "mobile_assistant_chat" | "ai_inbox_item";
+
+// A Set<string> accepts an `unknown` narrowed to string without any cast, so
+// the membership test alone establishes the type.
+const NOTIFICATION_SOURCE_KINDS: ReadonlySet<string> = new Set<string>([
+  "cli_session",
+  "mobile_assistant_chat",
+  "ai_inbox_item",
+] satisfies readonly AgentNotificationSourceKind[]);
+
+function isNotificationSourceKind(raw: unknown): raw is AgentNotificationSourceKind {
+  return typeof raw === "string" && NOTIFICATION_SOURCE_KINDS.has(raw);
+}
 
 interface AgentReplyMessage {
   id: string;
@@ -48,6 +68,11 @@ interface AgentReplyMessage {
   isError?: boolean;
 }
 
+// Module-private: every use is inside this module, and the tests derive the
+// shape structurally via Parameters<typeof buildFcmMessage>[0]["event"]
+// rather than importing the name. Keeping it unexported holds the
+// hand-maintained schema surface at its cap
+// (budgets/hand-maintained-ts-baseline.json).
 interface AgentReplyNotificationEvent {
   id: string;
   uid: string;
@@ -69,6 +94,15 @@ interface AgentReplyNotificationEvent {
   fanoutAttemptCount: number;
   replyEnabled: boolean;
   schemaVersion: 1;
+  /**
+   * AI Inbox routing, present only on `ai_inbox_item` events. The document body
+   * at `users/{uid}/ai_inbox_items/{itemId}` is sealed, so the function cannot
+   * read the title — the client hydrates and decrypts after delivery. Only the
+   * opaque id plus the bounded `kind`/`priority` enums travel.
+   */
+  inboxItemId?: string;
+  inboxKind?: string;
+  inboxPriority?: number;
 }
 
 interface DeviceNotificationState {
@@ -186,11 +220,16 @@ export function shouldSuppressForDevice(
   event: {
     threadId: string;
     runtime: string;
+    sourceKind?: AgentNotificationSourceKind;
   },
   nowMillis: number = Date.now(),
 ): boolean {
   if (!device.notificationsEnabled) return true;
   if (device.invalidatedAtMillis) return true;
+  // Inbox alerts are not tied to a conversation, so the "you are already
+  // looking at this thread" window never applies — a P1 that fired while the
+  // user happens to have a chat open is exactly the case worth interrupting.
+  if (event.sourceKind === "ai_inbox_item") return false;
   const fresh = nowMillis - device.lastSeenAtMillis <= ACTIVE_TTL_MS;
   if (!fresh) return false;
   if (device.appLifecycle !== "active") return false;
@@ -203,27 +242,45 @@ export function buildFcmMessage(args: {
   event: AgentReplyNotificationEvent;
   device: DeviceNotificationState;
 }): Message {
-  const title = `${args.event.providerLabel} replied`;
-  // Privacy: push payloads must not carry stable conversation correlators.
-  // The client resolves the conversation handle from the durable
-  // agent_notification_events/{event_id} document after delivery (OPUS-F-006).
-  const data: Record<string, string> = {
-    type: "agent_reply",
-    event_id: args.event.id,
-    runtime: args.event.runtime,
-    source_kind: args.event.sourceKind,
-    title,
-    preview: args.event.preview,
-    reply_enabled: args.event.replyEnabled ? "true" : "false",
-    deep_link: `burnbar://assistants/${encodeURIComponent(args.event.runtime)}?eventId=${encodeURIComponent(args.event.id)}`,
-  };
+  const inbox = args.event.sourceKind === "ai_inbox_item";
+  const title = inbox ? args.event.title : `${args.event.providerLabel} replied`;
+  const itemId = args.event.inboxItemId ?? args.event.messageId;
+  // Privacy: push payloads must not carry stable conversation correlators, nor
+  // any inbox content. The client resolves the conversation handle from the
+  // durable agent_notification_events/{event_id} document, and the inbox body
+  // from the SEALED ai_inbox_items/{item_id} document, after delivery
+  // (OPUS-F-006). `kind`/`priority` are bounded enums, not user text.
+  const data: Record<string, string> = inbox
+    ? {
+        type: "ai_inbox_item",
+        event_id: args.event.id,
+        item_id: itemId,
+        kind: args.event.inboxKind ?? "system",
+        priority: String(args.event.inboxPriority ?? 1),
+        source_kind: args.event.sourceKind,
+        title,
+        preview: args.event.preview,
+        deep_link: `burnbar://inbox/${encodeURIComponent(itemId)}`,
+      }
+    : {
+        type: "agent_reply",
+        event_id: args.event.id,
+        runtime: args.event.runtime,
+        source_kind: args.event.sourceKind,
+        title,
+        preview: args.event.preview,
+        reply_enabled: args.event.replyEnabled ? "true" : "false",
+        deep_link: `burnbar://assistants/${encodeURIComponent(args.event.runtime)}?eventId=${encodeURIComponent(args.event.id)}`,
+      };
 
   const base: Message = {
     token: args.device.fcmToken ?? "",
     data,
     android: {
       priority: "high",
-      collapseKey: "agent-reply",
+      // A per-item collapse key so two different P1 alerts both land, while a
+      // sweeper retry of the SAME item still replaces rather than duplicates.
+      collapseKey: inbox ? `ai-inbox-${itemId}` : "agent-reply",
       ttl: 10 * 60 * 1000,
     },
   };
@@ -243,7 +300,7 @@ export function buildFcmMessage(args: {
     apns: {
       payload: {
         aps: {
-          category: "AGENT_REPLY",
+          category: inbox ? "AI_INBOX_ITEM" : "AGENT_REPLY",
           sound: "default",
         },
       },
@@ -253,6 +310,52 @@ export function buildFcmMessage(args: {
       },
     },
   };
+}
+
+/**
+ * Write one durable notification event, idempotently.
+ *
+ * `create` (not `set`) is what makes a re-delivered platform trigger a no-op:
+ * the second attempt hits ALREADY_EXISTS and is swallowed, so a retried event
+ * never re-alerts. Every producer — agent replies and AI Inbox alerts alike —
+ * goes through here so they share that guarantee and the TTL stamp.
+ */
+export async function createNotificationEvent(args: {
+  event: Omit<
+    AgentReplyNotificationEvent,
+    | "createdAt"
+    | "createdAtMillis"
+    | "updatedAt"
+    | "updatedAtMillis"
+    | "expireAt"
+    | "status"
+    | "fanoutAttemptCount"
+    | "schemaVersion"
+  >;
+  firestore?: FirebaseFirestore.Firestore;
+}): Promise<string | undefined> {
+  const firestore = args.firestore ?? getFirestore();
+  const now = Timestamp.now();
+  const nowMillis = Date.now();
+  const event: AgentReplyNotificationEvent = {
+    ...args.event,
+    createdAt: now,
+    createdAtMillis: nowMillis,
+    updatedAt: now,
+    updatedAtMillis: nowMillis,
+    expireAt: Timestamp.fromMillis(nowMillis + AGENT_NOTIFICATION_EVENT_TTL_MS),
+    status: "pending",
+    fanoutAttemptCount: 0,
+    schemaVersion: 1,
+  };
+
+  const ref = firestore.collection("users").doc(event.uid).collection(EVENT_COLLECTION).doc(event.id);
+  await ref.create(event).catch(async (err: unknown) => {
+    const code = errorCode(err);
+    if (code === 6 || code === "already-exists") return;
+    throw err;
+  });
+  return event.id;
 }
 
 export async function createEventFromThreadWrite(args: {
@@ -270,45 +373,28 @@ export async function createEventFromThreadWrite(args: {
   const reply = latestAssistantReply(args.after);
   if (!reply) return undefined;
 
-  const firestore = args.firestore ?? getFirestore();
   const runtime = normalizeRuntime(args.sourceKind, args.after);
   const label = providerLabel(runtime);
-  const eventId = eventIdFor({
-    sourceKind: args.sourceKind,
-    threadId: args.threadId,
-    messageId: reply.id,
+  return createNotificationEvent({
+    firestore: args.firestore,
+    event: {
+      id: eventIdFor({
+        sourceKind: args.sourceKind,
+        threadId: args.threadId,
+        messageId: reply.id,
+      }),
+      uid: args.uid,
+      sourceKind: args.sourceKind,
+      sourcePath: args.sourcePath,
+      threadId: args.threadId,
+      messageId: reply.id,
+      runtime,
+      providerLabel: label,
+      title: `${label} replied`,
+      preview: GENERIC_PREVIEW,
+      replyEnabled: true,
+    },
   });
-  const now = Timestamp.now();
-  const nowMillis = Date.now();
-  const event: AgentReplyNotificationEvent = {
-    id: eventId,
-    uid: args.uid,
-    sourceKind: args.sourceKind,
-    sourcePath: args.sourcePath,
-    threadId: args.threadId,
-    messageId: reply.id,
-    runtime,
-    providerLabel: label,
-    title: `${label} replied`,
-    preview: GENERIC_PREVIEW,
-    createdAt: now,
-    createdAtMillis: nowMillis,
-    updatedAt: now,
-    updatedAtMillis: nowMillis,
-    expireAt: Timestamp.fromMillis(nowMillis + AGENT_NOTIFICATION_EVENT_TTL_MS),
-    status: "pending",
-    fanoutAttemptCount: 0,
-    replyEnabled: true,
-    schemaVersion: 1,
-  };
-
-  const ref = firestore.collection("users").doc(args.uid).collection(EVENT_COLLECTION).doc(eventId);
-  await ref.create(event).catch(async (err: unknown) => {
-    const code = errorCode(err);
-    if (code === 6 || code === "already-exists") return;
-    throw err;
-  });
-  return eventId;
 }
 
 export async function fanoutAgentReplyEvent(args: {
@@ -557,7 +643,7 @@ function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | und
   if (
     typeof raw.id !== "string" ||
     typeof raw.uid !== "string" ||
-    (raw.sourceKind !== "cli_session" && raw.sourceKind !== "mobile_assistant_chat") ||
+    !isNotificationSourceKind(raw.sourceKind) ||
     typeof raw.sourcePath !== "string" ||
     typeof raw.threadId !== "string" ||
     typeof raw.messageId !== "string" ||
@@ -600,6 +686,9 @@ function parseNotificationEvent(raw: unknown): AgentReplyNotificationEvent | und
     fanoutAttemptCount: raw.fanoutAttemptCount,
     replyEnabled: raw.replyEnabled,
     schemaVersion: 1,
+    inboxItemId: stringValue(raw.inboxItemId),
+    inboxKind: stringValue(raw.inboxKind),
+    inboxPriority: numberValue(raw.inboxPriority),
   };
 }
 

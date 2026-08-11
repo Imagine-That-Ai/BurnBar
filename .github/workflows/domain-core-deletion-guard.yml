@@ -63,7 +63,11 @@ jobs:
               echo "::error::Could not resolve PR number from merge queue ref: $MERGE_HEAD_REF"
               exit 1
             fi
-            pr_head_sha="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number" --jq .head.sha)"
+            pr_head_sha="$(
+              bash "$GITHUB_WORKSPACE/trusted/scripts/ci/gh-api-with-retry.sh" \
+                "repos/$GITHUB_REPOSITORY/pulls/$pr_number" \
+                --jq .head.sha
+            )"
           fi
           test -n "$pr_number"
           test -n "$pr_head_sha"

@@ -1,6 +1,13 @@
 import SwiftUI
 
 struct DashboardDetailView: View {
+    /// The inbox shelf (pins, tags, categories, manual order).
+    ///
+    /// Held here rather than as a global because the models below are rebuilt
+    /// on every body evaluation, and the shelf coalesces its writes on a timer:
+    /// a store discarded mid-debounce loses the write. `@State` gives it a
+    /// lifetime tied to this view instead of to the process.
+    @State private var inboxShelf = InboxShelfStore()
     let mainRoute: DashboardMainRoute
     let context: DashboardContext
     let selectedTimeRange: TimeRange
@@ -100,6 +107,57 @@ struct DashboardDetailView: View {
                         "Memory is unavailable",
                         systemImage: "brain.head.profile",
                         description: Text("Open Memory from the main dashboard to review extracted memories.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .controlDeck:
+                    // Parallel/legacy detail surface. The Control Deck needs the
+                    // daemon manager and the deck model, which this context does
+                    // not carry, so render the graceful unavailable state rather
+                    // than a half-wired deck — the same choice `.memoryReview`
+                    // makes above.
+                    ContentUnavailableView(
+                        "The Control Deck is unavailable",
+                        systemImage: "slider.horizontal.below.square.filled.and.square",
+                        description: Text("Open the Control Deck from the main dashboard.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .inbox:
+                    // Unlike memory review, the inbox needs only `DataStore`,
+                    // which this context has — so it renders fully here.
+                    // Memory approval is omitted (no memory store in scope), and
+                    // the detail view degrades to read-only proposals.
+                    InboxView(
+                        model: InboxModel(
+                            loadRows: { [dataStore] states in
+                                try await dataStore.fetchAIInboxRows(states: states)
+                            },
+                            loadMarker: { [dataStore] in try await dataStore.aiInboxChangeMarker() },
+                            markRead: { [dataStore] id in try await dataStore.markAIInboxItemRead(id: id) },
+                            markUnread: { [dataStore] id in try await dataStore.markAIInboxItemUnread(id: id) },
+                            setArchived: { [dataStore] id, archived in
+                                try await dataStore.setAIInboxItemArchived(id: id, archived: archived)
+                            },
+                            snooze: { [dataStore] id, until in
+                                try await dataStore.snoozeAIInboxItem(id: id, until: until)
+                            },
+                            setFeedback: { [dataStore] id, feedback in
+                                try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
+                            },
+                            markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
+                            loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() },
+                            shelf: inboxShelf
+                        ),
+                        onOpenSessionLog: { conversationID in
+                            Task { @MainActor in
+                                let resolver = InboxConversationJumpResolver(dataStore: dataStore)
+                                if let target = await resolver.jumpTarget(conversationID: conversationID) {
+                                    onOpenSessionLogs(target)
+                                } else {
+                                    onNavigate(.sessionLogs)
+                                }
+                            }
+                        },
+                        onOpenSettings: onOpenSettings
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .chat:

@@ -83,14 +83,36 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .providerModelDisplayNameSet, .providerModelDisplayNameClear,
              .quotaSignalsClear,
              .databaseRecoveryStatus,
-             .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
+             .databaseRecoveryBundleExport, .databaseRecoveryBundleImport,
+             // Inbox config writes change the egress posture and the spend
+             // ceiling; `run_now` can immediately spend. Both are operator
+             // actions, so they sit with the credential/config writes rather
+             // than with the observability reads above.
+             .inboxConfigUpdate, .inboxRunNow,
+             // Founder Lens mutations: a reply spends model budget; plan
+             // accept/update/grade are human-confirmed durable writes; the
+             // memory export changes what the daemon may cite as approved
+             // fact. All operator actions.
+             .inboxReply, .inboxPlansAccept, .inboxPlansUpdateStep,
+             .inboxPlansGrade, .inboxMemoryExport:
             return .config
         case .usageRecord, .usageRecent, .usageProjection, .usageRecount,
              .usageHistory, .usageInsights,
              .proxyRouteLogRecent, .proxyRouteLogClear,
-             .quotaSignalsRecent, .perfMeasure:
+             .quotaSignalsRecent, .perfMeasure,
+             // AI Inbox reads return already-synthesized, already-redacted
+             // summaries plus reference-shaped evidence — the same posture as
+             // usage/insight reads, so they share the observability group.
+             .inboxList, .inboxGet, .inboxRunsRecent, .inboxConfigGet,
+             // Plan reads are the same already-synthesized shape.
+             .inboxPlansList, .inboxPlansGet:
             return .observability
-        case .chatThreadList, .chatThreadGet, .chatMessageAppend:
+        case .chatThreadList, .chatThreadGet, .chatMessageAppend,
+             // Inbox reply threads store the user's own dialogue verbatim —
+             // the same sensitivity as chat history, so the same capability.
+             // A read-only observability peer may list items but not read the
+             // conversation about them.
+             .inboxThreadGet:
             return .chat
         case .membershipStatus, .membershipCheckoutURL, .membershipPortalURL, .membershipRestore:
             return .membership

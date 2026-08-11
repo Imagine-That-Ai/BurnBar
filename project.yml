@@ -13,8 +13,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "1.0.30"
-    CURRENT_PROJECT_VERSION: 70
+    MARKETING_VERSION: "1.0.33"
+    CURRENT_PROJECT_VERSION: 75
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
@@ -225,11 +225,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
-        ENABLE_HARDENED_RUNTIME: YES
-        # The daemon authenticates this app over the local RPC socket and
-        # requires both CodeDirectory flags. Keep the Xcode product compliant
-        # before any local/distribution re-signing step runs.
-        OTHER_CODE_SIGN_FLAGS: --options runtime,library
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
         INFOPLIST_KEY_NSSupportsAutomaticTermination: NO
@@ -237,6 +232,17 @@ targets:
         SWIFT_ENABLE_EXPLICIT_MODULES: NO
         GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) SQLITE_HAS_CODEC=1"
         OTHER_CFLAGS: "$(inherited) -DSQLITE_HAS_CODEC"
+      configs:
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
+          # The daemon authenticates this app over the local RPC socket and
+          # requires both CodeDirectory flags. Keep the Xcode Release product
+          # compliant before any local/distribution re-signing step runs.
+          # Deliberately Release-only: the Debug XCTest host builds with
+          # CODE_SIGNING_ALLOWED=NO in CI, and carrying these flags there
+          # only perturbs the ad-hoc-signed test host (observed as an
+          # XCTest hang on CI runners) without protecting anything.
+          OTHER_CODE_SIGN_FLAGS: --options runtime,library
     postBuildScripts:
       - name: Configure Firebase Auth Resources
         # GoogleService-Info.plist is gitignored and may be absent on fresh
@@ -851,7 +857,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarMobile
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 83
+        CURRENT_PROJECT_VERSION: 84
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES: YES
@@ -1031,6 +1037,11 @@ targets:
         product: OpenBurnBarCore
       - package: OpenBurnBarCore
         product: OpenBurnBarAnalytics
+      # Linked narrowly so Inbox views can import OpenBurnBarHermes directly for
+      # HermesInlineMarkdown/HermesAtomParser instead of reaching through the
+      # OpenBurnBarCore umbrella (docs/CORE_DECOMPOSITION_PROGRAM.md).
+      - package: OpenBurnBarCore
+        product: OpenBurnBarHermes
       - package: OpenBurnBarCore
         product: OpenBurnBarIrohRelay
       - package: OpenBurnBarCore
@@ -1144,7 +1155,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarWidget
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.widget
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 83
+        CURRENT_PROJECT_VERSION: 84
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarWidget/Resources/OpenBurnBarWidget.entitlements
@@ -1196,7 +1207,7 @@ targets:
         PRODUCT_NAME: OpenBurnBarKeyboard
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.keyboard
         MARKETING_VERSION: "1.0.2"
-        CURRENT_PROJECT_VERSION: 83
+        CURRENT_PROJECT_VERSION: 84
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarKeyboard/Resources/OpenBurnBarKeyboard.entitlements

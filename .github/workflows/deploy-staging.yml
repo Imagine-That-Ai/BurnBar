@@ -10,6 +10,11 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
+      candidate_sha:
+        description: "Optional exact candidate SHA; overrides are accepted only when this workflow runs from main"
+        required: false
+        type: string
+        default: ""
       dry_run:
         description: "Build and test only; do not invoke the trusted deploy workflow"
         required: false
@@ -36,8 +41,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-candidate:
+    name: Resolve exact staging candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      candidate_sha: ${{ steps.resolve.outputs.candidate_sha }}
+    steps:
+      - name: Authorize exact candidate selection
+        id: resolve
+        env:
+          INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          candidate_sha="${INPUT_CANDIDATE_SHA:-$DISPATCH_SHA}"
+          if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::candidate_sha must be a full lowercase 40-character Git SHA."
+            exit 1
+          fi
+          if [[ -n "$INPUT_CANDIDATE_SHA" && "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "::error::An explicit candidate_sha may be promoted only by dispatching this workflow from main."
+            exit 1
+          fi
+          printf 'candidate_sha=%s\n' "$candidate_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Exact staging candidate"
+            echo
+            echo "- Candidate SHA: \`$candidate_sha\`"
+            echo "- Workflow ref: \`$DISPATCH_REF\`"
+            if [[ -n "$INPUT_CANDIDATE_SHA" ]]; then
+              echo "- Mode: trusted-main promotion of an exact candidate"
+            else
+              echo "- Mode: current-ref candidate"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build-rules-candidate:
     name: Build and test staging rules candidate
+    needs: resolve-candidate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -45,6 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
+          ref: ${{ needs.resolve-candidate.outputs.candidate_sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -66,7 +112,7 @@ jobs:
 
       - name: Package bounded rules data
         env:
-          CANDIDATE_SHA: ${{ github.sha }}
+          CANDIDATE_SHA: ${{ needs.resolve-candidate.outputs.candidate_sha }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/staging-rules"
@@ -79,13 +125,14 @@ jobs:
 
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
-          name: staging-rules-${{ github.sha }}
+          name: staging-rules-${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: ${{ runner.temp }}/staging-rules
           if-no-files-found: error
           retention-days: 3
 
   build-hosting-candidate:
     name: Build and test staging Hosting candidate
+    needs: resolve-candidate
     if: ${{ inputs.deploy_hosting }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -96,6 +143,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
+          ref: ${{ needs.resolve-candidate.outputs.candidate_sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -114,7 +162,7 @@ jobs:
 
       - name: Package bounded Hosting data
         env:
-          CANDIDATE_SHA: ${{ github.sha }}
+          CANDIDATE_SHA: ${{ needs.resolve-candidate.outputs.candidate_sha }}
         run: |
           set -euo pipefail
           destination="$RUNNER_TEMP/staging-hosting/website/dist"
@@ -128,7 +176,7 @@ jobs:
 
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
-          name: staging-hosting-${{ github.sha }}
+          name: staging-hosting-${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: ${{ runner.temp }}/staging-hosting
           include-hidden-files: true
           if-no-files-found: error
@@ -136,6 +184,7 @@ jobs:
 
   build-functions-candidate:
     name: Build and test staging Functions candidate
+    needs: resolve-candidate
     if: ${{ inputs.deploy_functions }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -143,9 +192,12 @@ jobs:
       contents: read
     env:
       FUNCTION_TARGETS: ${{ inputs.function_targets }}
+    outputs:
+      resolved_function_targets: ${{ steps.scope-functions.outputs.function_targets }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
+          ref: ${{ needs.resolve-candidate.outputs.candidate_sha }}
           fetch-depth: 0
           submodules: recursive
           persist-credentials: false
@@ -157,6 +209,7 @@ jobs:
           cache-dependency-path: functions/package-lock.json
 
       - name: Validate, test, and scope candidate Functions without credentials
+        id: scope-functions
         run: |
           set -euo pipefail
           if [[ -n "${FUNCTION_TARGETS:-}" ]] &&
@@ -174,7 +227,7 @@ jobs:
 
       - name: Package bounded Functions data
         env:
-          CANDIDATE_SHA: ${{ github.sha }}
+          CANDIDATE_SHA: ${{ needs.resolve-candidate.outputs.candidate_sha }}
         run: |
           set -euo pipefail
           destination="$RUNNER_TEMP/staging-functions/functions"
@@ -195,7 +248,7 @@ jobs:
 
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
-          name: staging-functions-${{ github.sha }}
+          name: staging-functions-${{ needs.resolve-candidate.outputs.candidate_sha }}
           path: ${{ runner.temp }}/staging-functions
           include-hidden-files: true
           if-no-files-found: error
@@ -203,8 +256,9 @@ jobs:
 
   deploy-through-trusted-main:
     name: Deploy candidate through trusted main workflow
-    if: ${{ !inputs.dry_run && always() && needs.build-rules-candidate.result == 'success' && (!inputs.deploy_hosting || needs.build-hosting-candidate.result == 'success') && (!inputs.deploy_functions || needs.build-functions-candidate.result == 'success') }}
+    if: ${{ !inputs.dry_run && always() && needs.resolve-candidate.result == 'success' && needs.build-rules-candidate.result == 'success' && (!inputs.deploy_hosting || needs.build-hosting-candidate.result == 'success') && (!inputs.deploy_functions || needs.build-functions-candidate.result == 'success') }}
     needs:
+      - resolve-candidate
       - build-rules-candidate
       - build-hosting-candidate
       - build-functions-candidate
@@ -214,11 +268,14 @@ jobs:
       id-token: write
     uses: Imagine-That-Ai/BurnBar/.github/workflows/deploy-staging-trusted.yml@main
     with:
-      candidate_sha: ${{ github.sha }}
-      rules_artifact: staging-rules-${{ github.sha }}
+      candidate_sha: ${{ needs.resolve-candidate.outputs.candidate_sha }}
+      rules_artifact: staging-rules-${{ needs.resolve-candidate.outputs.candidate_sha }}
       deploy_hosting: ${{ inputs.deploy_hosting }}
-      hosting_artifact: staging-hosting-${{ github.sha }}
+      hosting_artifact: staging-hosting-${{ needs.resolve-candidate.outputs.candidate_sha }}
       deploy_functions: ${{ inputs.deploy_functions }}
-      functions_artifact: staging-functions-${{ github.sha }}
-      function_targets: ${{ inputs.function_targets }}
+      functions_artifact: staging-functions-${{ needs.resolve-candidate.outputs.candidate_sha }}
+      # The candidate build resolves a blank input to the reviewed staging
+      # manifest, so the trusted deploy always receives explicit selectors and
+      # never runs an unscoped `--only functions` deployment.
+      function_targets: ${{ needs.build-functions-candidate.outputs.resolved_function_targets }}
     secrets: inherit

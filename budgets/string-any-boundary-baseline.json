@@ -1,7 +1,7 @@
 {
-  "agentLensStringAny": 759,
-  "mobileStringAny": 461,
-  "total": 1220,
-  "generatedAt": "2026-07-12T09:05:00Z",
-  "note": "Baseline for scripts/debt/check-string-any-boundary-budget.sh. Caps growth of the untyped Swift<->Firestore boundary: String-to-Any dictionary occurrences (`[String: Any]`, whitespace variants, and `Dictionary<String, Any>`) on code lines (comment lines and .build/.derived-data/.swiftpm/Preview Content/build excluded) under AgentLens/ and OpenBurnBarMobile/. The Computer Use Firestore gateway and Mac entitlement document wrapper migration lowered AgentLens from 763 to 759, and the Linux/mobile controller credential lane lowered mobile from 464 to 461, for a total of 1220. Shrink-only: the gate fails if any counter exceeds its baseline. As each site moves to a typed Codable model / typed accessor, run scripts/debt/check-string-any-boundary-budget.sh --print-live and lower these numbers to lock the win in."
+  "agentLensStringAny": 758,
+  "mobileStringAny": 458,
+  "total": 1216,
+  "generatedAt": "2026-08-05T10:15:00Z",
+  "note": "Baseline for scripts/debt/check-string-any-boundary-budget.sh. Caps growth of the untyped Swift<->Firestore boundary: String-to-Any dictionary occurrences (`[String: Any]`, whitespace variants, and `Dictionary<String, Any>`) on code lines (comment lines and .build/.derived-data/.swiftpm/Preview Content/build excluded) under AgentLens/ and OpenBurnBarMobile/. Consolidating the repeated kSecClassGenericPassword keychain query literals behind KeychainGenericPasswordQuery (mobile) and SecurityKeychainStoreBackend.genericPasswordQuery (AgentLens) lowered AgentLens from 759 to 758 and mobile from 461 to 458, for a total of 1216; the paydown also absorbs the AI Inbox state-write payload sites, which stay [String: Any] because merge-clears require FieldValue.delete(). Shrink-only: the gate fails if any counter exceeds its baseline. As each site moves to a typed Codable model / typed accessor, run scripts/debt/check-string-any-boundary-budget.sh --print-live and lower these numbers to lock the win in."
 }

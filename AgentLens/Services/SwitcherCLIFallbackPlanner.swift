@@ -122,6 +122,8 @@ struct SwitcherCLIFallbackPlanner: CLIFallbackPlanning {
             return .junie
         case .omp:
             return .omp
+        case .primeAgent:
+            return .primeAgent
         }
     }
 

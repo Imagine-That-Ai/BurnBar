@@ -12,7 +12,7 @@ Never offer to “table this for later” when the permanent solve is within rea
 
 The standard isn’t “good enough” — it’s **“holy shit, that’s done.”**
 
-Search before building. Test before shipping. Ship the complete thing.
+Search before building (use `muse.search` / `rg --glob '! .build/*' --glob '!.claude/*' --glob '!Vendor/*'` - never `find . | xargs grep` or `find ~/Library` which hangs and times out after 15s). Test before shipping. Ship the complete thing.
 
 When Alberto asks for something, **the answer is the finished product**, not a plan to build it.
 

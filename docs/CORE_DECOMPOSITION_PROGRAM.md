@@ -586,6 +586,26 @@ ceilings move from 46,250 to 46,600 and from 11,800 to 12,200 respectively, cove
 measured 272/302-LOC growth with less than 160 LOC of bounded headroom per target. File
 ceilings remain unchanged.
 
+**Signal v4 Gateway runtime ceiling adjustment (2026-08-04):** the v4 Gateway and
+CloudVault runtime wiring (#2180) grew `OBBSignalSessionCipherTransport.swift` with the
+sealed-sender session establishment and envelope-binding verification paths, measuring
+`OpenBurnBarSignalSessionTransport` at 641 LOC (2 files) against its 540-LOC measured
+ceiling. Session transport is that target's sole responsibility, so the ceiling moves to
+802 LOC (the standard measured 1.25x for non-destination siblings); the 3-file ceiling is
+unchanged. The same change had landed the type-erased `OBBSignalGatewayEnvelopeProvider`
+protocol in the dissolving main target; as a Foundation-only contract it now lives in
+`OpenBurnBarKernel/Contracts` (compiled in every manifest configuration and re-exported
+through the umbrella, so `import OpenBurnBarCore` consumers keep resolving it), keeping
+the main target at its 11-file / 127-line shim-only baseline.
+
+**Prime Agent + Muse parser landing ceiling adjustment (2026-08-08):** landing first-class
+`PrimeAgentParser` / `MuseParser` providers (#2192) grew `OpenBurnBarLogParsers` to 13,915 LOC
+(34 files) and pulled shared provider/session identity into `OpenBurnBarKernel` at 47,029 LOC
+(154 files). Both clusters belong in the existing owning modules — new leaf targets would only
+duplicate parser/provider boundaries. Planned ceilings move narrowly to 47,250 and 14,100 LOC
+(~221/185 LOC of bounded headroom); file-count ceilings and the main-target shim baseline stay
+unchanged.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated
@@ -765,3 +785,26 @@ change) is fully met.
   PR behind **PR #1559** (S0, base=`main`). The factory merges the stack in order
   (S0 → wave2 → wave3/P-17 → wave4 → this close-out). Nothing here has reached `main`; the
   merge to `main` is the factory's job, gated by Codex review + branch protection.
+
+**Signal v4 Gateway ceiling follow-up (2026-08-05):** the official Signal v4
+Gateway wiring (#2180) added the sealing surface to `OpenBurnBarSignalSessionTransport`,
+taking it to 641 LOC against a 540-LOC ceiling, and parked the shared
+`OBBSignalGatewayEnvelopeProvider` protocol as a NEW file in the dissolving
+`OpenBurnBarCore` main target, which the deny-gate forbids outright.
+
+Two different remedies, because the two problems are not alike:
+
+- The protocol is 13 Foundation-only lines with no Signal dependency. It moved to
+  `OpenBurnBarKernel/Contracts/`, which every consumer already reaches through
+  Core's re-export. `OpenBurnBarCore` is back to its exact baseline (11 files /
+  127 lines), so the main target resumes shrinking rather than growing.
+- The transport's own 101-line overshoot is NOT decomposed here. Splitting its
+  value types into a sibling was attempted and rejected: they depend on
+  `LibSignalClient` (`ProtocolAddress`, `PreKeyBundle`), so a Foundation-only
+  leaf cannot hold them, and a Signal-linked leaf would need its own
+  `hasLibSignalSwiftPackage` fallback plumbing — restructuring a crypto module
+  as a side effect of an unrelated feature branch. The ceiling is therefore
+  explicitly adjusted from 540 to 650 lines for the Gateway surface, exactly as
+  the M4 contract note did for Kernel. The deny-gate remains in force: any
+  further transport growth fails again, and decomposing it properly stays open
+  as Signal-owned follow-up work.

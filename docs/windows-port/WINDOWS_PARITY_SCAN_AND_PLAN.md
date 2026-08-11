@@ -133,7 +133,7 @@ Sub-routes (`OperatorModel`, `DefaultView`, `DataRefresh`, `Indexing`, `SessionS
 | Firestore REST + live auth | Native SDK | `OpenBurnBar.CloudSync` gateway + fake transport | Substituted | Live authenticated round-trip |
 | App Check (R14) | Apple App Attest | TPM `NCryptCreateClaim` + mock for tests | Blocked | Real vTPM/TPM proof on Win11 |
 | E2EE round-trip | Seal on Mac → open on Mac | Crypto KAT parity | DeferredApproved | Win11 ↔ Mac live round-trip |
-| Native FFI | iroh/burnbar-remote dylibs | C# uniffi shim, macOS loopback green | Substituted | MSVC runtime loopback (FFI-008) |
+| Native FFI | iroh/burnbar-remote dylibs | C# uniffi shim; macOS 29/29; exact x64/ARM64 MSVC build, stage, load, loopback, and named-skip gate implemented | Substituted | FFI-008 becomes Real only after both exact hosted legs pass |
 | Computer Use full loop | CGEvent/AX/Playwright | `SendInput`/UIA/Graphics.Capture/ViGEm adapters | Blocked | Full desktop loop on real Windows |
 | Particles / 30 substrates | `KernelBackdrop`, `SwarmCanvas` | CPU port; Win2D spike | Blocked | 60fps ARM64 GPU proof |
 | Pet companion | SceneKit/SpriteKit | WebView2 glTF host + overlay | Substituted | Live Windows overlay + glTF vendoring |

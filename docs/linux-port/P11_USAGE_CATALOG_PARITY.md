@@ -46,7 +46,7 @@ canonical registry.
 
 ## User-facing behavior
 
-Settings -> Engine Room shows a coverage summary (`29 local parsers, 4
+Settings -> Engine Room shows a coverage summary (`31 local parsers, 4
 API-backed sources, 0 unavailable local sources`) and labels every provider
 path with its source state. Onboarding repeats the same count and explains that
 API-backed and unavailable sources are not local scans. This prevents a path
@@ -87,7 +87,7 @@ open and must stay visible in the parity ledger:
 
 ## QA checklist
 
-- [x] 33 canonical provider cases have one and only one catalog row.
+- [x] 35 canonical provider cases have one and only one catalog row.
 - [x] 29 `ParserRegistry` registrations have `local-parser` rows.
 - [x] API-backed providers are not shown as local parsers.
 - [x] Providers without a parser show an explicit unavailable state (none in the

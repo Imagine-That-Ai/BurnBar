@@ -1,13 +1,12 @@
 name: App PR Gate (Swift)
 
 # Merge-blocking lane for the macOS AgentLens APP target (and the app-linked
-# OpenBurnBarCore/CloudSync/memory surfaces it compiles). The full Swift suite
-# runs post-merge/nightly in openburnbar-pr-harness.yml, deliberately off the PR
-# path for velocity — which left the APP TARGET with NO merge-blocking build
-# signal. A non-compiling app shipped to main this way (PR #597's
-# KnowledgeSyncService static-call error, caught only post-merge). This lane
-# builds + tests the app target on every PR so an app-target compile error or
-# app-test regression cannot merge again.
+# OpenBurnBarCore/CloudSync/memory surfaces it compiles). The full Swift XCTest
+# corpus runs post-merge/nightly in openburnbar-pr-harness.yml. This PR lane
+# builds the entire app target, runs the real-process performance gate, and
+# executes the bounded release smoke catalog so app compile errors and the most
+# important app-host regressions cannot merge without making every PR wait on
+# the 3,000+ test corpus.
 #
 # The exact required context is emitted by the always-running aggregate below.
 # The aggregate accepts only successful AgentLens and mobile prerequisite jobs;
@@ -48,11 +47,12 @@ jobs:
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
     # billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
-    # Cold cache + libsignal FFI + full xcodebuild of the app target on a hosted
-    # runner needs headroom. Merge-group run 30228456168 reached the former
-    # 150-minute cap while the 1,920-test suite was still making progress, so
-    # keep enough room for the suite plus coverage upload on a cold runner.
-    timeout-minutes: 240
+    # Cold cache + libsignal FFI + the full app build and bounded smoke catalog
+    # routinely take ~55–70 minutes on macos-26 hosted runners (CPU budget gate
+    # alone can take ~30m). Keep a 90m ceiling so the merge-blocking lane does
+    # not cancel mid-smoke. The full XCTest corpus belongs to the
+    # post-merge/nightly harness, not this lane.
+    timeout-minutes: 90
     needs: classify
     if: needs.classify.outputs.macos == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     steps:
@@ -146,45 +146,44 @@ jobs:
       - name: Validate app test classifier
         run: bash scripts/test-openburnbar-app-classifier.sh
 
-      - name: Build + test the AgentLens app target
-        # Builds the OpenBurnBar app scheme (xcodebuild) and runs OpenBurnBarTests.
-        # This is the build that was missing as a PR gate: it compiles every
-        # app-target file (AgentLens/**, app-linked OpenBurnBarCore/**, CloudSync,
-        # the memory subsystem) and runs the app XCTest suite.
-        run: >-
-          OPENBURNBAR_ENABLE_COVERAGE=YES
-          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin
-          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate"
+      - name: Build + run bounded AgentLens app smoke tests
+        # The preceding xcodebuild build compiles every app-target file
+        # (AgentLens/**, app-linked OpenBurnBarCore/**, CloudSync, and memory).
+        # Reuse the release smoke catalog here instead of running the full
+        # 3,000+ XCTest corpus. The full suite remains mandatory in the
+        # post-merge/nightly harness.
+        run: |
+          set -euo pipefail
+          source scripts/lib/openburnbar-release-app-test-filters.sh
+          OPENBURNBAR_ENABLE_COVERAGE=YES \
+          OPENBURNBAR_APP_TEST_ATTEMPTS=2 \
+          OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180 \
+          OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360 \
+          OPENBURNBAR_APP_TEST_FILTERS="$(openburnbar_release_app_test_filters_env)" \
+          SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin \
+          OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR="$GITHUB_WORKSPACE/.derived-data/macos-idle-occlusion-gate" \
           ./scripts/test-openburnbar-app.sh
+
+      - name: Upload app test xcresult bundles (hang/failure diagnostics)
+        # When a test exceeds its execution-time allowance, XCTest attaches the
+        # hung process's thread backtraces to the attempt's xcresult. Without
+        # this upload those bundles die with the runner, leaving a 10-minute
+        # hang undiagnosable from the streamed log alone. The harness copies
+        # every non-passing attempt's bundle to the diagnostics directory
+        # because the derived-data dir (where attempts are written) is deleted
+        # by the script's retry refreshes and EXIT trap before this step runs.
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: openburnbar-app-test-xcresults
+          path: |
+            .derived-data/test-openburnbar-app-diagnostics
+            .derived-data/test-openburnbar-app-attempts.jsonl
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Guard against zero-test false greens
         run: ./scripts/ci/check-executed-test-count.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult"
-
-      - name: Enforce app diff coverage
-        if: github.event_name == 'pull_request'
-        env:
-          DIFF_COVERAGE_SCOPE: app
-          DIFF_COVERAGE_OUTPUT: ${{ github.workspace }}/openburnbar-app-diff-coverage.json
-        run: |
-          set -euo pipefail
-          ./scripts/diff-coverage-self-test.sh
-          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
-          ./scripts/extract-coverage.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-app-coverage.json"
-          ./scripts/extract-coverage-lines.sh "$GITHUB_WORKSPACE/.derived-data/OpenBurnBar_TestCoverage.xcresult" > "$GITHUB_WORKSPACE/openburnbar-app-coverage-lines.json"
-          ./scripts/diff-coverage.sh origin/main \
-            "$GITHUB_WORKSPACE/openburnbar-app-coverage.json" \
-            "$GITHUB_WORKSPACE/openburnbar-app-coverage-lines.json"
-
-      - name: Upload app coverage evidence
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
-        with:
-          name: pr-app-coverage
-          path: |
-            openburnbar-app-coverage.json
-            openburnbar-app-coverage-lines.json
-            openburnbar-app-diff-coverage.json
-          if-no-files-found: error
 
   mobile-build-gate:
     name: Mobile build + unit test

@@ -218,6 +218,23 @@ enum BurnBarDaemonSocketRPCCoverage {
         .databaseRecoveryBundleImport
     ]
 
+    static let inbox: Set<BurnBarRPCMethod> = [
+        .inboxList,
+        .inboxGet,
+        .inboxRunsRecent,
+        .inboxConfigGet,
+        .inboxConfigUpdate,
+        .inboxRunNow,
+        .inboxThreadGet,
+        .inboxReply,
+        .inboxPlansList,
+        .inboxPlansGet,
+        .inboxPlansAccept,
+        .inboxPlansUpdateStep,
+        .inboxPlansGrade,
+        .inboxMemoryExport
+    ]
+
     static var allHandled: Set<BurnBarRPCMethod> {
         auth
             .union(lifecycle)
@@ -236,6 +253,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(memory)
             .union(code)
             .union(databaseRecovery)
+            .union(inbox)
     }
 
     static func domain(for method: BurnBarRPCMethod) -> String? {
@@ -256,6 +274,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if memory.contains(method) { return "memory" }
         if code.contains(method) { return "code" }
         if databaseRecovery.contains(method) { return "database_recovery" }
+        if inbox.contains(method) { return "inbox" }
         return nil
     }
 }

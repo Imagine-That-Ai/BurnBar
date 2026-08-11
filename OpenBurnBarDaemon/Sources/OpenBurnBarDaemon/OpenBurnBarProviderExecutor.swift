@@ -271,17 +271,22 @@ public struct BurnBarStructuredPromptRequest: Sendable {
     public let userPrompt: String
     public let assistantContextBlocks: [String]
     public let jsonOnly: Bool
+    /// When set, sent to the provider as `max_tokens` so the output ceiling a
+    /// budget preflight priced is actually enforced at generation time.
+    public let maxOutputTokens: Int?
 
     public init(
         systemPrompt: String? = nil,
         userPrompt: String,
         assistantContextBlocks: [String] = [],
-        jsonOnly: Bool = false
+        jsonOnly: Bool = false,
+        maxOutputTokens: Int? = nil
     ) {
         self.systemPrompt = systemPrompt
         self.userPrompt = userPrompt
         self.assistantContextBlocks = assistantContextBlocks
         self.jsonOnly = jsonOnly
+        self.maxOutputTokens = maxOutputTokens
     }
 }
 
@@ -346,7 +351,8 @@ public struct BurnBarOpenAICompatibleProviderExecutor: BurnBarProviderExecuting 
             ProviderCompletionRequest(
                 model: route.resolvedModelID,
                 messages: messages,
-                responseFormat: promptRequest.jsonOnly ? .init(type: "json_object") : nil
+                responseFormat: promptRequest.jsonOnly ? .init(type: "json_object") : nil,
+                maxTokens: promptRequest.maxOutputTokens
             )
         )
 
@@ -1555,11 +1561,17 @@ private struct ProviderCompletionRequest: Encodable {
     let model: String
     let messages: [Message]
     let responseFormat: ResponseFormat?
+    /// Provider-enforced output ceiling. Optional so existing callers keep the
+    /// provider default; per-reply budgeted calls (AI Inbox dialogue) pass the
+    /// same figure their preflight cost estimate priced, closing the gap
+    /// between "estimated" and "enforceable" spend.
+    let maxTokens: Int?
 
     private enum CodingKeys: String, CodingKey {
         case model
         case messages
         case responseFormat = "response_format"
+        case maxTokens = "max_tokens"
     }
 }
 

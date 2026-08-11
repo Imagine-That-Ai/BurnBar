@@ -1333,35 +1333,23 @@ struct HermesSquareRoot: View {
     }
 
     private func ensureMercuryLive(connectionID: String) async {
-        guard bootingMercuryConnectionID != connectionID else { return }
+        let resolvedID = resolvedMercuryConnectionID(for: connectionID)
+        guard bootingMercuryConnectionID != resolvedID else { return }
         #if DEBUG
-        NSLog("OpenBurnBarMercury ensure_mercury_live_start connectionID=\(connectionID)")
+        NSLog("OpenBurnBarMercury ensure_mercury_live_start requested=\(connectionID) resolved=\(resolvedID)")
         #endif
-        bootingMercuryConnectionID = connectionID
+        bootingMercuryConnectionID = resolvedID
         mercuryBootError = nil
         defer { bootingMercuryConnectionID = nil }
 
-        await hermesService.refreshConnections(refreshSelectedConnection: false)
-
-        let relay: HermesConnectionRecord?
-        if let exact = hermesService.relayConnections.first(where: { $0.id == connectionID }) {
-            _ = hermesService.selectConnection(exact, refresh: false)
-            relay = exact
-        } else if let selected = hermesService.relayConnections.first(where: { $0.id == hermesService.selectedConnection.id }) {
-            relay = selected
-        } else if let suggested = hermesService.suggestedRelayConnection {
-            _ = hermesService.selectConnection(suggested, refresh: false)
-            relay = suggested
-        } else {
-            relay = hermesService.suggestedRelayConnection
-            if let relay {
-                _ = hermesService.selectConnection(relay, refresh: false)
-            }
+        let relay = hermesService.cachedMercuryRelay(for: resolvedID)
+        if let relay, relay.id != hermesService.selectedConnection.id {
+            _ = hermesService.selectConnection(relay, refresh: false)
         }
 
         guard let relay else {
             #if DEBUG
-            NSLog("OpenBurnBarMercury ensure_mercury_live_no_relay connectionID=\(connectionID)")
+            NSLog("OpenBurnBarMercury ensure_mercury_live_no_relay connectionID=\(resolvedID)")
             #endif
             mercuryBootError = "No online Mac relay found. Open BurnBar on the Mac, enable Remote Relay, then refresh."
             return

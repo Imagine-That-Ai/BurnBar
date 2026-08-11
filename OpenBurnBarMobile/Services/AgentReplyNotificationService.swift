@@ -158,7 +158,10 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
     func configure(application: UIApplication) {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.setNotificationCategories([Self.agentReplyCategory])
+        // Both push families register here rather than in separate `configure`
+        // calls: `setNotificationCategories` REPLACES the whole set, so a second
+        // registration elsewhere would silently drop the first one's actions.
+        center.setNotificationCategories([Self.agentReplyCategory, Self.aiInboxCategory])
         Messaging.messaging().delegate = self
         requestAuthorizationAndRegister(application: application)
         updateLifecycle("active")
@@ -182,6 +185,13 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
 
     func open(_ banner: AgentReplyNotificationBanner) {
         self.banner = nil
+        // An inbox banner routes in-process. `UIApplication.open` on a
+        // `burnbar://` URL from inside the app is a needless round trip through
+        // the system, and on an in-app tap the app is by definition frontmost.
+        if banner.runtime == AIInboxDeepLink.pushType {
+            AIInboxDeepLink.open(itemID: banner.threadID)
+            return
+        }
         if let runtime = AssistantRuntimeID(rawValue: banner.runtime) {
             AssistantPendingThread.shared.stash(assistant: runtime, threadID: banner.threadID)
         }
@@ -431,6 +441,46 @@ final class AgentReplyNotificationService: NSObject, ObservableObject {
         }
     }
 
+    /// Foreground handling for an AI Inbox P1 push.
+    ///
+    /// Unlike an agent reply, an inbox alert has no "you are already looking at
+    /// this" case to suppress: a P1 that fires while the user happens to have
+    /// the app open is exactly the moment worth surfacing. It reuses the same
+    /// banner so the two push families look identical in-app.
+    private func handleInboxPayload(_ payload: AIInboxNotificationPayload, foreground: Bool) -> UNNotificationPresentationOptions {
+        banner = AgentReplyNotificationBanner(
+            id: payload.eventID,
+            title: payload.title,
+            preview: payload.body,
+            runtime: AIInboxDeepLink.pushType,
+            threadID: payload.itemID,
+            provider: nil,
+            deepLink: payload.deepLink
+        )
+        return foreground ? [] : [.banner, .sound]
+    }
+
+    private func openInboxItem(_ payload: AIInboxNotificationPayload) {
+        // Post directly rather than routing through `UIApplication.open`: the
+        // app is already frontmost when a notification response is delivered, so
+        // an external open would round-trip through the URL handler for nothing.
+        AIInboxDeepLink.open(itemID: payload.itemID)
+    }
+
+    private nonisolated static let inboxOpenActionID = "AI_INBOX_OPEN"
+    private static let aiInboxCategory: UNNotificationCategory = {
+        // Open-only. There is nothing to reply TO — an inbox item is a finding,
+        // not a message — and `submitAgentNotificationReply` refuses events
+        // whose `replyEnabled` is false, which is what the inbox producer sets.
+        let open = UNNotificationAction(identifier: inboxOpenActionID, title: "Open", options: [.foreground])
+        return UNNotificationCategory(
+            identifier: "AI_INBOX_ITEM",
+            actions: [open],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+    }()
+
     private static let replyActionID = "AGENT_REPLY_INLINE_REPLY"
     private static let openActionID = "AGENT_REPLY_OPEN"
     private static let agentReplyCategory: UNNotificationCategory = {
@@ -456,7 +506,11 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        let payload = AgentReplyNotificationPayload(userInfo: notification.request.content.userInfo)
+        let userInfo = notification.request.content.userInfo
+        if let inbox = AIInboxNotificationPayload(userInfo: userInfo) {
+            return await MainActor.run { handleInboxPayload(inbox, foreground: true) }
+        }
+        let payload = AgentReplyNotificationPayload(userInfo: userInfo)
         return await MainActor.run {
             handleNotificationPayload(payload, foreground: true)
         }
@@ -466,7 +520,19 @@ extension AgentReplyNotificationService: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        let payload = AgentReplyNotificationPayload(userInfo: response.notification.request.content.userInfo)
+        let userInfo = response.notification.request.content.userInfo
+        if let inbox = AIInboxNotificationPayload(userInfo: userInfo) {
+            // The AI_INBOX_ITEM category opts into `.customDismissAction`, so a
+            // swipe-dismiss also lands here. Only a default tap or the explicit
+            // Open action may navigate; a dismissal must stay a dismissal.
+            let actionIdentifier = response.actionIdentifier
+            if actionIdentifier == UNNotificationDefaultActionIdentifier
+                || actionIdentifier == Self.inboxOpenActionID {
+                await MainActor.run { openInboxItem(inbox) }
+            }
+            return
+        }
+        let payload = AgentReplyNotificationPayload(userInfo: userInfo)
         let resolved = await resolvedPayloadForPush(payload)
         let actionIdentifier = response.actionIdentifier
         let replyText = (response as? UNTextInputNotificationResponse)?.userText
