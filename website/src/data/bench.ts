@@ -69,6 +69,24 @@ export interface BenchStack {
   quality_mean: number | null;
   /** Number of judged trials backing quality_mean (0 when unjudged). */
   quality_n: number;
+  /* ── graded scoring (docs/graded-scoring.md in the bench repo) ──────────
+     A weighted 0-100 score plus a bronze/silver/gold ladder, emitted by
+     converted tasks alongside the unchanged pass/fail verdict.
+
+     Every field is optional on purpose: exports predating grading omit them,
+     and an ungraded cell contributes nothing rather than zero — a task that
+     has not been converted must never look like a task scored badly. */
+  /** Median graded score (0-100) across this slice's graded cells. */
+  score_median?: number | null;
+  /** Number of graded cells behind score_median (0 when none). */
+  score_n?: number;
+  /** How far runs actually got: cell counts by highest fully-cleared tier. */
+  tier_distribution?: {
+    gold?: number;
+    silver?: number;
+    bronze?: number;
+    none?: number;
+  } | null;
 }
 
 export interface BenchFrontierPoint {
@@ -1877,4 +1895,62 @@ export function fmtGeneratedAt(iso: string): string {
   const [, y, mo, d, hh, mm] = m;
   const month = MONTHS[Number(mo) - 1] ?? mo;
   return `${month} ${Number(d)}, ${y} · ${hh}:${mm} UTC`;
+}
+
+/* ---------- graded scoring selectors ---------- */
+
+/** One stack's graded-scoring row. */
+export interface StackScore {
+  harness: string;
+  model: string;
+  /** Median graded score, 0-100. */
+  score: number;
+  /** Graded cells behind the median. */
+  n: number;
+  /** Share of graded cells reaching each tier, 0-1, in ladder order. */
+  shares: { gold: number; silver: number; bronze: number; none: number };
+  /** Share reaching gold — the ranking key, and the honest headline. */
+  gold: number;
+}
+
+/**
+ * Per-stack graded scores, best first.
+ *
+ * Ranked on the share of cells reaching **gold** rather than on the median
+ * score. The median is the same trap the judged-quality median fell into: it
+ * saturates and ties everyone. How often a stack clears the hardest tier is
+ * what actually separates the field.
+ *
+ * Returns an empty array until an export carries graded cells, so the section
+ * hides cleanly rather than rendering zeros.
+ */
+export function stackScores(): StackScore[] {
+  const out: StackScore[] = [];
+  for (const s of RANKED_STACKS) {
+    const n = s.score_n ?? 0;
+    if (!n || s.score_median == null) continue;
+    const d = s.tier_distribution ?? {};
+    const total = (d.gold ?? 0) + (d.silver ?? 0) + (d.bronze ?? 0) + (d.none ?? 0);
+    const share = (v: number | undefined): number => (total > 0 ? (v ?? 0) / total : 0);
+    const shares = {
+      gold: share(d.gold),
+      silver: share(d.silver),
+      bronze: share(d.bronze),
+      none: share(d.none)
+    };
+    out.push({
+      harness: s.harness,
+      model: s.model,
+      score: s.score_median,
+      n,
+      shares,
+      gold: shares.gold
+    });
+  }
+  return out.sort((a, b) => b.gold - a.gold || b.score - a.score);
+}
+
+/** True when the export carries any graded cell at all. */
+export function hasGradedScores(): boolean {
+  return RANKED_STACKS.some((s) => (s.score_n ?? 0) > 0 && s.score_median != null);
 }
