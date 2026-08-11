@@ -24,6 +24,47 @@ import XCTest
 /// as opaque as the one asserted against.
 final class BackdropLegiblePlateTests: XCTestCase {
 
+    // MARK: Skin pinning
+    //
+    // `DesignSystem.Colors` resolves through `Color.adaptive(editorial:light:
+    // dark:)`, where the editorial hex wins over *any* `NSAppearance` once
+    // `AppSkin.current == .editorial`. `AppSkin.current` reads
+    // `UserDefaults.standard`, which in an app-hosted XCTest is the real
+    // `com.openburnbar.app` domain — so an unpinned case resolves its colours
+    // from whichever skin the developer last clicked in the shipped app, and
+    // the same commit passes on one machine and fails on another.
+    //
+    // That is precisely how this file failed: it pinned `.darkCanvasFallback`
+    // (the *light* ink family) while `surface` floated to editorial paper
+    // (`#FFFEFB`), measuring white ink on white paper at 1.03:1. The app never
+    // produces that pair — `BackdropReadabilityProfile.nativeFallback` maps
+    // `.editorial` to `.lightCanvasFallback`, i.e. dark ink on paper — so the
+    // failure was manufactured by the test, not by the deck. Pinning the skin
+    // is what makes the profile argument mean anything at all.
+
+    private var savedSkin: String?
+
+    override func setUp() {
+        super.setUp()
+        savedSkin = UserDefaults.standard.string(forKey: AppSkin.storageKey)
+        useSkin(.aurora)
+    }
+
+    override func tearDown() {
+        if let savedSkin {
+            UserDefaults.standard.set(savedSkin, forKey: AppSkin.storageKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: AppSkin.storageKey)
+        }
+        super.tearDown()
+    }
+
+    /// Pin the skin the token layer resolves against, so a case states the
+    /// world it asserts about instead of inheriting the developer's.
+    private func useSkin(_ skin: AppSkin) {
+        UserDefaults.standard.set(skin.rawValue, forKey: AppSkin.storageKey)
+    }
+
     // MARK: Colour resolution
 
     /// Resolve a SwiftUI `Color` to sRGB under an explicit appearance.
@@ -203,6 +244,93 @@ final class BackdropLegiblePlateTests: XCTestCase {
                 )
             }
         }
+    }
+
+    /// The same contract under **Editorial**, which is a different pairing
+    /// rather than the same one in another colour.
+    ///
+    /// Editorial is light-locked: `surface` becomes paper (`#FFFEFB`) whatever
+    /// the system appearance says, and `nativeFallback` answers that by pinning
+    /// the profile to `.lightCanvasFallback` — the *dark* ink family. So the
+    /// readable combination here is dark ink on paper, and the failure mode is
+    /// the mirror image of Aurora's: ink too light rather than too dark.
+    ///
+    /// This case exists because the skin was previously unpinned, which meant
+    /// an Editorial machine ran the Aurora assertions against paper and failed,
+    /// while the pairing Editorial actually ships was never asserted anywhere.
+    func testEditorialInkClearsContrastOnPaperForEveryBand() throws {
+        useSkin(.editorial)
+        let profile = BackdropReadabilityProfile.nativeFallback(
+            colorScheme: .light,
+            appearanceSkin: .editorial,
+            liveBackdropActive: true
+        )
+        XCTAssertEqual(
+            profile, .lightCanvasFallback,
+            "Editorial must resolve the dark ink family; otherwise this case asserts the wrong pairing"
+        )
+
+        let ink = BackdropInk.resolve(liveBackdropActive: true, profile: profile)
+        let surface = try rgb(DesignSystem.Colors.surface, appearance: .aqua)
+        let backdrop = canvas(luminance: profile.maxLuminance)
+        let accents: [(String, Color)] = ControlGroup.allCases.map { ($0.title, $0.accent) }
+            + [("attention", DesignSystem.Colors.warning)]
+
+        for (name, accent) in accents {
+            let accentRGB = try rgb(accent, appearance: .aqua)
+            for wash in [0.035, 0.05, 0.09] {
+                let composited = plate(
+                    over: backdrop,
+                    profile: profile,
+                    surface: surface,
+                    substrate: BackdropSubstrate.liveElevated,
+                    accent: accentRGB,
+                    wash: wash
+                )
+                for (role, color) in [
+                    ("primary", ink.primary), ("secondary", ink.secondary), ("subtle", ink.subtle)
+                ] {
+                    let ratio = BackdropContrast.ratio(
+                        try rgb(color, appearance: .aqua),
+                        composited
+                    )
+                    XCTAssertGreaterThanOrEqual(
+                        ratio, BackdropContrast.normalTextRatio,
+                        "editorial \(name) band, wash \(wash), role \(role): \(ratio):1"
+                    )
+                }
+                let iconRatio = BackdropContrast.ratio(
+                    try rgb(ink.icon, appearance: .aqua),
+                    composited
+                )
+                XCTAssertGreaterThanOrEqual(
+                    iconRatio, BackdropContrast.largeTextRatio,
+                    "editorial \(name) band, wash \(wash), icon: \(iconRatio):1"
+                )
+            }
+        }
+    }
+
+    /// The skin genuinely changes what the token layer returns, so a case that
+    /// forgets to pin it is measuring the developer's preference.
+    ///
+    /// Without this, a regression that made `Color.adaptive` ignore the skin
+    /// would leave every other case here still green — they would simply all
+    /// resolve Aurora and never notice Editorial had stopped working.
+    func testSurfaceResolvesPerSkinRatherThanPerAppearance() throws {
+        useSkin(.aurora)
+        let aurora = try rgb(DesignSystem.Colors.surface, appearance: .darkAqua)
+        useSkin(.editorial)
+        let editorial = try rgb(DesignSystem.Colors.surface, appearance: .darkAqua)
+
+        XCTAssertLessThan(
+            BackdropContrast.relativeLuminance(aurora), 0.1,
+            "Aurora surface should be a dark slab"
+        )
+        XCTAssertGreaterThan(
+            BackdropContrast.relativeLuminance(editorial), 0.8,
+            "Editorial surface should be paper even under .darkAqua — it is light-locked"
+        )
     }
 
     /// The shared substrate floor has to hold too — it is what any surface
