@@ -166,13 +166,20 @@ extension ProviderQuotaService {
             )
             return []
         }
+        // Callers ask "is `provider.providerID` connected?", so the answer set
+        // has to speak canonical ids. Accounts written before identities were
+        // canonicalized (and any synced from an older device) still carry a
+        // daemon alias, which `AgentProvider.fromProviderID` alone does not
+        // recognise — resolving through the daemon map as well keeps those
+        // accounts counted instead of silently hiding a connected provider.
         let ids: Set<ProviderID> = Set(accounts.compactMap { account in
             guard Self.isConnectedQuotaAccount(account) else { return nil }
-            guard let provider = AgentProvider.fromProviderID(account.providerID),
+            guard let provider = AgentProvider.fromProviderID(account.providerID)
+                    ?? QuotaCapableProviderMap.provider(forDaemonProviderID: account.providerID.rawValue),
                   Self.supportedProviders.contains(provider) else {
                 return nil
             }
-            return account.providerID
+            return provider.providerID
         })
         connectedQuotaProviderIDsCache = (Date(), ids)
         return ids

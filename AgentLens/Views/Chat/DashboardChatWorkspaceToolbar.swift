@@ -451,6 +451,33 @@ final class AgentPresenceModel {
             cumulative: cumulative
         )?.remainingFraction
     }
+
+    /// Every input `refresh` reads, folded into one value. `.task(id:)` re-runs
+    /// the refresh when this changes, so an input missing here is an input the
+    /// presence dot never reacts to.
+    ///
+    /// `cumulativeAcrossAccounts` belongs here because `quotaFraction` above
+    /// classifies `.exhausted` off the cumulative-or-per-account fraction. For a
+    /// provider whose two fractions straddle zero, leaving it out froze the dot
+    /// on its previous status — while the quota chip right beside it had already
+    /// flipped — until some unrelated input happened to change.
+    static func presenceRefreshKey(
+        fleet: String,
+        enabledBackends: String,
+        gatewayAvailability: String,
+        authGates: String,
+        usagesVersion: Int,
+        cumulativeAcrossAccounts: Bool
+    ) -> String {
+        [
+            fleet,
+            enabledBackends,
+            gatewayAvailability,
+            authGates,
+            "\(usagesVersion)",
+            cumulativeAcrossAccounts ? "cumulative" : "per-account"
+        ].joined(separator: "#")
+    }
 }
 
 // MARK: - Agent Deck · switching  → AgentDeck/AgentDeckSwitcher.swift
@@ -923,13 +950,14 @@ struct AgentSigil: View {
         let fleet = fleetControllers
             .map { "\($0.chatBackend.rawValue):\($0.isStreaming ? 1 : 0)\($0.isSendBusy ? 1 : 0)\($0.streamError == nil ? 0 : 1)" }
             .joined(separator: "|")
-        return [
-            fleet,
-            enabled.map(\.rawValue).joined(separator: ","),
-            "\(controller.hermesAvailable)\(controller.openClawAvailable)\(controller.piAgentAvailable)",
-            "\(controller.hermesCatalogAuthRejected)\(settingsManager.hermesSetupWizardCompleted)\(settingsManager.cliAssistantAllowed)",
-            "\(controller.dataStore.usagesVersion)"
-        ].joined(separator: "#")
+        return AgentPresenceModel.presenceRefreshKey(
+            fleet: fleet,
+            enabledBackends: enabled.map(\.rawValue).joined(separator: ","),
+            gatewayAvailability: "\(controller.hermesAvailable)\(controller.openClawAvailable)\(controller.piAgentAvailable)",
+            authGates: "\(controller.hermesCatalogAuthRejected)\(settingsManager.hermesSetupWizardCompleted)\(settingsManager.cliAssistantAllowed)",
+            usagesVersion: controller.dataStore.usagesVersion,
+            cumulativeAcrossAccounts: settingsManager.cumulativeAcrossAccounts
+        )
     }
 
     private var fleetControllers: [ChatSessionController] {

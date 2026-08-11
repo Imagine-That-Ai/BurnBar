@@ -539,6 +539,162 @@ final class QuotaWorkspaceViewModelTests: XCTestCase {
         XCTAssertEqual(filtered.map(\.accountID), ["current-codex", "profile-personal"])
     }
 
+    // MARK: Account footprint after the cumulative collapse
+
+    /// With `cumulativeAcrossAccounts` on, every provider arrives at the view
+    /// as one synthetic entry, so a view that counts entries reports `1` and
+    /// the constellation's multi-account badge disappears for precisely the
+    /// setups it describes. The entry carries the pre-collapse count instead.
+    func test_makeEntry_carriesTheMergedAccountCountFromTheSyntheticSnapshot() throws {
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: [
+                    makeAccountSnapshot(
+                        provider: .claudeCode, accountID: "a1", accountLabel: "Work",
+                        sourceID: "daemon-slot:claude-code:a1", usedPercent: 20
+                    ),
+                    makeAccountSnapshot(
+                        provider: .claudeCode, accountID: "a2", accountLabel: "Personal",
+                        sourceID: "daemon-slot:claude-code:a2", usedPercent: 40
+                    ),
+                    makeAccountSnapshot(
+                        provider: .claudeCode, accountID: "a3", accountLabel: "Side",
+                        sourceID: "switcher-cli:claude:a3", usedPercent: 60
+                    )
+                ],
+                now: Date(timeIntervalSince1970: 1_750_000_000)
+            )
+        )
+
+        let entry = QuotaWorkspaceViewModel.makeEntry(
+            provider: .claudeCode,
+            snapshot: merged,
+            isRefreshing: false
+        )
+
+        XCTAssertEqual(entry.accountCount, 3)
+    }
+
+    /// A real per-account entry always stands for exactly one account, so the
+    /// constellation can sum `accountCount` across entries in either mode.
+    func test_makeEntry_countsAPerAccountSnapshotAsOneAccount() {
+        let entry = QuotaWorkspaceViewModel.makeEntry(
+            provider: .claudeCode,
+            snapshot: makeAccountSnapshot(
+                provider: .claudeCode, accountID: "a1", accountLabel: "Work",
+                sourceID: "daemon-slot:claude-code:a1", usedPercent: 20
+            ),
+            isRefreshing: false
+        )
+
+        XCTAssertEqual(entry.accountCount, 1)
+    }
+
+    /// The constellation's orb badge reads this. Counting entries reported `1`
+    /// for a collapsed provider, so the badge vanished the moment the user
+    /// turned on the setting that made it most useful.
+    func test_constellationAccountCounts_reportTheSameFootprintInEitherMode() throws {
+        let accounts = [
+            makeAccountSnapshot(
+                provider: .claudeCode, accountID: "a1", accountLabel: "Work",
+                sourceID: "daemon-slot:claude-code:a1", usedPercent: 20
+            ),
+            makeAccountSnapshot(
+                provider: .claudeCode, accountID: "a2", accountLabel: "Personal",
+                sourceID: "daemon-slot:claude-code:a2", usedPercent: 40
+            ),
+            makeAccountSnapshot(
+                provider: .claudeCode, accountID: "a3", accountLabel: "Side",
+                sourceID: "switcher-cli:claude:a3", usedPercent: 60
+            )
+        ]
+        let makeEntry = { (snapshot: ProviderQuotaSnapshot) in
+            QuotaWorkspaceViewModel.makeEntry(provider: .claudeCode, snapshot: snapshot, isRefreshing: false)
+        }
+
+        let perAccountCounts = SubscriptionConstellationHero.accountCounts(in: accounts.map(makeEntry))
+        let collapsed = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: accounts,
+                now: Date(timeIntervalSince1970: 1_750_000_000)
+            )
+        )
+        let cumulativeCounts = SubscriptionConstellationHero.accountCounts(in: [makeEntry(collapsed)])
+
+        XCTAssertEqual(perAccountCounts[.claudeCode], 3)
+        XCTAssertEqual(cumulativeCounts[.claudeCode], 3)
+    }
+
+    // MARK: Provider dashboard panel · account selection
+
+    /// `snapshots(for:)` coalesces the records for one account across sources
+    /// and keeps the freshest, so a refresh can hand the same account back
+    /// under a different `sourceId`. Selection keyed on the source read that
+    /// as "the account is gone", cleared itself, and snapped the panel back to
+    /// the first account while the user was reading a different one.
+    func test_panelSelection_survivesTheSelectedAccountChangingSource() throws {
+        let selected = makeAccountSnapshot(
+            provider: .xAI, accountID: "xai-work", accountLabel: "Work",
+            sourceID: "daemon-slot:xai:work", usedPercent: 20
+        )
+        let key = ProviderDashboardQuotaPanel.accountSelectionKey(for: selected)
+
+        let afterRefresh = [
+            makeAccountSnapshot(
+                provider: .xAI, accountID: "xai-personal", accountLabel: "Personal",
+                sourceID: "daemon-slot:xai:personal", usedPercent: 10
+            ),
+            makeAccountSnapshot(
+                provider: .xAI, accountID: "xai-work", accountLabel: "Work",
+                sourceID: "provider:xai:work", usedPercent: 25
+            )
+        ]
+
+        let active = try XCTUnwrap(
+            ProviderDashboardQuotaPanel.selectedSnapshot(in: afterRefresh, selectionKey: key)
+        )
+        XCTAssertEqual(active.accountID, "xai-work")
+    }
+
+    /// Synthetic records — the cumulative merge, provider rollups — carry no
+    /// `accountID`, so the source id stays the fallback identity for them.
+    func test_panelSelection_fallsBackToSourceIDForSnapshotsWithoutAnAccountID() {
+        let merged = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            accountLabel: "All accounts (3)",
+            fetchedAt: Date(timeIntervalSince1970: 1_750_000_000),
+            source: .officialAPI,
+            sourceId: "cumulative:claude-code",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+
+        XCTAssertEqual(
+            ProviderDashboardQuotaPanel.accountSelectionKey(for: merged),
+            "cumulative:claude-code"
+        )
+    }
+
+    /// An account that really did go away still clears the selection — the fix
+    /// must not pin the panel to a row that no longer exists.
+    func test_panelSelection_returnsTheFirstAccountWhenTheSelectedOneIsGone() throws {
+        let remaining = [
+            makeAccountSnapshot(
+                provider: .xAI, accountID: "xai-personal", accountLabel: "Personal",
+                sourceID: "daemon-slot:xai:personal", usedPercent: 10
+            )
+        ]
+
+        let active = try XCTUnwrap(
+            ProviderDashboardQuotaPanel.selectedSnapshot(in: remaining, selectionKey: "xai-work")
+        )
+        XCTAssertEqual(active.accountID, "xai-personal")
+    }
+
     /// `makeEntry` used to fall back to `sourceId`, so a provider rollup card
     /// was labelled with the literal string "default".
     func test_makeEntry_labelsProviderRollupWithoutLeakingTheDefaultSourceID() {

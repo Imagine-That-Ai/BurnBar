@@ -232,6 +232,42 @@ final class ProviderQuotaChipTests: XCTestCase {
         XCTAssertEqual(merged.text, "60%")
     }
 
+    /// The presence dot beside the chip classifies `.exhausted` off the same
+    /// quota fraction, and `AgentSigil` only recomputes presence when
+    /// `presenceRefreshKey` changes. With the setting missing from the key, a
+    /// provider whose per-account and cumulative fractions straddle zero showed
+    /// an updated chip next to a stale dot until some unrelated input moved.
+    func test_presenceRefreshKey_changesWhenTheCumulativeSettingIsToggled() {
+        func key(cumulative: Bool) -> String {
+            AgentPresenceModel.presenceRefreshKey(
+                fleet: "claude:000",
+                enabledBackends: "claude,codex",
+                gatewayAvailability: "truetruefalse",
+                authGates: "falsetruetrue",
+                usagesVersion: 7,
+                cumulativeAcrossAccounts: cumulative
+            )
+        }
+
+        XCTAssertNotEqual(key(cumulative: false), key(cumulative: true))
+    }
+
+    /// The other side of the same contract: the key is stable when nothing
+    /// moved, so presence is not recomputed on every render pass.
+    func test_presenceRefreshKey_isStableForIdenticalInputs() {
+        let inputs = {
+            AgentPresenceModel.presenceRefreshKey(
+                fleet: "claude:100",
+                enabledBackends: "claude",
+                gatewayAvailability: "truetruetrue",
+                authGates: "falsefalsefalse",
+                usagesVersion: 3,
+                cumulativeAcrossAccounts: true
+            )
+        }
+        XCTAssertEqual(inputs(), inputs())
+    }
+
     /// Seeds a service with a provider rollup plus two account snapshots whose
     /// merge lands on a percentage distinct from the rollup's, so the two
     /// assertions above cannot both pass by accident.

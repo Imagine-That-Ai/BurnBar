@@ -18,7 +18,8 @@ public extension ProviderQuotaSnapshot {
         managementURL: String?,
         statusMessage: String,
         buckets: [ProviderQuotaBucket],
-        schemaVersion: Int = 2
+        schemaVersion: Int = 2,
+        mergedAccountCount: Int? = nil
     ) {
         let pid = providerID ?? provider.providerID
         let sid = sourceId ?? accountID ?? "default"
@@ -38,6 +39,7 @@ public extension ProviderQuotaSnapshot {
             statusMessage: statusMessage,
             buckets: buckets,
             schemaVersion: schemaVersion,
+            mergedAccountCount: mergedAccountCount,
             updatedAt: fetchedAt
         )
     }
@@ -54,6 +56,10 @@ public extension ProviderQuotaSnapshot {
         // `Identifiable` id (`claude-code_default`), so any `ForEach` over
         // account snapshots without an explicit key would collapse them to a
         // single row. Matches the id the convenience initializer above builds.
+        //
+        // `mergedAccountCount` is deliberately dropped: stamping one account's
+        // identity onto a record makes it that account's snapshot, so any
+        // cross-account merge count it carried no longer describes it.
         ProviderQuotaSnapshot(
             id: "\(providerID.rawValue)_\(sourceId)",
             provider: provider,

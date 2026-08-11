@@ -638,6 +638,13 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
     public let statusMessage: String?
     public let buckets: [ProviderQuotaBucket]
     public let schemaVersion: Int
+    /// How many accounts a synthetic cross-account merge folded into this
+    /// record. `nil` on every real per-account snapshot.
+    ///
+    /// Carried as data rather than recounted downstream: the merge collapses
+    /// N accounts into one record, so anything counting records *after* the
+    /// collapse reports 1 and silently understates a multi-account footprint.
+    public let mergedAccountCount: Int?
     public let updatedAt: Date
 
     public var sourceID: String { sourceId }
@@ -658,6 +665,7 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         statusMessage: String? = nil,
         buckets: [ProviderQuotaBucket],
         schemaVersion: Int = 2,
+        mergedAccountCount: Int? = nil,
         updatedAt: Date
     ) {
         self.id = id
@@ -675,13 +683,14 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         self.statusMessage = statusMessage
         self.buckets = buckets
         self.schemaVersion = schemaVersion
+        self.mergedAccountCount = mergedAccountCount
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, provider, providerID, accountID, accountLabel, accountStorageScope
         case sourceKind, sourceId, sourceID, fetchedAt, source, confidence
-        case managementURL, statusMessage, buckets, schemaVersion, updatedAt
+        case managementURL, statusMessage, buckets, schemaVersion, mergedAccountCount, updatedAt
     }
 
     public init(from decoder: Decoder) throws {
@@ -703,6 +712,7 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         statusMessage = try c.decodeIfPresent(String.self, forKey: .statusMessage)
         buckets = try c.decode([ProviderQuotaBucket].self, forKey: .buckets)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        mergedAccountCount = try c.decodeIfPresent(Int.self, forKey: .mergedAccountCount)
         updatedAt = try c.decode(Date.self, forKey: .updatedAt)
     }
 
@@ -724,6 +734,7 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         try c.encodeIfPresent(statusMessage, forKey: .statusMessage)
         try c.encode(buckets, forKey: .buckets)
         try c.encode(schemaVersion, forKey: .schemaVersion)
+        try c.encodeIfPresent(mergedAccountCount, forKey: .mergedAccountCount)
         try c.encode(updatedAt, forKey: .updatedAt)
     }
 }
@@ -786,6 +797,7 @@ public extension ProviderQuotaSnapshot {
             statusMessage: statusMessage,
             buckets: filteredBuckets,
             schemaVersion: schemaVersion,
+            mergedAccountCount: mergedAccountCount,
             updatedAt: updatedAt
         )
     }

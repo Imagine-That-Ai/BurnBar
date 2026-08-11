@@ -197,8 +197,17 @@ struct SubscriptionConstellationHero: View {
     /// silently understates a multi-account footprint: one Claude orb reading
     /// 12% looks like one plan in trouble rather than the worst of three.
     private var accountCountsByProvider: [AgentProvider: Int] {
+        Self.accountCounts(in: entries)
+    }
+
+    /// Summing `entry.accountCount` instead of counting entries covers both
+    /// modes with one formula. With `cumulativeAcrossAccounts` on, the view
+    /// model has already collapsed each provider into a single synthetic entry,
+    /// so counting entries reported `1` — the badge and its accessibility text
+    /// disappeared for exactly the multi-account setups they exist for.
+    static func accountCounts(in entries: [SubscriptionEntry]) -> [AgentProvider: Int] {
         entries.reduce(into: [:]) { counts, entry in
-            counts[entry.provider, default: 0] += 1
+            counts[entry.provider, default: 0] += entry.accountCount
         }
     }
 
@@ -222,7 +231,7 @@ struct SubscriptionConstellationHero: View {
 private struct SubscriptionOrb: View {
     let entry: SubscriptionEntry
     /// Number of accounts this orb summarises. `entry` is the worst-pressured
-    /// one of them.
+    /// one of them, or — with `cumulativeAcrossAccounts` on — their merge.
     var accountCount: Int = 1
     var isSelected: Bool = false
     var isDimmed: Bool = false
@@ -328,10 +337,23 @@ private struct SubscriptionOrb: View {
         .accessibilityHint(isSelected ? "Tap to clear focus" : "Tap to focus on this provider")
     }
 
+    /// A merged entry's number is the sum across accounts, not the worst one of
+    /// them, so the multi-account line has to say which it is.
+    private var isMergedEntry: Bool {
+        ProviderQuotaAccountDisplay.isMerged(entry.snapshot)
+    }
+
+    private var multiAccountSummary: String? {
+        guard accountCount > 1 else { return nil }
+        return isMergedEntry
+            ? "combined across \(accountCount) accounts"
+            : "\(accountCount) accounts, worst is \(entry.accountLabel)"
+    }
+
     private var orbAccessibilityLabel: String {
         var parts = [entry.provider.displayName]
-        if accountCount > 1 {
-            parts.append("\(accountCount) accounts, worst is \(entry.accountLabel)")
+        if let multiAccountSummary {
+            parts.append(multiAccountSummary)
         }
         parts.append(
             entry.primaryDisplayableBucket == nil
@@ -344,7 +366,7 @@ private struct SubscriptionOrb: View {
     private var tooltipText: String {
         var lines: [String] = ["\(entry.provider.displayName) — \(entry.accountLabel)"]
         if accountCount > 1 {
-            lines.append("Worst of \(accountCount) accounts")
+            lines.append(isMergedEntry ? "Combined across \(accountCount) accounts" : "Worst of \(accountCount) accounts")
         }
         if let bucket = entry.weeklyOrMonthlyBucket ?? entry.primaryDisplayableBucket {
             lines.append("\(bucket.label): \(bucket.remainingText) left")

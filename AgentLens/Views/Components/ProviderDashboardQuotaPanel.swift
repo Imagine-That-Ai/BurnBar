@@ -11,7 +11,7 @@ struct ProviderDashboardQuotaPanel: View {
     let dataStore: DataStore
     @Environment(SettingsManager.self) private var settingsManager
 
-    @State private var selectedSourceID: String?
+    @State private var selectedAccountKey: String?
     @State private var profileIndex = QuotaWorkspaceProfileIndex()
 
     private var snapshot: ProviderQuotaSnapshot? {
@@ -38,12 +38,35 @@ struct ProviderDashboardQuotaPanel: View {
         accountSnapshots.count > 1
     }
 
-    private var activeSnapshot: ProviderQuotaSnapshot? {
-        if let selectedSourceID,
-           let match = accountSnapshots.first(where: { $0.sourceID == selectedSourceID }) {
+    /// Identity the account picker selects on. Keyed to the account, not to the
+    /// record that happens to represent it: `snapshots(for:)` coalesces the
+    /// records for one account across sources and keeps the freshest, so a
+    /// refresh can hand the same `accountID` back under a different `sourceId`.
+    /// Keying on the source made that look like the account had disappeared —
+    /// the selection was cleared and the panel snapped back to the first
+    /// account. `sourceID` remains the fallback for synthetic records (the
+    /// cumulative merge, provider rollups) that have no `accountID`.
+    static func accountSelectionKey(for snapshot: ProviderQuotaSnapshot) -> String {
+        if let accountID = snapshot.accountID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !accountID.isEmpty {
+            return accountID.lowercased()
+        }
+        return snapshot.sourceID.lowercased()
+    }
+
+    static func selectedSnapshot(
+        in snapshots: [ProviderQuotaSnapshot],
+        selectionKey: String?
+    ) -> ProviderQuotaSnapshot? {
+        if let selectionKey,
+           let match = snapshots.first(where: { accountSelectionKey(for: $0) == selectionKey }) {
             return match
         }
-        return accountSnapshots.first ?? snapshot
+        return snapshots.first
+    }
+
+    private var activeSnapshot: ProviderQuotaSnapshot? {
+        Self.selectedSnapshot(in: accountSnapshots, selectionKey: selectedAccountKey) ?? snapshot
     }
 
     private var routingState: ProviderRoutingStateSnapshot? {
@@ -131,9 +154,9 @@ struct ProviderDashboardQuotaPanel: View {
                     homeDirectoryURL: quotaService.quotaHomeDirectoryURL
                 )
             }
-            .onChange(of: accountSnapshots.map(\.sourceID)) { _, ids in
-                if let selectedSourceID, !ids.contains(selectedSourceID) {
-                    self.selectedSourceID = nil
+            .onChange(of: accountSnapshots.map(Self.accountSelectionKey)) { _, keys in
+                if let selectedAccountKey, !keys.contains(selectedAccountKey) {
+                    self.selectedAccountKey = nil
                 }
             }
         }
@@ -201,10 +224,11 @@ struct ProviderDashboardQuotaPanel: View {
     }
 
     private func accountChip(snap: ProviderQuotaSnapshot) -> some View {
-        let isSelected = (selectedSourceID ?? accountSnapshots.first?.sourceID) == snap.sourceID
+        let key = Self.accountSelectionKey(for: snap)
+        let isSelected = (selectedAccountKey ?? accountSnapshots.first.map(Self.accountSelectionKey)) == key
         let label = ProviderQuotaAccountDisplay.label(for: snap, provider: provider)
         return Button {
-            selectedSourceID = snap.sourceID
+            selectedAccountKey = key
         } label: {
             HStack(spacing: 6) {
                 Circle()

@@ -23,6 +23,11 @@ struct SubscriptionEntry: Identifiable, Hashable {
     let isStale: Bool
     let isRefreshing: Bool
     let lastValidatedAt: Date?
+    /// How many real accounts this entry stands for — 1 for a per-account
+    /// entry, N for the synthetic merge produced when `cumulativeAcrossAccounts`
+    /// collapses a provider. Carried from the snapshot rather than recounted by
+    /// a view, because after the collapse there is only one entry to count.
+    let accountCount: Int
 
     var remainingPercentRounded: Int {
         guard primaryDisplayableBucket != nil else { return 0 }
@@ -333,7 +338,8 @@ final class QuotaWorkspaceViewModel {
             managementURL: snapshot.managementLink,
             isStale: snapshot.isStale(),
             isRefreshing: isRefreshing,
-            lastValidatedAt: snapshot.fetchedAt
+            lastValidatedAt: snapshot.fetchedAt,
+            accountCount: max(snapshot.mergedAccountCount ?? 1, 1)
         )
     }
 
@@ -442,17 +448,15 @@ final class QuotaWorkspaceViewModel {
         return candidate.fetchedAt > incumbent.fetchedAt
     }
 
+    // The two switcher predicates live on `ProviderQuotaAccountDisplay` so the
+    // cumulative merge and this de-duplication pass agree on which records are
+    // real accounts and which are the current-login mirror.
     private static func isExplicitSwitcherProfileSnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
-        let sourceID = snapshot.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return sourceID.hasPrefix("switcher-cli:")
-            && !sourceID.hasPrefix("switcher-cli-current:")
+        ProviderQuotaAccountDisplay.isSwitcherProfile(snapshot)
     }
 
     private static func isSyntheticCurrentCLISnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
-        let sourceID = snapshot.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let accountID = snapshot.accountID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return sourceID.hasPrefix("switcher-cli-current:")
-            || accountID?.hasPrefix("current-") == true
+        ProviderQuotaAccountDisplay.isCurrentCLIMirror(snapshot)
     }
 
     static func makeSetupSlots(
