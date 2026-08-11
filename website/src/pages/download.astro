@@ -568,11 +568,11 @@ npm run build</code></pre>
     margin-top: 0.35rem;
     font-size: 0.82rem;
     color: var(--ember-bright, var(--ember-core));
-    font-weight: 550;
+    font-weight: var(--wght-semibold);
   }
   .platcard--pending .platcard__status {
     color: var(--text-mute);
-    font-weight: 450;
+    font-weight: var(--wght-display);
   }
   .platcard__cta {
     margin-top: 0.45rem;
@@ -675,8 +675,9 @@ npm run build</code></pre>
   }
   .linux-dl__title {
     font-size: 1.25rem;
-    font-weight: 650;
+    font-weight: var(--wght-bold);
     letter-spacing: -0.02em;
+    --opsz: var(--opsz-lead);
   }
   .linux-dl__meta {
     font-size: 0.85rem;
@@ -803,9 +804,8 @@ npm run build</code></pre>
     font-family: var(--font-display);
     color: var(--text-bright);
     font-size: var(--t-h4);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
   }
   .step__card p {
     color: var(--text-base);
@@ -849,6 +849,7 @@ npm run build</code></pre>
     display: flex;
     justify-content: space-between;
     align-items: center;
+    --opsz: var(--opsz-body);
   }
   .alt summary::-webkit-details-marker {
     display: none;
@@ -956,9 +957,8 @@ npm run build</code></pre>
     color: var(--text-bright);
     font-size: 1.05rem;
     margin-bottom: var(--s-3);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-body);
   }
   .reqcard ul {
     display: grid;

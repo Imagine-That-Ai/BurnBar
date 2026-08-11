@@ -253,9 +253,8 @@ function isSourceID(value: string): value is SourceID {
     font-family: var(--font-display);
     font-size: clamp(1.15rem, 1rem + 0.6vw, 1.45rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
     letter-spacing: -0.014em;
     line-height: 1.18;
     text-wrap: balance;
@@ -375,7 +374,7 @@ function isSourceID(value: string): value is SourceID {
   }
   .srcchip__lab {
     color: var(--text-bright);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
     letter-spacing: 0.08em;
   }
   .srcchip__dot {
@@ -420,7 +419,7 @@ function isSourceID(value: string): value is SourceID {
   }
   .scoreboard__advisory strong {
     color: var(--ember-bright);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
 
   /* ROWS */
@@ -461,7 +460,7 @@ function isSourceID(value: string): value is SourceID {
   }
   .scbrow--winner .scbrow__rank {
     color: var(--ember-bright);
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
   }
   .scbrow__logo {
     width: 28px;
@@ -484,7 +483,7 @@ function isSourceID(value: string): value is SourceID {
   .scbrow__model {
     color: var(--text-bright);
     font-size: 0.9rem;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -547,7 +546,7 @@ function isSourceID(value: string): value is SourceID {
     font-family: var(--font-mono);
     font-size: 0.84rem;
     letter-spacing: 0.04em;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
     min-width: 2ch;
     text-align: right;
   }

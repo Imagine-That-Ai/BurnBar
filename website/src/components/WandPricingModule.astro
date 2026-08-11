@@ -318,9 +318,8 @@ const wandModes = [
   .wand-module__title {
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.02em;
     color: var(--text-bright);
     max-width: 22ch;
@@ -550,7 +549,7 @@ const wandModes = [
   .wand-ladder__tier-name {
     color: var(--text-bright);
     font-size: 0.95rem;
-    font-weight: 600;
+    font-weight: var(--wght-bold);
   }
   .wand-ladder__tier-price {
     font-size: 0.78rem;
@@ -562,13 +561,13 @@ const wandModes = [
     align-items: center;
     gap: 2px;
     font-size: 1.6rem;
-    font-weight: 700;
+    font-weight: var(--wght-black);
     color: var(--text-bright);
     text-align: center;
   }
   .wand-ladder__cap-copy {
     font-size: 0.72rem;
-    font-weight: 650;
+    font-weight: var(--wght-bold);
     color: var(--text-muted);
     white-space: nowrap;
   }
@@ -647,9 +646,8 @@ const wandModes = [
     font-family: var(--font-display);
     font-size: 1.3rem;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
   }
   .wand-modes__grid {
     display: grid;
@@ -719,9 +717,8 @@ const wandModes = [
     font-family: var(--font-display);
     font-size: 1.25rem;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
   }
   .wand-mode__desc {
     font-size: 0.92rem;
@@ -769,9 +766,8 @@ const wandModes = [
     font-family: var(--font-display);
     font-size: 1.4rem;
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
     margin-bottom: var(--s-2);
   }
   .wand-cta__p {

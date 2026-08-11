@@ -137,6 +137,10 @@ const fullTitle =
         />
       )
     }
+    <!-- Page-specific pre-paint hooks (e.g. the Arena variant assignment on
+         the vote page) render here, still inside <head> so they resolve
+         before first paint. -->
+    <slot name="head" />
   </head>
   <body data-transactional-page={transactional ? "" : undefined}>
     {
@@ -173,6 +177,14 @@ const fullTitle =
 
     <script>
       import "../scripts/emberSwarm.ts";
+    </script>
+
+    <!-- Ties both fixed background canvases to scroll position, so the field
+         is atmosphere over the hero and out of the way below it. Kept out of
+         the canvas scripts themselves: it is one CSS custom property, and it
+         applies to whichever canvas the current theme is painting. -->
+    <script>
+      import "../scripts/atmosphere.ts";
     </script>
 
     <!-- Dot-Logo Constellation Background (LIGHT theme) — BurnBar crests +

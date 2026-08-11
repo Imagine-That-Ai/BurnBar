@@ -26,8 +26,42 @@ body {
   color: var(--text-base);
   font-family: var(--font-body);
   font-size: var(--t-body);
-  font-variation-settings: "wght" 400;
+  font-weight: var(--wght-regular);
   letter-spacing: var(--tracking-base);
+}
+
+/* ============================================================
+   THE OPTICAL-SIZE ENGINE
+
+   `font-variation-settings` is declared in exactly one place on this
+   site: here. Everything else sets the inherited `--opsz` custom
+   property and lets this rule feed it into the font.
+
+   Why it is built this way:
+
+   * font-variation-settings is a computed-value substitution, so an
+     element that changes --opsz must re-declare it. Applying it to
+     every element means setting --opsz alone is always sufficient —
+     including on a <span> inside a heading, which correctly picks up
+     its heading's optical size instead of the body default.
+   * The declaration names only "opsz". It deliberately does NOT name
+     "wght": a low-level axis overrides the matching high-level
+     property, so any "wght" here would inherit site-wide and silently
+     void every font-weight declaration downstream. (That was the bug —
+     h2 asked for 800 and rendered 400.) Weight travels by font-weight
+     and stays controllable at every level.
+   * :where() gives this zero specificity, so a component can still
+     override font-variation-settings outright if it ever must.
+   * Faces without an opsz axis (Geist, JetBrains Mono) ignore the
+     descriptor per spec, so this is safe to apply universally — bench
+     surfaces, which run --font-display on Geist, are unaffected.
+   ============================================================ */
+:where(html) {
+  --opsz: var(--opsz-body);
+}
+
+:where(*) {
+  font-variation-settings: "opsz" var(--opsz, 24);
 }
 
 /* atmospheric layer — a premium furnace glow pulsing from the deep bottom */
@@ -60,6 +94,43 @@ body::after {
   pointer-events: none;
   z-index: 1;
   mix-blend-mode: overlay;
+}
+
+/* ---------- background canvases: atmosphere, not wallpaper ----------
+
+   #bgCanvas (dark ember swarm) and #bgDots (light constellation) are both
+   position:fixed, so left alone they burn at full strength behind every
+   screenful of every page — which reads as busy the moment a page has
+   something to actually read. The bench pages solved this locally; this is
+   that solution promoted to the site default, so every page's backdrop is
+   the same backdrop.
+
+   Two parts, and both are needed:
+
+     mask     concentrates the field near the top of the viewport, where the
+              hero is, and falls off before the content below it.
+     --atmo   opacity, driven from scroll position by scripts/atmosphere.ts:
+              full strength over the hero, gone by the time the reader is
+              into the page. CSS alone can't do this — the canvases are fixed,
+              so a mask follows the viewport and would re-reveal the field at
+              every scroll position instead of leaving it behind at the top.
+
+   The 0.32 default here is the pre-hydration first paint, and the resting
+   value for readers who asked for reduced motion (atmosphere.ts stands down
+   for them, leaving the static painted frame masked but unfaded).
+
+   Page-level overrides still win on specificity — see the arena's
+   `body:has(.bb-versus) #bgCanvas` in bench.css, which pins its own value. */
+:root {
+  --atmo: 0.32;
+}
+
+#bgCanvas,
+#bgDots {
+  opacity: var(--atmo);
+  transition: opacity 180ms linear;
+  -webkit-mask-image: radial-gradient(125% 92% at 46% 14%, #000 30%, transparent 70%);
+  mask-image: radial-gradient(125% 92% at 46% 14%, #000 30%, transparent 70%);
 }
 
 main,
@@ -238,26 +309,34 @@ h4 {
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
 }
 
+/* Each heading pairs its size step with the matching optical size and the
+   weight that sits right at that size. Because these defaults are now
+   correct, a component should only need to set font-size — reach for
+   --opsz / font-weight only when it genuinely departs from the scale. */
 h1 {
   font-size: var(--t-h1);
-  font-weight: 800;
+  font-weight: var(--wght-display);
+  --opsz: var(--opsz-h1);
 }
 
 h2 {
   font-size: var(--t-h2);
-  font-weight: 800;
+  font-weight: var(--wght-semibold);
+  --opsz: var(--opsz-h2);
 }
 
 h3 {
   font-size: var(--t-h3);
-  font-weight: 700;
+  font-weight: var(--wght-semibold);
   line-height: var(--leading-snug);
+  --opsz: var(--opsz-h3);
 }
 
 h4 {
   font-size: var(--t-body);
-  font-weight: 600;
+  font-weight: var(--wght-semibold);
   line-height: var(--leading-base);
+  --opsz: var(--opsz-lead);
 }
 
 p {
@@ -280,7 +359,7 @@ a:focus-visible {
 
 strong,
 b {
-  font-variation-settings: "wght" 620;
+  font-weight: var(--wght-bold);
   color: var(--text-bright);
 }
 
@@ -342,7 +421,8 @@ section {
   text-transform: uppercase;
   letter-spacing: var(--tracking-uppercase);
   color: var(--text-mute);
-  font-variation-settings: "wght" 500;
+  font-weight: var(--wght-medium);
+  --opsz: var(--opsz-caption);
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
@@ -376,9 +456,8 @@ section {
 
 .display {
   font-family: var(--font-display);
-  font-variation-settings:
-    "opsz" 144,
-    "wght" 420;
+  font-weight: var(--wght-display);
+  --opsz: var(--opsz-display);
 }
 
 .lead {
@@ -473,7 +552,7 @@ section {
   color: var(--ember-bright);
   border-color: color-mix(in oklab, var(--ember-core) 50%, var(--ink-line));
   background: var(--ember-wash);
-  font-weight: 500;
+  font-weight: var(--wght-medium);
 }
 
 .tag--review {
@@ -517,7 +596,7 @@ section {
   border-radius: 12px;
   font-family: var(--font-body);
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: var(--wght-black);
   letter-spacing: -0.015em;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: linear-gradient(135deg, rgba(15, 15, 20, 0.45) 0%, rgba(5, 5, 8, 0.65) 100%);
@@ -738,7 +817,7 @@ section {
   padding: var(--s-2) var(--s-4);
   border-radius: var(--r-2);
   z-index: 100;
-  font-weight: 600;
+  font-weight: var(--wght-bold);
 }
 
 .skip-link:focus {

@@ -166,9 +166,8 @@ const groups = TIER_ORDER.map((tierId) => ({
   .ledger__title {
     margin: 0;
     font-family: var(--font-display);
-    font-variation-settings:
-      "opsz" 36,
-      "wght" 540;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-lead);
     font-size: var(--t-h4);
     letter-spacing: -0.014em;
     line-height: var(--leading-tight);
@@ -262,7 +261,7 @@ const groups = TIER_ORDER.map((tierId) => ({
     color: var(--ember-bright);
     letter-spacing: 0.06em;
     margin-right: 0.6em;
-    font-variation-settings: "wght" 560;
+    font-weight: var(--wght-semibold);
   }
 
   /* ---------- responsive ---------- */

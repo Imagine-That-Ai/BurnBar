@@ -149,9 +149,8 @@ const archiveCount = ALL_RUNDOWNS.length;
     font-family: var(--font-display);
     font-size: clamp(1.6rem, 1.2rem + 1.5vw, 2.4rem);
     color: var(--text-bright);
-    font-variation-settings:
-      "opsz" 80,
-      "wght" 500;
+    font-weight: var(--wght-semibold);
+    --opsz: var(--opsz-h2);
     letter-spacing: -0.022em;
     text-wrap: balance;
   }
@@ -269,10 +268,11 @@ const archiveCount = ALL_RUNDOWNS.length;
   .taskchip__name {
     color: var(--text-bright);
     font-size: 0.84rem;
-    font-variation-settings: "wght" 540;
+    font-weight: var(--wght-semibold);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    --opsz: var(--opsz-body);
   }
   .taskchip__score {
     color: var(--text-mute);
