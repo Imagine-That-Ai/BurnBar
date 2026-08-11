@@ -98,6 +98,61 @@ final class HermesStreamingMarkdownRendererTests: XCTestCase {
         )
     }
 
+    // MARK: - Asymptotics
+
+    /// Streams `lineCount` fixed-width lines in fixed-width chunks and reports
+    /// how many bytes reached the markdown parser per byte of reply.
+    private func parseWorkPerByte(lineCount: Int) -> Double {
+        let line = String(repeating: "ab", count: 30) + "\n" // 61 ASCII bytes
+        let chunks = stride(from: 0, to: line.count, by: 15).map { start in
+            String(line.dropFirst(start).prefix(15))
+        }
+        let renderer = HermesStreamingMarkdownRenderer()
+        var accumulated = ""
+        for _ in 0..<lineCount {
+            for chunk in chunks {
+                accumulated += chunk
+                _ = renderer.attributedString(for: accumulated, suffix: "▍")
+            }
+        }
+        // Guard against a renderer that "wins" by parsing nothing.
+        assertRendersEqual(
+            renderer.attributedString(for: accumulated),
+            HermesInlineMarkdown.attributedString(accumulated),
+            "\(lineCount)-line stream"
+        )
+        return Double(renderer.parsedUTF8ByteCount) / Double(accumulated.utf8.count)
+    }
+
+    /// The whole point of this class: parse work per appended byte must not
+    /// grow with the accumulated reply.
+    ///
+    /// `HermesInlineMarkdown.attributedString` runs at ~1.4 MB/s, so it is the
+    /// dominant cost in the streaming path by three orders of magnitude — and
+    /// the one-shot renderer this replaced re-parsed the whole message on every
+    /// commit, i.e. Θ(reply²) bytes across a stream. Quadrupling the reply here
+    /// would quadruple parse-work-per-byte under that implementation; under an
+    /// incremental one it stays flat, because every consumed byte is parsed
+    /// exactly once and only the trailing partial line is re-parsed.
+    func test_parseWorkPerByte_staysFlatAsTheReplyGrows() {
+        let small = parseWorkPerByte(lineCount: 250)
+        let large = parseWorkPerByte(lineCount: 1_000) // 4x the reply
+
+        // Absolute bound: each byte is parsed once as part of its completed
+        // line, plus the partial-line re-parses within a 61-byte line (15, 30,
+        // 45, 60) and a 3-byte caret per call — ~3.7x, never a function of n.
+        XCTAssertLessThan(small, 8.0, "per-byte parse work far above the partial-line bound")
+        XCTAssertLessThan(large, 8.0, "per-byte parse work far above the partial-line bound")
+
+        // Asymptotic bound: 4x the reply must not cost meaningfully more per
+        // byte. A full re-parse per commit lands near 4x here, not 1x.
+        XCTAssertLessThan(
+            large,
+            small * 1.5,
+            "parse work per byte grew with reply length — the incremental cache is not holding (small \(small), large \(large))"
+        )
+    }
+
     /// A same-length replacement of text the cache has already CONSUMED (not
     /// just the pending tail) must rebuild. The structural checks all pass for
     /// `old\n` → `new\n` — identical length, newline still immediately before

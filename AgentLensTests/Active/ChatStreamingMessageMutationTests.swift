@@ -219,6 +219,75 @@ final class ChatStreamingMessageMutationTests: XCTestCase {
         }
     }
 
+    /// A chunk throttled inside the commit interval must still reach the
+    /// transcript on the trailing edge. Leading-edge-only throttling dropped it
+    /// and waited for the next event, so a stream that paused — slow model,
+    /// long tool call — left the bubble stale for as long as the pause lasted
+    /// instead of the intended interval.
+    @MainActor
+    func testConsumeChatStream_flushesThrottledChunk_whileTheStreamIsPaused() async throws {
+        let pause = Duration.milliseconds(500)
+        let interval = Duration.milliseconds(50)
+        let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+            // Back to back: "A" force-commits (first visible delta), "B" lands
+            // inside the interval. Then the producer goes quiet for 10x it.
+            continuation.yield(.text("A"))
+            continuation.yield(.text("B"))
+            Task {
+                try? await Task.sleep(for: pause)
+                continuation.finish()
+            }
+        }
+        let started = ContinuousClock.now
+        var commits: [String] = []
+        var offsets: [Duration] = []
+
+        let result = try await ChatSessionController.consumeChatStream(
+            stream,
+            commitInterval: interval,
+            onCommit: { joined, _ in
+                commits.append(joined)
+                offsets.append(ContinuousClock.now - started)
+            }
+        )
+
+        XCTAssertEqual(result.joinedText, "AB")
+        XCTAssertEqual(
+            commits,
+            ["A", "AB", "AB"],
+            "expected the first delta, a trailing flush, then the terminal flush"
+        )
+        let trailingOffset = try XCTUnwrap(offsets.dropFirst().first, "no trailing flush was committed")
+        XCTAssertLessThan(
+            trailingOffset,
+            pause / 2,
+            "the staged chunk must land within the commit interval, not at stream termination"
+        )
+    }
+
+    /// The armed trailing flush must not outlive the stream: terminating while
+    /// one is pending has to cancel it, or a stale commit lands after the
+    /// finalizer has already persisted and settled the message.
+    @MainActor
+    func testConsumeChatStream_terminalFlushCancelsThePendingTrailingCommit() async throws {
+        let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in
+            continuation.yield(.text("A"))
+            continuation.yield(.text("B")) // throttled → arms a trailing flush
+            continuation.finish()          // …which termination must cancel
+        }
+        var commits: [String] = []
+
+        _ = try await ChatSessionController.consumeChatStream(
+            stream,
+            commitInterval: .milliseconds(50),
+            onCommit: { joined, _ in commits.append(joined) }
+        )
+
+        XCTAssertEqual(commits, ["A", "AB"])
+        try await Task.sleep(for: .milliseconds(200)) // 4x the interval
+        XCTAssertEqual(commits, ["A", "AB"], "a trailing flush fired after the stream settled")
+    }
+
     @MainActor
     func testConsumeChatStream_throttlesLongTextRun_toBoundedCommits() async throws {
         let stream = AsyncThrowingStream<CLIChatStreamEvent, Error> { continuation in

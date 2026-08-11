@@ -6,6 +6,68 @@ import OpenBurnBarComputerUseCore
 import AppKit
 #endif
 
+/// Leading + trailing edge throttle for streamed transcript commits.
+///
+/// Leading edge alone (commit when the interval has elapsed, drop otherwise)
+/// is only correct while events keep arriving: a chunk that lands inside the
+/// interval is dropped, and if the stream then pauses — a slow model, a long
+/// tool call — nothing re-commits it, so the visible transcript sits stale
+/// until the next event or stream termination instead of the intended
+/// `interval`. Arming a trailing flush bounds that staleness at `interval`
+/// regardless of what the producer does next.
+@MainActor
+private final class ChatStreamCommitThrottle {
+    private let interval: Duration
+    private let apply: () async -> Void
+    private var lastCommit: ContinuousClock.Instant
+    private var trailingFlush: Task<Void, Never>?
+
+    init(interval: Duration, apply: @escaping () async -> Void) {
+        self.interval = interval
+        self.apply = apply
+        self.lastCommit = ContinuousClock.now - interval
+    }
+
+    /// Records staged transcript state. Commits immediately when `force` is set
+    /// or the interval has elapsed; otherwise arms a single trailing flush for
+    /// the remainder of the interval.
+    func record(force: Bool) async {
+        let now = ContinuousClock.now
+        guard force || now - lastCommit >= interval else {
+            armTrailingFlush(after: interval - (now - lastCommit))
+            return
+        }
+        await flush()
+    }
+
+    /// Commits the staged state now and disarms any pending trailing flush, so
+    /// a settled stream can never be followed by a late commit.
+    func flush() async {
+        cancel()
+        lastCommit = ContinuousClock.now
+        await apply()
+    }
+
+    func cancel() {
+        trailingFlush?.cancel()
+        trailingFlush = nil
+    }
+
+    private func armTrailingFlush(after delay: Duration) {
+        // A flush already scheduled for this interval covers every chunk staged
+        // since — re-arming would only move the same commit later.
+        guard trailingFlush == nil else { return }
+        trailingFlush = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            // Clear first so `flush()`'s cancel() cannot target the very task
+            // that is running it.
+            self.trailingFlush = nil
+            await self.flush()
+        }
+    }
+}
+
 extension ChatSessionController {
 
     struct ChatStreamConsumptionResult {
@@ -27,11 +89,14 @@ extension ChatSessionController {
         var pieces: [ChatTranscriptPiece] = []
         var usageSnapshot: CLIUsageSnapshot?
         var joinedText = ""
-        var lastCommit = ContinuousClock.now - commitInterval
 
-        func commit() async {
+        let throttle = ChatStreamCommitThrottle(interval: commitInterval) {
             await onCommit(joinedText, pieces)
         }
+        // The success and rethrow routes both end in `flush()`, which disarms
+        // the trailing task; this covers the third exit — a cancelled parent
+        // task — so no armed flush ever outlives the stream.
+        defer { throttle.cancel() }
 
         do {
             for try await event in stream {
@@ -64,18 +129,14 @@ extension ChatSessionController {
                     continue
                 }
 
-                let now = ContinuousClock.now
-                if forceCommit || now - lastCommit >= commitInterval {
-                    lastCommit = now
-                    await commit()
-                }
+                await throttle.record(force: forceCommit)
             }
         } catch {
-            await commit()
+            await throttle.flush()
             throw error
         }
 
-        await commit()
+        await throttle.flush()
         return ChatStreamConsumptionResult(
             pieces: pieces,
             joinedText: joinedText,

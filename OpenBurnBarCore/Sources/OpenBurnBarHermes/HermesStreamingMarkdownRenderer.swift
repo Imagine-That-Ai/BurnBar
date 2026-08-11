@@ -6,7 +6,11 @@ import Foundation
 // accumulated message on every call. A streaming chat bubble that renders
 // through it on every SSE commit therefore does O(n) parse work per commit,
 // making a full stream O(n²) in the length of the reply. This renderer
-// makes the same render amortized O(1) per appended chunk.
+// parses each completed line exactly once: parse work per commit is
+// O(bytes appended + trailing partial line), never O(accumulated text).
+// (Parsing is the expensive term by three orders of magnitude — the
+// pipeline measures ~1.4 MB/s, so a 220 KB reply costs ~150ms to re-parse.
+// `parsedUTF8ByteCount` below exists so tests can pin that contract.)
 //
 // It exploits the fact that the whole Hermes parse pipeline is strictly
 // line-independent:
@@ -30,16 +34,20 @@ import Foundation
 // as `HermesInlineMarkdown.attributedString`), so the renderer is Apple-only.
 #if canImport(Darwin)
 
-/// Incremental, amortized-O(1)-per-chunk renderer for streamed Hermes/agent
-/// markdown. Designed to be held in a SwiftUI `@State` box by exactly one
+/// Incremental renderer for streamed Hermes/agent markdown: each call parses
+/// only the bytes that arrived since the previous call plus the trailing
+/// partial line. Designed to be held in a SwiftUI `@State` box by exactly one
 /// message bubble (identity-stable row) and called from `body`; it is a
 /// plain non-Sendable class — main-actor use only.
 ///
 /// The renderer is defensive about its append-only assumption: every call
-/// re-verifies (in O(partial line), never O(total)) that the cached region
-/// still matches the incoming text, and falls back to a full one-shot
-/// re-parse — the exact cost the non-cached path paid on *every* call —
-/// whenever the text shrank or was replaced (error rewrites, thread swaps).
+/// re-verifies that the cached region still matches the incoming text, and
+/// falls back to a full one-shot re-parse — the exact cost the non-cached
+/// path paid on *every* call — whenever the text shrank or was replaced
+/// (error rewrites, thread swaps). That verification is a `memcmp` of the
+/// consumed prefix and is therefore the one per-call term that still scales
+/// with the accumulated reply; `cachedRegionMatches` documents why no
+/// cheaper check is sound and what it measures.
 public final class HermesStreamingMarkdownRenderer {
 
     /// Styled attributed text for everything up to (and including) the last
@@ -66,9 +74,17 @@ public final class HermesStreamingMarkdownRenderer {
     /// keeps pathological single-line blobs from exploding parse cost).
     private var pendingTail = ""
     /// Memo of the last full render so body re-evaluations without a text
-    /// change cost one O(partial line) verification, not a render.
+    /// change cost one cache verification, not a render.
     private var memoKey: MemoKey?
     private var memoValue = AttributedString()
+
+    /// Total UTF-8 bytes handed to `HermesInlineMarkdown.attributedString`
+    /// since this renderer was created. Diagnostic/test hook: the renderer
+    /// scale tests assert this stays O(reply length) across a whole stream,
+    /// where the one-shot path it replaces would be O(reply length²). Not
+    /// cleared by `reset()` — a rebuild's re-parse is exactly the cost the
+    /// counter exists to expose.
+    public private(set) var parsedUTF8ByteCount = 0
 
     private struct MemoKey: Equatable {
         var utf8Count: Int
@@ -105,11 +121,18 @@ public final class HermesStreamingMarkdownRenderer {
         var rendered = parsedPrefix
         let tailSource = pendingTail + suffix
         if !tailSource.isEmpty {
-            rendered.append(HermesInlineMarkdown.attributedString(tailSource))
+            rendered.append(parse(tailSource))
         }
         memoKey = key
         memoValue = rendered
         return rendered
+    }
+
+    /// Single funnel to the one-shot parser so `parsedUTF8ByteCount` cannot
+    /// drift away from the work actually performed.
+    private func parse(_ source: String) -> AttributedString {
+        parsedUTF8ByteCount &+= source.utf8.count
+        return HermesInlineMarkdown.attributedString(source)
     }
 
     /// Fold the current full text into the cache. Returns `false` when the
@@ -141,10 +164,26 @@ public final class HermesStreamingMarkdownRenderer {
     /// Accepting it left the bubble rendering replaced text indefinitely,
     /// because the stale prefix survived every later append too.
     ///
-    /// `memcmp` over the accumulated prefix is comfortably cheaper than the
-    /// markdown re-parse this class exists to avoid — sub-microsecond even at
-    /// 500 KB of accumulated reply, versus the O(n) parse per commit it
-    /// replaces — so correctness here costs no measurable streaming budget.
+    /// This `memcmp` is a linear scan of the consumed prefix, so it is the one
+    /// per-call cost that still grows with the accumulated reply while the
+    /// parse above does not. It stays because no cheaper check is sound:
+    /// deciding "does this text still begin with the bytes I parsed?" from the
+    /// accumulated string alone means reading those bytes, so any validator
+    /// that inspects fewer of them can be fooled by a change in the ones it
+    /// skipped. A rolling hash or incremental digest does not escape that — it
+    /// reads the same prefix, only slower (measured, M-series release build:
+    /// 0.9 GB/s for a polynomial rolling hash vs 42 GB/s for `memcmp`, a 45x
+    /// regression at identical asymptotics).
+    ///
+    /// Measured share of per-append cost, streaming 55-byte lines (A/B against
+    /// a build with this comparison removed): within run-to-run noise below
+    /// ~200 KB of accumulated reply, ~10-18us of ~84us at 500 KB, ~22-30us of
+    /// ~95-99us at 890 KB. Against the ~150ms the cache saves per commit at
+    /// 220 KB that is well under a tenth of a percent, so the invariant is not
+    /// worth trading. The only sound way to make validation O(1) is to stop
+    /// inferring content identity from bytes — e.g. the message model
+    /// maintaining a rolling digest across every content mutation — which is a
+    /// model-layer change, not one this renderer can make on its own.
     private func cachedRegionMatches(_ bytes: UnsafeBufferPointer<UInt8>) -> Bool {
         let tailUTF8Count = pendingTail.utf8.count
         guard bytes.count >= consumedUTF8Count + tailUTF8Count else { return false }
@@ -183,7 +222,7 @@ public final class HermesStreamingMarkdownRenderer {
         }
         let completedEnd = lastNewlineIndex + 1 // slice keeps absolute indices
         let completed = String(decoding: bytes[consumedUTF8Count ..< completedEnd], as: UTF8.self)
-        parsedPrefix.append(HermesInlineMarkdown.attributedString(completed))
+        parsedPrefix.append(parse(completed))
         consumedBytes.append(contentsOf: bytes[consumedUTF8Count ..< completedEnd])
         consumedUTF8Count = completedEnd
         pendingTail = String(decoding: bytes[completedEnd...], as: UTF8.self)
