@@ -370,7 +370,7 @@ Privacy-preserving toggle for *which surface* BurnBar visually shares per provid
 |------------------------------------|----------------|-----------------------------------------------------------------------------|
 | `visual_capture.surface_selected`  | primary_action | `provider` (persistedToken), `surface` (`cli_pty`\|`desktop_app`), `trigger` (`settings`\|`session_header`\|`mobile`), `fallback_used:bool`, `is_eligible:bool` |
 
-> Fallback (`fallback_used=true`) covers: Screen Recording denied, Desktop bundle not installed, or denied-window filter. Eligible providers are the audit-corrected Both set (12 `AgentProvider` cases). Never includes `windowTitle`, `bundleId` beyond `persistedToken`, or `sha256Hex`.
+> Emitted on commit by `VisualCaptureSelection.commit`, which both stores the preference and records the event, so a stored selection always has a matching event. `fallback_used=true` means the user chose `desktop_app` while that provider's desktop bundle is not installed, so the selection cannot be honoured. Eligible providers are the audit-corrected Both set (12 `AgentProvider` cases); ineligible ones report `is_eligible=false` rather than being dropped. Never includes `windowTitle`, `bundleId` beyond `persistedToken`, or `sha256Hex`.
 
 ## Tier 2 — Android surfaces (`platform: android`)
 

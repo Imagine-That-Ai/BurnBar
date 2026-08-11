@@ -71,48 +71,39 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
         XCTAssertEqual(prefs.visualCaptureSource(for: .windsurf), .cliPTY)
     }
 
-    // MARK: - Flag gating (when flag OFF, engine must stay on PTY)
+    // MARK: - Flag gating
 
-    func test_visualCaptureSource_WhenFlagOff_AlwaysCliPTY() {
-        // Simulate user set per-provider desktop pre-rollout but flag still off:
-        // SettingsManager bridge should gate; engine branching checks flag first.
-        // Here we prove prefs-level still stores desktop, but SettingsManager gate
-        // forces cliPTY when flag false (C's MediaSession guard).
+    func test_visualCaptureSourceToggle_isOffOnAFreshInstall() {
+        // The flag gates the UI, and the store's own default is `.cliPTY`. That pair
+        // is why nothing wires the stored preference into `MediaSessionCoordinator`
+        // yet: on a fresh install it would resolve every eligible provider onto a
+        // surface the capture engine has no producer for.
         prefs.setVisualCaptureSource(.desktopApp, for: .codex)
-        prefs.setVisualCaptureSource(.desktopApp, for: .claudeCode)
         coordinator.flush()
 
-        // Flag OFF (default)
         XCTAssertFalse(prefs.visualCaptureSourceToggleEnabled)
-        // Direct prefs.visualCaptureSource still returns desktop (store is ungated)
-        // — the gate lives in SettingsManager/engine. Verify the gate behavior via manager.
-        let manager = makeSettingsManager(defaults: defaults)
-        XCTAssertFalse(manager.visualCaptureSourceToggleEnabled)
-        // Engine helper `captureSurface` (B handoff snippet) would return cliPTY when flag off.
-        // Prove it here:
-        XCTAssertEqual(gatedVisualCaptureSource(for: .codex, manager: manager), .cliPTY)
-        XCTAssertEqual(gatedVisualCaptureSource(for: .claudeCode, manager: manager), .cliPTY)
-        XCTAssertEqual(gatedVisualCaptureSource(for: .antigravity, manager: manager), .cliPTY)
+        XCTAssertEqual(prefs.visualCaptureGlobalDefault, .cliPTY)
+        XCTAssertFalse(makeSettingsManager(defaults: defaults).visualCaptureSourceToggleEnabled)
     }
 
-    func test_visualCaptureSource_WhenFlagOn_RespectsPerProvider() {
+    func test_settingsManager_bridgesPerProviderOverrideAndGlobalDefault() {
         let manager = makeSettingsManager(defaults: defaults)
         manager.visualCaptureSourceToggleEnabled = true
         manager.visualCaptureGlobalDefault = .cliPTY
         manager.setVisualCaptureSource(.desktopApp, for: .codex)
         manager.persistence.flush()
 
-        // Gated helper now respects per-provider
-        XCTAssertEqual(gatedVisualCaptureSource(for: .codex, manager: manager), .desktopApp)
-        XCTAssertEqual(gatedVisualCaptureSource(for: .claudeCode, manager: manager), .cliPTY, "other eligible still cliPTY (global default)")
-        XCTAssertEqual(gatedVisualCaptureSource(for: .factory, manager: manager), .cliPTY)
+        XCTAssertEqual(manager.visualCaptureSource(for: .codex), .desktopApp)
+        XCTAssertEqual(manager.visualCaptureSource(for: .claudeCode), .cliPTY, "no override → global default")
+        XCTAssertEqual(manager.visualCaptureSource(for: .factory), .cliPTY)
 
-        // Setting global default to desktop makes other Both providers desktop
         manager.visualCaptureGlobalDefault = .desktopApp
-        XCTAssertEqual(gatedVisualCaptureSource(for: .factory, manager: manager), .desktopApp)
-        // Ineligible always cliPTY even when global is desktop
-        XCTAssertEqual(gatedVisualCaptureSource(for: .antigravity, manager: manager), .cliPTY)
-        XCTAssertEqual(gatedVisualCaptureSource(for: .cline, manager: manager), .cliPTY)
+        XCTAssertEqual(manager.visualCaptureSource(for: .factory), .desktopApp, "global default now applies")
+        XCTAssertEqual(manager.visualCaptureSource(for: .codex), .desktopApp, "override still wins")
+
+        // Ineligible providers ignore both the override and the global default.
+        XCTAssertEqual(manager.visualCaptureSource(for: .antigravity), .cliPTY)
+        XCTAssertEqual(manager.visualCaptureSource(for: .cline), .cliPTY)
     }
 
     // MARK: - Bundle checker fallback (desktop not installed → cliPTY)
@@ -135,18 +126,67 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
             XCTAssertTrue(VisualCaptureBundleChecker.desktopAppPaths(for: provider).isEmpty || provider == .windsurf, "\(provider.rawValue) ineligible should have no app paths")
         }
 
-        // Simulate fallback: when flag on + per-provider desktop but bundle missing,
-        // the resolved surface for capture should be cliPTY (engine fail-closed).
-        // Helper mirrors MediaSessionCoordinator.desktop fallback:
+    }
+
+    // MARK: - Commit path (persist + emit together)
+
+    func test_commit_persistsTheChoiceAndEmitsTheSelectionEvent() {
+        // The defect this guards: the Settings toggle and the session-header pill
+        // used to call `setVisualCaptureSource` directly, so a rollout could see
+        // zero `visual_capture.surface_selected` events while users were switching.
+        let analytics = makeIsolatedAnalytics()
         let manager = makeSettingsManager(defaults: defaults)
         manager.visualCaptureSourceToggleEnabled = true
-        manager.setVisualCaptureSource(.desktopApp, for: .codex)
-        // If isDesktopInstalled would be false on this machine, effective surface is cliPTY
-        // We assert the fallback helper, not the real FS (which varies by CI):
-        let resolvedWithoutBundle = resolvedSurface(for: .codex, manager: manager, desktopInstalled: false)
-        XCTAssertEqual(resolvedWithoutBundle, .cliPTY, "bundle missing must fall back to cliPTY")
-        let resolvedWithBundle = resolvedSurface(for: .codex, manager: manager, desktopInstalled: true)
-        XCTAssertEqual(resolvedWithBundle, .desktopApp, "bundle installed should keep desktop")
+
+        VisualCaptureSelection.commit(
+            .desktopApp,
+            for: .codex,
+            settingsManager: manager,
+            trigger: .settings,
+            desktopInstalled: true,
+            analytics: analytics.recorder
+        )
+
+        XCTAssertEqual(manager.visualCaptureSource(for: .codex), .desktopApp)
+        XCTAssertEqual(analytics.transport.sent.count, 1)
+        let sent = analytics.transport.sent[0]
+        XCTAssertEqual(sent.name, "visual_capture.surface_selected")
+        XCTAssertEqual(sent.properties["provider"], .string("codex"))
+        XCTAssertEqual(sent.properties["surface"], .string("desktop_app"))
+        XCTAssertEqual(sent.properties["trigger"], .string("settings"))
+        XCTAssertEqual(sent.properties["fallback_used"], .bool(false))
+        XCTAssertEqual(sent.properties["is_eligible"], .bool(true))
+        XCTAssertTrue(VisualCaptureTelemetry.isCompliantPayload(sent.properties))
+    }
+
+    func test_commit_marksFallbackWhenTheDesktopAppIsMissing() {
+        let analytics = makeIsolatedAnalytics()
+        let manager = makeSettingsManager(defaults: defaults)
+        manager.visualCaptureSourceToggleEnabled = true
+
+        VisualCaptureSelection.commit(
+            .desktopApp,
+            for: .factory,
+            settingsManager: manager,
+            trigger: .sessionHeader,
+            desktopInstalled: false,
+            analytics: analytics.recorder
+        )
+
+        let sent = analytics.transport.sent[0]
+        XCTAssertEqual(sent.properties["trigger"], .string("session_header"))
+        XCTAssertEqual(sent.properties["fallback_used"], .bool(true))
+
+        // Ineligible providers report `is_eligible: false` rather than being dropped.
+        VisualCaptureSelection.commit(
+            .cliPTY,
+            for: .antigravity,
+            settingsManager: manager,
+            trigger: .settings,
+            desktopInstalled: false,
+            analytics: analytics.recorder
+        )
+        XCTAssertEqual(analytics.transport.sent[1].properties["is_eligible"], .bool(false))
     }
 
     // MARK: - Telemetry
@@ -264,20 +304,6 @@ final class VisualCaptureSourceToggleTests: XCTestCase {
     }
 
     // MARK: - Helpers
-
-    /// Mirrors the engine gate: flag off → always cliPTY.
-    private func gatedVisualCaptureSource(for provider: AgentProvider, manager: SettingsManager) -> VisualCaptureSource {
-        guard manager.visualCaptureSourceToggleEnabled else { return .cliPTY }
-        return manager.visualCaptureSource(for: provider)
-    }
-
-    /// Mirrors the bundle fallback: flag on + per-provider desktop but bundle missing → cliPTY.
-    private func resolvedSurface(for provider: AgentProvider, manager: SettingsManager, desktopInstalled: Bool) -> VisualCaptureSource {
-        let gated = gatedVisualCaptureSource(for: provider, manager: manager)
-        guard gated == .desktopApp else { return .cliPTY }
-        guard desktopInstalled else { return .cliPTY }
-        return .desktopApp
-    }
 
     private func makeSettingsManager(defaults: UserDefaults) -> SettingsManager {
         SettingsManager(

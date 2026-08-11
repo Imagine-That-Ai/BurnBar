@@ -2,6 +2,49 @@ import AppKit
 import SwiftUI
 import OpenBurnBarKernel
 
+// MARK: - Shared segment behavior
+
+@MainActor
+enum VisualCaptureSelection {
+    /// Persists the choice **and** emits `visual_capture.surface_selected`. Both the
+    /// Settings toggle and the inline session-header pill commit through here so a
+    /// selection can never be stored without its telemetry.
+    static func commit(
+        _ source: VisualCaptureSource,
+        for provider: AgentProvider,
+        settingsManager: SettingsManager,
+        trigger: VisualCaptureTelemetry.Trigger,
+        desktopInstalled: Bool,
+        analytics: Analytics = .shared
+    ) {
+        settingsManager.setVisualCaptureSource(source, for: provider)
+        VisualCaptureTelemetry.trackSurfaceSelected(
+            provider: provider,
+            surface: source,
+            trigger: trigger,
+            fallbackUsed: source == .desktopApp && !desktopInstalled,
+            isEligible: settingsManager.isToggleEligible(provider),
+            analytics: analytics
+        )
+    }
+}
+
+/// Selected-segment capsule. `surfaceElevated` is adaptive, so the label keeps its
+/// contrast in both appearances — a fixed white capsule left the near-white dark
+/// `textPrimary` unreadable.
+@MainActor
+private func selectedSegmentBackground(isSelected: Bool) -> some View {
+    Capsule()
+        .fill(isSelected ? DesignSystem.Colors.surfaceElevated : Color.clear)
+        .overlay(
+            Capsule().stroke(
+                isSelected ? DesignSystem.Colors.border : Color.clear,
+                lineWidth: 0.5
+            )
+        )
+        .shadow(color: isSelected ? Color.black.opacity(0.08) : .clear, radius: 3, x: 0, y: 1)
+}
+
 // MARK: - Visual Capture Source Toggle
 
 /// Capsule segmented control for choosing the visual surface BurnBar shares:
@@ -32,16 +75,16 @@ struct VisualCaptureToggle: View {
     }
 
     var body: some View {
-        Group {
-            if !settingsManager.visualCaptureSourceToggleEnabled {
-                EmptyView()
-            } else if !isEligible {
-                cliOnlyBadge
-            } else {
-                toggleControl
-            }
+        // No `.accessibilityElement(children: .combine)` here: it would flatten the two
+        // segment buttons into a single element and leave VoiceOver unable to focus or
+        // activate them independently. Each branch carries its own semantics instead.
+        if !settingsManager.visualCaptureSourceToggleEnabled {
+            EmptyView()
+        } else if !isEligible {
+            cliOnlyBadge
+        } else {
+            toggleControl
         }
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Badge for CLI-only / plugin-only providers
@@ -105,10 +148,15 @@ struct VisualCaptureToggle: View {
 
         return Button {
             guard !isDesktopAndMissing else { return }
-            if selectedSource != source {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    settingsManager.setVisualCaptureSource(source, for: provider)
-                }
+            guard selectedSource != source else { return }
+            withAnimation(.easeInOut(duration: 0.18)) {
+                VisualCaptureSelection.commit(
+                    source,
+                    for: provider,
+                    settingsManager: settingsManager,
+                    trigger: .settings,
+                    desktopInstalled: isDesktopInstalled
+                )
             }
         } label: {
             Text(title)
@@ -116,10 +164,7 @@ struct VisualCaptureToggle: View {
                 .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(
-                    Capsule().fill(isSelected ? Color.white.opacity(0.95) : Color.clear)
-                        .shadow(color: isSelected ? Color.black.opacity(0.08) : .clear, radius: 3, x: 0, y: 1)
-                )
+                .background(selectedSegmentBackground(isSelected: isSelected))
                 .opacity(isDesktopAndMissing ? 0.45 : 1)
         }
         .buttonStyle(.plain)
@@ -161,19 +206,25 @@ struct VisualCaptureInlinePill: View {
 
     private func inlineSegment(title: String, source: VisualCaptureSource) -> some View {
         let isSelected = selectedSource == source
-        let isDesktopAndMissing = source == .desktopApp && !VisualCaptureBundleChecker.isDesktopInstalled(for: provider)
+        let desktopInstalled = VisualCaptureBundleChecker.isDesktopInstalled(for: provider)
+        let isDesktopAndMissing = source == .desktopApp && !desktopInstalled
         return Button {
             guard !isDesktopAndMissing else { return }
-            if selectedSource != source {
-                settingsManager.setVisualCaptureSource(source, for: provider)
-            }
+            guard selectedSource != source else { return }
+            VisualCaptureSelection.commit(
+                source,
+                for: provider,
+                settingsManager: settingsManager,
+                trigger: .sessionHeader,
+                desktopInstalled: desktopInstalled
+            )
         } label: {
             Text(title)
                 .font(.system(size: 9, weight: isSelected ? .semibold : .medium, design: .rounded))
                 .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textMuted)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(Capsule().fill(isSelected ? Color.white.opacity(0.95) : Color.clear))
+                .background(selectedSegmentBackground(isSelected: isSelected))
                 .opacity(isDesktopAndMissing ? 0.45 : 1)
         }
         .buttonStyle(.plain)
