@@ -16,6 +16,7 @@ source "$REPO_ROOT/scripts/lib/libsignal-swift-compat.sh"
 # shellcheck source=scripts/lib/xcode-source-classification.sh
 source "$REPO_ROOT/scripts/lib/xcode-source-classification.sh"
 openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
 
 cleanup() {
   local original_status="${1:-0}"
@@ -46,11 +47,11 @@ PACKAGE_CACHE="${OPENBURNBAR_DEV_PACKAGE_CACHE:-$REPO_ROOT/.spm-cache}"
 
 echo "▶ Building $SCHEME for macOS…"
 mkdir -p "$PACKAGE_CACHE"
-xcodebuild -resolvePackageDependencies \
-  -project OpenBurnBar.xcodeproj \
-  -scheme "$SCHEME" \
-  -clonedSourcePackagesDirPath "$PACKAGE_CACHE" \
-  -derivedDataPath "$DERIVED"
+bash "$REPO_ROOT/scripts/prepare-openburnbar-app-swiftpm.sh" \
+  --project OpenBurnBar.xcodeproj \
+  --scheme "$SCHEME" \
+  --cache-dir "$PACKAGE_CACHE" \
+  --derived-data "$DERIVED"
 openburnbar_prepare_google_sign_in_macos_compat "$PACKAGE_CACHE"
 openburnbar_prepare_libsignal_swift_compat "$REPO_ROOT"
 xcodebuild \
@@ -60,6 +61,7 @@ xcodebuild \
   -clonedSourcePackagesDirPath "$PACKAGE_CACHE" \
   -derivedDataPath "$DERIVED" \
   -disableAutomaticPackageResolution \
+  -onlyUsePackageVersionsFromResolvedFile \
   -allowProvisioningUpdates \
   "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
   -quiet \
