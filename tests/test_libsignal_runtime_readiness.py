@@ -22,7 +22,7 @@ from scripts.ci.check_libsignal_runtime_readiness import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-v1.0.33.json")
+RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-v1.0.34.json")
 
 
 def _valid_manifest(*, status: str = "not_ready", complete_ids: tuple[str, ...] = ()) -> dict:

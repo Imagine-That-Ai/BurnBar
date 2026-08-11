@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   materializeCandidateBoundRollback,
+  normalizeProtectedSignerWorkflowPath,
   run,
   selectCommittedCandidateBundle,
   selectExactSourceRun,
@@ -96,10 +97,30 @@ test("signer lookup binds exact successful protected workflow attempt on main", 
     status: "completed",
     conclusion: "success",
     head_branch: "main",
-    path: ".github/workflows/domain-core-promotion-proof.yml@refs/heads/main",
+    // Live GitHub Actions run metadata returns the bare workflow path.
+    path: ".github/workflows/domain-core-promotion-proof.yml",
   };
   assert.deepEqual(
+    normalizeProtectedSignerWorkflowPath(run.path),
+    {
+      workflowPath: ".github/workflows/domain-core-promotion-proof.yml",
+      sourceRef: null,
+    },
+  );
+  assert.deepEqual(
     validateProtectedSignerRun(run, coordinates, COMMIT),
+    coordinates,
+  );
+  // Legacy fixture / attestation identity form still accepted on main.
+  assert.deepEqual(
+    validateProtectedSignerRun(
+      {
+        ...run,
+        path: ".github/workflows/domain-core-promotion-proof.yml@refs/heads/main",
+      },
+      coordinates,
+      COMMIT,
+    ),
     coordinates,
   );
   for (const overrides of [
