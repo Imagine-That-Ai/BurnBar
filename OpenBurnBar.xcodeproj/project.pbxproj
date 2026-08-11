@@ -13687,6 +13687,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_CODE_SIGN_FLAGS = "--options runtime,library";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.openburnbar.app.safari-extension";
 				PRODUCT_MODULE_NAME = OpenBurnBarSafariExtension;
 				PRODUCT_NAME = OpenBurnBarSafariExtension;
@@ -13752,6 +13753,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_CODE_SIGN_FLAGS = "--options runtime,library";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.openburnbar.app.safari-extension";
 				PRODUCT_MODULE_NAME = OpenBurnBarSafariExtension;
 				PRODUCT_NAME = OpenBurnBarSafariExtension;

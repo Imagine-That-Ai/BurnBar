@@ -152,12 +152,16 @@ build-signed: bootstrap preflight
 	@if security find-identity -v -p codesigning 2>/dev/null | grep -q '"Apple Development:'; then \
 		echo "==> Signing $(APP_BUNDLE) for local install…"; \
 		OPENBURNBAR_PRESERVE_SIGNED_ENTITLEMENTS=1 scripts/sign-openburnbar-local.sh "$(APP_BUNDLE)" "AgentLens/Resources/OpenBurnBar.entitlements"; \
+		DEVELOPMENT_TEAM_ID="$$(/usr/bin/codesign -dv --verbose=4 "$(APP_BUNDLE)" 2>&1 | sed -n 's/^TeamIdentifier=//p' | head -n 1)"; \
+		echo "==> Verifying exact Apple Development host and Safari profiles…"; \
+		bash scripts/ci/verify-openburnbar-development-signing.sh "$(APP_BUNDLE)" "$$DEVELOPMENT_TEAM_ID"; \
 	else \
 		echo "==> Ad-hoc signing $(APP_BUNDLE) (no Apple Development identity in the keychain)…"; \
 		/usr/bin/codesign --force --deep --sign - --timestamp=none "$(APP_BUNDLE)"; \
 		/usr/bin/codesign --verify --strict --verbose=2 "$(APP_BUNDLE)"; \
 		echo "    NOTE: ad-hoc builds run locally but skip provisioned entitlements"; \
-		echo "    (e.g. keychain-backed cloud sign-in). For a developer-signed build,"; \
+		echo "    (including Safari App Group transport and keychain-backed cloud sign-in)."; \
+		echo "    For a developer-signed build,"; \
 		echo "    install an Apple Development certificate or set OPENBURNBAR_DEVELOPMENT_TEAM."; \
 	fi
 	@echo "==> Built signed: $(APP_BUNDLE)"
