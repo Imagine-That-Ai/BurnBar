@@ -700,17 +700,20 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
         )
         try await dataStore.upsertConversation(record)
 
-        var snapshots: [CloudBackupProgressSnapshot] = []
-        let tracker = CloudBackupProgressTracker { snapshots.append($0) }
+        let snapshots = OpenBurnBarCore.Locked<[CloudBackupProgressSnapshot]>([])
+        let tracker = CloudBackupProgressTracker { snapshot in
+            snapshots.withLock { $0.append(snapshot) }
+        }
         tracker.begin(pendingSessionLogs: 1, pendingChatThreads: 0)
 
         await sessionLogSync.sync(drainAll: true, progress: tracker)
         tracker.complete()
 
-        XCTAssertFalse(snapshots.isEmpty)
-        XCTAssertEqual(snapshots.last?.uploadedSessionLogs, 1)
-        XCTAssertGreaterThan(snapshots.last?.encryptedBytes ?? 0, 0)
-        XCTAssertEqual(snapshots.last?.storageUploads, 1)
+        let capturedSnapshots = snapshots.read()
+        XCTAssertFalse(capturedSnapshots.isEmpty)
+        XCTAssertEqual(capturedSnapshots.last?.uploadedSessionLogs, 1)
+        XCTAssertGreaterThan(capturedSnapshots.last?.encryptedBytes ?? 0, 0)
+        XCTAssertEqual(capturedSnapshots.last?.storageUploads, 1)
     }
 
     // MARK: - Download
@@ -901,9 +904,8 @@ final class SessionLogSyncRoundTripTests: XCTestCase {
     }
 }
 
-@MainActor
-private final class FakeSessionLogVaultKeyStore: SessionLogVaultKeyProviding {
-    private var key = Data(repeating: 7, count: 32)
+private struct FakeSessionLogVaultKeyStore: SessionLogVaultKeyProviding {
+    private let key = Data(repeating: 7, count: 32)
 
     func loadKey(uid: String) throws -> Data? {
         key

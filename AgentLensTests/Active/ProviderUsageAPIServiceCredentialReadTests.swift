@@ -31,15 +31,19 @@ final class ProviderUsageAPIServiceCredentialReadTests: XCTestCase {
     /// A backend whose `data(for:)` ALWAYS throws a real keychain fault.
     /// Models a locked / unavailable keychain (`errSecNotAvailable`) that a bare
     /// `try?` would have silently swallowed as "no credential configured".
-    private final class ThrowingReadKeychainBackend: KeychainStoreBackend {
-        private(set) var readAttempts = 0
+    private nonisolated final class ThrowingReadKeychainBackend: KeychainStoreBackend {
+        private let readAttemptsBox = OpenBurnBarCore.Locked(0)
+
+        var readAttempts: Int {
+            readAttemptsBox.read()
+        }
 
         func set(_: Data, service _: String, account _: String) throws {
             // Not exercised by these read-path tests.
         }
 
         func data(for _: String, account _: String, allowUserInteraction _: Bool) throws -> Data? {
-            readAttempts += 1
+            readAttemptsBox.withLock { $0 += 1 }
             throw KeychainStoreError.unhandled(errSecNotAvailable)
         }
 
@@ -49,13 +53,17 @@ final class ProviderUsageAPIServiceCredentialReadTests: XCTestCase {
     }
 
     /// A backend with no stored items: every read genuinely returns `nil`.
-    private final class EmptyKeychainBackend: KeychainStoreBackend {
-        private(set) var readAttempts = 0
+    private nonisolated final class EmptyKeychainBackend: KeychainStoreBackend {
+        private let readAttemptsBox = OpenBurnBarCore.Locked(0)
+
+        var readAttempts: Int {
+            readAttemptsBox.read()
+        }
 
         func set(_: Data, service _: String, account _: String) throws {}
 
         func data(for _: String, account _: String, allowUserInteraction _: Bool) throws -> Data? {
-            readAttempts += 1
+            readAttemptsBox.withLock { $0 += 1 }
             return nil
         }
 

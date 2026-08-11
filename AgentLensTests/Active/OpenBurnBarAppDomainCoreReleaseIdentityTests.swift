@@ -14,6 +14,7 @@ import OpenBurnBarCore
 /// the not-requested fast path, the invalid-invocation guard (each failing input shape), and
 /// the success/throw dispatch through the injected write closure. The injected write avoids
 /// the native FFI and a real executable, so the tests run hermetically and deterministically.
+@MainActor
 final class OpenBurnBarAppDomainCoreReleaseIdentityTests: XCTestCase {
 
     private let argument = DomainCoreReleaseIdentityReporter.argument

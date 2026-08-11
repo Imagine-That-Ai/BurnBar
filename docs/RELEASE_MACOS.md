@@ -26,6 +26,12 @@ scripts/verify-macos-app-store-readiness.sh
 ```
 
 That script verifies the MAS entitlements in `AgentLens/Resources/OpenBurnBarMAS.entitlements`, preserves the direct-download release entitlements, and compiles the Mac app with `DISTRIBUTION_MAS=1`.
+It also builds and validates the Safari WebExtension payload, checks the
+unsigned appex layout, and passes MAS entitlements through the host-only
+`OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS` setting. Never restore a global
+`CODE_SIGN_ENTITLEMENTS=AgentLens/Resources/OpenBurnBarMAS.entitlements`
+override: command-line build settings apply to embedded targets and would
+overwrite the Safari appex's sandbox/App Group entitlements.
 
 Build the actual release artifacts with:
 
@@ -39,6 +45,71 @@ scripts/build-macos-app-store-release.sh
 # build/macos-website-<version>-<build>/.
 scripts/build-macos-website-release.sh
 ```
+
+### Embedded Safari extension
+
+Both channels embed:
+
+```text
+OpenBurnBar.app/Contents/PlugIns/OpenBurnBarSafariExtension.appex
+```
+
+Release invariants:
+
+- bundle ID `com.openburnbar.app.safari-extension`
+- Safari extension point `com.apple.Safari.web-extension`
+- MV3 manifest at
+  `Contents/PlugIns/OpenBurnBarSafariExtension.appex/Contents/Resources/manifest.json`
+- App Sandbox and outbound network client enabled
+- App Group `group.com.openburnbar.app`
+- Keychain access group `TEAMID.com.openburnbar.app`
+
+Build the web payload through the canonical wrapper:
+
+```bash
+./scripts/test-openburnbar-safari-extension.sh
+```
+
+The wrapper uses the committed `extensions/safari/package-lock.json`, runs the
+complete package `test:ci` gate, and emits `extensions/safari/dist`. Xcode
+copies the contents of `dist` into the appex resource root.
+
+For a local Developer ID release, provide the dedicated extension profile:
+
+```bash
+OPENBURNBAR_SAFARI_EXTENSION_PROFILE=\
+build/app-direct-profile/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile \
+scripts/build-macos-website-release.sh
+```
+
+The profile must authorize the exact extension application identifier, App
+Group, and Keychain group. It must be a `MAC_APP_DIRECT` all-devices profile
+and must list the certificate that signs the appex. The signed appex
+entitlements are verified separately for App Sandbox and outbound network
+client access; those runtime entitlements are not inferred from the profile.
+
+Direct signing order is explicit:
+
+1. nested frameworks/bundles inside the appex
+2. `OpenBurnBarSafariExtension.appex` with its expanded entitlements/profile
+3. other host helpers as applicable
+4. containing `OpenBurnBar.app`
+5. DMG
+
+`scripts/ci/verify-openburnbar-safari-extension.sh` verifies the nested product
+before and after the containing app signature. The public-download trust gate
+and mounted-DMG smoke repeat that verification against packaged/downloaded
+bytes. `codesign --verify --deep` is supplemental and is never the only nested
+proof.
+
+The MAS archive uses automatic App Store signing while preserving target-local
+extension entitlements. `scripts/build-macos-app-store-release.sh` verifies the
+appex in the `.xcarchive`, expands the exported `.pkg`/`.ipa`, locates the
+exported `OpenBurnBar.app`, and verifies that exported appex again. Archive
+success without exported-package verification is not release proof.
+
+See [OpenBurnBar for Safari](SAFARI_EXTENSION.md) and
+[Safari Extension QA](qa/SAFARI_EXTENSION_QA.md).
 
 Before either channel ships publicly, run the AGPL compliance gate:
 
@@ -98,6 +169,7 @@ The macOS trust gate downloads the same public DMG and runs Apple platform
 checks against the real artifact: Gatekeeper assessment for the DMG, stapler
 validation for the notarization ticket, app bundle code-signature verification,
 Developer ID certificate inspection, Firebase Auth Keychain entitlement/profile
+verification, explicit Safari appex identity/entitlement/profile/manifest
 verification, and Gatekeeper execution assessment for the mounted app. A public
 download is not shippable unless this command passes; URL liveness alone is not
 enough. The `Public macOS Download Trust` workflow runs this check automatically
@@ -198,21 +270,23 @@ The `tag-release.sh` script:
 The workflow will:
 1. Require the protected `release` GitHub environment before any Apple signing material is available to the job
 2. Scan the publishable tree with `gitleaks` and verified-secret `trufflehog`
-3. Run Swift, app, and TypeScript tests. Release Swift/app tests intentionally run without coverage instrumentation; coverage belongs to PR/CI gates, while release publication needs bounded pass/fail proof.
-4. Build `OpenBurnBar.app` unsigned
-5. Embed daemon/helper artifacts and `OpenBurnBarCore.framework`
-6. Sign app + DMG with Developer ID identity
-7. Notarize + staple DMG using `notarytool` with App Store Connect API key
-8. Generate the signed Sparkle-compatible appcast and latest-macOS JSON feed
-9. Compute SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata
-10. Optionally GPG-sign checksums if `RELEASE_SIGNING_KEY` is configured, and fail closed if that
+3. Run Swift, app, editor-extension, and Safari-extension tests. Release Swift/app tests intentionally run without coverage instrumentation; coverage belongs to PR/CI gates, while release publication needs bounded pass/fail proof.
+4. Build the editor extension and locked Safari WebExtension payload.
+5. Build `OpenBurnBar.app` unsigned with the Safari appex embedded.
+6. Embed daemon/helper artifacts and `OpenBurnBarCore.framework`.
+7. Decode and validate distinct host and Safari `MAC_APP_DIRECT` profiles.
+8. Sign nested code, the Safari appex, the containing app, and the DMG in explicit order with the Developer ID identity.
+9. Notarize + staple app/DMG using `notarytool` with App Store Connect API key.
+10. Generate the signed Sparkle-compatible appcast and latest-macOS JSON feed.
+11. Compute SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata.
+12. Optionally GPG-sign checksums if `RELEASE_SIGNING_KEY` is configured, and fail closed if that
     configured signing path does not produce a valid detached signature
-11. Generate SPDX SBOM from SwiftPM, npm, Cargo, and Android/Gradle dependencies
-12. Generate required keyless Sigstore blob attestations and verification bundles for the SBOM, VEX, checksums, binaries, source archive, and update feeds
-13. Write release metadata JSON with version, commit, timestamp, update feed, and runner metadata
-14. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, Sigstore bundles/predicates, and metadata as Actions artifacts
-15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
-16. Publish a GitHub Release with the same downloaded artifacts as explicitly
+13. Generate SPDX SBOM from SwiftPM, npm, Cargo, and Android/Gradle dependencies.
+14. Generate required keyless Sigstore blob attestations and verification bundles for the SBOM, VEX, checksums, binaries, source archive, and update feeds.
+15. Write release metadata JSON with version, commit, timestamp, update feed, and runner metadata.
+16. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, Sigstore bundles/predicates, and metadata as Actions artifacts.
+17. Run release smoke from the uploaded DMG artifact, including explicit Safari appex verification, app launch, and authenticated daemon health.
+18. Publish a GitHub Release with the same downloaded artifacts as explicitly
     non-latest. A separate `workflow_dispatch` with `promote=true` audits the
     already-published tag, metadata, attestations, and every asset byte before
     making that exact release GitHub's latest release.
@@ -423,13 +497,36 @@ provisioning profiles are intentionally excluded because they are not publishabl
 The release workflow signs with `AgentLens/Resources/OpenBurnBarRelease.entitlements`
 after expanding the team/bundle placeholders into a temporary signing plist. The
 direct-download app must embed a `MAC_APP_DIRECT` profile for
-`com.openburnbar.app` and must sign with `keychain-access-groups` containing
-`TEAMID.com.openburnbar.app`; Firebase Auth on macOS cannot persist users
-without it. Direct-download release entitlements still omit iCloud and Apple
-Sign-In until those capabilities are intentionally added to the Developer ID
-profile and QA flow. The development entitlements in
+`com.openburnbar.app`. Both that profile and the signed host app must authorize
+the exact shared App Group `group.com.openburnbar.app` and
+`keychain-access-groups` value `TEAMID.com.openburnbar.app`; the Safari handler
+cannot exchange bounded App Group payloads with the host without the former,
+and Firebase Auth plus the shared gateway-token fallback cannot use the common
+Keychain group without the latter. Direct-download release entitlements still
+omit iCloud and Apple Sign-In until those capabilities are intentionally added
+to the Developer ID profile and QA flow. The development entitlements in
 `AgentLens/Resources/OpenBurnBar.entitlements` remain broader for local/Xcode
-builds.
+builds, but use the same exact App Group and Keychain group.
+
+The Safari appex always uses
+`OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements`,
+not the host entitlement file. Direct release signing expands its team/bundle
+placeholders against the dedicated extension profile. MAS signing uses the same
+target-specific file while the host switches to
+`AgentLens/Resources/OpenBurnBarMAS.entitlements` through
+`OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS`. The MAS host entitlement file also
+declares the exact shared App Group and Keychain group; archive and exported-app
+inspection fail if automatic App Store signing strips either value.
+
+> **Safari provisioning migration HOLD:** source entitlements and fail-closed
+> verifiers do not prove that Apple Developer App IDs, provisioning profiles,
+> or GitHub secrets have been regenerated. Before cutting the first
+> Safari-capable release, enable App Groups and Keychain Sharing for both
+> `com.openburnbar.app` and `com.openburnbar.app.safari-extension`, regenerate
+> the direct host and extension `MAC_APP_DIRECT` profiles plus the MAS profiles,
+> replace the protected release-environment secret payloads, and validate the
+> exact signed archive/DMG. The immutable pre-Safari public artifact is expected
+> to fail the new Safari trust gate and is not evidence for this migration.
 
 ## Rollback
 
@@ -448,7 +545,8 @@ Tagged releases are **fail-hard**: if any required secret below is missing, the 
 | `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
 | `APPLE_NOTARY_ISSUER_ID` | App Store Connect API issuer ID (required for team keys, optional for individual keys) |
 | `APPLE_NOTARY_API_KEY_P8` | Base64-encoded contents of `AuthKey_<KEYID>.p8` |
-| `OPENBURNBAR_APP_PROFILE_BASE64` | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; required so Firebase Auth can use the app Keychain access group |
+| `OPENBURNBAR_APP_PROFILE_BASE64` | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; must authorize `group.com.openburnbar.app` and `TEAMID.com.openburnbar.app` for Safari host/appex transport and shared Keychain access |
+| `OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64` | Base64-encoded dedicated `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app.safari-extension`; must authorize the Safari appex App Group and shared host Keychain group |
 | `FIREBASE_PLIST_BASE64` | Base64-encoded Firebase plist for CI |
 | `FIREBASE_APP_CHECK_DEBUG_TOKEN` | Firebase App Check debug token for CI |
 | `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast |

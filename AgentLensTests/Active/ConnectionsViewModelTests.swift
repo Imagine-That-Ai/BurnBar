@@ -13,36 +13,40 @@ final class ConnectionsViewModelTests: XCTestCase {
     private var settings: SettingsManager!
     private var viewModel: ConnectionsViewModel!
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        tempHome = FileManager.default.temporaryDirectory
-            .appendingPathComponent("connections-vm-tests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true)
+    override func setUp() async throws {
+        try await super.setUp()
+        try await MainActor.run {
+            tempHome = FileManager.default.temporaryDirectory
+                .appendingPathComponent("connections-vm-tests-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true)
 
-        // Isolated UserDefaults so we don't trample real Settings.
-        let suiteName = "ConnectionsViewModelTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        settings = SettingsManager(defaults: defaults)
+            // Isolated UserDefaults so we don't trample real Settings.
+            let suiteName = "ConnectionsViewModelTests.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defaults.removePersistentDomain(forName: suiteName)
+            settings = SettingsManager(defaults: defaults)
 
-        // Start with the gateway off so the "auto-enable" branch exercises.
-        settings.gatewayEnabled = false
-        settings.gatewayHost = ""
-        settings.gatewayPort = 0
-        settings.gatewayAuthToken = ""
+            // Start with the gateway off so the "auto-enable" branch exercises.
+            settings.gatewayEnabled = false
+            settings.gatewayHost = ""
+            settings.gatewayPort = 0
+            settings.gatewayAuthToken = ""
 
-        let homeURL = tempHome!
-        viewModel = ConnectionsViewModel(wiringFactory: {
-            RoutingClientWiring(home: homeURL)
-        })
+            let homeURL = tempHome!
+            viewModel = ConnectionsViewModel(wiringFactory: {
+                RoutingClientWiring(home: homeURL)
+            })
+        }
     }
 
-    override func tearDownWithError() throws {
-        if let tempHome { try? FileManager.default.removeItem(at: tempHome) }
-        tempHome = nil
-        settings = nil
-        viewModel = nil
-        try super.tearDownWithError()
+    override func tearDown() async throws {
+        await MainActor.run {
+            if let tempHome { try? FileManager.default.removeItem(at: tempHome) }
+            tempHome = nil
+            settings = nil
+            viewModel = nil
+        }
+        try await super.tearDown()
     }
 
     // MARK: - Account wizard launch targets

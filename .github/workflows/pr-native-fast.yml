@@ -100,7 +100,7 @@ jobs:
           # pbxproj (XcodeGen globs source directories, so adding/removing a
           # file under one of them rewrites project.pbxproj).
           if echo "${changed}" | grep -Eq \
-            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|AgentLens/|AgentLensTests/|scripts/ci/verify-daemon-release-signing(\.test)?\.sh|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift|\.github/workflows/pr-native-fast\.yml)'; then
+            '^(project\.yml|OpenBurnBar\.xcodeproj/|OpenBurnBarCore/|OpenBurnBarDaemon/|OpenBurnBarMobile/|OpenBurnBarMobileTests/|OpenBurnBarMobileUITests/|OpenBurnBarKeyboard/|OpenBurnBarWidget/|OpenBurnBarSafariExtension/|extensions/safari/|AgentLens/|AgentLensTests/|scripts/test-openburnbar-safari-extension\.sh|scripts/ci/(verify-daemon-release-signing|(?:sign|verify)-openburnbar-safari-extension)(\.test)?\.sh|scripts/ci/verify-openburnbar-safari-extension-layout\.py|\.swiftlint\.yml|packages/data-domains/gen/.*\.swift|packages/design-tokens/dist/swift/.*\.swift|\.github/workflows/pr-native-fast\.yml)'; then
             echo "native=true" >> "$GITHUB_OUTPUT"
             echo "Native surface changed: running SwiftPM + xcodegen-drift gates."
           else

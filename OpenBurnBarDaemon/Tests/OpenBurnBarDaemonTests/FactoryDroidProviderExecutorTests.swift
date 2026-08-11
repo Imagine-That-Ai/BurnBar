@@ -4,6 +4,38 @@ import Foundation
 import XCTest
 
 final class FactoryDroidProviderExecutorTests: XCTestCase {
+    func testFactoryLaneClassificationTracksDroidCoreFamiliesAcrossVersionChanges() {
+        for modelID in [
+            "glm-5.1",
+            "glm-5.2",
+            "glm-5.2-fast",
+            "kimi-k2.7-code",
+            "kimi-k3",
+            "deepseek-v4-flash-0731",
+            "minimax-m3",
+            "nemotron-3-ultra",
+            "inkling"
+        ] {
+            XCTAssertFalse(
+                FactoryDroidProviderExecutor.isStandardModel(modelID),
+                "\(modelID) must remain in the separate Droid Core lane."
+            )
+        }
+
+        for modelID in [
+            "gpt-5.5",
+            "gpt-5.6-sol",
+            "claude-opus-5",
+            "gemini-3.1-pro-preview",
+            "unknown-future-model"
+        ] {
+            XCTAssertTrue(
+                FactoryDroidProviderExecutor.isStandardModel(modelID),
+                "\(modelID) must remain Standard or fail closed as unknown."
+            )
+        }
+    }
+
     func testFactoryExecutorBuildsReadOnlyDroidCommandAndReturnsChatCompletion() async throws {
         let runner = RecordingFactoryDroidRunner(
             result: FactoryDroidProcessResult(

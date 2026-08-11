@@ -469,7 +469,7 @@ final class SceneKitPetRenderer: NSObject, PetRenderer, SCNSceneRendererDelegate
     /// chat bubble can anchor just above the rendered head. Returns `nil` while
     /// the scene/camera isn't ready (the caller falls back to a fixed anchor).
     private func projectedModelTopPoint() -> CGPoint? {
-        guard let scene = scnView.scene, let pov = scnView.pointOfView,
+        guard scnView.scene != nil, scnView.pointOfView != nil,
               let contentRoot else { return nil }
         let presentationBounds = contentRoot.presentation.boundingBox
         let minY = presentationBounds.min

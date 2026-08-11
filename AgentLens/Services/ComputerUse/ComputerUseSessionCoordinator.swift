@@ -91,6 +91,7 @@ public final class ComputerUseSessionCoordinator: ObservableObject {
         case invalidTrustMode(String)
         case missingEntitlementProduct
         case missingBrowserDispatcher
+        case unsupportedExecutionSurface(String)
         case missingControlReplySender
         case dailySessionLimit
         case quotaAuthorityUnavailable

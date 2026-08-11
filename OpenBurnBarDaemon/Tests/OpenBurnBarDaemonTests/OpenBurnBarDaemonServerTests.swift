@@ -921,15 +921,48 @@ final class BurnBarDaemonServerTests: XCTestCase {
 
     func testServerExposesMissionControlRPCs() async throws {
         let socketPath = makeSocketPath(name: "mission-control")
+        let supportRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "openburnbar-mission-control-rpc-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: supportRoot,
+            withIntermediateDirectories: true
+        )
+        defer {
+            try? FileManager.default.removeItem(at: supportRoot)
+        }
+
+        let missionControlService = BurnBarMissionControlService(
+            store: BurnBarMissionControlStore(
+                eventsFileURL: supportRoot.appendingPathComponent(
+                    "controller-events.jsonl"
+                ),
+                projectionFileURL: supportRoot.appendingPathComponent(
+                    "controller-projection.json"
+                ),
+                logger: BurnBarDaemonLogger(category: "server-tests"),
+                notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
+            ),
+            logger: BurnBarDaemonLogger(category: "server-tests"),
+            activitySnapshotURL: nil,
+            usageLedgerURL: supportRoot.appendingPathComponent("usage-events.jsonl")
+        )
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(
                 socketPath: socketPath,
                 socketAuthToken: "test-token",
                 startsMissionControlBackgroundLoops: false
-            )
+            ),
+            logger: BurnBarDaemonLogger(category: "server-tests"),
+            missionControlService: missionControlService
         )
 
         try await server.start()
+        addTeardownBlock {
+            await server.stop()
+        }
 
         let upsertProject: BurnBarRPCResponseEnvelope<BurnBarControllerProjectResponse> = try sendEnvelope(
             BurnBarRPCRequestEnvelopeWithParams(
@@ -987,6 +1020,10 @@ final class BurnBarDaemonServerTests: XCTestCase {
             ),
             socketPath: socketPath
         )
+        XCTAssertNil(
+            followups.error,
+            followups.error.map { "[\($0.code)] \($0.message)" } ?? ""
+        )
         XCTAssertEqual(followups.result?.followups.count, 1)
         XCTAssertEqual(followups.result?.followups.first?.questionID, questionID)
 
@@ -999,10 +1036,13 @@ final class BurnBarDaemonServerTests: XCTestCase {
             ),
             socketPath: socketPath
         )
+        XCTAssertNil(
+            summary.error,
+            summary.error.map { "[\($0.code)] \($0.message)" } ?? ""
+        )
         XCTAssertEqual(summary.result?.summary.counts.pendingQuestionCount, 1)
         XCTAssertEqual(summary.result?.summary.counts.openFollowupCount, 1)
 
-        await server.stop()
     }
 
     func testVAL_CROSS_015_MissionDispatchPathRunsThroughLiveDaemonSocketIntegration() async throws {

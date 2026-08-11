@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Stable identifier for a Computer Use session. UUID v4 by default; the
 /// id ends up on the iroh `control.*` streams, in the audit chain header,
@@ -120,6 +121,17 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
     /// Daemon agent run bound to this session. When present, it becomes part
     /// of the manifest hash and therefore the root of every action audit entry.
     public let runId: String?
+    /// Concrete browser execution surface selected at session admission.
+    ///
+    /// `nil` preserves the schema-v1 legacy meaning (daemon-managed
+    /// Playwright). Safari sessions always persist `.safariExtension` so every
+    /// audit entry is rooted in the real-session transport that executed it.
+    public let executionSurface: ComputerUseExecutionSurface?
+    /// Exact surface-owned session identifier. For Safari this is the leased
+    /// WebExtension broker session; it is immutable for the life of the
+    /// Computer Use session and prevents a run from switching tabs/surfaces
+    /// after the audit root has been committed.
+    public let executionSurfaceSessionId: String?
     public let macHostNodeId: String?
     public let phoneViewerNodeId: String?
     public let scopeRuleIds: [String]
@@ -138,6 +150,8 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
         startedAt: Date,
         userId: String,
         runId: String? = nil,
+        executionSurface: ComputerUseExecutionSurface? = nil,
+        executionSurfaceSessionId: String? = nil,
         macHostNodeId: String? = nil,
         phoneViewerNodeId: String? = nil,
         scopeRuleIds: [String] = [],
@@ -152,6 +166,8 @@ public struct ComputerUseSessionManifest: Codable, Hashable, Sendable {
         self.startedAt = startedAt
         self.userId = userId
         self.runId = runId
+        self.executionSurface = executionSurface
+        self.executionSurfaceSessionId = executionSurfaceSessionId
         self.macHostNodeId = macHostNodeId
         self.phoneViewerNodeId = phoneViewerNodeId
         self.scopeRuleIds = scopeRuleIds

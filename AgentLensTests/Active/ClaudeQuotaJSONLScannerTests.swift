@@ -24,11 +24,11 @@ final class ClaudeQuotaJSONLScannerTests: XCTestCase {
         if let tempHome { try? FileManager.default.removeItem(at: tempHome) }
     }
 
-    private static let isoFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
+    private static func isoFractionalString(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
+    }
 
     /// Write a single assistant-turn JSONL line and stamp the file's
     /// modification date (the scanner's window cutoff key).
@@ -41,7 +41,7 @@ final class ClaudeQuotaJSONLScannerTests: XCTestCase {
         fileModified: Date
     ) throws -> URL {
         let url = projectsDir.appendingPathComponent(name)
-        let ts = Self.isoFractional.string(from: timestamp)
+        let ts = Self.isoFractionalString(from: timestamp)
         let line = """
         {"type":"assistant","timestamp":"\(ts)","message":{"usage":{"input_tokens":\(inputTokens),"output_tokens":\(outputTokens)}}}
         """
@@ -137,7 +137,7 @@ final class ClaudeQuotaJSONLScannerTests: XCTestCase {
         XCTAssertEqual(try scan(now: now).fiveHourTokens, 100)
 
         // Append a second assistant turn and bump the modification date.
-        let ts = Self.isoFractional.string(from: now.addingTimeInterval(-300))
+        let ts = Self.isoFractionalString(from: now.addingTimeInterval(-300))
         let extra = "{\"type\":\"assistant\",\"timestamp\":\"\(ts)\",\"message\":{\"usage\":{\"input_tokens\":50,\"output_tokens\":0}}}\n"
         let handle = try FileHandle(forWritingTo: url)
         try handle.seekToEnd()

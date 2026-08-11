@@ -269,10 +269,7 @@ final class TerminalAssistantCommitTests: XCTestCase {
 
         // Regression guard: the production service MUST take the atomic in-transaction path
         // (the chokepoint downcasts to this protocol), not the post-commit async fallback.
-        let tx = try XCTUnwrap(
-            service as? any TransactionalMemoryExtractionServing,
-            "OpenBurnBarMemoryService must enqueue extraction atomically with the chat write (G3/P1b)"
-        )
+        let tx: any TransactionalMemoryExtractionServing = service
 
         let intent = ExtractionIntent(
             threadID: "t1",

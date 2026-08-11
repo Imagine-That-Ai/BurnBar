@@ -4,6 +4,27 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# shellcheck source=scripts/lib/libsignal-swift-compat.sh
+source "${repo_root}/scripts/lib/libsignal-swift-compat.sh"
+
+cleanup() {
+  local original_status="${1:-0}"
+  local restore_status=0
+  openburnbar_restore_libsignal_swift_compat || restore_status=$?
+  if ((original_status == 0 && restore_status != 0)); then
+    return "$restore_status"
+  fi
+  return "$original_status"
+}
+
+cleanup_on_exit() {
+  local original_status=$?
+  trap - EXIT
+  cleanup "$original_status"
+  exit $?
+}
+trap cleanup_on_exit EXIT
+
 # When the focused domain-core consumer job requires the native Rust domain-core
 # artifact but does NOT need libsignal, skip building libsignal-ffi entirely and
 # gate the local LibSignalClient Swift package out of the package graph. This
@@ -15,15 +36,14 @@ fi
 
 prepare_libsignal_ffi() {
   local libsignal_dir="${repo_root}/Vendor/libsignal"
-  local auth_messages_service="${libsignal_dir}/swift/Sources/LibSignalClient/chat/AuthMessagesService.swift"
   local host_target
 
-  # This compatibility rewrite is required even when the XCFramework cache
-  # hits: the cached binary does not include the SwiftPM source patch, and a
-  # warm cache must behave exactly like a cold build.
-  if [[ -f "${auth_messages_service}" ]]; then
-    perl -0pi -e 's/\bextendLifetime\(([^)]+)\)/withExtendedLifetime($1) {}/g' "${auth_messages_service}"
-  fi
+  # These compatibility rewrites are required even when the XCFramework cache
+  # hits: the cached binary does not include SwiftPM source compatibility, and
+  # a warm cache must behave exactly like a cold build. The shared helper
+  # checksum-binds the edits, serializes concurrent builds, and restores the
+  # public submodule byte-for-byte on exit.
+  openburnbar_prepare_libsignal_swift_compat "${repo_root}"
 
   case "$(uname -m)" in
     arm64) host_target="aarch64-apple-darwin" ;;
@@ -56,6 +76,31 @@ if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
   coverage_flags+=(--enable-code-coverage)
 fi
 
+swiftpm_has_build_metadata() {
+  local scratch_path="$1"
+  local marker
+
+  for marker in \
+    build.db \
+    debug.yaml \
+    release.yaml \
+    description.json
+  do
+    if find "$scratch_path" -maxdepth 6 -type f -name "$marker" -print -quit | grep -q .; then
+      return 0
+    fi
+  done
+
+  if find "$scratch_path" -maxdepth 6 -type d \
+    \( -name '*.build' -o -name Intermediates.noindex \) \
+    -print -quit | grep -q .
+  then
+    return 0
+  fi
+
+  return 1
+}
+
 if [[ "${OPENBURNBAR_DISABLE_LIBSIGNAL_SWIFT_PACKAGE:-}" != "1" ]]; then
   prepare_libsignal_ffi
 fi
@@ -64,6 +109,21 @@ run_swift_tests() {
   local package_path="$1"
   local filter="${2:-}"
   local args=(--package-path "$package_path")
+  local scratch_path=""
+
+  case "$package_path" in
+    "$repo_root/OpenBurnBarCore")
+      scratch_path="${OPENBURNBAR_CORE_SWIFT_SCRATCH_PATH:-}"
+      ;;
+    "$repo_root/OpenBurnBarDaemon")
+      scratch_path="${OPENBURNBAR_DAEMON_SWIFT_SCRATCH_PATH:-}"
+      ;;
+  esac
+
+  if [[ -n "$scratch_path" ]]; then
+    mkdir -p "$scratch_path"
+    args+=(--scratch-path "$scratch_path")
+  fi
 
   if ((${#coverage_flags[@]})); then
     args+=("${coverage_flags[@]}")
@@ -73,26 +133,81 @@ run_swift_tests() {
   fi
 
   if [[ "$package_path" == "$repo_root/OpenBurnBarDaemon" ]]; then
+    local resolved_scratch_path="${scratch_path:-${package_path}/.build}"
+    local had_build_metadata=0
+    local package_args=(
+      --package-path "$package_path"
+      --scratch-path "$resolved_scratch_path"
+    )
     local build_args=(--package-path "$package_path" --build-tests)
+    local show_bin_args=(--package-path "$package_path" --show-bin-path)
+    local sqlcipher_framework_relpath="artifacts/sqlcipher.swift/SQLCipher/SQLCipher.xcframework/macos-arm64_x86_64/SQLCipher.framework"
+
+    mkdir -p "$resolved_scratch_path"
+    if swiftpm_has_build_metadata "$resolved_scratch_path"; then
+      had_build_metadata=1
+    fi
+
+    build_args+=(--scratch-path "$resolved_scratch_path")
+    show_bin_args+=(--scratch-path "$resolved_scratch_path")
     if ((${#coverage_flags[@]})); then
       build_args+=("${coverage_flags[@]}")
     fi
 
-    swift build "${build_args[@]}"
-
-    local bin_path
-    bin_path="$(swift build --package-path "$package_path" --show-bin-path)"
-
-    local sqlcipher_framework_src="${package_path}/.build/artifacts/sqlcipher.swift/SQLCipher/SQLCipher.xcframework/macos-arm64_x86_64/SQLCipher.framework"
-    local sqlcipher_framework_dst="${bin_path}/PackageFrameworks/SQLCipher.framework"
-    if [[ ! -d "$sqlcipher_framework_src" ]]; then
-      echo "Missing SQLCipher.framework at ${sqlcipher_framework_src}; SwiftPM did not resolve the SQLCipher binary artifact." >&2
-      exit 1
+    if [[ ! -f "$resolved_scratch_path/workspace-state.json" ]] \
+      || [[ ! -d "$resolved_scratch_path/$sqlcipher_framework_relpath" ]]
+    then
+      swift package "${package_args[@]}" \
+        --only-use-versions-from-resolved-file \
+        resolve
     fi
 
-    mkdir -p "$(dirname "$sqlcipher_framework_dst")"
-    rm -rf "$sqlcipher_framework_dst"
-    cp -R "$sqlcipher_framework_src" "$sqlcipher_framework_dst"
+    local bin_path
+    bin_path="$(swift build "${show_bin_args[@]}")"
+
+    local stage_args=(
+      --package-path "$package_path"
+      --scratch-path "$resolved_scratch_path"
+      --bin-path "$bin_path"
+    )
+    local staging_plan
+    staging_plan="$(
+      python3 "$repo_root/scripts/lib/stage_sqlcipher_framework.py" \
+        "${stage_args[@]}" \
+        --plan-only
+    )"
+    case "$staging_plan" in
+      retained | install-required) ;;
+      *)
+        echo "Unexpected SQLCipher staging plan: ${staging_plan}" >&2
+        exit 1
+        ;;
+    esac
+
+    if [[ "$staging_plan" == "install-required" ]] \
+      && [[ "$had_build_metadata" == "1" ]]
+    then
+      echo "SQLCipher changed in an existing SwiftPM scratch tree; cleaning that exact build graph before staging."
+      swift package "${package_args[@]}" clean
+      bin_path="$(swift build "${show_bin_args[@]}")"
+      stage_args=(
+        --package-path "$package_path"
+        --scratch-path "$resolved_scratch_path"
+        --bin-path "$bin_path"
+      )
+    fi
+
+    if [[ -n "${OPENBURNBAR_SQLCIPHER_STAGE_REPORT:-}" ]]; then
+      stage_args+=(--report-path "$OPENBURNBAR_SQLCIPHER_STAGE_REPORT")
+    fi
+    python3 "$repo_root/scripts/lib/stage_sqlcipher_framework.py" "${stage_args[@]}"
+
+    swift build "${build_args[@]}"
+
+    # SwiftPM owns the product directory. Re-verify after compilation so a
+    # toolchain that removes PackageFrameworks cannot produce an un-runnable
+    # XCTest bundle; an unchanged destination is retained byte-for-byte.
+    python3 "$repo_root/scripts/lib/stage_sqlcipher_framework.py" "${stage_args[@]}"
 
     swift test "${args[@]}" --skip-build
     return

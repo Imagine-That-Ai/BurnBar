@@ -184,12 +184,12 @@ public extension ProviderQuotaSnapshot {
         return 1
     }
 
-    public var managementLink: URL? {
+    var managementLink: URL? {
         guard let managementURL else { return nil }
         return URL(string: managementURL)
     }
 
-    public var primaryBucket: ProviderQuotaBucket? {
+    var primaryBucket: ProviderQuotaBucket? {
         buckets.map { $0.reconcilingElapsedWindow() }.min {
             let lhsPriority = primaryBucketPriority(for: $0)
             let rhsPriority = primaryBucketPriority(for: $1)
@@ -205,7 +205,7 @@ public extension ProviderQuotaSnapshot {
         }
     }
 
-    public var summaryText: String {
+    var summaryText: String {
         guard let primaryBucket = primaryDisplayableBucket else {
             return statusMessage ?? ""
         }

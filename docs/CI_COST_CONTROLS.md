@@ -18,6 +18,24 @@ Plain Windows test sources are owned by the Windows gates and do not rebuild
 Apple products; .NET project/solution manifests still force full validation,
 and Windows consumers of domain-core still select the Rust lane.
 
+Safari ownership is deliberate:
+
+- `OpenBurnBarSafariExtension/**` selects macOS.
+- `extensions/safari/**` and
+  `scripts/test-openburnbar-safari-extension.sh` select macOS plus web because
+  the TypeScript output is embedded in a native appex.
+- The `safari-extension-fast` job runs the package's one canonical `test:ci`
+  wrapper only when the dedicated Safari output is selected; unrelated macOS
+  and web changes do not pay for the Safari quality suite.
+- The macOS app gate performs a locked Safari payload build because a clean
+  Xcode build must have the embedded appex resources, but it does not duplicate
+  the full Safari test suite for unrelated macOS changes.
+- Safari production TypeScript participates in the shared changed-line coverage
+  gate at the same 80% floor. Its coverage directory is deleted before testing,
+  so stale/pre-seeded Istanbul JSON cannot satisfy the gate.
+- Safari lockfile and release-workflow changes retain the existing fail-closed
+  full-CI behavior for dependency and release infrastructure.
+
 Workflows use job-level conditions. Do not add workflow-level `paths` filters to
 an always-required workflow: GitHub leaves its required context pending when the
 workflow does not start. An unselected product job reports `skipped`; its local

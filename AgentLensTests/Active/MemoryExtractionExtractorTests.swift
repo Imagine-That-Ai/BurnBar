@@ -573,22 +573,24 @@ private struct ZeroSpendReader: SummaryDailySpendReading {
 /// `/chat/completions` endpoint with a canned assistant message wrapping
 /// `responseJSON`. Keeps the extractor end-to-end test hermetic (no real network).
 private final class MemoryExtractionExtractorHTTPStub: URLProtocol {
-    private static let lock = NSLock()
-    private static var _requestCount = 0
-    private static var _responseJSON = "{\"memories\":[]}"
+    private struct State: Sendable {
+        var requestCount = 0
+        var responseJSON = "{\"memories\":[]}"
+    }
+
+    private static let state = Locked(State())
 
     static var requestCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return _requestCount
+        state.read().requestCount
     }
 
     static var responseJSON: String {
-        get { lock.lock(); defer { lock.unlock() }; return _responseJSON }
-        set { lock.lock(); _responseJSON = newValue; lock.unlock() }
+        get { state.read().responseJSON }
+        set { state.withLock { $0.responseJSON = newValue } }
     }
 
     static func reset() {
-        lock.lock(); _requestCount = 0; _responseJSON = "{\"memories\":[]}"; lock.unlock()
+        state.write(State())
     }
 
     override static func canInit(with request: URLRequest) -> Bool {
@@ -598,7 +600,10 @@ private final class MemoryExtractionExtractorHTTPStub: URLProtocol {
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.lock.lock(); Self._requestCount += 1; let json = Self._responseJSON; Self.lock.unlock()
+        let json = Self.state.withLock { state in
+            state.requestCount += 1
+            return state.responseJSON
+        }
 
         let escaped = json
             .replacingOccurrences(of: "\\", with: "\\\\")

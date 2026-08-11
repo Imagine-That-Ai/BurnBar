@@ -157,9 +157,10 @@ final class SearchQueryCacheTests: XCTestCase {
         let group = DispatchGroup()
         for i in 0..<100 {
             group.enter()
+            let result = makeResult("v\(i)")
             DispatchQueue.global().async {
                 let key = keys[i % keys.count]
-                cache.set(key: key, result: self.makeResult("v\(i)"), now: t0)
+                cache.set(key: key, result: result, now: t0)
                 _ = cache.get(key: key, now: t0)
                 group.leave()
             }

@@ -1,9 +1,32 @@
 import Foundation
 #if os(macOS)
+import LocalAuthentication
 import Security
 #endif
 
 #if os(macOS)
+
+/// One process-wide context for noninteractive background keychain reads.
+///
+/// The context is configured once and is never used for policy evaluation; it
+/// only carries `interactionNotAllowed = true`. Reusing it avoids repeating
+/// `LAContext` allocation and the associated securityd setup across provider,
+/// connector, switcher, and database-key lookups. The global interaction gate
+/// below remains the belt-and-suspenders protection for legacy ACL items.
+private enum NonInteractiveKeychainAuthenticationContext {
+    // AUDIT(nonisolated(unsafe)): set once before publication, then read-only.
+    // sendable-allowlist: foundation-sdk-shim
+    nonisolated(unsafe) static let shared: LAContext = {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return context
+    }()
+}
+
+@inline(__always)
+func nonInteractiveKeychainAuthenticationContext() -> LAContext {
+    NonInteractiveKeychainAuthenticationContext.shared
+}
 
 /// Direct linkage for `SecKeychain{Get,Set}UserInteractionAllowed` so we do not import the
 /// deprecated Swift declarations. Apple still documents these for suppressing prompts during

@@ -146,7 +146,7 @@ private actor FakePiRuntime {
         PiAgentRuntimeAdapterDependencies(
             resolvePiExecutable: { [weak self] in
                 guard let self else { return nil }
-                return await self.executable
+                return self.executable
             },
             runCommand: { [weak self] _, arguments in
                 guard let self else { return "" }

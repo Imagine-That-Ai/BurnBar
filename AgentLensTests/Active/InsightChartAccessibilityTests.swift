@@ -154,7 +154,7 @@ final class InsightChartAccessibilityTests: XCTestCase {
         XCTAssertNotNil(xAxis, "Time axis is numeric (intervals) with date descriptions")
         XCTAssertEqual(xAxis?.title, "Date")
 
-        let yAxis = descriptor.yAxis as? AXNumericDataAxisDescriptor
+        let yAxis = descriptor.yAxis
         XCTAssertEqual(yAxis?.title, "Spend")
         XCTAssertEqual(yAxis?.range.lowerBound, 0)
         XCTAssertEqual(yAxis?.range.upperBound ?? 0, 42.5, accuracy: 0.0001)
@@ -192,7 +192,7 @@ final class InsightChartAccessibilityTests: XCTestCase {
         XCTAssertEqual(descriptor.series.map(\.name), ["Actual", "Forecast"])
         XCTAssertTrue(descriptor.series.allSatisfy(\.isContinuous))
         // Y range must cover the confidence band, not just the lines.
-        let yAxis = descriptor.yAxis as? AXNumericDataAxisDescriptor
+        let yAxis = descriptor.yAxis
         XCTAssertEqual(yAxis?.range.upperBound ?? 0, 15, accuracy: 0.0001)
     }
 

@@ -483,7 +483,7 @@ private enum RemoteUnlockVirtualHIDInputRawClient {
 
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
-        try RemoteUnlockSetupProbe.virtualHIDBridgeSocketPath.withCString { path in
+        RemoteUnlockSetupProbe.virtualHIDBridgeSocketPath.withCString { path in
             let capacity = MemoryLayout.size(ofValue: address.sun_path)
             guard strlen(path) < capacity else { return }
             _ = withUnsafeMutablePointer(to: &address.sun_path) { pointer in

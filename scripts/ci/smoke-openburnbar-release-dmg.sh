@@ -14,6 +14,7 @@ if [[ ! -f "$dmg_path" ]]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/../.." && pwd)"
 bash "$script_dir/verify-apple-appcheck-release-env.sh"
 bash "$script_dir/verify-apple-appcheck-release-artifact.sh" "$dmg_path"
 
@@ -118,6 +119,18 @@ mounted=1
 echo "Mounted release DMG at $mountpoint"
 
 app_path="$mountpoint/OpenBurnBar.app"
+expected_team_id="${OPENBURNBAR_EXPECTED_APPLE_TEAM_ID:-}"
+if [[ -z "$expected_team_id" ]]; then
+  expected_team_id="$(
+    sed -n 's/^[[:space:]]*DEVELOPMENT_TEAM:[[:space:]]*//p' "$repo_root/project.yml" \
+      | sed -n '1p' \
+      | tr -d '"[:space:]'
+  )"
+fi
+if [[ ! "$expected_team_id" =~ ^[A-Z0-9]{10}$ ]]; then
+  echo "::error::Expected Apple team ID is missing or invalid for Safari appex verification."
+  exit 1
+fi
 daemon_bin="$app_path/Contents/Helpers/OpenBurnBarDaemon"
 cli_bin="$app_path/Contents/Helpers/OpenBurnBarCLI"
 daemon_resource_bundle="$app_path/Contents/Resources/OpenBurnBarCore_OpenBurnBarCore.bundle"
@@ -163,6 +176,11 @@ if [[ ! -d "$helper_kernel_resource_bundle" ]]; then
   echo "::error::Helper-side daemon Kernel resource bundle not found at $helper_kernel_resource_bundle"
   exit 1
 fi
+
+bash "$script_dir/verify-openburnbar-safari-extension.sh" \
+  "$app_path" \
+  direct \
+  "$expected_team_id"
 
 mkdir -p "$installed_daemon_dir" "$installed_frameworks_dir" "$(dirname "$installed_project_code_memory_corpus")"
 cp "$daemon_bin" "$installed_daemon_bin"

@@ -343,6 +343,12 @@ extension AppDelegate {
     private func showSecondaryMenu(_ sender: NSStatusBarButton) {
         let menu = NSMenu()
         let dashboard = menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboardAction(_:)), keyEquivalent: "d"); dashboard.target = self
+        let learning = menu.addItem(
+            withTitle: "What BurnBar Learned…",
+            action: #selector(openSafariLearningAction(_:)),
+            keyEquivalent: ""
+        )
+        learning.target = self
         let settings = menu.addItem(withTitle: "Settings...", action: #selector(openSettingsAction(_:)), keyEquivalent: ","); settings.target = self
 #if !DISTRIBUTION_MAS
         // cov:ignore on the next line -- status-menu wiring; behavior is
@@ -362,6 +368,10 @@ extension AppDelegate {
 
     @objc private func openSettingsAction(_ sender: Any?) {
         AppCommandRouter.shared.openSettings?()
+    }
+
+    @objc private func openSafariLearningAction(_ sender: Any?) {
+        AppCommandRouter.shared.openSafariLearning?()
     }
 
 #if !DISTRIBUTION_MAS

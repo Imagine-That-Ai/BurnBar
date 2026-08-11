@@ -431,12 +431,12 @@ final class AccountManager {
 
     private func presentOAuthWebSession(url: URL, window: NSWindow) async throws -> URL {
         let callbackScheme = Self.reversedClientID() ?? Bundle.main.bundleIdentifier ?? "com.openburnbar.app"
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
+        return try await withCheckedThrowingContinuation { [self] (continuation: CheckedContinuation<URL, Error>) in
             let presentationContext = WebAuthPresentationContext(window: window)
             let session = ASWebAuthenticationSession(
                 url: url,
                 callbackURLScheme: callbackScheme,
-                completionHandler: { callbackURL, error in
+                completionHandler: { [weak self] callbackURL, error in
                     Task { @MainActor [weak self] in
                         self?.activeWebAuthSession = nil
                         self?.activeWebAuthPresentationContext = nil

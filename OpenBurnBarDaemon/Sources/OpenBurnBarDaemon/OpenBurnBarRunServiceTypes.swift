@@ -13,6 +13,7 @@ public enum BurnBarRunServiceError: Error, LocalizedError {
     case retryRequiresFailedRun(BurnBarRunID)
     case approvalNotFound(BurnBarApprovalID)
     case approvalAlreadyResolved(BurnBarApprovalID)
+    case externalRunAlreadyExists(BurnBarRunID)
     case routeFailed(String)
     case invalidToolResult(BurnBarRunID, String)
     case missingWorkflowInput(BurnBarRunID, String)
@@ -27,6 +28,8 @@ public enum BurnBarRunServiceError: Error, LocalizedError {
             return "Approval '\(approvalID.rawValue)' was not found."
         case .approvalAlreadyResolved(let approvalID):
             return "Approval '\(approvalID.rawValue)' has already been resolved."
+        case .externalRunAlreadyExists(let runID):
+            return "External run '\(runID.rawValue)' already exists."
         case .routeFailed(let message):
             return "OpenBurnBar could not route the requested run: \(message)"
         case .invalidToolResult(let runID, let message):

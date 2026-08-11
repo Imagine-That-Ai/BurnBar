@@ -132,7 +132,7 @@ public final class MacInputController: Sendable {
 
         let started = Date()
         NSRunningApplication(processIdentifier: descriptor.processIdentifier)?
-            .activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            .activate(options: [.activateAllWindows])
 
         let appElement = AXUIElementCreateApplication(descriptor.processIdentifier)
         guard let window = Self.matchingAccessibilityWindow(
@@ -353,7 +353,7 @@ public final class MacInputController: Sendable {
               CFGetTypeID(value) == AXValueGetTypeID() else {
             return nil
         }
-        let axValue = unsafeBitCast(value, to: AXValue.self)
+        let axValue = unsafeDowncast(value, to: AXValue.self)
         var point = CGPoint.zero
         guard AXValueGetValue(axValue, .cgPoint, &point) else { return nil }
         return point
@@ -366,7 +366,7 @@ public final class MacInputController: Sendable {
               CFGetTypeID(value) == AXValueGetTypeID() else {
             return nil
         }
-        let axValue = unsafeBitCast(value, to: AXValue.self)
+        let axValue = unsafeDowncast(value, to: AXValue.self)
         var size = CGSize.zero
         guard AXValueGetValue(axValue, .cgSize, &size) else { return nil }
         return size

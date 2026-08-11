@@ -28,19 +28,23 @@ import XCTest
 final class ProviderQuotaServiceMattersTests: XCTestCase {
     private var tempRoot: URL!
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        tempRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("ProviderQuotaServiceMatters-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+    override func setUp() async throws {
+        try await super.setUp()
+        try await MainActor.run {
+            tempRoot = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ProviderQuotaServiceMatters-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        }
     }
 
-    override func tearDownWithError() throws {
-        if let tempRoot {
-            try? FileManager.default.removeItem(at: tempRoot)
+    override func tearDown() async throws {
+        await MainActor.run {
+            if let tempRoot {
+                try? FileManager.default.removeItem(at: tempRoot)
+            }
+            tempRoot = nil
         }
-        tempRoot = nil
-        try super.tearDownWithError()
+        try await super.tearDown()
     }
 
     // MARK: - L277: prepareSupportDirectory is best-effort but observable
@@ -181,21 +185,17 @@ final class ProviderQuotaServiceMattersTests: XCTestCase {
 /// Hermetic `KeychainStoreBackend`: never touches the real keychain. Absence is
 /// the empty store; all operations succeed against an in-process dictionary.
 private final class InMemoryKeychainBackend: KeychainStoreBackend {
-    private let lock = NSLock()
-    private var storage: [String: [String: Data]] = [:]
+    private let storage = Locked<[String: [String: Data]]>([:])
 
     func set(_ value: Data, service: String, account: String) throws {
-        lock.lock(); defer { lock.unlock() }
-        storage[service, default: [:]][account] = value
+        storage.withLock { $0[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        lock.lock(); defer { lock.unlock() }
-        return storage[service]?[account]
+        storage.withLock { $0[service]?[account] }
     }
 
     func delete(service: String, account: String) throws {
-        lock.lock(); defer { lock.unlock() }
-        storage[service]?[account] = nil
+        storage.withLock { $0[service]?[account] = nil }
     }
 }

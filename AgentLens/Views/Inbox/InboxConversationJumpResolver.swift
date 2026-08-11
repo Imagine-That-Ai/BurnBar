@@ -36,7 +36,7 @@ struct InboxConversationJumpResolver {
         // `try?` flattens the optional here, so one binding covers both a thrown
         // error and a missing row.
         guard let record = try? await fetchConversation(conversationID) else { return nil }
-        let text = record.fullText ?? ""
+        let text = record.fullText
         let range = Self.bestRange(in: text, highlighting: phrase)
 
         return ConversationJumpTarget(

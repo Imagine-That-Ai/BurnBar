@@ -569,6 +569,7 @@ check("Rust path detector is mandatory and only a proven unchanged path may skip
     RUST_CHANGED:
       "${{ needs.fast-feedback-path-filter.outputs.rust_changed }}",
     FUNCTIONS_REQUIRED: "${{ needs.classify.outputs.functions }}",
+    SAFARI_REQUIRED: "${{ needs.classify.outputs.safari }}",
     WEB_REQUIRED: "${{ needs.classify.outputs.web }}",
     CONSOLE_REQUIRED: "${{ needs.classify.outputs.console }}",
   });
@@ -578,9 +579,12 @@ function fastEnvironment({
   detectorResult = "success",
   rustChanged = "true",
   rustResult = "success",
+  safariRequired = "true",
+  safariResult = "success",
   ordinaryResult = "success",
   omitDetectorResult = false,
   omitRustResult = false,
+  omitSafariResult = false,
   omitOrdinaryResult = false,
 } = {}) {
   const needs = Object.fromEntries(
@@ -590,6 +594,9 @@ function fastEnvironment({
     ? {}
     : { result: detectorResult };
   needs["rust-deny-fast"] = omitRustResult ? {} : { result: rustResult };
+  needs["safari-extension-fast"] = omitSafariResult
+    ? {}
+    : { result: safariResult };
   needs["functions-fast"] = omitOrdinaryResult
     ? {}
     : { result: ordinaryResult };
@@ -597,6 +604,7 @@ function fastEnvironment({
     NEEDS_JSON: JSON.stringify(needs),
     RUST_CHANGED: rustChanged,
     FUNCTIONS_REQUIRED: "true",
+    SAFARI_REQUIRED: safariRequired,
     WEB_REQUIRED: "true",
     CONSOLE_REQUIRED: "true",
   };
@@ -636,6 +644,30 @@ expectShell(
   fastEnvironment({ rustChanged: "", rustResult: "skipped" }),
   1,
 );
+
+expectShell(
+  "Fast aggregate permits Safari skip when the dedicated classifier output is false",
+  fastScript,
+  fastEnvironment({
+    safariRequired: "false",
+    safariResult: "skipped",
+  }),
+  0,
+);
+
+for (const [resultName, options] of [
+  ["skipped", { safariResult: "skipped" }],
+  ["failed", { safariResult: "failure" }],
+  ["cancelled", { safariResult: "cancelled" }],
+  ["missing", { omitSafariResult: true }],
+]) {
+  expectShell(
+    `Fast aggregate rejects ${resultName} Safari result when Safari is selected`,
+    fastScript,
+    fastEnvironment(options),
+    1,
+  );
+}
 
 for (const [resultName, options] of [
   ["failed", { detectorResult: "failure" }],

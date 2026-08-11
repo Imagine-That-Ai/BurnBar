@@ -114,7 +114,10 @@ public struct DaemonSelfCodeSignatureVerifier: Sendable {
         guard size > 0 else { return nil }
         var buffer = [CChar](repeating: 0, count: Int(size))
         guard _NSGetExecutablePath(&buffer, &size) == 0 else { return nil }
-        let path = String(cString: buffer)
+        let path = String(
+            decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+            as: UTF8.self
+        )
         return path.isEmpty ? nil : path
         #else
         return CommandLine.arguments.first

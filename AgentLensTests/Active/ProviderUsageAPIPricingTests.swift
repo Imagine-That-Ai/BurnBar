@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import OpenBurnBarCore
 @testable import OpenBurnBar
 
 final class ProviderUsageAPIPricingTests: XCTestCase {
@@ -127,37 +128,30 @@ final class ProviderUsageAPIPricingTests: XCTestCase {
     }
 }
 
-private final class ProviderUsagePricingStubURLProtocol: URLProtocol, @unchecked Sendable {
+private final class ProviderUsagePricingStubURLProtocol: URLProtocol {
     struct RequestSnapshot: Sendable {
         let path: String
         let authorization: String?
         let apiKey: String?
     }
 
-    private struct State {
+    private struct State: Sendable {
         var responseData = Data()
         var lastRequest: RequestSnapshot?
     }
 
-    private static let lock = NSLock()
-    private nonisolated(unsafe) static var state = State()
+    private static let state = Locked(State())
 
     static var lastRequest: RequestSnapshot? {
-        lock.lock()
-        defer { lock.unlock() }
-        return state.lastRequest
+        state.read().lastRequest
     }
 
     static func configure(json: String) {
-        lock.lock()
-        state = State(responseData: Data(json.utf8), lastRequest: nil)
-        lock.unlock()
+        state.write(State(responseData: Data(json.utf8), lastRequest: nil))
     }
 
     static func reset() {
-        lock.lock()
-        state = State()
-        lock.unlock()
+        state.write(State())
     }
 
     override static func canInit(with _: URLRequest) -> Bool { true }
@@ -170,14 +164,14 @@ private final class ProviderUsagePricingStubURLProtocol: URLProtocol, @unchecked
             return
         }
 
-        Self.lock.lock()
-        Self.state.lastRequest = RequestSnapshot(
-            path: url.path,
-            authorization: request.value(forHTTPHeaderField: "Authorization"),
-            apiKey: request.value(forHTTPHeaderField: "x-api-key")
-        )
-        let data = Self.state.responseData
-        Self.lock.unlock()
+        let data = Self.state.withLock { state in
+            state.lastRequest = RequestSnapshot(
+                path: url.path,
+                authorization: request.value(forHTTPHeaderField: "Authorization"),
+                apiKey: request.value(forHTTPHeaderField: "x-api-key")
+            )
+            return state.responseData
+        }
 
         let response = HTTPURLResponse(
             url: url,

@@ -24,18 +24,22 @@ final class AccountManagerMattersTests: XCTestCase {
 
     private var observedFailures: [Error] = []
 
-    override func setUp() {
-        super.setUp()
-        observedFailures = []
-        AccountManager.authKeychainFailureObserverForTesting = { [weak self] error in
-            self?.observedFailures.append(error)
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run {
+            observedFailures = []
+            AccountManager.authKeychainFailureObserverForTesting = { [weak self] error in
+                self?.observedFailures.append(error)
+            }
         }
     }
 
-    override func tearDown() {
-        AccountManager.authKeychainFailureObserverForTesting = nil
-        observedFailures = []
-        super.tearDown()
+    override func tearDown() async throws {
+        await MainActor.run {
+            AccountManager.authKeychainFailureObserverForTesting = nil
+            observedFailures = []
+        }
+        try await super.tearDown()
     }
 
     // MARK: - Helpers

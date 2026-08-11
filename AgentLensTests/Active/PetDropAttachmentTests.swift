@@ -189,7 +189,6 @@ final class PetDropAttachmentTests: XCTestCase {
             visibleContentGate: { _, _ in true }
         )
 
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 50, height: 50))
         let info = SyntheticDragInfo(pasteboard: pasteboard(with: [url]), location: .zero)
 
         XCTAssertTrue(delegate.performDrag(info: info))

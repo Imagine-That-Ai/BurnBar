@@ -121,25 +121,48 @@ final class SummaryAPIKeyResolverCredentialReadTests: XCTestCase {
 /// In-memory `KeychainStoreBackend` whose `data(for:)` throws a configured fault,
 /// letting tests model a locked/unavailable Keychain through the production seam.
 private final class FaultInjectingKeychainBackend: KeychainStoreBackend {
-    var storage: [String: [String: Data]] = [:]
-    var readErrors: [String: Error] = [:]
-    var deleteErrors: [String: Error] = [:]
+    private struct State: Sendable {
+        var storage: [String: [String: Data]] = [:]
+        var readErrors: [String: KeychainStoreError] = [:]
+        var deleteErrors: [String: KeychainStoreError] = [:]
+    }
+
+    private let state = Locked(State())
+
+    var readErrors: [String: KeychainStoreError] {
+        get { state.read().readErrors }
+        set { state.withLock { $0.readErrors = newValue } }
+    }
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        state.withLock { $0.storage[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        if let error = readErrors[service] {
+        let result = state.withLock { state -> Result<Data?, KeychainStoreError> in
+            if let error = state.readErrors[service] {
+                return .failure(error)
+            }
+            return .success(state.storage[service]?[account])
+        }
+        switch result {
+        case .success(let data):
+            return data
+        case .failure(let error):
             throw error
         }
-        return storage[service]?[account]
     }
 
     func delete(service: String, account: String) throws {
-        if let error = deleteErrors[service] {
+        let error = state.withLock { state -> KeychainStoreError? in
+            if let error = state.deleteErrors[service] {
+                return error
+            }
+            state.storage[service]?[account] = nil
+            return nil
+        }
+        if let error {
             throw error
         }
-        storage[service]?[account] = nil
     }
 }

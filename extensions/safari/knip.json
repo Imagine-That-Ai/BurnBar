@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": [
+    "src/background/index.ts",
+    "src/content/index.ts",
+    "src/content/pageWorldRunner.js",
+    "src/popup/index.ts",
+    "test/**/*.test.ts"
+  ],
+  "project": ["scripts/**/*.mjs", "src/**/*.{ts,js}", "test/**/*.ts"]
+}

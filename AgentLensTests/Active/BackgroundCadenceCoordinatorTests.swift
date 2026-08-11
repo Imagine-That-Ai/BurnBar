@@ -7,11 +7,13 @@ final class BackgroundCadenceCoordinatorTests: XCTestCase {
     /// `BackgroundCadenceCoordinator` is a singleton, so make sure each
     /// test starts and ends with a clean slate: unregister all cadences
     /// the test added.
-    override func tearDown() {
-        super.tearDown()
-        for state in BackgroundCadenceCoordinator.shared.allStates() {
-            BackgroundCadenceCoordinator.shared.unregister(id: state.id)
+    override func tearDown() async throws {
+        await MainActor.run {
+            for state in BackgroundCadenceCoordinator.shared.allStates() {
+                BackgroundCadenceCoordinator.shared.unregister(id: state.id)
+            }
         }
+        try await super.tearDown()
     }
 
     // MARK: - Interval selection

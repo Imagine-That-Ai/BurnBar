@@ -28,6 +28,11 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
+	<!-- Shared transport for the containing app and Safari Web Extension. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.openburnbar.app</string>
+	</array>
 	<!-- Firebase Auth (and other Firebase SDKs) use kSecUseDataProtectionKeychain on macOS; Keychain Sharing is required so the app can use that access group. https://firebase.google.com/docs/ios/troubleshooting-faq -->
 	<key>keychain-access-groups</key>
 	<array>

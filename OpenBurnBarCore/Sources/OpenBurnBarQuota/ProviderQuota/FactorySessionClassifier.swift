@@ -71,6 +71,8 @@ public enum FactorySessionClassifier {
         "minimax-",          // minimax-m2.7
         "qwen",              // qwen3.6-plus, qwen-coder
         "z.ai-glm",          // Z.ai-GLM-5.1 (display-name fallback)
+        "nemotron-",         // nemotron-3-ultra, nemotron-3-super
+        "inkling",           // Factory's compact Droid Core model
         "llama-",            // llama-3.x open-weight families
         "mistral-",          // mistral, mistral-large open-weight tiers
         "gemma-"             // gemma open-weight family
@@ -111,9 +113,16 @@ public enum FactorySessionClassifier {
             // rate limits.
             return .customProxy
         }
-        let model = normalizeModel(session["model"] as? String ?? "")
-        if model.isEmpty { return .factoryUnknown }
+        return lane(forModelID: session["model"] as? String ?? "")
+    }
 
+    /// Classifies a Factory model identifier without requiring a session JSON
+    /// blob. Routing, advertisement, and accounting must share this rule so a
+    /// newly versioned Droid Core model does not silently become Standard only
+    /// because an exact-ID table went stale.
+    public static func lane(forModelID raw: String) -> FactorySessionLane {
+        let model = normalizeModel(raw)
+        if model.isEmpty { return .factoryUnknown }
         if premiumModelPrefixes.contains(where: { model.hasPrefix($0) }) {
             return .standard
         }
@@ -121,6 +130,10 @@ public enum FactorySessionClassifier {
             return .droidCore
         }
         return .factoryUnknown
+    }
+
+    public static func isDroidCoreModelID(_ raw: String) -> Bool {
+        lane(forModelID: raw) == .droidCore
     }
 
     /// Strips the `custom:` prefix the CLI adds when a session routes a

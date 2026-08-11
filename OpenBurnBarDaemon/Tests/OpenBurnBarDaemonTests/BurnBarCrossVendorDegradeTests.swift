@@ -95,7 +95,7 @@ final class BurnBarCrossVendorDegradeTests: XCTestCase {
             allowedVendorIDs: ["deepseek"],
             preferredModelByVendorID: ["deepseek": "deepseek-chat"]
         )
-        let excludedKey = await harness.router.routeKey(providerID: "deepseek", slotID: "default")
+        let excludedKey = harness.router.routeKey(providerID: "deepseek", slotID: "default")
         let routes = try await harness.router.crossVendorDegradeRoutes(
             policy: policy,
             excludedRouteKeys: [excludedKey]

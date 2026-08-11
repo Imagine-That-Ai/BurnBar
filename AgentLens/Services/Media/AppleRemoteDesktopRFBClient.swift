@@ -429,7 +429,10 @@ enum AppleRemoteDesktopRFBServerTrustPolicy {
             return proc_pidpath(pid, baseAddress, UInt32(pointer.count))
         }
         guard byteCount > 0 else { return nil }
-        return String(cString: buffer)
+        return String(
+            decoding: buffer.prefix(Int(byteCount)).map { UInt8(bitPattern: $0) },
+            as: UTF8.self
+        )
         #else
         return nil
         #endif

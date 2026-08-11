@@ -32,6 +32,35 @@ test("isolated tests select only their owning product", () => {
   for (const lane of LANES) assert.equal(windows[lane], false);
 });
 
+test("Safari extension paths select only the required Safari, macOS, and web lanes", () => {
+  const native = classifyPaths([
+    "OpenBurnBarSafariExtension/SafariWebExtensionHandler.swift",
+  ]);
+  assert.equal(native.full, false);
+  assert.equal(native.macos, true);
+  assert.equal(native.web, false);
+  assert.equal(native.safari, true);
+  for (const lane of LANES.filter(
+    (lane) => lane !== "macos" && lane !== "safari",
+  ))
+    assert.equal(native[lane], false, `native:${lane}`);
+
+  for (const path of [
+    "extensions/safari/src/content/extract.ts",
+    "scripts/test-openburnbar-safari-extension.sh",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    assert.equal(result.macos, true, path);
+    assert.equal(result.web, true, path);
+    assert.equal(result.safari, true, path);
+    for (const lane of LANES.filter(
+      (lane) => lane !== "macos" && lane !== "web" && lane !== "safari",
+    ))
+      assert.equal(result[lane], false, `${path}:${lane}`);
+  }
+});
+
 test("shared Swift sources select every Swift consumer", () => {
   const result = classifyPaths(["OpenBurnBarCore/Sources/Quota.swift"]);
   assert.equal(result.macos, true);

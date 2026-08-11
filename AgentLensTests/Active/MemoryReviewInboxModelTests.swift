@@ -12,7 +12,7 @@ final class MemoryReviewInboxModelTests: XCTestCase {
     // MARK: - Fake backing store
 
     /// One row in the fake: the authority record, its sealed body, and current status.
-    private struct Row {
+    private struct Row: Sendable {
         var memory: Memory
         var body: String?
         var status: MemoryReviewStatus
@@ -20,7 +20,7 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
     /// In-memory stand-in for the memory service. Honors `includeQuarantined` the way
     /// the real backend does: quarantined rows are withheld unless explicitly requested.
-    private final class FakeStore {
+    private actor FakeStore {
         var rows: [MemoryID: Row]
         var shouldThrowOnLoad = false
         var bodyOpenFailures: Set<MemoryID> = []
@@ -63,6 +63,22 @@ final class MemoryReviewInboxModelTests: XCTestCase {
             guard rows[id] != nil else { return false }
             rows[id]?.status = status
             return true
+        }
+
+        func insertBodyOpenFailure(_ id: MemoryID) {
+            bodyOpenFailures.insert(id)
+        }
+
+        func clearBody(for id: MemoryID) {
+            rows[id]?.body = nil
+        }
+
+        func enableLoadFailure() {
+            shouldThrowOnLoad = true
+        }
+
+        func statusCalls() -> [(MemoryID, MemoryReviewStatus)] {
+            setStatusCalls
         }
     }
 
@@ -152,7 +168,7 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
     func testUnavailableBodyBlocksApproval() async {
         let store = makeStore()
-        store.bodyOpenFailures.insert("q1")
+        await store.insertBodyOpenFailure("q1")
         let model = makeModel(store: store)
 
         await model.load()
@@ -163,14 +179,15 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
         await model.approve("q1")
 
-        XCTAssertTrue(store.setStatusCalls.isEmpty)
+        let statusCallsAfterBodyFailure = await store.statusCalls()
+        XCTAssertTrue(statusCallsAfterBodyFailure.isEmpty)
         XCTAssertEqual(model.errorMessage, "Memory contents are unavailable. Reject it or reload before approving.")
         XCTAssertTrue(model.pending.contains { $0.id == "q1" })
     }
 
     func testMissingBodyBlocksApproval() async {
         let store = makeStore()
-        store.rows["q2"]?.body = nil
+        await store.clearBody(for: "q2")
         let model = makeModel(store: store)
 
         await model.load()
@@ -180,7 +197,8 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
         await model.approve("q2")
 
-        XCTAssertTrue(store.setStatusCalls.isEmpty)
+        let statusCallsAfterMissingBody = await store.statusCalls()
+        XCTAssertTrue(statusCallsAfterMissingBody.isEmpty)
         XCTAssertEqual(model.errorMessage, "Memory contents are unavailable. Reject it or reload before approving.")
     }
 
@@ -192,7 +210,8 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
         await model.approve("q1")
 
-        XCTAssertTrue(store.setStatusCalls.contains { $0.0 == "q1" && $0.1 == .approved })
+        let approvalCalls = await store.statusCalls()
+        XCTAssertTrue(approvalCalls.contains { $0.0 == "q1" && $0.1 == .approved })
         XCTAssertFalse(model.pending.contains { $0.id == "q1" })
         XCTAssertTrue(model.approved.contains { $0.id == "q1" })
         XCTAssertNil(model.errorMessage)
@@ -206,14 +225,15 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
         await model.reject("q2")
 
-        XCTAssertTrue(store.setStatusCalls.contains { $0.0 == "q2" && $0.1 == .rejected })
+        let rejectionCalls = await store.statusCalls()
+        XCTAssertTrue(rejectionCalls.contains { $0.0 == "q2" && $0.1 == .rejected })
         XCTAssertFalse(model.pending.contains { $0.id == "q2" })
         XCTAssertFalse(model.approved.contains { $0.id == "q2" })
     }
 
     func testThrowingLoadSetsErrorMessageAndClearsLoading() async {
         let store = makeStore()
-        store.shouldThrowOnLoad = true
+        await store.enableLoadFailure()
         let model = makeModel(store: store)
 
         await model.load()

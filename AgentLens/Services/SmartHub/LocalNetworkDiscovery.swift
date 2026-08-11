@@ -186,7 +186,10 @@ enum LocalNetworkDiscovery {
             NI_NUMERICHOST
         )
         guard result == 0 else { return nil }
-        return String(cString: hostname)
+        return String(
+            decoding: hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+            as: UTF8.self
+        )
     }
 
     private static func ipv4Value(from address: UnsafePointer<sockaddr>) -> UInt32? {
@@ -353,7 +356,10 @@ private final class AwtrixBonjourCoordinator: NSObject, NetServiceBrowserDelegat
                     NI_NUMERICHOST
                 )
                 guard result == 0 else { return nil }
-                return String(cString: hostname)
+                return String(
+                    decoding: hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+                    as: UTF8.self
+                )
             }
         }
     }

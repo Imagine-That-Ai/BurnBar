@@ -13,6 +13,7 @@ final class RoamingProfileSyncServiceTests: XCTestCase {
     private var vaultKeyStore: StaticSessionLogVaultKeyStore!
 
     override func setUp() async throws {
+        try await super.setUp()
         dataStore = try makeDiscoveryInMemoryStore()
         accountManager = FakeAccountManager.makeSignedIn(uid: "roaming-uid-1")
         settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
@@ -26,14 +27,14 @@ final class RoamingProfileSyncServiceTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         dataStore = nil
         accountManager = nil
         settingsManager = nil
         fakeGateway = nil
         context = nil
         vaultKeyStore = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testSyncUploadsSealedRoamingProfileOnly() async throws {

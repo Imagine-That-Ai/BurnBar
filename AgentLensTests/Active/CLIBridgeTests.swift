@@ -2642,7 +2642,7 @@ private func realpathString(_ url: URL) -> String {
     return url.resolvingSymlinksInPath().path
 }
 
-private final class CLIBridgeNetworkTrapURLProtocol: URLProtocol, @unchecked Sendable {
+private final class CLIBridgeNetworkTrapURLProtocol: URLProtocol {
     private static let requestCountBox = OpenBurnBarCore.Locked(0)
 
     static var requestCount: Int {
@@ -2669,7 +2669,7 @@ private final class CLIBridgeNetworkTrapURLProtocol: URLProtocol, @unchecked Sen
     override func stopLoading() {}
 }
 
-private final class ElderWandGatewayURLProtocol: URLProtocol, @unchecked Sendable {
+private final class ElderWandGatewayURLProtocol: URLProtocol {
     private struct Stub: Sendable {
         var statusCode = 200
         var body = Data()

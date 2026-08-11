@@ -910,7 +910,9 @@ final class DatabaseEncryptionServiceTests: XCTestCase {
     }
 }
 
-private final class AttributeFaultFileManager: FileManager {
+/// `FileManager` is itself `@unchecked Sendable`; this subclass adds only an
+/// immutable fault selector and delegates all other behavior to its superclass.
+private final class AttributeFaultFileManager: FileManager, @unchecked Sendable {
     private let faultingPath: String
 
     init(faultingPath: String) {

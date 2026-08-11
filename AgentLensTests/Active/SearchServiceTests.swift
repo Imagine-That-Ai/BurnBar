@@ -11,10 +11,15 @@ final class SearchServiceTests: XCTestCase {
     // MARK: - Helper Mocks
 
     /// Stub semantic candidate provider that returns predefined responses.
-    private final class StubSemanticCandidateProvider: SemanticCandidateProviding {
-        var responses: [String: [SemanticCandidate]] = [:]
-        var shouldThrow = false
-        var throwError = SearchServiceError.semanticProviderUnavailable
+    private nonisolated final class StubSemanticCandidateProvider: SemanticCandidateProviding {
+        let responses: [String: [SemanticCandidate]]
+        private let shouldThrowBox = Locked(false)
+        let throwError = SearchServiceError.semanticProviderUnavailable
+
+        var shouldThrow: Bool {
+            get { shouldThrowBox.read() }
+            set { shouldThrowBox.write(newValue) }
+        }
 
         init(responses: [String: [SemanticCandidate]] = [:]) {
             self.responses = responses
@@ -27,14 +32,24 @@ final class SearchServiceTests: XCTestCase {
     }
 
     /// Stub cross-encoder reranker that can be configured to return reordered results.
-    private final class StubCrossEncoderReranker: RetrievalRerankProviding {
-        var reorderResults: Bool = false
-        var reorderLimit: Int = 10
-        var shouldThrow = false
-        var throwError: Error = SearchServiceError.semanticProviderUnavailable
+    private nonisolated final class StubCrossEncoderReranker: RetrievalRerankProviding {
+        private let reorderResultsBox: Locked<Bool>
+        let reorderLimit: Int
+        private let shouldThrowBox = Locked(false)
+        let throwError: any Error = SearchServiceError.semanticProviderUnavailable
+
+        var reorderResults: Bool {
+            get { reorderResultsBox.read() }
+            set { reorderResultsBox.write(newValue) }
+        }
+
+        var shouldThrow: Bool {
+            get { shouldThrowBox.read() }
+            set { shouldThrowBox.write(newValue) }
+        }
 
         init(reorderResults: Bool = false, reorderLimit: Int = 10) {
-            self.reorderResults = reorderResults
+            self.reorderResultsBox = Locked(reorderResults)
             self.reorderLimit = reorderLimit
         }
 
@@ -390,7 +405,7 @@ final class SearchServiceTests: XCTestCase {
             dataStore: store,
             semanticProvider: nil,
             reranker: noOpReranker,
-            nowProvider: Date.init
+            nowProvider: { Date() }
         )
 
         // Should not crash and should return empty results for empty query
@@ -1422,7 +1437,7 @@ final class SearchServiceTests: XCTestCase {
         let service = SearchService(
             dataStore: store,
             reranker: failingReranker,
-            nowProvider: Date.init
+            nowProvider: { Date() }
         )
 
         // Verify the property is accessible
@@ -1906,7 +1921,11 @@ final class SearchServiceTests: XCTestCase {
         let service = SearchService.makeConversationSearchService(dataStore: store, nowProvider: { base })
         let results = await service.search(query: "search service")
 
-        XCTAssertTrue(results.allSatisfy { $0.conversation != nil })
+        XCTAssertEqual(
+            results.map(\.conversation.id),
+            [conv.id],
+            "The conversation-only service must exclude matching non-conversation artifacts."
+        )
     }
 
     // MARK: - Multiple Filter Combinations Tests

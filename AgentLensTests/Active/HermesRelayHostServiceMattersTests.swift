@@ -19,14 +19,17 @@ import OpenBurnBarIrohRelay
 final class HermesRelayHostServiceMattersTests: XCTestCase {
     private let relayAccount = "settings.chat.hermes.relay.p256.v1"
 
+    @MainActor
     func test_pairingRefreshCadenceStaysInsideSignedRecordFreshnessWindow() {
+        let backgroundInterval = HermesRelayHostService.backgroundRelayRefreshInterval
+        let activeInterval = HermesRelayHostService.activeRelayRefreshInterval
         XCTAssertLessThan(
-            HermesRelayHostService.backgroundRelayRefreshInterval,
+            backgroundInterval,
             IrohPairingFreshness.maximumAgeSeconds
         )
         XCTAssertLessThanOrEqual(
-            HermesRelayHostService.activeRelayRefreshInterval,
-            HermesRelayHostService.backgroundRelayRefreshInterval
+            activeInterval,
+            backgroundInterval
         )
     }
 
@@ -215,22 +218,22 @@ private final class ReadFaultKeychainBackend: KeychainStoreBackend {
 
 /// A minimal in-memory backend with read-back helpers for assertions.
 private final class InMemoryKeychainBackend: KeychainStoreBackend {
-    private var storage: [String: [String: Data]] = [:]
+    private let storage = Locked<[String: [String: Data]]>([:])
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        storage.withLock { $0[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        storage[service]?[account]
+        storage.withLock { $0[service]?[account] }
     }
 
     func delete(service: String, account: String) throws {
-        storage[service]?[account] = nil
+        storage.withLock { $0[service]?[account] = nil }
     }
 
     func storedString(service: String, account: String) -> String? {
-        guard let data = storage[service]?[account] else { return nil }
+        guard let data = storage.withLock({ $0[service]?[account] }) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 }

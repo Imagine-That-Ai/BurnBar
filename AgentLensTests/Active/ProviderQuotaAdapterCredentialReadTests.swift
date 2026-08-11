@@ -63,7 +63,11 @@ final class ProviderQuotaAdapterCredentialReadTests: XCTestCase {
 /// store under test reaches the read.
 private final class FaultingReadKeychainBackend: KeychainStoreBackend {
     private let error: KeychainStoreError
-    private(set) var didAttemptRead = false
+    private let didAttemptReadBox = OpenBurnBarCore.Locked(false)
+
+    var didAttemptRead: Bool {
+        didAttemptReadBox.read()
+    }
 
     init(error: KeychainStoreError) {
         self.error = error
@@ -72,7 +76,7 @@ private final class FaultingReadKeychainBackend: KeychainStoreBackend {
     func set(_: Data, service _: String, account _: String) throws {}
 
     func data(for _: String, account _: String, allowUserInteraction _: Bool) throws -> Data? {
-        didAttemptRead = true
+        didAttemptReadBox.write(true)
         throw error
     }
 
@@ -82,12 +86,16 @@ private final class FaultingReadKeychainBackend: KeychainStoreBackend {
 /// A `KeychainStoreBackend` that has no stored item, modelling a genuinely
 /// absent credential.
 private final class EmptyReadKeychainBackend: KeychainStoreBackend {
-    private(set) var didAttemptRead = false
+    private let didAttemptReadBox = OpenBurnBarCore.Locked(false)
+
+    var didAttemptRead: Bool {
+        didAttemptReadBox.read()
+    }
 
     func set(_: Data, service _: String, account _: String) throws {}
 
     func data(for _: String, account _: String, allowUserInteraction _: Bool) throws -> Data? {
-        didAttemptRead = true
+        didAttemptReadBox.write(true)
         return nil
     }
 

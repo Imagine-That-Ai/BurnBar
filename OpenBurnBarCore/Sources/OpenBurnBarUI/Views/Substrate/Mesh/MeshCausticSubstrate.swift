@@ -160,11 +160,11 @@ public final class MeshCausticSubstrate: SwarmSubstrate {
             // 4 bilinear corners
             var cy = r0
             var wy = 1 - fy
-            for sy in 0..<2 {
+            for _ in 0..<2 {
                 if cy >= 0 && cy < rows {
                     var cxi = c0
                     var wx = 1 - fx
-                    for sx in 0..<2 {
+                    for _ in 0..<2 {
                         if cxi >= 0 && cxi < cols {
                             let ww = w * wx * wy
                             let idx = cy * cols + cxi

@@ -826,7 +826,7 @@ final class CursorConnectorTrySwallowTests: XCTestCase {
 
     private var scratchDirectories: [URL] = []
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         let fm = FileManager.default
         for directory in scratchDirectories {
             // Restore writability before teardown so the directory itself is removable.
@@ -834,6 +834,7 @@ final class CursorConnectorTrySwallowTests: XCTestCase {
             try? fm.removeItem(at: directory)
         }
         scratchDirectories.removeAll()
+        try await super.tearDown()
     }
 
     // MARK: removeProxyConfigFile (Site L626 — security cleanup of token-bearing file)
