@@ -24,8 +24,6 @@ const publishedRatings = [...arena.ratings]
   .filter((r) => r.votes >= 30)
   .sort((a, b) => b.bt - a.bt);
 
-const CONSOLE_URL = "https://tikkas-mac-mini.tail602e93.ts.net:8443/arena";
-
 /* Experiential families (contract §1) — the human-judged slice of the suite. */
 const GALLERY_FAMILIES = [
   { id: "visual-svg", note: "hand-authored vector scenes" },
@@ -58,8 +56,7 @@ const GALLERY_FAMILIES = [
         Some work can't be graded by a script — a game feel, a 3D scene, an interface that reads
         right. The Arena pairs two anonymized runs of the same experiential task, you pick the
         better one, and only then does it reveal which harness × model built which. Ratings are
-        Bradley-Terry with bootstrap confidence intervals, published per stack only after 30
-        votes.
+        Bradley-Terry with bootstrap confidence intervals, published per stack only after 30 votes.
       </p>
 
       <ul class="bb-chips mono" aria-label="Arena status">
@@ -72,8 +69,8 @@ const GALLERY_FAMILIES = [
       </ul>
 
       <div class="bb-hero__ctas">
-        <a class="btn btn--ember" href={CONSOLE_URL} target="_blank" rel="noopener noreferrer">
-          Open the voting console <span class="btn-arrow" aria-hidden="true">→</span>
+        <a class="btn btn--ember" href="/bench/arena/vote">
+          Cast a blind vote <span class="btn-arrow" aria-hidden="true">→</span>
         </a>
         <a class="btn btn--ghost" href="/bench">Back to the leaderboard</a>
       </div>
@@ -88,8 +85,8 @@ const GALLERY_FAMILIES = [
         <h2 id="how-h" class="bb-sec-h">Blind pairwise judgment, three steps.</h2>
         <p class="bb-sec-lead">
           Every matchup is two cells of the same experiential task from different stacks, with
-          presentation order randomized per matchup. Artifacts are served sandboxed — they can
-          run, they can't touch anything.
+          presentation order randomized per matchup. Artifacts are served sandboxed — they can run,
+          they can't touch anything.
         </p>
       </header>
 
@@ -98,9 +95,9 @@ const GALLERY_FAMILIES = [
           <span class="bb-step__num">01 · anonymized</span>
           <h3>Two artifacts, side by side.</h3>
           <p>
-            A playable build, a rendered scene, a finished UI — produced by two different
-            harness × model stacks on the identical task. No names, no logos, no hints. Order is
-            coin-flipped per matchup so position can't leak identity.
+            A playable build, a rendered scene, a finished UI — produced by two different harness ×
+            model stacks on the identical task. No names, no logos, no hints. Order is coin-flipped
+            per matchup so position can't leak identity.
           </p>
         </li>
         <li class="bb-step">
@@ -116,8 +113,8 @@ const GALLERY_FAMILIES = [
           <h3>Identities unlock after the vote.</h3>
           <p>
             The moment your ballot lands, the matchup reveals which stacks built what. Votes
-            aggregate into Bradley-Terry ratings with bootstrap 95% intervals — published only
-            once a stack clears 30 votes, so small samples never read as verdicts.
+            aggregate into Bradley-Terry ratings with bootstrap 95% intervals — published only once
+            a stack clears 30 votes, so small samples never read as verdicts.
           </p>
         </li>
       </ol>
@@ -156,16 +153,34 @@ const GALLERY_FAMILIES = [
                         <span class="mx-rowhead__in">
                           <span class={`bb-badge bb-badge--sm h--${hcls(r.harness)}`}>
                             {hLogo ? (
-                              <img src={hLogo} alt="" width="16" height="16" loading="lazy" decoding="async" />
+                              <img
+                                src={hLogo}
+                                alt=""
+                                width="16"
+                                height="16"
+                                loading="lazy"
+                                decoding="async"
+                              />
                             ) : (
-                              <span class="bb-badge__mono">{monogramFor(r.harness, harnessDisplay(r.harness))}</span>
+                              <span class="bb-badge__mono">
+                                {monogramFor(r.harness, harnessDisplay(r.harness))}
+                              </span>
                             )}
                           </span>
                           <span class={`bb-badge bb-badge--sm m--${mcls(r.model)}`}>
                             {mLogo ? (
-                              <img src={mLogo} alt="" width="16" height="16" loading="lazy" decoding="async" />
+                              <img
+                                src={mLogo}
+                                alt=""
+                                width="16"
+                                height="16"
+                                loading="lazy"
+                                decoding="async"
+                              />
                             ) : (
-                              <span class="bb-badge__mono">{monogramFor(r.model, modelDisplay(r.model))}</span>
+                              <span class="bb-badge__mono">
+                                {monogramFor(r.model, modelDisplay(r.model))}
+                              </span>
                             )}
                           </span>
                           {harnessDisplay(r.harness)} × {modelDisplay(r.model)}
@@ -184,13 +199,15 @@ const GALLERY_FAMILIES = [
           </div>
         ) : (
           <div class="bb-empty glass-pane">
-            <span class="bb-empty__pulse" aria-hidden="true">◌</span>
+            <span class="bb-empty__pulse" aria-hidden="true">
+              ◌
+            </span>
             <h3>Voting opens soon.</h3>
             <p>
               The first Arena round is being staged: experiential tasks are run, artifacts are
-              captured, and matchups are seeded before the ballot box opens. When it does,
-              standings appear here — Bradley-Terry ratings with bootstrap intervals, published
-              only for stacks with 30+ votes. Until then, the mechanical leaderboard on
+              captured, and matchups are seeded before the ballot box opens. When it does, standings
+              appear here — Bradley-Terry ratings with bootstrap intervals, published only for
+              stacks with 30+ votes. Until then, the mechanical leaderboard on
               <a href="/bench">/bench</a> carries the measured picture.
             </p>
             <span class="tag tag--estimated">{arena.votes} votes in this export</span>
@@ -200,22 +217,23 @@ const GALLERY_FAMILIES = [
     </div>
   </section>
 
-  {/* ──────────────── 4 · LIVE CONSOLE ──────────────── */}
+  {/* ──────────────── 4 · VOTE ──────────────── */}
   <section class="bb-section bb-section--ember" aria-labelledby="console-h">
     <div class="container container--narrow">
       <div class="bb-console glass-pane">
         <span class="eyebrow eyebrow--ember">The ballot box</span>
-        <h2 id="console-h" class="bb-sec-h">Vote on the live console.</h2>
+        <h2 id="console-h" class="bb-sec-h">Cast a blind vote.</h2>
         <p class="bb-sec-lead">
-          The voting console runs on the BurnBench runner host. It is
-          <strong> limited-access</strong>: reachable only inside the tailnet while the first
-          round is staged. If the link doesn't resolve for you, that's why — standings will be
-          published here after each round closes.
+          Two anonymized artifacts from the same experiential task, side by side. Pick the better
+          one — identities reveal only after you vote. Every ballot feeds the Bradley–Terry ratings
+          published above.
         </p>
-        <a class="btn btn--ember" href={CONSOLE_URL} target="_blank" rel="noopener noreferrer">
-          Open the voting console <span class="btn-arrow" aria-hidden="true">→</span>
+        <a class="btn btn--ember" href="/bench/arena/vote">
+          Open the ballot <span class="btn-arrow" aria-hidden="true">→</span>
         </a>
-        <span class="bb-console__url">{CONSOLE_URL} · limited access · tailnet-only</span>
+        <span class="bb-console__url"
+          >blind until you vote · reveal-after-write · no sign-in needed</span
+        >
       </div>
     </div>
   </section>
@@ -227,8 +245,8 @@ const GALLERY_FAMILIES = [
         <span class="eyebrow eyebrow--mercury">Artifact gallery</span>
         <h2 id="gal-h" class="bb-sec-h">What Arena matchups are made of.</h2>
         <p class="bb-sec-lead">
-          Six experiential families feed the Arena. Thumbnails of real captured artifacts land
-          with the first published round — frames below hold their place.
+          Six experiential families feed the Arena. Thumbnails of real captured artifacts land with
+          the first published round — frames below hold their place.
         </p>
       </header>
 

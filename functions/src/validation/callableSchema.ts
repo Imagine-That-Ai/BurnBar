@@ -42,7 +42,7 @@ const DEFAULT_ENUM_MAX_LENGTH = 64;
  * One field in a callable schema: validates a single raw value pulled from the
  * request payload and throws `HttpsError("invalid-argument")` on failure.
  */
-type CallableInputValue = string | number | boolean | string[] | undefined;
+type CallableInputValue = string | number | boolean | string[] | Record<string, string> | undefined;
 
 interface CallableField<T extends CallableInputValue = CallableInputValue> {
   /** True when the field may be omitted (absent / null / empty) without error. */
@@ -160,6 +160,83 @@ export function booleanField(): CallableField<boolean> {
         throw new HttpsError("invalid-argument", `${fieldName} must be a boolean.`);
       }
       return raw;
+    },
+  };
+}
+
+/** Optional boolean; absent ⇒ `undefined`, present non-boolean is rejected. */
+export function optionalBooleanField(): CallableField<boolean | undefined> {
+  return {
+    optional: true,
+    parse(raw, fieldName) {
+      if (raw === undefined || raw === null) return undefined;
+      if (typeof raw !== "boolean") {
+        throw new HttpsError("invalid-argument", `${fieldName} must be a boolean.`);
+      }
+      return raw;
+    },
+  };
+}
+
+interface EnumRecordFieldOptions {
+  /** Message used when a key is outside the declared vocabulary. */
+  readonly keyMessage?: string;
+  /** Message used when a value is outside the declared vocabulary. */
+  readonly valueMessage?: string;
+}
+
+/**
+ * Optional map from a **closed key vocabulary** to a **closed value
+ * vocabulary** — e.g. a rubric of named dimensions, each scored from the same
+ * small set of verdicts.
+ *
+ * Fail-closed by construction: the payload must be a plain JSON object, every
+ * key must be declared in `keys`, and every value must be declared in `values`.
+ * An undeclared key, an undeclared value, a non-string value, an array, or a
+ * non-object all reject with `invalid-argument` — the field is never partially
+ * accepted, so a caller can't smuggle an unrecognized dimension past the
+ * validator by pairing it with valid ones.
+ *
+ * Absent, `null`, and `{}` all parse to `undefined`: "the caller declined to
+ * fill this in" has exactly one representation downstream, so an empty map and
+ * an omitted field persist identically.
+ */
+export function optionalEnumRecordField(
+  keys: readonly string[],
+  values: readonly string[],
+  options: EnumRecordFieldOptions = {},
+): CallableField<Record<string, string> | undefined> {
+  const allowedKeys = new Set<string>(keys);
+  const allowedValues = new Set<string>(values);
+  return {
+    optional: true,
+    parse(raw, fieldName) {
+      if (raw === undefined || raw === null) return undefined;
+      if (typeof raw !== "object" || Array.isArray(raw)) {
+        throw new HttpsError("invalid-argument", `${fieldName} must be an object.`);
+      }
+      const entries: Record<string, string> = {};
+      // Object.keys covers exactly the own enumerable string keys, which is
+      // what JSON.parse produces — including a literal "__proto__" key, which
+      // is rejected below like any other undeclared key rather than being
+      // silently skipped.
+      for (const key of Object.keys(raw)) {
+        if (!allowedKeys.has(key)) {
+          throw new HttpsError(
+            "invalid-argument",
+            options.keyMessage ?? `${fieldName} may only contain: ${keys.join(", ")}.`,
+          );
+        }
+        const value = Reflect.get(raw, key);
+        if (typeof value !== "string" || !allowedValues.has(value)) {
+          throw new HttpsError(
+            "invalid-argument",
+            options.valueMessage ?? `${fieldName}.${key} must be one of: ${values.join(", ")}.`,
+          );
+        }
+        entries[key] = value;
+      }
+      return Object.keys(entries).length === 0 ? undefined : entries;
     },
   };
 }
