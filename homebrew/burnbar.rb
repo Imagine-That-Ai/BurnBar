@@ -1,23 +1,35 @@
-# Homebrew Cask formula for OpenBurnBar
+# OpenBurnBar Homebrew cask release template.
 #
-# To use this formula, the maintainer should:
-# 1. Create a GitHub repo: Ajnunezg/homebrew-tap
-# 2. Copy this file to: Casks/openburnbar.rb
-# 3. Update the version and sha256 for each release
-# 4. Users install with: brew install --cask Ajnunezg/tap/openburnbar
+# This checked-in template is intentionally not installable or publishable.
+# scripts/update-homebrew.sh replaces every PENDING_RELEASE_* value only after
+# verifying the published DMG and its v<version> tag against the exact source
+# commit in Imagine-That-Ai/BurnBar. Tap publication is a separate, explicit,
+# verified command; updating this file alone never publishes Homebrew.
 #
-# After each release, run:
-#   scripts/update-homebrew.sh <version>
-# This downloads the release DMG, computes the SHA256, and updates this file.
+# Source repository: Imagine-That-Ai/BurnBar
+# Source commit: PENDING_RELEASE_COMMIT
+# Release tag: PENDING_RELEASE_TAG
+#
+# Prepare the exact cask:
+#   scripts/update-homebrew.sh update \
+#     --version <version> \
+#     --candidate-sha <40-hex release commit>
+#
+# Publish from a clean Imagine-That-Ai/homebrew-tap checkout:
+#   scripts/update-homebrew.sh publish \
+#     --version <version> \
+#     --candidate-sha <40-hex release commit> \
+#     --tap-dir <tap checkout> \
+#     --receipt <publication receipt path>
 
 cask "openburnbar" do
-  version "1.0.3"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000" # Updated by scripts/update-homebrew.sh
+  version "PENDING_RELEASE_VERSION"
+  sha256 "PENDING_RELEASE_SHA256"
 
-  url "https://github.com/Ajnunezg/BurnBar/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"
+  url "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"
   name "OpenBurnBar"
   desc "Menu bar app for tracking AI agent token usage across Claude, Codex, and more"
-  homepage "https://github.com/Ajnunezg/BurnBar"
+  homepage "https://github.com/Imagine-That-Ai/BurnBar"
 
   depends_on macos: ">= :sonoma"
 

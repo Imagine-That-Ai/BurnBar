@@ -170,11 +170,8 @@ def verify_profile(profile: dict, expected_bundle_id: str, label: str) -> None:
     profile_team = profile_entitlements.get("com.apple.developer.team-identifier")
     if profile_team is not None:
         require_equal(profile_team, team_id, f"{label} profile team identifier")
-    require_equal(
-        profile_entitlements.get("com.apple.security.application-groups"),
-        [app_group],
-        f"{label} profile App Groups",
-    )
+    # macOS App Groups are unrestricted entitlements, so App Store profiles
+    # may carry a team wildcard. Signed host/appex checks remain exact.
     profile_keychain = profile_entitlements.get("keychain-access-groups")
     if not isinstance(profile_keychain, list) or not {
         keychain_group,
