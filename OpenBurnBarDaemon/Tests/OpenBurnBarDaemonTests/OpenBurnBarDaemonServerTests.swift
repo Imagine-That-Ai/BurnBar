@@ -153,7 +153,8 @@ final class BurnBarDaemonServerTests: XCTestCase {
 
         await server.stop()
 
-        XCTAssertEqual(await handoffSupervisor.shutdownCount(), 1)
+        let shutdownCount = await handoffSupervisor.shutdownCount()
+        XCTAssertEqual(shutdownCount, 1)
     }
 
     func testStopShutsDownSafariHandoffsWhenListenerIsActive() async throws {
@@ -170,7 +171,8 @@ final class BurnBarDaemonServerTests: XCTestCase {
         try await server.start()
         await server.stop()
 
-        XCTAssertEqual(await handoffSupervisor.shutdownCount(), 1)
+        let shutdownCount = await handoffSupervisor.shutdownCount()
+        XCTAssertEqual(shutdownCount, 1)
     }
 
     func testDaemonBootsRespondsToHealthAndCleansUpSocketOnShutdown() async throws {
