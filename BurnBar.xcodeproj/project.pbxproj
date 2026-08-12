@@ -56,6 +56,7 @@
 		3E8D4A575AB9E29537153CE3 /* BurnBarProviderRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00797E78E3EB2460BC73F717 /* BurnBarProviderRouterTests.swift */; };
 		416A01A17B8084A11BE4CD21 /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB62777DDFCCE7756CE2583E /* MenuBarPopoverView.swift */; };
 		42953BEAE38B676C6EBD6384 /* AccountManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 919C163E3845CED5CB2A8D6A /* AccountManager.swift */; };
+		455572191C70897A5C7FD7F2 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 98EFB972DB3613884986BB7A /* GRDB */; };
 		46EBF0E6E66AEA6A35B956BA /* BurnBarFleetProbeHardeningCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DCC5EA109CE503C0F65FB6D /* BurnBarFleetProbeHardeningCTests.swift */; };
 		47C30E233EE178F95B76722A /* BurnBarFleetRPCErrorMatrixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08D80EB783DB0A4D056ABFE /* BurnBarFleetRPCErrorMatrixTests.swift */; };
 		4B7A04331CE08B83EF78E9E8 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 75A41CA28F5F94306C9AEBD3 /* FirebaseFirestore */; };
@@ -107,6 +108,7 @@
 		8D77F5D4F3A5E3DC6A2BF45C /* ClaudeCodeParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C00538BB191C7829B9351C9 /* ClaudeCodeParser.swift */; };
 		8D8FB67B13FDEA50063C1207 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 13242102B8AB16D7BF4F0829 /* FirebaseAuth */; };
 		8DA7D0CAC74A67E5990FD226 /* BurnBarFleetRPCTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1FEB09843037917ABF13A2 /* BurnBarFleetRPCTestSupport.swift */; };
+		8EE95876BDA93F0778AE9185 /* GrokBotParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EA62BBCFB2B2FF063D600A /* GrokBotParser.swift */; };
 		919C9DB35478E7E2BC98E194 /* BurnBarDaemonMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10B81A290BB2FA13F52EF43 /* BurnBarDaemonMain.swift */; };
 		91ED5CB77ABAD2C4CD0B78C5 /* BurnBarFleetClaudeCodeProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE45C9E06D80CF72CD049B8 /* BurnBarFleetClaudeCodeProbe.swift */; };
 		929BDE647DC342239714D7A2 /* GitHubCopilotUsageAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CD840845253AE47D3AD546 /* GitHubCopilotUsageAPI.swift */; };
@@ -161,6 +163,7 @@
 		D405A794676962042118DB54 /* BurnBarRunService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B13A8FC66EDEA2DD7E67043B /* BurnBarRunService.swift */; };
 		D45856434D21B5ADBE66D70A /* CLIBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F729FDFE6D34B6F03B5DDCA9 /* CLIBridge.swift */; };
 		D72141B1DFA290DFB83CA17A /* BurnBarRPCErrorEnvelope.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6B48401D8F31566457E7D7E /* BurnBarRPCErrorEnvelope.swift */; };
+		D82AF2D361BBC5E67E91DD9A /* AgentProviderCoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35ED334C10CB0959C622B64 /* AgentProviderCoverageTests.swift */; };
 		DA530AB22DEE0E923C431D87 /* BurnBarFleetPiProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64A91ED439EC13DC8F3DC8B5 /* BurnBarFleetPiProbeTests.swift */; };
 		DB41ABA17ADE496572FC7246 /* BurnBarCore in Frameworks */ = {isa = PBXBuildFile; productRef = 3404298C8DE53D53D16D8D4B /* BurnBarCore */; };
 		DCC4F16F8E2E49A56F568888 /* ICloudSessionMirrorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B483FB92F7D6DD4CA3BE7E72 /* ICloudSessionMirrorService.swift */; };
@@ -317,6 +320,7 @@
 		72FB611C7CD42A40B8527536 /* retrieval-lexical-win.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "retrieval-lexical-win.json"; sourceTree = "<group>"; };
 		7356C2B877EAD026DC34C39C /* CursorConnectorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorConnectorModels.swift; sourceTree = "<group>"; };
 		744780AD18D485DDFFF46DA4 /* BurnBarDaemonExecutable */ = {isa = PBXFileReference; includeInIndex = 0; path = BurnBarDaemonExecutable; sourceTree = BUILT_PRODUCTS_DIR; };
+		77EA62BBCFB2B2FF063D600A /* GrokBotParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokBotParser.swift; sourceTree = "<group>"; };
 		7804F13D717D2F98E7183BC3 /* CrossEncoderRerankerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossEncoderRerankerTests.swift; sourceTree = "<group>"; };
 		787CA705F565BE6C5765A7F7 /* InsightCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightCardView.swift; sourceTree = "<group>"; };
 		796FA1BE8E5B299F6ACC23EB /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -411,6 +415,7 @@
 		F18060AB007AAC6A073EE77F /* libBurnBarDaemon.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libBurnBarDaemon.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		F29F60D1A621A54A0E30F6AB /* BurnBarFleetSnapshotBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetSnapshotBuilderTests.swift; sourceTree = "<group>"; };
 		F2F7628F26C470CF048DF397 /* BurnBarFleetProbeFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetProbeFactory.swift; sourceTree = "<group>"; };
+		F35ED334C10CB0959C622B64 /* AgentProviderCoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentProviderCoverageTests.swift; sourceTree = "<group>"; };
 		F44DD59841F049FCDE1AEEF2 /* DashboardActionGlyphs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardActionGlyphs.swift; sourceTree = "<group>"; };
 		F4FDA5107B5C32DF13BF1B1C /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		F535B954FAAB30120B89D85B /* BurnBarFleetHermesProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetHermesProbe.swift; sourceTree = "<group>"; };
@@ -453,6 +458,7 @@
 			files = (
 				99C8CB701F5F799C65404F13 /* libBurnBarDaemon.a in Frameworks */,
 				6739A74B4744612379228EB0 /* BurnBarCore in Frameworks */,
+				455572191C70897A5C7FD7F2 /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -506,6 +512,7 @@
 				8CEE8A9E8BBBA1DE97E27FC5 /* ForgeDevParser.swift */,
 				F663373EF66E467DEF4A6561 /* GeminiCLIParser.swift */,
 				93949AFABCF26567712367AB /* GooseParser.swift */,
+				77EA62BBCFB2B2FF063D600A /* GrokBotParser.swift */,
 				57FF1667F8EAA777B7E06A45 /* HermesParser.swift */,
 				021276DEE6679BDBF0E71042 /* KimiParser.swift */,
 				A092BBAFB87D0879CA16B36D /* LogParserProtocol.swift */,
@@ -702,6 +709,7 @@
 			children = (
 				6F623EE66CC10AB342714329 /* Fixtures */,
 				180D764BB278219C8C08C531 /* AgentLensTests.swift */,
+				F35ED334C10CB0959C622B64 /* AgentProviderCoverageTests.swift */,
 				DF00DDB2DC457FA8BCF2FD41 /* BurnBarDaemonManagerTests.swift */,
 				FB2B6C595EE40639297CBC2A /* BurnBarMigrationTests.swift */,
 				0350E75CD849BD279A595941 /* BurnBarSearchIntegrationHarness.swift */,
@@ -921,6 +929,7 @@
 			name = BurnBarDaemonTests;
 			packageProductDependencies = (
 				5B28647A9AFE4CA61A02C4FA /* BurnBarCore */,
+				98EFB972DB3613884986BB7A /* GRDB */,
 			);
 			productName = BurnBarDaemonTests;
 			productReference = ECF5BA92CF853D4B7CDE5D9D /* BurnBarDaemonTests.xctest */;
@@ -1160,6 +1169,7 @@
 				E1F316DB8D07E09F3C5E4B78 /* GeminiCLIParser.swift in Sources */,
 				929BDE647DC342239714D7A2 /* GitHubCopilotUsageAPI.swift in Sources */,
 				6C2C48F577AF34DC382F00CE /* GooseParser.swift in Sources */,
+				8EE95876BDA93F0778AE9185 /* GrokBotParser.swift in Sources */,
 				FFA4BA5909843CBFA8373FF6 /* HermesParser.swift in Sources */,
 				DCC4F16F8E2E49A56F568888 /* ICloudSessionMirrorService.swift in Sources */,
 				345CE3C3DC3EEFE4EDDCE6BF /* InsightBriefCard.swift in Sources */,
@@ -1256,6 +1266,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2DDBB36CB651B9922A12F0D6 /* AgentLensTests.swift in Sources */,
+				D82AF2D361BBC5E67E91DD9A /* AgentProviderCoverageTests.swift in Sources */,
 				2989CD7BDFFAEA0A58660E79 /* BurnBarDaemonManagerTests.swift in Sources */,
 				E616D6AB30E4E8668C86DDD3 /* BurnBarMigrationTests.swift in Sources */,
 				7A70951F155AC491EBDA90B7 /* BurnBarSearchIntegrationHarness.swift in Sources */,
@@ -1434,6 +1445,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/.spm-cache/checkouts/GRDB.swift/Sources";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1661,6 +1673,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
+				HEADER_SEARCH_PATHS = "$(inherited) $(SRCROOT)/.spm-cache/checkouts/GRDB.swift/Sources";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1802,6 +1815,11 @@
 			productName = BurnBarCore;
 		};
 		8712FF796E943D3A088BDFDA /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 7B93F196728A06D5A1262ED3 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+		98EFB972DB3613884986BB7A /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 7B93F196728A06D5A1262ED3 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;

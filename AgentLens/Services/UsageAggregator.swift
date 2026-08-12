@@ -97,6 +97,9 @@ final class UsageAggregator {
     /// Usage records fetched from provider billing APIs (separate from log-parsed data).
     private(set) var apiUsages: [ProviderUsageRecord] = []
 
+    /// Registered parser providers (read-only; used by tests and diagnostics).
+    var registeredParserProviders: [AgentProvider] { Array(parsers.keys) }
+
     init(
         dataStore: DataStore,
         cloudSync: CloudSyncService? = nil,
@@ -142,6 +145,7 @@ final class UsageAggregator {
             .forgeDev: ForgeDevParser(),
             .augment: AugmentParser(),
             .hermes: HermesParser(),
+            .grokBot: GrokBotParser(),
             .geminiCLI: GeminiCLIParser(),
             .goose: GooseParser(),
         ]

@@ -142,6 +142,10 @@ targets:
       base:
         PRODUCT_NAME: BurnBarDaemonTests
         PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.daemon.tests
+        # Same GRDBSQLite module-map resolution fix as the BurnBarDaemon
+        # target (Xcode 26+ subdirectory-search change): the daemon test
+        # sources import GRDB directly (BurnBarFleetPersistenceTests).
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/.spm-cache/checkouts/GRDB.swift/Sources"
     dependencies:
       - target: BurnBarDaemon
       - target: BurnBarDaemonExecutable
@@ -149,3 +153,5 @@ targets:
         embed: false
       - package: BurnBarCore
         product: BurnBarCore
+      - package: GRDB
+        product: GRDB

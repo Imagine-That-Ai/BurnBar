@@ -89,6 +89,9 @@ enum DesignSystem {
             case .forgeDev: return Color(hex: "F97316")
             case .augment: return Color(hex: "3B82F6")
             case .hermes: return Color(hex: "A855F7")
+            case .grokBot: return Color.adaptive(light: "A47A1E", dark: "E0A030")
+            case .grokCLI: return Color.adaptive(light: "3D3D3D", dark: "F5F5F5")
+            case .pi: return Color.adaptive(light: "2E8B57", dark: "38D898")
             case .geminiCLI: return Color(hex: "4285F4")
             case .goose: return Color(hex: "0D9488")
             }
@@ -111,6 +114,9 @@ enum DesignSystem {
             case .forgeDev: return Color(hex: "FB923C")
             case .augment: return Color(hex: "60A5FA")
             case .hermes: return Color(hex: "C084FC")
+            case .grokBot: return Color.adaptive(light: "8F6A14", dark: "F0B84A")
+            case .grokCLI: return Color.adaptive(light: "6B6B6B", dark: "C9C9C9")
+            case .pi: return Color.adaptive(light: "2F7D52", dark: "5EEAD4")
             case .geminiCLI: return Color(hex: "8AB4F8")
             case .goose: return Color(hex: "2DD4BF")
             }
@@ -133,6 +139,24 @@ enum DesignSystem {
             case .forgeDev: return [Color(hex: "F97316"), Color(hex: "FB923C"), Color(hex: "EA580C"), Color(hex: "FDBA74")]
             case .augment: return [Color(hex: "3B82F6"), Color(hex: "60A5FA"), Color(hex: "2563EB"), Color(hex: "93C5FD")]
             case .hermes: return [Color(hex: "A855F7"), Color(hex: "C084FC"), Color(hex: "9333EA"), Color(hex: "D8B4FE")]
+            case .grokBot: return [
+                Color.adaptive(light: "A47A1E", dark: "E0A030"),
+                Color.adaptive(light: "8F6A14", dark: "F0B84A"),
+                Color(hex: "8C6812"),
+                Color(hex: "F0B84A")
+            ]
+            case .grokCLI: return [
+                Color.adaptive(light: "3D3D3D", dark: "F5F5F5"),
+                Color.adaptive(light: "6B6B6B", dark: "C9C9C9"),
+                Color(hex: "8E8E93"),
+                Color(hex: "AEAEB2")
+            ]
+            case .pi: return [
+                Color.adaptive(light: "2E8B57", dark: "38D898"),
+                Color.adaptive(light: "2F7D52", dark: "5EEAD4"),
+                Color(hex: "256B45"),
+                Color(hex: "6EE7B7")
+            ]
             case .geminiCLI: return [Color(hex: "4285F4"), Color(hex: "8AB4F8"), Color(hex: "1A73E8"), Color(hex: "669DF6")]
             case .goose: return [Color(hex: "0D9488"), Color(hex: "2DD4BF"), Color(hex: "0F766E"), Color(hex: "5EEAD4")]
             }

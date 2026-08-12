@@ -1,5 +1,6 @@
-import SwiftUI
+import BurnBarCore
 import Foundation
+import SwiftUI
 
 // MARK: - Provider Support Level
 
@@ -10,6 +11,16 @@ enum ProviderSupportLevel {
     case partial
     /// Parser exists but returns empty — no real implementation yet
     case unsupported
+
+    /// Canonical user-facing label. Provider-list/detail surfaces derive their
+    /// copy from this (VAL-PROV-010) — never a fabricated exact-cost claim.
+    var label: String {
+        switch self {
+        case .supported: return "Supported"
+        case .partial: return "Partial support"
+        case .unsupported: return "Not yet supported"
+        }
+    }
 }
 
 // MARK: - Data Confidence
@@ -21,6 +32,15 @@ enum DataConfidence {
     case estimated
     /// No data available
     case unavailable
+
+    /// Canonical user-facing label for confidence badges.
+    var label: String {
+        switch self {
+        case .exact: return "Exact"
+        case .estimated: return "Estimated"
+        case .unavailable: return "Unsupported"
+        }
+    }
 }
 
 // MARK: - Agent Provider Enum
@@ -41,6 +61,9 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
     case forgeDev = "Forge"
     case augment = "Augment"
     case hermes = "Hermes"
+    case grokBot = "Grok Bot"
+    case grokCLI = "Grok CLI"
+    case pi = "Pi"
     case geminiCLI = "Gemini CLI"
     case goose = "Goose"
     
@@ -71,6 +94,12 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/cline-color.png")
         case .kiloCode, .rooCode, .forgeDev, .hermes, .goose:
             return nil
+        case .grokBot:
+            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/grok.png")
+        case .grokCLI:
+            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/grok.png")
+        case .pi:
+            return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/pi.png")
         case .geminiCLI:
             return URL(string: "https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/light/gemini-color.png")
         case .augment:
@@ -95,6 +124,9 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .forgeDev: return "flame.fill"
         case .augment: return "arrow.trianglehead.2.counterclockwise.rotate.90"
         case .hermes: return "wind"
+        case .grokBot: return "circle.hexagongrid.fill"
+        case .grokCLI: return "chevron.left.forwardslash.chevron.right"
+        case .pi: return "pi"
         case .geminiCLI: return "diamond.fill"
         case .goose: return "bird.fill"
         }
@@ -119,6 +151,9 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .forgeDev: return "~/.forge/sessions"
         case .augment: return "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment"
         case .hermes: return "~/.hermes/sessions"
+        case .grokBot: return "~/.grokbot"
+        case .grokCLI: return "~/.grok/sessions"
+        case .pi: return "~/.pi/agent/sessions"
         case .geminiCLI: return "~/.gemini/tmp"
         case .goose: return "~/.local/share/goose/sessions"
         }
@@ -137,6 +172,9 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         case .kimi: return "*.jsonl"
         case .cline, .kiloCode, .rooCode: return "*.json"
         case .forgeDev, .hermes: return "*.jsonl"
+        case .grokBot: return "*.json"
+        case .grokCLI: return "*.jsonl"
+        case .pi: return "*.jsonl"
         case .augment: return "*.jsonl"
         case .geminiCLI: return "*.json"
         case .goose: return "sessions.db"
@@ -147,20 +185,21 @@ enum AgentProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .factory, .claudeCode, .codex, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .supported
-        case .copilot, .kimi, .zai, .minimax, .cursor:
+        case .copilot, .kimi, .zai, .minimax, .cursor, .grokCLI, .pi:
             return .partial
-        case .augment:
+        case .grokBot, .augment:
             return .unsupported
         }
     }
 
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
+        case .factory, .claudeCode, .codex, .kimi, .aider, .cline, .kiloCode,
+             .rooCode, .forgeDev, .hermes, .geminiCLI, .goose:
             return .exact
-        case .zai, .minimax, .copilot, .cursor:
+        case .zai, .minimax, .copilot, .cursor, .grokCLI, .pi:
             return .estimated
-        case .augment:
+        case .grokBot, .augment:
             return .unavailable
         }
     }
@@ -343,4 +382,27 @@ struct ProviderUsage: Identifiable, Hashable {
     let totalTokens: Int
     let cost: Double
     let percentage: Double
+}
+
+// MARK: - Fleet Identity Mapping
+
+extension AgentProvider {
+    /// Maps a fleet wire id to the app-side provider used for display and theming.
+    /// Every declared roster id resolves to a known provider — never a fallback
+    /// (VAL-CROSS-003). Unknown/forward-compatible ids return nil.
+    init?(fleetAgentID: BurnBarFleetAgentID) {
+        switch fleetAgentID {
+        case .claudeCode: self = .claudeCode
+        case .factoryDroid: self = .factory
+        case .codex: self = .codex
+        case .hermes: self = .hermes
+        case .grokBot: self = .grokBot
+        case .grokCLI: self = .grokCLI
+        case .pi: self = .pi
+        case .cursor: self = .cursor
+        case .kimi: self = .kimi
+        case .geminiCLI: self = .geminiCLI
+        case .unknown: return nil
+        }
+    }
 }
