@@ -15,6 +15,17 @@ import Sentry
 @main
 struct OpenBurnBarDaemonExecutable {
     static func main() async throws {
+        // A Safari hand-off watchdog is a deliberately tiny subprocess mode,
+        // not a second daemon. Handle it before caches, telemetry, credentials,
+        // code-signature policy, or socket configuration so the watchdog owns
+        // only the liveness pipe and exact CLI process group it must reap if
+        // the parent daemon disappears.
+        if SafariHandoffProcessWatchdog.runIfRequested(
+            arguments: Array(CommandLine.arguments.dropFirst())
+        ) {
+            return
+        }
+
         // Disable the shared URLCache disk store. URLSession.shared uses a
         // persistent disk cache at ~/Library/Caches/OpenBurnBarDaemon/Cache.db
         // that is prone to SQLite WAL corruption when the daemon is restarted

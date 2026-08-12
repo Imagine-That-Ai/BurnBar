@@ -54,6 +54,7 @@ const MIN_LEARNING_CORRECTION_BYTES = 8;
 const LEARNING_RECALL_LIMIT = 8;
 const POLL_ERROR_BACKOFF_MS = 1_500;
 const UTF8_ENCODER = new TextEncoder();
+const SAFARI_HANDOFF_BLOCKED_AGENT_IDS = new Set(['droid', 'forge', 'kimi', 'junie']);
 
 const INITIAL_BRIDGE_STATE: BridgeRuntimeState = {
   connection: 'disconnected',
@@ -266,6 +267,8 @@ export class SafariBackgroundController {
   private pollLoopRunning = false;
   private pollGeneration = 0;
   private localWorkGeneration = 0;
+  private localTurnActive = false;
+  private nativeProjectionInFlight: Promise<void> | undefined;
   private locallyHaltedSession: { sessionId: string | undefined } | undefined;
   private readonly navigationEpochs = new Map<number, number>();
 
@@ -280,6 +283,7 @@ export class SafariBackgroundController {
     this.captureService = new SafariCaptureService(browserAPI, this.pageAdapter, undefined, this.performanceRecorder);
     this.permissionController = new SitePermissionController(browserAPI);
     this.store = new SafariSessionStore(browserAPI);
+    this.gatewayClient.setConfigurationRenewer((signal) => this.requestNativeBootstrap(signal));
     this.browserAPI.tabs.onRemoved?.addListener((tabId) => {
       this.ownership.release(tabId);
       this.navigationEpochs.delete(tabId);
@@ -327,15 +331,13 @@ export class SafariBackgroundController {
     }
     const errorAtStart = this.snapshot.lastError;
     try {
-      await this.initialize(request.type === 'popup.refresh');
+      await this.initialize();
       switch (request.type) {
         case 'popup.bootstrap':
-          await this.refreshCurrentPage(false);
-          await this.refreshNativeProjection();
+          await this.refreshPopupProjection();
           break;
         case 'popup.refresh':
-          await this.refreshCurrentPage(false);
-          await this.refreshNativeProjection();
+          await this.refreshPopupProjection();
           break;
         case 'popup.setMode':
           await this.setMode(request.mode);
@@ -442,6 +444,7 @@ export class SafariBackgroundController {
         this.ownership.claimUserHanded(tab, attached.sessionId);
       }
       await this.bootstrapNative();
+      await this.refreshNativeProjection();
       await this.refreshCatalog();
       this.mutate((state) => {
         state.bridge.connection = 'connected';
@@ -475,18 +478,7 @@ export class SafariBackgroundController {
   }
 
   private async bootstrapNative(): Promise<void> {
-    const response = await this.bridge.popupAction('bootstrap', {
-      ...(this.bridge.sessionId ? { sessionId: this.bridge.sessionId } : {})
-    });
-    const output =
-      isRecord(response.output) && 'bootstrap' in response.output ? response.output.bootstrap : response.output;
-    const bootstrap = parseSafariBootstrapResponse(output);
-    if (bootstrap.protocolVersion !== 1) {
-      throw new SafariExtensionError(
-        'protocol_mismatch',
-        `OpenBurnBar returned unsupported Safari bootstrap protocol ${bootstrap.protocolVersion}.`
-      );
-    }
+    const bootstrap = await this.requestNativeBootstrap();
     let gatewayConfigurationError: ReturnType<typeof serializeError> | undefined;
     try {
       this.gatewayClient.configure(bootstrap);
@@ -521,11 +513,45 @@ export class SafariBackgroundController {
     });
   }
 
+  private async requestNativeBootstrap(signal?: AbortSignal): Promise<ReturnType<typeof parseSafariBootstrapResponse>> {
+    const nativeRequest = this.bridge.popupAction('bootstrap', {
+      ...(this.bridge.sessionId ? { sessionId: this.bridge.sessionId } : {})
+    });
+    const response = signal ? await this.awaitUnlessAborted(nativeRequest, signal) : await nativeRequest;
+    const output =
+      isRecord(response.output) && 'bootstrap' in response.output ? response.output.bootstrap : response.output;
+    const bootstrap = parseSafariBootstrapResponse(output);
+    if (bootstrap.protocolVersion !== 1) {
+      throw new SafariExtensionError(
+        'protocol_mismatch',
+        `OpenBurnBar returned unsupported Safari bootstrap protocol ${bootstrap.protocolVersion}.`
+      );
+    }
+    return bootstrap;
+  }
+
+  private async awaitUnlessAborted<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) {
+      throw new SafariExtensionError('gateway_aborted', 'Stopped.');
+    }
+    return new Promise<T>((resolve, reject) => {
+      const abort = (): void => {
+        reject(new SafariExtensionError('gateway_aborted', 'Stopped.'));
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      operation.then(resolve, reject).finally(() => {
+        signal.removeEventListener('abort', abort);
+      });
+    });
+  }
+
   private async refreshCatalog(): Promise<void> {
     try {
       const response = await this.bridge.popupAction('catalog', {});
-      const agents = normalizeAgents(response.output);
+      const catalogModels = normalizeAgents(response.output).filter((agent) => agent.kind === 'model');
       this.mutate((state) => {
+        const installedAgents = state.bridge.agents.filter((agent) => agent.kind === 'cli');
+        const agents = sortUniqueAgents([...catalogModels, ...installedAgents]);
         state.bridge.agents = agents;
         const selectedAgent = selectedAgentForMode(agents, state.mode, state.selectedAgentId);
         if (selectedAgent) {
@@ -873,6 +899,7 @@ export class SafariBackgroundController {
       throw new SafariExtensionError('prompt_empty', 'Tell OpenBurnBar what you want to know or do.');
     }
     const selectedAgent = this.requireSelectedAgent(mode);
+    this.localTurnActive = true;
     const askTiming: AskTiming | undefined =
       mode === 'ask'
         ? {
@@ -888,7 +915,9 @@ export class SafariBackgroundController {
       this.appendTranscriptTo(state, 'user', normalizedPrompt);
     });
     try {
-      const prepared = await this.prepareTurn(mode);
+      await this.nativeProjectionInFlight;
+      this.assertLocalWorkCurrent(workGeneration);
+      const prepared = await this.prepareTurn(mode, workGeneration);
       this.assertLocalWorkCurrent(workGeneration);
       if (mode === 'ask') {
         await this.submitAsk(
@@ -953,6 +982,7 @@ export class SafariBackgroundController {
       }
       throw error;
     } finally {
+      this.localTurnActive = false;
       if (askTiming && !askTiming.recorded) {
         const outcome =
           workGeneration !== this.localWorkGeneration ? 'aborted' : turnOutcome === 'success' ? 'error' : turnOutcome;
@@ -1110,7 +1140,10 @@ export class SafariBackgroundController {
     }
   }
 
-  private async prepareTurn(mode: 'ask' | 'agentic' | 'handoff'): Promise<{
+  private async prepareTurn(
+    mode: 'ask' | 'agentic' | 'handoff',
+    workGeneration: number
+  ): Promise<{
     agent: BridgeAgentOption;
     context: PageContext;
     screenshot: ScreenshotResult;
@@ -1133,8 +1166,12 @@ export class SafariBackgroundController {
       );
     }
     const agent = this.requireSelectedAgent(mode);
-    if (mode === 'ask' && !this.snapshot.bridge.gatewayReady) {
-      throw new SafariExtensionError('gateway_unavailable', 'OpenBurnBar’s local model gateway is unavailable.');
+    if (mode === 'ask') {
+      await this.gatewayClient.ensureProviderConfiguration();
+      this.assertLocalWorkCurrent(workGeneration);
+      this.mutate((state) => {
+        state.bridge.gatewayReady = this.gatewayClient.isConfigured;
+      });
     }
     if (agent.cloud && !this.snapshot.trust.cloudScreenshotAcknowledged) {
       throw new SafariExtensionError(
@@ -1143,8 +1180,11 @@ export class SafariBackgroundController {
       );
     }
     this.ownership.claimUserHanded(tab, this.bridge.sessionId ?? 'detached');
+    this.assertLocalWorkCurrent(workGeneration);
     const context = await this.pageAdapter.pageContext(tab);
+    this.assertLocalWorkCurrent(workGeneration);
     const screenshot = await this.captureService.viewport(tab);
+    this.assertLocalWorkCurrent(workGeneration);
     this.recordEpoch(context.pageState);
     this.mutate((state) => {
       if (state.page) {
@@ -1464,6 +1504,42 @@ export class SafariBackgroundController {
   }
 
   private async refreshNativeProjection(): Promise<void> {
+    if (this.localTurnActive) {
+      return;
+    }
+    if (!this.nativeProjectionInFlight) {
+      const projection = this.performNativeProjectionRefresh();
+      const trackedProjection = projection.finally(() => {
+        if (this.nativeProjectionInFlight === trackedProjection) {
+          this.nativeProjectionInFlight = undefined;
+        }
+      });
+      this.nativeProjectionInFlight = trackedProjection;
+    }
+    await this.nativeProjectionInFlight;
+  }
+
+  private async refreshPopupProjection(): Promise<void> {
+    if (this.localTurnActive) {
+      await this.refreshCurrentPage(false);
+      return;
+    }
+    if (!this.nativeProjectionInFlight) {
+      const projection = (async () => {
+        await this.refreshCurrentPage(false);
+        await this.performNativeProjectionRefresh();
+      })();
+      const trackedProjection = projection.finally(() => {
+        if (this.nativeProjectionInFlight === trackedProjection) {
+          this.nativeProjectionInFlight = undefined;
+        }
+      });
+      this.nativeProjectionInFlight = trackedProjection;
+    }
+    await this.nativeProjectionInFlight;
+  }
+
+  private async performNativeProjectionRefresh(): Promise<void> {
     const startedAt = this.performanceRecorder.start();
     try {
       const response = await this.bridge.popupAction('ui.snapshot', {});
@@ -1491,11 +1567,19 @@ export class SafariBackgroundController {
       }
       return false;
     }
-    const embeddedBootstrap = isRecord(output.bootstrap) ? parseSafariBootstrapResponse(output.bootstrap) : undefined;
-    if (embeddedBootstrap) {
-      this.gatewayClient.configure(embeddedBootstrap);
+    const hasEmbeddedBootstrap = Object.hasOwn(output, 'bootstrap');
+    let embeddedBootstrap: ReturnType<typeof parseSafariBootstrapResponse> | undefined;
+    let embeddedBootstrapError: ReturnType<typeof serializeError> | undefined;
+    if (hasEmbeddedBootstrap) {
+      try {
+        embeddedBootstrap = parseSafariBootstrapResponse(output.bootstrap);
+        this.gatewayClient.configure(embeddedBootstrap);
+      } catch (error) {
+        this.gatewayClient.clear();
+        embeddedBootstrapError = serializeError(error, 'gateway_configuration_invalid');
+      }
     }
-    const catalogAgents = 'catalog' in output ? normalizeAgents(output.catalog) : undefined;
+    const catalogAgents = 'catalog' in output ? normalizeAgents(output) : undefined;
     const run = isRecord(output.run) ? output.run : undefined;
     const phase = run ? stringField(run, 'phase') : undefined;
     const exactApprovals =
@@ -1512,7 +1596,7 @@ export class SafariBackgroundController {
     const running =
       booleanField(output, 'running') ?? (phase ? !['completed', 'failed', 'cancelled'].includes(phase) : undefined);
     const killSwitchEnabled = booleanField(output, 'killSwitchEnabled');
-    const gatewayReady = booleanField(output, 'gatewayReady');
+    const gatewayReady = hasEmbeddedBootstrap ? undefined : booleanField(output, 'gatewayReady');
     const agents = 'agents' in output ? normalizeAgents(output.agents) : catalogAgents;
     const transcript = Array.isArray(output.transcript)
       ? output.transcript.map(normalizeTranscriptEntry).filter((entry): entry is TranscriptEntry => Boolean(entry))
@@ -1530,13 +1614,23 @@ export class SafariBackgroundController {
       : undefined;
     const locallyHalted = this.isSessionLocallyHalted(this.bridge.sessionId);
     this.mutate((state) => {
+      if (hasEmbeddedBootstrap) {
+        state.bridge.gatewayReady = this.gatewayClient.isConfigured;
+      }
       if (embeddedBootstrap) {
         const membership = normalizeMembership(embeddedBootstrap.tier);
         state.bridge.daemonVersion = embeddedBootstrap.daemonVersion;
-        state.bridge.gatewayReady = this.gatewayClient.isConfigured;
         state.learning.eligible = embeddedBootstrap.learningAvailable && membership !== 'free';
         state.learning.optedIn = state.learning.eligible && embeddedBootstrap.learningOptedIn;
         state.bridge.membership = membership;
+      }
+      if (embeddedBootstrapError) {
+        state.lastError = embeddedBootstrapError;
+        this.appendActivityTo(
+          state,
+          'The local Ask gateway was rejected because its refreshed loopback connection details were unsafe or incomplete.',
+          'error'
+        );
       }
       const exactMembershipTier = membershipSnapshot ? stringField(membershipSnapshot, 'tier') : undefined;
       if (exactMembershipTier) {
@@ -1754,6 +1848,9 @@ function normalizeAgents(value: unknown): BridgeAgentOption[] {
     }
     const kindValue = stringField(candidate, 'kind') ?? defaults.kind ?? 'model';
     const kind: BridgeAgentOption['kind'] = kindValue === 'cli' ? 'cli' : 'model';
+    if (kind === 'cli' && SAFARI_HANDOFF_BLOCKED_AGENT_IDS.has(id)) {
+      return;
+    }
     const providerName =
       stringField(candidate, 'providerName') ??
       stringField(candidate, 'provider') ??
@@ -1779,14 +1876,20 @@ function normalizeAgents(value: unknown): BridgeAgentOption[] {
     });
   };
 
-  const catalogValue = isRecord(value) && isRecord(value.catalog) ? value.catalog : value;
+  const catalogEnvelope = isRecord(value) && isRecord(value.catalog) ? value.catalog : value;
+  const catalogValue =
+    isRecord(catalogEnvelope) && isRecord(catalogEnvelope.catalog) ? catalogEnvelope.catalog : catalogEnvelope;
   const source =
     isRecord(catalogValue) && Array.isArray(catalogValue.agents)
       ? catalogValue.agents
       : Array.isArray(catalogValue)
         ? catalogValue
         : [];
+  const isSnapshotCatalog = isRecord(value) && 'catalog' in value;
   for (const candidate of source) {
+    if (isSnapshotCatalog && isRecord(candidate) && stringField(candidate, 'kind') === 'cli') {
+      continue;
+    }
     append(candidate);
   }
   if (isRecord(catalogValue) && Array.isArray(catalogValue.providers)) {
@@ -1802,10 +1905,21 @@ function normalizeAgents(value: unknown): BridgeAgentOption[] {
   }
   if (isRecord(value) && Array.isArray(value.installedAgents)) {
     for (const agent of value.installedAgents) {
+      if (!isRecord(agent)) {
+        continue;
+      }
+      const id = stringField(agent, 'id') ?? stringField(agent, 'modelId') ?? stringField(agent, 'identifier');
+      if (!id || SAFARI_HANDOFF_BLOCKED_AGENT_IDS.has(id)) {
+        continue;
+      }
       append(agent, { kind: 'cli', installed: true, cloud: false, supportsVision: false });
     }
   }
-  return [...new Map(result.map((agent) => [agent.id, agent])).values()].sort((left, right) =>
+  return sortUniqueAgents(result);
+}
+
+function sortUniqueAgents(agents: BridgeAgentOption[]): BridgeAgentOption[] {
+  return [...new Map(agents.map((agent) => [agent.id, agent])).values()].sort((left, right) =>
     `${left.kind}:${left.providerName}:${left.displayName}`.localeCompare(
       `${right.kind}:${right.providerName}:${right.displayName}`
     )

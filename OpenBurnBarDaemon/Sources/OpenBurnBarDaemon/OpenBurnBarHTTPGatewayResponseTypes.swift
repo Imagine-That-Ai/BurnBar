@@ -144,6 +144,7 @@ extension BurnBarHTTPGatewayServer {
         let routingModelSlug: String?
         let requestedCanonicalModelID: String?
         let priorAttempts: [BurnBarProxyRouteAttempt]
+        let attribution: GatewayRequestAttribution
     }
 
     /// Result of validating/decoding the request body and resolving any proxy

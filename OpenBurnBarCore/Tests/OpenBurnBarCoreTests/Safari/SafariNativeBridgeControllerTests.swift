@@ -8,6 +8,90 @@ import Crypto
 import XCTest
 
 final class SafariNativeBridgeControllerTests: XCTestCase {
+    func test_uiSnapshotDefaultsMissingInstalledAgentsForOlderPayloads() throws {
+        let response = BurnBarSafariUISnapshotResponse(
+            bootstrap: BurnBarSafariBootstrapResponse(
+                daemonVersion: "1.0.34",
+                protocolVersion: BurnBarSafariProtocol.currentVersion,
+                gatewayBaseURL: nil,
+                gatewayBearerToken: nil,
+                gatewayAvailable: false,
+                computerUseAvailable: false,
+                learningAvailable: false,
+                learningOptedIn: false,
+                tier: "free"
+            ),
+            catalog: BurnBarCatalogResponse(
+                catalog: BurnBarCatalog(schemaVersion: 1, providers: [])
+            ),
+            installedAgents: [
+                BurnBarSafariInstalledAgent(
+                    id: "codex",
+                    displayName: "Codex",
+                    providerName: "Installed agents"
+                )
+            ],
+            membership: BurnBarMembershipStatusResponse(
+                membership: BurnBarMembershipSnapshot(
+                    tier: "free",
+                    entitlementIds: [],
+                    restoreAvailable: true,
+                    state: .offline,
+                    daemonCacheKey: "test",
+                    source: "test"
+                )
+            ),
+            safariSession: nil,
+            run: nil,
+            approvals: ComputerUseApprovalPendingResponse(requests: []),
+            learning: BurnBarSafariLearningTimelineResponse(
+                enabled: false,
+                tier: "free",
+                proposals: []
+            )
+        )
+        let encoded = try JSONEncoder().encode(response)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded)
+                as? [String: Any]
+        )
+        XCTAssertNotNil(object.removeValue(forKey: "installedAgents"))
+        let legacy = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(
+            BurnBarSafariUISnapshotResponse.self,
+            from: legacy
+        )
+
+        XCTAssertTrue(decoded.installedAgents.isEmpty)
+    }
+
+    func test_bootstrapAttributionExpiryUsesTheSafariStringWireContract() throws {
+        let response = BurnBarSafariBootstrapResponse(
+            daemonVersion: "1.0.34",
+            protocolVersion: BurnBarSafariProtocol.currentVersion,
+            gatewayBaseURL: "http://127.0.0.1:8317",
+            gatewayBearerToken: "loopback-token",
+            gatewayAttributionCapability: String(repeating: "ab", count: 32),
+            gatewayAttributionExpiresAt: "2026-08-12T22:30:00.125Z",
+            gatewayAvailable: true,
+            computerUseAvailable: true,
+            learningAvailable: true,
+            learningOptedIn: false,
+            tier: "burnbar_pro"
+        )
+        let data = try JSONEncoder().encode(response)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+
+        XCTAssertEqual(
+            object["gatewayAttributionExpiresAt"] as? String,
+            "2026-08-12T22:30:00.125Z"
+        )
+        XCTAssertFalse(object["gatewayAttributionExpiresAt"] is NSNumber)
+    }
+
     func test_codecRejectsUnknownTopLevelFieldAndProtocolMismatch() throws {
         let unknown: [String: Any] = [
             "protocolVersion": BurnBarSafariBridgeWire.protocolVersion,
@@ -273,9 +357,9 @@ final class SafariNativeBridgeControllerTests: XCTestCase {
             return try BurnBarSafariNativeBridgeCodec.daemonJSONValue(
                 BurnBarSafariHandoffResponse(
                     runId: "safari-handoff-run",
-                    phase: .completed,
+                    phase: .waitingOnCompanion,
                     launched: true,
-                    running: false
+                    running: true
                 )
             )
         }
@@ -295,9 +379,12 @@ final class SafariNativeBridgeControllerTests: XCTestCase {
         let result = try XCTUnwrap(response["result"] as? [String: Any])
         let output = try XCTUnwrap(result["output"] as? [String: Any])
         XCTAssertEqual(output["runId"] as? String, "safari-handoff-run")
-        XCTAssertEqual(output["phase"] as? String, BurnBarRunPhase.completed.rawValue)
+        XCTAssertEqual(
+            output["phase"] as? String,
+            BurnBarRunPhase.waitingOnCompanion.rawValue
+        )
         XCTAssertEqual(output["launched"] as? Bool, true)
-        XCTAssertEqual(output["running"] as? Bool, false)
+        XCTAssertEqual(output["running"] as? Bool, true)
         XCTAssertEqual(recorder.methods, [.safariHandoff])
         XCTAssertFalse(recorder.methods.contains(.runResume))
     }

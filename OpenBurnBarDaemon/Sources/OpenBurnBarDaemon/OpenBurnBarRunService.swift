@@ -63,6 +63,15 @@ struct BurnBarInterruptedComputerUseNormalization: Sendable {
     var journalEventPersisted = false
 }
 
+struct BurnBarSafariHandoffRun: Sendable {
+    var snapshot: BurnBarRunStateSnapshot
+    let targetHarness: String
+    let packageDirectory: URL
+    let packageIdentity: SafariHandoffProcessSupervisor.FilesystemIdentity
+    let launchedAt: Date
+    var terminalJournaled: Bool
+}
+
 enum BurnBarRunRestoreError: Error {
     case interruptedComputerUseNormalizationInProgress(BurnBarRunID)
     case interruptedComputerUseNormalizationEventConflict(BurnBarRunID)
@@ -185,17 +194,21 @@ public actor BurnBarRunService {
     let safariComputerUseRunRevoker: BurnBarSafariComputerUseRunRevoker?
     let safariLearningRecallProvider: BurnBarSafariLearningRecallProvider?
     let safariLearningObservationSink: BurnBarSafariLearningObservationSink?
+    nonisolated let safariHandoffSupervisor:
+        any SafariHandoffProcessSupervising
+    let safariHandoffRootURL: URL
     let logger: BurnBarDaemonLogger
 
     var runs: [BurnBarRunID: BurnBarManagedRun] = [:]
     var runOrder: [BurnBarRunID] = []
-    var safariHandoffRuns: [BurnBarRunID: BurnBarRunStateSnapshot] = [:]
+    var safariHandoffRuns: [BurnBarRunID: BurnBarSafariHandoffRun] = [:]
     var safariHandoffRunOrder: [BurnBarRunID] = []
     var computerUseResumeClaims: [BurnBarRunID: UUID] = [:]
     var pendingInterruptedComputerUseNormalizations:
         [BurnBarRunID: BurnBarInterruptedComputerUseNormalization] = [:]
     var interruptedComputerUseNormalizationClaims = Set<BurnBarRunID>()
     var restoredPersistedRuns = false
+    var restoredPersistedSafariHandoffs = false
     let maxInMemoryRuns: Int
     let evictionPolicy: BurnBarRunRegistryEvictionPolicy
 
@@ -221,6 +234,11 @@ public actor BurnBarRunService {
         safariComputerUseRunRevoker: BurnBarSafariComputerUseRunRevoker? = nil,
         safariLearningRecallProvider: BurnBarSafariLearningRecallProvider? = nil,
         safariLearningObservationSink: BurnBarSafariLearningObservationSink? = nil,
+        safariHandoffSupervisor: (
+            any SafariHandoffProcessSupervising
+        )? = nil,
+        safariHandoffRootURL: URL = BurnBarResumeService
+            .defaultSafariHandoffRootURLForSupervisor(),
         maxInMemoryRuns: Int = 200,
         evictionPolicy: BurnBarRunRegistryEvictionPolicy = .maxCount(200),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "run-service")
@@ -246,6 +264,12 @@ public actor BurnBarRunService {
         self.safariComputerUseRunRevoker = safariComputerUseRunRevoker
         self.safariLearningRecallProvider = safariLearningRecallProvider
         self.safariLearningObservationSink = safariLearningObservationSink
+        self.safariHandoffRootURL = safariHandoffRootURL
+        self.safariHandoffSupervisor =
+            safariHandoffSupervisor
+            ?? SafariHandoffProcessSupervisor(
+                rootURL: safariHandoffRootURL
+            )
         self.maxInMemoryRuns = max(maxInMemoryRuns, 1)
         self.evictionPolicy = evictionPolicy
         self.logger = logger
@@ -287,11 +311,13 @@ public actor BurnBarRunService {
     }
 
     public func snapshot(for runID: BurnBarRunID) async -> BurnBarRunStateSnapshot? {
-        if let handoff = safariHandoffRuns[runID] {
-            return handoff
-        }
         do {
             try await restorePersistedRunsIfNeeded()
+            try await restorePersistedSafariHandoffsIfNeeded()
+            await reconcileSafariHandoff(runID: runID)
+            if let handoff = safariHandoffRuns[runID] {
+                return handoff.snapshot
+            }
             try await restoreSingleRunIfNeeded(runID: runID)
         } catch {
             logger.warning(
@@ -302,17 +328,21 @@ public actor BurnBarRunService {
         return runs[runID]?.snapshot
     }
 
-    /// Records a successfully launched, read-only Safari CLI hand-off in the
-    /// ordinary run projection. The external CLI is not an agent-loop process,
-    /// so launch completion is terminal; `run.poll` still receives an exact,
-    /// Safari-owned identity instead of a synthetic browser-only token.
-    public func recordCompletedSafariHandoff(
+    /// Records a supervised read-only Safari CLI hand-off in the ordinary run
+    /// projection. Launch is explicitly nonterminal; `run.poll`, `run.get`,
+    /// `run.list`, and Safari UI snapshots reconcile the daemon-owned process
+    /// before exposing a state transition.
+    func recordRunningSafariHandoff(
         runID: BurnBarRunID,
         clientID: BurnBarClientID,
         sessionID: BurnBarSessionID,
-        targetHarness: String
+        targetHarness: String,
+        packageDirectory: URL,
+        packageIdentity: SafariHandoffProcessSupervisor.FilesystemIdentity,
+        launchedAt: Date
     ) async throws -> BurnBarRunStateSnapshot {
         try await restorePersistedRunsIfNeeded()
+        try await restorePersistedSafariHandoffsIfNeeded()
         try await clientRegistry.requireAttached(clientID, sessionID: sessionID)
         guard runs[runID] == nil, safariHandoffRuns[runID] == nil else {
             throw BurnBarRunServiceError.externalRunAlreadyExists(runID)
@@ -322,13 +352,19 @@ public actor BurnBarRunService {
             runID: runID,
             clientID: clientID,
             sessionID: sessionID,
-            phase: .completed,
+            phase: .waitingOnCompanion,
             modelID: "cli:\(targetHarness)",
-            updatedAt: Date()
+            updatedAt: launchedAt
         )
-        safariHandoffRuns[runID] = snapshot
+        safariHandoffRuns[runID] = BurnBarSafariHandoffRun(
+            snapshot: snapshot,
+            targetHarness: targetHarness,
+            packageDirectory: packageDirectory,
+            packageIdentity: packageIdentity,
+            launchedAt: launchedAt,
+            terminalJournaled: false
+        )
         safariHandoffRunOrder.append(runID)
-        evictSafariHandoffRunsIfNeeded()
 
         do {
             try await appendJournalEvent(
@@ -339,34 +375,31 @@ public actor BurnBarRunService {
                     payload: .object([
                         "surface": .string("safari_extension"),
                         "kind": .string("cli_handoff"),
-                        "targetHarness": .string(targetHarness)
-                    ]),
-                    emittedAt: snapshot.updatedAt
-                )
-            )
-            try await appendJournalEvent(
-                BurnBarRunJournalEvent(
-                    runID: runID,
-                    kind: .runCompleted,
-                    phase: .completed,
-                    payload: .object([
-                        "outcome": .string("handoff_launched")
+                        "targetHarness": .string(targetHarness),
+                        "clientID": .string(clientID.rawValue),
+                        "sessionID": .string(sessionID.rawValue),
+                        "packageDevice": .string(
+                            String(packageIdentity.device)
+                        ),
+                        "packageInode": .string(
+                            String(packageIdentity.inode)
+                        ),
+                        "launchedAt": .string(Self.safariHandoffDateFormatter.string(
+                            from: launchedAt
+                        ))
                     ]),
                     emittedAt: snapshot.updatedAt
                 )
             )
         } catch {
-            logger.warning(
-                "safari_handoff_run_journal_failed",
-                metadata: [
-                    "run_id": runID.rawValue,
-                    "error": error.localizedDescription
-                ]
-            )
+            safariHandoffRuns.removeValue(forKey: runID)
+            safariHandoffRunOrder.removeAll { $0 == runID }
+            throw error
         }
+        evictSafariHandoffRunsIfNeeded()
 
         logger.notice(
-            "safari_handoff_run_recorded",
+            "safari_handoff_run_started",
             metadata: [
                 "run_id": runID.rawValue,
                 "client_id": clientID.rawValue,
@@ -556,10 +589,23 @@ public actor BurnBarRunService {
 
     public func listRuns(_ request: BurnBarRunListRequest) async throws -> BurnBarRunListResponse {
         try await restorePersistedRunsIfNeeded()
+        try await restorePersistedSafariHandoffsIfNeeded()
         try await clientRegistry.requireAttached(request.clientID)
+        await reconcileSafariHandoffs()
+        let attachedSessionID = await clientRegistry.sessionID(
+            for: request.clientID
+        )
         let snapshots = (
             runOrder.compactMap { runs[$0]?.snapshot }
-                + safariHandoffRunOrder.compactMap { safariHandoffRuns[$0] }
+                + safariHandoffRunOrder.compactMap { safariHandoffRuns[$0]?.snapshot }
+                    .filter {
+                        isExactAttachedSafariHandoffOwner(
+                            snapshot: $0,
+                            clientID: request.clientID,
+                            sessionID: request.sessionID,
+                            attachedSessionID: attachedSessionID
+                        )
+                    }
         )
             .sorted { $0.updatedAt > $1.updatedAt }
             .dropFirst(request.offset)
@@ -569,11 +615,23 @@ public actor BurnBarRunService {
 
     public func getRun(_ request: BurnBarRunGetRequest) async throws -> BurnBarRunDetailResponse {
         try await restorePersistedRunsIfNeeded()
+        try await restorePersistedSafariHandoffsIfNeeded()
         try await restoreSingleRunIfNeeded(runID: request.runID)
         try await clientRegistry.requireAttached(request.clientID)
+        await reconcileSafariHandoff(runID: request.runID)
         if let handoff = safariHandoffRuns[request.runID] {
+            guard isExactAttachedSafariHandoffOwner(
+                snapshot: handoff.snapshot,
+                clientID: request.clientID,
+                sessionID: request.sessionID,
+                attachedSessionID: await clientRegistry.sessionID(
+                    for: request.clientID
+                )
+            ) else {
+                throw BurnBarRunServiceError.runNotFound(request.runID)
+            }
             return BurnBarRunDetailResponse(
-                run: handoff,
+                run: handoff.snapshot,
                 arbitration: await clientRegistry.arbitration()
             )
         }
@@ -592,17 +650,23 @@ public actor BurnBarRunService {
 
     public func pollRuns(_ request: BurnBarRunPollRequest) async throws -> BurnBarRunEventBatch {
         try await restorePersistedRunsIfNeeded()
+        try await restorePersistedSafariHandoffsIfNeeded()
         try await clientRegistry.requireAttached(request.clientID, sessionID: request.sessionID)
+        if let runID = request.runID {
+            await reconcileSafariHandoff(runID: runID)
+        } else {
+            await reconcileSafariHandoffs()
+        }
 
         let scopedRuns: [BurnBarManagedRun]
         if let runID = request.runID {
             if let handoff = safariHandoffRuns[runID] {
-                guard handoff.clientID == request.clientID,
-                      handoff.sessionID == request.sessionID else {
+                guard handoff.snapshot.clientID == request.clientID,
+                      handoff.snapshot.sessionID == request.sessionID else {
                     throw BurnBarRunServiceError.runNotFound(runID)
                 }
                 return BurnBarRunEventBatch(
-                    runs: [handoff],
+                    runs: [handoff.snapshot],
                     approvals: [],
                     pendingToolCalls: [],
                     arbitration: await clientRegistry.arbitration(),
@@ -626,7 +690,7 @@ public actor BurnBarRunService {
         let pendingToolCalls = await workspaceBridgeBroker.activeCallsList(for: runIDs)
 
         let handoffSnapshots = request.runID == nil
-            ? safariHandoffRunOrder.compactMap { safariHandoffRuns[$0] }
+            ? safariHandoffRunOrder.compactMap { safariHandoffRuns[$0]?.snapshot }
                 .filter {
                     $0.clientID == request.clientID
                         && $0.sessionID == request.sessionID
@@ -721,10 +785,26 @@ public actor BurnBarRunService {
 
     public func cancelRun(_ request: BurnBarRunCancelRequest) async throws -> BurnBarRunDetailResponse {
         try await restorePersistedRunsIfNeeded()
+        try await restorePersistedSafariHandoffsIfNeeded()
         try await clientRegistry.requireController(request.clientID)
+        await reconcileSafariHandoff(runID: request.runID)
         if let handoff = safariHandoffRuns[request.runID] {
+            guard isExactAttachedSafariHandoffOwner(
+                snapshot: handoff.snapshot,
+                clientID: request.clientID,
+                sessionID: request.sessionID,
+                attachedSessionID: await clientRegistry.sessionID(
+                    for: request.clientID
+                )
+            ) else {
+                throw BurnBarRunServiceError.runNotFound(request.runID)
+            }
+            if handoff.snapshot.phase == .waitingOnCompanion {
+                _ = await safariHandoffSupervisor.cancel(runID: request.runID)
+                await reconcileSafariHandoff(runID: request.runID)
+            }
             return BurnBarRunDetailResponse(
-                run: handoff,
+                run: safariHandoffRuns[request.runID]?.snapshot,
                 arbitration: await clientRegistry.arbitration()
             )
         }
@@ -734,6 +814,21 @@ public actor BurnBarRunService {
             requestedBy: request.clientID,
             reason: request.reason ?? "Cancelled by controller."
         )
+    }
+
+    private func isExactAttachedSafariHandoffOwner(
+        snapshot: BurnBarRunStateSnapshot,
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID?,
+        attachedSessionID: BurnBarSessionID?
+    ) -> Bool {
+        guard let sessionID,
+              snapshot.clientID == clientID,
+              snapshot.sessionID == sessionID,
+              attachedSessionID == sessionID else {
+            return false
+        }
+        return true
     }
 
     /// Cancels a run only when it is still owned by the exact attached Safari
@@ -748,9 +843,19 @@ public actor BurnBarRunService {
         reason: String
     ) async throws -> Bool {
         try await restorePersistedRunsIfNeeded()
+        try await restorePersistedSafariHandoffsIfNeeded()
         try await clientRegistry.requireAttached(clientID, sessionID: sessionID)
+        await reconcileSafariHandoff(runID: runID)
         if let handoff = safariHandoffRuns[runID] {
-            return handoff.clientID == clientID && handoff.sessionID == sessionID
+            guard handoff.snapshot.clientID == clientID,
+                  handoff.snapshot.sessionID == sessionID else {
+                return false
+            }
+            if handoff.snapshot.phase == .waitingOnCompanion {
+                _ = await safariHandoffSupervisor.cancel(runID: runID)
+                await reconcileSafariHandoff(runID: runID)
+            }
+            return true
         }
         try await restoreSingleRunIfNeeded(runID: runID)
         guard let run = runs[runID],
@@ -1036,7 +1141,7 @@ public actor BurnBarRunService {
         guard safariHandoffRuns.count > limit else { return }
         let ordered = safariHandoffRunOrder
             .compactMap { runID -> (BurnBarRunID, Date)? in
-                guard let snapshot = safariHandoffRuns[runID] else {
+                guard let snapshot = safariHandoffRuns[runID]?.snapshot else {
                     return nil
                 }
                 return (runID, snapshot.updatedAt)
@@ -1044,8 +1149,244 @@ public actor BurnBarRunService {
             .sorted { $0.1 < $1.1 }
         for (runID, _) in ordered {
             guard safariHandoffRuns.count > limit else { break }
+            guard let handoff = safariHandoffRuns[runID],
+                  handoff.terminalJournaled,
+                  [.completed, .failed, .cancelled].contains(
+                      handoff.snapshot.phase
+                  ) else {
+                continue
+            }
             safariHandoffRuns.removeValue(forKey: runID)
             safariHandoffRunOrder.removeAll { $0 == runID }
+        }
+    }
+
+    private static let safariHandoffDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds
+        ]
+        return formatter
+    }()
+
+    private static func canonicalUInt64Decimal(
+        _ rawValue: String?
+    ) -> UInt64? {
+        guard let rawValue,
+              let value = UInt64(rawValue),
+              String(value) == rawValue else {
+            return nil
+        }
+        return value
+    }
+
+    private func restorePersistedSafariHandoffsIfNeeded() async throws {
+        guard restoredPersistedSafariHandoffs == false else {
+            return
+        }
+        let events = try await runJournal.events()
+        let grouped = Dictionary(grouping: events, by: \.runID)
+        for (runID, runEvents) in grouped {
+            guard safariHandoffRuns[runID] == nil,
+                  let created = runEvents.first(where: {
+                      guard $0.kind == .runCreated,
+                            case .object(let payload)? = $0.payload else {
+                          return false
+                      }
+                      return payload.stringValue(forKey: "surface")
+                              == "safari_extension"
+                          && payload.stringValue(forKey: "kind")
+                              == "cli_handoff"
+                  }),
+                  case .object(let payload)? = created.payload,
+                  let targetHarness = payload.stringValue(
+                      forKey: "targetHarness"
+                  ),
+                  let clientIDRaw = payload.stringValue(forKey: "clientID"),
+                  let sessionIDRaw = payload.stringValue(forKey: "sessionID"),
+                  let packageDevice = Self.canonicalUInt64Decimal(
+                      payload.stringValue(forKey: "packageDevice")
+                  ),
+                  let packageInode = Self.canonicalUInt64Decimal(
+                      payload.stringValue(forKey: "packageInode")
+                  ),
+                  let launchedAtRaw = payload.stringValue(forKey: "launchedAt"),
+                  let launchedAt = Self.safariHandoffDateFormatter.date(
+                      from: launchedAtRaw
+                  ) else {
+                continue
+            }
+            let terminal = runEvents.last(where: {
+                [.runCompleted, .runFailed, .runCancelled].contains($0.kind)
+            })
+            let terminalPhase: BurnBarRunPhase?
+            switch terminal?.kind {
+            case .runCompleted:
+                terminalPhase = .completed
+            case .runFailed:
+                terminalPhase = .failed
+            case .runCancelled:
+                terminalPhase = .cancelled
+            default:
+                terminalPhase = nil
+            }
+            let terminalError: String?
+            if case .object(let terminalPayload)? = terminal?.payload {
+                terminalError = terminalPayload.stringValue(forKey: "reason")
+            } else {
+                terminalError = nil
+            }
+            let snapshot = BurnBarRunStateSnapshot(
+                runID: runID,
+                clientID: BurnBarClientID(rawValue: clientIDRaw),
+                sessionID: BurnBarSessionID(rawValue: sessionIDRaw),
+                phase: terminalPhase ?? .waitingOnCompanion,
+                modelID: "cli:\(targetHarness)",
+                updatedAt: terminal?.emittedAt ?? launchedAt,
+                errorMessage: terminalError
+            )
+            let packageDirectory = safariHandoffRootURL
+                .appendingPathComponent(runID.rawValue, isDirectory: true)
+            let packageIdentity =
+                SafariHandoffProcessSupervisor.FilesystemIdentity(
+                    device: packageDevice,
+                    inode: packageInode
+                )
+            safariHandoffRuns[runID] = BurnBarSafariHandoffRun(
+                snapshot: snapshot,
+                targetHarness: targetHarness,
+                packageDirectory: packageDirectory,
+                packageIdentity: packageIdentity,
+                launchedAt: launchedAt,
+                terminalJournaled: terminalPhase != nil
+            )
+            safariHandoffRunOrder.append(runID)
+            if terminalPhase == nil {
+                _ = await safariHandoffSupervisor.registerInterruptedRun(
+                    runID: runID,
+                    targetHarness: targetHarness,
+                    packageDirectory: packageDirectory,
+                    expectedPackageIdentity: packageIdentity,
+                    launchedAt: launchedAt
+                )
+            }
+        }
+        restoredPersistedSafariHandoffs = true
+        await reconcileSafariHandoffs()
+    }
+
+    private func reconcileSafariHandoffs() async {
+        for runID in safariHandoffRunOrder {
+            await reconcileSafariHandoff(runID: runID)
+        }
+        await safariHandoffSupervisor.cleanupEligiblePackages(now: Date())
+    }
+
+    private func reconcileSafariHandoff(runID: BurnBarRunID) async {
+        guard var handoff = safariHandoffRuns[runID] else {
+            return
+        }
+        var terminalObservation: SafariHandoffProcessSupervisor.Observation?
+        if handoff.snapshot.phase == .waitingOnCompanion {
+            guard let observation = await safariHandoffSupervisor.observation(
+                for: runID
+            ),
+            observation.isTerminal else {
+                return
+            }
+            terminalObservation = observation
+            let phase: BurnBarRunPhase
+            let errorMessage: String?
+            switch observation.state {
+            case .completed:
+                phase = .completed
+                errorMessage = nil
+            case .cancelled:
+                phase = .cancelled
+                errorMessage = "Stopped by the Safari extension."
+            case .failed, .interrupted:
+                phase = .failed
+                errorMessage = Self.safariHandoffFailureMessage(observation)
+            case .running:
+                return
+            }
+            let updatedAt = observation.completedAt ?? observation.observedAt
+            handoff.snapshot = BurnBarRunStateSnapshot(
+                runID: handoff.snapshot.runID,
+                clientID: handoff.snapshot.clientID,
+                sessionID: handoff.snapshot.sessionID,
+                phase: phase,
+                modelID: handoff.snapshot.modelID,
+                updatedAt: updatedAt,
+                errorMessage: errorMessage
+            )
+            safariHandoffRuns[runID] = handoff
+        }
+        guard handoff.snapshot.phase != .waitingOnCompanion,
+              handoff.terminalJournaled == false else {
+            return
+        }
+        let eventKind: BurnBarRunJournalEventKind
+        switch handoff.snapshot.phase {
+        case .completed:
+            eventKind = .runCompleted
+        case .failed:
+            eventKind = .runFailed
+        case .cancelled:
+            eventKind = .runCancelled
+        default:
+            return
+        }
+        do {
+            try await appendJournalEvent(
+                BurnBarRunJournalEvent(
+                    runID: runID,
+                    kind: eventKind,
+                    phase: handoff.snapshot.phase,
+                    payload: .object([
+                        "outcome": .string(
+                            terminalObservation?.state.rawValue
+                                ?? handoff.snapshot.phase.rawValue
+                        ),
+                        "reason": handoff.snapshot.errorMessage
+                            .map(BurnBarJSONValue.string)
+                            ?? .null
+                    ]),
+                    emittedAt: handoff.snapshot.updatedAt
+                )
+            )
+            handoff.terminalJournaled = true
+            safariHandoffRuns[runID] = handoff
+        } catch {
+            logger.warning(
+                "safari_handoff_terminal_journal_failed",
+                metadata: [
+                    "run_id": runID.rawValue,
+                    "error": error.localizedDescription
+                ]
+            )
+        }
+    }
+
+    private static func safariHandoffFailureMessage(
+        _ observation: SafariHandoffProcessSupervisor.Observation
+    ) -> String {
+        switch observation.failure {
+        case .nonzeroExit:
+            return "The installed CLI exited with a nonzero status."
+        case .signal:
+            return "The installed CLI terminated because of a signal."
+        case .timeout:
+            return "The installed CLI exceeded the hand-off time limit."
+        case .missingReceipt:
+            return "The installed CLI process ended without a valid completion receipt."
+        case .malformedReceipt, .invalidReceipt:
+            return "The installed CLI completion receipt failed validation."
+        case .outputPersistence:
+            return "The installed CLI output could not be durably bounded and recorded."
+        case .interrupted, .none:
+            return "The installed CLI process was interrupted before completion could be verified."
         }
     }
 

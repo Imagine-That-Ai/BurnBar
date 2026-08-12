@@ -285,7 +285,17 @@ extension BurnBarHTTPGatewayServer {
         return [
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key",
+            "Access-Control-Allow-Headers": [
+                "Authorization",
+                "Content-Type",
+                "x-api-key",
+                "OpenAI-Data-Storage",
+                "X-Data-Retention",
+                "X-Model-Training",
+                "X-OpenBurnBar-Client",
+                "X-OpenBurnBar-Correlation-ID",
+                "X-OpenBurnBar-Attribution-Capability"
+            ].joined(separator: ", "),
             "Vary": "Origin"
         ]
     }

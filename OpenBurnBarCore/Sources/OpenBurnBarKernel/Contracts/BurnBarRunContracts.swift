@@ -136,11 +136,18 @@ public struct BurnBarRunCreateResponse: Codable, Hashable, Sendable {
 
 public struct BurnBarRunListRequest: Codable, Hashable, Sendable {
     public let clientID: BurnBarClientID
+    public let sessionID: BurnBarSessionID?
     public let offset: Int
     public let limit: Int
 
-    public init(clientID: BurnBarClientID, offset: Int = 0, limit: Int = 50) {
+    public init(
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID? = nil,
+        offset: Int = 0,
+        limit: Int = 50
+    ) {
         self.clientID = clientID
+        self.sessionID = sessionID
         self.offset = max(offset, 0)
         self.limit = max(limit, 1)
     }
@@ -149,10 +156,16 @@ public struct BurnBarRunListRequest: Codable, Hashable, Sendable {
 public struct BurnBarRunGetRequest: Codable, Hashable, Sendable {
     public let runID: BurnBarRunID
     public let clientID: BurnBarClientID
+    public let sessionID: BurnBarSessionID?
 
-    public init(runID: BurnBarRunID, clientID: BurnBarClientID) {
+    public init(
+        runID: BurnBarRunID,
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID? = nil
+    ) {
         self.runID = runID
         self.clientID = clientID
+        self.sessionID = sessionID
     }
 }
 
@@ -235,11 +248,18 @@ public struct BurnBarRunEventBatch: Codable, Hashable, Sendable {
 public struct BurnBarRunCancelRequest: Codable, Hashable, Sendable {
     public let runID: BurnBarRunID
     public let clientID: BurnBarClientID
+    public let sessionID: BurnBarSessionID?
     public let reason: String?
 
-    public init(runID: BurnBarRunID, clientID: BurnBarClientID, reason: String? = nil) {
+    public init(
+        runID: BurnBarRunID,
+        clientID: BurnBarClientID,
+        sessionID: BurnBarSessionID? = nil,
+        reason: String? = nil
+    ) {
         self.runID = runID
         self.clientID = clientID
+        self.sessionID = sessionID
         self.reason = reason
     }
 }

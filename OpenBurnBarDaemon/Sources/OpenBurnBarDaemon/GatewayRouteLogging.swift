@@ -28,6 +28,9 @@ struct GatewayRequestContext {
     var routingModelDisplayName: String?
     /// How (if at all) the requested model was rewritten before routing.
     var rewriteKind: BurnBarProxyRewriteKind
+    /// Sanitized, request-stable client attribution for every terminal route
+    /// outcome, including failover, rejection, interruption, and degrade.
+    var attribution: GatewayRequestAttribution = .none
 }
 
 /// Owns the ordered list of per-route attempts accumulated while serving one

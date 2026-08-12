@@ -288,6 +288,8 @@ extension BurnBarHTTPGatewayServer {
             attempts: attempts,
             usage: routeUsage,
             failureMessage: Self.sanitizedFailureMessage(failureMessage),
+            clientSource: context.attribution.clientSource,
+            clientRequestCorrelationID: context.attribution.clientRequestCorrelationID,
             parentRequestID: parentRequestID
         )
         await appendProxyRouteLog(entry)

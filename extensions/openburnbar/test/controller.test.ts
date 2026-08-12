@@ -227,6 +227,15 @@ describe("OpenBurnBarExtensionController", () => {
         sessionID: "session-1"
       })
     );
+    expect(client.pollRuns).toHaveBeenCalledWith({
+      clientID: "test-client",
+      sessionID: "session-1"
+    });
+    expect(client.getRun).toHaveBeenCalledWith({
+      runID: "run-1234",
+      clientID: "test-client",
+      sessionID: "session-1"
+    });
     expect(controller.snapshot.connectionStatus).toBe("connected");
     expect(controller.snapshot.clientAttached).toBe(true);
     expect(controller.snapshot.runs.map((run) => run.id)).toEqual(["run-1234"]);
@@ -238,6 +247,49 @@ describe("OpenBurnBarExtensionController", () => {
         value: "apply_patch"
       })
     );
+  });
+
+  it("binds generic run list, get, and cancel requests to the current session", async () => {
+    const client = makeConnectedClient({
+      pollRuns: vi.fn().mockRejectedValue(new Error("run.poll unsupported"))
+    });
+    const controller = new OpenBurnBarExtensionController(
+      {
+        client,
+        workspaceClient: {
+          capabilities: vi.fn().mockResolvedValue(localWorkspaceCapabilities)
+        },
+        repairService: {
+          repair: vi.fn().mockResolvedValue({
+            message: "OpenBurnBar daemon restart requested."
+          })
+        }
+      },
+      {
+        clientID: "test-client",
+        sessionID: "session-1"
+      }
+    );
+
+    await controller.refresh();
+    await controller.getRunDetail("run-1234");
+    await controller.cancelRun("run-1234", "Stop the external handoff.");
+
+    expect(client.listRuns).toHaveBeenCalledWith({
+      clientID: "test-client",
+      sessionID: "session-1"
+    });
+    expect(client.getRun).toHaveBeenCalledWith({
+      runID: "run-1234",
+      clientID: "test-client",
+      sessionID: "session-1"
+    });
+    expect(client.cancelRun).toHaveBeenCalledWith({
+      runID: "run-1234",
+      clientID: "test-client",
+      sessionID: "session-1",
+      reason: "Stop the external handoff."
+    });
   });
 
   it("VAL-EXT-001: daemon-unavailable state surfaces actionable reconnect/repair recovery guidance", async () => {

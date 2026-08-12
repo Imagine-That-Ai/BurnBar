@@ -45,6 +45,17 @@ final class UsageExecutionSourceTests: XCTestCase {
         XCTAssertEqual(desktop?.id, "codex-desktop")
         XCTAssertEqual(desktop?.kind, .desktopApp)
 
+        let safari = UsageExecutionSourceResolver.fromClientMarker("openburnbar-safari-extension")
+        XCTAssertEqual(safari?.id, "openburnbar-safari-extension")
+        XCTAssertEqual(safari?.name, "OpenBurnBar Safari Extension")
+        XCTAssertEqual(safari?.kind, .desktopApp)
+        XCTAssertNil(
+            UsageExecutionSourceResolver.fromClientMarker(
+                "openburnbar-safari-extension-impostor",
+                allowCustom: false
+            )
+        )
+
         XCTAssertNil(UsageExecutionSourceResolver.fromClientMarker("Mozilla/5.0 unrelated-client"))
         XCTAssertNil(UsageExecutionSourceResolver.fromClientMarker("Mozilla/5.0 (Linux; Android 16)"))
 

@@ -54,6 +54,8 @@ function bootstrap(overrides: Partial<SafariBootstrapResponse> = {}): SafariBoot
     protocolVersion: 1,
     gatewayBaseURL: 'http://127.0.0.1:8317',
     gatewayBearerToken: 'loopback-bearer',
+    gatewayAttributionCapability: 'ab'.repeat(32),
+    gatewayAttributionExpiresAt: '2099-08-12T23:59:59.000Z',
     gatewayAvailable: true,
     computerUseAvailable: true,
     learningAvailable: true,
@@ -190,7 +192,7 @@ describe('Safari loopback gateway client', () => {
     expect(() => parseGatewayJSONResponse({ error: { message: 'No route available.' } })).toThrow(/No route/u);
   });
 
-  it('streams through the exact loopback endpoint without exposing bearer credentials', async () => {
+  it('streams through the exact loopback endpoint with fresh privacy-safe attribution', async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       streamResponse([
         'data: {"choices":[{"delta":{"role":"assistant"}}]}\n',
@@ -200,33 +202,273 @@ describe('Safari loopback gateway client', () => {
         'data: [DONE]\n\n'
       ])
     );
-    const client = new SafariGatewayClient(fetcher);
+    const correlationIDs = ['2b0d4a57-a4e2-4c18-9af0-2026e06eaf51', '8e54d891-9aec-4a11-92f6-21a2336ae079'];
+    let correlationIDIndex = 0;
+    const correlationIDFactory = vi.fn(() => {
+      const correlationID = correlationIDs[correlationIDIndex];
+      if (!correlationID) {
+        throw new Error('Unexpected Safari gateway correlation request.');
+      }
+      correlationIDIndex += 1;
+      return correlationID;
+    });
+    const client = new SafariGatewayClient(fetcher, 120_000, correlationIDFactory);
     client.configure(bootstrap());
+    const attributedPageContext: PageContext = {
+      ...pageContext,
+      pageState: {
+        ...pageContext.pageState,
+        tabId: 314_159_265,
+        windowId: 271_828_182
+      }
+    };
     const deltas: string[] = [];
+    for (const prompt of ['What color is the CTA?', 'Confirm the CTA color.']) {
+      await expect(
+        client.ask(
+          {
+            agentId: 'vision-model',
+            prompt,
+            pageContext: attributedPageContext,
+            screenshot
+          },
+          (delta) => deltas.push(delta)
+        )
+      ).resolves.toBe('The CTA is orange.');
+    }
+    expect(deltas).toEqual(['The CTA ', 'is orange.', 'The CTA ', 'is orange.']);
+    expect(correlationIDFactory).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+
+    const observedCorrelationIDs: string[] = [];
+    for (const [url, init] of fetcher.mock.calls) {
+      expect(String(url)).toBe('http://127.0.0.1:8317/v1/chat/completions');
+      expect(init).toMatchObject({
+        method: 'POST',
+        credentials: 'omit',
+        cache: 'no-store',
+        redirect: 'error'
+      });
+      const headers = new Headers(init?.headers);
+      expect(headers.get('Authorization')).toBe('Bearer loopback-bearer');
+      expect(headers.get('X-OpenBurnBar-Client')).toBe('openburnbar-safari-extension');
+      expect(headers.get('X-OpenBurnBar-Attribution-Capability')).toBe('ab'.repeat(32));
+      const correlationID = headers.get('X-OpenBurnBar-Correlation-ID');
+      expect(correlationID).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu);
+      observedCorrelationIDs.push(correlationID ?? '');
+
+      const serializedBody = String(init?.body);
+      expect(serializedBody).not.toContain('loopback-bearer');
+      expect(serializedBody).not.toContain('openburnbar-safari-extension');
+      expect(serializedBody).not.toContain(correlationID);
+
+      const attributionOnly = `${headers.get('X-OpenBurnBar-Client')}\n${correlationID}`;
+      for (const sensitiveValue of [
+        'What color is the CTA?',
+        'https://example.com/product?token=redacted',
+        screenshot.dataUrl,
+        'loopback-bearer',
+        'vision-model',
+        String(attributedPageContext.pageState.tabId),
+        String(attributedPageContext.pageState.windowId),
+        'command-secret',
+        'safari-session-secret'
+      ]) {
+        expect(attributionOnly).not.toContain(sensitiveValue);
+      }
+    }
+    expect(observedCorrelationIDs).toEqual(correlationIDs);
+    expect(new Set(observedCorrelationIDs).size).toBe(2);
+  });
+
+  it('renews a near-expiry attribution capability before the single provider fetch', async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      streamResponse(['data: {"choices":[{"delta":{"content":"Fresh answer"}}]}\n\n', 'data: [DONE]\n\n'])
+    );
+    const renewer = vi.fn(async () =>
+      bootstrap({
+        gatewayAttributionCapability: 'cd'.repeat(32),
+        gatewayAttributionExpiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
+      })
+    );
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(
+      bootstrap({
+        gatewayAttributionExpiresAt: new Date(Date.now() + 1_000).toISOString()
+      })
+    );
+    client.setConfigurationRenewer(renewer);
+
     await expect(
       client.ask(
         {
           agentId: 'vision-model',
-          prompt: 'What color is the CTA?',
+          prompt: 'Question',
           pageContext,
           screenshot
         },
-        (delta) => deltas.push(delta)
+        () => undefined
       )
-    ).resolves.toBe('The CTA is orange.');
-    expect(deltas).toEqual(['The CTA ', 'is orange.']);
+    ).resolves.toBe('Fresh answer');
 
-    const [url, init] = fetcher.mock.calls[0]!;
-    expect(String(url)).toBe('http://127.0.0.1:8317/v1/chat/completions');
-    expect(init).toMatchObject({
-      method: 'POST',
-      credentials: 'omit',
-      cache: 'no-store',
-      redirect: 'error'
+    expect(renewer).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get('X-OpenBurnBar-Attribution-Capability')).toBe('cd'.repeat(32));
+  });
+
+  it('shares one native renewal across concurrent pre-contact checks', async () => {
+    let resolveRenewal: ((value: SafariBootstrapResponse) => void) | undefined;
+    const renewal = new Promise<SafariBootstrapResponse>((resolve) => {
+      resolveRenewal = resolve;
     });
-    expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer loopback-bearer');
-    const requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    expect(JSON.stringify(requestBody)).not.toContain('loopback-bearer');
+    const renewer = vi.fn(() => renewal);
+    const client = new SafariGatewayClient();
+    client.setConfigurationRenewer(renewer);
+
+    const first = client.ensureProviderConfiguration();
+    const second = client.ensureProviderConfiguration();
+    expect(renewer).toHaveBeenCalledTimes(1);
+    resolveRenewal?.(
+      bootstrap({
+        gatewayAttributionCapability: 'ef'.repeat(32),
+        gatewayAttributionExpiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
+      })
+    );
+
+    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
+    expect(renewer).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts an in-flight native renewal without contacting the provider', async () => {
+    const fetcher = vi.fn(async () => streamResponse(['data: [DONE]\n\n']));
+    let observedSignal: AbortSignal | undefined;
+    const renewer = vi.fn(
+      (signal: AbortSignal) =>
+        new Promise<SafariBootstrapResponse>((_resolve, reject) => {
+          observedSignal = signal;
+          signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), {
+            once: true
+          });
+        })
+    );
+    const client = new SafariGatewayClient(fetcher);
+    client.setConfigurationRenewer(renewer);
+
+    const ensuring = client.ensureProviderConfiguration();
+    expect(renewer).toHaveBeenCalledTimes(1);
+    expect(client.abortActiveRequest()).toBe(true);
+
+    await expect(ensuring).rejects.toMatchObject({ code: 'gateway_aborted', message: 'Stopped.' });
+    expect(observedSignal?.aborted).toBe(true);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(client.isConfigured).toBe(false);
+  });
+
+  it('times out a non-cooperative native renewal without contacting the provider', async () => {
+    const fetcher = vi.fn(async () => streamResponse(['data: [DONE]\n\n']));
+    let observedSignal: AbortSignal | undefined;
+    const renewer = vi.fn(
+      (signal: AbortSignal) =>
+        new Promise<SafariBootstrapResponse>(() => {
+          observedSignal = signal;
+        })
+    );
+    const client = new SafariGatewayClient(fetcher, 120_000, () => '2b0d4a57-a4e2-4c18-9af0-2026e06eaf51', 30_000, 5);
+    client.setConfigurationRenewer(renewer);
+
+    await expect(client.ensureProviderConfiguration()).rejects.toMatchObject({
+      code: 'gateway_attribution_renewal_timeout',
+      retryable: true
+    });
+    expect(observedSignal?.aborted).toBe(true);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(client.isConfigured).toBe(false);
+    expect(client.abortActiveRequest()).toBe(false);
+  });
+
+  it.each([
+    {
+      name: 'missing',
+      renewedBootstrap: (() => {
+        const value = bootstrap();
+        delete value.gatewayAttributionCapability;
+        return value;
+      })()
+    },
+    {
+      name: 'malformed',
+      renewedBootstrap: bootstrap({ gatewayAttributionCapability: 'not-a-capability' })
+    },
+    {
+      name: 'expired',
+      renewedBootstrap: bootstrap({ gatewayAttributionExpiresAt: '2026-08-12T00:00:00.000Z' })
+    },
+    {
+      name: 'near-expiry',
+      renewedBootstrap: bootstrap({
+        gatewayAttributionExpiresAt: new Date(Date.now() + 1_000).toISOString()
+      })
+    }
+  ])('performs zero fetches when $name renewal data fails closed', async ({ renewedBootstrap }) => {
+    const fetcher = vi.fn(async () => streamResponse(['data: [DONE]\n\n']));
+    const client = new SafariGatewayClient(fetcher);
+    client.setConfigurationRenewer(vi.fn(async () => renewedBootstrap));
+
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).rejects.toBeInstanceOf(Error);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('does not renew a healthy capability or retry an ambiguous provider response', async () => {
+    const fetcher = vi.fn(async () => new Response('Route unavailable', { status: 503 }));
+    const renewer = vi.fn(async () => bootstrap());
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+    client.setConfigurationRenewer(renewer);
+
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).rejects.toMatchObject({ code: 'gateway_http_error' });
+
+    expect(renewer).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed before network access when request attribution is not an opaque UUID', async () => {
+    const fetcher = vi.fn(async () => streamResponse(['data: [DONE]\n\n']));
+    const client = new SafariGatewayClient(fetcher, 120_000, () => pageContext.pageState.url);
+    client.configure(bootstrap());
+
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).rejects.toMatchObject({ code: 'gateway_attribution_invalid' });
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it('aborts an active stream as an intentional Stop and rejects concurrent asks', async () => {
@@ -335,6 +577,15 @@ describe('Safari loopback gateway client', () => {
       expect(() => client.configure(bootstrap({ gatewayBaseURL: unsafeURL }))).toThrow(/loopback|port/u);
     }
     expect(() => client.configure(bootstrap({ gatewayBearerToken: ' ' }))).toThrow(/bearer/u);
+    expect(() => client.configure(bootstrap({ gatewayAttributionCapability: 'not-a-capability' }))).toThrow(
+      /attribution proof/u
+    );
+    expect(() => client.configure(bootstrap({ gatewayAttributionExpiresAt: '2026-08-12T00:00:00.000Z' }))).toThrow(
+      /attribution proof/u
+    );
+    const missingCapability = bootstrap();
+    delete missingCapability.gatewayAttributionCapability;
+    expect(() => client.configure(missingCapability)).toThrow(/connection details/u);
     client.configure(bootstrap({ gatewayAvailable: false }));
     await expect(
       client.ask(

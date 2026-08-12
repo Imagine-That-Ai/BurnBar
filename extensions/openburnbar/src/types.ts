@@ -318,6 +318,7 @@ export interface BurnBarRunCreateResponse {
 
 export interface BurnBarRunListRequest {
   clientID: string;
+  sessionID?: string;
 }
 
 export interface BurnBarRunListResponse {
@@ -327,6 +328,7 @@ export interface BurnBarRunListResponse {
 export interface BurnBarRunGetRequest {
   runID: string;
   clientID: string;
+  sessionID?: string;
 }
 
 export interface BurnBarRunPollRequest {
@@ -346,6 +348,7 @@ export interface BurnBarRunEventBatch {
 export interface BurnBarRunCancelRequest {
   runID: string;
   clientID: string;
+  sessionID?: string;
   reason?: string;
 }
 

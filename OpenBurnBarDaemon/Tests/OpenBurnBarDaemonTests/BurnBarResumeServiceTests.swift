@@ -220,14 +220,13 @@ final class BurnBarResumeServiceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let packageRoot = root.appendingPathComponent("packages", isDirectory: true)
         let trustedExecutable = root.appendingPathComponent("trusted-codex")
-        var launchedArgv: [String]?
-        var launchedWorkingDirectory: String?
+        try Self.createFixtureExecutable(at: trustedExecutable)
+        var detachedLaunchCount = 0
         let service = BurnBarResumeService(
             logger: BurnBarDaemonLogger(category: "resume-service-test"),
             safariHandoffRootURL: packageRoot,
-            detachedLauncher: { argv, workingDirectory in
-                launchedArgv = argv
-                launchedWorkingDirectory = workingDirectory
+            detachedLauncher: { _, _ in
+                detachedLaunchCount += 1
                 return 4242
             },
             cliExecutableResolver: { cliType in
@@ -237,17 +236,17 @@ final class BurnBarResumeServiceTests: XCTestCase {
         )
         let runID = BurnBarRunID(rawValue: "safari-handoff-run")
 
-        let launch = try service.launchSafariHandoff(
+        let preparation = try service.prepareSafariHandoff(
             Self.safariHandoffRequest(),
             runID: runID
         )
 
-        XCTAssertEqual(launch.targetHarness, "codex")
-        XCTAssertEqual(launch.packageDirectory, packageRoot.appendingPathComponent(runID.rawValue))
-        XCTAssertEqual(launch.pid, 4242)
-        XCTAssertEqual(launchedWorkingDirectory, launch.packageDirectory.path)
+        XCTAssertEqual(preparation.targetHarness, "codex")
+        XCTAssertEqual(preparation.packageDirectory, packageRoot.appendingPathComponent(runID.rawValue))
+        XCTAssertEqual(preparation.executableURL, trustedExecutable)
+        XCTAssertEqual(detachedLaunchCount, 0)
         XCTAssertEqual(
-            launchedArgv,
+            [preparation.executableURL.path] + preparation.arguments,
             [
                 trustedExecutable.path,
                 "exec",
@@ -255,18 +254,18 @@ final class BurnBarResumeServiceTests: XCTestCase {
                 "--skip-git-repo-check",
                 "--ephemeral",
                 "--ignore-rules",
-                "-C", launch.packageDirectory.path,
-                "--image", launch.screenshotPath,
+                "-C", preparation.packageDirectory.path,
+                "--image", preparation.screenshotPath,
                 Self.safariReadOnlyPrompt
             ]
         )
         XCTAssertEqual(
-            launchedArgv?.filter { $0.contains(launch.screenshotPath) },
-            [launch.screenshotPath],
+            preparation.arguments.filter { $0.contains(preparation.screenshotPath) },
+            [preparation.screenshotPath],
             "The screenshot path must be a standalone --image value, never interpolated into a prompt."
         )
 
-        let briefing = try String(contentsOfFile: launch.briefingPath, encoding: .utf8)
+        let briefing = try String(contentsOfFile: preparation.briefingPath, encoding: .utf8)
         XCTAssertTrue(briefing.contains("# OpenBurnBar Safari Hand-off"))
         XCTAssertTrue(briefing.contains("Compare the visible plans exactly as requested."))
         XCTAssertTrue(briefing.contains("[REDACTED-PII]"))
@@ -277,16 +276,93 @@ final class BurnBarResumeServiceTests: XCTestCase {
         XCTAssertTrue(briefing.contains("read-only browser context"))
         XCTAssertTrue(briefing.contains("- File: `viewport.jpg`"))
         XCTAssertEqual(
-            try Data(contentsOf: URL(fileURLWithPath: launch.screenshotPath)),
+            try Data(contentsOf: URL(fileURLWithPath: preparation.screenshotPath)),
             Self.minimumJPEG
         )
 
-        XCTAssertEqual(try Self.permissions(at: launch.packageDirectory), 0o700)
-        XCTAssertEqual(try Self.permissions(at: URL(fileURLWithPath: launch.briefingPath)), 0o600)
-        XCTAssertEqual(try Self.permissions(at: URL(fileURLWithPath: launch.screenshotPath)), 0o600)
+        XCTAssertEqual(try Self.permissions(at: preparation.packageDirectory), 0o700)
+        XCTAssertEqual(try Self.permissions(at: URL(fileURLWithPath: preparation.briefingPath)), 0o600)
+        XCTAssertEqual(try Self.permissions(at: URL(fileURLWithPath: preparation.screenshotPath)), 0o600)
     }
 
-    func testSafariHandoffPinsTheCompleteFourteenCLIReadOnlyRosterWithoutOpenFallback() throws {
+    func testSafariHandoffCanonicalizesAnInstalledExecutableSymlinkBeforeSupervision() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "burnbar-safari-handoff-symlink-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: true
+        )
+
+        let canonicalExecutable = root
+            .appendingPathComponent("lib", isDirectory: true)
+            .appendingPathComponent("codex.js", isDirectory: false)
+        try FileManager.default.createDirectory(
+            at: canonicalExecutable.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("#!/usr/bin/env node\n".utf8).write(
+            to: canonicalExecutable,
+            options: .withoutOverwriting
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: canonicalExecutable.path
+        )
+
+        let installedEntrypoint = root
+            .appendingPathComponent("bin", isDirectory: true)
+            .appendingPathComponent("codex", isDirectory: false)
+        try FileManager.default.createDirectory(
+            at: installedEntrypoint.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createSymbolicLink(
+            at: installedEntrypoint,
+            withDestinationURL: canonicalExecutable
+        )
+
+        let service = BurnBarResumeService(
+            logger: BurnBarDaemonLogger(category: "resume-service-test"),
+            safariHandoffRootURL: root
+                .appendingPathComponent("packages", isDirectory: true),
+            cliExecutableResolver: { cliType in
+                XCTAssertEqual(cliType, .codex)
+                return installedEntrypoint
+            }
+        )
+
+        let preparation = try service.prepareSafariHandoff(
+            Self.safariHandoffRequest(),
+            runID: BurnBarRunID(rawValue: "canonical-installed-symlink")
+        )
+
+        XCTAssertEqual(preparation.executableURL, canonicalExecutable)
+        XCTAssertEqual(
+            [preparation.executableURL.path] + preparation.arguments,
+            [
+                canonicalExecutable.path,
+                "exec",
+                "--sandbox", "read-only",
+                "--skip-git-repo-check",
+                "--ephemeral",
+                "--ignore-rules",
+                "-C", preparation.packageDirectory.path,
+                "--image", preparation.screenshotPath,
+                Self.safariReadOnlyPrompt
+            ]
+        )
+        XCTAssertNotEqual(
+            preparation.executableURL,
+            installedEntrypoint,
+            "The strict supervisor boundary must receive the canonical regular target, not the user-installed symlink."
+        )
+    }
+
+    func testSafariHandoffPinsOnlyTheMechanicallyContainedRosterWithoutOpenFallback() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(
                 "burnbar-safari-handoff-roster-\(UUID().uuidString)",
@@ -295,14 +371,23 @@ final class BurnBarResumeServiceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let packageRoot = root.appendingPathComponent("packages", isDirectory: true)
         let trustedRoot = root.appendingPathComponent("trusted", isDirectory: true)
+        for target in BurnBarResumeService.safariHandoffEligibleTargets {
+            try Self.createFixtureExecutable(
+                at: trustedRoot.appendingPathComponent(
+                    Self.expectedResolvedExecutableName(
+                        for: Self.expectedCLIType(for: target)
+                    )
+                )
+            )
+        }
         var resolvedTypes: [SwitcherCLIProfileType] = []
-        var launches: [(argv: [String], workingDirectory: String?)] = []
+        var detachedLaunchCount = 0
         let service = BurnBarResumeService(
             logger: BurnBarDaemonLogger(category: "resume-service-test"),
             safariHandoffRootURL: packageRoot,
-            detachedLauncher: { argv, workingDirectory in
-                launches.append((argv, workingDirectory))
-                return launches.count
+            detachedLauncher: { _, _ in
+                detachedLaunchCount += 1
+                return detachedLaunchCount
             },
             cliExecutableResolver: { cliType in
                 resolvedTypes.append(cliType)
@@ -312,9 +397,31 @@ final class BurnBarResumeServiceTests: XCTestCase {
             }
         )
 
-        for target in CLIAgentResumeTarget.allCases {
+        let eligibleTargets = BurnBarResumeService.safariHandoffEligibleTargets
+        XCTAssertEqual(
+            eligibleTargets.map(\.wireID),
+            [
+                "claude_code",
+                "codex",
+                "antigravity",
+                "grok",
+                "cursor_agent",
+                "opencode",
+                "omp",
+                "gemini",
+                "pi",
+                "prime-agent"
+            ],
+            "Safari must advertise only CLIs with a mechanically enforced no-tools/read-only mode."
+        )
+        XCTAssertEqual(
+            BurnBarResumeService.safariHandoffEligibleTargetIDs,
+            Set(eligibleTargets.map(\.wireID))
+        )
+
+        for target in eligibleTargets {
             let runID = BurnBarRunID(rawValue: "roster-\(target.wireID)")
-            let launch = try service.launchSafariHandoff(
+            let preparation = try service.prepareSafariHandoff(
                 Self.safariHandoffRequest(targetHarness: target.wireID),
                 runID: runID
             )
@@ -325,30 +432,216 @@ final class BurnBarResumeServiceTests: XCTestCase {
                     )
                 )
 
-            XCTAssertEqual(launch.targetHarness, target.wireID)
+            XCTAssertEqual(preparation.targetHarness, target.wireID)
             XCTAssertEqual(
-                launches.last?.argv,
+                [preparation.executableURL.path] + preparation.arguments,
                 Self.expectedSafariHandoffArgv(
                     target: target,
                     trustedExecutable: trustedExecutable,
-                    packageDirectory: launch.packageDirectory,
-                    briefingPath: launch.briefingPath,
-                    screenshotPath: launch.screenshotPath
+                    packageDirectory: preparation.packageDirectory,
+                    briefingPath: preparation.briefingPath,
+                    screenshotPath: preparation.screenshotPath
                 ),
                 "Unexpected Safari hand-off argv for \(target.displayName)."
             )
-            XCTAssertEqual(launches.last?.workingDirectory, launch.packageDirectory.path)
             XCTAssertFalse(
-                launches.last?.argv.dropFirst().contains("open") == true,
+                preparation.arguments.contains("open"),
                 "\(target.displayName) must never fall through to generic file opening."
             )
         }
 
         XCTAssertEqual(
             resolvedTypes,
-            CLIAgentResumeTarget.allCases.map(Self.expectedCLIType(for:))
+            eligibleTargets.map(Self.expectedCLIType(for:))
         )
-        XCTAssertEqual(launches.count, 14)
+        XCTAssertEqual(detachedLaunchCount, 0)
+    }
+
+    func testSafariHandoffFailsClosedBeforeDiscoveryAndPackagingForUncontainedTargets() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "burnbar-safari-handoff-uncontained-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let packageRoot = root.appendingPathComponent("packages", isDirectory: true)
+        var resolvedTypes: [SwitcherCLIProfileType] = []
+        var detachedLaunchCount = 0
+        let service = BurnBarResumeService(
+            logger: BurnBarDaemonLogger(category: "resume-service-test"),
+            safariHandoffRootURL: packageRoot,
+            detachedLauncher: { _, _ in
+                detachedLaunchCount += 1
+                return detachedLaunchCount
+            },
+            cliExecutableResolver: { cliType in
+                resolvedTypes.append(cliType)
+                return root.appendingPathComponent("trusted-\(cliType.executableName)")
+            }
+        )
+        let blockedTargets: [(target: CLIAgentResumeTarget, reason: String)] = [
+            (
+                .droid,
+                "Droid is unavailable for Safari hand-off because --disable-builtin-skills does not enforce a no-tools, read-only session."
+            ),
+            (
+                .forge,
+                "Forge is unavailable for Safari hand-off because its Sage agent does not enforce a no-tools, read-only session."
+            ),
+            (
+                .kimi,
+                "Kimi is unavailable for Safari hand-off because its Explore agent does not enforce a no-tools, read-only session."
+            ),
+            (
+                .junie,
+                "Junie is unavailable for Safari hand-off because plan mode has not been verified to enforce a no-tools, read-only session."
+            )
+        ]
+
+        for blocked in blockedTargets {
+            let runID = BurnBarRunID(
+                rawValue: "uncontained-\(blocked.target.wireID)"
+            )
+            XCTAssertEqual(
+                BurnBarResumeService.safariHandoffUnavailableReason(
+                    for: blocked.target
+                ),
+                blocked.reason
+            )
+            XCTAssertFalse(
+                BurnBarResumeService.safariHandoffEligibleTargetIDs.contains(
+                    blocked.target.wireID
+                )
+            )
+            XCTAssertThrowsError(
+                try service.prepareSafariHandoff(
+                    Self.safariHandoffRequest(
+                        targetHarness: blocked.target.wireID
+                    ),
+                    runID: runID
+                )
+            ) { error in
+                let nsError = error as NSError
+                XCTAssertEqual(nsError.domain, "BurnBarResumeService")
+                XCTAssertEqual(nsError.code, 422)
+                XCTAssertEqual(nsError.localizedDescription, blocked.reason)
+            }
+            XCTAssertFalse(
+                FileManager.default.fileExists(
+                    atPath: packageRoot
+                        .appendingPathComponent(runID.rawValue)
+                        .path
+                ),
+                "\(blocked.target.displayName) must fail before private page evidence is packaged."
+            )
+        }
+
+        XCTAssertTrue(
+            resolvedTypes.isEmpty,
+            "An ineligible Safari target must fail before executable discovery."
+        )
+        XCTAssertEqual(detachedLaunchCount, 0)
+    }
+
+    func testSafariInstalledAgentProjectionIncludesOnlyEligibleResolvedExecutables() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "burnbar-safari-installed-agents-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let codexExecutable = root.appendingPathComponent("codex")
+        let openCodeExecutable = root.appendingPathComponent("opencode")
+        try Self.createFixtureExecutable(at: codexExecutable)
+        try Self.createFixtureExecutable(at: openCodeExecutable)
+
+        var requestedTypes: [SwitcherCLIProfileType] = []
+        let service = BurnBarResumeService(
+            logger: BurnBarDaemonLogger(category: "resume-service-test"),
+            cliExecutableResolver: { cliType in
+                requestedTypes.append(cliType)
+                switch cliType {
+                case .codex:
+                    return codexExecutable
+                case .opencode:
+                    return openCodeExecutable
+                case .droid, .forge, .kimi, .junie:
+                    XCTFail("Blocked Safari targets must not be resolved.")
+                    return nil
+                case .claude, .antigravity, .grok, .cursorAgent, .omp,
+                     .gemini, .pi, .primeAgent:
+                    return nil
+                }
+            }
+        )
+
+        XCTAssertEqual(
+            service.installedSafariHandoffAgents(),
+            [
+                BurnBarSafariInstalledAgent(
+                    id: "codex",
+                    displayName: "Codex",
+                    providerName: "Installed agents"
+                ),
+                BurnBarSafariInstalledAgent(
+                    id: "opencode",
+                    displayName: "OpenCode",
+                    providerName: "Installed agents"
+                )
+            ]
+        )
+        XCTAssertEqual(
+            requestedTypes,
+            BurnBarResumeService.safariHandoffEligibleTargets.map(
+                Self.expectedCLIType(for:)
+            ),
+            "Blocked targets must not reach executable discovery during Safari advertising."
+        )
+        XCTAssertTrue(
+            !requestedTypes.contains(.droid)
+                && !requestedTypes.contains(.forge)
+                && !requestedTypes.contains(.kimi)
+                && !requestedTypes.contains(.junie)
+        )
+    }
+
+    func testSafariContainmentPolicyDoesNotRemoveOrdinaryResumeTargets() throws {
+        let fixture = try Self.makeFixtureDatabase()
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        try Self.withDatabase(at: fixture.databaseURL) { db in
+            try Self.createConversationsTable(db: db)
+            try Self.insertConversation(
+                id: "Codex:ordinary-containment-check",
+                provider: "Codex",
+                sessionID: "ordinary-containment-check",
+                workingDirectory: fixture.workspace.path,
+                db: db
+            )
+        }
+        let service = try BurnBarResumeService(
+            databasePath: fixture.databaseURL.path,
+            logger: BurnBarDaemonLogger(category: "resume-service-test")
+        )
+        let targets: [(target: CLIAgentResumeTarget, executable: String)] = [
+            (.droid, "droid"),
+            (.forge, "forge"),
+            (.kimi, "kimi"),
+            (.junie, "junie")
+        ]
+
+        for item in targets {
+            let response = try service.runResume(
+                BurnBarRunResumeRequest(
+                    sessionID: "Codex:ordinary-containment-check",
+                    targetHarness: item.target.wireID,
+                    mode: .print
+                )
+            )
+            XCTAssertEqual(response.kind, "ported")
+            XCTAssertEqual(response.targetHarness, item.target.wireID)
+            XCTAssertEqual(response.targetArgv?.first, item.executable)
+            XCTAssertFalse(response.briefingMD?.isEmpty ?? true)
+        }
     }
 
     func testSafariOpenCodeHandoffWritesDenyByDefaultOwnerOnlyAgentConfiguration() throws {
@@ -360,12 +653,13 @@ final class BurnBarResumeServiceTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let packageRoot = root.appendingPathComponent("packages", isDirectory: true)
         let trustedExecutable = root.appendingPathComponent("trusted-opencode")
-        var launchedArgv: [String]?
+        try Self.createFixtureExecutable(at: trustedExecutable)
+        var detachedLaunchCount = 0
         let service = BurnBarResumeService(
             logger: BurnBarDaemonLogger(category: "resume-service-test"),
             safariHandoffRootURL: packageRoot,
-            detachedLauncher: { argv, _ in
-                launchedArgv = argv
+            detachedLauncher: { _, _ in
+                detachedLaunchCount += 1
                 return 4242
             },
             cliExecutableResolver: { cliType in
@@ -374,11 +668,11 @@ final class BurnBarResumeServiceTests: XCTestCase {
             }
         )
 
-        let launch = try service.launchSafariHandoff(
+        let preparation = try service.prepareSafariHandoff(
             Self.safariHandoffRequest(targetHarness: "opencode"),
             runID: BurnBarRunID(rawValue: "opencode-readonly")
         )
-        let configurationURL = launch.packageDirectory
+        let configurationURL = preparation.packageDirectory
             .appendingPathComponent("opencode.json", isDirectory: false)
         let configuration = try String(
             contentsOf: configurationURL,
@@ -424,15 +718,16 @@ final class BurnBarResumeServiceTests: XCTestCase {
             ]
         )
         XCTAssertEqual(
-            launchedArgv,
+            [preparation.executableURL.path] + preparation.arguments,
             Self.expectedSafariHandoffArgv(
                 target: .opencode,
                 trustedExecutable: trustedExecutable,
-                packageDirectory: launch.packageDirectory,
-                briefingPath: launch.briefingPath,
-                screenshotPath: launch.screenshotPath
+                packageDirectory: preparation.packageDirectory,
+                briefingPath: preparation.briefingPath,
+                screenshotPath: preparation.screenshotPath
             )
         )
+        XCTAssertEqual(detachedLaunchCount, 0)
     }
 
     func testSafariHandoffRejectsUntrustedTargetAndMalformedJPEGBeforeLaunch() throws {
@@ -458,7 +753,7 @@ final class BurnBarResumeServiceTests: XCTestCase {
         )
 
         XCTAssertThrowsError(
-            try service.launchSafariHandoff(
+            try service.prepareSafariHandoff(
                 Self.safariHandoffRequest(targetHarness: "codex"),
                 runID: BurnBarRunID(rawValue: "untrusted-target")
             )
@@ -490,7 +785,7 @@ final class BurnBarResumeServiceTests: XCTestCase {
             screenshotTruncated: malformed.screenshotTruncated
         )
         XCTAssertThrowsError(
-            try service.launchSafariHandoff(
+            try service.prepareSafariHandoff(
                 malformed,
                 runID: BurnBarRunID(rawValue: "malformed-jpeg")
             )
@@ -505,73 +800,35 @@ final class BurnBarResumeServiceTests: XCTestCase {
         XCTAssertEqual(launchCount, 0)
     }
 
-    func testSafariHandoffDeletesPartialPackageWhenDetachedLaunchFails() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "burnbar-safari-handoff-cleanup-\(UUID().uuidString)",
-                isDirectory: true
-            )
-        defer { try? FileManager.default.removeItem(at: root) }
-        let packageRoot = root.appendingPathComponent("packages", isDirectory: true)
-        let service = BurnBarResumeService(
-            logger: BurnBarDaemonLogger(category: "resume-service-test"),
-            safariHandoffRootURL: packageRoot,
-            detachedLauncher: { _, _ in
-                throw NSError(
-                    domain: "BurnBarResumeServiceTests",
-                    code: 77,
-                    userInfo: [NSLocalizedDescriptionKey: "injected launch failure"]
-                )
-            },
-            cliExecutableResolver: { _ in
-                root.appendingPathComponent("trusted-codex")
-            }
-        )
-        let runID = BurnBarRunID(rawValue: "failed-launch")
-
-        XCTAssertThrowsError(
-            try service.launchSafariHandoff(
-                Self.safariHandoffRequest(),
-                runID: runID
-            )
-        ) { error in
-            XCTAssertEqual((error as NSError).code, 77)
-        }
-        XCTAssertFalse(
-            FileManager.default.fileExists(
-                atPath: packageRoot.appendingPathComponent(runID.rawValue).path
-            ),
-            "A failed process launch must not leave page context or screenshots behind."
-        )
-    }
-
-    func testSafariHandoffRejectsDuplicateRunPackageIdentityWithoutRelaunching() throws {
+    func testSafariHandoffRejectsDuplicateRunPackageIdentityWithoutRepreparing() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(
                 "burnbar-safari-handoff-duplicate-\(UUID().uuidString)",
                 isDirectory: true
             )
         defer { try? FileManager.default.removeItem(at: root) }
-        var launchCount = 0
+        let trustedExecutable = root.appendingPathComponent("trusted-codex")
+        try Self.createFixtureExecutable(at: trustedExecutable)
+        var detachedLaunchCount = 0
         let service = BurnBarResumeService(
             logger: BurnBarDaemonLogger(category: "resume-service-test"),
             safariHandoffRootURL: root.appendingPathComponent("packages"),
             detachedLauncher: { _, _ in
-                launchCount += 1
-                return 1
+                detachedLaunchCount += 1
+                return detachedLaunchCount
             },
             cliExecutableResolver: { _ in
-                root.appendingPathComponent("trusted-codex")
+                trustedExecutable
             }
         )
         let runID = BurnBarRunID(rawValue: "duplicate-run")
-        _ = try service.launchSafariHandoff(
+        _ = try service.prepareSafariHandoff(
             Self.safariHandoffRequest(),
             runID: runID
         )
 
         XCTAssertThrowsError(
-            try service.launchSafariHandoff(
+            try service.prepareSafariHandoff(
                 Self.safariHandoffRequest(),
                 runID: runID
             )
@@ -580,7 +837,7 @@ final class BurnBarResumeServiceTests: XCTestCase {
             XCTAssertEqual(nsError.domain, "BurnBarResumeService")
             XCTAssertEqual(nsError.code, 409)
         }
-        XCTAssertEqual(launchCount, 1)
+        XCTAssertEqual(detachedLaunchCount, 0)
     }
 
     private static func withDatabase(at url: URL, _ body: (OpaquePointer) throws -> Void) throws {
@@ -599,6 +856,21 @@ final class BurnBarResumeServiceTests: XCTestCase {
         let workspace = directory.appendingPathComponent("workspace", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         return (directory, workspace, directory.appendingPathComponent("openburnbar.sqlite"))
+    }
+
+    private static func createFixtureExecutable(at url: URL) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(
+            to: url,
+            options: .withoutOverwriting
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: url.path
+        )
     }
 
     private static func createConversationsTable(db: OpaquePointer) throws {
@@ -757,21 +1029,9 @@ final class BurnBarResumeServiceTests: XCTestCase {
                 "--image", screenshotPath,
                 prompt
             ]
-        case .droid:
-            return [
-                executable,
-                "exec",
-                "--file", briefingPath,
-                "--cwd", package,
-                "--disable-builtin-skills"
-            ]
-        case .forge:
-            return [
-                executable,
-                "--agent", "sage",
-                "--directory", package,
-                "--prompt", prompt
-            ]
+        case .droid, .forge:
+            XCTFail("\(target.displayName) is not eligible for Safari hand-off.")
+            return []
         case .antigravity:
             return [
                 executable,
@@ -835,13 +1095,8 @@ final class BurnBarResumeServiceTests: XCTestCase {
                 "--output-format", "text"
             ]
         case .kimi:
-            return [
-                executable,
-                "--agent", "explore",
-                "--add-dir", package,
-                "--prompt", prompt,
-                "--output-format", "text"
-            ]
+            XCTFail("\(target.displayName) is not eligible for Safari hand-off.")
+            return []
         case .pi:
             return [
                 executable,
@@ -858,12 +1113,8 @@ final class BurnBarResumeServiceTests: XCTestCase {
                 prompt
             ]
         case .junie:
-            return [
-                executable,
-                "--plan",
-                "--prompt", prompt,
-                "--project", package
-            ]
+            XCTFail("\(target.displayName) is not eligible for Safari hand-off.")
+            return []
         case .primeAgent:
             return [
                 executable,
