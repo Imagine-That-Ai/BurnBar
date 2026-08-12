@@ -9,13 +9,24 @@ import Foundation
 /// - **Running:** a non-terminal invocation with `updatedAt` fresh (< 300 s),
 ///   OR a live background-process entry, OR a session/mission directory
 ///   mtime fresh (< 300 s).
-/// - **Idle:** roots present, nothing fresh (or only fresh terminal
-///   invocations — no active work).
-/// - **Stale:** last signal beyond the 300 s window.
+/// - **Idle (installed-but-inactive):** roots present with no active work —
+///   an empty-but-present task ledger or background registry, only fresh
+///   terminal invocations, or dead background entries. A present root with no
+///   signal files at all is also idle, evidenced by the declared root itself.
+/// - **Stale:** last timestamped signal beyond the 300 s window.
+/// - **Status vocabulary:** invocation `status` must be one of the documented
+///   non-terminal (`running`, `queued`, `pending`, `in_progress`, `active`,
+///   `working`) or terminal (`completed`, `failed`, `cancelled`) strings.
+///   Any other string (e.g. `"bogus"`) is malformed — it never counts as
+///   non-terminal and never yields `running`.
 /// - **Malformed shape:** valid JSON with a missing/mistyped required key
-///   (invocation `status`/`updatedAt`, registry `pid`) degrades only its own
-///   path — the alternate paths still drive the row, and a malformed ledger
-///   never fabricates `running`.
+///   (invocation `status`/`updatedAt`, registry `pid`) or an unknown status
+///   string degrades only its own path — the alternate paths still drive the
+///   row, and a malformed ledger never fabricates `running`.
+/// - **Pid-reuse guard:** a background entry's recorded `startTime` is
+///   compared against the current process start time before `kill -0`
+///   liveness (same standard as the claude-code probe); a reused pid is
+///   treated as dead.
 /// - **Artifacts exclusion:** the probe touches only the declared signal
 ///   files and the `sessions/`/`missions/` subdirectories. It NEVER reads,
 ///   lists, or traverses `<root>/artifacts/` (system-reserved).
@@ -70,11 +81,55 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             at: rootURL.appendingPathComponent("missions", isDirectory: true).path
         )
 
+        let evidence = Self.collectEvidence(
+            rootPath: rootPath,
+            ledger: ledger,
+            background: background,
+            sessionDirs: sessionDirs,
+            missionDirs: missionDirs,
+            now: now,
+            freshnessSeconds: freshnessSeconds
+        )
+
+        return Self.classify(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now,
+            freshnessSeconds: freshnessSeconds,
+            evidence: evidence
+        )
+    }
+
+    /// Collects every evidence source into one set: the declared root itself
+    /// (root-presence, so a determined row always carries at least one
+    /// evidence path — VAL-FLEET-016), the task ledger, the background
+    /// registry, and the session/mission directory mtimes. Malformed sources
+    /// degrade typed and never fabricate liveness.
+    private static func collectEvidence(
+        rootPath: String,
+        ledger: Ledger?,
+        background: BackgroundRegistry?,
+        sessionDirs: [DirectoryFreshness],
+        missionDirs: [DirectoryFreshness],
+        now: Date,
+        freshnessSeconds: TimeInterval
+    ) -> EvidenceSet {
         var signals: [BurnBarFleetSignalSource] = []
         var healthReasons: [String] = []
         var liveEvidence: [Evidence] = []
         var staleEvidence: [Evidence] = []
         var hasAnySignalFile = false
+
+        // Root-presence evidence: the declared root itself is a signal source
+        // for the installed-but-inactive state, so a determined (non-unknown)
+        // row always carries at least one evidence path (VAL-FLEET-016).
+        signals.append(
+            BurnBarFleetSignalSource(
+                kind: "root-presence",
+                path: rootPath,
+                detail: "Declared root present."
+            )
+        )
 
         if let ledger {
             hasAnySignalFile = true
@@ -141,21 +196,13 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             ? .ok
             : .degraded(reason: healthReasons.joined(separator: " "))
 
-        let evidence = EvidenceSet(
+        return EvidenceSet(
             signals: signals,
             healthState: healthState,
             healthReasons: healthReasons,
             liveEvidence: liveEvidence,
             staleEvidence: staleEvidence,
             hasAnySignalFile: hasAnySignalFile
-        )
-
-        return Self.classify(
-            agentID: agentID,
-            rootPath: rootPath,
-            now: now,
-            freshnessSeconds: freshnessSeconds,
-            evidence: evidence
         )
     }
 
@@ -288,7 +335,9 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
 
         if evidence.hasAnySignalFile {
             // Evidence files exist. Fresh-but-no-active-work (e.g. only fresh
-            // terminal invocations) is idle; everything beyond the window is
+            // terminal invocations, an empty-but-present registry, or dead
+            // background entries) is idle — the documented installed-but-
+            // inactive state, never stale. Everything beyond the window is
             // stale. When every signal is malformed and no usable evidence
             // remains, the row is typed unknown — never fabricated running.
             let freshest = evidence.staleEvidence.compactMap { $0.lastActivityAt }.max()
@@ -317,6 +366,21 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
                     healthState: evidence.healthState
                 )
             }
+            if freshest == nil {
+                // Signal files exist but carry no timestamped evidence at
+                // all: an empty-but-present registry is the documented
+                // installed-but-inactive state (idle), not stale.
+                return BurnBarFleetProbeSupport.result(
+                    agentID: agentID,
+                    rootPath: rootPath,
+                    now: now,
+                    status: .idle,
+                    confidence: .activeSessionFile,
+                    signals: evidence.signals,
+                    note: "Signal files present but no timestamped evidence; installed but inactive.",
+                    healthState: evidence.healthState
+                )
+            }
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -330,15 +394,16 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             )
         }
 
-        // Root present but no signal files at all.
+        // Root present but no signal files at all: installed-but-inactive.
+        // The declared root itself is the evidence path (VAL-FLEET-016).
         return BurnBarFleetProbeSupport.result(
             agentID: agentID,
             rootPath: rootPath,
             now: now,
             status: .idle,
-            confidence: .unsupported,
+            confidence: .activeSessionFile,
             signals: evidence.signals,
-            note: "Roots present, no signal files.",
+            note: "Roots present, no signal files; installed but inactive.",
             healthState: evidence.healthState
         )
     }
@@ -359,182 +424,6 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
         let projectName: String?
         let lastActivityAt: Date?
         let detail: String
-    }
-
-    // MARK: - Task ledger
-
-    private struct Ledger {
-        let path: String
-        let invocations: [Invocation]
-        let malformedReason: String?
-    }
-
-    private struct Invocation {
-        let cwd: String?
-        let updatedAt: Date?
-        let status: String?
-        let malformedReason: String?
-
-        /// A non-terminal invocation with a fresh `updatedAt` is live
-        /// evidence. Terminal statuses are exactly the documented set;
-        /// anything else (including unknown strings) is non-terminal.
-        var isNonTerminal: Bool {
-            guard let status else { return false }
-            return !["completed", "failed", "cancelled"].contains(status)
-        }
-
-        func isLive(now: Date, freshnessSeconds: TimeInterval) -> Bool {
-            guard malformedReason == nil, isNonTerminal, let updatedAt else { return false }
-            return now.timeIntervalSince(updatedAt) <= freshnessSeconds
-        }
-    }
-
-    private static func readLedger(at path: String, timeoutSeconds: TimeInterval) -> Ledger? {
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
-
-        let object: [String: Any]
-        do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
-            guard let dictionary = raw as? [String: Any] else {
-                let reason = "task-invocations.json is not a JSON object."
-                return Ledger(path: path, invocations: [], malformedReason: reason)
-            }
-            object = dictionary
-        } catch {
-            let reason = BurnBarFleetProbeJSON.readFailureReason(error)
-            return Ledger(path: path, invocations: [], malformedReason: reason)
-        }
-
-        guard let rawInvocations = object["invocations"] as? [[String: Any]] else {
-            let reason = "task-invocations.json is missing the invocations array."
-            return Ledger(path: path, invocations: [], malformedReason: reason)
-        }
-
-        var invocations: [Invocation] = []
-        var malformedCount = 0
-        for raw in rawInvocations {
-            let status = BurnBarFleetProbeJSON.stringValue(raw["status"])
-            let updatedAt = BurnBarFleetProbeJSON.dateFromEpochMilliseconds(raw["updatedAt"])
-            let cwd = BurnBarFleetProbeJSON.stringValue(raw["cwd"])
-            if status == nil || updatedAt == nil {
-                malformedCount += 1
-                invocations.append(
-                    Invocation(
-                        cwd: cwd,
-                        updatedAt: updatedAt,
-                        status: status,
-                        malformedReason: "Invocation is missing a string status or numeric updatedAt."
-                    )
-                )
-            } else {
-                invocations.append(
-                    Invocation(cwd: cwd, updatedAt: updatedAt, status: status, malformedReason: nil)
-                )
-            }
-        }
-
-        let reason = malformedCount > 0 ? "\(malformedCount) invocation(s) malformed." : nil
-        return Ledger(path: path, invocations: invocations, malformedReason: reason)
-    }
-
-    // MARK: - Background processes
-
-    private struct BackgroundRegistry {
-        let path: String
-        let entries: [BackgroundEntry]
-        let malformedReason: String?
-    }
-
-    private struct BackgroundEntry {
-        let pid: Int?
-        let cwd: String?
-        let startTime: Date?
-        let malformedReason: String?
-
-        var isLive: Bool {
-            guard malformedReason == nil, let pid else { return false }
-            return BurnBarFleetProcessLiveness.isAlive(pid: pid)
-        }
-    }
-
-    private static func readBackgroundProcesses(at path: String, timeoutSeconds: TimeInterval) -> BackgroundRegistry? {
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
-
-        let object: [String: Any]
-        do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
-            guard let dictionary = raw as? [String: Any] else {
-                let reason = "background-processes.json is not a JSON object."
-                return BackgroundRegistry(path: path, entries: [], malformedReason: reason)
-            }
-            object = dictionary
-        } catch {
-            let reason = BurnBarFleetProbeJSON.readFailureReason(error)
-            return BackgroundRegistry(path: path, entries: [], malformedReason: reason)
-        }
-
-        guard let rawEntries = object["processes"] as? [[String: Any]] else {
-            let reason = "background-processes.json is missing the processes array."
-            return BackgroundRegistry(path: path, entries: [], malformedReason: reason)
-        }
-
-        var entries: [BackgroundEntry] = []
-        var malformedCount = 0
-        for raw in rawEntries {
-            let pid = BurnBarFleetProbeJSON.integerValue(raw["pid"])
-            let cwd = BurnBarFleetProbeJSON.stringValue(raw["cwd"])
-            let startTime = BurnBarFleetProbeJSON.dateFromEpochMilliseconds(raw["startTime"])
-            if pid == nil {
-                malformedCount += 1
-                let reason = "Entry is missing a numeric pid."
-                entries.append(
-                    BackgroundEntry(pid: nil, cwd: cwd, startTime: startTime, malformedReason: reason)
-                )
-            } else {
-                entries.append(BackgroundEntry(pid: pid, cwd: cwd, startTime: startTime, malformedReason: nil))
-            }
-        }
-
-        let reason = malformedCount > 0 ? "\(malformedCount) background entry(ies) malformed." : nil
-        return BackgroundRegistry(path: path, entries: entries, malformedReason: reason)
-    }
-
-    // MARK: - Session / mission directories
-
-    private struct DirectoryFreshness {
-        let path: String
-        let name: String
-        let mtime: Date?
-
-        func isFresh(now: Date, freshnessSeconds: TimeInterval) -> Bool {
-            guard let mtime else { return false }
-            return now.timeIntervalSince(mtime) <= freshnessSeconds
-        }
-    }
-
-    private static func readDirectoryFreshness(at path: String) -> [DirectoryFreshness] {
-        guard FileManager.default.fileExists(atPath: path) else { return [] }
-
-        let contents: [String]
-        do {
-            contents = try FileManager.default.contentsOfDirectory(atPath: path)
-        } catch {
-            return []
-        }
-
-        var result: [DirectoryFreshness] = []
-        for name in contents {
-            let itemPath = URL(fileURLWithPath: path, isDirectory: true)
-                .appendingPathComponent(name).path
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: itemPath, isDirectory: &isDirectory),
-                  isDirectory.boolValue else {
-                continue
-            }
-            let mtime = (try? FileManager.default.attributesOfItem(atPath: itemPath))?[.modificationDate] as? Date
-            result.append(DirectoryFreshness(path: itemPath, name: name, mtime: mtime))
-        }
-        return result
     }
 
     /// Decodes a factory session-dir slug (`-Users-albertonunez-Developer-AgentLens`

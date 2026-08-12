@@ -135,16 +135,37 @@ public enum BurnBarFleetProbeJSON {
         return "Signal file is not valid JSON."
     }
 
-    /// Epoch-milliseconds number → Date (nil when absent, null, or mistyped).
+    /// Epoch-milliseconds number → Date (nil when absent, null, mistyped,
+    /// boolean, or fractional). The documented encoding is INTEGRAL
+    /// epoch-milliseconds; booleans and fractional values are malformed and
+    /// degrade typed — they never become a live-looking timestamp.
     public static func dateFromEpochMilliseconds(_ value: Any?) -> Date? {
         guard let number = value as? NSNumber else { return nil }
-        return Date(timeIntervalSince1970: number.doubleValue / 1000.0)
+        guard !isBoolean(number) else { return nil }
+        let milliseconds = number.doubleValue
+        guard milliseconds.isFinite, milliseconds.rounded() == milliseconds else { return nil }
+        return Date(timeIntervalSince1970: milliseconds / 1000.0)
     }
 
-    /// Integer value (nil when absent, null, or mistyped).
+    /// Integer value (nil when absent, null, mistyped, boolean, fractional,
+    /// or out of Int64 range). Strict by design: a malformed
+    /// pid/inflightCount/active_agents must degrade typed — it is never
+    /// coerced via `intValue` into a live-looking integer.
     public static func integerValue(_ value: Any?) -> Int? {
         guard let number = value as? NSNumber else { return nil }
-        return number.intValue
+        guard !isBoolean(number) else { return nil }
+        let double = number.doubleValue
+        guard double.isFinite,
+              double.rounded() == double,
+              double >= Double(Int64.min),
+              double <= Double(Int64.max) else { return nil }
+        return Int(number.int64Value)
+    }
+
+    /// JSON `true`/`false` bridge to `NSNumber`; never a valid integer or
+    /// timestamp signal value.
+    private static func isBoolean(_ number: NSNumber) -> Bool {
+        CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 
     /// String value (nil when absent, null, or mistyped).

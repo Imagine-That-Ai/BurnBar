@@ -120,6 +120,14 @@ loss.
   listed, or traversed. Pid-reuse guarding: a pid whose process start time
   postdates the signal file's recorded `startedAt` is treated as dead
   (VAL-HARD-007).
+- **Strict signal decoding (shared helpers).** The shared JSON helpers
+  validate primitives strictly BEFORE any liveness logic: integer fields
+  (`pid`, `inflightCount`, `active_agents`, background `pid`) reject
+  NSNumber booleans, fractional values, and out-of-range numbers — no
+  `intValue` coercion. Epoch-millisecond timestamp fields reject booleans
+  and fractional values. A malformed value produces a typed non-running /
+  degraded row with a probeHealth reason — never a live-looking integer,
+  never silently healthy.
 
 ---
 
@@ -227,6 +235,12 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
 - **Notes:**
   - `messagingSocketPath` is Claude's INTERNAL IPC (`/tmp/cc-socks/<pid>.sock`) — excluded from directive-delivery scope (undocumented).
   - Multiple session files: one live session drives the row; dead/stale sessions never mask a live one.
+  - **Malformed-sibling isolation:** a malformed session file (valid JSON,
+    missing/mistyped required key) surfaces as a typed `degraded(reason)`
+    probeHealth state on EVERY row the probe produces — including a
+    stale/logHeartbeat row driven by a live-pid-but-stale sibling. A
+    malformed sibling never flips a row to `running`, and a row with a
+    malformed sibling is never reported with healthy probeHealth.
 
 ### 2. `factory-droid` — Factory Droid
 
@@ -261,11 +275,37 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
 ```
 
   `~/.factory/background-processes.json` shape: `{"processes": []}`.
+- **Timestamp encoding (pinned):** `createdAt`/`updatedAt` in
+  `task-invocations.json` and `startTime` in `background-processes.json` are
+  **integral epoch-milliseconds** (verified on the real ledger, e.g.
+  `1784343288288`). Fractional, boolean, or non-numeric values are malformed
+  and degrade typed — they never become a live-looking timestamp.
+- **Status vocabulary (pinned):** invocation `status` is one of the
+  non-terminal strings `running | queued | pending | in_progress | active |
+  working` or one of the terminal strings `completed | failed | cancelled`.
+  Any other string (e.g. `"bogus"`) is **malformed**: it never counts as
+  non-terminal and never yields `running`; the invocation degrades typed
+  (`degraded(reason)` health) like a missing/mistyped key.
 - **Running rule:** a non-terminal invocation with `updatedAt` fresh (< **300 s**), OR a live background-process entry, OR a session-dir mtime fresh (< **300 s**).
-- **Idle rule:** roots present, nothing fresh.
-- **Stale rule:** last fresh signal beyond the 300 s window.
+- **Idle rule (installed-but-inactive):** roots present, nothing fresh —
+  including an **empty-but-present** `task-invocations.json` or
+  `background-processes.json` registry, only fresh terminal invocations, or
+  dead background entries. An empty-but-present registry is the documented
+  installed-but-inactive state, **not** stale.
+- **Stale rule:** last timestamped signal beyond the 300 s window.
 - **Repo attribution:** invocation `cwd`, or session-dir slug decode (`-Users-albertonunez-…` → `/Users/albertonunez/…`).
-- **Notes:** no pid registry; confidence is `activeSessionFile` by design — never `exactProcess`.
+- **Notes:**
+  - No pid registry; confidence is `activeSessionFile` by design — never `exactProcess`.
+  - **Background-entry liveness (PID-reuse guard):** a background entry's
+    recorded `startTime` is compared against the current process start time
+    before `kill -0` (same standard as the claude-code probe). A pid whose
+    current process started after the entry's recorded `startTime` is a
+    reused pid and is treated as dead; a missing/unqueryable record skips
+    the guard (`kill -0` decides).
+  - **Installed-root evidence:** a present root with no signal files at all
+    is `idle` (installed-but-inactive) and carries a `root-presence` signal
+    source naming the declared root — every determined (non-unknown) row
+    carries at least one evidence path (VAL-FLEET-016).
 
 ### 3. `codex` — Codex
 

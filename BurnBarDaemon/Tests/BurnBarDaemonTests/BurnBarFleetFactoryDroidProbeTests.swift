@@ -62,7 +62,14 @@ final class BurnBarFleetFactoryDroidProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.projectName, "/Users/test/RepoA")
         XCTAssertNil(result.agent.process, "factory-droid never carries a process block (no pid registry)")
         XCTAssertEqual(result.health.state, .ok)
-        XCTAssertEqual(result.agent.signals.first?.kind, "task-ledger")
+        XCTAssertTrue(
+            result.agent.signals.contains { $0.kind == "task-ledger" },
+            "task-ledger evidence must be present"
+        )
+        XCTAssertTrue(
+            result.agent.signals.contains { $0.kind == "root-presence" },
+            "installed-root evidence must be present"
+        )
     }
 
     func testTerminalInvocationFresh_notRunning() async throws {
@@ -158,7 +165,14 @@ final class BurnBarFleetFactoryDroidProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.status, .running)
         XCTAssertEqual(result.agent.confidence, .activeSessionFile)
         XCTAssertEqual(result.agent.projectName, "/Users/test/RepoB")
-        XCTAssertEqual(result.agent.signals.first?.kind, "process-list")
+        XCTAssertTrue(
+            result.agent.signals.contains { $0.kind == "process-list" },
+            "process-list evidence must be present"
+        )
+        XCTAssertTrue(
+            result.agent.signals.contains { $0.kind == "root-presence" },
+            "installed-root evidence must be present"
+        )
     }
 
     func testBackgroundProcessDeadEntry_notRunning() async throws {
@@ -191,7 +205,14 @@ final class BurnBarFleetFactoryDroidProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.status, .running)
         XCTAssertEqual(result.agent.confidence, .activeSessionFile)
         XCTAssertEqual(result.agent.projectName, "/Users/test/RepoC", "session-dir slug must decode to the repo path")
-        XCTAssertEqual(result.agent.signals.first?.kind, "session-directory")
+        XCTAssertTrue(
+            result.agent.signals.contains { $0.kind == "session-directory" },
+            "session-directory evidence must be present"
+        )
+        XCTAssertTrue(
+            result.agent.signals.contains { $0.kind == "root-presence" },
+            "installed-root evidence must be present"
+        )
     }
 
     func testSessionDirectoryStaleMtime_notRunning() async throws {

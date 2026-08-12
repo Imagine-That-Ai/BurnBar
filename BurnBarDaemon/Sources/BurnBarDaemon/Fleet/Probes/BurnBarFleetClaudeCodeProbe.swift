@@ -121,7 +121,10 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
                     healthState: healthState
                 )
             }
-            // Live pid but stale updatedAt: freshness downgrade.
+            // Live pid but stale updatedAt: freshness downgrade. A malformed
+            // sibling file still surfaces as a typed degraded health reason —
+            // malformed-signal isolation requires the degradation to be
+            // visible even when another session drives the row.
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -132,7 +135,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
                 lastActivityAt: updatedAt,
                 signals: signals,
                 note: "Session pid is live but updatedAt is beyond the freshness window.",
-                healthState: .ok
+                healthState: degradedReason.map { .degraded(reason: $0) } ?? .ok
             )
         }
 
