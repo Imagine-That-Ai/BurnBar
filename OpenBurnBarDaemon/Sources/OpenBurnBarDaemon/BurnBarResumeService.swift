@@ -104,11 +104,37 @@ final class BurnBarResumeService: @unchecked Sendable {
             Self.safariHandoffEligibleTargets.compactMap { target in
                 guard let discoveredExecutableURL = cliExecutableResolver(
                     Self.cliType(for: target)
-                ),
-                    (try? Self.canonicalSafariHandoffExecutableURL(
-                        discoveredExecutableURL
-                    )) != nil
-                else {
+                ) else {
+                    safariHandoffCatalogRejections.removeValue(
+                        forKey: target.wireID
+                    )
+                    return nil
+                }
+                let executableURL: URL
+                do {
+                    executableURL =
+                        try Self.canonicalSafariHandoffExecutableURL(
+                            discoveredExecutableURL
+                        )
+                } catch {
+                    recordSafariHandoffCatalogRejection(
+                        target: target,
+                        reason: "canonical_executable_unavailable"
+                    )
+                    return nil
+                }
+                switch SafariHandoffProcessSupervisor.ExecutableValidator
+                    .assessForLaunch(url: executableURL)
+                {
+                case .trusted:
+                    safariHandoffCatalogRejections.removeValue(
+                        forKey: target.wireID
+                    )
+                case .rejected(let failure):
+                    recordSafariHandoffCatalogRejection(
+                        target: target,
+                        reason: failure.rawValue
+                    )
                     return nil
                 }
                 return BurnBarSafariInstalledAgent(
@@ -118,6 +144,23 @@ final class BurnBarResumeService: @unchecked Sendable {
                 )
             }
         }
+    }
+
+    private func recordSafariHandoffCatalogRejection(
+        target: CLIAgentResumeTarget,
+        reason: String
+    ) {
+        guard safariHandoffCatalogRejections[target.wireID] != reason else {
+            return
+        }
+        safariHandoffCatalogRejections[target.wireID] = reason
+        logger.warning(
+            "safari_handoff_agent_catalog_rejected",
+            metadata: [
+                "target_harness": target.wireID,
+                "reason": reason,
+            ]
+        )
     }
 
     /// A product-facing explanation for known CLIs that are deliberately not
@@ -150,15 +193,16 @@ final class BurnBarResumeService: @unchecked Sendable {
 
     private let db: OpaquePointer?
     private let queue = DispatchQueue(label: "com.openburnbar.daemon.resume.sqlite")
-    private let logger: BurnBarDaemonLogger
+    private let logger: any BurnBarDaemonLogging
     private let fileManager: FileManager
     private let safariHandoffRootURL: URL
     private let detachedLauncher: DetachedLauncher?
     private let cliExecutableResolver: CLIExecutableResolver
+    private var safariHandoffCatalogRejections: [String: String] = [:]
 
     init(
         databasePath: String,
-        logger: BurnBarDaemonLogger,
+        logger: any BurnBarDaemonLogging,
         fileManager: FileManager = .default,
         safariHandoffRootURL: URL? = nil,
         detachedLauncher: DetachedLauncher? = nil,
@@ -204,7 +248,7 @@ final class BurnBarResumeService: @unchecked Sendable {
     /// Launcher-only construction for Safari hand-offs on fresh profiles where
     /// the indexed conversation database does not exist yet.
     init(
-        logger: BurnBarDaemonLogger,
+        logger: any BurnBarDaemonLogging,
         fileManager: FileManager = .default,
         safariHandoffRootURL: URL? = nil,
         detachedLauncher: DetachedLauncher? = nil,

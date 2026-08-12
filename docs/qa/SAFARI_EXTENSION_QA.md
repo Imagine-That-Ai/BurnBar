@@ -371,10 +371,17 @@ Acceptance:
 - [ ] `make build-signed` reaches the explicit development signing verifier.
 - [ ] Host and appex embed separate exact, device-authorized development
       profiles; no wildcard application identifier is accepted.
+- [ ] When Xcode produces a wildcard appex profile, rerun the exact candidate
+      provisioning command with `--safari-profile` pointing to the real,
+      non-symlinked Safari development profile; do not pass that profile through
+      global Xcode `PROVISIONING_PROFILE*` settings.
 - [ ] Both profiles authorize `group.com.openburnbar.app` and the shared
       `TEAMID.com.openburnbar.app` Keychain authority.
 - [ ] Host and appex use the expected Apple Development team and certificate,
       with hardened runtime and library validation.
+- [ ] Post-build repair preserves the host profile byte-for-byte and effective
+      host/appex entitlements, replaces only the appex profile, signs nested code
+      deepest first, then signs the appex and host last with `--timestamp=none`.
 - [ ] The installed build is still exercised in real Safari; verifier success
       is artifact proof, not behavioral certification.
 

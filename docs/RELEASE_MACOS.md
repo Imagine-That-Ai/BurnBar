@@ -115,17 +115,29 @@ scripts/provision-openburnbar-safari-development.sh \
   --candidate-tree "$OPENBURNBAR_CANDIDATE_TREE" \
   --team-id 4Y367DF25B \
   --signing-identity "Apple Development: <exact keychain identity>" \
+  --safari-profile /absolute/OpenBurnBarSafariExtension-development.provisionprofile \
   --output-dir /Users/albertonunez/.codex/tmp/openburnbar-safari-development-<commit> \
   --derived-data /Users/albertonunez/.codex/tmp/openburnbar-safari-development-derived-<commit> \
   --package-cache /Users/albertonunez/.codex/tmp/openburnbar-safari-development-spm
 ```
 
-This command provisions the extension before the host, requires exact
-non-wildcard host and appex profiles, authorizes the current Mac and exact leaf
-certificate, verifies the App Group and shared Keychain authority, rejects an
-explicitly disabled development debug entitlement, exports the embedded profile
-bytes, and emits an owner-only candidate-bound development receipt. It does not
-install the app or certify behavior in Safari.
+The optional `--safari-profile` path is the exact, non-wildcard development
+profile downloaded for `com.openburnbar.app.safari-extension`. Xcode still
+builds the shared scheme with empty global profile overrides so the host and
+SwiftPM targets are not forced onto the appex profile. After copying the
+artifact, the command validates that the supplied profile belongs to the exact
+team and app ID, targets OSX development, authorizes the current Mac and exact
+Apple Development certificate, is unexpired, and does not disable
+`get-task-allow`. It then preserves the host profile and effective host/appex
+entitlements, replaces only the appex profile, signs nested code deepest first,
+signs the appex, and seals the host last with timestamping disabled, hardened
+runtime, and library validation.
+
+The strict development verifier runs only after that repair and requires exact
+non-wildcard host and appex profiles, App Group and shared Keychain authority,
+and byte-exact exported profiles. The owner-only candidate-bound receipt remains
+the final output. This command does not install the app or certify behavior in
+Safari.
 
 For the direct Developer ID channel, use fresh candidate-specific output paths
 and exact profiles. The release root is fail-closed: it must not already exist,

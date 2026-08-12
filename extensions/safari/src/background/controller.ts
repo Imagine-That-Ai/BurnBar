@@ -1542,7 +1542,8 @@ export class SafariBackgroundController {
   private async performNativeProjectionRefresh(): Promise<void> {
     const startedAt = this.performanceRecorder.start();
     try {
-      const response = await this.bridge.popupAction('ui.snapshot', {});
+      const activeRunId = this.snapshot.bridge.activeRunId;
+      const response = await this.bridge.popupAction('ui.snapshot', activeRunId ? { runId: activeRunId } : {});
       const learningProjectionApplied = response.accepted && this.applyPopupActionOutput(response.output);
       this.performanceRecorder.recordElapsed(
         'learning_load',
@@ -1582,6 +1583,10 @@ export class SafariBackgroundController {
     const catalogAgents = 'catalog' in output ? normalizeAgents(output) : undefined;
     const run = isRecord(output.run) ? output.run : undefined;
     const phase = run ? stringField(run, 'phase') : undefined;
+    const terminalPhase = phase === 'completed' || phase === 'failed' || phase === 'cancelled' ? phase : undefined;
+    const runErrorMessage = run ? stringField(run, 'errorMessage') : undefined;
+    const terminalRunLabel =
+      run && stringField(run, 'modelID')?.startsWith('cli:') ? 'installed agent hand-off' : 'run';
     const exactApprovals =
       isRecord(output.approvals) && Array.isArray(output.approvals.requests) ? output.approvals.requests : undefined;
     const exactLearning =
@@ -1593,8 +1598,7 @@ export class SafariBackgroundController {
       stringField(output, 'activeRunId') ??
       stringField(output, 'runId') ??
       (run ? (stringField(run, 'runID') ?? stringField(run, 'runId')) : undefined);
-    const running =
-      booleanField(output, 'running') ?? (phase ? !['completed', 'failed', 'cancelled'].includes(phase) : undefined);
+    const running = terminalPhase ? false : (booleanField(output, 'running') ?? (phase ? true : undefined));
     const killSwitchEnabled = booleanField(output, 'killSwitchEnabled');
     const gatewayReady = hasEmbeddedBootstrap ? undefined : booleanField(output, 'gatewayReady');
     const agents = 'agents' in output ? normalizeAgents(output.agents) : catalogAgents;
@@ -1658,11 +1662,32 @@ export class SafariBackgroundController {
       if (transcript) {
         state.transcript = transcript.slice(-MAX_TRANSCRIPT_ENTRIES);
       }
-      if (approvals) {
+      if (terminalPhase) {
+        state.approvals = [];
+      } else if (approvals) {
         state.approvals = locallyHalted ? [] : approvals.slice(-MAX_APPROVALS);
       }
       if (activity) {
         state.activity = activity.slice(-MAX_ACTIVITY_ENTRIES);
+      }
+      if (terminalPhase && activeRunId) {
+        const terminalActivityId = `run-terminal:${activeRunId}:${terminalPhase}`;
+        if (!state.activity.some((event) => event.id === terminalActivityId)) {
+          const failedDetail = terminalPhase === 'failed' && runErrorMessage ? ` ${runErrorMessage}` : '';
+          state.activity.push({
+            id: terminalActivityId,
+            runId: activeRunId,
+            text:
+              terminalPhase === 'completed'
+                ? `The ${terminalRunLabel} completed.`
+                : terminalPhase === 'cancelled'
+                  ? `The ${terminalRunLabel} was cancelled.`
+                  : `The ${terminalRunLabel} failed.${failedDetail}`,
+            tone: terminalPhase === 'completed' ? 'success' : terminalPhase === 'cancelled' ? 'warning' : 'error',
+            createdAt: nowISO()
+          });
+          state.activity = state.activity.slice(-MAX_ACTIVITY_ENTRIES);
+        }
       }
       if (learningItems) {
         state.learning.items = learningItems;

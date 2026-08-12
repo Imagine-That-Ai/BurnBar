@@ -6,6 +6,7 @@ cd "$repo_root"
 
 shell_fixtures=(
   scripts/ci/build-corresponding-source-archive.test.sh
+  scripts/ci/repair-openburnbar-safari-development-profile.test.sh
   scripts/ci/upload-openburnbar-mas-and-verify.test.sh
   scripts/ci/verify-openburnbar-development-signing.test.sh
   scripts/ci/verify-openburnbar-direct-release.test.sh

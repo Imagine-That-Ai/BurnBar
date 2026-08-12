@@ -314,6 +314,39 @@ printf 'verify <%s> <%s> <%s> <%s> <%s> <%s>\n' \
   >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 SH
 
+  cat >"$fixture_root/repairer.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ $# -ne 6 ]]; then
+  echo "repairer expected six arguments" >&2
+  exit 2
+fi
+app="$1"
+safari_profile="$2"
+team="$3"
+identity="$4"
+certificate_sha1="$5"
+current_mac_udid="$6"
+printf 'repair <%s> <%s> <%s> <%s> <%s> <%s>\n' \
+  "$app" \
+  "$safari_profile" \
+  "$team" \
+  "$identity" \
+  "$certificate_sha1" \
+  "$current_mac_udid" \
+  >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
+if [[ "${OPENBURNBAR_FIXTURE_REPAIR_FAIL:-}" == "1" ]]; then
+  echo "fixture Safari profile repair failed" >&2
+  exit 24
+fi
+install -m 600 \
+  "$safari_profile" \
+  "$app/Contents/PlugIns/OpenBurnBarSafariExtension.appex/Contents/embedded.provisionprofile"
+if [[ "${OPENBURNBAR_FIXTURE_REPAIR_MUTATE_HOST:-}" == "1" ]]; then
+  printf 'mutated-host-profile\n' >"$app/Contents/embedded.provisionprofile"
+fi
+SH
+
   cat >"$fixture_root/receipt.py" <<'PY'
 #!/usr/bin/env python3
 import argparse
@@ -376,6 +409,7 @@ PY
     "$fixture_root/prepare.sh" \
     "$fixture_root/prepare-signal-ffi.sh" \
     "$fixture_root/verifier.sh" \
+    "$fixture_root/repairer.sh" \
     "$fixture_root/receipt.py"
 }
 
@@ -388,6 +422,16 @@ run_fixture_with_paths() {
   write_fixture_commands "$fixture_root"
   local stdout_path="$fixture_root/stdout.log"
   local stderr_path="$fixture_root/stderr.log"
+  local env_args=(OPENBURNBAR_FIXTURE_RUN=1)
+  local cli_args=(--configuration Release)
+  while (($# > 0)) && [[ "$1" != "--" ]]; do
+    env_args+=("$1")
+    shift
+  done
+  if (($# > 0)); then
+    shift
+    cli_args=("$@")
+  fi
 
   set +e
   env \
@@ -412,9 +456,10 @@ run_fixture_with_paths() {
     OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT="$fixture_root/compat.sh" \
     OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT="$fixture_root/compat.sh" \
     OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER="$fixture_root/verifier.sh" \
+    OPENBURNBAR_DEVELOPMENT_SAFARI_PROFILE_REPAIRER="$fixture_root/repairer.sh" \
     OPENBURNBAR_DEVELOPMENT_RECEIPT_WRITER="$fixture_root/receipt.py" \
     OPENBURNBAR_MAC_UDID_PARSER="$script_dir/lib/parse-macos-provisioning-udid.py" \
-    "$@" \
+    "${env_args[@]}" \
     bash "$script_under_test" \
       --candidate-commit "$candidate_commit" \
       --candidate-tree "$candidate_tree" \
@@ -423,6 +468,7 @@ run_fixture_with_paths() {
       --output-dir "$output_dir" \
       --derived-data "$derived_data" \
       --package-cache "$fixture_root/package-cache" \
+      "${cli_args[@]}" \
       >"$stdout_path" \
       2>"$stderr_path"
   fixture_status=$?
@@ -480,6 +526,7 @@ test_success_constructs_exact_scheme_scoped_provisioning() {
   assert_file_not_contains "$log" "<CODE_SIGN_IDENTITY=$identity_sha1>"
   assert_file_not_contains "$log" "CODE_SIGNING_ALLOWED=NO"
   assert_file_not_contains "$log" "<-target>"
+  assert_file_not_contains "$log" "repair "
   assert_file_contains "$log" \
     "verify <$fixture_root/output/OpenBurnBar.app> <$team_id> <$fixture_root/output/profiles/OpenBurnBar-host.provisionprofile> <$fixture_root/output/profiles/OpenBurnBar-Safari.provisionprofile> <$signing_identity> <$identity_sha1>"
   assert_file_contains "$log" \
@@ -512,6 +559,110 @@ assert receipt["signing"]["currentMacProvisioningUDID"] == "FIXTURE-MAC-UDID"
 assert receipt["signing"]["hostProfile"] == "host-profile\n"
 assert receipt["signing"]["safariProfile"] == "safari-profile\n"
 PY
+}
+
+test_exact_safari_profile_repairs_after_copy_before_verification() {
+  local fixture_root="$work_root/exact-safari-profile"
+  mkdir -p "$fixture_root"
+  local exact_profile="$fixture_root/exact-safari.provisionprofile"
+  printf 'exact-safari-profile\n' >"$exact_profile"
+
+  run_fixture "$fixture_root" -- --safari-profile "$exact_profile"
+  assert_status 0 "$fixture_status" "$fixture_root/stderr.log"
+
+  local log="$fixture_root/commands.log"
+  assert_file_contains "$log" \
+    "repair <$fixture_root/output/OpenBurnBar.app> <$exact_profile> <$team_id> <$signing_identity> <$identity_sha1> <FIXTURE-MAC-UDID>"
+  if grep '^xcodebuild ' "$log" | grep -Fq -- "$exact_profile"; then
+    fail_test "exact Safari profile leaked into Xcode global build settings"
+  fi
+
+  local ditto_line repair_line verify_line receipt_line
+  ditto_line="$(grep -n '^ditto ' "$log" | cut -d: -f1)"
+  repair_line="$(grep -n '^repair ' "$log" | cut -d: -f1)"
+  verify_line="$(grep -n '^verify ' "$log" | cut -d: -f1)"
+  receipt_line="$(grep -n '^receipt ' "$log" | cut -d: -f1)"
+  if ((ditto_line >= repair_line || repair_line >= verify_line || verify_line >= receipt_line)); then
+    fail_test "expected ditto -> Safari repair -> verifier -> receipt order"
+  fi
+
+  if [[ "$(cat "$fixture_root/output/OpenBurnBar.app/Contents/embedded.provisionprofile")" != "host-profile" ]]; then
+    fail_test "wrapper repair changed the host profile"
+  fi
+  cmp -s \
+    "$exact_profile" \
+    "$fixture_root/output/OpenBurnBar.app/Contents/PlugIns/OpenBurnBarSafariExtension.appex/Contents/embedded.provisionprofile" ||
+    fail_test "wrapper did not embed the exact Safari profile"
+  cmp -s \
+    "$exact_profile" \
+    "$fixture_root/output/profiles/OpenBurnBar-Safari.provisionprofile" ||
+    fail_test "wrapper did not export the repaired Safari profile"
+}
+
+test_safari_profile_repair_failure_blocks_verification_and_receipt() {
+  local fixture_root="$work_root/repair-failure"
+  mkdir -p "$fixture_root"
+  local exact_profile="$fixture_root/exact-safari.provisionprofile"
+  printf 'exact-safari-profile\n' >"$exact_profile"
+
+  run_fixture \
+    "$fixture_root" \
+    OPENBURNBAR_FIXTURE_REPAIR_FAIL=1 \
+    -- \
+    --safari-profile "$exact_profile"
+  assert_status 24 "$fixture_status" "$fixture_root/stderr.log"
+  assert_file_contains "$fixture_root/stderr.log" "fixture Safari profile repair failed"
+  assert_file_not_contains "$fixture_root/commands.log" "verify "
+  assert_file_not_contains "$fixture_root/commands.log" "receipt "
+
+  fixture_root="$work_root/repair-host-mutation"
+  mkdir -p "$fixture_root"
+  exact_profile="$fixture_root/exact-safari.provisionprofile"
+  printf 'exact-safari-profile\n' >"$exact_profile"
+  run_fixture \
+    "$fixture_root" \
+    OPENBURNBAR_FIXTURE_REPAIR_MUTATE_HOST=1 \
+    -- \
+    --safari-profile "$exact_profile"
+  [[ "$fixture_status" != "0" ]] ||
+    fail_test "host-profile mutation during repair unexpectedly succeeded"
+  assert_file_contains \
+    "$fixture_root/stderr.log" \
+    "Safari profile repair changed the embedded host development profile"
+  assert_file_not_contains "$fixture_root/commands.log" "verify "
+  assert_file_not_contains "$fixture_root/commands.log" "receipt "
+}
+
+test_rejects_invalid_safari_profile_path_before_build() {
+  local fixture_root="$work_root/relative-safari-profile"
+  run_fixture "$fixture_root" -- --safari-profile relative.provisionprofile
+  [[ "$fixture_status" != "0" ]] ||
+    fail_test "relative Safari profile unexpectedly succeeded"
+  assert_file_contains "$fixture_root/stderr.log" "--safari-profile must be an absolute path"
+  assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
+
+  fixture_root="$work_root/missing-safari-profile"
+  run_fixture \
+    "$fixture_root" \
+    -- \
+    --safari-profile "$fixture_root/missing.provisionprofile"
+  [[ "$fixture_status" != "0" ]] ||
+    fail_test "missing Safari profile unexpectedly succeeded"
+  assert_file_contains "$fixture_root/stderr.log" "--safari-profile must be a non-empty real file"
+  assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
+
+  fixture_root="$work_root/symlink-safari-profile"
+  mkdir -p "$fixture_root"
+  printf 'exact-safari-profile\n' >"$fixture_root/real.provisionprofile"
+  ln -s "$fixture_root/real.provisionprofile" "$fixture_root/link.provisionprofile"
+  run_fixture \
+    "$fixture_root" \
+    -- \
+    --safari-profile "$fixture_root/link.provisionprofile"
+  [[ "$fixture_status" != "0" ]] ||
+    fail_test "symlinked Safari profile unexpectedly succeeded"
+  assert_file_contains "$fixture_root/stderr.log" "--safari-profile must be a non-empty real file"
+  assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
 }
 
 test_signal_ffi_preparation_fails_closed_before_resolution() {
@@ -635,6 +786,9 @@ test_rejects_existing_or_source_tree_output() {
 }
 
 test_success_constructs_exact_scheme_scoped_provisioning
+test_exact_safari_profile_repairs_after_copy_before_verification
+test_safari_profile_repair_failure_blocks_verification_and_receipt
+test_rejects_invalid_safari_profile_path_before_build
 test_signal_ffi_preparation_fails_closed_before_resolution
 test_rejects_candidate_mismatch_before_provisioning
 test_rejects_dirty_candidate_before_provisioning
