@@ -978,7 +978,9 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     func testExecutableValidatorRejectsSymlinkDirectoryNonExecutableAndWritable()
         throws
     {
-        let workspace = try SafariHandoffTestWorkspace()
+        let workspace = try SafariHandoffTestWorkspace(
+            requiresTrustedParentDirectories: true
+        )
         let executable = try workspace.makeExecutable(named: "trusted-agent")
         let environment = [
             "HOME": NSHomeDirectory(),
@@ -1044,7 +1046,9 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     func testExecutableIdentityChangesWhenTheValidatedFileIsReplaced()
         throws
     {
-        let workspace = try SafariHandoffTestWorkspace()
+        let workspace = try SafariHandoffTestWorkspace(
+            requiresTrustedParentDirectories: true
+        )
         let executable = try workspace.makeExecutable(named: "replaceable")
         let environment = [
             "HOME": NSHomeDirectory(),
@@ -1073,7 +1077,9 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     func testExecutableValidatorPinsEnvInterpreterIdentityAndLaunchVector()
         throws
     {
-        let workspace = try SafariHandoffTestWorkspace()
+        let workspace = try SafariHandoffTestWorkspace(
+            requiresTrustedParentDirectories: true
+        )
         let executable = try workspace.makeExecutable(
             named: "env-script",
             contents: "#!/usr/bin/env true\n"
@@ -1107,6 +1113,53 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
         XCTAssertNotEqual(
             validated.components[1].identity,
             validated.components[2].identity
+        )
+    }
+
+    func testExecutableLaunchAssessmentReportsTrustedInterpreterChainAndHardLinkRejection()
+        throws
+    {
+        let fixtureRoot = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(
+                ".openburnbar-safari-executable-trust-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: fixtureRoot,
+            withIntermediateDirectories: false
+        )
+        try setPermissions(0o700, on: fixtureRoot)
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let trusted = fixtureRoot.appendingPathComponent("trusted-env-script")
+        try Data("#!/usr/bin/env true\n".utf8).write(
+            to: trusted,
+            options: .withoutOverwriting
+        )
+        try setPermissions(0o755, on: trusted)
+        let environment = [
+            "HOME": NSHomeDirectory(),
+            "PATH": "/usr/bin:/bin",
+        ]
+
+        XCTAssertEqual(
+            SafariHandoffProcessSupervisor.ExecutableValidator.assessForLaunch(
+                url: trusted,
+                ambientEnvironment: environment
+            ),
+            .trusted
+        )
+
+        let hardLinked = fixtureRoot.appendingPathComponent(
+            "hard-linked-agent"
+        )
+        try FileManager.default.linkItem(at: trusted, to: hardLinked)
+
+        XCTAssertEqual(
+            SafariHandoffProcessSupervisor.ExecutableValidator.assessForLaunch(
+                url: hardLinked,
+                ambientEnvironment: environment
+            ),
+            .rejected(.multipleHardLinks)
         )
     }
 
@@ -2888,13 +2941,17 @@ private final class SafariHandoffTestWorkspace {
     let containerURL: URL
     let rootURL: URL
 
-    init() throws {
-        containerURL = FileManager.default.temporaryDirectory
-            .resolvingSymlinksInPath()
-            .appendingPathComponent(
-                "safari-handoff-supervisor-\(UUID().uuidString)",
-                isDirectory: true
-            )
+    init(requiresTrustedParentDirectories: Bool = false) throws {
+        let parent = requiresTrustedParentDirectories
+            ? FileManager.default.homeDirectoryForCurrentUser
+            : FileManager.default.temporaryDirectory
+                .resolvingSymlinksInPath()
+        containerURL = parent.appendingPathComponent(
+            requiresTrustedParentDirectories
+                ? ".safari-handoff-supervisor-\(UUID().uuidString)"
+                : "safari-handoff-supervisor-\(UUID().uuidString)",
+            isDirectory: true
+        )
         rootURL = containerURL.appendingPathComponent(
             "handoffs",
             isDirectory: true

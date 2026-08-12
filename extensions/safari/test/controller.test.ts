@@ -1231,6 +1231,102 @@ describe('Safari background controller integration', () => {
     });
   });
 
+  it.each([
+    {
+      phase: 'completed',
+      tone: 'success',
+      text: 'The installed agent hand-off completed.',
+      errorMessage: undefined
+    },
+    {
+      phase: 'failed',
+      tone: 'error',
+      text: 'The installed agent hand-off failed. The installed CLI exited unsuccessfully.',
+      errorMessage: 'The installed CLI exited unsuccessfully.'
+    },
+    {
+      phase: 'cancelled',
+      tone: 'warning',
+      text: 'The installed agent hand-off was cancelled.',
+      errorMessage: undefined
+    }
+  ] as const)(
+    'requests and visibly reconciles an active hand-off that becomes $phase',
+    async ({ phase, tone, text, errorMessage }) => {
+      const harness = createControllerHarness();
+      await harness.controller.initialize();
+      expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
+      expectSuccess(
+        await harness.controller.handlePopupRequest({
+          type: 'popup.setMode',
+          mode: 'handoff'
+        })
+      );
+      const handoff = await harness.controller.handlePopupRequest({
+        type: 'popup.handoff',
+        prompt: 'Prepare a read-only briefing.'
+      });
+      expectSuccess(handoff);
+
+      harness.setUISnapshot({
+        ...defaultUISnapshot(),
+        run: {
+          runID: 'run-handoff',
+          modelID: 'cli:codex',
+          phase: 'awaiting_approval'
+        },
+        approvals: {
+          requests: [
+            {
+              approvalId: 'approval-terminal',
+              runId: 'run-handoff',
+              actionSummary: 'Confirm the stale approval is cleared'
+            }
+          ]
+        }
+      });
+      const awaitingApproval = await harness.controller.handlePopupRequest({ type: 'popup.refresh' });
+      expectSuccess(awaitingApproval);
+      expect(awaitingApproval.snapshot.approvals).toHaveLength(1);
+
+      harness.setUISnapshot({
+        ...defaultUISnapshot(),
+        run: {
+          runID: 'run-handoff',
+          modelID: 'cli:codex',
+          phase,
+          ...(errorMessage ? { errorMessage } : {})
+        },
+        running: true
+      });
+      const terminal = await harness.controller.handlePopupRequest({ type: 'popup.refresh' });
+      expectSuccess(terminal);
+      expect(harness.popupCalls.filter((call) => call.action === 'ui.snapshot').at(-1)?.payload).toEqual({
+        safariSessionId: 'safari-session-1',
+        runId: 'run-handoff'
+      });
+      expect(terminal.snapshot).toMatchObject({
+        running: false,
+        approvals: [],
+        bridge: {
+          activeRunId: 'run-handoff'
+        }
+      });
+      expect(terminal.snapshot.activity.at(-1)).toMatchObject({
+        id: `run-terminal:run-handoff:${phase}`,
+        runId: 'run-handoff',
+        text,
+        tone
+      });
+
+      const repeated = await harness.controller.handlePopupRequest({ type: 'popup.refresh' });
+      expectSuccess(repeated);
+      expect(
+        repeated.snapshot.activity.filter((event) => event.id === `run-terminal:run-handoff:${phase}`)
+      ).toHaveLength(1);
+    }
+  );
+
   it('uses canonical trust and learning mutations, mirrors approvals, launches runs, and unifies local and native Stop', async () => {
     const harness = createControllerHarness();
     await harness.controller.initialize();

@@ -544,11 +544,9 @@ final class BurnBarResumeServiceTests: XCTestCase {
     }
 
     func testSafariInstalledAgentProjectionIncludesOnlyEligibleResolvedExecutables() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "burnbar-safari-installed-agents-\(UUID().uuidString)",
-                isDirectory: true
-            )
+        let root = try Self.makeTrustedExecutableFixtureDirectory(
+            prefix: "burnbar-safari-installed-agents"
+        )
         defer { try? FileManager.default.removeItem(at: root) }
         let codexExecutable = root.appendingPathComponent("codex")
         let openCodeExecutable = root.appendingPathComponent("opencode")
@@ -602,6 +600,82 @@ final class BurnBarResumeServiceTests: XCTestCase {
                 && !requestedTypes.contains(.forge)
                 && !requestedTypes.contains(.kimi)
                 && !requestedTypes.contains(.junie)
+        )
+    }
+
+    func testSafariInstalledAgentProjectionOmitsLaunchRejectedExecutablesAndLogsSafeReason()
+        throws
+    {
+        let root = try Self.makeTrustedExecutableFixtureDirectory(
+            prefix: "burnbar-safari-rejected-installed-agent"
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let trustedExecutable = root.appendingPathComponent("codex")
+        let rejectedExecutable = root.appendingPathComponent(
+            "private-user-installation/opencode"
+        )
+        try Self.createFixtureExecutable(at: trustedExecutable)
+        try Self.createFixtureExecutable(at: rejectedExecutable)
+        try FileManager.default.linkItem(
+            at: rejectedExecutable,
+            to: rejectedExecutable.appendingPathExtension("hard-link")
+        )
+        let logger = ResumeServiceCapturingLogger()
+        let service = BurnBarResumeService(
+            logger: logger,
+            cliExecutableResolver: { cliType in
+                switch cliType {
+                case .codex:
+                    return trustedExecutable
+                case .opencode:
+                    return rejectedExecutable
+                case .droid, .forge, .kimi, .junie:
+                    XCTFail("Blocked Safari targets must not be resolved.")
+                    return nil
+                case .claude, .antigravity, .grok, .cursorAgent, .omp,
+                     .gemini, .pi, .primeAgent:
+                    return nil
+                }
+            }
+        )
+
+        XCTAssertEqual(
+            service.installedSafariHandoffAgents(),
+            [
+                BurnBarSafariInstalledAgent(
+                    id: "codex",
+                    displayName: "Codex",
+                    providerName: "Installed agents"
+                )
+            ]
+        )
+        XCTAssertEqual(
+            service.installedSafariHandoffAgents(),
+            [
+                BurnBarSafariInstalledAgent(
+                    id: "codex",
+                    displayName: "Codex",
+                    providerName: "Installed agents"
+                )
+            ],
+            "Repeated catalog refreshes must remain stable."
+        )
+
+        let rejections = logger.captured.filter {
+            $0.event == "safari_handoff_agent_catalog_rejected"
+        }
+        XCTAssertEqual(rejections.count, 1)
+        XCTAssertEqual(rejections.first?.level, "warning")
+        XCTAssertEqual(rejections.first?.metadata["target_harness"], "opencode")
+        XCTAssertEqual(
+            rejections.first?.metadata["reason"],
+            "multiple_hard_links"
+        )
+        XCTAssertFalse(
+            rejections.first?.metadata.values.contains {
+                $0.contains(rejectedExecutable.path)
+            } ?? false,
+            "Catalog diagnostics must not log a user installation path."
         )
     }
 
@@ -871,6 +945,25 @@ final class BurnBarResumeServiceTests: XCTestCase {
             [.posixPermissions: 0o700],
             ofItemAtPath: url.path
         )
+    }
+
+    private static func makeTrustedExecutableFixtureDirectory(
+        prefix: String
+    ) throws -> URL {
+        let directory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(
+                ".\(prefix)-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: false
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: directory.path
+        )
+        return directory
     }
 
     private static func createConversationsTable(db: OpaquePointer) throws {
@@ -1168,5 +1261,69 @@ final class BurnBarResumeServiceTests: XCTestCase {
     private static func permissions(at url: URL) throws -> Int {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         return try XCTUnwrap(attributes[.posixPermissions] as? NSNumber).intValue
+    }
+}
+
+private final class ResumeServiceCapturingLogger:
+    BurnBarDaemonLogging,
+    @unchecked Sendable
+{
+    struct Entry: Sendable {
+        let level: String
+        let event: String
+        let metadata: [String: String]
+    }
+
+    private let lock = NSLock()
+    private var entries: [Entry] = []
+
+    var captured: [Entry] {
+        lock.withLock { entries }
+    }
+
+    func debug(_ event: String, metadata: [String: String] = [:]) {
+        record(level: "debug", event: event, metadata: metadata)
+    }
+
+    func info(_ event: String, metadata: [String: String] = [:]) {
+        record(level: "info", event: event, metadata: metadata)
+    }
+
+    func notice(_ event: String, metadata: [String: String] = [:]) {
+        record(level: "notice", event: event, metadata: metadata)
+    }
+
+    func warning(_ event: String, metadata: [String: String] = [:]) {
+        record(level: "warning", event: event, metadata: metadata)
+    }
+
+    func error(_ event: String, metadata: [String: String] = [:]) {
+        record(level: "error", event: event, metadata: metadata)
+    }
+
+    func silentFailure(
+        _ operation: String,
+        error: Error,
+        context: [String: String] = [:]
+    ) {
+        record(
+            level: "warning",
+            event: operation,
+            metadata: context.merging(["error": String(describing: error)]) {
+                _, new in new
+            }
+        )
+    }
+
+    private func record(
+        level: String,
+        event: String,
+        metadata: [String: String]
+    ) {
+        lock.withLock {
+            entries.append(
+                Entry(level: level, event: event, metadata: metadata)
+            )
+        }
     }
 }

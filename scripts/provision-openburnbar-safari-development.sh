@@ -23,6 +23,7 @@ candidate_commit=""
 candidate_tree=""
 team_id=""
 signing_identity=""
+safari_profile=""
 output_dir=""
 derived_data_dir=""
 package_cache="$repo_root/.spm-cache"
@@ -37,6 +38,7 @@ Usage: scripts/provision-openburnbar-safari-development.sh \
   --candidate-tree <40-character Git tree SHA> \
   --team-id <10-character Apple team ID> \
   --signing-identity "Apple Development: Name (CERTIFICATE-ID)" \
+  [--safari-profile <absolute exact development profile>] \
   --output-dir <absolute fresh directory> \
   [--derived-data <absolute fresh directory>] \
   [--package-cache <path>] \
@@ -47,7 +49,9 @@ The command uses the shared OpenBurnBar scheme to build and automatically
 provision exactly the OpenBurnBar host and its OpenBurnBarSafariExtension
 dependency. It may create or download development profiles and register the
 current Mac when Apple permits that operation. It never falls back to another
-identity or an unsigned build.
+identity or an unsigned build. When --safari-profile is supplied, the command
+validates that exact profile, replaces only the copied artifact's Safari appex
+profile, and re-signs nested code, appex, then host before strict verification.
 
 Outputs:
   <output-dir>/OpenBurnBar.app
@@ -69,6 +73,7 @@ Environment overrides are intended only for deterministic fixture tests:
   OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT
   OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT
   OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER
+  OPENBURNBAR_DEVELOPMENT_SAFARI_PROFILE_REPAIRER
   OPENBURNBAR_DEVELOPMENT_RECEIPT_WRITER
   OPENBURNBAR_MAC_UDID_PARSER
 EOF
@@ -101,6 +106,10 @@ while (($# > 0)); do
       ;;
     --signing-identity)
       signing_identity="${2:-}"
+      shift 2
+      ;;
+    --safari-profile)
+      safari_profile="${2:-}"
       shift 2
       ;;
     --output-dir)
@@ -177,6 +186,7 @@ prepare_signal_ffi_script="${OPENBURNBAR_PREPARE_SIGNAL_FFI_SCRIPT:-$repo_root/s
 google_compat_script="${OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT:-$repo_root/scripts/lib/googlesignin-macos-compat.sh}"
 libsignal_compat_script="${OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT:-$repo_root/scripts/lib/libsignal-swift-compat.sh}"
 development_verifier="${OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER:-$repo_root/scripts/ci/verify-openburnbar-development-signing.sh}"
+safari_profile_repairer="${OPENBURNBAR_DEVELOPMENT_SAFARI_PROFILE_REPAIRER:-$repo_root/scripts/ci/repair-openburnbar-safari-development-profile.sh}"
 receipt_writer="${OPENBURNBAR_DEVELOPMENT_RECEIPT_WRITER:-$repo_root/scripts/ci/create-openburnbar-development-receipt.py}"
 mac_udid_parser="${OPENBURNBAR_MAC_UDID_PARSER:-$repo_root/scripts/lib/parse-macos-provisioning-udid.py}"
 
@@ -204,12 +214,33 @@ for required_file in \
   "$google_compat_script" \
   "$libsignal_compat_script" \
   "$development_verifier" \
+  "$safari_profile_repairer" \
   "$receipt_writer" \
   "$mac_udid_parser"; do
   if [[ ! -f "$required_file" || -L "$required_file" ]]; then
     fail "Required provisioning input must be a real file: $required_file"
   fi
 done
+
+if [[ -n "$safari_profile" ]]; then
+  if [[ "$safari_profile" != /* ]]; then
+    fail "--safari-profile must be an absolute path."
+  fi
+  if [[ ! -f "$safari_profile" || -L "$safari_profile" || ! -s "$safari_profile" ]]; then
+    fail "--safari-profile must be a non-empty real file: $safari_profile"
+  fi
+  safari_profile_parent="$(dirname "$safari_profile")"
+  if [[ ! -d "$safari_profile_parent" || -L "$safari_profile_parent" ]]; then
+    fail "--safari-profile parent must be a real existing directory: $safari_profile_parent"
+  fi
+  safari_profile_real="$(
+    cd "$safari_profile_parent" && pwd -P
+  )/$(basename "$safari_profile")"
+  if [[ "$safari_profile_real" != "$safari_profile" ]]; then
+    fail "--safari-profile must not traverse symlinks or non-canonical path segments: $safari_profile"
+  fi
+  safari_profile="$safari_profile_real"
+fi
 
 if [[ "$project_path" != /* ]]; then
   project_path="$repo_root/$project_path"
@@ -274,6 +305,19 @@ if ((${#identity_matches[@]} != 1)); then
   fail "The exact Apple Development identity is ambiguous (${#identity_matches[@]} valid matches): $signing_identity"
 fi
 signing_identity_sha1="${identity_matches[0]}"
+
+current_mac_provisioning_udid=""
+read_current_mac_provisioning_udid() {
+  if ! current_mac_provisioning_udid="$(
+    "$system_profiler_bin" SPHardwareDataType -json 2>/dev/null \
+      | "$python_bin" "$mac_udid_parser" 2>/dev/null
+  )"; then
+    fail "Could not determine this Mac's exact provisioning UDID."
+  fi
+}
+if [[ -n "$safari_profile" ]]; then
+  read_current_mac_provisioning_udid
+fi
 
 canonical_fresh_output() {
   local raw_path="$1"
@@ -354,6 +398,9 @@ cleanup() {
   local original_status="${1:-0}"
   local google_status=0
   local libsignal_status=0
+  if [[ -n "${repair_host_profile_snapshot:-}" ]]; then
+    rm -f "$repair_host_profile_snapshot"
+  fi
   openburnbar_restore_google_sign_in_macos_compat || google_status=$?
   openburnbar_restore_libsignal_swift_compat || libsignal_status=$?
   local restore_status="$google_status"
@@ -497,6 +544,27 @@ fi
 
 profiles_dir="$output_dir/profiles"
 mkdir -m 700 "$profiles_dir"
+if [[ -n "$safari_profile" ]]; then
+  repair_host_profile_snapshot="$profiles_dir/.OpenBurnBar-host-before-safari-repair.provisionprofile"
+  install -m 600 \
+    "$artifact_app/Contents/embedded.provisionprofile" \
+    "$repair_host_profile_snapshot"
+  bash "$safari_profile_repairer" \
+    "$artifact_app" \
+    "$safari_profile" \
+    "$team_id" \
+    "$signing_identity" \
+    "$signing_identity_sha1" \
+    "$current_mac_provisioning_udid"
+  if ! cmp -s \
+    "$repair_host_profile_snapshot" \
+    "$artifact_app/Contents/embedded.provisionprofile"; then
+    fail "Safari profile repair changed the embedded host development profile."
+  fi
+  rm -f "$repair_host_profile_snapshot"
+  repair_host_profile_snapshot=""
+fi
+
 host_profile_export="$profiles_dir/OpenBurnBar-host.provisionprofile"
 safari_profile_export="$profiles_dir/OpenBurnBar-Safari.provisionprofile"
 install -m 600 \
@@ -524,11 +592,8 @@ bash "$development_verifier" \
   "$signing_identity" \
   "$signing_identity_sha1"
 
-if ! current_mac_provisioning_udid="$(
-  "$system_profiler_bin" SPHardwareDataType -json 2>/dev/null \
-    | "$python_bin" "$mac_udid_parser" 2>/dev/null
-)"; then
-  fail "Could not determine this Mac's exact provisioning UDID for the development receipt."
+if [[ -z "$current_mac_provisioning_udid" ]]; then
+  read_current_mac_provisioning_udid
 fi
 
 app_info="$artifact_app/Contents/Info.plist"

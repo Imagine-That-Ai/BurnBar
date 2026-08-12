@@ -1892,9 +1892,8 @@ public actor SafariHandoffProcessSupervisor:
         }
     }
 
-    private func childEnvironment(
+    private static func executableValidationEnvironment(
         ambient: [String: String],
-        packageURL: URL,
         executableURL: URL
     ) throws -> [String: String] {
         #if os(macOS)
@@ -1947,6 +1946,18 @@ public actor SafariHandoffProcessSupervisor:
             environment: ambient
         )
         environment["PATH"] = deterministicPath
+        return environment
+    }
+
+    private func childEnvironment(
+        ambient: [String: String],
+        packageURL: URL,
+        executableURL: URL
+    ) throws -> [String: String] {
+        var environment = try Self.executableValidationEnvironment(
+            ambient: ambient,
+            executableURL: executableURL
+        )
         environment["PWD"] = packageURL.path
         environment["TMPDIR"] = "/tmp"
         environment["TERM"] = "dumb"
@@ -2226,12 +2237,57 @@ public actor SafariHandoffProcessSupervisor:
 
 // MARK: - Executable trust
 
-private enum SafariHandoffExecutableValidationError: Error {
-    case unsafe
-}
-
 extension SafariHandoffProcessSupervisor {
+    enum ExecutableTrustFailure: String, Error, Sendable {
+        case invalidURL = "invalid_url"
+        case interpreterDepthExceeded = "interpreter_depth_exceeded"
+        case entryUnavailable = "entry_unavailable"
+        case entryNotRegularFile = "entry_not_regular_file"
+        case untrustedParentDirectory = "untrusted_parent_directory"
+        case openFailed = "open_failed"
+        case metadataUnavailable = "metadata_unavailable"
+        case untrustedOwner = "untrusted_owner"
+        case writableByGroupOrOther = "writable_by_group_or_other"
+        case notExecutable = "not_executable"
+        case multipleHardLinks = "multiple_hard_links"
+        case unreadableExecutable = "unreadable_executable"
+        case malformedShebang = "malformed_shebang"
+        case unsupportedEnvShebang = "unsupported_env_shebang"
+        case interpreterNotFound = "interpreter_not_found"
+        case relativeInterpreter = "relative_interpreter"
+        case unsupportedExecutableFormat = "unsupported_executable_format"
+        case invalidCodeSignature = "invalid_code_signature"
+        case executableChanged = "executable_changed"
+        case noTrustedSearchPath = "no_trusted_search_path"
+        case unexpectedValidationFailure = "unexpected_validation_failure"
+    }
+
+    enum ExecutableTrustAssessment: Sendable, Equatable {
+        case trusted
+        case rejected(ExecutableTrustFailure)
+    }
+
     enum ExecutableValidator {
+        static func assessForLaunch(
+            url: URL,
+            ambientEnvironment: [String: String] =
+                ProcessInfo.processInfo.environment
+        ) -> ExecutableTrustAssessment {
+            do {
+                let environment = try SafariHandoffProcessSupervisor
+                    .executableValidationEnvironment(
+                        ambient: ambientEnvironment,
+                        executableURL: url
+                    )
+                _ = try validate(url: url, environment: environment)
+                return .trusted
+            } catch let failure as ExecutableTrustFailure {
+                return .rejected(failure)
+            } catch {
+                return .rejected(.unexpectedValidationFailure)
+            }
+        }
+
         static func validate(
             url: URL,
             environment: [String: String]
@@ -2279,7 +2335,7 @@ extension SafariHandoffProcessSupervisor {
                 return path
             }
             guard trusted.isEmpty == false else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.noTrustedSearchPath
             }
             return trusted.joined(separator: ":")
         }
@@ -2289,18 +2345,22 @@ extension SafariHandoffProcessSupervisor {
             environment: [String: String],
             depth: Int
         ) throws -> ValidatedExecutable {
-            guard depth <= 4,
-                  url.isFileURL,
+            guard depth <= 4 else {
+                throw ExecutableTrustFailure.interpreterDepthExceeded
+            }
+            guard url.isFileURL,
                   url.path.hasPrefix("/"),
                   url.path.contains("\0") == false else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.invalidURL
             }
             if depth == 0 {
                 var supplied = stat()
-                guard lstat(url.path, &supplied) == 0,
-                      supplied.st_mode & mode_t(S_IFMT)
-                        == mode_t(S_IFREG) else {
-                    throw SafariHandoffExecutableValidationError.unsafe
+                guard lstat(url.path, &supplied) == 0 else {
+                    throw ExecutableTrustFailure.entryUnavailable
+                }
+                guard supplied.st_mode & mode_t(S_IFMT)
+                    == mode_t(S_IFREG) else {
+                    throw ExecutableTrustFailure.entryNotRegularFile
                 }
             }
             let canonical = url.resolvingSymlinksInPath().standardizedFileURL
@@ -2310,17 +2370,27 @@ extension SafariHandoffProcessSupervisor {
                 O_RDONLY | O_CLOEXEC | O_NOFOLLOW
             )
             guard descriptor >= 0 else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.openFailed
             }
             defer { close(descriptor) }
             var info = stat()
-            guard fstat(descriptor, &info) == 0,
-                  info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
-                  info.st_uid == geteuid() || info.st_uid == 0,
-                  info.st_mode & mode_t(0o022) == 0,
-                  info.st_mode & mode_t(0o111) != 0,
-                  info.st_nlink == 1 else {
-                throw SafariHandoffExecutableValidationError.unsafe
+            guard fstat(descriptor, &info) == 0 else {
+                throw ExecutableTrustFailure.metadataUnavailable
+            }
+            guard info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else {
+                throw ExecutableTrustFailure.entryNotRegularFile
+            }
+            guard info.st_uid == geteuid() || info.st_uid == 0 else {
+                throw ExecutableTrustFailure.untrustedOwner
+            }
+            guard info.st_mode & mode_t(0o022) == 0 else {
+                throw ExecutableTrustFailure.writableByGroupOrOther
+            }
+            guard info.st_mode & mode_t(0o111) != 0 else {
+                throw ExecutableTrustFailure.notExecutable
+            }
+            guard info.st_nlink == 1 else {
+                throw ExecutableTrustFailure.multipleHardLinks
             }
             let prefix = try readPrefix(descriptor: descriptor, limit: 4096)
             let modificationTime = modificationTime(info)
@@ -2357,7 +2427,7 @@ extension SafariHandoffProcessSupervisor {
                 launchArguments = []
                 components = [component]
             } else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.unsupportedExecutableFormat
             }
             var current = stat()
             guard lstat(canonical.path, &current) == 0,
@@ -2365,7 +2435,7 @@ extension SafariHandoffProcessSupervisor {
                   UInt64(current.st_dev) == UInt64(info.st_dev),
                   UInt64(current.st_ino) == UInt64(info.st_ino),
                   current.st_size == info.st_size else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.executableChanged
             }
             return ValidatedExecutable(
                 path: canonical.path,
@@ -2409,7 +2479,7 @@ extension SafariHandoffProcessSupervisor {
                       info.st_mode & mode_t(S_IFMT) == mode_t(S_IFDIR),
                       info.st_uid == geteuid() || info.st_uid == 0,
                       info.st_mode & mode_t(0o022) == 0 else {
-                    throw SafariHandoffExecutableValidationError.unsafe
+                    throw ExecutableTrustFailure.untrustedParentDirectory
                 }
                 if directory.path == "/" { break }
                 let parent = directory.deletingLastPathComponent()
@@ -2431,13 +2501,13 @@ extension SafariHandoffProcessSupervisor {
                 data: prefix,
                 encoding: .utf8
             )?.split(separator: "\n", maxSplits: 1).first else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.malformedShebang
             }
             let fields = line.dropFirst(2).split(whereSeparator: {
                 $0 == " " || $0 == "\t"
             })
             guard let first = fields.first else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.malformedShebang
             }
             let interpreter = String(first)
             if interpreter == "/usr/bin/env" {
@@ -2451,15 +2521,17 @@ extension SafariHandoffProcessSupervisor {
                 // tokenization, and silently approximating it would weaken
                 // interpreter pinning.
                 guard fields.count == 2 else {
-                    throw SafariHandoffExecutableValidationError.unsafe
+                    throw ExecutableTrustFailure.unsupportedEnvShebang
                 }
                 let command = String(fields[1])
-                guard command.contains("/") == false,
-                      let resolved = resolve(
+                guard command.contains("/") == false else {
+                    throw ExecutableTrustFailure.unsupportedEnvShebang
+                }
+                guard let resolved = resolve(
                           command: command,
                           path: environment["PATH"] ?? ""
                       ) else {
-                    throw SafariHandoffExecutableValidationError.unsafe
+                    throw ExecutableTrustFailure.interpreterNotFound
                 }
                 let resolvedExecutable = try validate(
                     url: resolved,
@@ -2474,7 +2546,7 @@ extension SafariHandoffProcessSupervisor {
                 )
             }
             guard interpreter.hasPrefix("/") else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.relativeInterpreter
             }
             let executable = try validate(
                 url: URL(fileURLWithPath: interpreter),
@@ -2524,7 +2596,7 @@ extension SafariHandoffProcessSupervisor {
             var bytes = [UInt8](repeating: 0, count: limit)
             let count = pread(descriptor, &bytes, limit, 0)
             guard count > 0 else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.unreadableExecutable
             }
             return Data(bytes.prefix(count))
         }
@@ -2557,7 +2629,7 @@ extension SafariHandoffProcessSupervisor {
             guard creation == errSecSuccess, let staticCode,
                   SecStaticCodeCheckValidity(staticCode, [], nil)
                     == errSecSuccess else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw ExecutableTrustFailure.invalidCodeSignature
             }
             #else
             _ = url
@@ -3990,7 +4062,8 @@ public enum SafariHandoffProcessWatchdog {
                         environment: envelope.environment
                     )
             guard executable == envelope.executable else {
-                throw SafariHandoffExecutableValidationError.unsafe
+                throw SafariHandoffProcessSupervisor.ExecutableTrustFailure
+                    .executableChanged
             }
             guard processMatches(envelope.containmentIdentity) else {
                 throw POSIXError(.ESRCH)
