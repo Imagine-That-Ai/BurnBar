@@ -91,6 +91,38 @@ public protocol MercuryLinuxCaptureAdapterProtocol: Sendable {
     func setOutboundCaptureBitrate(_ targetBitrateBps: UInt32) throws
 }
 
+/// Visual-surface-aware extension (Subagent C). Mirrors macOS branching:
+///
+/// - `.cliPTY`: do NOT call `portalClient.acquireScreenCastConsent()` and do NOT start a PipeWire
+///   pipeline. PTY bytes are streamed directly (existing PTY read path).
+/// - `.desktopApp`: acquire portal consent via `openburnbar_portal_screencast_acquire`, check
+///   `grant.isLive` (fail-closed), then start capture. The portal picker is the Linux allowlist
+///   — user-selected window — so no extra bundle filter is needed (documented in handoff).
+public extension MercuryLinuxCaptureAdapter {
+    func startOutboundCapture(
+        surface: LinuxVisualCaptureSource,
+        targetBitrateBps: UInt32,
+        codec: MercuryLinuxCaptureCodec = .vp9,
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void
+    ) async throws {
+        switch surface {
+        case .cliPTY:
+            // PTY path — must NOT call portal or create PipeWire nodes. No `grant.isLive` to check.
+            // Caller should use PTYInteractiveSession directly. We return without starting capture
+            // so the adapter stays idle (no grant, no pipeline).
+            return
+        case .desktopApp:
+            try await startOutboundCapture(
+                targetBitrateBps: targetBitrateBps,
+                codec: codec,
+                onFrame: onFrame,
+                onStopped: onStopped
+            )
+        }
+    }
+}
+
 public final class MercuryLinuxCaptureAdapter: MercuryLinuxCaptureAdapterProtocol, Sendable {
     private let portalClient: any MercuryLinuxScreenCastPortalClient
     private let captureEngine: any MercuryLinuxCaptureEngineProtocol

@@ -60,15 +60,17 @@ extension SearchService {
                 return BurnBarFTSQueryBuilder.naturalLanguage(from: trimmed)
             }()
 
-            let lexicalMatches: [SearchChunkLexicalMatch]
+            // Perf: lexical (GRDB FTS) and semantic (embedding + ANN) are independent
+            // I/O — run them concurrently so the slower path does not block the other.
+            // The previous sequential flow paid lexical + semantic latency serially.
             let lexicalStartedAt = OpenBurnBarPerformanceTimer.now()
-            if lexicalFTSInput.isEmpty {
-                lexicalSkippedEmptyQuery = true
-                lexicalMatches = []
-                lexicalQueryLatencyMs = 0
-            } else {
+
+            async let lexicalTask: Result<[SearchChunkLexicalMatch], Error> = {
+                if lexicalFTSInput.isEmpty {
+                    return .success([])
+                }
                 do {
-                    lexicalMatches = try await dataStore.searchLexicalChunks(
+                    let matches = try await dataStore.searchLexicalChunks(
                         ftsQuery: lexicalFTSInput,
                         provider: query.filters.provider,
                         projectName: query.filters.projectName,
@@ -79,21 +81,57 @@ extension SearchService {
                         sourceIDs: sourceIDs,
                         limit: lexicalLimit
                     )
-                    lexicalQueryLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
+                    return .success(matches)
                 } catch {
-                    lexicalQueryLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
-                    await persistQueryHealth(
-                        status: .failed,
-                        lexicalCandidateCount: 0,
-                        resultCount: 0,
-                        indexStale: true,
-                        semanticFallbackUsed: false,
-                        errorCode: "LEXICAL_QUERY_FAILED",
-                        errorMessage: error.localizedDescription
-                    )
-                    return []
+                    return .failure(error)
                 }
+            }()
+
+            // The semantic child times itself so `semanticQueryLatencyMs` measures the
+            // embedding + ANN round trip alone. Measuring it at the await site would
+            // fold in however long the concurrent lexical query took.
+            async let semanticTask: (result: Result<[SemanticCandidate], Error>, latencyMs: Double) = {
+                let startedAt = OpenBurnBarPerformanceTimer.now()
+                guard semanticLimit > 0, let provider = semanticProvider else {
+                    return (.success([]), OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: startedAt))
+                }
+                do {
+                    let sem = try await provider.semanticCandidates(
+                        for: trimmed,
+                        filters: query.filters,
+                        limit: semanticLimit
+                    )
+                    return (.success(sem), OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: startedAt))
+                } catch {
+                    return (.failure(error), OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: startedAt))
+                }
+            }()
+
+            let lexicalMatches: [SearchChunkLexicalMatch]
+            switch await lexicalTask {
+            case .success(let matches):
+                lexicalMatches = matches
+                lexicalSkippedEmptyQuery = lexicalFTSInput.isEmpty
+                lexicalQueryLatencyMs = lexicalMatches.isEmpty && lexicalFTSInput.isEmpty ? 0 : OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
+            case .failure(let error):
+                lexicalQueryLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: lexicalStartedAt)
+                // Lexical failure is terminal, so the semantic result would be discarded.
+                // Returning without awaiting `semanticTask` cancels the child instead of
+                // paying for (and waiting on) a remote embedding request we cannot use.
+                await persistQueryHealth(
+                    status: .failed,
+                    lexicalCandidateCount: 0,
+                    resultCount: 0,
+                    indexStale: true,
+                    semanticFallbackUsed: false,
+                    errorCode: "LEXICAL_QUERY_FAILED",
+                    errorMessage: error.localizedDescription
+                )
+                return []
             }
+
+            let semanticRetrieval = await semanticTask
+            semanticQueryLatencyMs = semanticRetrieval.latencyMs
 
             var candidates: [String: CandidateAccumulator] = [:]
             var lexicalChunkMap: [String: SearchChunkRecord] = [:]
@@ -145,47 +183,38 @@ extension SearchService {
             }
 
             var semanticRankByChunkID: [String: Int] = [:]
-            if semanticLimit > 0, let semanticProvider {
-                let semanticStartedAt = OpenBurnBarPerformanceTimer.now()
-                do {
-                    let semanticCandidates = try await semanticProvider.semanticCandidates(
-                        for: trimmed,
-                        filters: query.filters,
-                        limit: semanticLimit
-                    )
-                    semanticQueryLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: semanticStartedAt)
-                    semanticCandidateCount = semanticCandidates.count
-                    var semanticOrderCounter = 0
-                    for semanticCandidate in semanticCandidates {
-                        if semanticRankByChunkID[semanticCandidate.chunkID] == nil {
-                            semanticOrderCounter += 1
-                            semanticRankByChunkID[semanticCandidate.chunkID] = semanticOrderCounter
-                        }
-                        let normalizedScore = max(0, semanticCandidate.score)
-                        if var existing = candidates[semanticCandidate.chunkID] {
-                            if let semantic = existing.semanticScore {
-                                existing.semanticScore = max(semantic, normalizedScore)
-                            } else {
-                                existing.semanticScore = normalizedScore
-                            }
-                            candidates[semanticCandidate.chunkID] = existing
-                        } else {
-                            candidates[semanticCandidate.chunkID] = CandidateAccumulator(
-                                lexicalRank: nil,
-                                semanticScore: normalizedScore,
-                                lexicalSnippet: nil
-                            )
-                        }
+            switch semanticRetrieval.result {
+            case .success(let semanticCandidates):
+                semanticCandidateCount = semanticCandidates.count
+                var semanticOrderCounter = 0
+                for semanticCandidate in semanticCandidates {
+                    if semanticRankByChunkID[semanticCandidate.chunkID] == nil {
+                        semanticOrderCounter += 1
+                        semanticRankByChunkID[semanticCandidate.chunkID] = semanticOrderCounter
                     }
-                } catch {
-                    semanticQueryLatencyMs = OpenBurnBarPerformanceTimer.elapsedMilliseconds(since: semanticStartedAt)
-                    semanticFallbackUsed = true
-                    await persistSemanticFallbackHealth(
-                        query: trimmed,
-                        lexicalCandidateCount: lexicalMatches.count,
-                        error: error
-                    )
+                    let normalizedScore = max(0, semanticCandidate.score)
+                    if var existing = candidates[semanticCandidate.chunkID] {
+                        if let semantic = existing.semanticScore {
+                            existing.semanticScore = max(semantic, normalizedScore)
+                        } else {
+                            existing.semanticScore = normalizedScore
+                        }
+                        candidates[semanticCandidate.chunkID] = existing
+                    } else {
+                        candidates[semanticCandidate.chunkID] = CandidateAccumulator(
+                            lexicalRank: nil,
+                            semanticScore: normalizedScore,
+                            lexicalSnippet: nil
+                        )
+                    }
                 }
+            case .failure(let error):
+                semanticFallbackUsed = true
+                await persistSemanticFallbackHealth(
+                    query: trimmed,
+                    lexicalCandidateCount: lexicalMatches.count,
+                    error: error
+                )
             }
 
             // Only return early if we have no candidates AND semantic didn't produce any
@@ -193,7 +222,6 @@ extension SearchService {
             let hasSemanticCandidates = semanticCandidateCount > 0
             let semanticWasAvailable = semanticLimit > 0 && semanticProvider != nil
             let shouldReturnEmpty = candidates.isEmpty && (!semanticWasAvailable || !hasSemanticCandidates)
-
             if shouldReturnEmpty {
                 let lexicalStatus = lexicalHealthStatus(indexStale: indexStale, semanticFallbackUsed: semanticFallbackUsed)
                 let lexicalError = lexicalHealthError(

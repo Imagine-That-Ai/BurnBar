@@ -86,30 +86,38 @@ extension ProviderQuotaService {
     }
 
     func refreshAll(dataStore: DataStore) async {
-        guard !isFetching else { return }
-        isFetching = true
-        defer {
-            isFetching = false
-            activeProviders.removeAll()
+        if let existing = inFlightRefreshAllTask {
+            await existing.value
+            return
         }
-        errors = [:]
-        refreshClaudeBridgeStatus()
+        let task = Task { @MainActor [self] in
+            isFetching = true
+            defer {
+                isFetching = false
+                activeProviders.removeAll()
+            }
+            errors = [:]
+            refreshClaudeBridgeStatus()
 
-        activeProviders = Set(refreshProviders)
-        let switcherProfileFetcher = makeSwitcherProfileFetcher(dataStore: dataStore)
-        let batch = await quotaRefreshActor.fetchAllSnapshots(switcherProfileFetcher: switcherProfileFetcher)
-        for (provider, snapshot) in batch.providerSnapshots {
-            upsertSnapshot(snapshot, for: provider)
+            activeProviders = Set(refreshProviders)
+            let switcherProfileFetcher = makeSwitcherProfileFetcher(dataStore: dataStore)
+            let batch = await quotaRefreshActor.fetchAllSnapshots(switcherProfileFetcher: switcherProfileFetcher)
+            for (provider, snapshot) in batch.providerSnapshots {
+                upsertSnapshot(snapshot, for: provider)
+            }
+            replaceAccountSnapshots(
+                batch.accountSnapshots,
+                pruningManagedAccountSnapshotsFor: Set(refreshProviders)
+            )
+            await persistDaemonCredentialSlotAccounts(dataStore: dataStore)
+            await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
+
+            lastFetch = Date()
+            persistSnapshots()
         }
-        replaceAccountSnapshots(
-            batch.accountSnapshots,
-            pruningManagedAccountSnapshotsFor: Set(refreshProviders)
-        )
-        await persistDaemonCredentialSlotAccounts(dataStore: dataStore)
-        await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
-
-        lastFetch = Date()
-        persistSnapshots()
+        inFlightRefreshAllTask = task
+        await task.value
+        inFlightRefreshAllTask = nil
     }
 
     func refresh(provider: AgentProvider, dataStore: DataStore) async {

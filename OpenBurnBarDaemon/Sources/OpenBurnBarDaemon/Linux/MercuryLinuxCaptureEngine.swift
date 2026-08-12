@@ -3,6 +3,22 @@ import COpenBurnBarMediaCapture
 import Foundation
 import OpenBurnBarMedia
 
+/// Visual capture surface for Linux (mirrors `VisualCaptureSource` on macOS).
+///
+/// - `.cliPTY`: PTY text path (no portal, no PipeWire, no ScreenCast).
+/// - `.desktopApp`: `xdg-desktop-portal` ScreenCast (`openburnbar_portal_screencast_acquire`)
+///   with `grant.isLive` fail-closed check. The portal picker itself is the Linux allowlist
+///   (user-selected window/display); no additional bundle filter is needed, but the `isLive`
+///   + `pipeWireFD >= 0` checks remain the gate. Documented per SECURITY_REVIEW P0 #2 Linux note.
+///
+/// Callers resolve the effective surface via `VisualCapturePreferences` equivalent on Linux
+/// (UserDefaults `visualCaptureSourceToggleEnabled` + per-provider). When the flag is off or
+/// provider is CLI-only, callers must pass `.cliPTY` so the engine stays idle.
+public enum LinuxVisualCaptureSource: String, Sendable, CaseIterable, Equatable {
+    case cliPTY = "cli_pty"
+    case desktopApp = "desktop_app"
+}
+
 public enum MercuryLinuxCaptureCodec: UInt8, Sendable, Equatable {
     case vp9 = 0
     case av1 = 1
@@ -187,6 +203,33 @@ private let mercuryLinuxCaptureStoppedCallback: MercuryLinuxCaptureStoppedCallba
         }
         box.onStopped(reason)
     }
+
+/// Convenience branching for visual surface (Subagent C). Mirrors macOS `MacScreenshotService` / `ScreenCapturePipeline` guards.
+public extension MercuryLinuxCaptureEngine {
+    /// Start capture branched on visual surface.
+    ///
+    /// - `.cliPTY`: caller should NOT call the portal path at all; PTY text is streamed via
+    ///   the existing `PTYInteractiveSession` path (no PipeWire). This method throws
+    ///   `portalConsentNotLive` if mistakenly called with `.cliPTY` + portal request, but
+    ///   the intended PTY path is to skip the engine entirely.
+    /// - `.desktopApp`: validates `grant.isLive` + `pipeWireFD` and starts the portal-backed pipeline.
+    func start(
+        for surface: LinuxVisualCaptureSource,
+        request: MercuryLinuxCaptureRequest,
+        onFrame: @escaping @Sendable (MediaFrame) -> Void,
+        onStopped: @escaping @Sendable (String) -> Void = { _ in }
+    ) throws {
+        switch surface {
+        case .cliPTY:
+            // PTY path must NOT touch xdg-desktop-portal or PipeWire. Caller should stream PTY bytes
+            // directly (256KB bounded). We fail closed if a portal request is mistakenly supplied.
+            // No `grant.isLive` check needed — PTY has no consent.
+            throw MercuryLinuxCaptureError.portalConsentNotLive
+        case .desktopApp:
+            try start(request, onFrame: onFrame, onStopped: onStopped)
+        }
+    }
+}
 
 public protocol MercuryLinuxCaptureEngineProtocol: Sendable {
     func start(

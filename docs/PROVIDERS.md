@@ -36,6 +36,7 @@
 | **Kilo Code** | `KiloCodeQuotaAdapter.swift` | `.exact` | Install detection | Visual environment detection only |
 | **Augment** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Windsurf** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
+| **Devin** | _none_ / Local scans | `.unavailable` | `devin` CLI + `/Applications/Devin.app` (Devin Desktop — successor to Windsurf) + `~/.config/Devin/sessions/*.jsonl` | Local CLI + Desktop (Both: `devin-cli` / `devin-desktop` toggle). No Devin session parser is registered (`"ingestion": "unavailable"` in `contracts/provider-ingestion-catalog.json`), so usage stays unavailable and the catalog entry is accounting-only until a parser or API ingestion path ships |
 | **Goose** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **OpenClaw** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **OpenClaude** | `OpenClaudeQuotaAdapter` | `.unavailable` | Install detection / `openclaude` CLI | Spawned Claude Code fork; no usage API or programmatic quota source |
@@ -71,6 +72,40 @@ Known user-agent markers are accepted as a fallback, but raw header values are
 never stored. Dedicated local parsers provide derived-exact historical source
 identity. Codex history is attributed from each rollout's `session_meta`; rows
 without durable source evidence stay `unknown`.
+
+### Known Execution Sources (visual-toggle eligible → `Both` = `["cli","desktop"]`)
+
+| Source ID | Display Name | Kind | Provider | Visual Surfaces |
+|-----------|--------------|------|----------|-----------------|
+| `codex-cli` | Codex CLI | `.cli` | Codex | Both (`cli` + `desktop`) |
+| `codex-desktop` | Codex Desktop | `.desktopApp` | Codex | Both |
+| `claude-code` | Claude Code | `.cli` | Claude Code | Both |
+| `claude-desktop` | Claude Desktop | `.desktopApp` | Claude Code | Both |
+| `cursor` | Cursor | `.ide` | Cursor | Both (`cli` via `cursor-agent` + IDE) |
+| `cursor-desktop` | Cursor Desktop | `.ide` | Cursor | Both |
+| `factory-droid` | Factory Droid | `.automation` | Factory | Both |
+| `factory-desktop` | Factory Desktop | `.desktopApp` | Factory | Both |
+| `minimax-cli` | MiniMax CLI | `.cli` | MiniMax | Both |
+| `minimax-desktop` | MiniMax Desktop | `.desktopApp` | MiniMax | Both |
+| `zai-cli` | Z.ai CLI | `.cli` | Z.ai | Both |
+| `zcode-desktop` | ZCode Desktop | `.desktopApp` | Z.ai | Both |
+| `devin-cli` | Devin CLI | `.cli` | Devin | Both |
+| `devin-desktop` | Devin Desktop | `.desktopApp` | Devin (successor to Windsurf) | Both |
+| `windsurf` | Windsurf | `.ide` | Windsurf (LEGACY) | Legacy → `devin-desktop` |
+| `warp` | Warp | `.cli` | Warp | Both |
+| `warp-desktop` | Warp Desktop | `.desktopApp` | Warp | Both |
+| `ollama` | Ollama | `.service` | Ollama | Both |
+| `ollama-desktop` | Ollama Desktop | `.desktopApp` | Ollama | Both |
+| `opencode` | OpenCode | `.cli` | OpenCode | Both |
+| `hermes` | Hermes | `.cli` | Hermes | Both |
+| `hermes-desktop` | Hermes Dashboard | `.desktopApp` | Hermes | Both |
+| `cline` | Cline | `.ide` | Cline | CLI-only (plugin — no toggle) |
+| `kilo-code` | Kilo Code | `.ide` | Kilo Code | Plugin-only |
+| `roo-code` | Roo Code | `.ide` | Roo Code | Plugin-only |
+| `augment` | Augment | `.ide` | Augment | Plugin-only |
+| `junie` | Junie | `.ide` | Junie | Plugin-only |
+
+> **Audit-corrected 2026-05-09:** Both = 11 active: `codex`, `claude`, `cursor`, `factory`, `minimax`, `z.ai`, `devin`, `hermes`, `warp`, `opencode`, `ollama` (Windsurf is LEGACY → Devin). Plugin-only (no toggle): `cline`, `kilo`, `roo`, `augment`, `junie`. Toggle eligibility = `visualSurfaces` contains both `cli` and `desktop` in `catalog.json`.
 
 ---
 

@@ -86,6 +86,13 @@ enum AnalyticsEvent: String, CaseIterable, Sendable {
     case wallpaperToggled = "wallpaper.toggled"
     case wallpaperConfigChanged = "wallpaper.config.changed"
 
+    // MARK: Tier 2 — visual capture
+    /// Privacy-preserving surface selection for the visual capture toggle. Params:
+    /// `provider` (persistedToken), `surface` (cli_pty|desktop_app), `trigger`
+    /// (settings|session_header|mobile), `fallback_used` (Bool), `is_eligible` (Bool).
+    /// Never includes window titles, bundle IDs beyond persistedToken, or pixel hashes.
+    case visualCaptureSurfaceSelected = "visual_capture.surface_selected"
+
     /// Amplitude category metadata for this event (set via the SDK, never
     /// embedded in the name). Default is `primaryAction`.
     var category: AnalyticsCategory {
