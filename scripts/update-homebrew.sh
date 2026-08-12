@@ -40,6 +40,7 @@ readonly SOURCE_REPOSITORY="Imagine-That-Ai/BurnBar"
 readonly TAP_REPOSITORY="Imagine-That-Ai/homebrew-tap"
 readonly TAP_BRANCH="main"
 readonly TAP_CASK_RELATIVE_PATH="Casks/openburnbar.rb"
+readonly SOURCE_CASK_RELATIVE_PATH="homebrew/burnbar.rb"
 readonly ZERO_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -255,14 +256,22 @@ assert_clean_candidate_checkout() {
   }
 }
 
-update_cask() {
+materialize_candidate_cask() {
   local version="$1"
   local candidate_sha="$2"
   local dmg_sha256="$3"
-  local temp_cask
+  local destination="$4"
+  local candidate_template
 
-  [[ -f "$cask_file" ]] || die "cask template not found: $cask_file"
-  temp_cask="$(mktemp "$cask_file.tmp.XXXXXX")"
+  [[ -n "$work_dir" && -d "$work_dir" ]] || die "release work directory is unavailable"
+  candidate_template="$work_dir/candidate-burnbar.rb"
+  if ! git -C "$repo_root" show \
+    "$candidate_sha:$SOURCE_CASK_RELATIVE_PATH" >"$candidate_template"; then
+    die "candidate $candidate_sha does not contain $SOURCE_CASK_RELATIVE_PATH"
+  fi
+  [[ -s "$candidate_template" ]] || {
+    die "candidate $candidate_sha contains an empty $SOURCE_CASK_RELATIVE_PATH"
+  }
 
   if ! awk \
     -v version="$version" \
@@ -295,13 +304,31 @@ update_cask() {
           exit 42
         }
       }
-    ' "$cask_file" >"$temp_cask"; then
-    rm -f -- "$temp_cask"
-    die "cask template does not contain exactly one expected marker/value for each release field"
+    ' "$candidate_template" >"$destination"; then
+    rm -f -- "$destination"
+    die "candidate cask template does not contain exactly one expected marker/value for each release field"
   fi
 
+  validate_cask_binding "$destination" "$version" "$candidate_sha" "$dmg_sha256"
+}
+
+update_cask() {
+  local version="$1"
+  local candidate_sha="$2"
+  local dmg_sha256="$3"
+  local expected_cask
+  local temp_cask
+
+  [[ -f "$cask_file" ]] || die "cask template not found: $cask_file"
+  expected_cask="$work_dir/expected-burnbar.rb"
+  temp_cask="$(mktemp "$cask_file.tmp.XXXXXX")"
+  materialize_candidate_cask \
+    "$version" \
+    "$candidate_sha" \
+    "$dmg_sha256" \
+    "$expected_cask"
+  cp -- "$expected_cask" "$temp_cask"
   mv -- "$temp_cask" "$cask_file"
-  validate_cask_binding "$cask_file" "$version" "$candidate_sha" "$dmg_sha256"
 }
 
 preflight_receipt_path() {
@@ -415,6 +442,7 @@ publish_cask() {
   local tap_commit
   local verified_tap_commit
   local cask_sha256
+  local expected_cask
 
   [[ -n "$tap_dir" ]] || die "--tap-dir is required in publish mode"
   [[ -d "$tap_dir" ]] || die "tap checkout does not exist: $tap_dir"
@@ -424,6 +452,15 @@ publish_cask() {
   preflight_receipt_path "$receipt_path"
   download_and_verify_release "$version" "$candidate_sha"
   validate_cask_binding "$cask_file" "$version" "$candidate_sha" "$release_dmg_sha256"
+  expected_cask="$work_dir/expected-burnbar.rb"
+  materialize_candidate_cask \
+    "$version" \
+    "$candidate_sha" \
+    "$release_dmg_sha256" \
+    "$expected_cask"
+  if ! cmp -s "$expected_cask" "$cask_file"; then
+    die "prepared cask differs from the exact candidate template after deterministic release substitution"
+  fi
 
   tap_remote="$(git -C "$tap_root" remote get-url origin)"
   case "$tap_remote" in

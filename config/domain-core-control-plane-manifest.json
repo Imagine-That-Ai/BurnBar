@@ -305,7 +305,7 @@
     "scripts/test-openburnbar-safari-extension.sh": ["8a3d9d62df489257","261bf90a464142b9","489ebb946453eb30","0b6c06fa26d1f4b1"],
     "scripts/test-openburnbar-swift.sh": ["20daed3831f68f96","f930fa1b11d79c1d","d9469cd9ccdd89f6","3f7056295acc466c"],
     "scripts/test-openburnbar-ts.sh": ["b991331e7ed2bd10","f7e5e126487cff98","e2a3fb3b90239646","e54badf466a2aa4f"],
-    "scripts/update-homebrew.sh": ["394d74f727ba380e","10074f965d1e0979","e53da85975c762ce","141449f67c9be487"],
+    "scripts/update-homebrew.sh": ["87a9e428ec6f91ab","2c3583924dd8216f","9095a3c407f4e2e5","6a5400b181149f77"],
     "scripts/verify-version-consistency.sh": ["ceb26ef6f50eb62d","386428598deee34d","db2618a29da3d9b5","53b76e753175c109"],
     "scripts/verify_burnbar_mit_pr_clean.py": ["dbed7cde1c04b751","5853f40780edeafc","eec29e69301f870f","26fa4e2d9be9e319"],
     "scripts/windows-port/check-csharp-binding-drift.sh": ["f5e40680141f2f62","bb31b14d822f0449","a6454915af3bfae5","5b210f8edc01da2d"],

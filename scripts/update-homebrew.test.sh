@@ -38,6 +38,7 @@ new_fixture() {
   cp "$SOURCE_ROOT/scripts/update-homebrew.sh" "$fixture/scripts/"
   cp "$SOURCE_ROOT/scripts/lib/exclusive_json.py" "$fixture/scripts/lib/"
   cp "$SOURCE_ROOT/homebrew/burnbar.rb" "$fixture/homebrew/"
+  cp "$SOURCE_ROOT/homebrew/burnbar.rb" "$fixture/candidate-homebrew.rb"
 
   cat >"$fixture/mock-bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -73,6 +74,8 @@ printf 'git %s\n' "$*" >>"$TEST_COMMAND_LOG"
 args=" $* "
 if [[ "$args" == *" rev-parse --show-toplevel "* ]]; then
   printf '%s\n' "$TEST_REPO_ROOT"
+elif [[ "$args" == *" show $TEST_CANDIDATE_SHA:homebrew/burnbar.rb "* ]]; then
+  cat "$TEST_REPO_ROOT/candidate-homebrew.rb"
 elif [[ "$args" == *" remote get-url origin "* ]]; then
   printf '%s\n' "${TEST_TAP_REMOTE:-https://github.com/Imagine-That-Ai/homebrew-tap.git}"
 elif [[ "$args" == *" symbolic-ref --short HEAD "* ]]; then
@@ -206,6 +209,22 @@ assert_contains "$receipt" "\"releaseAssetSha256\": \"$expected_sha\""
 assert_contains "$fixture/tap/Casks/openburnbar.rb" "sha256 \"$expected_sha\""
 receipt_mode="$(stat -f '%Lp' "$receipt" 2>/dev/null || stat -c '%a' "$receipt")"
 [[ "$receipt_mode" == "600" ]] || fail "publication receipt mode is $receipt_mode, expected 600"
+
+fixture="$(new_fixture publish-tampered-cask)"
+run_tool "$fixture" update --version "$VERSION" --candidate-sha "$CANDIDATE_SHA"
+printf '\n  postflight do\n    system "/usr/bin/false"\n  end\n' >>"$fixture/homebrew/burnbar.rb"
+: >"$fixture/commands.log"
+mkdir -m 700 "$fixture/evidence"
+if run_tool "$fixture" publish \
+  --version "$VERSION" \
+  --candidate-sha "$CANDIDATE_SHA" \
+  --tap-dir "$fixture/tap" \
+  --receipt "$fixture/evidence/receipt.json"; then
+  fail "tampered cask unexpectedly published"
+fi
+assert_not_contains "$fixture/commands.log" "brew "
+assert_not_contains "$fixture/commands.log" " push origin "
+[[ ! -e "$fixture/evidence/receipt.json" ]] || fail "tampered cask produced a receipt"
 
 fixture="$(new_fixture wrong-tap)"
 run_tool "$fixture" update --version "$VERSION" --candidate-sha "$CANDIDATE_SHA"

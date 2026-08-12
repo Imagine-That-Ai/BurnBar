@@ -49,10 +49,21 @@ CHECKSUM_BOUND_ARTIFACT_KINDS = (
     "sbom",
     "zip",
 )
-DYNAMIC_ARTIFACT_KINDS = {
-    "appcast",
-    "latestMetadata",
-    "releaseMetadata",
+PUBLICATION_PLAN = (
+    ("correspondingSource", "immutable-payload"),
+    ("dmg", "immutable-payload"),
+    ("sbom", "immutable-payload"),
+    ("zip", "immutable-payload"),
+    ("checksums", "immutable-payload"),
+    ("releaseReceipt", "supporting-metadata"),
+    ("releaseMetadata", "supporting-metadata"),
+    ("appcast", "discovery-commit-set"),
+    ("latestMetadata", "discovery-commit-set"),
+)
+PUBLICATION_PHASES = tuple(dict.fromkeys(phase for _, phase in PUBLICATION_PLAN))
+DISCOVERY_COMMIT_KINDS = ("appcast", "latestMetadata")
+IMMUTABLE_ARTIFACT_KINDS = {
+    kind for kind, phase in PUBLICATION_PLAN if phase == "immutable-payload"
 }
 
 
@@ -84,6 +95,8 @@ def parse_args() -> argparse.Namespace:
     receipt.add_argument("--release-receipt", required=True, type=Path)
     receipt.add_argument("--downloads-dir", required=True, type=Path)
     receipt.add_argument("--public-download-dir", required=True, type=Path)
+    receipt.add_argument("--public-header-dir", required=True, type=Path)
+    receipt.add_argument("--discovery-snapshot", required=True, type=Path)
     receipt.add_argument("--platform-trust-verifier", required=True)
     receipt.add_argument(
         "--platform-trust-mode",
@@ -91,6 +104,44 @@ def parse_args() -> argparse.Namespace:
         required=True,
     )
     receipt.add_argument("--output", required=True, type=Path)
+
+    verify_phase = subparsers.add_parser(
+        "verify-public-phase",
+        help="verify publicly downloaded bytes and headers for one publication phase",
+    )
+    verify_phase.add_argument("--preflight", required=True, type=Path)
+    verify_phase.add_argument("--public-download-dir", required=True, type=Path)
+    verify_phase.add_argument("--public-header-dir", required=True, type=Path)
+    verify_phase.add_argument(
+        "--phase",
+        choices=PUBLICATION_PHASES,
+        required=True,
+    )
+
+    snapshot = subparsers.add_parser(
+        "snapshot-discovery",
+        help="record the exact current public state of both discovery objects",
+    )
+    snapshot.add_argument("--preflight", required=True, type=Path)
+    snapshot.add_argument("--public-download-dir", required=True, type=Path)
+    snapshot.add_argument("--public-header-dir", required=True, type=Path)
+    snapshot.add_argument("--output", required=True, type=Path)
+
+    verify_rollback = subparsers.add_parser(
+        "verify-discovery-rollback",
+        help="prove both discovery objects match their pre-publication snapshot",
+    )
+    verify_rollback.add_argument("--snapshot", required=True, type=Path)
+    verify_rollback.add_argument(
+        "--public-download-dir",
+        required=True,
+        type=Path,
+    )
+    verify_rollback.add_argument(
+        "--public-header-dir",
+        required=True,
+        type=Path,
+    )
 
     return parser.parse_args()
 
@@ -288,6 +339,134 @@ def content_type(file_name: str) -> str:
     if file_name.endswith(".json"):
         return "application/json; charset=utf-8"
     return "application/octet-stream"
+
+
+def cache_control(kind: str) -> str:
+    if kind in IMMUTABLE_ARTIFACT_KINDS:
+        return "public, max-age=31536000, immutable"
+    return "public, max-age=300"
+
+
+def normalize_content_type(value: str) -> str:
+    if not value or any(character in value for character in "\r\n\0"):
+        fail("observed Content-Type is empty or malformed.")
+    parts = [part.strip() for part in value.split(";")]
+    media_type = parts[0].lower()
+    if not re.fullmatch(
+        r"[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+",
+        media_type,
+    ):
+        fail(f"observed Content-Type media type is invalid: {value!r}.")
+    parameters = []
+    for parameter in parts[1:]:
+        if "=" not in parameter:
+            fail(f"observed Content-Type parameter is invalid: {value!r}.")
+        name, parameter_value = parameter.split("=", 1)
+        name = name.strip().lower()
+        parameter_value = parameter_value.strip().lower()
+        if not name or not parameter_value:
+            fail(f"observed Content-Type parameter is invalid: {value!r}.")
+        parameters.append((name, parameter_value))
+    parameters.sort()
+    suffix = "".join(f"; {name}={parameter}" for name, parameter in parameters)
+    return f"{media_type}{suffix}"
+
+
+def normalize_cache_control(value: str) -> tuple[str, ...]:
+    if not value or any(character in value for character in "\r\n\0"):
+        fail("observed Cache-Control is empty or malformed.")
+    directives: dict[str, str | None] = {}
+    for raw_directive in value.split(","):
+        directive = raw_directive.strip()
+        if not directive:
+            fail(f"observed Cache-Control contains an empty directive: {value!r}.")
+        if "=" in directive:
+            name, directive_value = directive.split("=", 1)
+            name = name.strip().lower()
+            directive_value = directive_value.strip().lower()
+            if not directive_value:
+                fail(f"observed Cache-Control directive is invalid: {value!r}.")
+        else:
+            name = directive.lower()
+            directive_value = None
+        if not re.fullmatch(r"[a-z0-9!#$%&'*+.^_`|~-]+", name):
+            fail(f"observed Cache-Control directive is invalid: {value!r}.")
+        if name in directives:
+            fail(f"observed Cache-Control repeats directive {name!r}.")
+        directives[name] = directive_value
+    return tuple(
+        sorted(
+            name if directive_value is None else f"{name}={directive_value}"
+            for name, directive_value in directives.items()
+        )
+    )
+
+
+def parse_http_response_headers(
+    path: Path,
+    label: str,
+    *,
+    require_entity_headers: bool,
+) -> dict[str, Any]:
+    try:
+        text = read_safe_bytes(path, label).decode("iso-8859-1")
+    except UnicodeDecodeError as error:
+        fail(f"{label} is not valid HTTP header bytes: {error}")
+
+    responses: list[tuple[int, dict[str, list[str]]]] = []
+    for block in re.split(r"\r?\n\r?\n", text):
+        lines = block.splitlines()
+        if not lines or not lines[0].startswith("HTTP/"):
+            continue
+        status_parts = lines[0].split()
+        if len(status_parts) < 2 or not status_parts[1].isdigit():
+            fail(f"{label} contains an invalid HTTP status line.")
+        status_code = int(status_parts[1])
+        headers: dict[str, list[str]] = {}
+        for line in lines[1:]:
+            if line.startswith((" ", "\t")):
+                fail(f"{label} contains an obsolete folded HTTP header.")
+            if ":" not in line:
+                fail(f"{label} contains a malformed HTTP header line.")
+            name, value = line.split(":", 1)
+            normalized_name = name.strip().lower()
+            if not normalized_name:
+                fail(f"{label} contains an empty HTTP header name.")
+            headers.setdefault(normalized_name, []).append(value.strip())
+        responses.append((status_code, headers))
+
+    if not responses:
+        fail(f"{label} contains no HTTP response headers.")
+    status_code, headers = responses[-1]
+    observed: dict[str, Any] = {"statusCode": status_code}
+    if not require_entity_headers:
+        return observed
+    for header_name, output_name in (
+        ("content-type", "contentType"),
+        ("cache-control", "cacheControl"),
+    ):
+        values = headers.get(header_name, [])
+        if len(values) != 1 or not values[0]:
+            fail(
+                f"{label} must contain exactly one non-empty "
+                f"{header_name} header."
+            )
+        observed[output_name] = values[0]
+    return observed
+
+
+def parse_observed_http_headers(path: Path, label: str) -> dict[str, Any]:
+    observed = parse_http_response_headers(
+        path,
+        label,
+        require_entity_headers=True,
+    )
+    if observed["statusCode"] != 200:
+        fail(
+            f"{label} final HTTP status is "
+            f"{observed['statusCode']}, expected 200."
+        )
+    return observed
 
 
 def validate_signature_receipt(value: Any, team_id: str) -> None:
@@ -635,22 +814,6 @@ def build_preflight(
     )
     validate_checksums(paths["checksums"], artifacts)
 
-    manifest_artifacts = []
-    for kind in REQUIRED_ARTIFACT_KINDS:
-        artifact = artifacts[kind]
-        manifest_artifacts.append(
-            {
-                "kind": kind,
-                **artifact,
-                "publicUrl": public_url(base_url, artifact["fileName"]),
-                "contentType": content_type(artifact["fileName"]),
-                "cacheControl": (
-                    "public, max-age=300"
-                    if kind in DYNAMIC_ARTIFACT_KINDS
-                    else "public, max-age=31536000, immutable"
-                ),
-            }
-        )
     release_receipt_sha, release_receipt_size = file_digest_and_size(
         release_receipt_path,
         "Developer ID release receipt",
@@ -661,20 +824,40 @@ def build_preflight(
         "Developer ID release receipt file name",
     )
     if receipt_file_name in {
-        artifact["fileName"] for artifact in manifest_artifacts
+        artifact["fileName"] for artifact in artifacts.values()
     }:
         fail("Developer ID release receipt reuses a release artifact file name.")
-    manifest_artifacts.append(
-        {
-            "kind": "releaseReceipt",
-            "fileName": receipt_file_name,
-            "sha256": release_receipt_sha,
-            "sizeBytes": release_receipt_size,
-            "publicUrl": public_url(base_url, receipt_file_name),
-            "contentType": content_type(receipt_file_name),
-            "cacheControl": "public, max-age=31536000, immutable",
-        }
-    )
+    release_receipt_artifact = {
+        "kind": "releaseReceipt",
+        "fileName": receipt_file_name,
+        "sha256": release_receipt_sha,
+        "sizeBytes": release_receipt_size,
+        "publicUrl": public_url(base_url, receipt_file_name),
+        "contentType": content_type(receipt_file_name),
+        "cacheControl": cache_control("releaseReceipt"),
+        "publicationPhase": "supporting-metadata",
+        "discoveryCommitSetMember": False,
+    }
+
+    manifest_artifacts = []
+    for kind, phase in PUBLICATION_PLAN:
+        if kind == "releaseReceipt":
+            artifact = release_receipt_artifact
+        else:
+            release_artifact = artifacts[kind]
+            artifact = {
+                "kind": kind,
+                **release_artifact,
+                "publicUrl": public_url(
+                    base_url,
+                    release_artifact["fileName"],
+                ),
+                "contentType": content_type(release_artifact["fileName"]),
+                "cacheControl": cache_control(kind),
+                "publicationPhase": phase,
+                "discoveryCommitSetMember": kind in DISCOVERY_COMMIT_KINDS,
+            }
+        manifest_artifacts.append(artifact)
 
     release = require_dict(receipt["release"], "release receipt release")
     return {
@@ -806,18 +989,29 @@ def validate_preflight(value: dict[str, Any]) -> list[dict[str, Any]]:
             fail(f"R2 preflight artifact {kind} public URL is invalid.")
         if artifact.get("contentType") != content_type(file_name):
             fail(f"R2 preflight artifact {kind} content type is invalid.")
-        expected_cache = (
-            "public, max-age=300"
-            if kind in DYNAMIC_ARTIFACT_KINDS
-            else "public, max-age=31536000, immutable"
-        )
+        expected_cache = cache_control(kind)
         if artifact.get("cacheControl") != expected_cache:
             fail(f"R2 preflight artifact {kind} cache control is invalid.")
+        expected_phase = dict(PUBLICATION_PLAN)[kind]
+        if artifact.get("publicationPhase") != expected_phase:
+            fail(f"R2 preflight artifact {kind} publication phase is invalid.")
+        expected_commit_set_member = kind in DISCOVERY_COMMIT_KINDS
+        if (
+            artifact.get("discoveryCommitSetMember")
+            is not expected_commit_set_member
+        ):
+            fail(
+                f"R2 preflight artifact {kind} discovery commit-set "
+                "flag is invalid."
+            )
         observed_kinds.add(kind)
         observed_names.add(file_name)
         normalized.append(dict(artifact))
     if observed_kinds != set(PUBLIC_OBJECT_KINDS):
         fail("R2 preflight artifacts are incomplete.")
+    expected_order = [kind for kind, _ in PUBLICATION_PLAN]
+    if [artifact["kind"] for artifact in normalized] != expected_order:
+        fail("R2 preflight artifacts are not in the required publication order.")
     release_receipt_artifact = next(
         artifact
         for artifact in normalized
@@ -832,12 +1026,375 @@ def validate_preflight(value: dict[str, Any]) -> list[dict[str, Any]]:
     return normalized
 
 
+def verify_public_artifacts(
+    *,
+    artifacts: list[dict[str, Any]],
+    public_download_dir: Path,
+    public_header_dir: Path,
+    phase: str | None = None,
+) -> list[dict[str, Any]]:
+    if phase is not None and phase not in PUBLICATION_PHASES:
+        fail(f"public verification phase is invalid: {phase!r}.")
+    public_root = require_real_directory(
+        public_download_dir,
+        "public download evidence directory",
+    )
+    header_root = require_real_directory(
+        public_header_dir,
+        "public header evidence directory",
+    )
+    selected = [
+        artifact
+        for artifact in artifacts
+        if phase is None or artifact["publicationPhase"] == phase
+    ]
+    if phase is not None and not selected:
+        fail(f"public verification phase contains no artifacts: {phase}.")
+
+    published_artifacts: list[dict[str, Any]] = []
+    for artifact in selected:
+        public_path = public_root / artifact["fileName"]
+        if public_path.parent != public_root:
+            fail("public artifact resolved outside the evidence directory.")
+        public_sha, public_size = file_digest_and_size(
+            public_path,
+            f"downloaded public artifact {artifact['kind']}",
+        )
+        if (
+            public_sha != artifact["sha256"]
+            or public_size != artifact["sizeBytes"]
+        ):
+            fail(
+                f"downloaded public artifact {artifact['kind']} does not "
+                "match the exact local release bytes."
+            )
+
+        header_path = header_root / f"{artifact['fileName']}.headers"
+        if header_path.parent != header_root:
+            fail("public header evidence resolved outside the evidence directory.")
+        observed_headers = parse_observed_http_headers(
+            header_path,
+            f"public response headers for {artifact['kind']}",
+        )
+        expected_content_type = normalize_content_type(artifact["contentType"])
+        observed_content_type = normalize_content_type(
+            observed_headers["contentType"]
+        )
+        if observed_content_type != expected_content_type:
+            fail(
+                f"public Content-Type for {artifact['kind']} is "
+                f"{observed_headers['contentType']!r}, expected "
+                f"{artifact['contentType']!r}."
+            )
+        expected_cache_control = normalize_cache_control(
+            artifact["cacheControl"]
+        )
+        observed_cache_control = normalize_cache_control(
+            observed_headers["cacheControl"]
+        )
+        if observed_cache_control != expected_cache_control:
+            fail(
+                f"public Cache-Control for {artifact['kind']} is "
+                f"{observed_headers['cacheControl']!r}, expected "
+                f"{artifact['cacheControl']!r}."
+            )
+        published_artifacts.append(
+            {
+                "kind": artifact["kind"],
+                "fileName": artifact["fileName"],
+                "publicUrl": artifact["publicUrl"],
+                "sha256": public_sha,
+                "sizeBytes": public_size,
+                "contentType": artifact["contentType"],
+                "cacheControl": artifact["cacheControl"],
+                "publicationPhase": artifact["publicationPhase"],
+                "discoveryCommitSetMember": artifact[
+                    "discoveryCommitSetMember"
+                ],
+                "observedResponse": {
+                    "statusCode": observed_headers["statusCode"],
+                    "contentType": observed_headers["contentType"],
+                    "cacheControl": observed_headers["cacheControl"],
+                },
+            }
+        )
+    return published_artifacts
+
+
+def verify_public_phase(
+    *,
+    preflight_path: Path,
+    public_download_dir: Path,
+    public_header_dir: Path,
+    phase: str,
+) -> None:
+    preflight = load_json(
+        preflight_path,
+        "R2 upload preflight",
+        required_mode=0o600,
+    )
+    artifacts = validate_preflight(preflight)
+    verify_public_artifacts(
+        artifacts=artifacts,
+        public_download_dir=public_download_dir,
+        public_header_dir=public_header_dir,
+        phase=phase,
+    )
+
+
+def discovery_artifacts(
+    artifacts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    selected = [
+        artifact
+        for artifact in artifacts
+        if artifact["kind"] in DISCOVERY_COMMIT_KINDS
+    ]
+    if [artifact["kind"] for artifact in selected] != list(
+        DISCOVERY_COMMIT_KINDS
+    ):
+        fail("R2 preflight discovery commit set is incomplete or out of order.")
+    return selected
+
+
+def build_discovery_snapshot(
+    *,
+    preflight_path: Path,
+    public_download_dir: Path,
+    public_header_dir: Path,
+) -> dict[str, Any]:
+    preflight = load_json(
+        preflight_path,
+        "R2 upload preflight",
+        required_mode=0o600,
+    )
+    artifacts = validate_preflight(preflight)
+    public_root = require_real_directory(
+        public_download_dir,
+        "discovery snapshot download directory",
+    )
+    header_root = require_real_directory(
+        public_header_dir,
+        "discovery snapshot header directory",
+    )
+    objects: list[dict[str, Any]] = []
+    for artifact in discovery_artifacts(artifacts):
+        header_path = header_root / f"{artifact['fileName']}.headers"
+        if header_path.parent != header_root:
+            fail("discovery snapshot header resolved outside evidence directory.")
+        observed = parse_http_response_headers(
+            header_path,
+            f"discovery snapshot headers for {artifact['kind']}",
+            require_entity_headers=False,
+        )
+        status_code = observed["statusCode"]
+        entry: dict[str, Any] = {
+            "kind": artifact["kind"],
+            "fileName": artifact["fileName"],
+            "publicUrl": artifact["publicUrl"],
+            "statusCode": status_code,
+        }
+        snapshot_path = public_root / artifact["fileName"]
+        if snapshot_path.parent != public_root:
+            fail("discovery snapshot bytes resolved outside evidence directory.")
+        if status_code == 404:
+            if snapshot_path.exists():
+                fail(
+                    f"absent discovery snapshot unexpectedly contains bytes: "
+                    f"{artifact['kind']}."
+                )
+            entry["state"] = "absent"
+        elif status_code == 200:
+            if not snapshot_path.exists():
+                fail(
+                    f"present discovery snapshot is missing bytes: "
+                    f"{artifact['kind']}."
+                )
+            headers = parse_observed_http_headers(
+                header_path,
+                f"discovery snapshot headers for {artifact['kind']}",
+            )
+            snapshot_sha, snapshot_size = file_digest_and_size(
+                snapshot_path,
+                f"discovery snapshot bytes for {artifact['kind']}",
+            )
+            entry.update(
+                {
+                    "state": "present",
+                    "sha256": snapshot_sha,
+                    "sizeBytes": snapshot_size,
+                    "contentType": headers["contentType"],
+                    "cacheControl": headers["cacheControl"],
+                }
+            )
+        else:
+            fail(
+                f"discovery snapshot for {artifact['kind']} returned "
+                f"HTTP {status_code}; expected 200 or explicit 404."
+            )
+        objects.append(entry)
+    return {
+        "schemaVersion": 1,
+        "candidate": preflight["candidate"],
+        "destination": preflight["destination"],
+        "objects": objects,
+        "capturedAt": now_utc(),
+    }
+
+
+def validate_discovery_snapshot(value: dict[str, Any]) -> list[dict[str, Any]]:
+    if value.get("schemaVersion") != 1:
+        fail("discovery snapshot schema version is unsupported.")
+    candidate = require_dict(
+        value.get("candidate"),
+        "discovery snapshot candidate",
+    )
+    if (
+        not isinstance(candidate.get("commit"), str)
+        or not FULL_SHA.fullmatch(candidate["commit"])
+        or not isinstance(candidate.get("tree"), str)
+        or not FULL_SHA.fullmatch(candidate["tree"])
+    ):
+        fail("discovery snapshot candidate identity is invalid.")
+    destination = require_dict(
+        value.get("destination"),
+        "discovery snapshot destination",
+    )
+    if destination.get("provider") != "cloudflare-r2":
+        fail("discovery snapshot destination provider is invalid.")
+    base_url = destination.get("publicBaseUrl")
+    if (
+        not isinstance(base_url, str)
+        or normalize_public_base_url(base_url) != base_url
+    ):
+        fail("discovery snapshot public base URL is invalid.")
+
+    objects = require_list(value.get("objects"), "discovery snapshot objects")
+    if len(objects) != len(DISCOVERY_COMMIT_KINDS):
+        fail("discovery snapshot object count is invalid.")
+    normalized: list[dict[str, Any]] = []
+    for expected_kind, raw_object in zip(
+        DISCOVERY_COMMIT_KINDS,
+        objects,
+        strict=True,
+    ):
+        item = require_dict(raw_object, "discovery snapshot object")
+        if item.get("kind") != expected_kind:
+            fail("discovery snapshot objects are incomplete or out of order.")
+        file_name = safe_file_name(
+            item.get("fileName"),
+            f"discovery snapshot {expected_kind} file name",
+        )
+        if item.get("publicUrl") != public_url(base_url, file_name):
+            fail(f"discovery snapshot {expected_kind} public URL is invalid.")
+        state = item.get("state")
+        if state == "absent":
+            if item.get("statusCode") != 404:
+                fail(
+                    f"absent discovery snapshot {expected_kind} must record 404."
+                )
+        elif state == "present":
+            if item.get("statusCode") != 200:
+                fail(
+                    f"present discovery snapshot {expected_kind} must record 200."
+                )
+            item_sha = item.get("sha256")
+            item_size = item.get("sizeBytes")
+            if not isinstance(item_sha, str) or not SHA256.fullmatch(item_sha):
+                fail(f"discovery snapshot {expected_kind} SHA-256 is invalid.")
+            if not isinstance(item_size, int) or item_size <= 0:
+                fail(f"discovery snapshot {expected_kind} size is invalid.")
+            normalize_content_type(item.get("contentType", ""))
+            normalize_cache_control(item.get("cacheControl", ""))
+        else:
+            fail(f"discovery snapshot {expected_kind} state is invalid.")
+        normalized.append(dict(item))
+    return normalized
+
+
+def verify_discovery_rollback(
+    *,
+    snapshot_path: Path,
+    public_download_dir: Path,
+    public_header_dir: Path,
+) -> None:
+    snapshot = load_json(
+        snapshot_path,
+        "discovery snapshot",
+        required_mode=0o600,
+    )
+    objects = validate_discovery_snapshot(snapshot)
+    public_root = require_real_directory(
+        public_download_dir,
+        "discovery rollback download directory",
+    )
+    header_root = require_real_directory(
+        public_header_dir,
+        "discovery rollback header directory",
+    )
+    for item in objects:
+        public_path = public_root / item["fileName"]
+        header_path = header_root / f"{item['fileName']}.headers"
+        observed = parse_http_response_headers(
+            header_path,
+            f"discovery rollback headers for {item['kind']}",
+            require_entity_headers=False,
+        )
+        if item["state"] == "absent":
+            if observed["statusCode"] != 404:
+                fail(
+                    f"discovery rollback did not restore absence for "
+                    f"{item['kind']}."
+                )
+            if public_path.exists():
+                fail(
+                    f"absent discovery rollback unexpectedly contains bytes: "
+                    f"{item['kind']}."
+                )
+            continue
+
+        if observed["statusCode"] != 200:
+            fail(
+                f"discovery rollback did not restore HTTP 200 for "
+                f"{item['kind']}."
+            )
+        observed_headers = parse_observed_http_headers(
+            header_path,
+            f"discovery rollback headers for {item['kind']}",
+        )
+        public_sha, public_size = file_digest_and_size(
+            public_path,
+            f"discovery rollback bytes for {item['kind']}",
+        )
+        if public_sha != item["sha256"] or public_size != item["sizeBytes"]:
+            fail(
+                f"discovery rollback bytes do not match snapshot for "
+                f"{item['kind']}."
+            )
+        if normalize_content_type(
+            observed_headers["contentType"]
+        ) != normalize_content_type(item["contentType"]):
+            fail(
+                f"discovery rollback Content-Type does not match snapshot for "
+                f"{item['kind']}."
+            )
+        if normalize_cache_control(
+            observed_headers["cacheControl"]
+        ) != normalize_cache_control(item["cacheControl"]):
+            fail(
+                f"discovery rollback Cache-Control does not match snapshot for "
+                f"{item['kind']}."
+            )
+
+
 def build_publication_receipt(
     *,
     preflight_path: Path,
     release_receipt_path: Path,
     downloads_dir: Path,
     public_download_dir: Path,
+    public_header_dir: Path,
+    discovery_snapshot_path: Path,
     platform_trust_verifier: str,
     platform_trust_mode: str,
 ) -> dict[str, Any]:
@@ -870,39 +1427,23 @@ def build_publication_receipt(
     ):
         if rebuilt[key] != preflight.get(key):
             fail(f"R2 upload preflight drifted before publication: {key}.")
-
-    public_root = require_real_directory(
-        public_download_dir,
-        "public download evidence directory",
+    discovery_snapshot = load_json(
+        discovery_snapshot_path,
+        "pre-publication discovery snapshot",
+        required_mode=0o600,
     )
-    published_artifacts: list[dict[str, Any]] = []
-    for artifact in artifacts:
-        public_path = public_root / artifact["fileName"]
-        if public_path.parent != public_root:
-            fail("public artifact resolved outside the evidence directory.")
-        public_sha, public_size = file_digest_and_size(
-            public_path,
-            f"downloaded public artifact {artifact['kind']}",
-        )
-        if (
-            public_sha != artifact["sha256"]
-            or public_size != artifact["sizeBytes"]
-        ):
-            fail(
-                f"downloaded public artifact {artifact['kind']} does not "
-                "match the exact local release bytes."
-            )
-        published_artifacts.append(
-            {
-                "kind": artifact["kind"],
-                "fileName": artifact["fileName"],
-                "publicUrl": artifact["publicUrl"],
-                "sha256": public_sha,
-                "sizeBytes": public_size,
-                "contentType": artifact["contentType"],
-                "cacheControl": artifact["cacheControl"],
-            }
-        )
+    validate_discovery_snapshot(discovery_snapshot)
+    if (
+        discovery_snapshot.get("candidate") != preflight["candidate"]
+        or discovery_snapshot.get("destination") != preflight["destination"]
+    ):
+        fail("pre-publication discovery snapshot is not bound to this upload.")
+
+    published_artifacts = verify_public_artifacts(
+        artifacts=artifacts,
+        public_download_dir=public_download_dir,
+        public_header_dir=public_header_dir,
+    )
 
     canonical_trust_verifier = "scripts/ci/verify-public-macos-download-trust.sh"
     if platform_trust_mode == "canonical":
@@ -925,6 +1466,7 @@ def build_publication_receipt(
         "release": preflight["release"],
         "destination": preflight["destination"],
         "sourceReleaseReceipt": preflight["sourceReleaseReceipt"],
+        "prePublicationDiscovery": discovery_snapshot["objects"],
         "artifacts": published_artifacts,
         "verification": {
             "exactCandidateCleanAtUpload": True,
@@ -932,6 +1474,13 @@ def build_publication_receipt(
             "localArtifactsRevalidated": True,
             "publicBytesDownloaded": True,
             "publicBytesDigestEqual": True,
+            "publicResponseHeadersObserved": True,
+            "publicContentTypesMatch": True,
+            "publicCacheControlsMatch": True,
+            "immutablePayloadsVerifiedBeforeDiscovery": True,
+            "discoveryCommitSet": list(DISCOVERY_COMMIT_KINDS),
+            "discoverySnapshotCaptured": True,
+            "discoveryCommitSetVerified": True,
             "releaseMetadataBound": True,
             "latestMetadataBound": True,
             "appcastBound": True,
@@ -956,12 +1505,37 @@ def main() -> int:
             bucket=args.bucket,
             public_base_url=args.public_base_url,
         )
+    elif args.command == "verify-public-phase":
+        verify_public_phase(
+            preflight_path=args.preflight,
+            public_download_dir=args.public_download_dir,
+            public_header_dir=args.public_header_dir,
+            phase=args.phase,
+        )
+        print(f"PASS: verified public R2 phase {args.phase}")
+        return 0
+    elif args.command == "snapshot-discovery":
+        value = build_discovery_snapshot(
+            preflight_path=args.preflight,
+            public_download_dir=args.public_download_dir,
+            public_header_dir=args.public_header_dir,
+        )
+    elif args.command == "verify-discovery-rollback":
+        verify_discovery_rollback(
+            snapshot_path=args.snapshot,
+            public_download_dir=args.public_download_dir,
+            public_header_dir=args.public_header_dir,
+        )
+        print("PASS: verified discovery rollback against exact snapshot")
+        return 0
     else:
         value = build_publication_receipt(
             preflight_path=args.preflight,
             release_receipt_path=args.release_receipt,
             downloads_dir=args.downloads_dir,
             public_download_dir=args.public_download_dir,
+            public_header_dir=args.public_header_dir,
+            discovery_snapshot_path=args.discovery_snapshot,
             platform_trust_verifier=args.platform_trust_verifier,
             platform_trust_mode=args.platform_trust_mode,
         )
