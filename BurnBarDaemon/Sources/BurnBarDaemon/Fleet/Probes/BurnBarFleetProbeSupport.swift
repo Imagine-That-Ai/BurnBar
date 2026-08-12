@@ -7,12 +7,28 @@ import Foundation
 public enum BurnBarFleetProbeConstants {
     /// claude-code session `updatedAt` freshness window (120 s).
     public static let claudeCodeFreshnessSeconds: TimeInterval = 120
+    /// hermes gateway heartbeat freshness window (120 s).
+    public static let hermesHeartbeatFreshnessSeconds: TimeInterval = 120
+    /// grok-bot supervisor `at` / recent-log freshness window (120 s).
+    public static let grokBotSupervisorFreshnessSeconds: TimeInterval = 120
     /// factory-droid invocation / session-dir freshness window (300 s).
     public static let factoryDroidFreshnessSeconds: TimeInterval = 300
+    /// codex thread-writer-lock mtime freshness window (300 s).
+    public static let codexLockFreshnessSeconds: TimeInterval = 300
+    /// pi newest-transcript mtime freshness window (300 s).
+    public static let piTranscriptFreshnessSeconds: TimeInterval = 300
+    /// cursor `ai-tracking/` mtime freshness window (300 s).
+    public static let cursorTrackingFreshnessSeconds: TimeInterval = 300
     /// grok-cli registry-file freshness window (300 s). Used for the
     /// pid-dead-but-file-fresh confidence step-down: a registry file whose
     /// mtime is inside this window is "fresh".
     public static let grokCLIFileFreshnessSeconds: TimeInterval = 300
+    /// Per-probe timeout seam (VAL-FLEET-019): every signal-file content read
+    /// is bounded by this interval via a non-blocking open + poll. A blocking
+    /// path (FIFO) or a read that exceeds the bound degrades the affected
+    /// probe typed (`degraded(reason: ... timed out ...)`) and the tick
+    /// continues on cadence — a hung signal path never stalls the snapshot.
+    public static let perProbeTimeoutSeconds: TimeInterval = 2.0
 }
 
 /// Read-only process liveness checks. The mission never signals, kills, or
@@ -63,6 +79,62 @@ public enum BurnBarFleetProbeJSON {
         return try JSONSerialization.jsonObject(with: data)
     }
 
+    /// Bounded JSON read (per-probe timeout seam, VAL-FLEET-019): opens the
+    /// file non-blocking and polls for readability up to `timeoutSeconds`,
+    /// then reads and parses. A blocking path (FIFO) or a read that exceeds
+    /// the bound throws `BurnBarFleetProbeReadError.timedOut` so the probe
+    /// degrades typed without stalling the tick.
+    public static func readJSONBounded(
+        at path: String,
+        timeoutSeconds: TimeInterval = BurnBarFleetProbeConstants.perProbeTimeoutSeconds
+    ) throws -> Any {
+        let fileDescriptor = open(path, O_RDONLY | O_NONBLOCK)
+        guard fileDescriptor >= 0 else {
+            throw BurnBarFleetProbeReadError.unreadable(errno)
+        }
+        defer { close(fileDescriptor) }
+
+        var pollDescriptor = pollfd(fd: fileDescriptor, events: Int16(POLLIN), revents: 0)
+        let timeoutMilliseconds = Int32(max(1, Int(timeoutSeconds * 1000)))
+        let pollResult = poll(&pollDescriptor, 1, timeoutMilliseconds)
+        guard pollResult > 0 else {
+            throw BurnBarFleetProbeReadError.timedOut
+        }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+        while true {
+            let bytesRead = read(fileDescriptor, &buffer, buffer.count)
+            if bytesRead == 0 {
+                break
+            }
+            if bytesRead < 0 {
+                if errno == EINTR {
+                    continue
+                }
+                throw BurnBarFleetProbeReadError.unreadable(errno)
+            }
+            data.append(contentsOf: buffer.prefix(bytesRead))
+        }
+
+        return try JSONSerialization.jsonObject(with: data)
+    }
+
+    /// Maps a bounded-read failure to a probe-health reason string. The
+    /// timeout case is the documented VAL-FLEET-019 degradation; other
+    /// failures are reported as unreadable.
+    public static func readFailureReason(_ error: Error) -> String {
+        if let readError = error as? BurnBarFleetProbeReadError {
+            switch readError {
+            case .timedOut:
+                return "Signal file read timed out (per-probe timeout)."
+            case .unreadable(let code):
+                return "Signal file is not readable (errno \(code))."
+            }
+        }
+        return "Signal file is not valid JSON."
+    }
+
     /// Epoch-milliseconds number → Date (nil when absent, null, or mistyped).
     public static func dateFromEpochMilliseconds(_ value: Any?) -> Date? {
         guard let number = value as? NSNumber else { return nil }
@@ -80,6 +152,14 @@ public enum BurnBarFleetProbeJSON {
         guard let string = value as? String else { return nil }
         return string
     }
+}
+
+/// Typed bounded-read failures (per-probe timeout seam).
+public enum BurnBarFleetProbeReadError: Error, Equatable, Sendable {
+    /// The file could not be opened for reading.
+    case unreadable(Int32)
+    /// The file did not become readable within the per-probe timeout.
+    case timedOut
 }
 
 /// Shared probe result builders so every probe reports the same typed shapes

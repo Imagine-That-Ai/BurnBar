@@ -27,15 +27,19 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
     public let rootPath: String
     /// Freshness window override (defaults to the pinned 300 s constant).
     public let freshnessSeconds: TimeInterval
+    /// Per-probe timeout for signal-file reads (VAL-FLEET-019 seam).
+    public let readTimeoutSeconds: TimeInterval
 
     public init(
         agentID: BurnBarFleetAgentID = .factoryDroid,
         rootPath: String,
-        freshnessSeconds: TimeInterval = BurnBarFleetProbeConstants.factoryDroidFreshnessSeconds
+        freshnessSeconds: TimeInterval = BurnBarFleetProbeConstants.factoryDroidFreshnessSeconds,
+        readTimeoutSeconds: TimeInterval = BurnBarFleetProbeConstants.perProbeTimeoutSeconds
     ) {
         self.agentID = agentID
         self.rootPath = rootPath
         self.freshnessSeconds = freshnessSeconds
+        self.readTimeoutSeconds = readTimeoutSeconds
     }
 
     public func probe(now: Date) async -> BurnBarFleetProbeResult {
@@ -46,11 +50,15 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
         }
 
         // 1. Task ledger.
-        let ledger = Self.readLedger(at: rootURL.appendingPathComponent("task-invocations.json").path)
+        let ledger = Self.readLedger(
+            at: rootURL.appendingPathComponent("task-invocations.json").path,
+            timeoutSeconds: readTimeoutSeconds
+        )
 
         // 2. Background-process registry.
         let background = Self.readBackgroundProcesses(
-            at: rootURL.appendingPathComponent("background-processes.json").path
+            at: rootURL.appendingPathComponent("background-processes.json").path,
+            timeoutSeconds: readTimeoutSeconds
         )
 
         // 3. Session + mission directory mtimes. Only the declared
@@ -381,19 +389,19 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
         }
     }
 
-    private static func readLedger(at path: String) -> Ledger? {
+    private static func readLedger(at path: String, timeoutSeconds: TimeInterval) -> Ledger? {
         guard FileManager.default.fileExists(atPath: path) else { return nil }
 
         let object: [String: Any]
         do {
-            let raw = try BurnBarFleetProbeJSON.readJSON(at: path)
+            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
             guard let dictionary = raw as? [String: Any] else {
                 let reason = "task-invocations.json is not a JSON object."
                 return Ledger(path: path, invocations: [], malformedReason: reason)
             }
             object = dictionary
         } catch {
-            let reason = "task-invocations.json is not valid JSON."
+            let reason = BurnBarFleetProbeJSON.readFailureReason(error)
             return Ledger(path: path, invocations: [], malformedReason: reason)
         }
 
@@ -449,19 +457,19 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
         }
     }
 
-    private static func readBackgroundProcesses(at path: String) -> BackgroundRegistry? {
+    private static func readBackgroundProcesses(at path: String, timeoutSeconds: TimeInterval) -> BackgroundRegistry? {
         guard FileManager.default.fileExists(atPath: path) else { return nil }
 
         let object: [String: Any]
         do {
-            let raw = try BurnBarFleetProbeJSON.readJSON(at: path)
+            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
             guard let dictionary = raw as? [String: Any] else {
                 let reason = "background-processes.json is not a JSON object."
                 return BackgroundRegistry(path: path, entries: [], malformedReason: reason)
             }
             object = dictionary
         } catch {
-            let reason = "background-processes.json is not valid JSON."
+            let reason = BurnBarFleetProbeJSON.readFailureReason(error)
             return BackgroundRegistry(path: path, entries: [], malformedReason: reason)
         }
 

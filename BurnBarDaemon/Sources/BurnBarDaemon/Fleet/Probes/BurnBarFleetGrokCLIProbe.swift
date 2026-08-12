@@ -20,15 +20,19 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
     public let rootPath: String
     /// Registry-file freshness window (defaults to the pinned 300 s constant).
     public let fileFreshnessSeconds: TimeInterval
+    /// Per-probe timeout for signal-file reads (VAL-FLEET-019 seam).
+    public let readTimeoutSeconds: TimeInterval
 
     public init(
         agentID: BurnBarFleetAgentID = .grokCLI,
         rootPath: String,
-        fileFreshnessSeconds: TimeInterval = BurnBarFleetProbeConstants.grokCLIFileFreshnessSeconds
+        fileFreshnessSeconds: TimeInterval = BurnBarFleetProbeConstants.grokCLIFileFreshnessSeconds,
+        readTimeoutSeconds: TimeInterval = BurnBarFleetProbeConstants.perProbeTimeoutSeconds
     ) {
         self.agentID = agentID
         self.rootPath = rootPath
         self.fileFreshnessSeconds = fileFreshnessSeconds
+        self.readTimeoutSeconds = readTimeoutSeconds
     }
 
     public func probe(now: Date) async -> BurnBarFleetProbeResult {
@@ -70,7 +74,7 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
 
         let entries: [ParsedEntry]
         do {
-            let raw = try BurnBarFleetProbeJSON.readJSON(at: registryPath)
+            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: registryPath, timeoutSeconds: readTimeoutSeconds)
             guard let array = raw as? [[String: Any]] else {
                 let reason = "active_sessions.json is not a JSON array."
                 return degradedResult(
@@ -82,7 +86,7 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
             }
             entries = array.map { Self.parseEntry($0, at: registryPath) }
         } catch {
-            let reason = "active_sessions.json is not valid JSON."
+            let reason = BurnBarFleetProbeJSON.readFailureReason(error)
             return degradedResult(
                 now: now,
                 registryPath: registryPath,

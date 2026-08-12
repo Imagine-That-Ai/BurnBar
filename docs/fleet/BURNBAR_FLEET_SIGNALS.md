@@ -40,6 +40,7 @@ The daemon's fleet snapshot core exposes the following environment seams. Valida
 | Snapshot cadence | `BURNBAR_FLEET_CADENCE_SECONDS` | `15` | Tick interval AND the snapshot's reported `cadenceSeconds` (single source of truth: the fleet service derives both from the builder). Values below 1 are rejected (default used). |
 | Probe-root override (base) | `BURNBAR_FLEET_ROOTS_DIR` | real roots (`~/.claude`, …) | Overrides the base directory for ALL agents: each agent's root becomes `<override>/<agent-root-name>` (`claude`, `factory`, `codex`, `hermes`, `grokbot`, `grok`, `pi`, `cursor`, `kimi`, `gemini`). |
 | Probe-root override (per-probe) | `BURNBAR_FLEET_ROOT_CLAUDE_CODE`, `BURNBAR_FLEET_ROOT_FACTORY_DROID`, `BURNBAR_FLEET_ROOT_CODEX`, `BURNBAR_FLEET_ROOT_HERMES`, `BURNBAR_FLEET_ROOT_GROK_BOT`, `BURNBAR_FLEET_ROOT_GROK_CLI`, `BURNBAR_FLEET_ROOT_PI`, `BURNBAR_FLEET_ROOT_CURSOR`, `BURNBAR_FLEET_ROOT_KIMI`, `BURNBAR_FLEET_ROOT_GEMINI_CLI` | none | Per-probe override wins over the base override. |
+| Per-probe timeout | (constant `BurnBarFleetProbeConstants.perProbeTimeoutSeconds`, injectable per probe) | `2.0` seconds | Every signal-file content read is bounded: the file is opened non-blocking and polled for readability up to the timeout. A blocking path (FIFO) or a read that exceeds the bound degrades the affected probe typed (`degraded(reason: "... timed out ...")`) and the tick continues on cadence — a hung signal path never stalls the snapshot (VAL-FLEET-019). |
 | Event retention | `BURNBAR_FLEET_EVENT_RETENTION_SECONDS` | `86400` (24 h) | Accelerates fleet_events pruning for validation (implemented with the persistence layer). |
 
 ### Snapshot builder behavior (M1 core)
@@ -50,14 +51,16 @@ The daemon's fleet snapshot core exposes the following environment seams. Valida
 - **Machine status.** `cpuPercent`, `memoryUsedBytes`, `memoryTotalBytes`, `loadAverage` (3 elements), and `diskFreeBytes` are populated from Mach/`getloadavg`/`statfs`; `thermal` and `power` are typed `unavailable(reason)` on this machine (`pmset -g thermlog` is empty) — values are never invented.
 - **Pre-first-tick RPC behavior (typed).** `daemon.fleet.snapshot` before the first tick completes returns the documented typed error `BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly.` (code `-32603`, internalError) — never a fabricated empty snapshot presented as probed truth. The first tick runs immediately at daemon start, so the not-ready window is one build duration.
 - **Cadence reflection.** Every ready snapshot and the well-known file report the same `cadenceSeconds` as the tick interval (both derive from the builder). Changing `BURNBAR_FLEET_CADENCE_SECONDS` changes both the tick interval and the reported value.
-- **Default probes.** Three roster agents are served by real file/pid-based
-  signal probes (implemented M1): `claude-code` (sessions registry),
-  `grok-cli` (active-sessions registry), and `factory-droid` (task ledger +
-  background registry + session/mission dir mtimes). The remaining roster
-  agents are served by a root-presence probe: root present → `ok` health +
-  `unknown`/`unsupported` row with an honest note; root missing → `failed`
-  health + `unknown`/`unsupported` row. This keeps the roster complete and
-  honest on empty roots until the remaining per-agent probes land.
+- **Default probes.** All ten roster agents are served by real per-agent
+  probes (implemented M1): `claude-code` (sessions registry), `grok-cli`
+  (active-sessions registry), `factory-droid` (task ledger + background
+  registry + session/mission dir mtimes), `grok-bot` (daemon/supervisor
+  JSON; inflightCount 0 = idle, not running), `hermes` (gateway.pid +
+  heartbeat + gateway_state + processes; fresh heartbeat AND active work =
+  running), `codex` (thread-writer-locks mtimes, logHeartbeat only), `pi`
+  (session transcript mtimes, logHeartbeat only), `cursor` (worker ids +
+  ai-tracking mtime, partial activeSessionFile), and `kimi`/`gemini-cli`
+  (typed unsupported rows).
 - **Probe behavior (file/pid-based probes).** The three signal probes follow
   the per-agent rules in this document exactly: live-pid + fresh signal →
   `running` with the documented confidence; dead pid → non-running with a
@@ -238,10 +241,15 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
 {"pid": 4869, "at": 1750000000000}
 ```
 
-- **Running rule:** daemon pid live AND `inflightCount > 0` (or supervisor `at` fresh (< **120 s**) with recent log activity).
+- **Running rule:** daemon pid live AND `inflightCount > 0`. The supervisor
+  alternate (supervisor `at` fresh with recent log activity) is NOT claimed:
+  the supervisor file is refreshed ~minutely by the same daemon, so a fresh
+  supervisor signal alone cannot distinguish active work from a merely alive
+  daemon. Claiming it would risk reporting `running` from stale evidence
+  (VAL-FLEET-023).
 - **Idle rule:** daemon/supervisor alive with `inflightCount == 0` — this is the common case; do NOT report "running" just because the daemon exists.
-- **Stale rule:** supervisor signal beyond the 120 s window.
-- **Repo attribution:** connection/workspace hints if present; else null.
+- **Stale rule:** a live daemon with a stale or absent supervisor signal stays `idle`/`unknown` — a stale/absent supervisor signal never yields `running` from stale evidence.
+- **Repo attribution:** connection/workspace hints if present; else null (the declared signal files carry no workspace hints, so projectName stays null).
 - **Notes:**
   - `~/.grokbot/local-exec-daemon-connection.json` contains SECRETS (tokens) — never read beyond structural keys, never log contents, never copy into fixtures (see [Honest-liveness caveats](#honest-liveness-caveats)).
 
@@ -340,7 +348,7 @@ The fleet layer explicitly does NOT do any of the following. Probes and the daem
 
 Known traps from the verified inventory. Every one of these is a documented behavior, not a bug:
 
-1. **Grok Bot daemon alive ≠ running.** A live `local-exec-daemon.json` pid with `inflightCount: 0` is `idle`, not `running`. Only `inflightCount > 0` (or the fresh-supervisor/recent-log alternate) flips the row to `running`.
+1. **Grok Bot daemon alive ≠ running.** A live `local-exec-daemon.json` pid with `inflightCount: 0` is `idle`, not `running`. Only `inflightCount > 0` flips the row to `running`. The supervisor-signal alternate is NOT claimed: the supervisor file is refreshed ~minutely by the same daemon, so a fresh supervisor signal cannot distinguish active work from a merely alive daemon, and a stale/absent supervisor signal never yields `running` from stale evidence.
 2. **Secrets in `~/.grokbot/local-exec-daemon-connection.json`.** This file bears tokens. It must never be parsed beyond structural keys, never logged, and never copied into fixtures, payloads, or snapshots. Fixtures for Grok Bot contain only synthetic content.
 3. **Codex has NO `active_sessions.json`.** The file with that name belongs to Grok CLI (`~/.grok/active_sessions.json`). Codex has no pid registry; do not look for one.
 4. **Codex locks may survive crashes.** Thread-writer lock mtimes are a heuristic; confidence stays `logHeartbeat` even when a lock looks fresh, and `ps` corroboration is used when available.

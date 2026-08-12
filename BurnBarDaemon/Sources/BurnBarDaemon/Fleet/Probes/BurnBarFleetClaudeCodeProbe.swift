@@ -23,15 +23,19 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
     public let rootPath: String
     /// Freshness window override (defaults to the pinned 120 s constant).
     public let freshnessSeconds: TimeInterval
+    /// Per-probe timeout for signal-file reads (VAL-FLEET-019 seam).
+    public let readTimeoutSeconds: TimeInterval
 
     public init(
         agentID: BurnBarFleetAgentID = .claudeCode,
         rootPath: String,
-        freshnessSeconds: TimeInterval = BurnBarFleetProbeConstants.claudeCodeFreshnessSeconds
+        freshnessSeconds: TimeInterval = BurnBarFleetProbeConstants.claudeCodeFreshnessSeconds,
+        readTimeoutSeconds: TimeInterval = BurnBarFleetProbeConstants.perProbeTimeoutSeconds
     ) {
         self.agentID = agentID
         self.rootPath = rootPath
         self.freshnessSeconds = freshnessSeconds
+        self.readTimeoutSeconds = readTimeoutSeconds
     }
 
     public func probe(now: Date) async -> BurnBarFleetProbeResult {
@@ -79,7 +83,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
             )
         }
 
-        let parsed = Self.parseSessions(sessionFiles, in: sessionsDirectory)
+        let parsed = Self.parseSessions(sessionFiles, in: sessionsDirectory, timeoutSeconds: readTimeoutSeconds)
         let signals = parsed.map { session in
             BurnBarFleetSignalSource(
                 kind: "session-registry",
@@ -88,6 +92,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
             )
         }
         let malformedCount = parsed.filter { $0.malformedReason != nil }.count
+        let degradedReason = Self.degradedReason(parsed: parsed, malformedCount: malformedCount)
 
         // One live session drives the row: the freshest live-pid session wins.
         let liveSessions = parsed.filter { session in
@@ -102,9 +107,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
             if now.timeIntervalSince(updatedAt) <= freshnessSeconds {
                 // Running: live pid + fresh updatedAt. Malformed sibling files
                 // degrade the health state but never the row's liveness.
-                let healthState: BurnBarFleetProbeHealthState = malformedCount > 0
-                    ? .degraded(reason: "\(malformedCount) session file(s) malformed.")
-                    : .ok
+                let healthState: BurnBarFleetProbeHealthState = degradedReason.map { .degraded(reason: $0) } ?? .ok
                 return BurnBarFleetProbeSupport.result(
                     agentID: agentID,
                     rootPath: rootPath,
@@ -139,9 +142,22 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
             now: now,
             parsed: parsed,
             signals: signals,
-            malformedCount: malformedCount,
+            degradedReason: degradedReason,
             freshnessSeconds: freshnessSeconds
         )
+    }
+
+    /// Builds the degraded-health reason from malformed session files. The
+    /// first malformed file's reason is surfaced verbatim (so a timeout or
+    /// unreadable failure is visible, not hidden behind a count); when
+    /// several files are malformed the count is appended.
+    private static func degradedReason(parsed: [ParsedSession], malformedCount: Int) -> String? {
+        guard malformedCount > 0 else { return nil }
+        let firstReason = parsed.first { $0.malformedReason != nil }?.malformedReason ?? "malformed"
+        if malformedCount == 1 {
+            return "Session file malformed: \(firstReason)"
+        }
+        return "\(malformedCount) session file(s) malformed; first: \(firstReason)"
     }
 
     /// Classifies the row when no session has a live pid: dead-pid freshness
@@ -152,13 +168,13 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
         now: Date,
         parsed: [ParsedSession],
         signals: [BurnBarFleetSignalSource],
-        malformedCount: Int,
+        degradedReason: String?,
         freshnessSeconds: TimeInterval
     ) -> BurnBarFleetProbeResult {
         let freshest = parsed
             .compactMap { $0.updatedAt }
             .max()
-        let hasMalformed = malformedCount > 0
+        let hasMalformed = degradedReason != nil
 
         if let freshest, now.timeIntervalSince(freshest) <= freshnessSeconds {
             // Dead pid but the file is fresh: confidence ladder step-down.
@@ -171,7 +187,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
                 lastActivityAt: freshest,
                 signals: signals,
                 note: "Session file present but its pid is not alive; confidence downgraded.",
-                healthState: hasMalformed ? .degraded(reason: "\(malformedCount) session file(s) malformed.") : .ok
+                healthState: hasMalformed ? .degraded(reason: degradedReason!) : .ok
             )
         }
 
@@ -186,7 +202,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
                 confidence: .unsupported,
                 signals: signals,
                 note: "Session file(s) present but malformed; status unknown.",
-                healthState: .degraded(reason: "\(malformedCount) session file(s) malformed.")
+                healthState: .degraded(reason: degradedReason!)
             )
         }
 
@@ -205,12 +221,17 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
 
     /// Parses every session file. Malformed files degrade typed and are
     /// isolated: a malformed file never fabricates liveness and never affects
-    /// the outcome of well-formed siblings.
-    private static func parseSessions(_ fileNames: [String], in directory: URL) -> [ParsedSession] {
+    /// the outcome of well-formed siblings. Reads are bounded by the
+    /// per-probe timeout (VAL-FLEET-019).
+    private static func parseSessions(
+        _ fileNames: [String],
+        in directory: URL,
+        timeoutSeconds: TimeInterval
+    ) -> [ParsedSession] {
         var parsed: [ParsedSession] = []
         for fileName in fileNames {
             let filePath = directory.appendingPathComponent(fileName).path
-            switch parseSessionFile(at: filePath) {
+            switch parseSessionFile(at: filePath, timeoutSeconds: timeoutSeconds) {
             case .success(let session):
                 parsed.append(session)
             case .failure(let reason):
@@ -245,16 +266,16 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
         case failure(String)
     }
 
-    private static func parseSessionFile(at path: String) -> ParseOutcome {
+    private static func parseSessionFile(at path: String, timeoutSeconds: TimeInterval) -> ParseOutcome {
         let object: [String: Any]
         do {
-            let raw = try BurnBarFleetProbeJSON.readJSON(at: path)
+            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
             guard let dictionary = raw as? [String: Any] else {
                 return .failure("Session file is not a JSON object.")
             }
             object = dictionary
         } catch {
-            return .failure("Session file is not valid JSON.")
+            return .failure(BurnBarFleetProbeJSON.readFailureReason(error))
         }
 
         // Required keys: pid and updatedAt. Missing or mistyped → malformed.
