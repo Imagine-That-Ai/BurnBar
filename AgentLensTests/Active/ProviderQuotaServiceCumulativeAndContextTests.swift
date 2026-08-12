@@ -142,10 +142,13 @@ extension ProviderQuotaServiceTests {
         XCTAssertTrue(try XCTUnwrap(merged.hourlyBucket(relativeTo: now)).isEstimated)
     }
 
-    func test_cumulativeSnapshot_excludesLocalOnlyScope() {
-        // localOnly snapshots are device-only scrape caches that
-        // shouldn't be aggregated across accounts. With only one non-
-        // localOnly account, the result should be nil (single account).
+    /// An isolated switcher profile is a real, separate login — its own
+    /// `CODEX_HOME`/`CLAUDE_CONFIG_DIR`, its own quota. `fetchSwitcherProfileSnapshot`
+    /// marks every one of them `.localOnly`, and the merge used to drop that
+    /// whole scope, so two daemon accounts plus one switcher profile merged as
+    /// two. The panel then reported an understated total under a confident
+    /// "Combined 2 accounts" label — silently under-reporting spend.
+    func test_cumulativeSnapshot_mergesIsolatedSwitcherProfileAccounts() throws {
         let snapshots = [
             makeSnapshot(
                 accountID: "a1", fetchedAt: now,
@@ -156,7 +159,49 @@ extension ProviderQuotaServiceTests {
             ),
             makeSnapshot(
                 accountID: "a2", fetchedAt: now,
+                scope: .cloudRefreshable,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 20, limit: 100,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            ),
+            makeSnapshot(
+                accountID: "switcher-profile", fetchedAt: now,
                 scope: .localOnly,
+                sourceID: "switcher-cli:codex:switcher-profile",
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 45, limit: 100,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            )
+        ]
+
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(provider: .codex, from: snapshots, now: now)
+        )
+        let bucket = try XCTUnwrap(merged.hourlyBucket(relativeTo: now))
+
+        XCTAssertEqual(bucket.usedValue, 95, "The switcher profile's 45 has to be part of the total, not dropped.")
+        XCTAssertEqual(bucket.limitValue, 300)
+        XCTAssertEqual(merged.mergedAccountCount, 3)
+        XCTAssertEqual(merged.accountLabel, "All accounts (3)")
+    }
+
+    /// The one local record that must stay out of the sum: the synthetic
+    /// "Current <CLI> login" is the provider-level rollup re-badged as an
+    /// account, so adding it counts the same machine twice. With it removed
+    /// only one real account remains, and a single account has nothing to merge.
+    func test_cumulativeSnapshot_excludesTheSyntheticCurrentCLIMirror() {
+        let snapshots = [
+            makeSnapshot(
+                accountID: "a1", fetchedAt: now,
+                scope: .cloudRefreshable,
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
+                                      used: 30, limit: 100,
+                                      resetsAt: now.addingTimeInterval(3600))]
+            ),
+            makeSnapshot(
+                accountID: "current-codex", fetchedAt: now,
+                scope: .localOnly,
+                sourceID: "switcher-cli-current:codex",
                 buckets: [makeBucket(key: "5h", windowKind: .rollingHours,
                                       used: 99, limit: 100,
                                       resetsAt: now.addingTimeInterval(3600))]
@@ -256,6 +301,352 @@ extension ProviderQuotaServiceTests {
         XCTAssertEqual(merged.statusMessage?.contains("Stale"), true)
     }
 
+    // MARK: - Multi-account readiness: shared daemon provider map
+
+    /// The fetch path and the `ProviderAccountDoc` projection used to keep
+    /// separate copies of this map, and the projection's copy was missing xAI —
+    /// xAI credential slots produced per-account quota snapshots that never
+    /// became accounts. There is exactly one copy now; this pins its contents.
+    func test_quotaCapableProviderMap_coversEveryMultiAccountDaemonProvider() {
+        let expected: [String: AgentProvider] = [
+            "minimax": .minimax,
+            "zai": .zai,
+            "z-ai": .zai,
+            "ollama": .ollama,
+            "openai": .openAI,
+            "anthropic": .claudeCode,
+            "claude": .claudeCode,
+            "claude-code": .claudeCode,
+            "opencode": .openCode,
+            "deepseek": .deepSeek,
+            "moonshot": .kimi,
+            "kimi": .kimi,
+            "xai": .xAI,
+            "x-ai": .xAI,
+            "grok": .xAI
+        ]
+        for (providerID, provider) in expected {
+            XCTAssertEqual(
+                QuotaCapableProviderMap.provider(forDaemonProviderID: providerID),
+                provider,
+                "daemon providerID \(providerID) should map to \(provider)"
+            )
+        }
+        XCTAssertNil(QuotaCapableProviderMap.provider(forDaemonProviderID: "not-a-provider"))
+    }
+
+    /// OpenAI's usage endpoint is organization-scoped, so every credential slot
+    /// would report identical numbers. It must stay provider-level or the
+    /// cumulative merge multiplies one org's usage by its key count.
+    func test_quotaCapableProviderMap_marksOpenAIOrganizationScoped() {
+        XCTAssertFalse(QuotaCapableProviderMap.supportsPerAccountQuota(.openAI))
+        XCTAssertTrue(QuotaCapableProviderMap.supportsPerAccountQuota(.claudeCode))
+        XCTAssertTrue(QuotaCapableProviderMap.supportsPerAccountQuota(.xAI))
+    }
+
+    /// Recognising an alias is only half the job. Accepting `x-ai` while
+    /// letting the raw alias ride along on the account identity produced a
+    /// configuration that quota-fetched fine and was still invisible: the two
+    /// consumers below only ever look for the canonical id.
+    func test_canonicalProviderID_rewritesEveryAliasToTheProvidersOwnID() {
+        for alias in ["xai", "x-ai", "x.ai", "grok"] {
+            XCTAssertEqual(
+                QuotaCapableProviderMap.canonicalProviderID(forDaemonProviderID: alias),
+                ProviderID.xAI,
+                "daemon providerID \(alias) must resolve to the canonical xAI id"
+            )
+        }
+        XCTAssertEqual(
+            QuotaCapableProviderMap.canonicalProviderID(forDaemonProviderID: "anthropic"),
+            AgentProvider.claudeCode.providerID
+        )
+        XCTAssertEqual(
+            QuotaCapableProviderMap.canonicalProviderID(forDaemonProviderID: "moonshot"),
+            AgentProvider.kimi.providerID
+        )
+    }
+
+    /// An unmapped provider keeps the id it was configured with — canonicalizing
+    /// must not invent identities for providers this map knows nothing about.
+    func test_canonicalProviderID_passesUnmappedProvidersThrough() {
+        XCTAssertEqual(
+            QuotaCapableProviderMap.canonicalProviderID(forDaemonProviderID: "mistral"),
+            ProviderID(rawValue: "mistral")
+        )
+    }
+
+    /// Consumer 1: `connectedQuotaProviderIDs` resolves a projected account
+    /// through `AgentProvider.fromProviderID`, which knows only canonical ids.
+    /// An `x-ai` slot therefore produced no connected xAI provider at all.
+    func test_daemonSlotProjection_canonicalizesAliasConfiguredProviders() throws {
+        let accounts = DaemonCredentialSlotAccountProjection.accounts(
+            from: [Self.makeSlotConfiguration(providerID: "x-ai", slotID: "team")],
+            now: now
+        )
+
+        let account = try XCTUnwrap(accounts.first)
+        XCTAssertEqual(account.providerID, ProviderID.xAI)
+        XCTAssertEqual(account.id, "xai-team")
+        XCTAssertEqual(
+            AgentProvider.fromProviderID(account.providerID),
+            .xAI,
+            "The projected account has to resolve back to a provider, or it is invisible to every quota surface."
+        )
+    }
+
+    /// Consumer 2: `snapshots(for:)` searches the canonical id, so the account
+    /// snapshot has to be stored under it. `snapshotProviderIDs` still accepts
+    /// the aliases for records written before this was true.
+    func test_snapshotsForProvider_findsAccountsStoredUnderTheCanonicalID() {
+        let service = ProviderQuotaService(refreshProviders: [])
+        for snapshot in [
+            makeSnapshot(
+                provider: .xAI, accountID: "xai-team",
+                sourceID: "daemon-slot:xai:team",
+                buckets: [makeBucket(key: "5h", windowKind: .rollingHours, used: 10, limit: 100, resetsAt: nil)]
+            ),
+            // Legacy record persisted under the alias, before canonicalization.
+            ProviderQuotaSnapshot(
+                provider: .xAI,
+                providerID: ProviderID(rawValue: "x-ai"),
+                accountID: "x-ai-legacy",
+                accountLabel: "Legacy",
+                accountStorageScope: .deviceKeychain,
+                fetchedAt: now,
+                source: .officialAPI,
+                sourceId: "daemon-slot:x-ai:legacy",
+                confidence: .exact,
+                managementURL: nil,
+                statusMessage: "ok",
+                buckets: []
+            )
+        ] {
+            service.snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
+        }
+
+        XCTAssertEqual(
+            Set(service.snapshots(for: AgentProvider.xAI).compactMap(\.accountID)),
+            ["xai-team", "x-ai-legacy"]
+        )
+    }
+
+    /// Canonicalizing renames an existing identity, so the sweep has to retire
+    /// the row written under the old one. Without that, an upgrading user with
+    /// an `anthropic` slot sees the same credential twice: the stale
+    /// `anthropic-gmail` row beside its `claude-code-gmail` replacement.
+    func test_persistDaemonSlotAccounts_retiresThePreCanonicalizationRow() async throws {
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            Self.makeSlotConfiguration(providerID: "anthropic", slotID: "gmail")
+        ]
+        let dataStore = try makeDataStore()
+        try await dataStore.upsertProviderAccount(
+            ProviderAccountDoc(
+                id: "anthropic-gmail",
+                providerID: ProviderID(rawValue: "anthropic"),
+                label: "gmail",
+                identityHint: "Daemon credential slot",
+                status: .connected,
+                credentialKind: .bearer,
+                storageScope: .deviceKeychain,
+                redactedLabel: "Stored in Mac Keychain",
+                schemaVersion: 1,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+
+        await ProviderQuotaService(refreshProviders: []).persistDaemonCredentialSlotAccounts(dataStore: dataStore)
+
+        let canonical = try await dataStore.fetchProviderAccounts(providerID: AgentProvider.claudeCode.providerID)
+        let legacy = try await dataStore.fetchProviderAccounts(providerID: ProviderID(rawValue: "anthropic"))
+
+        XCTAssertEqual(canonical.map(\.id), ["claude-code-gmail"])
+        XCTAssertEqual(canonical.map(\.status), [.connected])
+        XCTAssertEqual(legacy.map(\.status), [.deleted])
+    }
+
+    /// The sweep answers "which slots did *this* device stop having?", so it
+    /// must not touch another Mac's slots that arrived through cloud sync —
+    /// they can never appear in the active set, and widening the sweep to the
+    /// alias id buckets widens exactly which rows it walks past.
+    func test_persistDaemonSlotAccounts_leavesAnotherDevicesSlotsAlone() async throws {
+        OpenBurnBarDaemonManager.shared.providerConfigurations = [
+            Self.makeSlotConfiguration(providerID: "anthropic", slotID: "gmail")
+        ]
+        let dataStore = try makeDataStore()
+        try await dataStore.upsertProviderAccount(
+            ProviderAccountDoc(
+                id: "claude-code-work__remote_studio",
+                providerID: AgentProvider.claudeCode.providerID,
+                label: "Work (Studio)",
+                identityHint: "Daemon credential slot",
+                status: .connected,
+                credentialKind: .bearer,
+                storageScope: .deviceKeychain,
+                redactedLabel: "Stored in Mac Keychain",
+                sourceDeviceID: "studio",
+                schemaVersion: 1,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+
+        await ProviderQuotaService(refreshProviders: []).persistDaemonCredentialSlotAccounts(dataStore: dataStore)
+
+        let remote = try await dataStore.fetchProviderAccount(id: "claude-code-work__remote_studio")
+        XCTAssertEqual(remote?.status, .connected)
+    }
+
+    /// The alias set is what lets the sweep retire records written under the
+    /// old identity instead of leaving them beside their canonical replacement.
+    func test_daemonProviderIDs_coverTheCanonicalIDAndEveryAlias() {
+        XCTAssertEqual(
+            QuotaCapableProviderMap.daemonProviderIDs(for: .xAI),
+            Set(["xai", "x-ai", "x.ai", "grok"].map { ProviderID(rawValue: $0) })
+        )
+        XCTAssertTrue(
+            QuotaCapableProviderMap.daemonProviderIDs(for: .claudeCode).contains(ProviderID.anthropic)
+        )
+        XCTAssertEqual(
+            QuotaCapableProviderMap.daemonProviderIDs(for: .factory),
+            [AgentProvider.factory.providerID],
+            "A provider with no daemon aliases still answers with its own id."
+        )
+    }
+
+    private static func makeSlotConfiguration(
+        providerID: String,
+        slotID: String
+    ) -> OpenBurnBarDaemonProviderConfiguration {
+        OpenBurnBarDaemonProviderConfiguration(
+            providerID: providerID,
+            provider: nil,
+            displayName: providerID,
+            isEnabled: true,
+            baseURL: "https://\(providerID).example/v1",
+            preferredModelIDs: [],
+            preferredCredentialSlotID: slotID,
+            credentialSlots: [
+                OpenBurnBarDaemonProviderConfiguration.CredentialSlot(
+                    slotID: slotID,
+                    label: "Team key",
+                    isEnabled: true,
+                    status: .ready,
+                    cooldownUntil: nil,
+                    lastSelectedAt: nil,
+                    lastQuotaRemainingPercent: nil,
+                    lastQuotaResetsAt: nil,
+                    lastStatusMessage: nil,
+                    updatedAt: Date(timeIntervalSince1970: 1_750_000_000)
+                )
+            ]
+        )
+    }
+
+    // MARK: - Multi-account readiness: account display naming
+
+    func test_accountDisplayLabel_prefersAccountLabelThenAccountID() {
+        let labelled = makeSnapshot(accountID: "a1", buckets: [])
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: labelled, provider: .claudeCode),
+            "Account a1"
+        )
+
+        let idOnly = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            accountID: "slot-2",
+            fetchedAt: now,
+            source: .officialAPI,
+            sourceId: "daemon-slot:anthropic:slot-2",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: idOnly, provider: .claudeCode),
+            "slot-2"
+        )
+    }
+
+    /// A provider rollup carries `sourceId == "default"`, which every surface
+    /// used to render verbatim as the account name.
+    func test_accountDisplayLabel_neverSurfacesTheLiteralDefaultSourceID() {
+        let rollup = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: now,
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+        XCTAssertEqual(rollup.sourceId, "default")
+        XCTAssertTrue(ProviderQuotaAccountDisplay.isRollup(rollup))
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: rollup, provider: .claudeCode),
+            "Default login"
+        )
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: rollup, provider: .openAI),
+            "Organization · all keys"
+        )
+    }
+
+    func test_accountDisplayLabel_recognisesTheSyntheticMergedSnapshot() throws {
+        let merged = try XCTUnwrap(
+            ProviderQuotaService.cumulativeSnapshot(
+                provider: .claudeCode,
+                from: [
+                    makeSnapshot(accountID: "a1", buckets: [makeBucket(key: "5h", windowKind: .rollingHours, used: 10, limit: 100)]),
+                    makeSnapshot(accountID: "a2", buckets: [makeBucket(key: "5h", windowKind: .rollingHours, used: 20, limit: 100)])
+                ],
+                now: now
+            )
+        )
+        XCTAssertTrue(ProviderQuotaAccountDisplay.isMerged(merged))
+        XCTAssertFalse(ProviderQuotaAccountDisplay.isRollup(merged))
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: merged, provider: .claudeCode),
+            "All accounts (2)"
+        )
+    }
+
+    // MARK: - Multi-account readiness: per-account snapshot identity
+
+    /// `withAccountMetadata` used to copy the base snapshot's `id` through, so
+    /// every account of a provider carried `claude-code_default` and any
+    /// `ForEach` over them without an explicit key collapsed to one row.
+    func test_withAccountMetadata_givesEachAccountItsOwnIdentifiableID() {
+        let base = ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            fetchedAt: now,
+            source: .officialAPI,
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+        let first = base.withAccountMetadata(
+            providerID: AgentProvider.claudeCode.providerID,
+            accountID: "work",
+            accountLabel: "Work",
+            accountStorageScope: .deviceKeychain,
+            sourceId: "daemon-slot:anthropic:work"
+        )
+        let second = base.withAccountMetadata(
+            providerID: AgentProvider.claudeCode.providerID,
+            accountID: "personal",
+            accountLabel: "Personal",
+            accountStorageScope: .deviceKeychain,
+            sourceId: "daemon-slot:anthropic:personal"
+        )
+
+        XCTAssertNotEqual(first.id, base.id)
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(Set([first, second].map(\.id)).count, 2)
+    }
+
     // MARK: Cumulative-test fixtures
 
     /// Reference clock used by the cumulative tests above. Fixed so
@@ -291,6 +682,7 @@ extension ProviderQuotaServiceTests {
         accountID: String,
         fetchedAt: Date? = nil,
         scope: ProviderAccountStorageScope = .cloudRefreshable,
+        sourceID: String? = nil,
         buckets: [ProviderQuotaBucket]
     ) -> ProviderQuotaSnapshot {
         ProviderQuotaSnapshot(
@@ -301,7 +693,7 @@ extension ProviderQuotaServiceTests {
             accountStorageScope: scope,
             fetchedAt: fetchedAt ?? now,
             source: .officialAPI,
-            sourceId: accountID,
+            sourceId: sourceID ?? accountID,
             confidence: .exact,
             managementURL: nil,
             statusMessage: "ok",
@@ -388,7 +780,7 @@ extension ProviderQuotaServiceTests {
         try writeContextWindowOnlyFixture(home: home, appPaths: appPaths)
 
         let service = makeSplitService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeSplitDataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.provider, AgentProvider.claudeCode.rawValue)
@@ -405,7 +797,7 @@ extension ProviderQuotaServiceTests {
         try writeContextWindowOnlyFixture(home: home, appPaths: appPaths, stale: true)
 
         let service = makeSplitService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeSplitDataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.confidence, .unavailable)
@@ -426,7 +818,7 @@ extension ProviderQuotaServiceTests {
         )
 
         let service = makeSplitService(home: home, appSupportRoot: appSupport)
-        await service.refresh(provider: .claudeCode, dataStore: try makeSplitDataStore())
+        await service.refresh(provider: .claudeCode, dataStore: try makeDataStore())
         let snapshot = try XCTUnwrap(service.snapshot(for: .claudeCode))
 
         XCTAssertEqual(snapshot.confidence, .exact)
@@ -445,7 +837,7 @@ extension ProviderQuotaServiceTests {
         return directory
     }
 
-    private func makeSplitDataStore() throws -> DataStore {
+    private func makeDataStore() throws -> DataStore {
         let queue = try DatabaseQueue()
         return try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
     }

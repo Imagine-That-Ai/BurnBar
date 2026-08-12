@@ -86,26 +86,17 @@ struct ChartsReorderableGrid: View {
 
     /// Packs configs into rows: span-2 cards get their own row; span-1 cards
     /// pair with the next span-1 card in order.
+    ///
+    /// The rule itself now lives in `CardRowPacker`, shared with the Control
+    /// Deck's grid, which needs the identical packing at two, three, and four
+    /// columns. At `columns: 2` the shared packer reproduces the previous
+    /// hand-rolled algorithm index for index — `CardRowPackerTests` pins that,
+    /// and the row ids below are built exactly as before so `ForEach` identity
+    /// (and therefore the reorder animation) is unchanged.
     static func rows(for configs: [ChartCardConfig]) -> [Row] {
-        var rows: [Row] = []
-        var pending: ChartCardConfig?
-        for config in configs {
-            if config.span >= 2 {
-                if let held = pending {
-                    rows.append(Row(id: held.id, configs: [held]))
-                    pending = nil
-                }
-                rows.append(Row(id: config.id, configs: [config]))
-            } else if let held = pending {
-                rows.append(Row(id: held.id + "+" + config.id, configs: [held, config]))
-                pending = nil
-            } else {
-                pending = config
-            }
+        CardRowPacker.rows(spans: configs.map(\.span), columns: 2).map { indices in
+            let rowConfigs = indices.compactMap { configs.indices.contains($0) ? configs[$0] : nil }
+            return Row(id: rowConfigs.map(\.id).joined(separator: "+"), configs: rowConfigs)
         }
-        if let held = pending {
-            rows.append(Row(id: held.id, configs: [held]))
-        }
-        return rows
     }
 }

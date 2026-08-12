@@ -178,18 +178,25 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 }
 
 extension SettingsTab {
+    /// Tabs this build ships. The build condition itself lives in
+    /// `OpenBurnBarBuildGates`, which the Control Deck's `ControlKind.visibleKinds`
+    /// also reads, so the sidebar and the deck can never disagree about which
+    /// features exist in a given build. `ControlDeckRegistryTests` asserts they
+    /// agree.
     static var visibleTabs: [SettingsTab] {
         var tabs: [SettingsTab] = [.home]
         for section in SettingsSection.visibleSections {
-            tabs.append(contentsOf: section.tabs.filter { tab in
-                #if DISTRIBUTION_MAS
-                return tab != .computerUse && tab != .updates
-                #else
-                return true
-                #endif
-            })
+            tabs.append(contentsOf: section.tabs.filter(isAvailableInThisBuild))
         }
         return tabs
+    }
+
+    static func isAvailableInThisBuild(_ tab: SettingsTab) -> Bool {
+        switch tab {
+        case .computerUse: return OpenBurnBarBuildGates.agentControlAvailable
+        case .updates: return OpenBurnBarBuildGates.updatesAvailable
+        default: return true
+        }
     }
 }
 

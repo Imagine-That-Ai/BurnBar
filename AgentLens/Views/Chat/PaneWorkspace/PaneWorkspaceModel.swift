@@ -163,6 +163,16 @@ final class ChatWorkspaceTab: Identifiable {
 
     var leaves: [PaneLeaf] { PaneWorkspaceModel.collectLeaves(root) }
     var paneCount: Int { leaves.count }
+
+    /// The distinct agents live in this tab, in pane order. Zero schema cost:
+    /// `PaneLeafSnapshotV2` has carried `backend` per leaf since V2; it was
+    /// simply never drawn.
+    var distinctBackends: [ChatBackendID] {
+        var seen: Set<ChatBackendID> = []
+        return leaves.compactMap { leaf in
+            seen.insert(leaf.controller.chatBackend).inserted ? leaf.controller.chatBackend : nil
+        }
+    }
     var hasUnseenCompletion: Bool { leaves.contains { $0.unseenCompletionAt != nil } }
     var isStreaming: Bool { leaves.contains { $0.controller.isStreaming || $0.controller.isSendBusy } }
 
@@ -364,6 +374,13 @@ final class PaneWorkspaceModel {
         tabs.first { tab in tab.leaves.contains { $0.id == leafID } }
     }
 
+    /// tab title → thread title → leaf custom title → "Tab N".
+    ///
+    /// The old `chatBackend.displayName` fallback is deliberately gone: a fresh
+    /// tab read "Hermes" and then stopped reading "Hermes" the instant the
+    /// thread earned a title, so it never tracked the agent — it filled a blank
+    /// (§1.1b). The tab's agents are now drawn honestly as the agent-mark stack
+    /// in `ConversationTabStrip`, which is plural because a tab can be plural.
     func displayTitle(for tab: ChatWorkspaceTab) -> String {
         if let title = tab.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
             return title
@@ -371,7 +388,9 @@ final class PaneWorkspaceModel {
         if let leaf = tab.activeLeaf {
             let threadTitle = threadTitle(for: leaf.controller.activeThreadID)
             if !threadTitle.isEmpty { return threadTitle }
-            return leaf.customTitle ?? leaf.controller.chatBackend.displayName
+            if let custom = leaf.customTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !custom.isEmpty {
+                return custom
+            }
         }
         if let idx = tabs.firstIndex(where: { $0.id == tab.id }) {
             return "Tab \(idx + 1)"
@@ -840,7 +859,10 @@ final class PaneWorkspaceModel {
             memoryExtractionEngine: sourceController.memoryExtractionEngine,
             initialThreadID: threadID,
             persistsViewState: false,
-            initialBackend: selectedBackend
+            initialBackend: selectedBackend,
+            // Panes share the window's deck: one presence resolution, one model
+            // catalog, one switch path — never one per tile.
+            agentDeck: sourceController.agentDeck
         )
         controller.copyPaneRuntimeBindings(from: sourceController)
         controller.copyPaneConversationControls(from: sourceController)

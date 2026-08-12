@@ -14,7 +14,7 @@
 
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
--- Schema hash: 6bb916b22d2c08c6fabb471992b94afc365ef21ff4fd7853d3badda403038e3e
+-- Schema hash: 1c3a27b966abf5aaa2c136ee1db0aa8f3d55e01e811f2a34095c2383903e8bb4
 
 -- ── GRDB migrations tracking ──────────────────────────────────────────────────
 
@@ -52,7 +52,8 @@ CREATE TABLE token_usage (
   projectPath     TEXT,                                   -- working directory at session time
   agentVersion    TEXT,                                   -- agent CLI version
   requestId       TEXT,                                   -- provider-assigned request ID (v38+)
-  traceId         TEXT                                    -- distributed trace ID (v41+)
+  traceId         TEXT,                                   -- distributed trace ID (v41+)
+  billingKind     TEXT    NOT NULL DEFAULT 'unknown'      -- "api" | "subscription" | "unknown" (v60+)
 );
 
 CREATE INDEX token_usage_sync_pending_idx ON token_usage(syncStatus) WHERE syncStatus = 'pending';
@@ -62,6 +63,7 @@ CREATE INDEX token_usage_provider_id_time_idx ON token_usage(providerID, timesta
 CREATE INDEX token_usage_session_idx ON token_usage(sessionId);
 CREATE INDEX token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime);
 CREATE INDEX token_usage_timestamp_idx ON token_usage(timestamp DESC);
+CREATE INDEX token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime);
 
 -- ── Chat Messages (v10+) ─────────────────────────────────────────────────────
 -- Stores local chat history for the Hermes and Local Index chat surfaces.
