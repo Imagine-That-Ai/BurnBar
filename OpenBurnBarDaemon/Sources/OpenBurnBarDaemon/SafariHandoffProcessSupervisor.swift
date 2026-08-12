@@ -737,7 +737,7 @@ public actor SafariHandoffProcessSupervisor:
         var requestedTermination: TerminationReason?
     }
 
-    private static let outputLimitBytes = 1 * 1024 * 1024
+    fileprivate static let outputLimitBytes = 1 * 1024 * 1024
     private static let receiptLimitBytes = 16 * 1024
     private static let receiptFileName = "completion.json"
     private static let stdoutFileName = "stdout.log"
@@ -948,7 +948,7 @@ public actor SafariHandoffProcessSupervisor:
                       let self else {
                     return
                 }
-                await self?.requestTermination(
+                await self.requestTermination(
                     runID: runID,
                     generation: generation,
                     reason: .timeout
@@ -1004,7 +1004,7 @@ public actor SafariHandoffProcessSupervisor:
             return observation
         }
 
-        let observation: Observation
+        let restoredObservation: Observation
         do {
             let package = try openPackage(
                 runID: runID,
@@ -1018,14 +1018,14 @@ public actor SafariHandoffProcessSupervisor:
                 launchedAt: launchedAt,
                 observedAt: observedAt
             )
-            observation = observation(
+            restoredObservation = observation(
                 from: receipt,
                 packageDirectory: packageDirectory,
                 observedAt: observedAt
             )
             packageIdentities[runID] = expectedPackageIdentity
         } catch {
-            observation = interruptedObservation(
+            restoredObservation = interruptedObservation(
                 runID: runID,
                 targetHarness: targetHarness,
                 packageDirectory: packageDirectory,
@@ -1035,8 +1035,8 @@ public actor SafariHandoffProcessSupervisor:
             )
             packageIdentities[runID] = expectedPackageIdentity
         }
-        observations[runID] = observation
-        return observation
+        observations[runID] = restoredObservation
+        return restoredObservation
     }
 
     public func cleanupEligiblePackages(now: Date = Date()) async {
@@ -2573,7 +2573,7 @@ private final class POSIXWatchdogSession:
     SafariHandoffProcessSupervisor.WatchdogSession,
     @unchecked Sendable
 {
-    private typealias Supervisor = SafariHandoffProcessSupervisor
+    typealias Supervisor = SafariHandoffProcessSupervisor
 
     private final class Collector: @unchecked Sendable {
         private let lock = NSLock()
@@ -2963,7 +2963,9 @@ private final class POSIXWatchdogSession:
         commandWrite = -1
         lock.unlock()
         sources.forEach { $0?.cancel() }
-        descriptors.filter { $0 >= 0 }.forEach(close)
+        descriptors.filter { $0 >= 0 }.forEach { descriptor in
+            _ = close(descriptor)
+        }
         reapWatchdog()
         reapSentinel()
         cleanupRequired = false
@@ -3248,7 +3250,9 @@ private final class POSIXWatchdogSession:
             fcntl($0, F_SETFD, FD_CLOEXEC) == 0
         }),
         fcntl(descriptors[1], F_SETNOSIGPIPE, 1) == 0 else {
-            descriptors.forEach(close)
+            descriptors.forEach { descriptor in
+                _ = close(descriptor)
+            }
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         return (descriptors[0], descriptors[1])
@@ -3662,8 +3666,12 @@ private final class POSIXWatchdogSession:
         let argv = arguments.map { strdup($0) } + [nil]
         let envp = environment.map { strdup($0) } + [nil]
         defer {
-            argv.compactMap { $0 }.forEach(free)
-            envp.compactMap { $0 }.forEach(free)
+            for case let pointer? in argv {
+                free(pointer)
+            }
+            for case let pointer? in envp {
+                free(pointer)
+            }
         }
         return argv.withUnsafeBufferPointer { argvBuffer in
             envp.withUnsafeBufferPointer { envpBuffer in
@@ -4413,8 +4421,12 @@ public enum SafariHandoffProcessWatchdog {
         let argv = arguments.map { strdup($0) } + [nil]
         let envp = environment.map { strdup($0) } + [nil]
         defer {
-            argv.compactMap { $0 }.forEach(free)
-            envp.compactMap { $0 }.forEach(free)
+            for case let pointer? in argv {
+                free(pointer)
+            }
+            for case let pointer? in envp {
+                free(pointer)
+            }
         }
         return argv.withUnsafeBufferPointer { argvBuffer in
             envp.withUnsafeBufferPointer { envpBuffer in

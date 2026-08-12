@@ -332,6 +332,8 @@ public actor SafariGatewayAttributionAuthority {
             $0.value.clientID == binding.clientID
                 && $0.value.sessionID == binding.sessionID
                 && $0.value.generation == generation
+        }.map {
+            (digest: $0.key, record: $0.value)
         }
     }
 
