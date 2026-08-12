@@ -113,3 +113,22 @@ openburnbar_candidate_repository_git() {
       "$@"
   fi
 }
+
+# Run a tool that owns its own Git repository discovery without leaking the
+# exact candidate's generic Git process overrides into it.
+#
+# Release entrypoints export GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE so ordinary
+# repository-aware subprocesses remain bound to the selected candidate.
+# SwiftPM and Xcode, however, invoke Git inside dependency checkouts. If those
+# generic variables leak into such tools, every dependency checkout appears to
+# resolve through the candidate repository and its HEAD. Preserve the explicit
+# OPENBURNBAR_CANDIDATE_GIT_* inputs so a child that deliberately opts into the
+# candidate adapter can still do so, while removing only the ambient Git
+# overrides that would corrupt independent repository discovery.
+openburnbar_without_candidate_git_environment() {
+  env \
+    -u GIT_DIR \
+    -u GIT_WORK_TREE \
+    -u GIT_INDEX_FILE \
+    "$@"
+}

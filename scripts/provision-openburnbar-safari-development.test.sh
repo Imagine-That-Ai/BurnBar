@@ -144,6 +144,12 @@ SH
   cat >"$mock_bin/xcodebuild" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+for name in GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; do
+  if [[ -n "${!name:-}" ]]; then
+    echo "candidate Git override leaked into xcodebuild: $name" >&2
+    exit 2
+  fi
+done
 printf 'xcodebuild' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf ' <%s>' "$@" >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf '\n' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
@@ -235,6 +241,12 @@ SH
   cat >"$fixture_root/prepare.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+for name in GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; do
+  if [[ -n "${!name:-}" ]]; then
+    echo "candidate Git override leaked into SwiftPM preparation: $name" >&2
+    exit 2
+  fi
+done
 printf 'prepare' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf ' <%s>' "$@" >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf '\n' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
