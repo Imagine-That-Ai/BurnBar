@@ -31,6 +31,29 @@ Snapshot cadence: **15 seconds** by default (`BURNBAR_FLEET_CADENCE_SECONDS` ove
 
 ---
 
+## Daemon seams (M1, implemented)
+
+The daemon's fleet snapshot core exposes the following environment seams. Validators and hermetic tests depend on them; do not rename or remove them without updating this document and the validation contract.
+
+| Seam | Env var | Default | Behavior |
+|---|---|---|---|
+| Snapshot cadence | `BURNBAR_FLEET_CADENCE_SECONDS` | `15` | Tick interval AND the snapshot's reported `cadenceSeconds` (single source of truth: the fleet service derives both from the builder). Values below 1 are rejected (default used). |
+| Probe-root override (base) | `BURNBAR_FLEET_ROOTS_DIR` | real roots (`~/.claude`, …) | Overrides the base directory for ALL agents: each agent's root becomes `<override>/<agent-root-name>` (`claude`, `factory`, `codex`, `hermes`, `grokbot`, `grok`, `pi`, `cursor`, `kimi`, `gemini`). |
+| Probe-root override (per-probe) | `BURNBAR_FLEET_ROOT_CLAUDE_CODE`, `BURNBAR_FLEET_ROOT_FACTORY_DROID`, `BURNBAR_FLEET_ROOT_CODEX`, `BURNBAR_FLEET_ROOT_HERMES`, `BURNBAR_FLEET_ROOT_GROK_BOT`, `BURNBAR_FLEET_ROOT_GROK_CLI`, `BURNBAR_FLEET_ROOT_PI`, `BURNBAR_FLEET_ROOT_CURSOR`, `BURNBAR_FLEET_ROOT_KIMI`, `BURNBAR_FLEET_ROOT_GEMINI_CLI` | none | Per-probe override wins over the base override. |
+| Event retention | `BURNBAR_FLEET_EVENT_RETENTION_SECONDS` | `86400` (24 h) | Accelerates fleet_events pruning for validation (implemented with the persistence layer). |
+
+### Snapshot builder behavior (M1 core)
+
+- **Fixed ten-row roster.** Every snapshot's `agents[]` and `probeHealth[]` contain exactly one entry per declared roster id, in canonical order, even when a root is missing or an agent is unsupported. A missing probe degrades to a typed `unknown`/`unsupported` row with a `failed(reason)` health entry — never an omitted row.
+- **Empty-root degradation.** With all roots empty/missing, every row is `unknown` with `unsupported` confidence (never `running`), and every probe-health entry is `failed(reason: "Declared root missing: <path>")` naming the resolved root path.
+- **Derived aggregates.** `runningCount` equals the number of `running` rows; `countsByAgent[id]` is `1` iff that row is `running` (else `0`); `repos` groups rows by derived `projectName` (nil/empty project names are omitted from the grouping).
+- **Machine status.** `cpuPercent`, `memoryUsedBytes`, `memoryTotalBytes`, `loadAverage` (3 elements), and `diskFreeBytes` are populated from Mach/`getloadavg`/`statfs`; `thermal` and `power` are typed `unavailable(reason)` on this machine (`pmset -g thermlog` is empty) — values are never invented.
+- **Pre-first-tick RPC behavior (typed).** `daemon.fleet.snapshot` before the first tick completes returns the documented typed error `BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly.` (code `-32603`, internalError) — never a fabricated empty snapshot presented as probed truth. The first tick runs immediately at daemon start, so the not-ready window is one build duration.
+- **Cadence reflection.** Every ready snapshot and the well-known file report the same `cadenceSeconds` as the tick interval (both derive from the builder). Changing `BURNBAR_FLEET_CADENCE_SECONDS` changes both the tick interval and the reported value.
+- **Default probes (until per-agent probes land).** Until the per-agent signal probes are implemented, each roster agent is served by a root-presence probe: root present → `ok` health + `unknown`/`unsupported` row with an honest note; root missing → `failed` health + `unknown`/`unsupported` row. This keeps the roster complete and honest on empty roots.
+
+---
+
 ## Confidence model
 
 Wire strings (golden, from `BurnBarFleetConfidence` in BurnBarCore):

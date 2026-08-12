@@ -337,15 +337,15 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
         try await server.start()
 
-        // M0 contract: the four fleet methods resolve in BurnBarRPCMethod but have no
-        // real handlers until M1; each returns a documented typed error, never a crash.
-        let fleetMethods: [BurnBarRPCMethod] = [
-            .fleetSnapshot,
+        // M0 contract: the fleet method cases resolve in BurnBarRPCMethod. M1
+        // implements daemon.fleet.snapshot; the orchestrator/directive methods
+        // still return the documented typed not-implemented error until M4.
+        let placeholderMethods: [BurnBarRPCMethod] = [
             .fleetOrchestratorGet,
             .fleetOrchestratorSet,
             .fleetDirectiveRecord
         ]
-        for method in fleetMethods {
+        for method in placeholderMethods {
             let response: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendEnvelope(
                 BurnBarRPCRequestEnvelope(id: "fleet-\(method.rawValue)", method: method),
                 socketPath: socketPath

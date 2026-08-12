@@ -56,6 +56,7 @@ public actor BurnBarDaemonServer {
     private let clientRegistry: BurnBarClientRegistry
     private let runService: BurnBarRunService
     private let indexedSearch: BurnBarIndexedSearchService?
+    private let fleetService: BurnBarFleetService
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
 
@@ -65,7 +66,8 @@ public actor BurnBarDaemonServer {
         configStore: BurnBarConfigStore? = nil,
         usageRecorder: BurnBarUsageRecorder? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
-        runService: BurnBarRunService? = nil
+        runService: BurnBarRunService? = nil,
+        fleetService: BurnBarFleetService? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -105,9 +107,25 @@ public actor BurnBarDaemonServer {
         } else {
             self.indexedSearch = nil
         }
+
+        if let fleetService {
+            self.fleetService = fleetService
+        } else {
+            let fleetConfiguration = BurnBarFleetConfiguration()
+            var probes: [BurnBarFleetAgentID: any BurnBarFleetProbe] = [:]
+            for agentID in BurnBarFleetAgentID.declaredRoster {
+                let rootPath = fleetConfiguration.rootResolver.rootPath(for: agentID)
+                probes[agentID] = BurnBarFleetRootPresenceProbe(agentID: agentID, rootPath: rootPath)
+            }
+            let builder = BurnBarFleetSnapshotBuilder(
+                cadenceSeconds: fleetConfiguration.cadenceSeconds,
+                probes: probes
+            )
+            self.fleetService = BurnBarFleetService(builder: builder)
+        }
     }
 
-    public func start() throws {
+    public func start() async throws {
         guard listenerFileDescriptor == nil else {
             logger.debug(
                 "bootstrap_start_skipped",
@@ -139,6 +157,8 @@ public actor BurnBarDaemonServer {
         let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
         listenerFileDescriptor = fileDescriptor
 
+        await fleetService.start()
+
         acceptLoopTask = Task.detached(priority: .background) { [logger] in
             await Self.runAcceptLoop(
                 server: self,
@@ -153,7 +173,7 @@ public actor BurnBarDaemonServer {
         )
     }
 
-    public func stop() {
+    public func stop() async {
         guard let listenerFileDescriptor else {
             logger.debug(
                 "shutdown_skipped",
@@ -170,6 +190,8 @@ public actor BurnBarDaemonServer {
         self.listenerFileDescriptor = nil
         acceptLoopTask?.cancel()
         acceptLoopTask = nil
+
+        await fleetService.stop()
 
         shutdown(listenerFileDescriptor, SHUT_RDWR)
         close(listenerFileDescriptor)
@@ -446,12 +468,34 @@ public actor BurnBarDaemonServer {
                         message: error.localizedDescription
                     )
                 }
-            case .fleetSnapshot, .fleetOrchestratorGet, .fleetOrchestratorSet, .fleetDirectiveRecord:
-                // M0 placeholder: the fleet RPC methods are part of the contract
-                // (BurnBarRPCMethod raw values) but have no handlers yet. M1's
-                // daemon-fleet-rpc-core replaces these arms with real handlers
-                // delegating to BurnBarFleetService. Until then every fleet call
-                // returns this documented typed error; the daemon keeps serving.
+            case .fleetSnapshot:
+                // The snapshot request carries no parameters; decode the plain
+                // envelope so both `{"id":...,"method":"daemon.fleet.snapshot"}`
+                // and a params-bearing form are accepted.
+                let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+                let readState = await fleetService.readLatestSnapshot()
+                switch readState {
+                case .notReady:
+                    // Typed pre-first-tick behavior: never a fabricated empty
+                    // snapshot presented as probed truth.
+                    return encodeErrorResponse(
+                        id: typedRequest.id,
+                        code: BurnBarRPCErrorCode.internalError,
+                        message:
+                            "BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly."
+                    )
+                case .ready(let snapshot):
+                    let response = BurnBarRPCResponseEnvelope(
+                        id: typedRequest.id,
+                        protocolVersion: BurnBarProtocolVersion.current,
+                        result: BurnBarFleetSnapshotResponse(snapshot: snapshot)
+                    )
+                    return encode(response)
+                }
+            case .fleetOrchestratorGet, .fleetOrchestratorSet, .fleetDirectiveRecord:
+                // M0 placeholder: orchestrator/directive handlers land in M4.
+                // Until then every call returns this documented typed error;
+                // the daemon keeps serving.
                 return encodeErrorResponse(
                     id: request.id,
                     code: BurnBarRPCErrorCode.internalError,
