@@ -361,7 +361,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
     // MARK: - VAL-CONTRACT-007: RPC envelope pattern
 
     func test_fleetRPCEnvelopes_followEnvelopePattern() throws {
-        let snapshotRequest = BurnBarFleetRPCRequestEnvelopeWithParams(
+        let snapshotRequest = BurnBarRPCRequestEnvelopeWithParams(
             id: "fleet-1",
             method: .fleetSnapshot,
             params: BurnBarFleetSnapshotRequest()
@@ -372,7 +372,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
         XCTAssertTrue(requestJSON.contains("\"method\":\"daemon.fleet.snapshot\""), "missing method: \(requestJSON)")
         XCTAssertTrue(requestJSON.contains("\"params\""), "missing params: \(requestJSON)")
         let decodedRequest = try JSONDecoder().decode(
-            BurnBarFleetRPCRequestEnvelopeWithParams<BurnBarFleetSnapshotRequest>.self,
+            BurnBarRPCRequestEnvelopeWithParams<BurnBarFleetSnapshotRequest>.self,
             from: requestData
         )
         XCTAssertEqual(decodedRequest.id, "fleet-1")
@@ -398,19 +398,19 @@ final class BurnBarFleetContractsTests: XCTestCase {
     }
 
     func test_fleetRPCEnvelopes_orchestratorAndDirectiveRoundTrip() throws {
-        let getRequest = BurnBarFleetRPCRequestEnvelopeWithParams(
+        let getRequest = BurnBarRPCRequestEnvelopeWithParams(
             id: "orch-1",
             method: .fleetOrchestratorGet,
             params: BurnBarFleetOrchestratorGetRequest()
         )
         let getData = try JSONEncoder().encode(getRequest)
         let decodedGet = try JSONDecoder().decode(
-            BurnBarFleetRPCRequestEnvelopeWithParams<BurnBarFleetOrchestratorGetRequest>.self,
+            BurnBarRPCRequestEnvelopeWithParams<BurnBarFleetOrchestratorGetRequest>.self,
             from: getData
         )
         XCTAssertEqual(decodedGet.method, .fleetOrchestratorGet)
 
-        let setRequest = BurnBarFleetRPCRequestEnvelopeWithParams(
+        let setRequest = BurnBarRPCRequestEnvelopeWithParams(
             id: "orch-2",
             method: .fleetOrchestratorSet,
             params: BurnBarFleetOrchestratorSetRequest(
@@ -419,7 +419,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
         )
         let setData = try JSONEncoder().encode(setRequest)
         let decodedSet = try JSONDecoder().decode(
-            BurnBarFleetRPCRequestEnvelopeWithParams<BurnBarFleetOrchestratorSetRequest>.self,
+            BurnBarRPCRequestEnvelopeWithParams<BurnBarFleetOrchestratorSetRequest>.self,
             from: setData
         )
         XCTAssertEqual(decodedSet.method, .fleetOrchestratorSet)
@@ -433,14 +433,14 @@ final class BurnBarFleetContractsTests: XCTestCase {
             state: .proposed,
             createdAt: Date(timeIntervalSince1970: 1_752_000_000)
         )
-        let recordRequest = BurnBarFleetRPCRequestEnvelopeWithParams(
+        let recordRequest = BurnBarRPCRequestEnvelopeWithParams(
             id: "dir-1",
             method: .fleetDirectiveRecord,
             params: BurnBarFleetDirectiveRecordRequest(directive: directive)
         )
         let recordData = try JSONEncoder().encode(recordRequest)
         let decodedRecord = try JSONDecoder().decode(
-            BurnBarFleetRPCRequestEnvelopeWithParams<BurnBarFleetDirectiveRecordRequest>.self,
+            BurnBarRPCRequestEnvelopeWithParams<BurnBarFleetDirectiveRecordRequest>.self,
             from: recordData
         )
         XCTAssertEqual(decodedRecord.method, .fleetDirectiveRecord)

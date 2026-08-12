@@ -2,22 +2,14 @@ import Foundation
 
 // MARK: - RPC contract
 
-/// Fleet request envelope mirroring `BurnBarRPCRequestEnvelopeWithParams`
-/// (`{id, method, params}`). Fleet methods are cases on `BurnBarRPCMethod`
-/// (see `BurnBarContracts.swift`); the wire strings are the authoritative
-/// method names: `daemon.fleet.snapshot`, `daemon.fleet.orchestrator.get`,
+/// Fleet RPC request/response DTOs. Requests encode through the shared
+/// `BurnBarRPCRequestEnvelopeWithParams` envelope (`{id, method, params}`) from
+/// `BurnBarContracts.swift`; responses use the shared
+/// `BurnBarRPCResponseEnvelope<Result>` (`{id, protocolVersion, result|error}`).
+/// Fleet methods are cases on `BurnBarRPCMethod` (see `BurnBarContracts.swift`);
+/// the wire strings are the authoritative method names:
+/// `daemon.fleet.snapshot`, `daemon.fleet.orchestrator.get`,
 /// `daemon.fleet.orchestrator.set`, `daemon.fleet.directive.record`.
-public struct BurnBarFleetRPCRequestEnvelopeWithParams<Params: Codable & Sendable>: Codable, Sendable {
-    public let id: String
-    public let method: BurnBarRPCMethod
-    public let params: Params
-
-    public init(id: String = UUID().uuidString, method: BurnBarRPCMethod, params: Params) {
-        self.id = id
-        self.method = method
-        self.params = params
-    }
-}
 
 public struct BurnBarFleetSnapshotRequest: Codable, Hashable, Sendable {
     public init() {}
