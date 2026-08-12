@@ -225,6 +225,9 @@ final class ProviderQuotaService {
     internal(set) var snapshotsByAccountID: [String: ProviderQuotaSnapshot] = [:]  // pure-move: was private
     internal(set) var errors: [AgentProvider: String] = [:]  // pure-move: was private
     internal(set) var isFetching = false  // pure-move: was private
+    /// Perf: coalesce concurrent `refreshAll` callers behind one Task instead of
+    /// dropping the second caller (old `guard !isFetching else { return }`).
+    var inFlightRefreshAllTask: Task<Void, Never>?
 
     var quotaHomeDirectoryURL: URL { homeDirectoryURL }
     internal(set) var activeProviders: Set<AgentProvider> = []  // pure-move: was private
