@@ -86,6 +86,7 @@ extension AgentProvider {
         case .omp: return "*.jsonl"
         case .ollama: return "server*.log"
         case .windsurf: return "state.vscdb"
+        case .devin: return "state.vscdb"
         case .warp: return "warp_network*.log"
         case .xAI: return "summary.json"
         case .mimo: return "mimo-no-local-logs"
@@ -105,7 +106,7 @@ extension AgentProvider {
             return .supported
         case .mimo:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .devin, .warp, .ollama, .piAgent:
             return .partial
         case .augment:
             return .unsupported
@@ -125,7 +126,11 @@ extension AgentProvider {
             return .exact
         case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama:
             return .estimated
-        case .augment:
+        // Devin ships `"ingestion": "unavailable"` in
+        // contracts/provider-ingestion-catalog.json — no session parser is registered, so
+        // there is no local artifact to grade. Claiming `.exact` would paint a green EXACT
+        // badge and suppress the aggregate estimated-data warning over no data at all.
+        case .augment, .devin:
             return .unavailable
         }
     }

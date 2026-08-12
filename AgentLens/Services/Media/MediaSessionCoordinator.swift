@@ -107,6 +107,9 @@ final class MediaSessionCoordinator: ObservableObject {
             return
         }
         guard phase.isRestartable else { throw MediaSessionError.captureFailed }
+        // Every start path gates on entitlement + daily cap (120 min normal / 30 soft)
+        // before any capture work. There is deliberately no branch that returns success
+        // without debiting the budget — see `testStartScreenShareAlwaysConsultsTheCapabilityGate`.
         let check = await capabilityGate.check(
             feature: .screenShare,
             sessionDurationLimitSeconds: 60 * 60,
@@ -184,7 +187,29 @@ final class MediaSessionCoordinator: ObservableObject {
                 guard let self else { return }
                 try? await self.videoEncoder?.encode(sampleBuffer: sample) // try?-ok(drop live frame)
             }
-            try await pipeline.start()
+            do {
+                try await pipeline.start()
+            } catch let error as ScreenCapturePipeline.Failure {
+                guard case .screenRecordingPermissionDenied = error else { throw error }
+                // Desktop capture denied (TCC revoked or never granted). Fail closed:
+                // surface the permission prompt synchronously, tear the half-started
+                // encoder down, and rethrow so the router reports the failure instead of
+                // holding an "active" session that never delivers a frame.
+                await SystemPermissionMonitor.shared.emitRequesting(
+                    kind: .screenRecording,
+                    bundleId: nil,
+                    originatingToolCallId: nil,
+                    originatingToolName: nil,
+                    instructions: "Screen Recording is off. Enable it in System Settings → Privacy & Security → Screen Recording.",
+                    failureCategory: "screen_recording_denied"
+                )
+                self.videoEncoder?.stop()
+                self.videoEncoder = nil
+                self.streamSinks.removeAll()
+                self.sessionMetadata = nil
+                self.phase = .ended(reason: .error)
+                throw error
+            }
             self.screenCapture = pipeline
             phase = .active(feature: .screenShare)
             activeAdmissionRequest = ActiveAdmissionRequest(
