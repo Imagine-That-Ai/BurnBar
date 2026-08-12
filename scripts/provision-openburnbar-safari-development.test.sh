@@ -245,9 +245,35 @@ for name in GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; do
     exit 2
   fi
 done
+if [[ ! -f "$OPENBURNBAR_FIXTURE_SIGNAL_FFI_MARKER" ]]; then
+  echo "Signal FFI preparation must complete before SwiftPM resolves the package graph." >&2
+  exit 2
+fi
 printf 'prepare' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf ' <%s>' "$@" >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf '\n' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
+SH
+
+  cat >"$fixture_root/prepare-signal-ffi.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+for name in GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; do
+  if [[ -n "${!name:-}" ]]; then
+    echo "candidate Git override leaked into Signal FFI preparation: $name" >&2
+    exit 2
+  fi
+done
+printf 'prepare-signal-ffi profile=<%s> targets=<%s> build-root=<%s> cargo-root=<%s>\n' \
+  "${SIGNAL_FFI_BUILD_PROFILE:-}" \
+  "${SIGNAL_FFI_BUILD_TARGETS:-}" \
+  "${SIGNAL_FFI_BUILD_ROOT:-}" \
+  "${SIGNAL_FFI_CARGO_TARGET_ROOT:-}" \
+  >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
+if [[ "${OPENBURNBAR_FIXTURE_SIGNAL_PREPARE_FAIL:-}" == "1" ]]; then
+  echo "fixture Signal FFI preparation failed" >&2
+  exit 23
+fi
+: >"$OPENBURNBAR_FIXTURE_SIGNAL_FFI_MARKER"
 SH
 
   cat >"$fixture_root/compat.sh" <<'SH'
@@ -348,6 +374,7 @@ PY
     "$mock_bin/PlistBuddy" \
     "$mock_bin/system_profiler" \
     "$fixture_root/prepare.sh" \
+    "$fixture_root/prepare-signal-ffi.sh" \
     "$fixture_root/verifier.sh" \
     "$fixture_root/receipt.py"
 }
@@ -372,6 +399,7 @@ run_fixture_with_paths() {
     OPENBURNBAR_FIXTURE_IDENTITY="$signing_identity" \
     OPENBURNBAR_FIXTURE_IDENTITY_SHA1="$identity_sha1" \
     OPENBURNBAR_FIXTURE_SECOND_IDENTITY_SHA1="$second_identity_sha1" \
+    OPENBURNBAR_FIXTURE_SIGNAL_FFI_MARKER="$fixture_root/signal-ffi-ready" \
     OPENBURNBAR_GIT_BIN="$fixture_root/mock-bin/git" \
     OPENBURNBAR_SECURITY_BIN="$fixture_root/mock-bin/security" \
     OPENBURNBAR_XCODEBUILD_BIN="$fixture_root/mock-bin/xcodebuild" \
@@ -380,6 +408,7 @@ run_fixture_with_paths() {
     OPENBURNBAR_PLIST_BUDDY_BIN="$fixture_root/mock-bin/PlistBuddy" \
     OPENBURNBAR_SYSTEM_PROFILER_BIN="$fixture_root/mock-bin/system_profiler" \
     OPENBURNBAR_PREPARE_SWIFTPM_SCRIPT="$fixture_root/prepare.sh" \
+    OPENBURNBAR_PREPARE_SIGNAL_FFI_SCRIPT="$fixture_root/prepare-signal-ffi.sh" \
     OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT="$fixture_root/compat.sh" \
     OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT="$fixture_root/compat.sh" \
     OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER="$fixture_root/verifier.sh" \
@@ -422,6 +451,15 @@ test_success_constructs_exact_scheme_scoped_provisioning() {
     fail_test "shared host scheme was not used"
   if [[ "$(grep -c '^xcodebuild ' "$log")" != "1" ]]; then
     fail_test "expected exactly one scheme-scoped xcodebuild call"
+  fi
+  assert_file_contains "$log" \
+    "prepare-signal-ffi profile=<release> targets=<aarch64-apple-darwin> build-root=<$fixture_root/derived-data/SignalFFI> cargo-root=<$fixture_root/derived-data/SignalFFICargo>"
+  local signal_ffi_line swiftpm_line xcode_line
+  signal_ffi_line="$(grep -n '^prepare-signal-ffi ' "$log" | cut -d: -f1)"
+  swiftpm_line="$(grep -n '^prepare ' "$log" | cut -d: -f1)"
+  xcode_line="$(grep -n '^xcodebuild ' "$log" | cut -d: -f1)"
+  if ((signal_ffi_line >= swiftpm_line || signal_ffi_line >= xcode_line)); then
+    fail_test "Signal FFI must be materialized before SwiftPM resolution and Xcode build"
   fi
 
   for exact_argument in \
@@ -474,6 +512,15 @@ assert receipt["signing"]["currentMacProvisioningUDID"] == "FIXTURE-MAC-UDID"
 assert receipt["signing"]["hostProfile"] == "host-profile\n"
 assert receipt["signing"]["safariProfile"] == "safari-profile\n"
 PY
+}
+
+test_signal_ffi_preparation_fails_closed_before_resolution() {
+  local fixture_root="$work_root/signal-ffi-failure"
+  run_fixture "$fixture_root" OPENBURNBAR_FIXTURE_SIGNAL_PREPARE_FAIL=1
+  assert_status 23 "$fixture_status" "$fixture_root/stderr.log"
+  assert_file_contains "$fixture_root/stderr.log" "fixture Signal FFI preparation failed"
+  assert_file_not_contains "$fixture_root/commands.log" "prepare "
+  assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
 }
 
 test_rejects_candidate_mismatch_before_provisioning() {
@@ -588,6 +635,7 @@ test_rejects_existing_or_source_tree_output() {
 }
 
 test_success_constructs_exact_scheme_scoped_provisioning
+test_signal_ffi_preparation_fails_closed_before_resolution
 test_rejects_candidate_mismatch_before_provisioning
 test_rejects_dirty_candidate_before_provisioning
 test_rejects_missing_and_ambiguous_identity

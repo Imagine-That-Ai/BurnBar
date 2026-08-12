@@ -65,6 +65,7 @@ Environment overrides are intended only for deterministic fixture tests:
   OPENBURNBAR_PLIST_BUDDY_BIN
   OPENBURNBAR_SYSTEM_PROFILER_BIN
   OPENBURNBAR_PREPARE_SWIFTPM_SCRIPT
+  OPENBURNBAR_PREPARE_SIGNAL_FFI_SCRIPT
   OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT
   OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT
   OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER
@@ -172,6 +173,7 @@ python_bin="${OPENBURNBAR_PYTHON_BIN:-python3}"
 plist_buddy_bin="${OPENBURNBAR_PLIST_BUDDY_BIN:-/usr/libexec/PlistBuddy}"
 system_profiler_bin="${OPENBURNBAR_SYSTEM_PROFILER_BIN:-/usr/sbin/system_profiler}"
 prepare_swiftpm_script="${OPENBURNBAR_PREPARE_SWIFTPM_SCRIPT:-$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh}"
+prepare_signal_ffi_script="${OPENBURNBAR_PREPARE_SIGNAL_FFI_SCRIPT:-$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh}"
 google_compat_script="${OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT:-$repo_root/scripts/lib/googlesignin-macos-compat.sh}"
 libsignal_compat_script="${OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT:-$repo_root/scripts/lib/libsignal-swift-compat.sh}"
 development_verifier="${OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER:-$repo_root/scripts/ci/verify-openburnbar-development-signing.sh}"
@@ -198,6 +200,7 @@ done
 openburnbar_configure_exact_candidate_git "$repo_root"
 for required_file in \
   "$prepare_swiftpm_script" \
+  "$prepare_signal_ffi_script" \
   "$google_compat_script" \
   "$libsignal_compat_script" \
   "$development_verifier" \
@@ -373,6 +376,23 @@ trap cleanup_on_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+signal_ffi_profile="debug"
+if [[ "$configuration" == "Release" ]]; then
+  signal_ffi_profile="release"
+fi
+openburnbar_prepare_libsignal_swift_compat "$repo_root"
+openburnbar_without_candidate_git_environment \
+  env \
+    SIGNAL_FFI_BUILD_PROFILE="$signal_ffi_profile" \
+    SIGNAL_FFI_BUILD_TARGETS="aarch64-apple-darwin" \
+    SIGNAL_FFI_BUILD_ROOT="$derived_data_dir/SignalFFI" \
+    SIGNAL_FFI_CARGO_TARGET_ROOT="$derived_data_dir/SignalFFICargo" \
+    bash "$prepare_signal_ffi_script"
+
+# OpenBurnBarCore/Package.swift discovers its local binary targets while
+# SwiftPM resolves the graph. Materialize the host Signal FFI XCFramework first
+# so Release builds attach and link libsignal_ffi instead of compiling only the
+# Swift wrapper and failing at the final host link.
 openburnbar_without_candidate_git_environment \
   bash "$prepare_swiftpm_script" \
   --project "$project_path" \
@@ -380,7 +400,6 @@ openburnbar_without_candidate_git_environment \
   --cache-dir "$package_cache" \
   --derived-data "$derived_data_dir"
 openburnbar_prepare_google_sign_in_macos_compat "$package_cache"
-openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
 build_products="$output_dir/build-products"
 mkdir -m 700 "$build_products"

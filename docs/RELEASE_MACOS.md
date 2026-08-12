@@ -777,6 +777,7 @@ Tagged releases are **fail-hard**: if any required secret below is missing, the 
 | `APPLE_NOTARY_API_KEY_P8`                                                                             | Base64-encoded contents of `AuthKey_<KEYID>.p8`                                                                                                      |
 | `OPENBURNBAR_APP_PROFILE_BASE64`                                                                      | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; must authorize `group.com.openburnbar.app` and `TEAMID.com.openburnbar.app` for Safari host/appex transport and shared Keychain access |
 | `OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64`                                                         | Base64-encoded dedicated `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app.safari-extension`; must authorize the Safari appex App Group and shared host Keychain group                                    |
+| `OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64`                                                         | Base64-encoded managed-capability `MAC_APP_DIRECT` profile for `com.openburnbar.privileged-input-execution`; must authorize the exact Developer ID team/certificate and `com.apple.developer.hid.virtual.device`       |
 | `FIREBASE_PLIST_BASE64`                                                                               | Base64-encoded Firebase plist for CI                                                                                                                 |
 | `FIREBASE_APP_CHECK_DEBUG_TOKEN`                                                                      | Firebase App Check debug token for CI                                                                                                                |
 | `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast                                                                                      |
@@ -788,6 +789,17 @@ and developer-profile files are ignored by `.gitignore`; the workflow decodes
 secret payloads only into `$RUNNER_TEMP`, imports them into a temporary keychain
 or chmod-600 notary key file, and deletes those artifacts in an `always()` cleanup
 step from the same job that created them.
+
+The protected release job treats all three Developer ID profiles as mandatory.
+It decodes each profile into a newly created, non-symlinked `0600` file; validates
+the profile's macOS platform, all-device distribution class, exact team and
+application identifier, future expiration, release-safe entitlements, and
+signing-certificate membership; and then removes the temporary profile material
+in the job's unconditional cleanup step. The privileged-input executable remains
+available at its compatibility path, while a separately signed
+`Contents/Helpers/OpenBurnBarPrivilegedInputExecution.app` wrapper embeds the
+managed-capability profile and is verified with strict/deep Code Signing before
+the containing app is signed.
 
 ### Generating secret payloads
 
