@@ -613,8 +613,6 @@ public actor BurnBarDaemonServer {
             safariComputerUseRunDispatcher: safariComputerUseRunDispatcher,
             safariComputerUseRunBindingChecker: safariComputerUseRunBindingChecker,
             safariComputerUseRunRevoker: safariComputerUseRunRevoker,
-            safariHandoffSupervisor: resolvedSafariHandoffSupervisor,
-            safariHandoffRootURL: resolvedSafariHandoffRootURL,
             safariLearningRecallProvider: { query, limit in
                 try await resolvedLearningCoordinator.recallForPrompt(
                     query: query,
@@ -637,6 +635,8 @@ public actor BurnBarDaemonServer {
                     // retries idempotent.
                 }
             },
+            safariHandoffSupervisor: resolvedSafariHandoffSupervisor,
+            safariHandoffRootURL: resolvedSafariHandoffRootURL,
             logger: BurnBarDaemonLogger(category: "run-service")
         )
 
