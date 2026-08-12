@@ -111,7 +111,7 @@ public actor BurnBarDaemonServer {
         if let fleetService {
             self.fleetService = fleetService
         } else {
-            self.fleetService = BurnBarFleetServiceFactory.makeDefault()
+            self.fleetService = BurnBarFleetServiceFactory.makeDefault(configuration: configuration)
         }
     }
 
@@ -146,6 +146,13 @@ public actor BurnBarDaemonServer {
 
         let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
         listenerFileDescriptor = fileDescriptor
+
+        // Open the fleet persistence layer (fleet.sqlite + well-known file).
+        // Corruption is recovered typed (delete + recreate) — the daemon
+        // never crashes over a corrupt fleet store.
+        if let persister = await fleetService.persister {
+            try? persister.open()
+        }
 
         await fleetService.start()
 
@@ -483,31 +490,6 @@ public actor BurnBarDaemonServer {
         }
     }
 
-    /// Handles `daemon.fleet.snapshot`. The request carries no parameters;
-    /// the plain envelope is decoded so both `{"id":...,"method":"daemon.fleet.snapshot"}`
-    /// and a params-bearing form are accepted. Pre-first-tick reads return
-    /// the typed not-ready error — never a fabricated snapshot.
-    private func handleFleetSnapshot(requestData: Data, decoder: JSONDecoder) async throws -> Data {
-        let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
-        let readState = await fleetService.readLatestSnapshot()
-        switch readState {
-        case .notReady:
-            return encodeErrorResponse(
-                id: typedRequest.id,
-                code: BurnBarRPCErrorCode.internalError,
-                message:
-                    "BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly."
-            )
-        case .ready(let snapshot):
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: BurnBarFleetSnapshotResponse(snapshot: snapshot)
-            )
-            return encode(response)
-        }
-    }
-
     private func encode<Result: Codable & Sendable>(_ envelope: BurnBarRPCResponseEnvelope<Result>) -> Data {
         do {
             let encoder = JSONEncoder()
@@ -779,5 +761,34 @@ private enum BurnBarUnixDomainSocket {
         }
 
         return address
+    }
+}
+
+// MARK: - Fleet RPC handling
+
+extension BurnBarDaemonServer {
+    /// Handles `daemon.fleet.snapshot`. The request carries no parameters;
+    /// the plain envelope is decoded so both `{"id":...,"method":"daemon.fleet.snapshot"}`
+    /// and a params-bearing form are accepted. Pre-first-tick reads return
+    /// the typed not-ready error — never a fabricated snapshot.
+    private func handleFleetSnapshot(requestData: Data, decoder: JSONDecoder) async throws -> Data {
+        let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+        let readState = await fleetService.readLatestSnapshot()
+        switch readState {
+        case .notReady:
+            return encodeErrorResponse(
+                id: typedRequest.id,
+                code: BurnBarRPCErrorCode.internalError,
+                message:
+                    "BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly."
+            )
+        case .ready(let snapshot):
+            let response = BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: BurnBarFleetSnapshotResponse(snapshot: snapshot)
+            )
+            return encode(response)
+        }
     }
 }

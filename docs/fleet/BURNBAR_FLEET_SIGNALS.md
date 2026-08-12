@@ -43,6 +43,52 @@ The daemon's fleet snapshot core exposes the following environment seams. Valida
 | Per-probe timeout | (constant `BurnBarFleetProbeConstants.perProbeTimeoutSeconds`, injectable per probe) | `2.0` seconds | Every signal-file content read is bounded: the file is opened non-blocking and polled for readability up to the timeout. A blocking path (FIFO) or a read that exceeds the bound degrades the affected probe typed (`degraded(reason: "... timed out ...")`) and the tick continues on cadence — a hung signal path never stalls the snapshot (VAL-FLEET-019). |
 | Event retention | `BURNBAR_FLEET_EVENT_RETENTION_SECONDS` | `86400` (24 h) | Accelerates fleet_events pruning for validation (implemented with the persistence layer). |
 
+### Daemon-owned persistence (M1, implemented)
+
+The daemon persists every completed tick into `fleet.sqlite` (GRDB, already a
+BurnBarDaemon dependency — no new deps) and atomically writes the well-known
+`fleet-snapshot.json` file. Both live in the daemon's support dir
+(`BURNBAR_DAEMON_SUPPORT_DIR`, default `~/Library/Application Support/BurnBar/`).
+
+**Schema (`fleet.sqlite`):**
+
+| Table | Columns | Purpose |
+|---|---|---|
+| `fleet_snapshots` | `id` PK, `generated_at` REAL, `payload` TEXT | Latest completed snapshot JSON, persisted VERBATIM (the payload is the exact JSON of the served snapshot — its `cadenceSeconds` is already the configured cadence, never re-stamped). Pruned to the latest 240 rows (≈1h at the default 15s cadence). |
+| `fleet_events` | `id` PK, `at` REAL, `agent` TEXT, `kind` TEXT, `from_status` TEXT, `to_status` TEXT, `detail` TEXT | Fixed-roster transition events. `status_changed` is ALWAYS recorded for a status change; `confidence_changed` is recorded when confidence changes — both with exact agent/from/to values. Pruned to exactly 24h by default; `BURNBAR_FLEET_EVENT_RETENTION_SECONDS` overrides the window. |
+| `orchestrator_state` | `id` PK CHECK (id = 1), `payload` TEXT | Schema only in M1; behavior lands in M4. |
+| `fleet_directives` | `id` PK, `directive_id` TEXT UNIQUE, `payload` TEXT, `created_at` REAL | Schema only in M1; behavior lands in M4. |
+
+**Model declaration: fixed-roster rows.** The ten declared agents are never
+removed from snapshots; status/confidence transitions carry exact
+agent/from/to values. `appeared`/`disappeared` events are NOT produced — they
+are reserved for a documented dynamic session-row model, which this
+implementation does not use.
+
+**Atomic well-known file.** `fleet-snapshot.json` is written to
+`fleet-snapshot.json.tmp` then atomically renamed (POSIX `rename(2)`). A
+reader can only ever observe a complete file (the preceding complete
+generation during the short replace window — never a partial write), and no
+`.tmp` file remains after a completed write. The file payload is identical to
+the last completed RPC response payload (VAL-API-004).
+
+**`persistenceHealth` (single documented surface).** The snapshot's top-level
+`persistenceHealth` covers BOTH the SQLite store and the well-known-file
+writer. A store or writer failure degrades it typed (`degraded(reason)` with
+a non-empty, non-secret reason) while RPC keeps serving the last completed
+snapshot and the last-good file stays byte-identical (VAL-FLEET-021). It is
+never misreported through per-agent `probeHealth`. A fully successful persist
+clears degradation.
+
+**Rebuild semantics (invariant 6).** The live fleet projection always
+rebuilds from probes. Store corruption is detected on open: the store is
+deleted + recreated and the recovery is surfaced through
+`persistenceHealth: degraded(reason: "... rebuilt ...")` until the next
+successful persist. **Store deletion discards daemon-owned orchestration
+history and re-initializes designation to `none`** — this loss is by design
+and disclosed here; the live projection itself is rebuildable without data
+loss.
+
 ### Snapshot builder behavior (M1 core)
 
 - **Fixed ten-row roster.** Every snapshot's `agents[]` and `probeHealth[]` contain exactly one entry per declared roster id, in canonical order, even when a root is missing or an agent is unsupported. A missing probe degrades to a typed `unknown`/`unsupported` row with a `failed(reason)` health entry — never an omitted row.

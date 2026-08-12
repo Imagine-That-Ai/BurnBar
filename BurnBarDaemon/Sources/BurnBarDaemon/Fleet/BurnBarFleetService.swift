@@ -22,14 +22,21 @@ public actor BurnBarFleetService {
     /// always matches the observed tick interval.
     public let builder: BurnBarFleetSnapshotBuilder
 
+    /// Daemon-owned persistence (fleet.sqlite + well-known file). Optional so
+    /// tests can run the service without persistence; the daemon always wires
+    /// one. When present, every completed tick persists the snapshot and the
+    /// served snapshot carries the post-persist `persistenceHealth`.
+    public let persister: BurnBarFleetPersister?
+
     public var cadenceSeconds: Int { builder.cadenceSeconds }
 
     private var latestSnapshot: BurnBarFleetSnapshot?
     private var tickTask: Task<Void, Never>?
     private var isRunning = false
 
-    public init(builder: BurnBarFleetSnapshotBuilder) {
+    public init(builder: BurnBarFleetSnapshotBuilder, persister: BurnBarFleetPersister? = nil) {
         self.builder = builder
+        self.persister = persister
     }
 
     /// Starts the cadence ticker. The first tick runs immediately; subsequent
@@ -37,6 +44,9 @@ public actor BurnBarFleetService {
     public func start() {
         guard !isRunning else { return }
         isRunning = true
+        // Seed the transition baseline from the store so events after a
+        // daemon restart compare against the last persisted snapshot.
+        persister?.loadLastPersistedSnapshot()
         tickTask = Task { [weak self] in
             await self?.runTicker()
         }
@@ -60,9 +70,18 @@ public actor BurnBarFleetService {
     }
 
     /// Builds one snapshot immediately (used by the ticker and by tests).
+    /// When a persister is wired, the snapshot is persisted and the returned
+    /// snapshot carries the post-persist `persistenceHealth`.
     @discardableResult
     public func buildOnce() async throws -> BurnBarFleetSnapshot {
-        let snapshot = try await builder.build()
+        let snapshot = try await builder.build(
+            persistenceHealth: persister?.persistenceHealth() ?? .ok
+        )
+        if let persister {
+            let persisted = persister.persist(snapshot: snapshot)
+            latestSnapshot = persisted
+            return persisted
+        }
         latestSnapshot = snapshot
         return snapshot
     }

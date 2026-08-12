@@ -5,14 +5,30 @@ import Foundation
 import XCTest
 
 final class BurnBarDaemonServerTests: XCTestCase {
-    func testDaemonBootsRespondsToHealthAndCleansUpSocketOnShutdown() async throws {
-        let socketPath = makeSocketPath(name: "health")
-        let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(
-                socketPath: socketPath,
-                daemonVersion: "test-daemon"
-            )
+    /// Builds a hermetic daemon configuration: the socket lives under /tmp
+    /// and the fleet persistence paths (fleet.sqlite + fleet-snapshot.json)
+    /// live in a per-test temp dir — never the real support dir.
+    private func makeConfiguration(
+        name: String,
+        daemonVersion: String = "test-daemon",
+        indexDatabasePath: String? = nil
+    ) -> BurnBarDaemonConfiguration {
+        let socketPath = makeSocketPath(name: name)
+        let fleetDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("burnbar-server-fleet-\(name)-\(UUID().uuidString)", isDirectory: true)
+        return BurnBarDaemonConfiguration(
+            socketPath: socketPath,
+            daemonVersion: daemonVersion,
+            indexDatabasePath: indexDatabasePath,
+            fleetStorePath: fleetDir.appendingPathComponent("fleet.sqlite").path,
+            fleetSnapshotFilePath: fleetDir.appendingPathComponent("fleet-snapshot.json").path
         )
+    }
+
+    func testDaemonBootsRespondsToHealthAndCleansUpSocketOnShutdown() async throws {
+        let configuration = makeConfiguration(name: "health", daemonVersion: "test-daemon")
+        let socketPath = configuration.socketPath
+        let server = BurnBarDaemonServer(configuration: configuration)
 
         try await server.start()
         XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
@@ -40,8 +56,14 @@ final class BurnBarDaemonServerTests: XCTestCase {
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: socketPath))
 
+        let fleetDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("burnbar-server-fleet-stale-\(UUID().uuidString)", isDirectory: true)
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath)
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                fleetStorePath: fleetDir.appendingPathComponent("fleet.sqlite").path,
+                fleetSnapshotFilePath: fleetDir.appendingPathComponent("fleet-snapshot.json").path
+            )
         )
         try await server.start()
 
@@ -57,13 +79,9 @@ final class BurnBarDaemonServerTests: XCTestCase {
     }
 
     func testCatalogResponseUsesBundledCatalogAndCurrentProtocolVersion() async throws {
-        let socketPath = makeSocketPath(name: "catalog")
-        let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(
-                socketPath: socketPath,
-                daemonVersion: "catalog-daemon"
-            )
-        )
+        let configuration = makeConfiguration(name: "catalog", daemonVersion: "catalog-daemon")
+        let socketPath = configuration.socketPath
+        let server = BurnBarDaemonServer(configuration: configuration)
 
         try await server.start()
 
@@ -113,7 +131,11 @@ final class BurnBarDaemonServerTests: XCTestCase {
         )
 
         let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                fleetStorePath: rootURL.appendingPathComponent("fleet.sqlite").path,
+                fleetSnapshotFilePath: rootURL.appendingPathComponent("fleet-snapshot.json").path
+            ),
             logger: BurnBarDaemonLogger(category: "server-tests"),
             configStore: configStore,
             usageRecorder: usageRecorder,
@@ -307,10 +329,9 @@ final class BurnBarDaemonServerTests: XCTestCase {
     }
 
     func testSearchQueryWithoutIndexDatabaseReturnsError() async throws {
-        let socketPath = makeSocketPath(name: "search-no-db")
-        let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath, indexDatabasePath: nil)
-        )
+        let configuration = makeConfiguration(name: "search-no-db", indexDatabasePath: nil)
+        let socketPath = configuration.socketPath
+        let server = BurnBarDaemonServer(configuration: configuration)
 
         try await server.start()
 
@@ -331,10 +352,9 @@ final class BurnBarDaemonServerTests: XCTestCase {
     }
 
     func testFleetRPCPlaceholdersReturnTypedNotImplementedError() async throws {
-        let socketPath = makeSocketPath(name: "fleet-placeholder")
-        let server = BurnBarDaemonServer(
-            configuration: BurnBarDaemonConfiguration(socketPath: socketPath)
-        )
+        let configuration = makeConfiguration(name: "fleet-placeholder")
+        let socketPath = configuration.socketPath
+        let server = BurnBarDaemonServer(configuration: configuration)
         try await server.start()
 
         // M0 contract: the fleet method cases resolve in BurnBarRPCMethod. M1
