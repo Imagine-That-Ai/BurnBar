@@ -571,6 +571,7 @@ public struct BurnBarCLIRunner {
             let response = try client.listRuns(
                 BurnBarRunListRequest(
                     clientID: identifiers.clientID,
+                    sessionID: identifiers.sessionID,
                     offset: Int(optionValue("--offset", in: options) ?? "") ?? 0,
                     limit: Int(optionValue("--limit", in: options) ?? "") ?? 50
                 )
@@ -579,7 +580,13 @@ public struct BurnBarCLIRunner {
         case "get":
             let runID = try Self.requiredPositionalRunID(in: options, usage: "Usage: openburnbar-cli run get <runID>")
             return formatRunDetail(
-                try client.getRun(BurnBarRunGetRequest(runID: runID, clientID: identifiers.clientID))
+                try client.getRun(
+                    BurnBarRunGetRequest(
+                        runID: runID,
+                        clientID: identifiers.clientID,
+                        sessionID: identifiers.sessionID
+                    )
+                )
             )
         case "poll":
             let runID = try Self.requiredPositionalRunID(in: options, usage: "Usage: openburnbar-cli run poll <runID> [--json]")
@@ -623,6 +630,7 @@ public struct BurnBarCLIRunner {
                     BurnBarRunCancelRequest(
                         runID: runID,
                         clientID: identifiers.clientID,
+                        sessionID: identifiers.sessionID,
                         reason: optionValue("--reason", in: options)
                     )
                 )

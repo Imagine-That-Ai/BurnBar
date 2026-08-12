@@ -202,7 +202,10 @@ export class OpenBurnBarExtensionController {
           const message = error instanceof Error ? error.message : 'Run poll request failed.';
           if (message.includes('run.poll')) {
             daemonRuns = await this.withSessionRetry(() =>
-              this.dependencies.client.listRuns({ clientID: this.clientID })
+              this.dependencies.client.listRuns({
+                clientID: this.clientID,
+                sessionID: this.sessionID
+              })
             );
             pendingToolCalls = [];
             arbitration = undefined;
@@ -302,7 +305,8 @@ export class OpenBurnBarExtensionController {
     const detail = await this.withSessionRetry(() =>
       this.dependencies.client.getRun({
         runID: runId,
-        clientID: this.clientID
+        clientID: this.clientID,
+        sessionID: this.sessionID
       })
     );
 
@@ -343,6 +347,7 @@ export class OpenBurnBarExtensionController {
       this.dependencies.client.cancelRun({
         runID: runId,
         clientID: this.clientID,
+        sessionID: this.sessionID,
         reason
       })
     );
@@ -626,7 +631,8 @@ export class OpenBurnBarExtensionController {
       const detail = await this.withSessionRetry(() =>
         this.dependencies.client.getRun({
           runID: runId,
-          clientID: this.clientID
+          clientID: this.clientID,
+          sessionID: this.sessionID
         })
       );
 

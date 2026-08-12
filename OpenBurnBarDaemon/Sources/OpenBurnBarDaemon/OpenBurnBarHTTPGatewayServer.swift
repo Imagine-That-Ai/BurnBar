@@ -52,6 +52,8 @@ public actor BurnBarHTTPGatewayServer {
 
     let rateLimiter: BurnBarRateLimiter?
 
+    let safariAttributionAuthority: SafariGatewayAttributionAuthority?
+
     /// remediation(loopback-c): a dedicated, stricter rate limiter that bounds
     /// tokenless callers SPECIFICALLY while the unauthenticated-loopback escape
     /// hatch is live (no enforced auth token). It is consulted only when auth is
@@ -78,7 +80,8 @@ public actor BurnBarHTTPGatewayServer {
         modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning = FactoryDroidSystemProcessRunner(),
         modelCatalogCacheTTL: TimeInterval = 0,
         logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
-        rateLimiter: BurnBarRateLimiter? = nil
+        rateLimiter: BurnBarRateLimiter? = nil,
+        safariAttributionAuthority: SafariGatewayAttributionAuthority? = nil
     ) {
         self.configuration = configuration
         self.configStore = configStore
@@ -102,6 +105,7 @@ public actor BurnBarHTTPGatewayServer {
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
         }
+        self.safariAttributionAuthority = safariAttributionAuthority
         // Bound the tokenless-loopback escape hatch independently of the
         // optional general limiter.
         self.unauthenticatedLoopbackRateLimiter = configuration

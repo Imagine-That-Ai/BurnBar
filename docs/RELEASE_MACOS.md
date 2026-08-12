@@ -46,6 +46,166 @@ scripts/build-macos-app-store-release.sh
 scripts/build-macos-website-release.sh
 ```
 
+### Exact Safari certification candidate
+
+The Safari certification worktree uses a dedicated Git object store and index.
+Every candidate-aware command must receive all four values below. Ordinary
+`git status` in the directory is not candidate proof because it can resolve
+the shared checkout's index instead of the audited Safari index.
+
+```bash
+export OPENBURNBAR_CANDIDATE_GIT_DIR=\
+/Users/albertonunez/Documents/Developer/.burnbar-safari-external-certification-candidate-20260811/.git
+export OPENBURNBAR_CANDIDATE_GIT_INDEX_FILE=\
+/Users/albertonunez/Documents/Developer/.burnbar-safari-external-certification-candidate-20260811/.git/safari-index
+export OPENBURNBAR_CANDIDATE_COMMIT=<full-successor-commit>
+export OPENBURNBAR_CANDIDATE_TREE=<full-successor-tree>
+```
+
+The historical checkpoint
+`7ff9b0b0ecde3f7959231e251b0d8f57e2c2ff91` is not releasable. The provider
+attribution and installed-CLI lifecycle remediation must first be integrated
+into a new exact successor.
+
+That integration has one deliberate generated-project transition. Verify the
+pinned archive before extracting it:
+
+```bash
+shasum -a 256 \
+  /Users/albertonunez/.codex/tmp/openburnbar-safari-certification-tools/xcodegen-2.45.4/xcodegen.zip
+# required:
+# 090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef
+
+ditto -x -k \
+  /Users/albertonunez/.codex/tmp/openburnbar-safari-certification-tools/xcodegen-2.45.4/xcodegen.zip \
+  /Users/albertonunez/.codex/tmp/openburnbar-safari-certification-tools/xcodegen-2.45.4/extracted
+
+export OPENBURNBAR_XCODEGEN_BIN=\
+/Users/albertonunez/.codex/tmp/openburnbar-safari-certification-tools/xcodegen-2.45.4/extracted/xcodegen/bin/xcodegen
+scripts/materialize-openburnbar-safari-xcode-project.sh
+```
+
+The transition runs pinned XcodeGen `2.45.4` twice, requires the historical
+PBX SHA-256
+`84cfb5ee1607479837e75a4338eef39470f7ac7dc60aa077b7d2db6c66727e69`,
+compares the complete semantic graphs, restores generated Info plists
+byte-for-byte, and accepts only these source-membership changes:
+
+- `OpenBurnBarDaemon` Sources: 230 → 232
+- `OpenBurnBarDaemonTests` Sources: 119 → 121
+- `GatewayRequestAttribution.swift`
+- `SafariHandoffProcessSupervisor.swift`
+- `SafariHandoffProcessSupervisorTests.swift`
+- `SafariHandoffProcessWatchdogTests.swift`
+
+After the generated project and all source changes pass the focused and broad
+native gates, stage only the ownership-audited paths through the dedicated
+Safari index, create a new local commit, and replace
+`OPENBURNBAR_CANDIDATE_COMMIT` and `OPENBURNBAR_CANDIDATE_TREE` with that
+commit's exact values. Development provisioning, Developer ID signing, MAS
+archive/upload, public deployment, and Git publication must all consume that
+same clean successor.
+
+Create or download the exact Apple Development profiles with target-scoped
+automatic provisioning only after the successor exists:
+
+```bash
+scripts/provision-openburnbar-safari-development.sh \
+  --candidate-commit "$OPENBURNBAR_CANDIDATE_COMMIT" \
+  --candidate-tree "$OPENBURNBAR_CANDIDATE_TREE" \
+  --team-id 4Y367DF25B \
+  --signing-identity "Apple Development: <exact keychain identity>" \
+  --output-dir /Users/albertonunez/.codex/tmp/openburnbar-safari-development-<commit> \
+  --derived-data /Users/albertonunez/.codex/tmp/openburnbar-safari-development-derived-<commit> \
+  --package-cache /Users/albertonunez/.codex/tmp/openburnbar-safari-development-spm
+```
+
+This command provisions the extension before the host, requires exact
+non-wildcard host and appex profiles, authorizes the current Mac and exact leaf
+certificate, verifies the App Group and shared Keychain authority, rejects an
+explicitly disabled development debug entitlement, exports the embedded profile
+bytes, and emits an owner-only candidate-bound development receipt. It does not
+install the app or certify behavior in Safari.
+
+For the direct Developer ID channel, use fresh candidate-specific output paths
+and exact profiles. The release root is fail-closed: it must not already exist,
+must not traverse a symlink, and can never be the repository, home directory,
+filesystem root, or another broad location.
+
+```bash
+OPENBURNBAR_WEBSITE_RELEASE_DIR=\
+/Users/albertonunez/.codex/tmp/openburnbar-developer-id-"$OPENBURNBAR_CANDIDATE_COMMIT" \
+OPENBURNBAR_WEBSITE_PACKAGE_CACHE=\
+/Users/albertonunez/.codex/tmp/openburnbar-release-spm \
+OPENBURNBAR_APP_PROFILE=/absolute/OpenBurnBar-MAC_APP_DIRECT.provisionprofile \
+OPENBURNBAR_SAFARI_EXTENSION_PROFILE=\
+/absolute/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile \
+OPENBURNBAR_PRIVILEGED_INPUT_PROFILE=\
+/absolute/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile \
+OPENBURNBAR_SIGNING_IDENTITY="Developer ID Application: <exact identity>" \
+scripts/build-macos-website-release.sh
+```
+
+The successful output must include the signed app, notarized and stapled DMG,
+ZIP, corresponding source, SBOM, checksums/update metadata, a sanitized signing
+receipt, and `developer-id-release-receipt.json`. The release receipt is
+write-once, mode `0600`, candidate-bound, artifact-hashed, and bound to both
+accepted notarization submissions and the mounted-DMG smoke gate.
+
+For the Mac App Store channel:
+
+```bash
+OPENBURNBAR_MAC_APP_STORE_BUILD_DIR=\
+/Users/albertonunez/.codex/tmp/openburnbar-mas-"$OPENBURNBAR_CANDIDATE_COMMIT" \
+OPENBURNBAR_MAC_APP_STORE_PACKAGE_CACHE=\
+/Users/albertonunez/.codex/tmp/openburnbar-mas-spm \
+scripts/build-macos-app-store-release.sh
+```
+
+The Mac App Store release root follows the same fresh, dedicated,
+non-symlinked-path contract and is never recursively replaced by the builder.
+Even with upload disabled, a successful run emits
+`mas-archive-export-receipt.json`. That owner-only receipt binds the candidate,
+archive, canonical archived host/appex, package expansion, exported host/appex,
+installer package, Apple team, version/build, strict signature/profile checks,
+and Gatekeeper installer assessment. To validate, upload, wait for processing,
+and read back the exact build, additionally set:
+
+```bash
+OPENBURNBAR_UPLOAD_MAC_APP_STORE=1
+OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved
+OPENBURNBAR_ASC_APPLE_ID=<numeric-app-apple-id>
+APP_STORE_ASC_KEY_ID=<key-id>
+APP_STORE_ASC_ISSUER_ID=<issuer-id>
+APP_STORE_ASC_KEY_PATH=/absolute/AuthKey_<key-id>.p8
+```
+
+The upload helper copies the key into an owner-only ephemeral directory, stores
+raw responses as exclusive mode-`0600` files, waits for terminal processing,
+reads back the exact macOS version/build, and emits a sanitized
+`app-store-connect-receipt.json`. Standalone upload additionally requires the
+owner-only `mas-archive-export-receipt.json`, checks its schema, channel,
+candidate, team, version, and build, recomputes the package/archive/host/appex
+hashes, reruns the canonical MAS artifact verifier, and binds the archive/export
+receipt SHA-256 into the App Store Connect receipt before any upload can be
+represented as candidate-bound.
+
+The installed-candidate evidence intentionally records only that an opaque
+`Contents/_MASReceipt/receipt` file exists, its size, and its SHA-256 beside the
+signature/profile and exact App Store Connect processing evidence. Presence and
+hash are not cryptographic receipt validation and do not prove store origin.
+Cryptographic/store receipt certification remains **HOLD** until a
+repository-native receipt verifier validates the signed receipt payload and
+Apple trust chain.
+
+Source and artifact readiness do not turn release certification into PASS.
+The exact installed successor still requires real-Safari Ask and Agentic
+recordings, keyboard and VoiceOver review, three live routes, an installed CLI
+handoff, measured latency, Developer ID installation, MAS receipt/store
+surfaces, and public install/update/rollback proof. Browser Use or the Chromium
+harness may run only after native Safari evidence exists, and its transcript is
+comparison evidence—not Safari proof.
+
 ### Embedded Safari extension
 
 Both channels embed:

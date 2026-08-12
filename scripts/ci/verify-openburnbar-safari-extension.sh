@@ -253,6 +253,12 @@ if distribution == "development":
         True,
         "signed development Safari get-task-allow entitlement",
     )
+elif distribution == "mas":
+    require_equal(
+        signed.get("com.apple.security.get-task-allow"),
+        False,
+        "signed Mac App Store Safari get-task-allow entitlement",
+    )
 elif signed.get("com.apple.security.get-task-allow") is True:
     fail("release Safari extension must not enable get-task-allow.")
 
@@ -295,7 +301,13 @@ if not isinstance(profile_keychain_groups, list) or not {
         "Safari profile Keychain groups must authorize "
         f"{expected_keychain_group!r}; found {profile_keychain_groups!r}."
     )
-if distribution != "development" and profile_entitlements.get(
+if distribution == "mas":
+    require_equal(
+        profile_entitlements.get("com.apple.security.get-task-allow"),
+        False,
+        "Mac App Store Safari profile get-task-allow entitlement",
+    )
+elif distribution != "development" and profile_entitlements.get(
     "com.apple.security.get-task-allow"
 ) is True:
     fail("Safari provisioning profile must not enable get-task-allow.")
@@ -314,15 +326,24 @@ if distribution == "development":
         fail("development Safari profile must authorize at least one registered device.")
     if current_mac_provisioning_udid not in provisioned_devices:
         fail("development Safari profile must authorize this Mac's provisioning UDID.")
-    require_equal(
-        profile_entitlements.get("com.apple.security.get-task-allow"),
-        True,
-        "development Safari profile get-task-allow entitlement",
-    )
+    profile_get_task_allow = profile_entitlements.get("com.apple.security.get-task-allow")
+    if profile_get_task_allow is False:
+        fail("development Safari profile must not explicitly disable get-task-allow.")
+    if profile_get_task_allow not in (None, True):
+        fail(
+            "development Safari profile get-task-allow entitlement must be absent or True; "
+            f"found {profile_get_task_allow!r}."
+        )
 if distribution == "direct" and not all_devices:
     fail("direct Safari profile must set ProvisionsAllDevices=true (MAC_APP_DIRECT).")
 if distribution == "mas" and all_devices:
     fail("Mac App Store Safari profile must not be a MAC_APP_DIRECT all-devices profile.")
+if distribution == "mas":
+    require_equal(
+        profile.get("Platform"),
+        ["OSX"],
+        "Mac App Store Safari profile platform",
+    )
 PY
 
 bash "$repo_root/scripts/ci/verify-signing-profile-certificate.sh" \

@@ -30,8 +30,15 @@ interface ControllerHarness {
   gatewayCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }>;
   contentActions: ContentAction[];
   setPopupActionError(action: string, error: Error | undefined): void;
+  setPopupActionHandler(
+    action: string,
+    handler:
+      | ((payload: Record<string, unknown>) => BridgePopupActionResult | Promise<BridgePopupActionResult>)
+      | undefined
+  ): void;
   setPopupActionResult(action: string, result: BridgePopupActionResult): void;
   setGatewayHandler(handler: GatewayHandler): void;
+  setNativeBootstrap(value: SafariBootstrapResponse): void;
   setHelloProtocolVersion(protocolVersion: number): void;
   setUISnapshot(value: Record<string, unknown>): void;
 }
@@ -51,6 +58,8 @@ const bootstrap: SafariBootstrapResponse = {
   protocolVersion: 1,
   gatewayBaseURL: 'http://127.0.0.1:8317',
   gatewayBearerToken: 'controller-loopback-bearer',
+  gatewayAttributionCapability: 'ab'.repeat(32),
+  gatewayAttributionExpiresAt: '2099-08-12T23:59:59.000Z',
   gatewayAvailable: true,
   computerUseAvailable: true,
   learningAvailable: true,
@@ -124,6 +133,13 @@ function defaultUISnapshot(): Record<string, unknown> {
         ]
       }
     },
+    installedAgents: [
+      {
+        id: 'codex',
+        displayName: 'Codex',
+        providerName: 'Installed agents'
+      }
+    ],
     membership: {
       membership: {
         tier: 'burnbar_pro'
@@ -150,8 +166,13 @@ function createControllerHarness(): ControllerHarness {
   const gatewayCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
   const contentActions: ContentAction[] = [];
   const popupActionErrors = new Map<string, Error>();
+  const popupActionHandlers = new Map<
+    string,
+    (payload: Record<string, unknown>) => BridgePopupActionResult | Promise<BridgePopupActionResult>
+  >();
   const popupActionResults = new Map<string, BridgePopupActionResult>();
   let helloProtocolVersion = 1;
+  let nativeBootstrap = bootstrap;
   let uiSnapshot = defaultUISnapshot();
 
   controls.setContentHandler((tabId, message) => {
@@ -257,12 +278,16 @@ function createControllerHarness(): ControllerHarness {
         if (popupActionError) {
           throw popupActionError;
         }
+        const popupActionHandler = popupActionHandlers.get(action);
+        if (popupActionHandler) {
+          return Promise.resolve(popupActionHandler(payload)).then((result) => nativeSuccess(request, result));
+        }
         const overriddenResult = popupActionResults.get(action);
         if (overriddenResult) {
           return nativeSuccess(request, overriddenResult);
         }
         if (action === 'bootstrap') {
-          return nativeSuccess(request, { accepted: true, output: bootstrap });
+          return nativeSuccess(request, { accepted: true, output: nativeBootstrap });
         }
         if (action === 'catalog') {
           return nativeSuccess(request, { accepted: true, output: { agents } });
@@ -279,7 +304,12 @@ function createControllerHarness(): ControllerHarness {
         if (action === 'handoff') {
           return nativeSuccess(request, {
             accepted: true,
-            output: { runId: 'run-handoff', phase: 'completed', launched: true, running: false }
+            output: {
+              runId: 'run-handoff',
+              phase: 'waiting_on_companion',
+              launched: true,
+              running: true
+            }
           });
         }
         if (action === 'learning.approve') {
@@ -359,11 +389,25 @@ function createControllerHarness(): ControllerHarness {
         popupActionErrors.delete(action);
       }
     },
+    setPopupActionHandler(action, handler) {
+      if (handler) {
+        popupActionHandlers.set(action, handler);
+      } else {
+        popupActionHandlers.delete(action);
+      }
+    },
     setPopupActionResult(action, result) {
       popupActionResults.set(action, result);
     },
     setGatewayHandler(handler) {
       gatewayHandler = handler;
+    },
+    setNativeBootstrap(value) {
+      nativeBootstrap = value;
+      uiSnapshot = {
+        ...uiSnapshot,
+        bootstrap: value
+      };
     },
     setHelloProtocolVersion(protocolVersion) {
       helloProtocolVersion = protocolVersion;
@@ -470,6 +514,222 @@ describe('Safari background controller integration', () => {
         })
       ])
     );
+  });
+
+  it('renews a near-expiry capability through the exact attached native session before Ask', async () => {
+    const harness = createControllerHarness();
+    harness.setNativeBootstrap({
+      ...bootstrap,
+      gatewayAttributionCapability: '12'.repeat(32),
+      gatewayAttributionExpiresAt: new Date(Date.now() + 1_000).toISOString()
+    });
+    await harness.controller.initialize();
+
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.requestSitePermission'
+      })
+    );
+    harness.setNativeBootstrap({
+      ...bootstrap,
+      gatewayAttributionCapability: '34'.repeat(32),
+      gatewayAttributionExpiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
+    });
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.setTrust',
+        patch: { cloudScreenshotAcknowledged: true }
+      })
+    );
+    const bootstrapCallsBeforeAsk = harness.popupCalls.filter((call) => call.action === 'bootstrap').length;
+    const answer = await harness.controller.handlePopupRequest({
+      type: 'popup.ask',
+      prompt: 'What color is the call to action?'
+    });
+
+    expectSuccess(answer);
+    expect(harness.popupCalls.filter((call) => call.action === 'bootstrap')).toHaveLength(bootstrapCallsBeforeAsk + 1);
+    expect(harness.gatewayCalls).toHaveLength(1);
+    expect(new Headers(harness.gatewayCalls[0]?.init?.headers).get('X-OpenBurnBar-Attribution-Capability')).toBe(
+      '34'.repeat(32)
+    );
+  });
+
+  it('waits for an in-flight native projection before Ask reads its capability', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.setTrust',
+        patch: { cloudScreenshotAcknowledged: true }
+      })
+    );
+    let releaseProjection: (() => void) | undefined;
+    const projectionBlocked = new Promise<void>((resolve) => {
+      releaseProjection = resolve;
+    });
+    harness.setPopupActionHandler('ui.snapshot', async () => {
+      await projectionBlocked;
+      return {
+        accepted: true,
+        output: {
+          ...defaultUISnapshot(),
+          bootstrap: {
+            ...bootstrap,
+            gatewayAttributionCapability: '56'.repeat(32)
+          }
+        }
+      };
+    });
+
+    const refreshing = harness.controller.handlePopupRequest({ type: 'popup.refresh' });
+    await vi.waitFor(() => {
+      expect(harness.popupCalls.filter((call) => call.action === 'ui.snapshot').length).toBeGreaterThan(1);
+    });
+    const asking = harness.controller.handlePopupRequest({
+      type: 'popup.ask',
+      prompt: 'Describe the call to action.'
+    });
+    await Promise.resolve();
+    expect(harness.gatewayCalls).toHaveLength(0);
+
+    releaseProjection?.();
+    expectSuccess(await refreshing);
+    expectSuccess(await asking);
+    expect(new Headers(harness.gatewayCalls[0]?.init?.headers).get('X-OpenBurnBar-Attribution-Capability')).toBe(
+      '56'.repeat(32)
+    );
+  });
+
+  it('suppresses capability-rotating projection refreshes while Ask is active', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.setTrust',
+        patch: { cloudScreenshotAcknowledged: true }
+      })
+    );
+    let releaseGateway: (() => void) | undefined;
+    harness.setGatewayHandler(
+      () =>
+        new Promise<Response>((resolve) => {
+          releaseGateway = () =>
+            resolve(
+              new Response('{"choices":[{"message":{"content":"Orange."}}]}', {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              })
+            );
+        })
+    );
+    const snapshotCallsBeforeAsk = harness.popupCalls.filter((call) => call.action === 'ui.snapshot').length;
+    const asking = harness.controller.handlePopupRequest({
+      type: 'popup.ask',
+      prompt: 'Describe the call to action.'
+    });
+    await vi.waitFor(() => expect(harness.gatewayCalls).toHaveLength(1));
+
+    expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.refresh' }));
+    expect(harness.popupCalls.filter((call) => call.action === 'ui.snapshot')).toHaveLength(snapshotCallsBeforeAsk);
+
+    releaseGateway?.();
+    expectSuccess(await asking);
+  });
+
+  it('stops during native renewal before DOM or screenshot capture and performs zero provider contact', async () => {
+    const harness = createControllerHarness();
+    harness.setNativeBootstrap({
+      ...bootstrap,
+      gatewayAttributionExpiresAt: new Date(Date.now() + 1_000).toISOString()
+    });
+    await harness.controller.initialize();
+    expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.setTrust',
+        patch: { cloudScreenshotAcknowledged: true }
+      })
+    );
+    let releaseRenewal: (() => void) | undefined;
+    harness.setPopupActionHandler(
+      'bootstrap',
+      () =>
+        new Promise<BridgePopupActionResult>((resolve) => {
+          releaseRenewal = () =>
+            resolve({
+              accepted: true,
+              output: {
+                ...bootstrap,
+                gatewayAttributionCapability: '78'.repeat(32)
+              }
+            });
+        })
+    );
+    const pageContextCallsBeforeAsk = harness.controls.tabMessages.filter(
+      ({ message }) => (message as { type?: string }).type === 'content.pageContext'
+    ).length;
+    const capturesBeforeAsk = harness.controls.captures.length;
+    const asking = harness.controller.handlePopupRequest({
+      type: 'popup.ask',
+      prompt: 'Describe the call to action.'
+    });
+    await vi.waitFor(() => {
+      expect(harness.popupCalls.filter((call) => call.action === 'bootstrap').length).toBeGreaterThan(1);
+    });
+
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.abort',
+        trigger: 'stop_button'
+      })
+    );
+    releaseRenewal?.();
+    expectSuccess(await asking);
+    expect(harness.gatewayCalls).toHaveLength(0);
+    expect(
+      harness.controls.tabMessages.filter(
+        ({ message }) => (message as { type?: string }).type === 'content.pageContext'
+      )
+    ).toHaveLength(pageContextCallsBeforeAsk);
+    expect(harness.controls.captures).toHaveLength(capturesBeforeAsk);
+  });
+
+  it('fails closed without provider contact when native renewal is malformed', async () => {
+    const harness = createControllerHarness();
+    harness.setNativeBootstrap({
+      ...bootstrap,
+      gatewayAttributionExpiresAt: new Date(Date.now() + 1_000).toISOString()
+    });
+    await harness.controller.initialize();
+
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.requestSitePermission'
+      })
+    );
+    harness.setNativeBootstrap({
+      ...bootstrap,
+      gatewayAttributionCapability: 'malformed',
+      gatewayAttributionExpiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
+    });
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.setTrust',
+        patch: { cloudScreenshotAcknowledged: true }
+      })
+    );
+    const bootstrapCallsBeforeAsk = harness.popupCalls.filter((call) => call.action === 'bootstrap').length;
+    const answer = await harness.controller.handlePopupRequest({
+      type: 'popup.ask',
+      prompt: 'What color is the call to action?'
+    });
+
+    expect(answer.ok).toBe(false);
+    expect(harness.gatewayCalls).toHaveLength(0);
+    expect(harness.popupCalls.filter((call) => call.action === 'bootstrap')).toHaveLength(bootstrapCallsBeforeAsk + 1);
   });
 
   it('records native attach as failed when the daemon negotiates an unsupported protocol', async () => {
@@ -851,6 +1111,103 @@ describe('Safari background controller integration', () => {
     });
   });
 
+  it('uses only the native eligible installed-agent projection for Safari hand-off', async () => {
+    const harness = createControllerHarness();
+    harness.setUISnapshot({
+      ...defaultUISnapshot(),
+      catalog: {
+        catalog: {
+          schemaVersion: 1,
+          agents: [
+            ...agents,
+            {
+              id: 'forge',
+              displayName: 'Forge',
+              providerName: 'Generic catalog',
+              kind: 'cli',
+              installed: true,
+              cloud: false,
+              supportsVision: false
+            }
+          ],
+          providers: []
+        }
+      },
+      installedAgents: [
+        {
+          id: 'codex',
+          displayName: 'Codex',
+          providerName: 'Installed agents'
+        },
+        {
+          id: 'forge',
+          displayName: 'Forge',
+          providerName: 'Installed agents'
+        },
+        {
+          id: 'opencode',
+          displayName: 'OpenCode',
+          providerName: 'Installed agents'
+        }
+      ]
+    });
+
+    await harness.controller.initialize();
+    const snapshot = harness.controller.currentSnapshot();
+    expect(snapshot.bridge.agents.map((agent) => agent.id)).toEqual(['codex', 'opencode', 'vision-model']);
+    expect(snapshot.bridge.agents.find((agent) => agent.id === 'codex')).toMatchObject({
+      kind: 'cli',
+      installed: true,
+      cloud: false,
+      supportsVision: false
+    });
+    expect(snapshot.bridge.agents.some((agent) => agent.id === 'forge')).toBe(false);
+
+    const handoffMode = await harness.controller.handlePopupRequest({
+      type: 'popup.setMode',
+      mode: 'handoff'
+    });
+    expectSuccess(handoffMode);
+    expect(handoffMode.snapshot.selectedAgentId).toBe('codex');
+    const blockedSelection = await harness.controller.handlePopupRequest({
+      type: 'popup.selectAgent',
+      agentId: 'forge'
+    });
+    expect(blockedSelection).toMatchObject({
+      ok: false,
+      error: {
+        code: 'agent_unknown'
+      }
+    });
+  });
+
+  it('does not recover Safari hand-off agents from an older generic catalog snapshot', async () => {
+    const harness = createControllerHarness();
+    const legacySnapshot = defaultUISnapshot();
+    delete legacySnapshot.installedAgents;
+    harness.setUISnapshot({
+      ...legacySnapshot,
+      catalog: {
+        catalog: {
+          schemaVersion: 1,
+          agents,
+          providers: []
+        }
+      }
+    });
+
+    await harness.controller.initialize();
+    const snapshot = harness.controller.currentSnapshot();
+    expect(snapshot.bridge.agents.map((agent) => agent.id)).toEqual(['vision-model']);
+
+    const handoffMode = await harness.controller.handlePopupRequest({
+      type: 'popup.setMode',
+      mode: 'handoff'
+    });
+    expectSuccess(handoffMode);
+    expect(handoffMode.snapshot.selectedAgentId).toBeUndefined();
+  });
+
   it('repairs a persisted selection that is incompatible with its persisted mode', async () => {
     const harness = createControllerHarness();
     harness.controls.storage.set('openburnbar.safari.preferences.v1', {
@@ -932,7 +1289,7 @@ describe('Safari background controller integration', () => {
     });
     expectSuccess(handoff);
     expect(handoff.snapshot.bridge.activeRunId).toBe('run-handoff');
-    expect(handoff.snapshot.running).toBe(false);
+    expect(handoff.snapshot.running).toBe(true);
     expect(handoff.snapshot.activity.at(-1)?.text).toBe(
       'The private page briefing was handed to the selected local agent.'
     );
@@ -1128,6 +1485,25 @@ describe('Safari background controller integration', () => {
         learningOperation: 'load'
       }
     });
+  });
+
+  it('derives gateway readiness from validated embedded bootstrap data', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    harness.setUISnapshot({
+      ...defaultUISnapshot(),
+      gatewayReady: true,
+      bootstrap: {
+        ...bootstrap,
+        gatewayAttributionCapability: 'malformed'
+      }
+    });
+
+    const refreshed = await harness.controller.handlePopupRequest({ type: 'popup.refresh' });
+
+    expectSuccess(refreshed);
+    expect(refreshed.snapshot.bridge.gatewayReady).toBe(false);
+    expect(refreshed.snapshot.lastError?.code).toBe('gateway_attribution_capability_invalid');
   });
 
   it('retains a fail-closed local halt when native Stop confirmation fails until a new Agentic run succeeds', async () => {

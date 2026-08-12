@@ -316,6 +316,53 @@ final class BurnBarRPCContractsTests: XCTestCase {
         XCTAssertEqual(decoded.params, BurnBarControllerRuntimeSnapshotRequest())
     }
 
+    func testRunReadAndCancelRequestsKeepSessionBindingBackwardCompatible() throws {
+        let clientID = BurnBarClientID(rawValue: "safari-extension:tab-7")
+        let sessionID = BurnBarSessionID(rawValue: "safari-session-7")
+        let runID = BurnBarRunID(rawValue: "safari-handoff-7")
+
+        let legacyList = try JSONDecoder().decode(
+            BurnBarRunListRequest.self,
+            from: Data(#"{"clientID":"safari-extension:tab-7","offset":0,"limit":50}"#.utf8)
+        )
+        let legacyGet = try JSONDecoder().decode(
+            BurnBarRunGetRequest.self,
+            from: Data(#"{"runID":"safari-handoff-7","clientID":"safari-extension:tab-7"}"#.utf8)
+        )
+        let legacyCancel = try JSONDecoder().decode(
+            BurnBarRunCancelRequest.self,
+            from: Data(
+                #"{"runID":"safari-handoff-7","clientID":"safari-extension:tab-7","reason":"stop"}"#.utf8
+            )
+        )
+        XCTAssertNil(legacyList.sessionID)
+        XCTAssertNil(legacyGet.sessionID)
+        XCTAssertNil(legacyCancel.sessionID)
+
+        let requests: [Data] = try [
+            JSONEncoder().encode(BurnBarRunListRequest(
+                clientID: clientID,
+                sessionID: sessionID
+            )),
+            JSONEncoder().encode(BurnBarRunGetRequest(
+                runID: runID,
+                clientID: clientID,
+                sessionID: sessionID
+            )),
+            JSONEncoder().encode(BurnBarRunCancelRequest(
+                runID: runID,
+                clientID: clientID,
+                sessionID: sessionID,
+                reason: "stop"
+            ))
+        ]
+        for data in requests {
+            XCTAssertTrue(String(decoding: data, as: UTF8.self).contains(
+                #""sessionID":"safari-session-7""#
+            ))
+        }
+    }
+
     func testResponseEnvelope_errorLaneModelsOldDaemonRejectingNewMethod() throws {
         // An older daemon answers the new aggregate method with an error
         // envelope; the client must read the error and fall back to the

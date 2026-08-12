@@ -74,7 +74,10 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         let response = try await LinuxHTTPClient.post(
             port: harness.port,
             path: "/v1/chat/completions",
-            body: body
+            body: body,
+            headers: await harness.safariHeaders(
+                correlationID: "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51"
+            )
         )
 
         XCTAssertEqual(response.statusCode, 200)
@@ -97,6 +100,100 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertTrue(entry.streamInterrupted)
         XCTAssertEqual(entry.attempts.first?.status, .interrupted)
         XCTAssertFalse(entry.finalStatus.countsAgainstRouteHealth)
+        XCTAssertEqual(entry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(entry.clientRequestCorrelationID, "2b0d4a57-a4e2-4c18-9af0-2026e06eaf51")
+    }
+
+    func testForgedSafariHeadersAreRejectedBeforeProviderContact() async throws {
+        let upstream = LinuxMockOpenAIStreamServer()
+        try upstream.start()
+        defer { upstream.stop() }
+
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.configureZAIProvider(
+            baseURL: "http://127.0.0.1:\(upstream.port)/v1"
+        )
+        try await harness.start()
+
+        let body =
+            #"{"model":"glm-5-turbo","stream":true,"messages":[{"role":"user","content":"ping"}]}"#
+        let response = try await LinuxHTTPClient.post(
+            port: harness.port,
+            path: "/v1/chat/completions",
+            body: body,
+            headers: [
+                "Origin": "http://localhost:3000",
+                "User-Agent": "openburnbar-safari-extension",
+                "X-OpenBurnBar-Client": "openburnbar-safari-extension",
+                "X-OpenBurnBar-Correlation-ID":
+                    "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51"
+            ]
+        )
+
+        XCTAssertEqual(response.statusCode, 401, response.rawText)
+        XCTAssertEqual(
+            response.headers["access-control-allow-origin"],
+            "http://localhost:3000"
+        )
+        XCTAssertTrue(
+            response.body.contains(#""code":"gateway_attribution_rejected""#),
+            response.body
+        )
+        XCTAssertTrue(
+            upstream.recordedRequests.isEmpty,
+            "Rejected Safari attribution must not reach the upstream provider."
+        )
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        XCTAssertTrue(routeLog.isEmpty)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        XCTAssertTrue(usage.isEmpty)
+    }
+
+    func testForgedSafariHeadersAreRejectedBeforeModelCatalogDiscovery()
+        async throws {
+        let upstream = LinuxMockOpenAIStreamServer()
+        try upstream.start()
+        defer { upstream.stop() }
+
+        let harness = try LinuxGatewayHarness()
+        addTeardownBlock { await harness.stop() }
+        try await harness.configureZAIProvider(
+            baseURL: "http://127.0.0.1:\(upstream.port)/v1"
+        )
+        try await harness.start()
+
+        for path in ["/v1/models", "/v1/models/catalog"] {
+            let response = try await LinuxHTTPClient.get(
+                port: harness.port,
+                path: path,
+                headers: [
+                    "Origin": "http://localhost:3000",
+                    "X-OpenBurnBar-Client":
+                        GatewayRequestAttribution.safariClientSource,
+                    "X-OpenBurnBar-Correlation-ID":
+                        "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51"
+                ]
+            )
+
+            XCTAssertEqual(response.statusCode, 401, response.rawText)
+            XCTAssertEqual(
+                response.headers["access-control-allow-origin"],
+                "http://localhost:3000"
+            )
+            XCTAssertTrue(
+                response.body.contains(
+                    #""code":"gateway_attribution_rejected""#
+                ),
+                response.body
+            )
+        }
+        XCTAssertTrue(upstream.recordedRequests.isEmpty)
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        XCTAssertTrue(routeLog.isEmpty)
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        XCTAssertTrue(usage.isEmpty)
     }
 
     func testStreamsAnthropicChatCompletionsThroughMessagesTransformerAndRecordsUsage() async throws {
@@ -165,7 +262,10 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         let response = try await LinuxHTTPClient.post(
             port: harness.port,
             path: "/v1/responses",
-            body: body
+            body: body,
+            headers: await harness.safariHeaders(
+                correlationID: "7DC72490-799E-4A9D-B22B-35E6860B9C31"
+            )
         )
 
         XCTAssertEqual(response.statusCode, 200)
@@ -189,6 +289,11 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(entry.requestPath, "/v1/responses")
         XCTAssertEqual(entry.endpoint, "Responses")
         XCTAssertFalse(entry.streamed)
+        XCTAssertEqual(entry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(
+            entry.clientRequestCorrelationID,
+            "7dc72490-799e-4a9d-b22b-35e6860b9c31"
+        )
     }
 
     func testProxiesAnthropicMessagesThroughConfiguredProviderAndRecordsUsage() async throws {
@@ -205,7 +310,10 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         let response = try await LinuxHTTPClient.post(
             port: harness.port,
             path: "/v1/messages",
-            body: body
+            body: body,
+            headers: await harness.safariHeaders(
+                correlationID: "8A738415-1411-4F36-9C79-4F5D363A0D28"
+            )
         )
 
         XCTAssertEqual(response.statusCode, 200)
@@ -229,6 +337,11 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(entry.requestPath, "/v1/messages")
         XCTAssertEqual(entry.endpoint, "Anthropic Messages")
         XCTAssertFalse(entry.streamed)
+        XCTAssertEqual(entry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(
+            entry.clientRequestCorrelationID,
+            "8a738415-1411-4f36-9c79-4f5d363a0d28"
+        )
     }
 
     func testRejectsMalformedChatCompletionsRequestBeforeRouting() async throws {
@@ -352,7 +465,20 @@ final class OpenBurnBarHTTPGatewayServerLinuxTests: XCTestCase {
         XCTAssertEqual(allowed.statusCode, 200, allowed.rawText)
         XCTAssertEqual(allowed.headers["access-control-allow-origin"], "http://localhost:3000")
         XCTAssertEqual(allowed.headers["access-control-allow-methods"], "GET, POST, OPTIONS")
-        XCTAssertEqual(allowed.headers["access-control-allow-headers"], "Authorization, Content-Type, x-api-key")
+        XCTAssertEqual(
+            allowed.headers["access-control-allow-headers"],
+            [
+                "Authorization",
+                "Content-Type",
+                "x-api-key",
+                "OpenAI-Data-Storage",
+                "X-Data-Retention",
+                "X-Model-Training",
+                "X-OpenBurnBar-Client",
+                "X-OpenBurnBar-Correlation-ID",
+                "X-OpenBurnBar-Attribution-Capability"
+            ].joined(separator: ", ")
+        )
         XCTAssertEqual(allowed.headers["vary"], "Origin")
 
         let ipv6Origin = try await LinuxHTTPClient.raw(
@@ -411,6 +537,9 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
     private let configStore: BurnBarConfigStore
     private let server: BurnBarHTTPGatewayServer
     private let tempDirectory: URL
+    private let safariAttributionAuthority: SafariGatewayAttributionAuthority
+    private let safariClientID = BurnBarClientID(rawValue: "linux-gateway-tests-safari-client")
+    private let safariSessionID = BurnBarSessionID(rawValue: "linux-gateway-tests-safari-session")
 
     init(host: String = "127.0.0.1") throws {
         self.host = host
@@ -437,6 +566,13 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
             fileURL: tempDirectory.appendingPathComponent("model-health.json"),
             logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
         )
+        let safariClientID = self.safariClientID
+        let safariSessionID = self.safariSessionID
+        safariAttributionAuthority = SafariGatewayAttributionAuthority(
+            sessionAttachmentValidator: { clientID, sessionID in
+                clientID == safariClientID && sessionID == safariSessionID
+            }
+        )
         server = BurnBarHTTPGatewayServer(
             configuration: BurnBarGatewayConfiguration(
                 isEnabled: true,
@@ -449,8 +585,24 @@ private final class LinuxGatewayHarness: @unchecked Sendable {
             usageRecorder: usageRecorder,
             proxyRouteLogStore: proxyRouteLogStore,
             modelHealthStore: modelHealthStore,
-            logger: BurnBarDaemonLogger(category: "linux-gateway-tests")
+            logger: BurnBarDaemonLogger(category: "linux-gateway-tests"),
+            safariAttributionAuthority: safariAttributionAuthority
         )
+    }
+
+    func safariHeaders(correlationID: String) async -> [String: String] {
+        guard let capability = await safariAttributionAuthority.issue(
+            clientID: safariClientID,
+            sessionID: safariSessionID
+        ) else {
+            XCTFail("Expected the attached Safari test session to receive an attribution capability.")
+            return [:]
+        }
+        return [
+            "X-OpenBurnBar-Client": GatewayRequestAttribution.safariClientSource,
+            "X-OpenBurnBar-Correlation-ID": correlationID,
+            "X-OpenBurnBar-Attribution-Capability": capability.token
+        ]
     }
 
     func configureZAIProvider(baseURL: String) async throws {
@@ -815,8 +967,20 @@ private enum LinuxHTTPClient {
         )
     }
 
-    static func get(host: String = "127.0.0.1", port: Int, path: String) async throws -> Response {
-        try await request(method: "GET", host: host, port: port, path: path, headers: [:], body: "")
+    static func get(
+        host: String = "127.0.0.1",
+        port: Int,
+        path: String,
+        headers: [String: String] = [:]
+    ) async throws -> Response {
+        try await request(
+            method: "GET",
+            host: host,
+            port: port,
+            path: path,
+            headers: headers,
+            body: ""
+        )
     }
 
     static func raw(host: String = "127.0.0.1", port: Int, request: String) async throws -> Response {

@@ -22,6 +22,7 @@ Prerequisites:
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, UTC
@@ -30,19 +31,41 @@ import re
 from urllib.parse import quote
 
 
-def run(cmd: list[str], cwd: str | None = None, check: bool = True) -> str:
-    """Run a command and return its stdout."""
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, check=False)
-    if check and result.returncode != 0:
-        print(f"WARNING: Command failed: {' '.join(cmd)}", file=sys.stderr)
-        print(f"  stderr: {result.stderr.strip()}", file=sys.stderr)
-        return ""
+class CommandError(RuntimeError):
+    """Raised when an authoritative metadata command fails."""
+
+
+def run(cmd: list[str], cwd: str | None = None) -> str:
+    """Run an authoritative command and return stdout, failing closed."""
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+        env=os.environ.copy(),
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic"
+        raise CommandError(
+            f"Command failed with exit {result.returncode}: {' '.join(cmd)}\n{detail}"
+        )
     return result.stdout.strip()
+
+
+def validate_git_authority(repo_root: Path) -> str:
+    """Require Git to resolve exactly the requested candidate work tree."""
+    observed_root = Path(run(["git", "rev-parse", "--show-toplevel"], cwd=str(repo_root))).resolve()
+    if observed_root != repo_root:
+        raise CommandError(
+            f"Git authority resolved work tree {observed_root} instead of requested {repo_root}"
+        )
+    return run(["git", "rev-parse", "HEAD"], cwd=str(repo_root))
 
 
 def git_tracked_files(repo_root: Path, *patterns: str) -> list[Path]:
     """Return tracked files matching one or more git pathspecs."""
-    output = run(["git", "ls-files", *patterns], cwd=str(repo_root), check=False)
+    output = run(["git", "ls-files", *patterns], cwd=str(repo_root))
     if not output:
         return []
     return [repo_root / line for line in output.splitlines() if line.strip()]
@@ -388,11 +411,13 @@ def build_spdx_document(
     npm_deps: list[dict],
     cargo_deps: list[dict],
     gradle_deps: list[dict],
+    *,
+    commit: str | None = None,
 ) -> dict:
     """Build an SPDX 2.3 JSON document."""
     spdx_id = "SPDXRef-DOCUMENT"
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    commit = run(["git", "rev-parse", "HEAD"], cwd=str(repo_root), check=False) or "unknown"
+    commit = commit or validate_git_authority(repo_root)
 
     packages = [
         {
@@ -494,22 +519,35 @@ def main() -> None:
     version = args.version.strip().lstrip("v")
     output = Path(args.output) if args.output else repo_root / f"sbom-v{version}.spdx.json"
 
-    print(f"Generating SBOM for OpenBurnBar v{version}...")
-    print(f"  Repo root: {repo_root}")
+    try:
+        commit = validate_git_authority(repo_root)
+        print(f"Generating SBOM for OpenBurnBar v{version}...")
+        print(f"  Repo root: {repo_root}")
+        print(f"  Commit: {commit}")
 
-    spm_deps = collect_spm_dependencies(repo_root)
-    print(f"  SPM dependencies: {len(spm_deps)}")
+        spm_deps = collect_spm_dependencies(repo_root)
+        print(f"  SPM dependencies: {len(spm_deps)}")
 
-    npm_deps = collect_npm_dependencies(repo_root)
-    print(f"  npm dependencies: {len(npm_deps)}")
+        npm_deps = collect_npm_dependencies(repo_root)
+        print(f"  npm dependencies: {len(npm_deps)}")
 
-    cargo_deps = collect_cargo_dependencies(repo_root)
-    print(f"  Cargo dependencies: {len(cargo_deps)}")
+        cargo_deps = collect_cargo_dependencies(repo_root)
+        print(f"  Cargo dependencies: {len(cargo_deps)}")
 
-    gradle_deps = collect_gradle_dependencies(repo_root)
-    print(f"  Gradle dependencies: {len(gradle_deps)}")
+        gradle_deps = collect_gradle_dependencies(repo_root)
+        print(f"  Gradle dependencies: {len(gradle_deps)}")
 
-    doc = build_spdx_document(version, repo_root, spm_deps, npm_deps, cargo_deps, gradle_deps)
+        doc = build_spdx_document(
+            version,
+            repo_root,
+            spm_deps,
+            npm_deps,
+            cargo_deps,
+            gradle_deps,
+            commit=commit,
+        )
+    except CommandError as error:
+        raise SystemExit(f"ERROR: SBOM Git authority failed closed: {error}") from error
 
     with open(output, "w") as f:
         json.dump(doc, f, indent=2, sort_keys=False)

@@ -303,6 +303,20 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         )
         XCTAssertEqual(preflightResponse.statusCode, 204)
         XCTAssertEqual(preflightResponse.value(forHTTPHeaderField: "Access-Control-Allow-Origin"), "http://127.0.0.1:5173")
+        XCTAssertEqual(
+            preflightResponse.value(forHTTPHeaderField: "Access-Control-Allow-Headers"),
+            [
+                "Authorization",
+                "Content-Type",
+                "x-api-key",
+                "OpenAI-Data-Storage",
+                "X-Data-Retention",
+                "X-Model-Training",
+                "X-OpenBurnBar-Client",
+                "X-OpenBurnBar-Correlation-ID",
+                "X-OpenBurnBar-Attribution-Capability"
+            ].joined(separator: ", ")
+        )
     }
 
     func testGatewayAuthRequiresBearerTokenWhenConfigured() async throws {
@@ -776,7 +790,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             port: harness.port,
             method: "POST",
             path: "/v1/chat/completions",
-            headers: ["Content-Type": "application/json"],
+            headers: await harness.safariHeaders(
+                correlationID: "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51"
+            ),
             body: Data(#"{"model":"zai/primary/glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#.utf8)
         )
 
@@ -812,6 +828,128 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(entry.attempts.count, 1)
         XCTAssertEqual(entry.attempts.first?.upstreamModelSlug, "glm-5-turbo")
         XCTAssertEqual(entry.attempts.first?.providerLogoKey, "ZaiProviderLogo")
+        XCTAssertEqual(entry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(entry.clientRequestCorrelationID, "2b0d4a57-a4e2-4c18-9af0-2026e06eaf51")
+    }
+
+    func testGatewayRejectsForgedSafariAttributionBeforeProviderContact() async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body: #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#
+        )
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(
+                session: session
+            ),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        let (response, body) = try await sendGatewayRequest(
+            port: harness.port,
+            method: "POST",
+            path: "/v1/chat/completions",
+            headers: [
+                "Content-Type": "application/json",
+                "Origin": "http://127.0.0.1:5173",
+                "User-Agent": "openburnbar-safari-extension",
+                "X-OpenBurnBar-Client": "openburnbar-safari-extension",
+                "X-OpenBurnBar-Correlation-ID":
+                    "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51",
+                "X-OpenBurnBar-Attribution-Capability": "00"
+            ],
+            body: Data(
+                #"{"model":"glm-5-turbo","messages":[{"role":"user","content":"hi"}]}"#
+                    .utf8
+            )
+        )
+
+        XCTAssertEqual(
+            response.statusCode,
+            401,
+            String(decoding: body, as: UTF8.self)
+        )
+        XCTAssertEqual(
+            response.value(forHTTPHeaderField: "Access-Control-Allow-Origin"),
+            "http://127.0.0.1:5173"
+        )
+        XCTAssertTrue(
+            String(decoding: body, as: UTF8.self)
+                .contains(#""code":"gateway_attribution_rejected""#)
+        )
+        XCTAssertEqual(
+            GatewayUpstreamURLProtocol.recordedRequests().map(\.path),
+            [],
+            "Rejected Safari attribution must not reach model discovery or provider execution."
+        )
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        XCTAssertTrue(routeLog.isEmpty)
+
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        XCTAssertTrue(usage.isEmpty)
+    }
+
+    func testGatewayRejectsForgedSafariAttributionBeforeModelCatalogDiscovery()
+        async throws {
+        let sessionConfig = URLSessionConfiguration.ephemeral
+        sessionConfig.protocolClasses = [GatewayUpstreamURLProtocol.self]
+        let session = URLSession(configuration: sessionConfig)
+        GatewayUpstreamURLProtocol.enqueue(
+            status: 200,
+            body:
+                #"{"object":"list","data":[{"id":"glm-5-turbo","display_name":"GLM 5 Turbo"}]}"#
+        )
+        let harness = try GatewayHarness(
+            providerExecutor: BurnBarOpenAICompatibleProviderExecutor(
+                session: session
+            ),
+            modelCatalogSession: session
+        )
+        try await harness.configureZAIProviderForGateway()
+        try await harness.start()
+        addTeardownBlock { await harness.stop() }
+
+        for path in ["/v1/models", "/v1/models/catalog"] {
+            let (response, body) = try await sendGatewayRequest(
+                port: harness.port,
+                method: "GET",
+                path: path,
+                headers: [
+                    "Origin": "http://127.0.0.1:5173",
+                    "X-OpenBurnBar-Client":
+                        GatewayRequestAttribution.safariClientSource,
+                    "X-OpenBurnBar-Correlation-ID":
+                        "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51",
+                    "X-OpenBurnBar-Attribution-Capability": "00"
+                ]
+            )
+
+            XCTAssertEqual(
+                response.statusCode,
+                401,
+                String(decoding: body, as: UTF8.self)
+            )
+            XCTAssertEqual(
+                response.value(
+                    forHTTPHeaderField: "Access-Control-Allow-Origin"
+                ),
+                "http://127.0.0.1:5173"
+            )
+            XCTAssertTrue(
+                String(decoding: body, as: UTF8.self)
+                    .contains(#""code":"gateway_attribution_rejected""#)
+            )
+        }
+        XCTAssertEqual(GatewayUpstreamURLProtocol.recordedRequests(), [])
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        XCTAssertTrue(routeLog.isEmpty)
+        let usage = try await harness.usageRecorder.recentUsage(limit: 1)
+        XCTAssertTrue(usage.isEmpty)
     }
 
     func testGatewayRecordsEachRepeatedUpstreamDispatchInUsageLedger() async throws {
@@ -971,7 +1109,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             port: harness.port,
             method: "POST",
             path: "/v1/chat/completions",
-            headers: ["Content-Type": "application/json"],
+            headers: await harness.safariHeaders(
+                correlationID: "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51"
+            ),
             body: Data(#"{"model":"claude-3-opus","messages":[{"role":"user","content":"hi"}]}"#.utf8)
         )
 
@@ -999,6 +1139,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(entry.attempts.map(\.providerID), ["deepseek"])
         XCTAssertEqual(entry.attempts.map(\.upstreamModelSlug), ["deepseek-chat"])
         XCTAssertEqual(entry.attempts.map(\.providerLogoKey), ["DeepSeekProviderLogo"])
+        XCTAssertEqual(entry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(entry.clientRequestCorrelationID, "2b0d4a57-a4e2-4c18-9af0-2026e06eaf51")
     }
 
     func testGatewayPreservesLiveDynamicModelIDInsteadOfCatalogFamilyDowngrade() async throws {
@@ -2610,7 +2752,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             port: harness.port,
             method: "POST",
             path: "/v1/responses",
-            headers: ["Content-Type": "application/json"],
+            headers: await harness.safariHeaders(
+                correlationID: "7DC72490-799E-4A9D-B22B-35E6860B9C31"
+            ),
             body: Data(#"{"model":"openburnbar/glm-5-turbo","input":"hello"}"#.utf8)
         )
 
@@ -2630,6 +2774,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].modelID, "glm-5-turbo")
         XCTAssertEqual(usage[0].inputTokens, 3)
         XCTAssertEqual(usage[0].outputTokens, 4)
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        let routeEntry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(routeEntry.requestPath, "/v1/responses")
+        XCTAssertEqual(routeEntry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(
+            routeEntry.clientRequestCorrelationID,
+            "7dc72490-799e-4a9d-b22b-35e6860b9c31"
+        )
     }
 
     func testGatewayResponsesRecordsCachedInputAsDisjointBucket() async throws {
@@ -2964,7 +3116,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             port: harness.port,
             method: "POST",
             path: "/v1/chat/completions",
-            headers: ["Content-Type": "application/json"],
+            headers: await harness.safariHeaders(
+                correlationID: "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51"
+            ),
             body: Data(#"{"model":"glm-5-turbo","messages":[{"role":"user","content":"hello"}]}"#.utf8)
         )
 
@@ -2991,6 +3145,10 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].modelID, "glm-5-turbo")
         XCTAssertEqual(usage[0].inputTokens, 11)
         XCTAssertEqual(usage[0].outputTokens, 7)
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        let routeEntry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(routeEntry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(routeEntry.clientRequestCorrelationID, "2b0d4a57-a4e2-4c18-9af0-2026e06eaf51")
     }
 
     func testCodexOpenAICompatRequestFailsOverWhenPrimaryQuotaExhausted() async throws {
@@ -3073,7 +3231,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             port: harness.port,
             method: "POST",
             path: "/v1/chat/completions",
-            headers: ["Content-Type": "application/json"],
+            headers: await harness.safariHeaders(
+                correlationID: "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51"
+            ),
             body: Data(#"{"model":"shared-code-model","messages":[{"role":"user","content":"hello"}]}"#.utf8)
         )
 
@@ -3096,6 +3256,8 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(entry.attempts.first?.failureMessage, "OpenBurnBar provider request failed with status 400.")
         XCTAssertFalse(entry.failureMessage?.contains("PRIVATE_UPSTREAM_BODY_MARKER") ?? false)
         XCTAssertFalse(entry.attempts.first?.failureMessage?.contains("PRIVATE_UPSTREAM_BODY_MARKER") ?? false)
+        XCTAssertEqual(entry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(entry.clientRequestCorrelationID, "2b0d4a57-a4e2-4c18-9af0-2026e06eaf51")
     }
 
     func testGatewayAnthropicDoesNotDowngradeAcrossCapabilityClassesDuringFailover() async throws {
@@ -3666,7 +3828,9 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
             port: harness.port,
             method: "POST",
             path: "/v1/messages",
-            headers: ["Content-Type": "application/json"],
+            headers: await harness.safariHeaders(
+                correlationID: "8A738415-1411-4F36-9C79-4F5D363A0D28"
+            ),
             body: Data(#"{"model":"claude-sonnet-4-6","max_tokens":64,"messages":[{"role":"user","content":"hi"}]}"#.utf8)
         )
 
@@ -3688,6 +3852,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         XCTAssertEqual(usage[0].providerID, "anthropic")
         XCTAssertEqual(usage[0].inputTokens, 17)
         XCTAssertEqual(usage[0].outputTokens, 4)
+        let routeLog = try await harness.proxyRouteLogStore.recent(limit: 1)
+        let routeEntry = try XCTUnwrap(routeLog.first)
+        XCTAssertEqual(routeEntry.requestPath, "/v1/messages")
+        XCTAssertEqual(routeEntry.clientSource, "openburnbar-safari-extension")
+        XCTAssertEqual(
+            routeEntry.clientRequestCorrelationID,
+            "8a738415-1411-4f36-9c79-4f5d363a0d28"
+        )
     }
 
     func testGatewayStripsClaudeCodeContextManagementBeforeAnthropicProxy() async throws {
@@ -5747,6 +5919,9 @@ final class GatewayHarness: @unchecked Sendable {
     private let modelCatalogDroidProcessRunner: any FactoryDroidProcessRunning
     private let modelCatalogCacheTTL: TimeInterval
     private let modelHealthStore: BurnBarGatewayModelHealthStore
+    private let safariAttributionAuthority: SafariGatewayAttributionAuthority
+    private let safariClientID = BurnBarClientID(rawValue: "gateway-tests-safari-client")
+    private let safariSessionID = BurnBarSessionID(rawValue: "gateway-tests-safari-session")
     private let logger = BurnBarDaemonLogger(category: "gateway-tests")
 
     init(
@@ -5798,6 +5973,13 @@ final class GatewayHarness: @unchecked Sendable {
         self.modelHealthStore = BurnBarGatewayModelHealthStore(
             fileURL: tempDirectory.appendingPathComponent("gateway-model-health.json")
         )
+        let safariClientID = self.safariClientID
+        let safariSessionID = self.safariSessionID
+        self.safariAttributionAuthority = SafariGatewayAttributionAuthority(
+            sessionAttachmentValidator: { clientID, sessionID in
+                clientID == safariClientID && sessionID == safariSessionID
+            }
+        )
 
         self.server = BurnBarHTTPGatewayServer(
             configuration: BurnBarGatewayConfiguration(
@@ -5823,7 +6005,8 @@ final class GatewayHarness: @unchecked Sendable {
             modelCatalogSession: modelCatalogSession,
             modelCatalogDroidProcessRunner: modelCatalogDroidProcessRunner,
             modelCatalogCacheTTL: modelCatalogCacheTTL,
-            logger: logger
+            logger: logger,
+            safariAttributionAuthority: safariAttributionAuthority
         )
     }
 
@@ -5852,8 +6035,25 @@ final class GatewayHarness: @unchecked Sendable {
             modelCatalogSession: modelCatalogSession,
             modelCatalogDroidProcessRunner: modelCatalogDroidProcessRunner,
             modelCatalogCacheTTL: modelCatalogCacheTTL,
-            logger: logger
+            logger: logger,
+            safariAttributionAuthority: safariAttributionAuthority
         )
+    }
+
+    func safariHeaders(correlationID: String) async -> [String: String] {
+        guard let capability = await safariAttributionAuthority.issue(
+            clientID: safariClientID,
+            sessionID: safariSessionID
+        ) else {
+            XCTFail("Expected the attached Safari test session to receive an attribution capability.")
+            return [:]
+        }
+        return [
+            "Content-Type": "application/json",
+            "X-OpenBurnBar-Client": GatewayRequestAttribution.safariClientSource,
+            "X-OpenBurnBar-Correlation-ID": correlationID,
+            "X-OpenBurnBar-Attribution-Capability": capability.token
+        ]
     }
 
     static func makeUpstreamSession() -> URLSession {

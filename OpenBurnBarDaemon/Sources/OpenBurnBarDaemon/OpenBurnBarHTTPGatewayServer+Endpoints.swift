@@ -10,12 +10,27 @@ import Network
 
 extension BurnBarHTTPGatewayServer {
 
+    private struct ResolvedGatewayClientContext {
+        let executionSource: UsageExecutionSource
+        let attribution: GatewayRequestAttribution
+    }
+
+    private static let safariAttributionRejectionBody =
+        #"{"error":{"message":"Safari attribution capability is invalid or expired.","code":"gateway_attribution_rejected"}}"#
+
     func handleChatCompletions(
         body: String?,
         headers: [String: String],
         connection: NWConnection,
         corsHeaders: [String: String]
     ) async -> GatewayRouteOutcome {
+        let clientContext: ResolvedGatewayClientContext
+        switch await resolvedClientContext(from: headers) {
+        case .success(let resolved):
+            clientContext = resolved
+        case .failure:
+            return safariAttributionRejection()
+        }
         // The Elder Wand: short-circuit to the model-fusion orchestrator when an
         // active `fusion` plugin is present AND the recursion marker is absent.
         // Inner panel/judge/synthesis sub-calls carry the marker so they fall
@@ -32,7 +47,8 @@ extension BurnBarHTTPGatewayServer {
                 connection: connection,
                 corsHeaders: corsHeaders,
                 hostedSearch: ElderWandHostedSearchConfig.resolve(headers: headers),
-                executionSource: executionSource(from: headers)
+                executionSource: clientContext.executionSource,
+                attribution: clientContext.attribution
             )
         }
 
@@ -40,7 +56,8 @@ extension BurnBarHTTPGatewayServer {
             body: body,
             connection: connection,
             corsHeaders: corsHeaders,
-            executionSource: executionSource(from: headers),
+            executionSource: clientContext.executionSource,
+            attribution: clientContext.attribution,
             descriptor: chatCompletionsEndpointDescriptor
         )
     }
@@ -102,18 +119,27 @@ extension BurnBarHTTPGatewayServer {
                     advertisedModelSlug: request.advertisedModelSlug,
                     routingModelSlug: request.routingModelSlug,
                     requestedCanonicalModelID: request.requestedCanonicalModelID,
-                    priorAttempts: request.priorAttempts
+                    priorAttempts: request.priorAttempts,
+                    attribution: request.attribution
                 )
             }
         )
     }
 
     func handleResponses(body: String?, headers: [String: String]) async -> GatewayRouteOutcome {
-        await routeModelRequest(
+        let clientContext: ResolvedGatewayClientContext
+        switch await resolvedClientContext(from: headers) {
+        case .success(let resolved):
+            clientContext = resolved
+        case .failure:
+            return safariAttributionRejection()
+        }
+        return await routeModelRequest(
             body: body,
             connection: nil,
             corsHeaders: [:],
-            executionSource: executionSource(from: headers),
+            executionSource: clientContext.executionSource,
+            attribution: clientContext.attribution,
             descriptor: responsesEndpointDescriptor
         )
     }
@@ -157,22 +183,98 @@ extension BurnBarHTTPGatewayServer {
         connection: NWConnection,
         corsHeaders: [String: String]
     ) async -> GatewayRouteOutcome {
-        await routeModelRequest(
+        let clientContext: ResolvedGatewayClientContext
+        switch await resolvedClientContext(from: headers) {
+        case .success(let resolved):
+            clientContext = resolved
+        case .failure:
+            return safariAttributionRejection()
+        }
+        return await routeModelRequest(
             body: body,
             connection: connection,
             corsHeaders: corsHeaders,
-            executionSource: executionSource(from: headers),
+            executionSource: clientContext.executionSource,
+            attribution: clientContext.attribution,
             descriptor: anthropicMessagesEndpointDescriptor
         )
     }
 
-    private func executionSource(from headers: [String: String]) -> UsageExecutionSource {
-        UsageExecutionSourceResolver.fromClientMarker(
-            headers["x-openburnbar-client"],
-            allowCustom: true
+    private func resolvedClientContext(
+        from headers: [String: String]
+    ) async -> Result<ResolvedGatewayClientContext, SafariAttributionRejection> {
+        let safariMarker = headers["x-openburnbar-client"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(GatewayRequestAttribution.safariClientSource)
+            == .orderedSame
+        let resolution: GatewayRequestAttributionResolution
+        if let safariAttributionAuthority {
+            resolution = await safariAttributionAuthority.resolve(
+                headers: headers
+            )
+        } else {
+            resolution = safariMarker ? .rejected : .absent
+        }
+
+        let executionSource: UsageExecutionSource
+        switch resolution {
+        case .accepted(let attribution):
+            executionSource = UsageExecutionSourceResolver.fromClientMarker(
+                attribution.clientSource
+            ) ?? .unknown
+        case .absent:
+            executionSource = nonSafariExecutionSource(
+                clientMarker: headers["x-openburnbar-client"],
+                userAgent: headers["user-agent"]
+            )
+        case .rejected:
+            return .failure(SafariAttributionRejection())
+        }
+        return .success(
+            ResolvedGatewayClientContext(
+                executionSource: executionSource,
+                attribution: resolution.attribution
+            )
         )
-            ?? UsageExecutionSourceResolver.fromClientMarker(headers["user-agent"])
-            ?? .unknown
+    }
+
+    private struct SafariAttributionRejection: Error {}
+
+    func rejectInvalidSafariAttribution(
+        headers: [String: String]
+    ) async -> GatewayHTTPResponse? {
+        switch await resolvedClientContext(from: headers) {
+        case .success:
+            return nil
+        case .failure:
+            return safariAttributionRejectionResponse()
+        }
+    }
+
+    private func safariAttributionRejection() -> GatewayRouteOutcome {
+        .buffered(safariAttributionRejectionResponse())
+    }
+
+    private func safariAttributionRejectionResponse() -> GatewayHTTPResponse {
+        jsonResponse(
+            status: 401,
+            body: Self.safariAttributionRejectionBody
+        )
+    }
+
+    private func nonSafariExecutionSource(
+        clientMarker: String?,
+        userAgent: String?
+    ) -> UsageExecutionSource {
+        let resolved = UsageExecutionSourceResolver.fromClientMarker(
+            clientMarker,
+            allowCustom: true
+        ) ?? UsageExecutionSourceResolver.fromClientMarker(userAgent)
+        guard resolved?.id
+                != GatewayRequestAttribution.safariClientSource else {
+            return .unknown
+        }
+        return resolved ?? .unknown
     }
 
     /// Per-endpoint pipeline parameterization for `/v1/messages`.

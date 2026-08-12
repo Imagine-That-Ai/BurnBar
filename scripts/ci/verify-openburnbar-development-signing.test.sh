@@ -284,11 +284,59 @@ OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER=/usr/bin/false \
   "$app_path" \
   "$team_id"
 
-if [[ "$(grep -c -- "--extract-certificates" "$codesign_log")" != "2" ]]; then
-  echo "FAIL: host and Safari signer/profile certificate membership were not both verified." >&2
+expected_identity="Apple Development: OpenBurnBar Test ($team_id)"
+expected_certificate_sha1="$(
+  printf 'openburnbar-fixture-signer' | shasum -a 1 | awk '{print toupper($1)}'
+)"
+OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER=/usr/bin/false \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" \
+  "$team_id" \
+  "$good_app_profile" \
+  "$good_appex_profile" \
+  "$expected_identity" \
+  "$expected_certificate_sha1"
+
+if [[ "$(grep -c -- "--extract-certificates" "$codesign_log")" != "6" ]]; then
+  echo "FAIL: host and Safari signer/profile certificate membership were not verified in both compatibility and audited-profile modes." >&2
   cat "$codesign_log" >&2
   exit 1
 fi
+
+audited_host_profile="$work_dir/audited-host-mismatch.provisionprofile"
+cp "$good_app_profile" "$audited_host_profile"
+printf 'mismatch\n' >> "$audited_host_profile"
+assert_fails_with \
+  "Embedded host development profile differs from the audited host profile" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id" "$audited_host_profile" "$good_appex_profile"
+
+audited_appex_profile="$work_dir/audited-appex-mismatch.provisionprofile"
+cp "$good_appex_profile" "$audited_appex_profile"
+printf 'mismatch\n' >> "$audited_appex_profile"
+assert_fails_with \
+  "Embedded Safari development profile differs from the audited Safari profile" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id" "$good_app_profile" "$audited_appex_profile"
+
+export MOCK_APP_AUTHORITY="Apple Development: Substituted Signer ($team_id)"
+assert_fails_with \
+  "Development app leaf signing identity must exactly match" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id" "$good_app_profile" "$good_appex_profile" "$expected_identity" "$expected_certificate_sha1"
+unset MOCK_APP_AUTHORITY
+
+export MOCK_APPEX_AUTHORITY="Apple Development: Substituted Signer ($team_id)"
+assert_fails_with \
+  "Safari extension leaf signing identity must exactly match" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id" "$good_app_profile" "$good_appex_profile" "$expected_identity" "$expected_certificate_sha1"
+unset MOCK_APPEX_AUTHORITY
+
+assert_fails_with \
+  "Development app leaf certificate SHA-1 must match" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id" "$good_app_profile" "$good_appex_profile" "$expected_identity" "1111111111111111111111111111111111111111"
 
 python3 - "$appex_profile" "$team_id" <<'PY'
 import plistlib
@@ -415,15 +463,49 @@ from pathlib import Path
 path = Path(sys.argv[1])
 with path.open("rb") as file:
     profile = plistlib.load(file)
+profile["Entitlements"]["com.apple.security.get-task-allow"] = "invalid"
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+assert_fails_with \
+  "development app profile get-task-allow entitlement must be absent or True" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_app_profile" "$app_profile"
+
+python3 - "$app_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["Entitlements"].pop("com.apple.security.get-task-allow", None)
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_app_profile" "$app_profile"
+
+python3 - "$appex_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
 profile["Entitlements"]["com.apple.security.get-task-allow"] = False
 with path.open("wb") as file:
     plistlib.dump(profile, file)
 PY
 assert_fails_with \
-  "development app profile get-task-allow entitlement must be True" \
+  "development Safari profile must not explicitly disable get-task-allow" \
   bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
   "$app_path" "$team_id"
-cp "$good_app_profile" "$app_profile"
+cp "$good_appex_profile" "$appex_profile"
 
 python3 - "$appex_profile" <<'PY'
 import plistlib
@@ -437,9 +519,7 @@ profile["Entitlements"].pop("com.apple.security.get-task-allow", None)
 with path.open("wb") as file:
     plistlib.dump(profile, file)
 PY
-assert_fails_with \
-  "development Safari profile get-task-allow entitlement must be True" \
-  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
   "$app_path" "$team_id"
 cp "$good_appex_profile" "$appex_profile"
 

@@ -32,12 +32,14 @@ extension BurnBarHTTPGatewayServer {
         connection: NWConnection,
         corsHeaders: [String: String],
         hostedSearch: ElderWandHostedSearchConfig?,
-        executionSource: UsageExecutionSource
+        executionSource: UsageExecutionSource,
+        attribution: GatewayRequestAttribution = .none
     ) async -> GatewayRouteOutcome {
         let startedAt = Date()
         let orchestrator = makeElderWandOrchestrator(
             hostedSearch: hostedSearch,
-            executionSource: executionSource
+            executionSource: executionSource,
+            attribution: attribution
         )
         let result = await orchestrator.run(
             bodyData: bodyData,
@@ -93,7 +95,8 @@ extension BurnBarHTTPGatewayServer {
                     streamInterrupted: relay.interrupted,
                     usage: relay.usage,
                     succeeded: !relay.interrupted,
-                    failureMessage: relay.interrupted ? "synthesis stream interrupted" : nil
+                    failureMessage: relay.interrupted ? "synthesis stream interrupted" : nil,
+                    attribution: attribution
                 )
                 // Emit the full itemized fusion session as a final SSE frame so
                 // clients with no local ledger (iOS over the relay) render the
@@ -121,7 +124,8 @@ extension BurnBarHTTPGatewayServer {
                     streaming: streaming,
                     startedAt: startedAt,
                     corsHeaders: corsHeaders,
-                    executionSource: executionSource
+                    executionSource: executionSource,
+                    attribution: attribution
                 )
             } catch {
                 await recordElderWandRouteFailure(streaming.route, error: error)
@@ -136,7 +140,8 @@ extension BurnBarHTTPGatewayServer {
                     streamInterrupted: false,
                     usage: nil,
                     succeeded: false,
-                    failureMessage: error.localizedDescription
+                    failureMessage: error.localizedDescription,
+                    attribution: attribution
                 )
                 return .buffered(providerFailureResponse(error, modelID: originatingModel, route: streaming.route.route))
             }
@@ -148,7 +153,8 @@ extension BurnBarHTTPGatewayServer {
         streaming: ElderWandFusionResult.Streaming,
         startedAt: Date,
         corsHeaders: [String: String],
-        executionSource: UsageExecutionSource
+        executionSource: UsageExecutionSource,
+        attribution: GatewayRequestAttribution
     ) async -> GatewayRouteOutcome {
         // Re-encode the synthesis body with stream:false.
         var bufferedBody = streaming.requestBody
@@ -184,7 +190,8 @@ extension BurnBarHTTPGatewayServer {
                 streamInterrupted: false,
                 usage: response.usage,
                 succeeded: true,
-                failureMessage: nil
+                failureMessage: nil,
+                attribution: attribution
             )
             return .buffered(GatewayHTTPResponse(
                 status: response.statusCode,
@@ -192,6 +199,23 @@ extension BurnBarHTTPGatewayServer {
                 body: response.body
             ))
         } catch {
+            logger.error(
+                "elder_wand_buffered_synthesis_failed",
+                metadata: ["error": "\(error)"]
+            )
+            await recordElderWandRouteLog(
+                stageLabel: "synthesis",
+                route: streaming.route.route,
+                parentRequestID: streaming.parentRequestID,
+                startedAt: startedAt,
+                httpStatus: Self.httpStatus(from: error),
+                streamed: false,
+                streamInterrupted: false,
+                usage: nil,
+                succeeded: false,
+                failureMessage: error.localizedDescription,
+                attribution: attribution
+            )
             return .buffered(providerFailureResponse(error, modelID: streaming.route.wireModelSlug, route: streaming.route.route))
         }
     }
@@ -199,7 +223,8 @@ extension BurnBarHTTPGatewayServer {
     /// Construct an orchestrator over the server's stored deps.
     private func makeElderWandOrchestrator(
         hostedSearch: ElderWandHostedSearchConfig?,
-        executionSource: UsageExecutionSource
+        executionSource: UsageExecutionSource,
+        attribution: GatewayRequestAttribution
     ) -> ElderWandFusionOrchestrator {
         let tools = ElderWandWebTools(hostedSearch: hostedSearch).makeTools()
         return ElderWandFusionOrchestrator(
@@ -210,7 +235,11 @@ extension BurnBarHTTPGatewayServer {
                 try await self.executeElderWandBufferedCompletion(body: body, resolved: resolved)
             },
             recordSubCall: { [self] record in
-                await self.recordElderWandSubCall(record, executionSource: executionSource)
+                await self.recordElderWandSubCall(
+                    record,
+                    executionSource: executionSource,
+                    attribution: attribution
+                )
             },
             tools: tools,
             recursionMarkerKey: Self.fusionRecursionMarkerKey,
@@ -394,7 +423,8 @@ extension BurnBarHTTPGatewayServer {
     /// stamping the shared `parentRequestID` and a distinct idempotency key.
     private func recordElderWandSubCall(
         _ record: ElderWandSubCallRecord,
-        executionSource: UsageExecutionSource
+        executionSource: UsageExecutionSource,
+        attribution: GatewayRequestAttribution
     ) async {
         let startedAt = Date()
         guard let route = record.route else {
@@ -405,7 +435,8 @@ extension BurnBarHTTPGatewayServer {
                 modelSlug: record.modelSlug,
                 parentRequestID: record.parentRequestID,
                 startedAt: startedAt,
-                failureMessage: record.failureMessage
+                failureMessage: record.failureMessage,
+                attribution: attribution
             )
             return
         }
@@ -434,7 +465,8 @@ extension BurnBarHTTPGatewayServer {
             streamInterrupted: false,
             usage: record.usage,
             succeeded: record.succeeded,
-            failureMessage: record.failureMessage
+            failureMessage: record.failureMessage,
+            attribution: attribution
         )
     }
 
@@ -443,7 +475,8 @@ extension BurnBarHTTPGatewayServer {
         modelSlug: String,
         parentRequestID: String,
         startedAt: Date,
-        failureMessage: String?
+        failureMessage: String?,
+        attribution: GatewayRequestAttribution
     ) async {
         let context = GatewayRequestContext(
             startedAt: startedAt,
@@ -454,7 +487,8 @@ extension BurnBarHTTPGatewayServer {
             routingModelSlug: modelSlug,
             clientModelDisplayName: modelSlug,
             routingModelDisplayName: modelSlug,
-            rewriteKind: .none
+            rewriteKind: .none,
+            attribution: attribution
         )
         await recordProxyRouteLogEntry(
             context: context,
@@ -478,7 +512,8 @@ extension BurnBarHTTPGatewayServer {
         streamInterrupted: Bool,
         usage: BurnBarProviderProxyUsage?,
         succeeded: Bool,
-        failureMessage: String?
+        failureMessage: String?,
+        attribution: GatewayRequestAttribution
     ) async {
         let context = GatewayRequestContext(
             startedAt: startedAt,
@@ -489,7 +524,8 @@ extension BurnBarHTTPGatewayServer {
             routingModelSlug: route.resolvedModelID,
             clientModelDisplayName: route.requestedModel,
             routingModelDisplayName: route.resolvedModelID,
-            rewriteKind: .none
+            rewriteKind: .none,
+            attribution: attribution
         )
         let finalStatus: BurnBarProxyRouteFinalStatus = {
             if streamInterrupted { return .streamRelayOutcome(interrupted: true) }

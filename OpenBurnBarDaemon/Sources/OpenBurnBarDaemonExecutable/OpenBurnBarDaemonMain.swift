@@ -15,6 +15,20 @@ import Sentry
 @main
 struct OpenBurnBarDaemonExecutable {
     static func main() async throws {
+        // Safari hand-off containment helpers are deliberately tiny subprocess
+        // modes, not second daemons. Handle them before caches, telemetry,
+        // credentials, code-signature policy, or socket configuration.
+        if SafariHandoffProcessSentinel.runIfRequested(
+            arguments: Array(CommandLine.arguments.dropFirst())
+        ) {
+            return
+        }
+        if SafariHandoffProcessWatchdog.runIfRequested(
+            arguments: Array(CommandLine.arguments.dropFirst())
+        ) {
+            return
+        }
+
         // Disable the shared URLCache disk store. URLSession.shared uses a
         // persistent disk cache at ~/Library/Caches/OpenBurnBarDaemon/Cache.db
         // that is prone to SQLite WAL corruption when the daemon is restarted
