@@ -34,52 +34,22 @@ public enum BurnBarDaemonError: Error, LocalizedError {
     }
 }
 
-/// Documented error codes for the RPC error envelope matrix (VAL-RPC-016).
-/// Every failure class returns its exact code; the matrix is documented in
-/// `docs/fleet/BURNBAR_FLEET_SIGNALS.md` ("RPC transport & error envelope
-/// matrix").
-private enum BurnBarRPCErrorCode {
-    /// Malformed JSON payload (not decodable as a JSON object).
-    static let parseError = -32700
-    /// Valid JSON whose envelope shape is invalid (missing/wrong-typed id or method).
-    static let invalidRequest = -32600
-    /// Unknown method.
-    static let methodNotFound = -32601
-    /// Typed params decode failure.
-    static let invalidParams = -32602
-    /// Daemon-side failure (e.g. fleet not ready, search unavailable).
-    static let internalError = -32603
-    /// Declared `protocolVersion` is outside the supported set (VAL-RPC-012).
-    static let protocolVersionMismatch = -32001
-    /// Frame exceeds the 64KB payload cap (VAL-RPC-004).
-    static let frameTooLarge = -32002
-}
-
-private struct IncomingRequestEnvelope: Decodable {
-    let id: String
-    let method: String
-    /// Optional declared protocol version. Absent = v1 (existing clients
-    /// predate the field); a declared version outside the supported set is
-    /// rejected typed (VAL-RPC-012) — never silently processed under v1.
-    let protocolVersion: Int?
-}
-
-/// Minimal id-only probe used to recover a request id when the full envelope
-/// failed to decode (e.g. a missing `method`). A wrong-typed `id` (non-string)
-/// fails this probe too, so the documented no-id sentinel is used instead.
-private struct IncomingRequestIDProbe: Decodable {
-    let id: String?
-}
-
-private struct BurnBarEmptyResult: Codable, Sendable {}
-
 public actor BurnBarDaemonServer {
     private static let maxRequestBytes = 64 * 1024
 
     /// Documented id used in error envelopes when the request id is absent or
     /// not syntactically recoverable (VAL-RPC-011/016). The daemon never
     /// fabricates a client-supplied id.
-    static let noRequestID = "no-id"
+    static let noRequestID = BurnBarRPCErrorEnvelope.noRequestID
+
+    private struct IncomingRequestEnvelope: Decodable {
+        let id: String
+        let method: String
+        /// Optional declared protocol version. Absent = v1 (existing clients
+        /// predate the field); a declared version outside the supported set is
+        /// rejected typed (VAL-RPC-012) — never silently processed under v1.
+        let protocolVersion: Int?
+    }
 
     public let configuration: BurnBarDaemonConfiguration
 
@@ -271,12 +241,14 @@ extension BurnBarDaemonServer {
                         "declared_version": "\(declared)"
                     ]
                 )
-                return encodeErrorResponse(
+                return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                     id: incomingRequest.id,
                     code: BurnBarRPCErrorCode.protocolVersionMismatch,
                     message:
                         "BurnBar RPC protocol version \(declared) is not supported. "
-                        + "Supported versions: \(BurnBarProtocolVersion.supported)."
+                        + "Supported versions: \(BurnBarProtocolVersion.supported).",
+                    details:
+                        "declared_version=\(declared); supported_versions=\(BurnBarProtocolVersion.supported)"
                 )
             }
 
@@ -288,10 +260,11 @@ extension BurnBarDaemonServer {
                         "method": incomingRequest.method
                     ]
                 )
-                return encodeErrorResponse(
+                return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                     id: incomingRequest.id,
                     code: BurnBarRPCErrorCode.methodNotFound,
-                    message: "Unsupported BurnBar RPC method '\(incomingRequest.method)'."
+                    message: "Unsupported BurnBar RPC method '\(incomingRequest.method)'.",
+                    details: "method=\(incomingRequest.method)"
                 )
             }
 
@@ -315,27 +288,57 @@ extension BurnBarDaemonServer {
             //   id or method) → invalid request (-32600);
             // - well-formed envelope whose params fail to decode → invalid
             //   params (-32602).
-            let recoveredID = Self.recoverRequestID(from: requestData)
+            let recoveredID = BurnBarRPCErrorEnvelope.recoverRequestID(from: requestData)
             let code: Int
+            let details: String
             if error is DecodingError {
                 if (try? JSONDecoder().decode(IncomingRequestEnvelope.self, from: requestData)) != nil {
                     // Well-formed envelope whose params fail to decode.
                     code = BurnBarRPCErrorCode.invalidParams
-                } else if Self.isValidJSONObject(requestData) {
+                    details = "expected_params=object; received=\(Self.describeTopLevelType(requestData))"
+                } else if BurnBarRPCErrorEnvelope.isValidJSONObject(requestData) {
                     // Valid JSON with a wrong envelope shape.
                     code = BurnBarRPCErrorCode.invalidRequest
+                    details = "expected_envelope={\"id\":string,\"method\":string,\"protocolVersion\"?:int}"
                 } else {
                     // Not valid JSON at all.
                     code = BurnBarRPCErrorCode.parseError
+                    details = "expected=json_object; received=non_json_bytes"
                 }
             } else {
                 code = BurnBarRPCErrorCode.internalError
+                details = "error=\(error)"
             }
-            return encodeErrorResponse(
+            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                 id: recoveredID,
                 code: code,
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                details: details
             )
+        }
+    }
+
+    /// Describes the top-level JSON type of a request frame's `params` value
+    /// for error `details` (e.g. a string `params` vs an object). Never
+    /// includes payload content — only the type name.
+    private static func describeTopLevelType(_ requestData: Data) -> String {
+        guard let object = try? JSONSerialization.jsonObject(with: requestData) as? [String: Any],
+              let params = object["params"] else {
+            return "absent"
+        }
+        switch params {
+        case is [String: Any]:
+            return "object"
+        case is [Any]:
+            return "array"
+        case is String:
+            return "string"
+        case is Bool:
+            return "boolean"
+        case is NSNumber:
+            return "number"
+        default:
+            return "null"
         }
     }
 
@@ -560,11 +563,12 @@ extension BurnBarDaemonServer {
                 from: requestData
             )
             guard let indexedSearch else {
-                return encodeErrorResponse(
+                return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                     id: typedRequest.id,
                     code: BurnBarRPCErrorCode.internalError,
                     message:
-                        "BurnBar indexed search is not available. Ensure BURNBAR_INDEX_DATABASE_PATH points to your BurnBar database and restart the daemon."
+                        "BurnBar indexed search is not available. Ensure BURNBAR_INDEX_DATABASE_PATH points to your BurnBar database and restart the daemon.",
+                    details: "index_database_path=\(configuration.indexDatabasePath ?? "unset")"
                 )
             }
             do {
@@ -576,10 +580,11 @@ extension BurnBarDaemonServer {
                 )
                 return encode(response)
             } catch {
-                return encodeErrorResponse(
+                return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                     id: typedRequest.id,
                     code: BurnBarRPCErrorCode.internalError,
-                    message: error.localizedDescription
+                    message: error.localizedDescription,
+                    details: "error=\(error)"
                 )
             }
         case .fleetSnapshot:
@@ -595,10 +600,11 @@ extension BurnBarDaemonServer {
                 decoder: decoder,
                 paramsType: BurnBarFleetOrchestratorGetRequest.self
             )
-            return encodeErrorResponse(
+            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                 id: request.id,
                 code: BurnBarRPCErrorCode.internalError,
-                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented."
+                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented.",
+                details: "method=\(method.rawValue); implemented_in=M4"
             )
         case .fleetOrchestratorSet:
             try Self.validatePlaceholderParams(
@@ -606,10 +612,11 @@ extension BurnBarDaemonServer {
                 decoder: decoder,
                 paramsType: BurnBarFleetOrchestratorSetRequest.self
             )
-            return encodeErrorResponse(
+            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                 id: request.id,
                 code: BurnBarRPCErrorCode.internalError,
-                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented."
+                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented.",
+                details: "method=\(method.rawValue); implemented_in=M4"
             )
         case .fleetDirectiveRecord:
             try Self.validatePlaceholderParams(
@@ -617,31 +624,13 @@ extension BurnBarDaemonServer {
                 decoder: decoder,
                 paramsType: BurnBarFleetDirectiveRecordRequest.self
             )
-            return encodeErrorResponse(
+            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                 id: request.id,
                 code: BurnBarRPCErrorCode.internalError,
-                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented."
+                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented.",
+                details: "method=\(method.rawValue); implemented_in=M4"
             )
         }
-    }
-
-    /// True when the frame is syntactically valid JSON (any shape, including
-    /// top-level fragments). `.fragmentsAllowed` is required: else valid
-    /// fragments are misclassified as parse errors.
-    private static func isValidJSONObject(_ data: Data) -> Bool {
-        (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil
-    }
-
-    /// Recovers the request id from a partially decoded frame: the full
-    /// envelope decode failed, so a minimal id-only probe decides whether the
-    /// id is syntactically recoverable. Returns the documented no-id
-    /// sentinel when the id is absent or wrong-typed.
-    private static func recoverRequestID(from requestData: Data) -> String {
-        if let probe = try? JSONDecoder().decode(IncomingRequestIDProbe.self, from: requestData),
-           let id = probe.id {
-            return id
-        }
-        return BurnBarDaemonServer.noRequestID
     }
 
     private func encode<Result: Codable & Sendable>(_ envelope: BurnBarRPCResponseEnvelope<Result>) -> Data {
@@ -653,24 +642,13 @@ extension BurnBarDaemonServer {
                 "rpc_encode_failed",
                 metadata: ["error": "\(error)"]
             )
-            return encodeErrorResponse(
+            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                 id: envelope.id,
                 code: BurnBarRPCErrorCode.internalError,
-                message: "Failed to encode BurnBar RPC response."
+                message: "Failed to encode BurnBar RPC response.",
+                details: "error=\(error)"
             )
         }
-    }
-
-    private func encodeErrorResponse(id: String, code: Int, message: String) -> Data {
-        let envelope = BurnBarRPCResponseEnvelope<BurnBarEmptyResult>(
-            id: id,
-            protocolVersion: BurnBarProtocolVersion.current,
-            result: nil,
-            error: BurnBarRPCError(code: code, message: message)
-        )
-
-        let encoder = JSONEncoder()
-        return (try? encoder.encode(envelope)) ?? Data()
     }
 }
 
@@ -744,11 +722,15 @@ extension BurnBarDaemonServer {
                     "rpc_request_too_large",
                     metadata: ["max_bytes": "\(maxBytes)"]
                 )
-                let recoveredID = Self.recoverRequestID(from: partialFrame)
-                let responseData = await server.encodeErrorResponse(
+                let recoveredID = BurnBarRPCErrorEnvelope.recoverRequestID(from: partialFrame)
+                // The cap counts raw UTF-8 payload bytes EXCLUDING the trailing
+                // newline delimiter (VAL-RPC-004); report the same accounting.
+                let payloadBytes = partialFrame.count - (partialFrame.last == 0x0A ? 1 : 0)
+                let responseData = BurnBarRPCErrorEnvelope.encodeErrorResponse(
                     id: recoveredID,
                     code: BurnBarRPCErrorCode.frameTooLarge,
-                    message: error.localizedDescription
+                    message: error.localizedDescription,
+                    details: "max_bytes=\(maxBytes); received_bytes=\(payloadBytes)"
                 ) + Data([0x0A])
                 try? BurnBarUnixDomainSocket.writeAll(responseData, to: clientFileDescriptor)
                 return
@@ -961,11 +943,12 @@ extension BurnBarDaemonServer {
         let readState = await fleetService.readLatestSnapshot()
         switch readState {
         case .notReady:
-            return encodeErrorResponse(
+            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
                 id: typedRequest.id,
                 code: BurnBarRPCErrorCode.internalError,
                 message:
-                    "BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly."
+                    "BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly.",
+                details: "state=not_ready; retry_after=first_tick"
             )
         case .ready(let snapshot):
             let response = BurnBarRPCResponseEnvelope(

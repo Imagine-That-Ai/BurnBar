@@ -87,9 +87,17 @@ targets:
     settings:
       base:
         PRODUCT_NAME: BurnBarDaemon
+        # Xcode 26+ no longer searches subdirectories for clang module maps
+        # (-fno-modulemap-allow-subdirectory-search). GRDB's GRDBSQLite
+        # systemLibrary module map lives at Sources/GRDBSQLite/module.modulemap,
+        # so the package Sources dir must be an explicit header search path for
+        # the daemon target to resolve it during dependency scanning.
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/.spm-cache/checkouts/GRDB.swift/Sources"
     dependencies:
       - package: BurnBarCore
         product: BurnBarCore
+      - package: GRDB
+        product: GRDB
 
   BurnBarDaemonExecutable:
     type: tool
@@ -101,10 +109,15 @@ targets:
         PRODUCT_NAME: BurnBarDaemon
         PRODUCT_MODULE_NAME: BurnBarDaemonExecutable
         PRODUCT_BUNDLE_IDENTIFIER: com.burnbar.daemon
+        # Same GRDBSQLite module-map resolution fix as the BurnBarDaemon
+        # target (Xcode 26+ subdirectory-search change).
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/.spm-cache/checkouts/GRDB.swift/Sources"
     dependencies:
       - target: BurnBarDaemon
       - package: BurnBarCore
         product: BurnBarCore
+      - package: GRDB
+        product: GRDB
 
   BurnBarTests:
     type: bundle.unit-test

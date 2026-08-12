@@ -200,10 +200,16 @@ public struct BurnBarRPCRequestEnvelopeWithParams<Params: Codable & Sendable>: C
 public struct BurnBarRPCError: Codable, Hashable, Sendable {
     public let code: Int
     public let message: String
+    /// Machine-actionable, never-secret-bearing context for the failure
+    /// (e.g. byte counts for oversized frames, the expected envelope shape
+    /// for invalid requests). Always encoded (non-optional); the default is
+    /// empty for callers that have no context to add.
+    public let details: String
 
-    public init(code: Int, message: String) {
+    public init(code: Int, message: String, details: String = "") {
         self.code = code
         self.message = message
+        self.details = details
     }
 }
 

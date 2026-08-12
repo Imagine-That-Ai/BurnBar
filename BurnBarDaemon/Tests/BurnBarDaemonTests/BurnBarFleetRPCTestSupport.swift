@@ -100,8 +100,27 @@ class BurnBarFleetRPCTestCase: XCTestCase {
         let error: BurnBarRPCError?
     }
 
+    /// Decodes the raw error envelope and asserts the contract-required
+    /// `details` key is present and a string (VAL-RPC-016): the error object
+    /// must ALWAYS carry `code`, `message`, AND `details`.
     func decodeErrorEnvelope(_ response: String) throws -> TestEnvelope {
-        try JSONDecoder().decode(TestEnvelope.self, from: Data(response.utf8))
+        let envelope = try JSONDecoder().decode(TestEnvelope.self, from: Data(response.utf8))
+        if let error = envelope.error {
+            let object = try XCTUnwrap(
+                try JSONSerialization.jsonObject(with: Data(response.utf8)) as? [String: Any],
+                "error envelope must be a JSON object"
+            )
+            let errorObject = try XCTUnwrap(object["error"] as? [String: Any], "error object required")
+            XCTAssertTrue(
+                errorObject["details"] is String,
+                "error envelope must carry a string `details` key, got: \(String(describing: errorObject["details"]))"
+            )
+            XCTAssertFalse(
+                error.details.isEmpty,
+                "error details must be non-empty for code \(error.code)"
+            )
+        }
+        return envelope
     }
 
     // MARK: - Socket helpers

@@ -200,20 +200,32 @@ UTF-8 bytes, never characters.
 **Error envelope shape (VAL-RPC-016).** Every error response is one
 `BurnBarRPCResponseEnvelope` line: `protocolVersion: 1`, the request `id`
 when it is syntactically recoverable, **no** `result`, and an `error` object
-with one enumerated `code` plus a non-empty `message`. When the id is absent
-or wrong-typed (non-string), the documented sentinel id `"no-id"` is used —
-the daemon never fabricates a client-supplied id.
+with one enumerated `code`, a non-empty `message`, and a **`details` field
+that is ALWAYS present and encoded as a string** (non-optional in
+`BurnBarRPCError`). `details` carries machine-actionable, never-secret-bearing
+context for the failure class — byte counts for oversized frames, the
+expected envelope shape for invalid requests, declared vs supported versions
+for protocol mismatches. When the id is absent or wrong-typed (non-string),
+the documented sentinel id `"no-id"` is used — the daemon never fabricates a
+client-supplied id.
 
-| Failure class | Example input | Code | id in envelope |
-|---|---|---|---|
-| Unknown method | `{"id":"2","method":"daemon.fleet.nonexistent"}` | `-32601` (methodNotFound) | echoed |
-| Malformed JSON | `{not json` | `-32700` (parseError) | `"no-id"` (not recoverable) |
-| Valid JSON fragment (not an envelope) | `null`, `123`, `"hello"`, `true` | `-32600` (invalidRequest) | `"no-id"` (not recoverable) |
-| Oversized frame | valid JSON payload of 65537 bytes | `-32002` (frameTooLarge) | recovered from the partial frame when present |
-| Missing id | `{"method":"daemon.health"}` | `-32600` (invalidRequest) | `"no-id"` |
-| Wrong-typed id | `{"id":123,"method":"daemon.health"}` | `-32600` (invalidRequest) | `"no-id"` |
-| Wrong params type | `{"id":"p-1","method":"daemon.fleet.orchestrator.set","params":"x"}` | `-32602` (invalidParams) | echoed |
-| protocolVersion mismatch | `{"id":"v-1","method":"daemon.health","protocolVersion":2}` | `-32001` (protocolVersionMismatch) | echoed |
+| Failure class | Example input | Code | id in envelope | `details` contents |
+|---|---|---|---|---|
+| Unknown method | `{"id":"2","method":"daemon.fleet.nonexistent"}` | `-32601` (methodNotFound) | echoed | `method=<requested method name>` |
+| Malformed JSON | `{not json` | `-32700` (parseError) | `"no-id"` (not recoverable) | `expected=json_object; received=non_json_bytes` |
+| Valid JSON fragment (not an envelope) | `null`, `123`, `"hello"`, `true` | `-32600` (invalidRequest) | `"no-id"` (not recoverable) | `expected_envelope={"id":string,"method":string,"protocolVersion"?:int}` |
+| Oversized frame | valid JSON payload of 65537 bytes | `-32002` (frameTooLarge) | recovered from the partial frame when present | `max_bytes=65536; received_bytes=<raw UTF-8 payload bytes excluding the trailing newline>` |
+| Missing id | `{"method":"daemon.health"}` | `-32600` (invalidRequest) | `"no-id"` | `expected_envelope={"id":string,"method":string,"protocolVersion"?:int}` |
+| Wrong-typed id | `{"id":123,"method":"daemon.health"}` | `-32600` (invalidRequest) | `"no-id"` | `expected_envelope={"id":string,"method":string,"protocolVersion"?:int}` |
+| Wrong params type | `{"id":"p-1","method":"daemon.fleet.orchestrator.set","params":"x"}` | `-32602` (invalidParams) | echoed | `expected_params=object; received=<top-level JSON type of params, e.g. string>` |
+| protocolVersion mismatch | `{"id":"v-1","method":"daemon.health","protocolVersion":2}` | `-32001` (protocolVersionMismatch) | echoed | `declared_version=2; supported_versions=[1]` |
+
+`details` never contains secrets, payload content, or request bodies — only
+type names, byte counts, method names, and version numbers. Internal-error
+envelopes (`-32603`) carry `details` naming the failing surface (e.g.
+`state=not_ready; retry_after=first_tick` for pre-first-tick fleet reads,
+`method=<name>; implemented_in=M4` for the M4 placeholder methods, or
+`error=<error description>` for daemon-side failures).
 
 **Parse-vs-classify boundary.** The parse-error class is reserved for bytes
 that are not syntactically valid JSON at all. Top-level JSON fragments
