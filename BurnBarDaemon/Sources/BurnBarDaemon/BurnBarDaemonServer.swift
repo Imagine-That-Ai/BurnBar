@@ -625,9 +625,11 @@ extension BurnBarDaemonServer {
         }
     }
 
-    /// True when the frame is syntactically valid JSON (any shape).
+    /// True when the frame is syntactically valid JSON (any shape, including
+    /// top-level fragments). `.fragmentsAllowed` is required: else valid
+    /// fragments are misclassified as parse errors.
     private static func isValidJSONObject(_ data: Data) -> Bool {
-        (try? JSONSerialization.jsonObject(with: data)) != nil
+        (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil
     }
 
     /// Recovers the request id from a partially decoded frame: the full

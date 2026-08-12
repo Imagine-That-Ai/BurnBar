@@ -191,11 +191,19 @@ the daemon never fabricates a client-supplied id.
 |---|---|---|---|
 | Unknown method | `{"id":"2","method":"daemon.fleet.nonexistent"}` | `-32601` (methodNotFound) | echoed |
 | Malformed JSON | `{not json` | `-32700` (parseError) | `"no-id"` (not recoverable) |
+| Valid JSON fragment (not an envelope) | `null`, `123`, `"hello"`, `true` | `-32600` (invalidRequest) | `"no-id"` (not recoverable) |
 | Oversized frame | valid JSON payload of 65537 bytes | `-32002` (frameTooLarge) | recovered from the partial frame when present |
 | Missing id | `{"method":"daemon.health"}` | `-32600` (invalidRequest) | `"no-id"` |
 | Wrong-typed id | `{"id":123,"method":"daemon.health"}` | `-32600` (invalidRequest) | `"no-id"` |
 | Wrong params type | `{"id":"p-1","method":"daemon.fleet.orchestrator.set","params":"x"}` | `-32602` (invalidParams) | echoed |
 | protocolVersion mismatch | `{"id":"v-1","method":"daemon.health","protocolVersion":2}` | `-32001` (protocolVersionMismatch) | echoed |
+
+**Parse-vs-classify boundary.** The parse-error class is reserved for bytes
+that are not syntactically valid JSON at all. Top-level JSON fragments
+(`null`, a bare number, a string, a boolean) are syntactically valid JSON and
+are therefore classified as invalid requests (`-32600`) — they are valid JSON
+that is not a valid RPC envelope. The envelope-shape check (object with
+string `id` and `method`) runs separately from the syntax check.
 
 **Versioning policy (VAL-RPC-012).** A request envelope that declares a
 `protocolVersion` outside the supported set (`[1]`) is rejected with the

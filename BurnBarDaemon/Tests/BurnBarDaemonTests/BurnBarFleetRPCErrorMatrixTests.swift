@@ -204,6 +204,42 @@ final class BurnBarFleetRPCErrorMatrixTests: BurnBarFleetRPCTestCase {
         XCTAssertNil(try decodeErrorEnvelope(health).error)
     }
 
+    // MARK: - VAL-RPC-016: valid JSON fragments are invalid requests, not parse errors
+
+    func testValidJSONFragments_typedInvalidRequest_noIDSentinel() async throws {
+        let configuration = makeConfiguration(name: "json-fragments")
+        let socketPath = configuration.socketPath
+        let fleetService = makeFleetService()
+        _ = try await fleetService.buildOnce()
+        let server = BurnBarDaemonServer(configuration: configuration, fleetService: fleetService)
+        try await server.start()
+        defer { Task { await server.stop() } }
+
+        // Top-level JSON fragments (null, number, string, bool) are
+        // syntactically valid JSON but not RPC envelopes: typed
+        // invalid-request (-32600) with the no-id sentinel, never
+        // parse-error (-32700).
+        let fragments = ["null", "123", "\"hello\"", "true"]
+        for fragment in fragments {
+            let response = try rawRequest(fragment, socketPath: socketPath)
+            let envelope = try decodeErrorEnvelope(response)
+            XCTAssertEqual(envelope.id, BurnBarDaemonServer.noRequestID, "id sentinel mismatch for \(fragment)")
+            XCTAssertEqual(envelope.protocolVersion, 1, "protocolVersion mismatch for \(fragment)")
+            XCTAssertNil(envelope.result, "no result on error for \(fragment)")
+            XCTAssertEqual(envelope.error?.code, -32600, "code mismatch for \(fragment)")
+            XCTAssertFalse(envelope.error?.message.isEmpty == true, "message required for \(fragment)")
+        }
+
+        // Still-malformed bytes stay parse errors (-32700).
+        let malformed = try rawRequest("{not json", socketPath: socketPath)
+        let malformedEnvelope = try decodeErrorEnvelope(malformed)
+        XCTAssertEqual(malformedEnvelope.error?.code, -32700)
+
+        // The daemon remains usable after every fragment.
+        let health = try rawRequest("{\"id\":\"frag-ok\",\"method\":\"daemon.health\"}", socketPath: socketPath)
+        XCTAssertNil(try decodeErrorEnvelope(health).error)
+    }
+
     // MARK: - VAL-RPC-016: error envelope code matrix (exact shape)
 
     func testErrorEnvelopeMatrix_exactCodesAndShape() async throws {
