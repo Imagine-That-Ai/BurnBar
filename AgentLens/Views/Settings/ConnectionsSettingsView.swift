@@ -191,6 +191,7 @@ struct ConnectionsSettingsView: View {
                                 accounts: group.accounts,
                                 externalAccounts: group.externalAccounts,
                                 routingState: quotaService.routingStatesByProviderID[group.providerID],
+                                settingsManager: settingsManager,
                                 quotaWindowsForAccount: quotaWindows(for:),
                                 quotaWindowsForExternalAccount: quotaWindows(for:),
                                 credentialNoticeForExternalAccount: credentialNotice(for:),

@@ -32,6 +32,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
     case omp = "OMP"
     case ollama = "Ollama"
     case windsurf = "Windsurf"
+    case devin = "Devin"
     case warp = "Warp"
     case xAI = "xAI"
     case mimo = "MiMo"
@@ -78,6 +79,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         .goose,
         .ollama,
         .windsurf,
+        .devin,
         .warp,
         .cursorAgent,
         .muse
@@ -203,6 +205,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .xAI
         case "cursor-agent":
             return .cursorAgent
+        case "devin":
+            return .devin
         default:
             return AgentProvider.allCases.first { $0.providerID == providerID }
         }
@@ -265,6 +269,8 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
             return .warp
         case "windsurf":
             return .windsurf
+        case "devin", "devin-desktop", "devin_desktop", "devin-cli", "devin_cli", "devin.ai", "devinai":
+            return .devin
         case "goose":
             return .goose
         case "openclaw", "open-claw":
@@ -331,6 +337,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .omp: return "OMPLogo"
         case .ollama:     return "OllamaLogo"
         case .windsurf:   return "WindsurfLogo"
+        case .devin:      return "DevinLogo"
         case .warp:       return "WarpLogo"
         case .openCode:   return "OpenCodeLogo"
         case .xAI:        return "GrokLogo"
@@ -372,6 +379,7 @@ public enum AgentProvider: String, Codable, CaseIterable, Identifiable, Hashable
         case .omp: return "command"
         case .ollama: return "server.rack"
         case .windsurf: return "sailboat.fill"
+        case .devin: return "desktopcomputer"
         case .warp: return "terminal.fill"
         case .openCode: return "chevron.left.forwardslash.chevron.right"
         case .xAI: return "bolt.fill"

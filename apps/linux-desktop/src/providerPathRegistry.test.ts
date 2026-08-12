@@ -43,7 +43,8 @@ const REQUIRED_PROVIDER_IDS = [
   'cursor-agent',
   'junie',
   'prime-agent',
-  'muse'
+  'muse',
+  'devin'
 ] as const;
 
 describe('providerPathRegistry', () => {
@@ -58,10 +59,10 @@ describe('providerPathRegistry', () => {
 
   it('makes non-parser coverage explicit instead of implying local ingestion', () => {
     expect(providerCoverageCounts()).toEqual({
-      total: 35,
+      total: 36,
       localParser: 31,
       apiBacked: 4,
-      unavailable: 0
+      unavailable: 1
     });
     expect(providerPathById('openclaude')?.coverage).toBe('local-parser');
     expect(providerPathById('omp')?.coverage).toBe('local-parser');
@@ -69,8 +70,9 @@ describe('providerPathRegistry', () => {
     expect(providerPathById('muse')?.coverage).toBe('local-parser');
     expect(providerPathById('openai')?.coverage).toBe('api-backed');
     expect(providerPathById('mimo')?.coverage).toBe('api-backed');
+    expect(providerPathById('devin')?.coverage).toBe('unavailable');
     expect(providerCoverageSummary()).toBe(
-      '31 local parsers, 4 API-backed sources, 0 unavailable local sources (35 canonical providers)'
+      '31 local parsers, 4 API-backed sources, 1 unavailable local sources (36 canonical providers)'
     );
   });
 
@@ -123,7 +125,7 @@ describe('providerPathRegistry', () => {
     expect(paths.length).toBe(LINUX_PROVIDER_PATH_REGISTRY.length);
   });
 
-  it('table-driven golden resolutions for all 35 providers under custom XDG', () => {
+  it('table-driven golden resolutions for all 36 providers under custom XDG', () => {
     const home = '/home/alice';
     const env = { XDG_CONFIG_HOME: '/xdg/config', XDG_DATA_HOME: '/xdg/data' };
     const expected: Record<string, string> = {
@@ -155,6 +157,7 @@ describe('providerPathRegistry', () => {
       omp: '/home/alice/.omp/agent/sessions',
       ollama: '/home/alice/.ollama/logs',
       windsurf: '/xdg/config/Windsurf - Next/User/globalStorage',
+      devin: '/xdg/config/Devin/sessions',
       warp: '/xdg/config/Warp',
       kimi: '/home/alice/.kimi/sessions',
       mimo: '/home/alice/.codex',

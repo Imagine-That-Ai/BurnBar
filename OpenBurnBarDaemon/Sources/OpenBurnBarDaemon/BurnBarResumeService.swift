@@ -651,6 +651,7 @@ final class BurnBarResumeService: @unchecked Sendable {
                 switch target {
                 case "cursor": hintDirectoryName = ".cursor"
                 case "windsurf": hintDirectoryName = ".windsurf"
+                case "devin": hintDirectoryName = ".config/Devin/sessions"
                 default: hintDirectoryName = ".openburnbar"
                 }
                 let hintDirectory = URL(fileURLWithPath: workingDirectory, isDirectory: true)
