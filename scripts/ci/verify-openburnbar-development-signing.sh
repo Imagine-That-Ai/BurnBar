@@ -21,6 +21,7 @@ expected_keychain_suffix="com.openburnbar.app"
 embedded_profile="$app_path/Contents/embedded.provisionprofile"
 appex_path="$app_path/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 embedded_safari_profile="$appex_path/Contents/embedded.provisionprofile"
+daemon_path="$app_path/Contents/Helpers/OpenBurnBarDaemon"
 
 if [[ ! "$expected_team_id" =~ ^[A-Z0-9]{10}$ ]]; then
   echo "ERROR: Expected Apple team ID must be exactly 10 uppercase letters/digits; found '${expected_team_id:-missing}'." >&2
@@ -53,6 +54,10 @@ if [[ ! -d "$app_path" || -L "$app_path" ]]; then
 fi
 if [[ ! -f "$embedded_profile" || -L "$embedded_profile" ]]; then
   echo "ERROR: OpenBurnBar development app is missing a real embedded provisioning profile: $embedded_profile" >&2
+  exit 66
+fi
+if [[ ! -x "$daemon_path" || -L "$daemon_path" ]]; then
+  echo "ERROR: OpenBurnBar development app is missing the required embedded daemon executable: $daemon_path" >&2
   exit 66
 fi
 if [[ -n "$audited_host_profile" || -n "$audited_safari_profile" ]]; then
@@ -163,12 +168,17 @@ if [[ -n "$expected_signing_identity" ]]; then
 
   host_certificate_sha1="$(certificate_sha1_for_bundle "$app_path" "host")"
   safari_certificate_sha1="$(certificate_sha1_for_bundle "$appex_path" "safari")"
+  daemon_certificate_sha1="$(certificate_sha1_for_bundle "$daemon_path" "daemon")"
   if [[ "$host_certificate_sha1" != "$expected_signing_certificate_sha1" ]]; then
     echo "ERROR: Development app leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${host_certificate_sha1:-missing}'." >&2
     exit 1
   fi
   if [[ "$safari_certificate_sha1" != "$expected_signing_certificate_sha1" ]]; then
     echo "ERROR: Safari extension leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${safari_certificate_sha1:-missing}'." >&2
+    exit 1
+  fi
+  if [[ "$daemon_certificate_sha1" != "$expected_signing_certificate_sha1" ]]; then
+    echo "ERROR: Embedded daemon leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${daemon_certificate_sha1:-missing}'." >&2
     exit 1
   fi
 fi
@@ -320,9 +330,12 @@ if [[ -n "$audited_safari_profile" ]]; then
 fi
 bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
   "${safari_verifier_args[@]}"
+bash "$repo_root/scripts/ci/verify-daemon-release-signing.sh" \
+  "$app_path" \
+  "$expected_team_id"
 
 if [[ -n "$expected_signing_identity" ]]; then
-  echo "PASS: OpenBurnBar host and Safari appex are byte-bound to the audited Apple Development profiles and exact leaf identity, with shared App Group/Keychain authority, hardened runtime, and library validation."
+  echo "PASS: OpenBurnBar host, Safari appex, and daemon are byte-bound to the audited Apple Development profiles and exact leaf identity, with shared App Group/Keychain authority, hardened runtime, and library validation."
 else
-  echo "PASS: OpenBurnBar host and Safari appex are exact-profile-bound Apple Development products with shared App Group/Keychain authority, hardened runtime, and library validation."
+  echo "PASS: OpenBurnBar host, Safari appex, and daemon are exact-profile-bound Apple Development products with shared App Group/Keychain authority, hardened runtime, and library validation."
 fi

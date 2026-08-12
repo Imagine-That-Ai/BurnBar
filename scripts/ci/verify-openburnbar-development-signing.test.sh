@@ -3,6 +3,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+project_manifest="$repo_root/project.yml"
 tmp_root="${TMPDIR:-/tmp}"
 if ! work_dir="$(mktemp -d "$tmp_root/openburnbar-development-signing-test.XXXXXX" 2>/dev/null)"; then
   work_dir="$(mktemp -d "/tmp/openburnbar-development-signing-test.XXXXXX")"
@@ -19,6 +20,9 @@ app_contents="$app_path/Contents"
 appex_path="$app_contents/PlugIns/OpenBurnBarSafariExtension.appex"
 appex_contents="$appex_path/Contents"
 resources_path="$appex_contents/Resources"
+helpers_path="$app_contents/Helpers"
+daemon_path="$helpers_path/OpenBurnBarDaemon"
+watchdog_path="$helpers_path/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
 app_profile="$app_contents/embedded.provisionprofile"
 appex_profile="$appex_contents/embedded.provisionprofile"
 app_entitlements="$work_dir/app-entitlements.plist"
@@ -33,13 +37,39 @@ mock_bin="$work_dir/mock-bin"
 mkdir -p \
   "$app_contents/MacOS" \
   "$appex_contents/MacOS" \
+  "$helpers_path" \
   "$resources_path/icons" \
   "$mock_bin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$app_contents/MacOS/OpenBurnBar"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$appex_contents/MacOS/OpenBurnBarSafariExtension"
+printf '#!/usr/bin/env bash\nif [[ "${1:-}" == "--help" ]]; then echo "Usage: OpenBurnBarDaemon [OPTIONS]"; exit 0; fi\nexit 2\n' > "$daemon_path"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$watchdog_path"
 chmod +x \
   "$app_contents/MacOS/OpenBurnBar" \
-  "$appex_contents/MacOS/OpenBurnBarSafariExtension"
+  "$appex_contents/MacOS/OpenBurnBarSafariExtension" \
+  "$daemon_path" \
+  "$watchdog_path"
+
+python3 - "$project_manifest" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+required = (
+    'DAEMON_SOURCE="${BUILT_PRODUCTS_DIR}/OpenBurnBarDaemon"',
+    'cp "${DAEMON_SOURCE}" "${HELPERS_DIR}/OpenBurnBarDaemon"',
+    "- $(BUILT_PRODUCTS_DIR)/OpenBurnBarDaemon",
+    "- $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarDaemon",
+    "- target: OpenBurnBarDaemonExecutable",
+)
+missing = [entry for entry in required if entry not in source]
+if missing:
+    raise SystemExit(
+        "FAIL: project.yml no longer builds and embeds the required daemon: "
+        + ", ".join(missing)
+    )
+PY
+
 printf 'background\n' > "$resources_path/background.js"
 printf 'popup\n' > "$resources_path/popup.html"
 printf 'runner\n' > "$resources_path/page-world-runner.js"
@@ -221,17 +251,31 @@ if [[ "$1" == "-d" && " $* " == *" --entitlements :- "* ]]; then
   target="${@: -1}"
   if [[ "$target" == "$MOCK_APPEX" ]]; then
     cat "$MOCK_APPEX_ENTITLEMENTS"
+  elif [[ "$target" == "$MOCK_DAEMON" ]]; then
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>'
   else
     cat "$MOCK_APP_ENTITLEMENTS"
   fi
   exit 0
 fi
-if [[ "$1" == "-dv" ]]; then
+if [[ "$1" == "-dr" ]]; then
+  printf '%s\n' 'designated => identifier "com.openburnbar.app" and anchor apple generic'
+  exit 0
+fi
+if [[ "$1" == "-dv" || "$1" == "-d" ]]; then
   target="${@: -1}"
   if [[ "$target" == "$MOCK_APPEX" ]]; then
     identifier="${MOCK_APPEX_IDENTIFIER:-com.openburnbar.app.safari-extension}"
     authority="${MOCK_APPEX_AUTHORITY:-Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)}"
     flags="${MOCK_APPEX_FLAGS:-flags=0x12000(runtime,library-validation)}"
+  elif [[ "$target" == "$MOCK_DAEMON" ]]; then
+    identifier="${MOCK_DAEMON_IDENTIFIER:-com.openburnbar.app}"
+    authority="${MOCK_DAEMON_AUTHORITY:-Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)}"
+    flags="${MOCK_DAEMON_FLAGS:-flags=0x12000(runtime,library-validation)}"
+  elif [[ "$target" == "$MOCK_WATCHDOG" ]]; then
+    identifier="com.openburnbar.privileged-input-killswitch-watchdog"
+    authority="Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)"
+    flags="flags=0x12000(runtime,library-validation)"
   else
     identifier="${MOCK_APP_IDENTIFIER:-com.openburnbar.app}"
     authority="${MOCK_APP_AUTHORITY:-Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)}"
@@ -256,6 +300,8 @@ chmod +x \
 
 export PATH="$mock_bin:$PATH"
 export MOCK_APPEX="$appex_path"
+export MOCK_DAEMON="$daemon_path"
+export MOCK_WATCHDOG="$watchdog_path"
 export MOCK_APP_ENTITLEMENTS="$app_entitlements"
 export MOCK_APPEX_ENTITLEMENTS="$appex_entitlements"
 export MOCK_CODESIGN_LOG="$codesign_log"
@@ -297,11 +343,32 @@ OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER=/usr/bin/false \
   "$expected_identity" \
   "$expected_certificate_sha1"
 
-if [[ "$(grep -c -- "--extract-certificates" "$codesign_log")" != "6" ]]; then
-  echo "FAIL: host and Safari signer/profile certificate membership were not verified in both compatibility and audited-profile modes." >&2
+if [[ "$(grep -c -- "--extract-certificates" "$codesign_log")" != "7" ]]; then
+  echo "FAIL: host, Safari, and daemon signer/profile certificate membership were not verified in both compatibility and audited-profile modes." >&2
   cat "$codesign_log" >&2
   exit 1
 fi
+
+mv "$daemon_path" "$daemon_path.missing"
+assert_fails_with \
+  "OpenBurnBar development app is missing the required embedded daemon executable" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+mv "$daemon_path.missing" "$daemon_path"
+
+export MOCK_DAEMON_IDENTIFIER="com.openburnbar.daemon"
+assert_fails_with \
+  "App and daemon must share the com.openburnbar.app signing identifier" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+unset MOCK_DAEMON_IDENTIFIER
+
+export MOCK_DAEMON_FLAGS="flags=0x10000(runtime)"
+assert_fails_with \
+  "Daemon must use hardened runtime and library validation" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+unset MOCK_DAEMON_FLAGS
 
 audited_host_profile="$work_dir/audited-host-mismatch.provisionprofile"
 cp "$good_app_profile" "$audited_host_profile"
@@ -600,4 +667,4 @@ assert_fails_with \
   bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
   "$app_path" "$team_id"
 
-echo "PASS: development signing gate accepts macOS/current-device profiles with wildcard App Group authorization and rejects bundle, platform, device, debug, signed-authority, flag, entitlement, and identity mismatches"
+echo "PASS: development signing gate accepts macOS/current-device profiles with the exact embedded daemon and rejects bundle, daemon, platform, device, debug, signed-authority, flag, entitlement, and identity mismatches"

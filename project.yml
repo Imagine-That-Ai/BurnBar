@@ -368,11 +368,20 @@ targets:
         # Git branch, dirty state, remote, and release channel are dynamic
         # inputs that Xcode cannot model as file dependencies.
         basedOnDependencyAnalysis: false
-      - name: Bundle Remote Unlock Input Helpers
+      - name: Bundle Required Runtime and Remote Unlock Input Helpers
         script: |
           set -euo pipefail
           HELPERS_DIR="${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers"
           mkdir -p "${HELPERS_DIR}"
+
+          DAEMON_SOURCE="${BUILT_PRODUCTS_DIR}/OpenBurnBarDaemon"
+          if [[ ! -x "${DAEMON_SOURCE}" ]]; then
+            echo "error: required OpenBurnBarDaemon product is missing or not executable at ${DAEMON_SOURCE}." >&2
+            exit 1
+          fi
+          cp "${DAEMON_SOURCE}" "${HELPERS_DIR}/OpenBurnBarDaemon"
+          chmod 755 "${HELPERS_DIR}/OpenBurnBarDaemon"
+
           for NAME in OpenBurnBarPrivilegedInputExecution OpenBurnBarVirtualHIDBridge OpenBurnBarPrivilegedInputKillSwitchWatchdog; do
             SOURCE="${BUILT_PRODUCTS_DIR}/${NAME}"
             if [[ ! -x "${SOURCE}" ]]; then
@@ -383,10 +392,12 @@ targets:
             chmod 755 "${HELPERS_DIR}/${NAME}"
           done
         inputFiles:
+          - $(BUILT_PRODUCTS_DIR)/OpenBurnBarDaemon
           - $(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputExecution
           - $(BUILT_PRODUCTS_DIR)/OpenBurnBarVirtualHIDBridge
           - $(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputKillSwitchWatchdog
         outputFiles:
+          - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarDaemon
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputExecution
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarVirtualHIDBridge
           - $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog
