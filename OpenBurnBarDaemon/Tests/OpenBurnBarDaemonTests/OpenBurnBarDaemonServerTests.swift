@@ -7,6 +7,172 @@ import SQLite3
 import XCTest
 
 final class BurnBarDaemonServerTests: XCTestCase {
+    func testSafariGatewayAttributionRequiresLiveBrokerLeaseAndRegistryBinding()
+        async throws {
+        let observedNow = Locked(Date(timeIntervalSince1970: 1_786_512_000))
+        let safariBroker = BurnBarSafariSessionBroker(
+            configuration: .init(leaseDuration: 2),
+            now: { observedNow.read() }
+        )
+        let clientRegistry = BurnBarClientRegistry(
+            logger: BurnBarDaemonLogger(category: "daemon-server-tests")
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: makeSocketPath(name: "safari-attribution-lease"),
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            clientRegistry: clientRegistry,
+            safariSessionBroker: safariBroker
+        )
+        let attached = try await server.computerUseService.attachSafariSession(
+            BurnBarSafariSessionAttachRequest(
+                extensionInstanceId: "daemon-server-safari-extension",
+                clientName: "Daemon Server Tests",
+                capabilities: BurnBarSafariExtensionCapabilities(
+                    captureVisibleTab: true,
+                    scripting: true,
+                    nativeMessaging: true,
+                    activeTabPermission: true,
+                    siteAccessGranted: true
+                )
+            )
+        )
+        let clientID = BurnBarClientID(
+            rawValue: "safari-extension:\(attached.sessionId)"
+        )
+        let sessionID = BurnBarSessionID(rawValue: attached.sessionId)
+        _ = await clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Daemon Server Tests",
+                supportedProtocolVersions: [BurnBarProtocolVersion.current]
+            )
+        )
+        let issuedValue =
+            await server.safariGatewayAttributionAuthority.issue(
+                clientID: clientID,
+                sessionID: sessionID
+            )
+        let issued = try XCTUnwrap(
+            issuedValue
+        )
+
+        observedNow.write(observedNow.read().addingTimeInterval(3))
+        let resolution = await server.safariGatewayAttributionAuthority.resolve(
+            headers: [
+                "x-openburnbar-client":
+                    GatewayRequestAttribution.safariClientSource,
+                "x-openburnbar-correlation-id":
+                    "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51",
+                SafariGatewayAttributionAuthority.capabilityHeader: issued.token
+            ]
+        )
+
+        XCTAssertEqual(resolution, .rejected)
+        let registrySessionID = await clientRegistry.sessionID(for: clientID)
+        XCTAssertEqual(
+            registrySessionID,
+            sessionID,
+            "The live broker lease must fail closed independently of registry cleanup."
+        )
+    }
+
+    func testSafariGatewayAttributionFailsClosedWhenInjectedServiceAndBrokerDisagree()
+        async throws {
+        let serviceBroker = BurnBarSafariSessionBroker()
+        let exposedBroker = BurnBarSafariSessionBroker()
+        let clientRegistry = BurnBarClientRegistry(
+            logger: BurnBarDaemonLogger(category: "daemon-server-tests")
+        )
+        let computerUseService = ComputerUseService(
+            safariSessionBroker: serviceBroker
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: makeSocketPath(
+                    name: "safari-attribution-broker-mismatch"
+                ),
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            clientRegistry: clientRegistry,
+            computerUseService: computerUseService,
+            safariSessionBroker: exposedBroker
+        )
+        let attached = try await computerUseService.attachSafariSession(
+            BurnBarSafariSessionAttachRequest(
+                extensionInstanceId:
+                    "daemon-server-safari-extension-mismatch",
+                clientName: "Daemon Server Tests",
+                capabilities: BurnBarSafariExtensionCapabilities(
+                    captureVisibleTab: true,
+                    scripting: true,
+                    nativeMessaging: true,
+                    activeTabPermission: true,
+                    siteAccessGranted: true
+                )
+            )
+        )
+        let clientID = BurnBarClientID(
+            rawValue: "safari-extension:\(attached.sessionId)"
+        )
+        let sessionID = BurnBarSessionID(rawValue: attached.sessionId)
+        _ = await clientRegistry.attach(
+            BurnBarClientAttachRequest(
+                clientID: clientID,
+                sessionID: sessionID,
+                clientName: "Daemon Server Tests",
+                supportedProtocolVersions: [BurnBarProtocolVersion.current]
+            )
+        )
+
+        let issued = await server.safariGatewayAttributionAuthority.issue(
+            clientID: clientID,
+            sessionID: sessionID
+        )
+
+        XCTAssertNil(
+            issued,
+            "Attribution must fail closed unless both injected composition surfaces observe the exact live session."
+        )
+    }
+
+    func testStopShutsDownSafariHandoffsBeforeListenerExists() async {
+        let handoffSupervisor = ShutdownTrackingSafariHandoffSupervisor()
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: makeSocketPath(name: "handoff-shutdown-no-listener"),
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            safariHandoffSupervisor: handoffSupervisor
+        )
+
+        await server.stop()
+
+        XCTAssertEqual(await handoffSupervisor.shutdownCount(), 1)
+    }
+
+    func testStopShutsDownSafariHandoffsWhenListenerIsActive() async throws {
+        let handoffSupervisor = ShutdownTrackingSafariHandoffSupervisor()
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: makeSocketPath(name: "handoff-shutdown-active"),
+                socketAuthToken: "test-token",
+                startsMissionControlBackgroundLoops: false
+            ),
+            safariHandoffSupervisor: handoffSupervisor
+        )
+
+        try await server.start()
+        await server.stop()
+
+        XCTAssertEqual(await handoffSupervisor.shutdownCount(), 1)
+    }
+
     func testDaemonBootsRespondsToHealthAndCleansUpSocketOnShutdown() async throws {
         let socketPath = makeSocketPath(name: "health")
         let server = BurnBarDaemonServer(
@@ -1573,5 +1739,52 @@ final class BurnBarDaemonServerTests: XCTestCase {
             socketAuthToken: "test-auth-token"
         )
         XCTAssertNoThrow(try config.validate())
+    }
+}
+
+private actor ShutdownTrackingSafariHandoffSupervisor:
+    SafariHandoffProcessSupervising
+{
+    private var shutdownCalls = 0
+
+    func launch(
+        _ specification: SafariHandoffProcessSupervisor.LaunchSpecification
+    ) async throws -> SafariHandoffProcessSupervisor.Observation {
+        preconditionFailure("This test fake does not launch hand-offs.")
+    }
+
+    func observation(
+        for runID: BurnBarRunID
+    ) async -> SafariHandoffProcessSupervisor.Observation? {
+        nil
+    }
+
+    func cancel(
+        runID: BurnBarRunID
+    ) async -> SafariHandoffProcessSupervisor.Observation? {
+        nil
+    }
+
+    func registerInterruptedRun(
+        runID: BurnBarRunID,
+        targetHarness: String,
+        packageDirectory: URL,
+        expectedPackageIdentity:
+            SafariHandoffProcessSupervisor.FilesystemIdentity?,
+        launchedAt: Date
+    ) async -> SafariHandoffProcessSupervisor.Observation {
+        preconditionFailure("This test fake does not restore hand-offs.")
+    }
+
+    func cleanupEligiblePackages(now: Date) async {}
+
+    func discard(runID: BurnBarRunID) async {}
+
+    func shutdownAll() async {
+        shutdownCalls += 1
+    }
+
+    func shutdownCount() -> Int {
+        shutdownCalls
     }
 }

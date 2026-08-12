@@ -30,7 +30,8 @@ extension BurnBarHTTPGatewayServer {
         advertisedModelSlug: String?,
         routingModelSlug: String?,
         requestedCanonicalModelID: String?,
-        priorAttempts: [BurnBarProxyRouteAttempt]
+        priorAttempts: [BurnBarProxyRouteAttempt],
+        attribution: GatewayRequestAttribution = .none
     ) async -> GatewayDegradeAttemptResult? {
         guard crossVendorDegradePolicy.isEnabled else { return nil }
 
@@ -62,7 +63,8 @@ extension BurnBarHTTPGatewayServer {
             routingModelSlug: routingModelSlug,
             clientModelDisplayName: requestedModelID,
             routingModelDisplayName: routingModelSlug,
-            rewriteKind: .crossVendorFallback
+            rewriteKind: .crossVendorFallback,
+            attribution: attribution
         )
         var attempts: [BurnBarProxyRouteAttempt] = []
         for ranked in degradeRoutes {

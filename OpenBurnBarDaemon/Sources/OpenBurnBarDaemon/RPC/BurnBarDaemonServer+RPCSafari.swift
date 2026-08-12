@@ -96,12 +96,22 @@ extension BurnBarDaemonServer {
                     request: request,
                     decoder: decoder
                 )
+                let safariIdentity: (
+                    clientID: BurnBarClientID,
+                    sessionID: BurnBarSessionID
+                )?
                 if let sessionID = params.sessionId {
-                    _ = try await requireAttachedSafariSession(sessionID)
+                    safariIdentity = try await requireAttachedSafariSession(
+                        sessionID
+                    )
+                } else {
+                    safariIdentity = nil
                 }
                 return safariRPCSuccess(
                     id: request.id,
-                    result: await safariBootstrapResponse()
+                    result: await safariBootstrapResponse(
+                        safariIdentity: safariIdentity
+                    )
                 )
 
             case .safariUISnapshot:
@@ -397,9 +407,12 @@ extension BurnBarDaemonServer {
 
         return BurnBarSafariUISnapshotResponse(
             bootstrap: await safariBootstrapResponse(
-                membership: membership
+                membership: membership,
+                safariIdentity: safariIdentity
             ),
             catalog: BurnBarCatalogResponse(catalog: configuration.catalog),
+            installedAgents: safariHandoffService
+                .installedSafariHandoffAgents(),
             membership: membership,
             safariSession: safariStatus,
             run: runSnapshot,
@@ -467,9 +480,9 @@ extension BurnBarDaemonServer {
         }
 
         let runID = BurnBarRunID()
-        let launch: BurnBarResumeService.SafariHandoffLaunch
+        let preparation: BurnBarResumeService.SafariHandoffPreparation
         do {
-            launch = try safariHandoffService.launchSafariHandoff(
+            preparation = try safariHandoffService.prepareSafariHandoff(
                 request,
                 runID: runID
             )
@@ -480,7 +493,7 @@ extension BurnBarDaemonServer {
             )
         } catch {
             logger.error(
-                "safari_handoff_launch_failed",
+                "safari_handoff_preparation_failed",
                 metadata: [
                     "run_id": runID.rawValue,
                     "target_harness": request.targetHarness,
@@ -492,17 +505,58 @@ extension BurnBarDaemonServer {
             )
         }
 
-        let snapshot = try await runService.recordCompletedSafariHandoff(
-            runID: runID,
-            clientID: identity.clientID,
-            sessionID: identity.sessionID,
-            targetHarness: launch.targetHarness
-        )
+        let packageIdentity =
+            SafariHandoffProcessSupervisor.FilesystemIdentity(
+                device: preparation.packageDevice,
+                inode: preparation.packageInode
+            )
+        let observation: SafariHandoffProcessSupervisor.Observation
+        do {
+            observation = try await safariHandoffSupervisor.launch(
+                SafariHandoffProcessSupervisor.LaunchSpecification(
+                    runID: runID,
+                    targetHarness: preparation.targetHarness,
+                    packageDirectory: preparation.packageDirectory,
+                    expectedPackageIdentity: packageIdentity,
+                    executableURL: preparation.executableURL,
+                    arguments: preparation.arguments
+                )
+            )
+        } catch {
+            await safariHandoffSupervisor.discard(runID: runID)
+            logger.error(
+                "safari_handoff_launch_failed",
+                metadata: [
+                    "run_id": runID.rawValue,
+                    "target_harness": preparation.targetHarness,
+                    "error": error.localizedDescription
+                ]
+            )
+            throw BurnBarSafariRPCHandlerError.unavailable(
+                "The selected installed agent could not be launched from the private Safari hand-off package."
+            )
+        }
+
+        let snapshot: BurnBarRunStateSnapshot
+        do {
+            snapshot = try await runService.recordRunningSafariHandoff(
+                runID: runID,
+                clientID: identity.clientID,
+                sessionID: identity.sessionID,
+                targetHarness: preparation.targetHarness,
+                packageDirectory: preparation.packageDirectory,
+                packageIdentity: packageIdentity,
+                launchedAt: observation.launchedAt
+            )
+        } catch {
+            await safariHandoffSupervisor.discard(runID: runID)
+            throw error
+        }
         return BurnBarSafariHandoffResponse(
             runId: snapshot.runID.rawValue,
             phase: snapshot.phase,
             launched: true,
-            running: false
+            running: true
         )
     }
 
@@ -650,7 +704,11 @@ extension BurnBarDaemonServer {
     }
 
     private func safariBootstrapResponse(
-        membership: BurnBarMembershipStatusResponse? = nil
+        membership: BurnBarMembershipStatusResponse? = nil,
+        safariIdentity: (
+            clientID: BurnBarClientID,
+            sessionID: BurnBarSessionID
+        )? = nil
     ) async -> BurnBarSafariBootstrapResponse {
         let resolvedMembership: BurnBarMembershipStatusResponse
         if let membership {
@@ -667,6 +725,17 @@ extension BurnBarDaemonServer {
             && configuration.gateway.validationError == nil
             && configuration.gateway.isLoopback
             && gatewayToken?.isEmpty == false
+        let attributionCapability: SafariGatewayAttributionAuthority
+            .IssuedCapability?
+        if gatewayAvailable, let safariIdentity {
+            attributionCapability = await safariGatewayAttributionAuthority
+                .issue(
+                    clientID: safariIdentity.clientID,
+                    sessionID: safariIdentity.sessionID
+                )
+        } else {
+            attributionCapability = nil
+        }
 
         #if os(macOS)
         let computerUseAvailable = !trustKillSwitchEnabled
@@ -679,6 +748,10 @@ extension BurnBarDaemonServer {
             protocolVersion: BurnBarSafariProtocol.currentVersion,
             gatewayBaseURL: gatewayAvailable ? safariGatewayBaseURL() : nil,
             gatewayBearerToken: gatewayAvailable ? gatewayToken : nil,
+            gatewayAttributionCapability: attributionCapability?.token,
+            gatewayAttributionExpiresAt: attributionCapability.map {
+                Self.safariWireTimestamp($0.expiresAt)
+            },
             gatewayAvailable: gatewayAvailable,
             computerUseAvailable: computerUseAvailable,
             learningAvailable: availability?.available ?? false,
@@ -693,6 +766,16 @@ extension BurnBarDaemonServer {
         components.host = configuration.gateway.host
         components.port = configuration.gateway.port
         return components.url?.absoluteString
+    }
+
+    private static func safariWireTimestamp(_ date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds
+        ]
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: date)
     }
 
     private func requireAttachedSafariSession(

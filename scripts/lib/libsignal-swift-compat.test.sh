@@ -46,6 +46,19 @@ OPENBURNBAR_LIBSIGNAL_COMPAT_EXPECTED_COMMIT="$(git -C "$libsignal_dir" rev-pars
 auth_original_hash="$(openburnbar_libsignal_compat_sha256 "$auth_path")"
 tokio_original_hash="$(openburnbar_libsignal_compat_sha256 "$tokio_path")"
 
+# A parent release may carry an alternate-index Git authority. Nested package
+# probes must still resolve the libsignal checkout itself.
+parent_git_dir="$fixture_root/parent.git"
+git clone --bare -q "$libsignal_dir" "$parent_git_dir"
+parent_index="$parent_git_dir/candidate-index"
+GIT_DIR="$parent_git_dir" \
+GIT_WORK_TREE="$fixture_root" \
+GIT_INDEX_FILE="$parent_index" \
+  git read-tree HEAD
+export GIT_DIR="$parent_git_dir"
+export GIT_WORK_TREE="$fixture_root"
+export GIT_INDEX_FILE="$parent_index"
+
 openburnbar_prepare_libsignal_swift_compat "$fixture_root"
 rg -qF "withExtendedLifetime(contents) {}" "$auth_path"
 rg -qF "<Promise: PromiseStruct & SendableMetatype>" "$tokio_path"
@@ -109,4 +122,5 @@ if openburnbar_prepare_libsignal_swift_compat "$fixture_root" >/dev/null 2>&1; t
 fi
 rg -qF "// local owner edit" "$auth_path"
 
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 echo "LibSignal Swift compatibility fixture passed."

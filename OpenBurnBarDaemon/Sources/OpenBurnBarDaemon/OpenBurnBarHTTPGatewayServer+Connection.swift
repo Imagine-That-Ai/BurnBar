@@ -235,9 +235,19 @@ extension BurnBarHTTPGatewayServer {
             return .buffered(handleMetrics())
 
         case ("GET", "/v1/models"):
+            if let rejection = await rejectInvalidSafariAttribution(
+                headers: request.headers
+            ) {
+                return .buffered(rejection)
+            }
             return .buffered(await handleModels(headers: request.headers))
 
         case ("GET", "/v1/models/catalog"):
+            if let rejection = await rejectInvalidSafariAttribution(
+                headers: request.headers
+            ) {
+                return .buffered(rejection)
+            }
             return .buffered(await handleModels(includeUnadvertised: true, headers: request.headers))
 
         case ("POST", "/v1/chat/completions"):

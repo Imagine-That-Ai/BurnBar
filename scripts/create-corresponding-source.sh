@@ -3,6 +3,9 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
+# shellcheck source=scripts/lib/exact-candidate-git.sh
+source scripts/lib/exact-candidate-git.sh
+openburnbar_configure_exact_candidate_git "$repo_root"
 
 version=""
 output=""
@@ -46,14 +49,17 @@ if [[ -z "$version" || -z "$output" ]]; then
   exit 2
 fi
 
-commit="$(git rev-parse HEAD)"
+commit="$(openburnbar_candidate_git rev-parse HEAD)"
 dirty="false"
-if ! git diff --quiet --ignore-submodules -- || ! git diff --cached --quiet --ignore-submodules -- || [[ -n "$(git ls-files --others --exclude-standard)" ]]; then
+if ! openburnbar_candidate_git diff --quiet --ignore-submodules -- \
+  || ! openburnbar_candidate_git diff --cached --quiet --ignore-submodules -- \
+  || [[ -n "$(openburnbar_candidate_git ls-files --others --exclude-standard)" ]]; then
   dirty="true"
 fi
 
 if [[ "$dirty" == "true" && "${OPENBURNBAR_ALLOW_DIRTY_SOURCE:-0}" != "1" ]]; then
   echo "ERROR: working tree is dirty; commit changes before building corresponding source." >&2
+  openburnbar_candidate_git status --short --untracked-files=all >&2 || true
   echo "Set OPENBURNBAR_ALLOW_DIRTY_SOURCE=1 only for local verification archives." >&2
   exit 1
 fi
@@ -67,6 +73,7 @@ mkdir -p "$archive_root"
 
 if [[ "$dirty" == "true" ]]; then
   python3 - "$archive_root" <<'PY'
+import os
 import shutil
 import subprocess
 import sys
@@ -74,7 +81,8 @@ from pathlib import Path
 
 destination = Path(sys.argv[1])
 raw = subprocess.check_output(
-    ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
+    ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    env=os.environ,
 )
 for item in raw.split(b"\0"):
     if not item:
@@ -88,7 +96,7 @@ for item in raw.split(b"\0"):
     shutil.copy2(src, out)
 PY
 else
-  git archive --format=tar HEAD | tar -x -C "$archive_root"
+  openburnbar_candidate_git archive --format=tar HEAD | tar -x -C "$archive_root"
 fi
 
 required=(
@@ -124,7 +132,13 @@ m = json.load(open(sys.argv[1]))
 print(m["pinnedCommit"], ",".join(m["vendoredSubtrees"]))
 PY
 )
-  head_commit="$(git -C "$agent_src" rev-parse HEAD)"
+  # The release process may export GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE for an
+  # isolated OpenBurnBar candidate. Those variables must never redirect this
+  # independent Hermes checkout lookup back into the release candidate.
+  head_commit="$(
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      git -C "$agent_src" rev-parse HEAD
+  )"
   if [[ "$head_commit" != "$agent_pin" ]]; then
     echo "ERROR: HERMES_AGENT_SRC HEAD $head_commit does not match pinnedCommit $agent_pin." >&2
     exit 1

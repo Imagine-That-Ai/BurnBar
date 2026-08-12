@@ -7,6 +7,14 @@ const MAX_GATEWAY_PROMPT_CHARACTERS = 32_000;
 const MAX_GATEWAY_CONTEXT_CHARACTERS = 96_000;
 const MAX_LEARNED_CONTEXT_BYTES = 16 * 1024;
 const DEFAULT_GATEWAY_TIMEOUT_MS = 120_000;
+const DEFAULT_ATTRIBUTION_RENEWAL_WINDOW_MS = 30_000;
+const DEFAULT_ATTRIBUTION_RENEWAL_TIMEOUT_MS = 15_000;
+const SAFARI_GATEWAY_CLIENT_MARKER = 'openburnbar-safari-extension';
+const SAFARI_GATEWAY_CLIENT_HEADER = 'X-OpenBurnBar-Client';
+const SAFARI_GATEWAY_CORRELATION_HEADER = 'X-OpenBurnBar-Correlation-ID';
+const SAFARI_GATEWAY_ATTRIBUTION_CAPABILITY_HEADER = 'X-OpenBurnBar-Attribution-Capability';
+const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const ATTRIBUTION_CAPABILITY_PATTERN = /^[0-9a-f]{64}$/u;
 
 export const SAFARI_ASK_SYSTEM_PROMPT = [
   'You are answering a question about an untrusted webpage currently open in Safari.',
@@ -29,6 +37,8 @@ interface SafariGatewayAskRequest {
 interface SafariGatewayConfiguration {
   baseURL: string;
   bearerToken: string;
+  attributionCapability: string;
+  attributionExpiresAt: number;
 }
 
 interface ActiveGatewayRequest {
@@ -37,6 +47,8 @@ interface ActiveGatewayRequest {
 }
 
 type GatewayFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+type CorrelationIDFactory = () => string;
+type GatewayConfigurationRenewer = (signal: AbortSignal) => Promise<SafariBootstrapResponse>;
 
 function hasControlCharacters(value: string): boolean {
   for (const character of value) {
@@ -87,6 +99,34 @@ function validatedBearerToken(rawToken: string): string {
     );
   }
   return token;
+}
+
+function validatedAttributionCapability(
+  rawCapability: string,
+  rawExpiresAt: string
+): {
+  capability: string;
+  expiresAt: number;
+} {
+  const capability = rawCapability.trim().toLowerCase();
+  const expiresAt = Date.parse(rawExpiresAt);
+  if (!ATTRIBUTION_CAPABILITY_PATTERN.test(capability) || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    throw new SafariExtensionError(
+      'gateway_attribution_capability_invalid',
+      'OpenBurnBar’s Safari gateway attribution proof is unavailable or expired. Reconnect the extension.'
+    );
+  }
+  return { capability, expiresAt };
+}
+
+function validatedCorrelationID(rawValue: string): string {
+  if (!UUID_V4_PATTERN.test(rawValue)) {
+    throw new SafariExtensionError(
+      'gateway_attribution_invalid',
+      'OpenBurnBar could not create a safe gateway request identifier.'
+    );
+  }
+  return rawValue.toLowerCase();
 }
 
 function boundedPageContext(pageContext: PageContext): string {
@@ -283,27 +323,49 @@ async function readBoundedResponseText(response: Response, limit = MAX_GATEWAY_R
 export class SafariGatewayClient {
   private configuration: SafariGatewayConfiguration | undefined;
   private activeRequest: ActiveGatewayRequest | undefined;
+  private configurationRenewer: GatewayConfigurationRenewer | undefined;
+  private renewalInFlight: Promise<void> | undefined;
+  private renewalAbortController: AbortController | undefined;
+  private renewalAbortKind: 'timeout' | 'user' | undefined;
 
   constructor(
     private readonly fetcher: GatewayFetch = globalThis.fetch.bind(globalThis),
-    private readonly timeoutMs = DEFAULT_GATEWAY_TIMEOUT_MS
+    private readonly timeoutMs = DEFAULT_GATEWAY_TIMEOUT_MS,
+    private readonly correlationIDFactory: CorrelationIDFactory = () => globalThis.crypto.randomUUID(),
+    private readonly attributionRenewalWindowMs = DEFAULT_ATTRIBUTION_RENEWAL_WINDOW_MS,
+    private readonly attributionRenewalTimeoutMs = DEFAULT_ATTRIBUTION_RENEWAL_TIMEOUT_MS
   ) {}
+
+  setConfigurationRenewer(renewer: GatewayConfigurationRenewer): void {
+    this.configurationRenewer = renewer;
+  }
 
   configure(bootstrap: SafariBootstrapResponse): void {
     if (!bootstrap.gatewayAvailable) {
       this.clear();
       return;
     }
-    if (!bootstrap.gatewayBaseURL || !bootstrap.gatewayBearerToken) {
+    if (
+      !bootstrap.gatewayBaseURL ||
+      !bootstrap.gatewayBearerToken ||
+      !bootstrap.gatewayAttributionCapability ||
+      !bootstrap.gatewayAttributionExpiresAt
+    ) {
       this.clear();
       throw new SafariExtensionError(
         'gateway_configuration_missing',
         'OpenBurnBar’s gateway is active but its Safari connection details are incomplete.'
       );
     }
+    const attribution = validatedAttributionCapability(
+      bootstrap.gatewayAttributionCapability,
+      bootstrap.gatewayAttributionExpiresAt
+    );
     this.configuration = {
       baseURL: loopbackGatewayOrigin(bootstrap.gatewayBaseURL),
-      bearerToken: validatedBearerToken(bootstrap.gatewayBearerToken)
+      bearerToken: validatedBearerToken(bootstrap.gatewayBearerToken),
+      attributionCapability: attribution.capability,
+      attributionExpiresAt: attribution.expiresAt
     };
   }
 
@@ -315,10 +377,37 @@ export class SafariGatewayClient {
     return this.configuration !== undefined;
   }
 
+  async ensureProviderConfiguration(): Promise<void> {
+    if (!this.configurationNeedsRenewal()) {
+      return;
+    }
+    if (!this.configurationRenewer) {
+      this.clear();
+      throw new SafariExtensionError(
+        'gateway_attribution_capability_expired',
+        'OpenBurnBar’s Safari gateway attribution proof is unavailable or expired. Reconnect the extension.',
+        { retryable: true }
+      );
+    }
+    if (!this.renewalInFlight) {
+      this.renewalInFlight = this.renewConfiguration().finally(() => {
+        this.renewalInFlight = undefined;
+      });
+    }
+    await this.renewalInFlight;
+  }
+
   abortActiveRequest(): boolean {
+    let aborted = false;
+    const renewalAbortController = this.renewalAbortController;
+    if (renewalAbortController && !renewalAbortController.signal.aborted) {
+      this.renewalAbortKind = 'user';
+      renewalAbortController.abort();
+      aborted = true;
+    }
     const activeRequest = this.activeRequest;
     if (!activeRequest || activeRequest.controller.signal.aborted) {
-      return false;
+      return aborted;
     }
     activeRequest.abortKind = 'user';
     activeRequest.controller.abort();
@@ -326,6 +415,8 @@ export class SafariGatewayClient {
   }
 
   async ask(request: SafariGatewayAskRequest, onDelta: (delta: string) => void): Promise<string> {
+    this.requireNoActiveRequest();
+    await this.ensureProviderConfiguration();
     const configuration = this.configuration;
     if (!configuration) {
       throw new SafariExtensionError(
@@ -334,12 +425,7 @@ export class SafariGatewayClient {
         { retryable: true }
       );
     }
-    if (this.activeRequest && !this.activeRequest.controller.signal.aborted) {
-      throw new SafariExtensionError(
-        'gateway_request_in_progress',
-        'OpenBurnBar is already waiting for another Safari Ask response.'
-      );
-    }
+    this.requireNoActiveRequest();
     const activeRequest: ActiveGatewayRequest = {
       controller: new AbortController()
     };
@@ -351,6 +437,8 @@ export class SafariGatewayClient {
       }
     }, this.timeoutMs);
     try {
+      const body = JSON.stringify(buildSafariAskBody(request));
+      const correlationID = validatedCorrelationID(this.correlationIDFactory());
       const response = await this.fetcher(new URL('/v1/chat/completions', configuration.baseURL), {
         method: 'POST',
         headers: {
@@ -358,9 +446,12 @@ export class SafariGatewayClient {
           Authorization: `Bearer ${configuration.bearerToken}`,
           'OpenAI-Data-Storage': 'deny',
           'X-Data-Retention': 'none',
-          'X-Model-Training': 'disabled'
+          'X-Model-Training': 'disabled',
+          [SAFARI_GATEWAY_CLIENT_HEADER]: SAFARI_GATEWAY_CLIENT_MARKER,
+          [SAFARI_GATEWAY_CORRELATION_HEADER]: correlationID,
+          [SAFARI_GATEWAY_ATTRIBUTION_CAPABILITY_HEADER]: configuration.attributionCapability
         },
-        body: JSON.stringify(buildSafariAskBody(request)),
+        body,
         credentials: 'omit',
         cache: 'no-store',
         redirect: 'error',
@@ -472,5 +563,95 @@ export class SafariGatewayClient {
         this.activeRequest = undefined;
       }
     }
+  }
+
+  private configurationNeedsRenewal(): boolean {
+    const configuration = this.configuration;
+    return (
+      !configuration || configuration.attributionExpiresAt - Date.now() <= Math.max(0, this.attributionRenewalWindowMs)
+    );
+  }
+
+  private requireNoActiveRequest(): void {
+    if (this.activeRequest && !this.activeRequest.controller.signal.aborted) {
+      throw new SafariExtensionError(
+        'gateway_request_in_progress',
+        'OpenBurnBar is already waiting for another Safari Ask response.'
+      );
+    }
+  }
+
+  private async renewConfiguration(): Promise<void> {
+    const renewer = this.configurationRenewer;
+    if (!renewer) {
+      return;
+    }
+    const abortController = new AbortController();
+    this.renewalAbortController = abortController;
+    this.renewalAbortKind = undefined;
+    const timeout = setTimeout(
+      () => {
+        if (this.renewalAbortController === abortController && !abortController.signal.aborted) {
+          this.renewalAbortKind = 'timeout';
+          abortController.abort();
+        }
+      },
+      Math.max(1, this.attributionRenewalTimeoutMs)
+    );
+    try {
+      const bootstrap = await this.awaitRenewal(renewer(abortController.signal), abortController.signal);
+      if (abortController.signal.aborted) {
+        throw this.renewalAbortError();
+      }
+      this.configure(bootstrap);
+      if (this.configurationNeedsRenewal()) {
+        this.clear();
+        throw new SafariExtensionError(
+          'gateway_attribution_capability_invalid',
+          'OpenBurnBar renewed Safari gateway attribution with a proof that is already expired or too close to expiry.'
+        );
+      }
+    } catch (error) {
+      this.clear();
+      if (abortController.signal.aborted) {
+        throw this.renewalAbortError();
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+      if (this.renewalAbortController === abortController) {
+        this.renewalAbortController = undefined;
+        this.renewalAbortKind = undefined;
+      }
+    }
+  }
+
+  private async awaitRenewal(
+    operation: Promise<SafariBootstrapResponse>,
+    signal: AbortSignal
+  ): Promise<SafariBootstrapResponse> {
+    if (signal.aborted) {
+      throw this.renewalAbortError();
+    }
+    return new Promise<SafariBootstrapResponse>((resolve, reject) => {
+      const abort = (): void => {
+        reject(this.renewalAbortError());
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      operation.then(resolve, reject).finally(() => {
+        signal.removeEventListener('abort', abort);
+      });
+    });
+  }
+
+  private renewalAbortError(): SafariExtensionError {
+    if (this.renewalAbortKind === 'timeout') {
+      return new SafariExtensionError(
+        'gateway_attribution_renewal_timeout',
+        'OpenBurnBar timed out while renewing Safari gateway authorization. Try again.',
+        { retryable: true }
+      );
+    }
+    return new SafariExtensionError('gateway_aborted', 'Stopped.');
   }
 }

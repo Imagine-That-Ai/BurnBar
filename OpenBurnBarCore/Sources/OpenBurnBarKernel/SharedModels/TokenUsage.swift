@@ -155,6 +155,12 @@ public enum UsageExecutionSourceResolver {
         guard let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty else { return nil }
         let normalized = value.lowercased()
+        if normalized == "openburnbar-safari-extension" {
+            return known("openburnbar-safari-extension", "OpenBurnBar Safari Extension", .desktopApp)
+        }
+        if normalized.hasPrefix("openburnbar-safari-extension") {
+            return nil
+        }
 
         let aliases: [(needles: [String], source: UsageExecutionSource)] = [
             (["codex desktop", "codex-desktop", "chatgpt desktop"], known("codex-desktop", "Codex Desktop", .desktopApp)),
@@ -268,6 +274,7 @@ public enum UsageExecutionSourceResolver {
             known("hermes", "Hermes", .cli),
             known("hermes-desktop", "Hermes Dashboard", .desktopApp),
             known("opencode", "OpenCode", .cli),
+            known("openburnbar-safari-extension", "OpenBurnBar Safari Extension", .desktopApp),
             known("openburnbar", "OpenBurnBar", .desktopApp),
             known("windsurf", "Windsurf", .ide),
             known("cline", "Cline", .ide),

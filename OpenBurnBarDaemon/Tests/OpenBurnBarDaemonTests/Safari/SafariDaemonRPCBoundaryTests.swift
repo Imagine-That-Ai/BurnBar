@@ -6,6 +6,146 @@ import OpenBurnBarEngine
 import XCTest
 
 final class SafariDaemonRPCBoundaryTests: XCTestCase {
+    func testSafariBootstrapCapabilityRequiresTheExactAttachedSession()
+        async throws {
+        let socketPath = socketPath(name: "bootstrap-attribution")
+        let gateway = BurnBarGatewayConfiguration(
+            isEnabled: true,
+            host: "127.0.0.1",
+            port: 8317,
+            authToken: "gateway-attribution-test-token"
+        )
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(
+                socketPath: socketPath,
+                socketAuthToken: Self.authToken,
+                daemonVersion: "safari-rpc-boundary-tests",
+                gateway: gateway,
+                startsMissionControlBackgroundLoops: false
+            )
+        )
+
+        try await server.start()
+        addTeardownBlock {
+            await server.stop()
+        }
+
+        let unattached: BurnBarRPCResponseEnvelope<BurnBarSafariBootstrapResponse> =
+            try sendEnvelope(
+                bootstrapEnvelope(id: "bootstrap-unattached"),
+                socketPath: socketPath
+            )
+        XCTAssertNil(unattached.error)
+        XCTAssertEqual(unattached.result?.gatewayAvailable, true)
+        XCTAssertEqual(
+            unattached.result?.gatewayBearerToken,
+            "gateway-attribution-test-token"
+        )
+        XCTAssertNil(unattached.result?.gatewayAttributionCapability)
+        XCTAssertNil(unattached.result?.gatewayAttributionExpiresAt)
+
+        let attached = try attachSafariSession(
+            to: socketPath,
+            extensionInstanceID: "bootstrap-attribution-extension",
+            page: pageState()
+        )
+        let attachedBootstrap:
+            BurnBarRPCResponseEnvelope<BurnBarSafariBootstrapResponse> =
+            try sendEnvelope(
+                bootstrapEnvelope(
+                    id: "bootstrap-attached",
+                    sessionID: attached.sessionId
+                ),
+                socketPath: socketPath
+            )
+        XCTAssertNil(attachedBootstrap.error)
+        let capability = try XCTUnwrap(
+            attachedBootstrap.result?.gatewayAttributionCapability
+        )
+        XCTAssertNotNil(
+            capability.range(
+                of: #"^[0-9a-f]{64}$"#,
+                options: .regularExpression
+            )
+        )
+        let expiryRaw = try XCTUnwrap(
+            attachedBootstrap.result?.gatewayAttributionExpiresAt
+        )
+        let expiryFormatter = ISO8601DateFormatter()
+        expiryFormatter.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds
+        ]
+        let expiry = try XCTUnwrap(expiryFormatter.date(from: expiryRaw))
+        XCTAssertGreaterThan(expiry, Date())
+
+        let detached: BurnBarRPCResponseEnvelope<BurnBarSafariCommandCompletionResponse> =
+            try sendEnvelope(
+                detachEnvelope(
+                    id: "bootstrap-detach",
+                    sessionID: attached.sessionId
+                ),
+                socketPath: socketPath
+            )
+        XCTAssertNil(detached.error)
+        XCTAssertEqual(detached.result?.accepted, true)
+
+        let detachedBootstrap:
+            BurnBarRPCResponseEnvelope<BurnBarSafariBootstrapResponse> =
+            try sendEnvelope(
+                bootstrapEnvelope(
+                    id: "bootstrap-detached",
+                    sessionID: attached.sessionId
+                ),
+                socketPath: socketPath
+            )
+        assertRPCError(
+            detachedBootstrap,
+            code: BurnBarRPCErrorCode.unauthorized,
+            contains: "detached or has been replaced"
+        )
+
+        let replacement = try attachSafariSession(
+            to: socketPath,
+            extensionInstanceID: "bootstrap-attribution-extension",
+            page: pageState(url: "https://example.com/replacement")
+        )
+        XCTAssertNotEqual(replacement.sessionId, attached.sessionId)
+
+        let replacedBootstrap:
+            BurnBarRPCResponseEnvelope<BurnBarSafariBootstrapResponse> =
+            try sendEnvelope(
+                bootstrapEnvelope(
+                    id: "bootstrap-replaced",
+                    sessionID: attached.sessionId
+                ),
+                socketPath: socketPath
+            )
+        assertRPCError(
+            replacedBootstrap,
+            code: BurnBarRPCErrorCode.unauthorized,
+            contains: "detached or has been replaced"
+        )
+
+        let replacementBootstrap:
+            BurnBarRPCResponseEnvelope<BurnBarSafariBootstrapResponse> =
+            try sendEnvelope(
+                bootstrapEnvelope(
+                    id: "bootstrap-replacement",
+                    sessionID: replacement.sessionId
+                ),
+                socketPath: socketPath
+            )
+        XCTAssertNil(replacementBootstrap.error)
+        XCTAssertNotNil(
+            replacementBootstrap.result?.gatewayAttributionCapability
+        )
+        XCTAssertNotEqual(
+            replacementBootstrap.result?.gatewayAttributionCapability,
+            capability
+        )
+    }
+
     func testSafariPayloadResolutionPreservesLegacyRequestsWithoutParams()
         async throws {
         let socketPath = socketPath(name: "legacy-no-params")
@@ -693,6 +833,33 @@ final class SafariDaemonRPCBoundaryTests: XCTestCase {
             )
         XCTAssertNil(response.error)
         return try XCTUnwrap(response.result)
+    }
+
+    private func bootstrapEnvelope(
+        id: String,
+        sessionID: String? = nil
+    ) -> BurnBarRPCRequestEnvelopeWithParams<BurnBarSafariBootstrapRequest> {
+        BurnBarRPCRequestEnvelopeWithParams(
+            id: id,
+            method: .safariBootstrap,
+            authToken: Self.authToken,
+            params: BurnBarSafariBootstrapRequest(sessionId: sessionID)
+        )
+    }
+
+    private func detachEnvelope(
+        id: String,
+        sessionID: String
+    ) -> BurnBarRPCRequestEnvelopeWithParams<BurnBarSafariSessionDetachRequest> {
+        BurnBarRPCRequestEnvelopeWithParams(
+            id: id,
+            method: .safariSessionDetach,
+            authToken: Self.authToken,
+            params: BurnBarSafariSessionDetachRequest(
+                sessionId: sessionID,
+                reason: "bootstrap_attribution_test"
+            )
+        )
     }
 
     private func handoffEnvelope(

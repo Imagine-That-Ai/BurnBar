@@ -22,7 +22,8 @@ extension BurnBarHTTPGatewayServer {
     func parseModelRequest(
         body: String?,
         descriptor: GatewayEndpointDescriptor,
-        routeLogStartedAt: Date
+        routeLogStartedAt: Date,
+        attribution: GatewayRequestAttribution = .none
     ) async -> GatewayModelRequestParse {
         guard let body, !body.isEmpty else {
             return .rejected(.buffered(jsonResponse(status: 400, body: errorBody("request body required"))))
@@ -56,7 +57,8 @@ extension BurnBarHTTPGatewayServer {
             routingModelSlug: requestedModel.modelID,
             clientModelDisplayName: modelID,
             routingModelDisplayName: requestedModel.modelID,
-            rewriteKind: .none
+            rewriteKind: .none,
+            attribution: attribution
         )
         if let override = await resolveProxyModelOverride(forRequestedModel: requestedModel) {
             requestedModel = override.requestedModel
@@ -274,6 +276,7 @@ extension BurnBarHTTPGatewayServer {
         connection: NWConnection?,
         corsHeaders: [String: String],
         executionSource: UsageExecutionSource,
+        attribution: GatewayRequestAttribution = .none,
         descriptor: GatewayEndpointDescriptor
     ) async -> GatewayRouteOutcome {
         // remediation(gateway split): body validation + model-override resolution
@@ -284,7 +287,8 @@ extension BurnBarHTTPGatewayServer {
         switch await parseModelRequest(
             body: body,
             descriptor: descriptor,
-            routeLogStartedAt: routeLogStartedAt
+            routeLogStartedAt: routeLogStartedAt,
+            attribution: attribution
         ) {
         case .rejected(let outcome):
             return outcome
@@ -316,7 +320,8 @@ extension BurnBarHTTPGatewayServer {
                 advertisedModelSlug: advertisedRequestedModel.originalID,
                 routingModelSlug: requestedModel.modelID,
                 requestedCanonicalModelID: requestedCanonicalModelID,
-                priorAttempts: routeLogAttempts.attempts
+                priorAttempts: routeLogAttempts.attempts,
+                attribution: attribution
             )
         }
 

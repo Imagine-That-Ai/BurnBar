@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/../.."
+repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$repo_root"
+# shellcheck source=scripts/lib/exact-candidate-git.sh
+source scripts/lib/exact-candidate-git.sh
+openburnbar_configure_exact_candidate_git "$repo_root"
 
 version="ci-proof"
 
@@ -39,7 +43,7 @@ if [[ -z "$version" ]]; then
   exit 2
 fi
 
-commit="$(git rev-parse HEAD)"
+commit="$(openburnbar_candidate_git rev-parse HEAD)"
 tmpdir="$(mktemp -d)"
 worktree="$tmpdir/worktree"
 archive="$tmpdir/OpenBurnBar-${version}-corresponding-source.tar.gz"
@@ -47,17 +51,23 @@ extract="$tmpdir/extract"
 
 cleanup() {
   if [[ -d "$worktree" ]]; then
-    git worktree remove --force "$worktree" >/dev/null 2>&1 || true
+    openburnbar_candidate_repository_git worktree remove --force "$worktree" >/dev/null 2>&1 || true
   fi
   rm -rf "$tmpdir"
 }
 trap cleanup EXIT
 
-git worktree add --detach "$worktree" HEAD >/dev/null
+openburnbar_candidate_repository_git worktree add --detach "$worktree" "$commit" >/dev/null
 
 (
   cd "$worktree"
-  scripts/create-corresponding-source.sh --version "$version" --output "$archive" >/dev/null
+  env \
+    -u GIT_DIR \
+    -u GIT_WORK_TREE \
+    -u GIT_INDEX_FILE \
+    -u OPENBURNBAR_CANDIDATE_GIT_DIR \
+    -u OPENBURNBAR_CANDIDATE_GIT_INDEX_FILE \
+    scripts/create-corresponding-source.sh --version "$version" --output "$archive" >/dev/null
 )
 
 [[ -f "$archive" ]] || { echo "ERROR: missing source archive" >&2; exit 1; }
