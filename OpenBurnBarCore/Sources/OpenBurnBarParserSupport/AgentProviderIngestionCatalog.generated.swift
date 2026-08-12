@@ -391,6 +391,19 @@ public enum AgentProviderIngestionCatalog {
             quotaSignal: false
         ),
         Entry(
+            provider: .devin,
+            agentProviderCase: "devin",
+            providerID: "devin",
+            displayLabel: "Devin",
+            aliases: ["devin-desktop", "devin-cli"],
+            linuxLogicalPath: "~/.config/Devin/sessions",
+            macOSLogicalPath: "~/Library/Application Support/Devin/sessions",
+            filePattern: "*.jsonl",
+            ingestion: .unavailable,
+            coverageNote: "Devin Desktop supersedes Windsurf branding, but no Devin session parser is registered yet. Keep the provider visible with unavailable local usage until a real parser ships.",
+            quotaSignal: false
+        ),
+        Entry(
             provider: .warp,
             agentProviderCase: "warp",
             providerID: "warp",
