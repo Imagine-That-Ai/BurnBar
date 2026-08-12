@@ -245,7 +245,8 @@ create_fresh_release_output_dir \
   "Mac App Store release directory"
 mkdir -p "$package_cache"
 
-bash scripts/prepare-openburnbar-app-swiftpm.sh \
+openburnbar_without_candidate_git_environment \
+  bash scripts/prepare-openburnbar-app-swiftpm.sh \
   --project "$project" \
   --scheme "$scheme" \
   --cache-dir "$package_cache" \
@@ -276,7 +277,8 @@ cat > "$export_options" <<EOF
 EOF
 
 set -o pipefail
-xcodebuild archive \
+openburnbar_without_candidate_git_environment \
+  xcodebuild archive \
   -project "$project" \
   -scheme "$scheme" \
   -configuration "$configuration" \
@@ -352,7 +354,8 @@ bash scripts/ci/verify-openburnbar-mas-artifact.sh \
 
 bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$archive_path"
 
-xcodebuild -exportArchive \
+openburnbar_without_candidate_git_environment \
+  xcodebuild -exportArchive \
   -archivePath "$archive_path" \
   -exportPath "$export_path" \
   -exportOptionsPlist "$export_options" \

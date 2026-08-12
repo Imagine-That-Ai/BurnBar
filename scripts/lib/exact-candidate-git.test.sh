@@ -82,6 +82,16 @@ import os
 for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
     assert os.environ.get(name), name
 PY
+
+  openburnbar_without_candidate_git_environment \
+    python3 - <<'PY'
+import os
+
+for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+    assert name not in os.environ, name
+assert os.environ["OPENBURNBAR_CANDIDATE_GIT_DIR"]
+assert os.environ["OPENBURNBAR_CANDIDATE_GIT_INDEX_FILE"]
+PY
 )
 
 if env \

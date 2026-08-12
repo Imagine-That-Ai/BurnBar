@@ -199,7 +199,8 @@ create_fresh_release_output_dir \
   "Developer ID release directory"
 mkdir -p "$package_cache"
 
-bash scripts/prepare-openburnbar-app-swiftpm.sh \
+openburnbar_without_candidate_git_environment \
+  bash scripts/prepare-openburnbar-app-swiftpm.sh \
   --project "$project" \
   --scheme "$scheme" \
   --cache-dir "$package_cache" \
@@ -249,11 +250,14 @@ if ! /usr/libexec/PlistBuddy -c "Print :com.apple.developer.hid.virtual.device" 
   exit 1
 fi
 
-swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarDaemon
-swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI
+openburnbar_without_candidate_git_environment \
+  swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarDaemon
+openburnbar_without_candidate_git_environment \
+  swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI
 
 set -o pipefail
-xcodebuild build \
+openburnbar_without_candidate_git_environment \
+  xcodebuild build \
   -project "$project" \
   -scheme "$scheme" \
   -configuration "$configuration" \

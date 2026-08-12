@@ -366,7 +366,8 @@ trap cleanup_on_exit EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-bash "$prepare_swiftpm_script" \
+openburnbar_without_candidate_git_environment \
+  bash "$prepare_swiftpm_script" \
   --project "$project_path" \
   --scheme "$host_target" \
   --cache-dir "$package_cache" \
@@ -405,7 +406,8 @@ run_target_build() {
   local target="$1"
   {
     printf '=== target %s ===\n' "$target"
-    "$xcodebuild_bin" build \
+    openburnbar_without_candidate_git_environment \
+      "$xcodebuild_bin" build \
       "${common_build_args[@]}" \
       -target "$target"
   } 2>&1 | tee -a "$build_log"
