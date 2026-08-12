@@ -340,6 +340,13 @@ for required_function in \
   fi
 done
 
+# The checked-in app graph deliberately selects source-built Firestore. The
+# default Firebase graph adds grpc-binary, which both invalidates the exact lock
+# and crashes on the supported iOS 27 runtime. The cache-preparation helper
+# exports this for its own resolver process; repeat it here so the subsequent
+# signed Xcode build evaluates exactly the same locked package graph.
+export FIREBASE_SOURCE_FIRESTORE=1
+
 cleanup() {
   local original_status="${1:-0}"
   local google_status=0
