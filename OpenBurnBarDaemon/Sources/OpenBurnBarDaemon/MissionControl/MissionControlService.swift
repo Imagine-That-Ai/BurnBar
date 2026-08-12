@@ -545,7 +545,28 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
 
         for activityProject in snapshot.projects {
             try Task.checkCancellation()
-            try await syncActivityProject(activityProject, now: now)
+            do {
+                try await syncActivityProject(activityProject, now: now)
+            } catch let error as BurnBarMissionControlError {
+                switch error {
+                case .invalidProjectIdentifier,
+                     .ambiguousProjectIdentifier,
+                     .projectIdentityConflict,
+                     .projectDeleted:
+                    logger.warning(
+                        "mission_control_activity_project_skipped",
+                        metadata: [
+                            "project_identifier": String(
+                                activityProject.projectSlug.prefix(160)
+                            ),
+                            "snapshot_path": activitySnapshotURL?.path ?? "<memory>",
+                            "error": error.localizedDescription
+                        ]
+                    )
+                default:
+                    throw error
+                }
+            }
         }
     }
 

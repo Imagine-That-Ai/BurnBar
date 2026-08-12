@@ -225,8 +225,8 @@ final class CastDiscovery {
                            case let .hostPort(host, port) = endpoint {
                             let hostValue = hostString(host)
                             let portValue = Int(port.rawValue)
-                            Task { @MainActor [weak self, serviceSnapshot, hostValue, portValue] in
-                                self?.recordResolved(
+                            Task { @MainActor [self, serviceSnapshot, hostValue, portValue] in
+                                recordResolved(
                                     serviceName: serviceSnapshot.serviceName,
                                     friendlyName: serviceSnapshot.friendlyName,
                                     model: serviceSnapshot.model,
@@ -439,7 +439,10 @@ private final class CastNetServiceDiscovery: NSObject, NetServiceBrowserDelegate
                     NI_NUMERICHOST
                 )
                 guard result == 0 else { return nil }
-                return String(cString: hostname)
+                return String(
+                    decoding: hostname.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+                    as: UTF8.self
+                )
             }
         }
     }

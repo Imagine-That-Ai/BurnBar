@@ -166,14 +166,14 @@ public enum ComputerUseDenyRegistry {
             effect: .deny,
             origin: .builtIn,
             label: "URLs containing /admin",
-            windowTitleRegex: ".*/admin.*"
+            urlRegex: #"(?:^|[/?#])admin(?:[/?#]|$)"#
         ),
         ComputerUseScopeRule(
             id: ComputerUseScopeRuleID("builtin.billing_paths"),
             effect: .deny,
             origin: .builtIn,
             label: "URLs containing /billing",
-            windowTitleRegex: ".*/billing.*"
+            urlRegex: #"(?:^|[/?#])billing(?:[/?#]|$)"#
         )
     ]
 

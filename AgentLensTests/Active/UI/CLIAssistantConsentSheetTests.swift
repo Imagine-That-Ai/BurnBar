@@ -32,7 +32,7 @@ final class CLIAssistantConsentSheetTests: XCTestCase {
         let sm = makeSettings()
         let view = CLIAssistantConsentSheet(settingsManager: sm, onDismiss: {})
         let sut = try view.inspect()
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         XCTAssertTrue(buttons.count >= 2, "Should have at least Allow and Not now buttons")
     }
 
@@ -43,7 +43,7 @@ final class CLIAssistantConsentSheetTests: XCTestCase {
             dismissed = true
         }
         let sut = try view.inspect()
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         // "Not now" is the first button
         try buttons[0].tap()
         XCTAssertFalse(sm.cliAssistantAllowed)
@@ -58,7 +58,7 @@ final class CLIAssistantConsentSheetTests: XCTestCase {
             dismissed = true
         }
         let sut = try view.inspect()
-        let buttons = try sut.findAll(ViewType.Button.self)
+        let buttons = sut.findAll(ViewType.Button.self)
         // "Allow" is the second button
         try buttons[1].tap()
         XCTAssertTrue(sm.cliAssistantAllowed)

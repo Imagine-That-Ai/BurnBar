@@ -10,26 +10,27 @@ import XCTest
  * tests prove the resolution order and whitespace/empty handling so Sentry
  * stays dark for OSS builds and lights up correctly for internal builds.
  */
+@MainActor
 final class SentryDSNResolutionTests: XCTestCase {
 
     private var tempDir: URL!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-sentry-dsn-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(
+        try FileManager.default.createDirectory(
             at: tempDir,
             withIntermediateDirectories: true
         )
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         if let tempDir {
             try? FileManager.default.removeItem(at: tempDir)
         }
         tempDir = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testResolveSentryDSNFromInfoPlist() throws {

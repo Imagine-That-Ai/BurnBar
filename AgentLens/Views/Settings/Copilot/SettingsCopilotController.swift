@@ -143,7 +143,7 @@ final class SettingsCopilotController {
     /// User confirmed a proposed action — apply it through the registry.
     @discardableResult
     func confirmAction(id: String) -> Bool {
-        guard let action = registry.apply(actionID: id) else { return false }
+        guard registry.apply(actionID: id) != nil else { return false }
         appliedActionIDs.insert(id)
         // Remove from proposed list.
         proposedActions.removeAll { $0.id == id }

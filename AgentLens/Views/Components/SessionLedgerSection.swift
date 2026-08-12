@@ -300,7 +300,7 @@ private struct SessionLedgerBucketPicker: View {
 
 // MARK: - Row
 
-private struct SessionLedgerEntryRow: View {
+struct SessionLedgerEntryRow: View {
     let usage: TokenUsage
     let theme: ProviderTheme
     var displayMode: UsageDisplayMode

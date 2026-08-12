@@ -61,6 +61,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (fenced, trust-signaled; deliberately no write tool).
 - Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
 
+### Added - OpenBurnBar Safari extension
+
+- Added OpenBurnBar as a Safari Web Extension surface with MV3 page context,
+  visible-viewport vision, real-session DOM actions, in-browser approvals,
+  daemon-routed agents/models, tab ownership, Computer Use scope/deny/audit
+  rails, panic halt, and opt-in Pro+ memory/skill learning.
+- Added deterministic Safari package CI, macOS/web path classification,
+  fail-closed TypeScript diff coverage, manual real-Safari/accessibility QA,
+  architecture and threat-model documentation, and release operator guidance.
+- Embedded `OpenBurnBarSafariExtension.appex` as a distinct sandboxed product
+  with App Group `group.com.openburnbar.app`; direct releases use a dedicated
+  `MAC_APP_DIRECT` profile and sign/verify the appex before the host app, while
+  Mac App Store archive and exported-package verification preserve the
+  extension's target-specific entitlements.
+
 ## [1.0.34] - 2026-08-09
 
 ### Fixed - Domain-core protected signer path vs GitHub Actions API

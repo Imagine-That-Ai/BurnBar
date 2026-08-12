@@ -104,18 +104,18 @@ final class OpenBurnBarMigrationTests: XCTestCase {
 }
 
 private final class InMemoryKeychainBackend: KeychainStoreBackend {
-    private var storage: [String: [String: Data]] = [:]
+    private let storage = Locked<[String: [String: Data]]>([:])
 
     func set(_ value: Data, service: String, account: String) throws {
-        storage[service, default: [:]][account] = value
+        storage.withLock { $0[service, default: [:]][account] = value }
     }
 
     func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
-        storage[service]?[account]
+        storage.withLock { $0[service]?[account] }
     }
 
     func delete(service: String, account: String) throws {
-        storage[service]?[account] = nil
+        storage.withLock { $0[service]?[account] = nil }
     }
 }
 
@@ -131,7 +131,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         let queue = try DatabaseQueue(path: databaseURL.path)
         let base = Date(timeIntervalSince1970: 1_742_910_000)
 
-        try await seedLegacyV13Database(queue: queue, at: base)
+        try await Self.seedLegacyV13Database(queue: queue, at: base)
 
         let store = try DataStore(
             databaseQueue: queue,
@@ -536,8 +536,8 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         XCTAssertEqual(syncState?.remoteArtifactID, "remote-shared-cloud-artifact")
     }
 
-    nonisolated private func seedLegacyV13Database(queue: DatabaseQueue, at base: Date) async throws {
-        let migrationIdentifiers = legacyMigrationIdentifiers()
+    nonisolated private static func seedLegacyV13Database(queue: DatabaseQueue, at base: Date) async throws {
+        let migrationIdentifiers = Self.legacyMigrationIdentifiers()
         try await queue.write { db in
             try db.execute(
                 sql: """
@@ -742,7 +742,7 @@ final class OpenBurnBarMigrationBackfillRecoveryTests: XCTestCase {
         }
     }
 
-    nonisolated private func legacyMigrationIdentifiers() -> [String] {
+    nonisolated private static func legacyMigrationIdentifiers() -> [String] {
         [
             "v1_initial",
             "v2_sync",

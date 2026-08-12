@@ -131,10 +131,10 @@ final class GatewayUpstreamURLProtocol: URLProtocol {
 
         if response.delayNanoseconds > 0 {
             let delay = TimeInterval(response.delayNanoseconds) / 1_000_000_000
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + delay) { [self] in
-                self.send(response)
-            }
-            return
+            // URL loading already invokes each protocol instance independently.
+            // Sleeping that worker keeps the fixture deterministic without
+            // claiming that Foundation's non-Sendable URLProtocol is Sendable.
+            Thread.sleep(forTimeInterval: delay)
         }
         send(response)
     }

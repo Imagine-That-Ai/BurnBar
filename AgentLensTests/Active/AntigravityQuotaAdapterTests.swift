@@ -284,9 +284,9 @@ final class AntigravityQuotaAdapterTests: XCTestCase {
         XCTAssertNotNil(activeBucket, "Expected active bucket; buckets=\(snapshot.buckets.map(\.label))")
         if let active = activeBucket {
             XCTAssertTrue(active.label.contains("Gemini 3.5 Flash (Medium)"), active.label)
-            XCTAssertEqual(active.usedValue, 3.0, "used=\(active.usedValue)")
-            XCTAssertEqual(active.limitValue, 900.0, "limit=\(active.limitValue)")
-            XCTAssertEqual(active.remainingValue, 897.0, "remaining=\(active.remainingValue)")
+            XCTAssertEqual(active.usedValue, 3.0)
+            XCTAssertEqual(active.limitValue, 900.0)
+            XCTAssertEqual(active.remainingValue, 897.0)
         }
 
         // Claude Opus should now be inactive with 0 used

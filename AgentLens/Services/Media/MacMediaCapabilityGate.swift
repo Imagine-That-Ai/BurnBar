@@ -1012,6 +1012,15 @@ struct RemoteUnlockCredentialKeyMaterial: Sendable {
 final class RemoteUnlockCredentialKeyStore: Sendable {
     static let shared = RemoteUnlockCredentialKeyStore()
 
+    // AUDIT(nonisolated(unsafe)): set once before publication, then read-only;
+    // this context never performs policy evaluation.
+    // sendable-allowlist: foundation-sdk-shim
+    nonisolated(unsafe) private static let nonInteractiveContext: LAContext = {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return context
+    }()
+
     private let service: String
     private let account: String
     private let security: any SecurityKeychainOperations
@@ -1066,10 +1075,7 @@ final class RemoteUnlockCredentialKeyStore: Sendable {
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         if !allowUserInteraction {
-            let context = LAContext()
-            context.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = context
-            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+            query[kSecUseAuthenticationContext as String] = Self.nonInteractiveContext
         }
         var item: CFTypeRef?
         let status = allowUserInteraction
@@ -1087,7 +1093,7 @@ final class RemoteUnlockCredentialKeyStore: Sendable {
         item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         if !allowUserInteraction {
-            item[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+            item[kSecUseAuthenticationContext as String] = Self.nonInteractiveContext
         }
         let status = allowUserInteraction
             ? security.add(query: item as CFDictionary)

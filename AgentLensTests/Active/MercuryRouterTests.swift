@@ -695,10 +695,10 @@ final class MercuryRouterTests: XCTestCase {
         // UserDefaults observer re-synchronizes grants against real `Date()`,
         // so a grant minted at a fixed 2023 epoch would be purged as expired
         // whenever that observer fires between the awaits below.
-        var now = Date()
+        let now = OpenBurnBarCore.Locked(Date())
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
-            clock: { now }
+            clock: { now.read() }
         )
         consentStore.rememberAcceptedMirrorPeers = true
         consentStore.rememberAcceptedPeer(
@@ -707,14 +707,14 @@ final class MercuryRouterTests: XCTestCase {
             controlAuthorityPeerNodeId: "ios-peer",
             remotePeerNodeId: "ios-peer",
             requesterName: "Alberto's iPhone",
-            now: now
+            now: now.read()
         )
         let firstExpiry = try XCTUnwrap(consentStore.grants.first?.expiresAt)
 
         // Auto-accept inside the fixed TTL succeeds but must NOT slide the
         // expiry forward: remembered grants expire a fixed interval after the
         // explicit Accept.
-        now = now.addingTimeInterval(10 * 24 * 60 * 60)
+        now.withLock { $0 = $0.addingTimeInterval(10 * 24 * 60 * 60) }
         await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
 
         XCTAssertNil(router.pendingRequest)
@@ -726,10 +726,10 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     func testExpiredPeerGrantRingsAgainInsteadOfAutoAccepting() async {
-        var now = Date(timeIntervalSince1970: 1_700_000_000)
+        let now = OpenBurnBarCore.Locked(Date(timeIntervalSince1970: 1_700_000_000))
         let (router, sink, consentStore) = makeRouterWithConsentStore(
             startScreenShare: { _, _, _, _, _, _, _, _ in },
-            clock: { now }
+            clock: { now.read() }
         )
         consentStore.rememberAcceptedMirrorPeers = true
         consentStore.rememberAcceptedPeer(
@@ -738,11 +738,11 @@ final class MercuryRouterTests: XCTestCase {
             controlAuthorityPeerNodeId: "ios-peer",
             remotePeerNodeId: "ios-peer",
             requesterName: "Alberto's iPhone",
-            now: now
+            now: now.read()
         )
 
         // Past the fixed TTL the grant is gone; the request must ring again.
-        now = now.addingTimeInterval(200 * 24 * 60 * 60)
+        now.withLock { $0 = $0.addingTimeInterval(200 * 24 * 60 * 60) }
         await handleMirrorFrame(mirrorRequestFrame(), router: router, sink: sink)
 
         XCTAssertNotNil(router.pendingRequest, "an expired grant must not auto-accept")
@@ -1519,8 +1519,8 @@ final class MercuryRouterTests: XCTestCase {
 
     func testRemoteUnlockMirrorRestartsNormalCaptureWhenHostUnlocks() async throws {
         let now = Date()
-        var lockState = HermesRealtimeRelayMacLockState.loginWindow
-        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState })
+        let lockState = OpenBurnBarCore.Locked(HermesRealtimeRelayMacLockState.loginWindow)
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState.read() })
         var startCount = 0
         let (router, sink) = makeRouter(
             consent: true,
@@ -1551,7 +1551,7 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(try extractStreaming(from: router.phase), "remote-unlock-mirror")
 
         await sink.reset()
-        lockState = .unlocked
+        lockState.write(.unlocked)
         await router.handleHostAuthGateOpenedForTesting(reason: "unit_unlock")
 
         XCTAssertEqual(startCount, 1, "locked Remote Unlock mirrors start capture only after the host unlocks")
@@ -1565,8 +1565,8 @@ final class MercuryRouterTests: XCTestCase {
 
     func testRemoteUnlockHostUnlockRevokesSiblingSessions() async throws {
         let now = Date()
-        var lockState = HermesRealtimeRelayMacLockState.loginWindow
-        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState })
+        let lockState = OpenBurnBarCore.Locked(HermesRealtimeRelayMacLockState.loginWindow)
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState.read() })
         let (router, sink) = makeRouter(
             consent: true,
             startScreenShare: { _, _, _, _, _, _, _, _ in },
@@ -1625,7 +1625,7 @@ final class MercuryRouterTests: XCTestCase {
             )
         )
 
-        lockState = .unlocked
+        lockState.write(.unlocked)
         await router.handleHostAuthGateOpenedForTesting(reason: "unit_unlock")
 
         XCTAssertFalse(
@@ -1648,8 +1648,8 @@ final class MercuryRouterTests: XCTestCase {
 
     func testRemoteUnlockCredentialResultPollsUntilHostUnlocksAndResumesCapture() async throws {
         let now = Date()
-        var lockState = HermesRealtimeRelayMacLockState.loginWindow
-        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState })
+        let lockState = OpenBurnBarCore.Locked(HermesRealtimeRelayMacLockState.loginWindow)
+        let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { lockState.read() })
         var startCount = 0
         let (router, sink) = makeRouter(
             consent: true,
@@ -1693,7 +1693,7 @@ final class MercuryRouterTests: XCTestCase {
         let framesBeforeUnlock = await sink.frames
         XCTAssertTrue(framesBeforeUnlock.isEmpty)
 
-        lockState = .unlocked
+        lockState.write(.unlocked)
         for _ in 0..<30 {
             if startCount == 1 { break }
             try await Task.sleep(nanoseconds: 100_000_000)

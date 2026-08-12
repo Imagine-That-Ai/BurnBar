@@ -1,0 +1,838 @@
+import type { ActivityEvent, ApprovalPreview, LearningItem, TranscriptEntry } from '../shared/messages';
+import type { BridgeAgentOption } from '../shared/protocol';
+import { SAFARI_PERFORMANCE_LABELS, formatPerformanceDuration } from './diagnostics';
+import type { PopupViewModel } from './viewModel';
+
+const TRANSCRIPT_FOLLOW_THRESHOLD_PX = 32;
+
+interface TextSelectionState {
+  start: number;
+  end: number;
+  direction: 'forward' | 'backward' | 'none';
+  scrollLeft: number;
+  scrollTop: number;
+}
+
+interface FocusState {
+  key: string;
+  selection?: TextSelectionState;
+}
+
+interface ScrollState {
+  left: number;
+  top: number;
+}
+
+interface TranscriptScrollState {
+  followLatest: boolean;
+  top: number;
+}
+
+function element<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) {
+    node.className = className;
+  }
+  if (text !== undefined) {
+    node.textContent = text;
+  }
+  return node;
+}
+
+function icon(name: string): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.classList.add('icon');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const paths: Record<string, string> = {
+    stop: 'M7 7h10v10H7z',
+    shield: 'M12 2 4.5 5v6c0 5 3.2 9.4 7.5 11 4.3-1.6 7.5-6 7.5-11V5L12 2Zm0 4 4.5 1.8V11c0 3.4-1.9 6.5-4.5 7.8V6Z',
+    page: 'M6 2h8l4 4v16H6V2Zm8 1.8V7h3.2L14 3.8ZM8.5 11v1.5h7V11h-7Zm0 4v1.5h7V15h-7Z',
+    spark: 'm12 2 1.5 6.5L20 10l-6.5 1.5L12 18l-1.5-6.5L4 10l6.5-1.5L12 2Z',
+    refresh: 'M18.4 5.6A8 8 0 1 0 20 14h-2.1a6 6 0 1 1-1-6.9L14 10h7V3l-2.6 2.6Z',
+    chevron: 'm8 10 4 4 4-4',
+    lock: 'M7 10V7a5 5 0 0 1 10 0v3h2v12H5V10h2Zm2 0h6V7a3 3 0 0 0-6 0v3Z',
+    gauge:
+      'M12 4a9 9 0 0 0-9 9c0 2.4.9 4.7 2.5 6.4l1.5-1.3A7 7 0 1 1 17 18l1.5 1.4A9 9 0 0 0 12 4Zm4.7 4.3-5.6 3.2A2.5 2.5 0 1 0 13 13.4l4.7-4.1-1-1Z',
+    copy: 'M8 7V3h13v13h-4v5H3V7h5Zm2-2v2h7v7h2V5h-9Zm5 4H5v10h10V9Z',
+    download: 'M11 3h2v9l3.5-3.5L18 10l-6 6-6-6 1.5-1.5L11 12V3ZM4 19h16v2H4v-2Z',
+    brain:
+      'M9.2 3.1A4 4 0 0 0 5 7v.2A4.5 4.5 0 0 0 4 16v.2A3.8 3.8 0 0 0 10 19v-5H8v-2h2V7.5A4.4 4.4 0 0 0 9.2 3.1ZM14.8 3.1A4 4 0 0 1 19 7v.2a4.5 4.5 0 0 1 1 8.8v.2A3.8 3.8 0 0 1 14 19v-5h2v-2h-2V7.5a4.4 4.4 0 0 1 .8-4.4Z'
+  };
+  path.setAttribute('d', paths[name] ?? paths.spark ?? '');
+  svg.append(path);
+  return svg;
+}
+
+function focusKey<T extends HTMLElement>(node: T, key: string): T {
+  node.dataset.focusKey = key;
+  return node;
+}
+
+function button(label: string, action: string, className = 'button'): HTMLButtonElement {
+  const node = focusKey(element('button', className, label), `action:${action}`);
+  node.type = 'button';
+  node.dataset.action = action;
+  return node;
+}
+
+function captureTextSelection(node: HTMLElement): TextSelectionState | undefined {
+  if (!(node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement)) {
+    return undefined;
+  }
+  try {
+    const start = node.selectionStart;
+    const end = node.selectionEnd;
+    if (start === null || end === null) {
+      return undefined;
+    }
+    return {
+      start,
+      end,
+      direction: node.selectionDirection ?? 'none',
+      scrollLeft: node.scrollLeft,
+      scrollTop: node.scrollTop
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function captureFocus(root: HTMLElement): FocusState | undefined {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !root.contains(active)) {
+    return undefined;
+  }
+  const key = active.dataset.focusKey;
+  if (!key) {
+    return undefined;
+  }
+  const selection = captureTextSelection(active);
+  return selection ? { key, selection } : { key };
+}
+
+function restoreFocus(root: HTMLElement, state: FocusState | undefined): void {
+  if (!state) {
+    return;
+  }
+  const next = [...root.querySelectorAll<HTMLElement>('[data-focus-key]')].find(
+    (candidate) => candidate.dataset.focusKey === state.key
+  );
+  if (!next || (next instanceof HTMLButtonElement && next.disabled)) {
+    return;
+  }
+  next.focus({ preventScroll: true });
+  if (!state.selection || !(next instanceof HTMLInputElement || next instanceof HTMLTextAreaElement)) {
+    return;
+  }
+  const start = Math.min(state.selection.start, next.value.length);
+  const end = Math.min(Math.max(state.selection.end, start), next.value.length);
+  try {
+    next.setSelectionRange(start, end, state.selection.direction);
+  } catch {
+    return;
+  }
+  next.scrollLeft = state.selection.scrollLeft;
+  next.scrollTop = state.selection.scrollTop;
+}
+
+function captureScroll(node: HTMLElement | null): ScrollState | undefined {
+  return node ? { left: node.scrollLeft, top: node.scrollTop } : undefined;
+}
+
+function restoreScroll(node: HTMLElement | null, state: ScrollState | undefined): void {
+  if (!node || !state) {
+    return;
+  }
+  node.scrollLeft = state.left;
+  node.scrollTop = state.top;
+}
+
+function captureTranscriptScroll(node: HTMLElement | null): TranscriptScrollState | undefined {
+  if (!node) {
+    return undefined;
+  }
+  return {
+    followLatest: node.scrollHeight - node.clientHeight - node.scrollTop <= TRANSCRIPT_FOLLOW_THRESHOLD_PX,
+    top: node.scrollTop
+  };
+}
+
+function restoreTranscriptScroll(node: HTMLElement | null, state: TranscriptScrollState | undefined): void {
+  if (!node) {
+    return;
+  }
+  node.scrollTop = !state || state.followLatest ? node.scrollHeight : state.top;
+}
+
+function renderHeader(viewModel: PopupViewModel): HTMLElement {
+  const header = element('header', 'topbar');
+  const identity = element('div', 'identity');
+  const logoWrap = element('div', 'logo-wrap');
+  const logo = element('img', 'logo');
+  logo.src = 'icons/app-logo.svg';
+  logo.alt = '';
+  logoWrap.append(logo);
+  const titles = element('div', 'identity-copy');
+  titles.append(element('strong', 'product-name', 'OpenBurnBar'), element('span', 'surface-name', 'Safari Agent'));
+  identity.append(logoWrap, titles);
+
+  const controls = element('div', 'topbar-actions');
+  const status = element('span', `connection connection--${viewModel.connectionTone}`);
+  status.setAttribute('role', 'status');
+  status.append(element('span', 'connection-orb'), document.createTextNode(viewModel.connectionLabel));
+  const stop = button('Stop', 'abort', 'stop-button');
+  stop.disabled = !viewModel.stopEnabled;
+  stop.title = viewModel.stopEnabled ? 'Stop this run now (⌃⌥⌘.)' : 'No active run';
+  stop.setAttribute('aria-keyshortcuts', 'Control+Alt+Meta+.');
+  stop.prepend(icon('stop'));
+  controls.append(status, stop);
+  header.append(identity, controls);
+  return header;
+}
+
+function renderPageBand(viewModel: PopupViewModel): HTMLElement {
+  const band = element('section', 'page-band');
+  band.setAttribute('aria-label', 'Current Safari page');
+  const glyph = element('span', 'page-glyph');
+  glyph.append(icon('page'));
+  const copy = element('div', 'page-copy');
+  const title = element('strong', 'page-title', viewModel.pageLabel);
+  title.title = viewModel.pageLabel;
+  const detail = element('span', 'page-detail', viewModel.pageDetail);
+  copy.append(title, detail);
+  const chips = element('div', 'page-chips');
+  if (viewModel.pageSensitive) {
+    const sensitive = element('span', 'chip chip--sensitive', 'Sensitive');
+    sensitive.title = 'Credential, banking, billing, or payment context detected';
+    chips.append(sensitive);
+  }
+  const permission = element(
+    'span',
+    `chip chip--${viewModel.snapshot?.page?.permission === 'granted' ? 'ready' : 'muted'}`,
+    viewModel.snapshot?.page?.permission === 'granted' ? 'Allowed' : 'Site access'
+  );
+  permission.title = viewModel.permissionLabel;
+  chips.append(permission);
+  band.append(glyph, copy, chips);
+  return band;
+}
+
+function renderModes(viewModel: PopupViewModel): HTMLElement {
+  const section = element('section', 'mode-section');
+  const control = element('div', 'mode-control');
+  control.setAttribute('role', 'group');
+  control.setAttribute('aria-label', 'OpenBurnBar mode');
+  control.setAttribute('aria-describedby', 'mode-description');
+  for (const mode of viewModel.modes) {
+    const option = button(mode.label, `mode:${mode.id}`, 'mode-button');
+    const selected = mode.id === viewModel.selectedMode;
+    option.setAttribute('aria-pressed', String(selected));
+    option.setAttribute('aria-label', mode.accessibleLabel);
+    option.classList.toggle('is-selected', selected);
+    control.append(option);
+  }
+  const description = element('p', 'mode-description', viewModel.modeDescription);
+  description.id = 'mode-description';
+  section.append(control, description);
+  return section;
+}
+
+function renderAgentPicker(viewModel: PopupViewModel): HTMLElement {
+  const section = element('section', 'agent-section');
+  const labelRow = element('div', 'section-heading-row');
+  labelRow.append(
+    element('label', 'section-heading', viewModel.selectedMode === 'handoff' ? 'Installed agent' : 'Brain')
+  );
+  const selectionHint = viewModel.selectedAgent
+    ? `${viewModel.selectedAgent.providerName} · ${viewModel.selectedAgent.cloud ? 'cloud' : 'local'}`
+    : 'Discovery from OpenBurnBar';
+  labelRow.append(element('span', 'section-meta', selectionHint));
+
+  const controls = element('div', 'agent-controls');
+  const search = element('input', 'agent-search');
+  search.type = 'search';
+  search.value = viewModel.agentFilter;
+  search.placeholder = 'Filter agents and models';
+  search.autocomplete = 'off';
+  search.dataset.input = 'agent-filter';
+  focusKey(search, 'input:agent-filter');
+  search.setAttribute('aria-label', 'Filter agents and models');
+  const selectWrap = element('div', 'select-wrap');
+  const select = element('select', 'agent-select');
+  select.dataset.input = 'agent';
+  focusKey(select, 'input:agent');
+  select.setAttribute('aria-label', viewModel.selectedMode === 'handoff' ? 'Installed agent' : 'Agent or model');
+  if (viewModel.noAgents) {
+    const empty = element('option', undefined, 'No compatible agents found');
+    empty.disabled = true;
+    empty.selected = true;
+    select.append(empty);
+  } else {
+    for (const group of viewModel.agentGroups) {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      for (const agent of group.agents) {
+        optgroup.append(renderAgentOption(agent, viewModel.selectedAgent?.id));
+      }
+      select.append(optgroup);
+    }
+  }
+  selectWrap.append(select, icon('chevron'));
+  controls.append(search, selectWrap);
+  section.append(labelRow, controls);
+  return section;
+}
+
+function renderAgentOption(agent: BridgeAgentOption, selectedAgentId?: string): HTMLOptionElement {
+  const option = document.createElement('option');
+  option.value = agent.id;
+  option.textContent = `${agent.displayName}${agent.kind === 'cli' ? ' — installed' : ''}`;
+  option.selected = agent.id === selectedAgentId;
+  return option;
+}
+
+function renderTranscript(entries: TranscriptEntry[]): HTMLElement {
+  const section = element('section', 'transcript');
+  section.setAttribute('aria-label', 'Conversation');
+  section.setAttribute('aria-live', 'polite');
+  if (entries.length === 0) {
+    const empty = element('div', 'empty-state');
+    const orb = element('div', 'empty-orb');
+    orb.append(icon('spark'));
+    empty.append(
+      orb,
+      element('strong', undefined, 'The page is in view.'),
+      element('p', undefined, 'Ask what it says, what it looks like, or what you want done.')
+    );
+    section.append(empty);
+    return section;
+  }
+  for (const entry of entries) {
+    const article = element('article', `message message--${entry.role}${entry.error ? ' is-error' : ''}`);
+    const role =
+      entry.role === 'user'
+        ? 'You'
+        : entry.role === 'assistant'
+          ? 'OpenBurnBar'
+          : entry.role === 'activity'
+            ? 'Run'
+            : 'System';
+    article.append(element('span', 'message-role', role), element('p', 'message-text', entry.text));
+    if (entry.streaming) {
+      const typing = element('span', 'typing-indicator');
+      typing.setAttribute('aria-label', 'Response streaming');
+      typing.append(element('i'), element('i'), element('i'));
+      article.append(typing);
+    }
+    section.append(article);
+  }
+  return section;
+}
+
+function renderApproval(approval: ApprovalPreview): HTMLElement {
+  const card = element('article', `approval-card approval-card--${approval.risk}`);
+  const eyebrow = element('div', 'approval-eyebrow');
+  eyebrow.append(icon('shield'), document.createTextNode('Approval required'));
+  card.append(
+    eyebrow,
+    element('strong', 'approval-title', approval.title),
+    element('p', 'approval-summary', approval.summary)
+  );
+  if (approval.url) {
+    const host = (() => {
+      try {
+        return new URL(approval.url).hostname;
+      } catch {
+        return approval.url;
+      }
+    })();
+    card.append(element('span', 'approval-site', host));
+  }
+  const actions = element('div', 'approval-actions');
+  const block = button('Block', `approval:${approval.id}:block`, 'button button--quiet');
+  const once = button('Allow once', `approval:${approval.id}:allow_once`, 'button button--secondary');
+  const session = button('Allow session', `approval:${approval.id}:allow_session`, 'button button--primary');
+  block.setAttribute('aria-label', `Block approval: ${approval.title}`);
+  once.setAttribute('aria-label', `Allow once: ${approval.title}`);
+  session.setAttribute('aria-label', `Allow for this session: ${approval.title}`);
+  actions.append(block, once, session);
+  card.append(actions);
+  return card;
+}
+
+function renderApprovals(approvals: ApprovalPreview[]): HTMLElement | undefined {
+  if (approvals.length === 0) {
+    return undefined;
+  }
+  const section = element('section', 'approvals');
+  section.setAttribute('aria-label', 'Pending Safari action approvals');
+  for (const approval of approvals) {
+    section.append(renderApproval(approval));
+  }
+  return section;
+}
+
+function renderComposer(viewModel: PopupViewModel): HTMLElement | undefined {
+  if (!viewModel.composerVisible) {
+    return undefined;
+  }
+  const form = element('form', 'composer');
+  form.dataset.form = 'composer';
+  const textarea = element('textarea', 'composer-input');
+  textarea.value = viewModel.draft;
+  textarea.placeholder = viewModel.composerPlaceholder;
+  textarea.rows = 3;
+  textarea.maxLength = 8_000;
+  textarea.dataset.input = 'draft';
+  focusKey(textarea, 'input:draft');
+  textarea.setAttribute('aria-label', viewModel.composerPlaceholder);
+  textarea.setAttribute('aria-keyshortcuts', 'Meta+Enter');
+  const footer = element('div', 'composer-footer');
+  footer.append(element('span', 'composer-hint', '⌘↵ to send'));
+  const submit = element('button', 'button button--primary composer-submit', viewModel.primaryLabel);
+  submit.type = 'submit';
+  focusKey(submit, 'submit:composer');
+  submit.disabled = viewModel.primaryDisabled;
+  submit.setAttribute('aria-keyshortcuts', 'Meta+Enter');
+  if (viewModel.primaryDisabledReason) {
+    submit.title = viewModel.primaryDisabledReason;
+  }
+  submit.prepend(icon('spark'));
+  footer.append(submit);
+  form.append(textarea, footer);
+  if (viewModel.primaryDisabledReason) {
+    const reason = element('p', 'disabled-reason', viewModel.primaryDisabledReason);
+    reason.setAttribute('role', 'status');
+    form.append(reason);
+  }
+  return form;
+}
+
+function renderActivity(events: ActivityEvent[]): HTMLElement {
+  const section = element('section', 'activity-strip');
+  const heading = element('div', 'section-heading-row');
+  heading.append(
+    element('strong', 'section-heading', 'Live activity'),
+    element('span', 'section-meta', 'Verified after every step')
+  );
+  section.append(heading);
+  const list = element('ol', 'activity-list');
+  if (events.length === 0) {
+    const empty = element('li', 'activity-item activity-item--muted', 'No run activity yet.');
+    list.append(empty);
+  } else {
+    for (const event of events.slice(-6).reverse()) {
+      const item = element('li', `activity-item activity-item--${event.tone}`);
+      item.append(element('span', 'activity-dot'), element('span', undefined, event.text));
+      list.append(item);
+    }
+  }
+  section.append(list);
+  return section;
+}
+
+function renderPerformance(viewModel: PopupViewModel, preserveOpen: boolean): HTMLElement {
+  const diagnostics = viewModel.snapshot?.performance;
+  const retainedCount = diagnostics?.samples.length ?? 0;
+  const details = element('details', 'drawer performance-drawer');
+  details.open = preserveOpen;
+  const summary = element('summary', 'drawer-summary');
+  focusKey(summary, 'drawer:performance');
+  const title = element('span', 'drawer-title');
+  title.append(icon('gauge'), document.createTextNode('Performance evidence'));
+  const statusLabel =
+    diagnostics?.persistence === 'memory_only'
+      ? 'Memory only'
+      : retainedCount === 0
+        ? 'No samples'
+        : `${retainedCount.toLocaleString()} retained`;
+  summary.append(title, element('span', 'drawer-status', statusLabel), icon('chevron'));
+  details.append(summary);
+
+  const body = element('div', 'drawer-body performance-body');
+  body.append(
+    element(
+      'p',
+      'performance-privacy',
+      'Local timing only. Excludes page content, screenshots, URLs, prompts, provider IDs, tokens, tabs, and command IDs.'
+    )
+  );
+  if (diagnostics?.persistence === 'memory_only') {
+    const warning = element(
+      'p',
+      'performance-notice performance-notice--error',
+      'Safari storage is unavailable. Samples remain exportable until this extension process exits.'
+    );
+    warning.setAttribute('role', 'status');
+    body.append(warning);
+  }
+
+  if (!diagnostics || diagnostics.summaries.length === 0) {
+    body.append(
+      element(
+        'p',
+        'drawer-empty',
+        'Open the popup and exercise Ask, Agentic, Stop, capture, and learning flows to collect candidate-bound samples.'
+      )
+    );
+  } else {
+    const grid = element('div', 'performance-grid');
+    for (const metric of diagnostics.summaries) {
+      const card = element('article', 'performance-card');
+      card.setAttribute('aria-label', `${SAFARI_PERFORMANCE_LABELS[metric.metric]} latency summary`);
+      const heading = element('div', 'performance-card-heading');
+      heading.append(
+        element('strong', undefined, SAFARI_PERFORMANCE_LABELS[metric.metric]),
+        element('span', undefined, `n=${metric.retainedCount.toLocaleString()}`)
+      );
+      const values = element('dl', 'performance-values');
+      const medianTerm = element('dt', undefined, 'Median');
+      const medianValue = element('dd', undefined, formatPerformanceDuration(metric.medianMs));
+      const p95Term = element('dt', undefined, 'P95');
+      const p95Value = element('dd', undefined, formatPerformanceDuration(metric.p95Ms));
+      values.append(medianTerm, medianValue, p95Term, p95Value);
+      card.append(heading, values);
+      const nonSuccessCount = metric.errorCount + metric.abortedCount;
+      if (nonSuccessCount > 0) {
+        card.append(
+          element(
+            'span',
+            'performance-outcomes',
+            `${metric.errorCount.toLocaleString()} errors · ${metric.abortedCount.toLocaleString()} stopped`
+          )
+        );
+      }
+      grid.append(card);
+    }
+    body.append(grid);
+  }
+
+  const metadata = element(
+    'p',
+    'performance-metadata',
+    diagnostics
+      ? `${diagnostics.totalRecorded.toLocaleString()} recorded · ${diagnostics.droppedCount.toLocaleString()} expired from the ${diagnostics.retentionLimit.toLocaleString()}-sample local window`
+      : 'The bounded local sample window has not initialized yet.'
+  );
+  const actions = element('div', 'performance-actions');
+  const clear = button(
+    viewModel.diagnosticsClearArmed ? 'Confirm clear' : 'Clear samples',
+    'diagnostics-clear',
+    'button button--quiet compact'
+  );
+  clear.disabled = !diagnostics || retainedCount === 0;
+  clear.setAttribute(
+    'aria-label',
+    viewModel.diagnosticsClearArmed
+      ? 'Confirm clearing all retained local Safari performance samples'
+      : 'Clear all retained local Safari performance samples'
+  );
+  const copy = button('Copy JSON', 'diagnostics-copy', 'button button--quiet compact');
+  copy.prepend(icon('copy'));
+  copy.disabled = !diagnostics;
+  copy.setAttribute('aria-label', 'Copy privacy-safe Safari performance evidence as JSON');
+  const download = button('Download JSON', 'diagnostics-download', 'button button--secondary compact');
+  download.prepend(icon('download'));
+  download.disabled = !diagnostics;
+  download.setAttribute('aria-label', 'Download privacy-safe Safari performance evidence as JSON');
+  actions.append(clear, copy, download);
+  body.append(metadata, actions);
+
+  if (viewModel.diagnosticsNotice) {
+    const notice = element(
+      'p',
+      `performance-notice performance-notice--${viewModel.diagnosticsNotice.tone}`,
+      viewModel.diagnosticsNotice.text
+    );
+    notice.setAttribute('role', 'status');
+    body.append(notice);
+  }
+  details.append(body);
+  return details;
+}
+
+function checkboxRow(
+  label: string,
+  description: string,
+  inputName: string,
+  checked: boolean,
+  disabled = false
+): HTMLElement {
+  const row = element('label', `setting-row${disabled ? ' is-disabled' : ''}`);
+  const copy = element('span', 'setting-copy');
+  copy.append(element('strong', undefined, label), element('span', undefined, description));
+  const control = element('input', 'switch');
+  control.type = 'checkbox';
+  control.checked = checked;
+  control.disabled = disabled;
+  control.dataset.input = inputName;
+  focusKey(control, `input:${inputName}`);
+  row.append(copy, control);
+  return row;
+}
+
+function trustStatusLabel(viewModel: PopupViewModel): string {
+  const snapshot = viewModel.snapshot;
+  if (!snapshot?.page) {
+    return 'No page';
+  }
+  if (snapshot.page.permission === 'unsupported') {
+    return 'Unavailable';
+  }
+  if (snapshot.page.permission !== 'granted') {
+    return 'Safari access needed';
+  }
+  return snapshot.trust.siteAllowed ? 'This site allowed' : 'Permission needed';
+}
+
+function renderTrust(viewModel: PopupViewModel, preserveOpen: boolean): HTMLElement {
+  const snapshot = viewModel.snapshot;
+  const details = element('details', 'drawer trust-drawer');
+  details.open = preserveOpen;
+  const summary = element('summary', 'drawer-summary');
+  focusKey(summary, 'drawer:trust');
+  const title = element('span', 'drawer-title');
+  title.append(icon('lock'), document.createTextNode('Trust & privacy'));
+  summary.append(title, element('span', 'drawer-status', trustStatusLabel(viewModel)), icon('chevron'));
+  details.append(summary);
+  const body = element('div', 'drawer-body');
+  body.append(
+    checkboxRow(
+      'Allow this website',
+      'Share readable page context only when you invoke OpenBurnBar.',
+      'trust-site',
+      snapshot?.trust.siteAllowed ?? false,
+      !snapshot?.page
+    ),
+    checkboxRow(
+      'Only this tab',
+      'Never touch background tabs. Agent-opened tabs require a separate choice.',
+      'trust-tab',
+      snapshot?.trust.onlyCurrentTab ?? true
+    )
+  );
+  if (viewModel.pageSensitive) {
+    body.append(
+      checkboxRow(
+        'Sensitive-site override',
+        'Still Computer Use gated. Password and payment fields remain separately protected.',
+        'trust-sensitive',
+        snapshot?.trust.sensitiveSiteOverride ?? false
+      )
+    );
+  }
+  if (viewModel.showCloudDisclosure) {
+    body.append(
+      checkboxRow(
+        'Send this session’s screenshots',
+        'The selected cloud model receives resized JPEGs. OpenBurnBar never stores provider keys here.',
+        'trust-cloud',
+        snapshot?.trust.cloudScreenshotAcknowledged ?? false
+      )
+    );
+  }
+  body.append(
+    checkboxRow(
+      'Global kill switch',
+      'Stop and reject all new Computer Use actions across OpenBurnBar.',
+      'trust-kill',
+      snapshot?.trust.globalKillSwitch ?? false
+    )
+  );
+  if (snapshot?.page?.permission !== 'granted' && snapshot?.page?.permission !== 'unsupported') {
+    const permission = button(
+      'Grant persistent access in Safari',
+      'request-permission',
+      'button button--secondary full-width'
+    );
+    permission.prepend(icon('shield'));
+    body.append(permission);
+  }
+  const privacyNote = element(
+    'p',
+    'privacy-note',
+    'Screenshots stay on this Mac unless you choose a cloud model. Page actions are scoped, audited, and panic-haltable.'
+  );
+  body.append(privacyNote);
+  details.append(body);
+  return details;
+}
+
+function renderLearningItem(item: LearningItem): HTMLElement {
+  const card = element('article', 'learning-item');
+  const copy = element('div', 'learning-copy');
+  const eyebrow = `${item.kind === 'skill' ? 'Skill' : item.kind === 'site-rule' ? 'Site rule' : 'Memory'} · ${item.status}`;
+  copy.append(element('span', 'learning-eyebrow', eyebrow), element('strong', undefined, item.title));
+  if (item.summary) {
+    copy.append(element('p', undefined, item.summary));
+  }
+  const actions = element('div', 'learning-actions');
+  if (item.status === 'proposed') {
+    const reject = button('Reject', `learning:${item.id}:reject`, 'button button--quiet compact');
+    const approve = button('Approve', `learning:${item.id}:approve`, 'button button--secondary compact');
+    reject.setAttribute('aria-label', `Reject learning item: ${item.title}`);
+    approve.setAttribute('aria-label', `Approve learning item: ${item.title}`);
+    actions.append(reject, approve);
+  } else {
+    const forget = button('Forget', `learning:${item.id}:forget`, 'button button--quiet compact');
+    forget.setAttribute('aria-label', `Forget learning item: ${item.title}`);
+    actions.append(forget);
+  }
+  card.append(copy, actions);
+  return card;
+}
+
+function renderLearningCorrection(viewModel: PopupViewModel): HTMLElement {
+  const form = element('form', 'learning-correction');
+  form.dataset.form = 'learning-correction';
+  const heading = element('div', 'learning-correction-heading');
+  const label = element('label', 'learning-correction-label', 'Teach a correction');
+  label.htmlFor = 'learning-correction-input';
+  heading.append(label, element('span', 'learning-explicit-chip', 'Explicit only'));
+
+  const textarea = element('textarea', 'learning-correction-input');
+  textarea.id = 'learning-correction-input';
+  textarea.value = viewModel.correctionDraft;
+  textarea.placeholder = 'Example: Always compare annual totals before monthly prices.';
+  textarea.rows = 3;
+  textarea.maxLength = 4_096;
+  textarea.dataset.input = 'correction-draft';
+  focusKey(textarea, 'input:correction-draft');
+  textarea.setAttribute('aria-describedby', 'learning-correction-note learning-correction-count');
+
+  const note = element(
+    'p',
+    'learning-correction-note',
+    'Only what you type is reviewed. OpenBurnBar does not infer a correction from the page, screenshot, or chat.'
+  );
+  note.id = 'learning-correction-note';
+  const footer = element('div', 'learning-correction-footer');
+  const count = element(
+    'span',
+    'learning-correction-count',
+    `${viewModel.correctionByteCount.toLocaleString()} / 4,096 bytes`
+  );
+  count.id = 'learning-correction-count';
+  const submit = element('button', 'button button--secondary learning-correction-submit', 'Stage for review');
+  submit.type = 'submit';
+  focusKey(submit, 'submit:learning-correction');
+  submit.disabled = viewModel.correctionSubmitDisabled;
+  if (viewModel.correctionDisabledReason) {
+    submit.title = viewModel.correctionDisabledReason;
+  }
+  footer.append(count, submit);
+  form.append(heading, textarea, note, footer);
+  return form;
+}
+
+function renderLearning(viewModel: PopupViewModel, preserveOpen: boolean): HTMLElement {
+  const snapshot = viewModel.snapshot;
+  const details = element('details', 'drawer learning-drawer');
+  details.open = preserveOpen || viewModel.correctionDraft.length > 0;
+  const summary = element('summary', 'drawer-summary');
+  focusKey(summary, 'drawer:learning');
+  const title = element('span', 'drawer-title');
+  title.append(icon('brain'), document.createTextNode('What BurnBar learned'));
+  const label = !snapshot?.learning.eligible
+    ? 'Pro+'
+    : snapshot.learning.optedIn
+      ? `${snapshot.learning.items.length} items`
+      : 'Off';
+  summary.append(title, element('span', 'drawer-status', label), icon('chevron'));
+  details.append(summary);
+  const body = element('div', 'drawer-body');
+  body.append(
+    checkboxRow(
+      'Learn across sessions',
+      snapshot?.learning.eligible
+        ? 'Propose redacted memories and portable page skills. Nothing activates without review.'
+        : 'Available with Pro, Pro Max, or Ultra.',
+      'learning-opt-in',
+      snapshot?.learning.optedIn ?? false,
+      !(snapshot?.learning.eligible ?? false)
+    )
+  );
+  if (snapshot?.learning.optedIn) {
+    body.append(renderLearningCorrection(viewModel));
+    if (snapshot.learning.items.length === 0) {
+      body.append(
+        element(
+          'p',
+          'drawer-empty',
+          'No durable learning yet. BurnBar waits for explicit corrections or repeated workflows instead of guessing.'
+        )
+      );
+    } else {
+      for (const item of snapshot.learning.items) {
+        body.append(renderLearningItem(item));
+      }
+    }
+  }
+  details.append(body);
+  return details;
+}
+
+function renderError(viewModel: PopupViewModel): HTMLElement | undefined {
+  const error = viewModel.snapshot?.lastError;
+  if (!error) {
+    return undefined;
+  }
+  const banner = element('div', 'error-banner');
+  banner.setAttribute('role', 'alert');
+  const copy = element('div');
+  copy.append(element('strong', undefined, 'OpenBurnBar needs attention'), element('p', undefined, error.message));
+  const refresh = button('Retry', 'refresh', 'button button--quiet compact');
+  refresh.prepend(icon('refresh'));
+  banner.append(copy, refresh);
+  return banner;
+}
+
+export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void {
+  root.setAttribute('aria-busy', String(!viewModel.ready));
+  const trustWasOpen = root.querySelector<HTMLDetailsElement>('.trust-drawer')?.open ?? false;
+  const learningWasOpen = root.querySelector<HTMLDetailsElement>('.learning-drawer')?.open ?? false;
+  const performanceWasOpen = root.querySelector<HTMLDetailsElement>('.performance-drawer')?.open ?? false;
+  const previousFocus = captureFocus(root);
+  const previousContentScroll = captureScroll(root.querySelector<HTMLElement>('.content-scroll'));
+  const previousTranscriptScroll = captureTranscriptScroll(root.querySelector<HTMLElement>('.transcript'));
+  const shell = element('main', 'shell');
+  shell.append(
+    renderHeader(viewModel),
+    renderPageBand(viewModel),
+    renderModes(viewModel),
+    renderAgentPicker(viewModel)
+  );
+
+  const scroll = element('div', 'content-scroll');
+  const error = renderError(viewModel);
+  if (error) {
+    scroll.append(error);
+  }
+  scroll.append(renderTranscript(viewModel.snapshot?.transcript ?? []));
+  const approvals = renderApprovals(viewModel.snapshot?.approvals ?? []);
+  if (approvals) {
+    scroll.append(approvals);
+  }
+  const composer = renderComposer(viewModel);
+  if (composer) {
+    scroll.append(composer);
+  }
+  scroll.append(
+    renderActivity(viewModel.snapshot?.activity ?? []),
+    renderPerformance(viewModel, performanceWasOpen),
+    renderTrust(viewModel, trustWasOpen),
+    renderLearning(viewModel, learningWasOpen)
+  );
+  shell.append(scroll);
+  root.replaceChildren(shell);
+
+  restoreScroll(root.querySelector<HTMLElement>('.content-scroll'), previousContentScroll);
+  restoreTranscriptScroll(root.querySelector<HTMLElement>('.transcript'), previousTranscriptScroll);
+  restoreFocus(root, previousFocus);
+}

@@ -9,6 +9,7 @@ import SQLite3
 @testable import OpenBurnBarDaemon
 
 final class BurnBarIndexedSearchServiceMinimalTests: XCTestCase {
+    private static let databaseKey = "indexed-search-minimal-" + String(repeating: "b", count: 32)
 
     func test_memoryCapAndReleaseSnapshot() throws {
         let tempDir = FileManager.default.temporaryDirectory
@@ -21,6 +22,11 @@ final class BurnBarIndexedSearchServiceMinimalTests: XCTestCase {
         var createHandle: OpaquePointer?
         let createResult = sqlite3_open(dbPath, &createHandle)
         XCTAssertEqual(createResult, SQLITE_OK)
+        let handle = try XCTUnwrap(createHandle)
+        try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(
+            to: handle,
+            key: Self.databaseKey
+        )
         sqlite3_close(createHandle)
 
         let logger = BurnBarDaemonLogger(category: "test")
@@ -35,7 +41,8 @@ final class BurnBarIndexedSearchServiceMinimalTests: XCTestCase {
         let service = try BurnBarIndexedSearchService(
             databasePath: dbPath,
             logger: logger,
-            semanticConfig: semanticConfig
+            semanticConfig: semanticConfig,
+            databaseKeyOverride: Self.databaseKey
         )
 
         // Release snapshot should not crash when no snapshot is loaded

@@ -9,18 +9,22 @@ final class DashboardConsentCoordinatorTests: XCTestCase {
 
     private var settingsManager: SettingsManager!
 
-    override func setUp() {
-        super.setUp()
-        settingsManager = makeSettingsManager()
-        settingsManager.conversationIndexingConsentShown = false
-        settingsManager.conversationIndexingEnabled = false
-        settingsManager.sessionLogCloudBackupConsentShown = false
-        settingsManager.cliAssistantConsentShown = false
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run {
+            settingsManager = makeSettingsManager()
+            settingsManager.conversationIndexingConsentShown = false
+            settingsManager.conversationIndexingEnabled = false
+            settingsManager.sessionLogCloudBackupConsentShown = false
+            settingsManager.cliAssistantConsentShown = false
+        }
     }
 
-    override func tearDown() {
-        settingsManager = nil
-        super.tearDown()
+    override func tearDown() async throws {
+        await MainActor.run {
+            settingsManager = nil
+        }
+        try await super.tearDown()
     }
 
     func test_shouldShowIndexingConsent_whenNotShown() {

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Strict CSP fixture</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/strict-csp.js"></script>
+  </head>
+  <body data-fixture="strict-csp">
+    <main class="shell">
+      <p class="eyebrow">Fixture 05 · strict CSP</p>
+      <h1>Nothing inline. Nothing remote.</h1>
+      <p class="lede">
+        This page is served with a header-only Content Security Policy that allows self-hosted script,
+        style, and images while denying objects, base changes, form submission, and framing.
+      </p>
+      <section class="panel">
+        <button id="strict-csp-button" type="button">Confirm external script execution</button>
+        <p id="strict-csp-status" class="status" role="status">Waiting for interaction.</p>
+      </section>
+    </main>
+  </body>
+</html>

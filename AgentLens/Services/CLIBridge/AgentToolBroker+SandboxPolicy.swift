@@ -239,7 +239,10 @@ extension AgentToolBroker {
         #if canImport(Darwin)
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
         if realpath(standardized, &buffer) != nil {
-            return String(cString: buffer)
+            return String(
+                decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) },
+                as: UTF8.self
+            )
         }
         #endif
         return URL(fileURLWithPath: standardized).resolvingSymlinksInPath().path

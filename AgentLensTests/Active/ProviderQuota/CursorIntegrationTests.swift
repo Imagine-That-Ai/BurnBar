@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 import SQLite3
+import OpenBurnBarCore
 
 /// Live integration test: extracts JWT from Cursor's SQLite DB,
 /// hits cursor.sh/api/usage-summary, asserts real numbers.
@@ -46,19 +47,24 @@ final class CursorIntegrationTests: XCTestCase {
         request.timeoutInterval = 15
 
         let exp = XCTestExpectation(description: "api")
-        var statusCode = 0
-        var json: [String: Any]?
+        struct ResponseState: Sendable {
+            var statusCode = 0
+            var data: Data?
+        }
+        let responseState = Locked(ResponseState())
 
         URLSession.shared.dataTask(with: request) { data, response, _ in
             defer { exp.fulfill() }
             guard let http = response as? HTTPURLResponse else { return }
-            statusCode = http.statusCode
-            guard let data else { return }
-            json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            responseState.write(ResponseState(statusCode: http.statusCode, data: data))
         }.resume()
         wait(for: [exp], timeout: 20)
 
-        XCTAssertEqual(statusCode, 200, "Cursor API must return HTTP 200")
+        let response = responseState.read()
+        let json = response.data.flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        }
+        XCTAssertEqual(response.statusCode, 200, "Cursor API must return HTTP 200")
         let j = try XCTUnwrap(json, "Must have valid JSON response")
 
         // Verify key fields from the real API

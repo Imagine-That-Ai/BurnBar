@@ -365,7 +365,7 @@ private final class RequestRecorder: @unchecked Sendable {
     }
 }
 
-private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
+private final class MockURLProtocol: URLProtocol {
     private static let lock = NSLock()
     private nonisolated(unsafe) static var responder: ((URLRequest) -> (HTTPURLResponse, Data))?
 

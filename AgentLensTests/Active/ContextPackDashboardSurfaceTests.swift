@@ -17,8 +17,8 @@ final class ContextPackDashboardSurfaceTests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         do {
             dbQueue = try DatabaseQueue()
         } catch {
@@ -26,9 +26,9 @@ final class ContextPackDashboardSurfaceTests: XCTestCase {
         }
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         dbQueue = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Helper Methods

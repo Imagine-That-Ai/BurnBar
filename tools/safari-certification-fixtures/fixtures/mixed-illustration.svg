@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">Lighthouse and three sailboats</title>
+  <desc id="desc">A copper lighthouse stands on the left. Three teal sailboats cross the water on the right under an apricot sky.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7d6c2"/>
+      <stop offset="1" stop-color="#f4eee5"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1a6b70"/>
+      <stop offset="1" stop-color="#9cc7bf"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="390" fill="url(#sky)"/>
+  <circle cx="760" cy="115" r="58" fill="#fff2cf"/>
+  <path d="M0 385 C170 350 320 425 490 384 C650 347 802 412 960 372 V600 H0Z" fill="url(#water)"/>
+  <path d="M70 470 L245 470 L214 520 L96 520Z" fill="#252d35"/>
+  <path d="M115 170 H201 L218 470 H98Z" fill="#b84f39"/>
+  <path d="M126 190 H190 L184 238 H132Z" fill="#fff3dd"/>
+  <path d="M110 170 L158 110 L208 170Z" fill="#6f271d"/>
+  <rect x="143" y="79" width="31" height="48" rx="4" fill="#242c33"/>
+  <path d="M174 91 L264 68 L264 119 L174 105Z" fill="#ffeec2" opacity=".8"/>
+  <g fill="#0f766e" stroke="#164b4b" stroke-width="5">
+    <path d="M430 285 L430 440 L558 440Z"/>
+    <path d="M611 250 L611 428 L744 428Z"/>
+    <path d="M768 315 L768 460 L870 460Z"/>
+  </g>
+  <g fill="#fff8e9" stroke="#26343a" stroke-width="5">
+    <path d="M390 442 H570 L540 475 H414Z"/>
+    <path d="M570 430 H756 L726 466 H594Z"/>
+    <path d="M730 462 H884 L858 491 H750Z"/>
+  </g>
+  <g fill="none" stroke="#e7f6f0" stroke-linecap="round" stroke-width="7" opacity=".8">
+    <path d="M310 505 C420 485 510 530 620 505"/>
+    <path d="M575 540 C690 515 800 560 930 530"/>
+  </g>
+</svg>

@@ -36,7 +36,7 @@ final class AgentToolBrokerRevocationRegistry: Sendable {
     }
 
     func unregister(id: UUID) {
-        registrations.withLock { $0.removeValue(forKey: id) }
+        _ = registrations.withLock { $0.removeValue(forKey: id) }
     }
 
     @discardableResult

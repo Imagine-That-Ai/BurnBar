@@ -17,18 +17,19 @@ Cloud systems are not canonical:
 
 ## What Ships Now
 
-OpenBurnBar currently ships four coordinated control surfaces:
+OpenBurnBar currently ships five coordinated control surfaces:
 
 - the native macOS app: dashboard, menu bar, Hermes/chat, session logs, settings, controller workbench
 - the local daemon: provider routing, mission control, notifications, simulator/replay, connector plane, browser plane
 - the Cursor / VS Code extension shell: daemon health, projected run state, workspace trust gating, repair/reconnect flows
+- the Safari Web Extension: page-aware Q&A, vision plus DOM/accessibility context, safety-gated actions in the user's explicitly granted tab, and live approval/run mirroring
 - the local CLI: `OpenBurnBarCLI` entrypoints for daemon health, controller status, questions, followups, mission approval, and simulator replay
 
 ### Support tiers
 
 | Tier | What it covers |
 |------|----------------|
-| **Core** | macOS app (dashboard, menu bar, session logs, settings), local daemon (provider routing, run state), Cursor/VS Code extension shell, CLI, shared `OpenBurnBarCore` contracts. Local SQLite + daemon-owned files remain canonical. |
+| **Core** | macOS app (dashboard, menu bar, session logs, settings), local daemon (provider routing, run state), Cursor/VS Code extension shell, Safari Web Extension, CLI, shared `OpenBurnBarCore` contracts. Local SQLite + daemon-owned files remain canonical. |
 | **Experimental** | Optional Firestore replication, future sealed iCloud archive support, Cursor connector + tunnel, connector plane (GitHub/Slack/Linear/PostHog/Sentry/Gmail), mission control / controller runtime, Telegram bot integration, browser tooling plane, Hermes/OpenClaw chat backends. These are opt-in, best-effort, and may be redesigned or removed before `1.0`. Raw iCloud session-file mirroring is disabled in this tree. |
 | **Adjacent tooling** | Repo helper at `tools/openburnbar-mcp/` (read-only MCP bridge to local SQLite) — optional for developers, not part of the runtime spine. |
 | **Quarantined tests** | `AgentLensTests/Quarantine/` — stale suites kept as migration reference only, but intentionally excluded from `OpenBurnBarTests` until fixed and moved back to `Active/`; see `AgentLensTests/README.md`. |
@@ -51,8 +52,15 @@ Native OpenBurnBar app
   -> menu/dashboard/Hermes/session-log/operator UI
   -> daemon RPC client
 
+Safari Web Extension (user-granted real tab)
+  -> MV3 background + isolated-world content scripts
+  -> DOM/accessibility snapshot + visible-viewport capture
+  -> native messaging through OpenBurnBarSafariExtension.appex
+  -> daemon gateway for Q&A; daemon Safari RPC tools for actions
+
 Local OpenBurnBar daemon
   -> provider routing + run state machine
+  -> Safari tab ownership + Computer Use scope/deny/approval/audit/panic rails
   -> controller/project/question/followup/mission runtime
   -> simulator/replay + scheduled review automation
   -> connector plane (GitHub/Slack/Linear/PostHog/Sentry/Gmail)
@@ -134,10 +142,17 @@ The daemon exposes a browser plane with:
 - system-browser launch support
 - daemon-side fetch/document/link extraction
 - status detection for Playwright and Lightpanda installations
+- Safari page context and action RPCs relayed through the signed, sandboxed
+  `OpenBurnBarSafariExtension.appex`
 
-Current intentional limitation:
+Intentional boundaries:
 
 - Playwright and Lightpanda are surfaced as setup/status engines, but direct daemon actions currently run through the daemon fetcher and system browser rather than full headless automation
+- Safari content scripts are the primary real-session page path; WebDriver and
+  headless engines remain isolated test/fixture surfaces and do not inherit the
+  user's Safari cookies or tab ownership
+- Safari page data is untrusted prompt input, while state-changing actions
+  remain URL-scoped, approval-gated, audited, post-verified, and panic-haltable
 
 ## Memory-Sync Decision
 
@@ -186,10 +201,21 @@ Other workspace limits:
 - virtual workspace: no terminal execution
 - remote workspace: companion runs on the workspace host when available
 
+Safari has a separate trust boundary:
+
+- Safari's per-site grant controls whether the extension can see the page
+- OpenBurnBar defaults to the tab the user explicitly handed to the run
+- page text, accessibility content, images, and screenshots are untrusted input
+- live URL scope and built-in deny rules apply to every action
+- the extension holds no provider keys and cannot bypass daemon approvals
+- the native handler is admitted only as the exact signed first-party appex (or
+  relayed through the signed host); the daemon peer gate is never weakened
+
 ## Test Entrypoints
 
 - `swift test --package-path OpenBurnBarCore`
 - `swift test --package-path OpenBurnBarDaemon`
+- `./scripts/test-openburnbar-safari-extension.sh`
 - `xcodebuild -scheme OpenBurnBar -project OpenBurnBar.xcodeproj -destination 'platform=macOS' test CODE_SIGNING_ALLOWED=NO -only-testing:OpenBurnBarTests`
 
 The Xcode target **`OpenBurnBarTests`** (declared in `project.yml`) compiles **only**:

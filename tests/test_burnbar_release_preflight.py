@@ -231,11 +231,12 @@ def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
 
     prepare_start = body.index("- name: Prepare Signal FFI XCFramework for release app")
     lockfile_index = body.index("- name: Verify OpenBurnBar app SwiftPM lockfile")
-    resolve_index = body.index("- name: Resolve Xcode packages")
     app_build_index = body.index("- name: Build Release .app (unsigned)")
     prepare_step = body[prepare_start:lockfile_index]
+    app_build_end = body.index("- name: Embed daemon binary in app bundle", app_build_index)
+    app_build_step = body[app_build_index:app_build_end]
 
-    assert prepare_start < lockfile_index < resolve_index < app_build_index
+    assert prepare_start < lockfile_index < app_build_index
     assert "SIGNAL_FFI_BUILD_PROFILE: release" in prepare_step
     targets = re.search(r'SIGNAL_FFI_BUILD_TARGETS: "([^"]+)"', prepare_step)
     assert targets is not None
@@ -248,6 +249,8 @@ def test_release_workflow_prepares_signal_ffi_before_xcode_release_build():
     ]
     assert 'CARGO_BUILD_JOBS: "2"' in prepare_step
     assert "bash scripts/lib/prepare-signal-ffi-xcframework.sh" in prepare_step
+    assert "prepare-openburnbar-app-swiftpm.sh" in app_build_step
+    assert "openburnbar_prepare_libsignal_swift_compat" in app_build_step
 
 
 def test_release_workflow_guards_owner_approved_validation_bypass():
@@ -679,6 +682,38 @@ def test_local_source_builds_package_daemon_sqlcipher_runtime_before_signing():
     assert signed_section.index(rpath_command) < signed_section.index("scripts/sign-openburnbar-local.sh")
 
 
+def test_local_and_release_app_builds_share_lock_exact_swiftpm_lifecycle():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    wrapper = (ROOT / "scripts/build-openburnbar-local-app.sh").read_text(
+        encoding="utf-8"
+    )
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    build_section = makefile.split("build: bootstrap preflight", 1)[1].split(
+        "build-signed: bootstrap preflight", 1
+    )[0]
+    signed_section = makefile.split("build-signed: bootstrap preflight", 1)[1].split(
+        "release-mas: preflight", 1
+    )[0]
+    release_app_section = workflow.split(
+        "- name: Build Release .app (unsigned)", 1
+    )[1].split("- name:", 1)[0]
+
+    for local_section in (build_section, signed_section):
+        assert "scripts/build-openburnbar-local-app.sh" in local_section
+        assert "xcodebuild -resolvePackageDependencies" not in local_section
+
+    for source in (wrapper, release_app_section):
+        assert "prepare-openburnbar-app-swiftpm.sh" in source
+        assert "-disableAutomaticPackageResolution" in source
+        assert "-onlyUsePackageVersionsFromResolvedFile" in source
+        assert "openburnbar_prepare_google_sign_in_macos_compat" in source
+        assert "openburnbar_prepare_libsignal_swift_compat" in source
+        assert "xcodebuild -resolvePackageDependencies" not in source
+
+    assert 'FIREBASE_SOURCE_FIRESTORE: "1"' in workflow
+
+
 def test_macos_release_does_not_require_unsupported_app_attest_entitlement():
     import plistlib
 
@@ -697,6 +732,174 @@ def test_macos_release_does_not_require_unsupported_app_attest_entitlement():
         assert key not in release_surface
 
 
+def test_safari_host_entitlements_share_exact_app_group_and_keychain_across_channels():
+    import plistlib
+
+    expected_app_group = ["group.com.openburnbar.app"]
+    expected_keychain_group = ["$(AppIdentifierPrefix)com.openburnbar.app"]
+    entitlement_paths = (
+        "AgentLens/Resources/OpenBurnBar.entitlements",
+        "AgentLens/Resources/OpenBurnBarRelease.entitlements",
+        "AgentLens/Resources/OpenBurnBarMAS.entitlements",
+    )
+    for entitlement_path in entitlement_paths:
+        entitlements = plistlib.loads((ROOT / entitlement_path).read_bytes())
+        assert (
+            entitlements["com.apple.security.application-groups"]
+            == expected_app_group
+        ), entitlement_path
+        assert (
+            entitlements["keychain-access-groups"] == expected_keychain_group
+        ), entitlement_path
+
+    website_release = (
+        ROOT / "scripts/build-macos-website-release.sh"
+    ).read_text(encoding="utf-8")
+    release_workflow = (ROOT / ".github/workflows/release.yml").read_text(
+        encoding="utf-8"
+    )
+    public_trust = (
+        ROOT / "scripts/ci/verify-public-macos-download-trust.sh"
+    ).read_text(encoding="utf-8")
+    mas_release = (
+        ROOT / "scripts/build-macos-app-store-release.sh"
+    ).read_text(encoding="utf-8")
+    mas_readiness = (
+        ROOT / "scripts/verify-macos-app-store-readiness.sh"
+    ).read_text(encoding="utf-8")
+
+    for direct_surface in (website_release, release_workflow, public_trust):
+        assert "group.com.openburnbar.app" in direct_surface
+        assert "application-groups" in direct_surface
+        assert "Keychain" in direct_surface
+
+    assert "app_profile_app_groups" in website_release
+    assert "actual_app_groups" in website_release
+    assert "APP_PROFILE_APP_GROUPS" in release_workflow
+    assert "ACTUAL_APP_GROUPS" in release_workflow
+    assert "profile_app_groups" in public_trust
+    assert "actual_app_groups" in public_trust
+
+    for mas_surface in (mas_release, mas_readiness):
+        assert "com.apple.security.application-groups" in mas_surface
+        assert "keychain-access-groups" in mas_surface
+        assert "group.com.openburnbar.app" in mas_surface
+    assert "exported-entitlements.plist" in mas_release
+    assert 'codesign -d --entitlements :- "$exported_app_path"' in mas_release
+
+
+def test_safari_appex_release_signing_is_explicit_profile_bound_and_nested_first():
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    website_release = (ROOT / "scripts/build-macos-website-release.sh").read_text(
+        encoding="utf-8"
+    )
+    mas_release = (ROOT / "scripts/build-macos-app-store-release.sh").read_text(
+        encoding="utf-8"
+    )
+    mas_readiness = (ROOT / "scripts/verify-macos-app-store-readiness.sh").read_text(
+        encoding="utf-8"
+    )
+    public_trust = (
+        ROOT / "scripts/ci/verify-public-macos-download-trust.sh"
+    ).read_text(encoding="utf-8")
+    public_trust_workflow = (
+        ROOT / ".github/workflows/public-macos-download-trust.yml"
+    ).read_text(encoding="utf-8")
+    dmg_smoke = (ROOT / "scripts/ci/smoke-openburnbar-release-dmg.sh").read_text(
+        encoding="utf-8"
+    )
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    project = (ROOT / "project.yml").read_text(encoding="utf-8")
+
+    profile_secret = "OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64"
+    sign_helper = "scripts/ci/sign-openburnbar-safari-extension.sh"
+    verify_helper = "scripts/ci/verify-openburnbar-safari-extension.sh"
+    development_verify_helper = (
+        "scripts/ci/verify-openburnbar-development-signing.sh"
+    )
+    host_entitlement_variable = "OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS"
+
+    assert profile_secret in workflow
+    assert workflow.count(profile_secret) >= 5
+    assert sign_helper in workflow
+    assert verify_helper in workflow
+    assert workflow.index(sign_helper) < workflow.index(
+        'cp "$APP_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"'
+    )
+    assert website_release.index(sign_helper) < website_release.index(
+        'cp "$app_profile" "$app_path/Contents/embedded.provisionprofile"'
+    )
+    assert "OPENBURNBAR_SAFARI_EXTENSION_PROFILE" in website_release
+
+    assert verify_helper in public_trust
+    assert "scripts/ci/verify-openburnbar-safari-extension.test.sh" in (
+        public_trust_workflow
+    )
+    assert "scripts/ci/verify-openburnbar-safari-extension-layout\\.py" in (
+        public_trust_workflow
+    )
+    assert "bash scripts/ci/verify-openburnbar-safari-extension.test.sh" in (
+        public_trust_workflow
+    )
+    assert development_verify_helper in public_trust_workflow
+    assert "bash scripts/ci/verify-openburnbar-development-signing.test.sh" in (
+        public_trust_workflow
+    )
+    assert development_verify_helper in makefile
+    assert "OTHER_CODE_SIGN_FLAGS: --options runtime,library" in project
+    assert "$script_dir/verify-openburnbar-safari-extension.sh" in dmg_smoke
+    assert mas_release.count(verify_helper) >= 2
+    assert "pkgutil --expand-full" in mas_release
+    assert "export-inspection" in mas_release
+
+    assert (
+        f'CODE_SIGN_ENTITLEMENTS: "$({host_entitlement_variable})"' in project
+    )
+    for mas_surface in (mas_release, mas_readiness):
+        assert f'{host_entitlement_variable}="$entitlements"' in mas_surface
+        assert re.search(
+            r'(?m)^\s*CODE_SIGN_ENTITLEMENTS="\$entitlements"', mas_surface
+        ) is None
+        assert "scripts/test-openburnbar-safari-extension.sh" in mas_surface
+
+
+def test_safari_extension_ci_uses_one_canonical_wrapper_and_fail_closed_diff_coverage():
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    fast_feedback = (ROOT / ".github/workflows/fast-feedback.yml").read_text(
+        encoding="utf-8"
+    )
+    app_gate = (ROOT / ".github/workflows/app-pr-gate.yml").read_text(
+        encoding="utf-8"
+    )
+    diff_coverage = (ROOT / "scripts/diff-coverage-ts.sh").read_text(
+        encoding="utf-8"
+    )
+    wrapper = (ROOT / "scripts/test-openburnbar-safari-extension.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "./scripts/test-openburnbar-safari-extension.sh" in makefile
+    assert "safari-extension-fast:" in fast_feedback
+    assert "needs.classify.outputs.safari == 'true'" in fast_feedback
+    assert "extensions/safari/package-lock.json" in fast_feedback
+    assert "./scripts/test-openburnbar-safari-extension.sh" in fast_feedback
+    assert (
+        "'safari-extension-fast': os.environ.get('SAFARI_REQUIRED') == 'true'"
+        in fast_feedback
+    )
+    assert "extensions/safari/src/**/*.ts" in diff_coverage
+    assert "extensions/safari/coverage/coverage-final.json" not in diff_coverage
+    assert '"extensions", "safari", "coverage", "coverage-final.json"' in diff_coverage
+    assert "rm -rf \"$repo_root/extensions/safari/coverage\"" in diff_coverage
+    assert "npm ci --prefix \"$repo_root/extensions/safari\"" in diff_coverage
+    assert 'npm run test:ci --prefix "$extension_root"' in wrapper
+    assert 'npm ci --prefix "$extension_root"' in wrapper
+    assert "package-lock.json" in wrapper
+    assert "extensions/safari/package-lock.json" in app_gate
+    assert "npm ci --prefix extensions/safari" in app_gate
+    assert "npm run build --prefix extensions/safari" in app_gate
+
+
 def test_signal_ffi_builder_clears_provenance_from_generated_rustc_wrapper():
     builder = (ROOT / "scripts/build-signal-ffi-xcframework.sh").read_text(encoding="utf-8")
     wrapper_function = builder.split("write_rustc_wrapper() {", 1)[1].split(
@@ -711,6 +914,128 @@ def test_signal_ffi_builder_clears_provenance_from_generated_rustc_wrapper():
     assert chmod in wrapper_function
     assert clear_provenance in wrapper_function
     assert wrapper_function.index(chmod) < wrapper_function.index(clear_provenance)
+
+
+def test_iroh_builder_preserves_generated_swiftlint_rationale():
+    builder = (ROOT / "scripts/build-iroh-xcframework.sh").read_text(
+        encoding="utf-8"
+    )
+    generated_source = (
+        ROOT
+        / "OpenBurnBarCore/Sources/OpenBurnBarIroh/Generated/openburnbar_iroh.swift"
+    ).read_text(encoding="utf-8")
+    rationale = (
+        "// swiftlint:disable all -- reason: generated UniFFI binding; "
+        "regenerate from Rust sources instead of hand-editing."
+    )
+
+    assert rationale in builder
+    assert (
+        "generated UniFFI Swift source retained an unjustified SwiftLint suppression"
+        in builder
+    )
+    assert rationale in generated_source
+    assert "\n// swiftlint:disable all\n" not in generated_source
+
+
+def test_iroh_builder_strips_fresh_staging_archives_instead_of_cargo_cache():
+    builder = (ROOT / "scripts/build-iroh-xcframework.sh").read_text(
+        encoding="utf-8"
+    )
+    archive_helper = (ROOT / "scripts/lib/apple-static-archive.sh").read_text(
+        encoding="utf-8"
+    )
+    build_target = builder.split("build_target() {", 1)[1].split(
+        "\n}\n\nmkdir -p", 1
+    )[0]
+    staging_helper = builder.split("stage_release_archive() {", 1)[1].split(
+        "\n}\n\n# Group iOS", 1
+    )[0]
+    transaction_cleanup = builder.split(
+        "cleanup_xcframework_transaction() {", 1
+    )[1].split("\n}\n\ncleanup_on_exit()", 1)[0]
+    transaction_install = builder.split("generated_needs_install=1", 1)[1].split(
+        "\nTRANSACTION_COMMITTED=1", 1
+    )[0]
+
+    assert "xcrun strip" not in build_target
+    assert "Cargo did not produce the expected Iroh archive" in build_target
+    assert 'cp "${source_archive}" "${destination_archive}"' in staging_helper
+    assert 'ZERO_AR_DATE=1 xcrun strip -S "${destination_archive}"' in staging_helper
+    assert (
+        'openburnbar_prune_symbol_empty_archive_members "${destination_archive}"'
+        in staging_helper
+    )
+    assert staging_helper.index(
+        'openburnbar_prune_symbol_empty_archive_members "${destination_archive}"'
+    ) < staging_helper.index(
+        'ZERO_AR_DATE=1 xcrun strip -S "${destination_archive}"'
+    )
+    assert 'if [[ -s "${strip_log}" ]]' in staging_helper
+    assert "Unable to classify Apple static archive members" in archive_helper
+    assert "has no symbols" in archive_helper
+    assert '-filelist "$object_list"' in archive_helper
+    assert (
+        "Refusing to normalize an archive with duplicate member names"
+        in archive_helper
+    )
+    assert 'PROCESS_TMPDIR="${IROH_BUILD_TMPDIR:-/tmp}"' in builder
+    assert 'export TMPDIR="${PROCESS_TMPDIR%/}/"' in builder
+    assert (
+        'CARGO_HOME_REQUESTED="${IROH_CARGO_HOME:-'
+        '${CARGO_HOME:-${HOME}/.cargo}}"'
+        in builder
+    )
+    assert "inherited Cargo home is unavailable" in builder
+    assert 'export CARGO_HOME="${CARGO_HOME_REQUESTED}"' in builder
+    assert (
+        'XCFRAMEWORK_STAGING="${ROOT_DIR}/build/'
+        'OpenBurnBarIroh.staging.$$.xcframework"'
+        in builder
+    )
+    assert 'XCFRAMEWORK_BACKUP="${ROOT_DIR}/build/OpenBurnBarIroh.xcframework.backup.$$"' in builder
+    assert 'GENERATED_STAGING="${ROOT_DIR}/build/OpenBurnBarIrohGenerated.staging.$$"' in builder
+    assert 'GENERATED_BACKUP="${ROOT_DIR}/build/OpenBurnBarIrohGenerated.backup.$$"' in builder
+    assert 'UNIFFI_OUT_DIR="${GENERATED_STAGING}"' in builder
+    assert 'diff -qr "${GENERATED_STAGING}" "${GENERATED_DIR}"' in builder
+    assert "-output \"${XCFRAMEWORK_STAGING}\"" in builder
+    assert (
+        'openburnbar_verify_apple_static_archive_has_no_empty_members \\\n'
+        '  "${XCFRAMEWORK_STAGING}/macos-arm64/libopenburnbar_iroh.a"'
+        in builder
+    )
+    assert 'rm -rf "${XCFRAMEWORK}"' not in transaction_install
+    assert 'rm -rf "${GENERATED_DIR}"' not in transaction_install
+    assert transaction_install.index(
+        'mv "${XCFRAMEWORK}" "${XCFRAMEWORK_BACKUP}"'
+    ) < transaction_install.index(
+        'mv "${XCFRAMEWORK_STAGING}" "${XCFRAMEWORK}"'
+    )
+    assert transaction_install.index(
+        'mv "${GENERATED_DIR}" "${GENERATED_BACKUP}"'
+    ) < transaction_install.index(
+        'mv "${GENERATED_STAGING}" "${GENERATED_DIR}"'
+    )
+    assert transaction_cleanup.index(
+        'rm -rf "${XCFRAMEWORK}"'
+    ) < transaction_cleanup.index(
+        'mv "${XCFRAMEWORK_BACKUP}" "${XCFRAMEWORK}"'
+    )
+    assert transaction_cleanup.index(
+        'rm -rf "${GENERATED_DIR}"'
+    ) < transaction_cleanup.index(
+        'mv "${GENERATED_BACKUP}" "${GENERATED_DIR}"'
+    )
+    assert (
+        'stage_release_archive \\\n'
+        '    "${CARGO_TARGET_ROOT}/${target}/${PROFILE_DIR}/libopenburnbar_iroh.a" \\\n'
+        '    "${out_dir}/libopenburnbar_iroh.a"'
+    ) in builder
+    assert (
+        '"${SIM_ARM64_DIR}/libopenburnbar_iroh.a" \\\n'
+        '    "${SIM_X86_64_DIR}/libopenburnbar_iroh.a"'
+        in builder
+    )
 
 
 def test_local_app_signing_uses_same_privileged_peer_policy_as_release():

@@ -392,8 +392,15 @@ private final class FaultInjectingXAIKeychainBackend: KeychainStoreBackend, @unc
     func delete(service: String, account: String) throws {}
 }
 
-private final class XAIMockURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var responder: ((URLRequest) -> (HTTPURLResponse, Data))?
+private final class XAIMockURLProtocol: URLProtocol {
+    private static let responderBox = OpenBurnBarCore.Locked<
+        (@Sendable (URLRequest) -> (HTTPURLResponse, Data))?
+    >(nil)
+
+    static var responder: (@Sendable (URLRequest) -> (HTTPURLResponse, Data))? {
+        get { responderBox.read() }
+        set { responderBox.write(newValue) }
+    }
 
     override static func canInit(with request: URLRequest) -> Bool { true }
     override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }

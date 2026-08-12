@@ -14,6 +14,7 @@ final class TextExpansionSyncServiceTests: XCTestCase {
     private var originalSharedCloudSyncEnabled = true
 
     override func setUp() async throws {
+        try await super.setUp()
         dataStore = try makeDiscoveryInMemoryStore()
         accountManager = FakeAccountManager.makeSignedIn()
         settingsManager = SettingsManager(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
@@ -30,7 +31,7 @@ final class TextExpansionSyncServiceTests: XCTestCase {
         SettingsManager.shared.textExpansion.cloudSyncEnabled = true
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         SettingsManager.shared.textExpansion.cloudSyncEnabled = originalSharedCloudSyncEnabled
         dataStore = nil
         accountManager = nil
@@ -39,7 +40,7 @@ final class TextExpansionSyncServiceTests: XCTestCase {
         context = nil
         vaultKeyStore = nil
         vaultKeyPublisher = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testSyncUploadsTextExpansionSnippetAndMarksLocalRowSynced() async throws {

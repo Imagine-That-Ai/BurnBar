@@ -12,6 +12,7 @@ import XCTest
 /// Every test runs against an isolated temp "home" and an isolated
 /// `UserDefaults` suite so we never touch the developer's real config files
 /// or app preferences.
+@MainActor
 final class RoutedClientWiringSentryTests: XCTestCase {
 
     private var tempHome: URL!
@@ -30,20 +31,16 @@ final class RoutedClientWiringSentryTests: XCTestCase {
         defaults = UserDefaults(suiteName: suiteName)
         defaults.removePersistentDomain(forName: suiteName)
 
-        await MainActor.run {
-            self.settings = SettingsManager(defaults: self.defaults, flushDelayNanoseconds: 0)
-            self.settings.gateway.gatewayHost = "127.0.0.1"
-            self.settings.gateway.gatewayPort = 8317
-            self.settings.gateway.gatewayAuthToken = ""
-            self.settings.gateway.gatewayEnabled = true
-        }
+        settings = SettingsManager(defaults: defaults, flushDelayNanoseconds: 0)
+        settings.gateway.gatewayHost = "127.0.0.1"
+        settings.gateway.gatewayPort = 8317
+        settings.gateway.gatewayAuthToken = ""
+        settings.gateway.gatewayEnabled = true
     }
 
     override func tearDown() async throws {
-        await MainActor.run {
-            self.sentry?.stop()
-            self.sentry = nil
-        }
+        sentry?.stop()
+        sentry = nil
         if let suiteName {
             defaults?.removePersistentDomain(forName: suiteName)
         }

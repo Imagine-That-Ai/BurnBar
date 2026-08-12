@@ -12,13 +12,18 @@ final class AIInboxControlPlaneStoreTests: XCTestCase {
     private var dataStore: DataStore!
 
     override func setUp() async throws {
-        let queue = try DatabaseQueue()
-        dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        try await super.setUp()
+        try await MainActor.run {
+            let queue = try DatabaseQueue()
+            dataStore = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        }
     }
 
-    override func tearDown() {
-        dataStore = nil
-        super.tearDown()
+    override func tearDown() async throws {
+        await MainActor.run {
+            dataStore = nil
+        }
+        try await super.tearDown()
     }
 
     // MARK: - Reading items

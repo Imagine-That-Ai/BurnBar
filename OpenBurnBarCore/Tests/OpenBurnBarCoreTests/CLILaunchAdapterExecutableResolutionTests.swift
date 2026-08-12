@@ -112,6 +112,70 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
         XCTAssertTrue(trustedDirectories.contains("\(home)/.junie/bin"))
     }
 
+    func testKimiSearchPolicyIncludesCurrentKimiCodeManagedBinDirectory() {
+        let home = "/tmp/openburnbar-cli-resolution-home"
+        let trustedDirectories = CLILaunchAdapter.trustedExecutableSearchDirectories(
+            for: .kimi,
+            environment: [:],
+            homeDirectory: home
+        )
+
+        XCTAssertTrue(
+            SwitcherCLIProfileType.kimi.trustedExecutablePaths
+                .contains("$HOME/.kimi-code/bin/kimi")
+        )
+        XCTAssertTrue(trustedDirectories.contains("\(home)/.kimi-code/bin"))
+    }
+
+    func testCursorAgentExecutableCatalogPreservesLegacyNameAndAddsOfficialAlias() {
+        XCTAssertEqual(
+            SwitcherCLIProfileType.cursorAgent.executableName,
+            "cursor-agent"
+        )
+        XCTAssertEqual(
+            SwitcherCLIProfileType.cursorAgent.executableNames,
+            ["cursor-agent", "agent"]
+        )
+        XCTAssertTrue(
+            SwitcherCLIProfileType.cursorAgent.trustedExecutablePaths
+                .contains("$HOME/.local/bin/agent")
+        )
+    }
+
+    func testCursorAgentExplicitResolverAcceptsLegacyAndCurrentExecutableNames() throws {
+        let fileManager = FileManager.default
+        let tempHome = fileManager.temporaryDirectory
+            .appendingPathComponent(
+                "openburnbar-cursor-agent-resolution-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        temporaryRoots.append(tempHome)
+
+        let legacyExecutable = tempHome
+            .appendingPathComponent(".cursor-agent/bin/cursor-agent")
+        let currentExecutable = tempHome
+            .appendingPathComponent(".local/bin/agent")
+        try makeExecutableFile(at: legacyExecutable)
+        try makeExecutableFile(at: currentExecutable)
+
+        XCTAssertEqual(
+            CLILaunchAdapter.firstExplicitlyTrustedExecutable(
+                for: .cursorAgent,
+                trustedPaths: ["$HOME/.cursor-agent/bin/cursor-agent"],
+                homeDirectory: tempHome.path
+            ),
+            legacyExecutable.path
+        )
+        XCTAssertEqual(
+            CLILaunchAdapter.firstExplicitlyTrustedExecutable(
+                for: .cursorAgent,
+                trustedPaths: ["$HOME/.local/bin/agent"],
+                homeDirectory: tempHome.path
+            ),
+            currentExecutable.path
+        )
+    }
+
     func testCLILaunchErrorUsesLocalizedDescriptions() {
         let error: Error = CLILaunchError.executableNotFound(.codex)
         XCTAssertEqual(

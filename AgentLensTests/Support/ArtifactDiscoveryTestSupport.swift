@@ -3,11 +3,10 @@ import GRDB
 import OpenBurnBarCore
 @testable import OpenBurnBar
 
-@MainActor
-final class StubArtifactDiscoverySettings: ArtifactDiscoverySettingsProviding {
-    var artifactDiscoveryEnabled: Bool
-    var artifactDiscoveryRegisteredRoots: [String]
-    var artifactDiscoveryAdditionalKnownPatterns: [String]
+final class StubArtifactDiscoverySettings: ArtifactDiscoverySettingsProviding, Sendable {
+    let artifactDiscoveryEnabled: Bool
+    let artifactDiscoveryRegisteredRoots: [String]
+    let artifactDiscoveryAdditionalKnownPatterns: [String]
 
     init(
         artifactDiscoveryEnabled: Bool,

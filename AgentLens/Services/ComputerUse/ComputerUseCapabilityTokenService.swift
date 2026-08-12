@@ -67,7 +67,7 @@ final class ComputerUseCapabilitySigningKeyStore: Sendable {
     }
 
     private func copyPrivateKeyData() throws -> Data? {
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
@@ -82,7 +82,7 @@ final class ComputerUseCapabilitySigningKeyStore: Sendable {
     }
 
     private func savePrivateKeyData(_ data: Data) throws {
-        var query: [String: Any] = [
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,

@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class PixelClockInputControllerTests: XCTestCase {
     private var settingsManager: SettingsManager!
-    private var observedNotifications: [Notification] = []
+    private let observedNotificationCount = Locked(0)
     private var notificationObserver: NSObjectProtocol?
     private var pushPixelClockNowCallCount = 0
     private var returnToBurnBarCallCount = 0
@@ -13,17 +13,16 @@ final class PixelClockInputControllerTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         settingsManager = makeSettingsManager()
-        observedNotifications = []
+        observedNotificationCount.write(0)
         pushPixelClockNowCallCount = 0
         returnToBurnBarCallCount = 0
+        let observedNotificationCount = observedNotificationCount
         notificationObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name("ShowAssistantsTab"),
             object: nil,
             queue: .main
-        ) { [weak self] note in
-            Task { @MainActor [weak self] in
-                self?.observedNotifications.append(note)
-            }
+        ) { _ in
+            observedNotificationCount.withLock { $0 += 1 }
         }
     }
 
@@ -103,7 +102,7 @@ final class PixelClockInputControllerTests: XCTestCase {
         // Notification is posted synchronously on the main queue, but the
         // observer hops back through MainActor — give the runloop a tick.
         try? await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertFalse(observedNotifications.isEmpty)
+        XCTAssertGreaterThan(observedNotificationCount.read(), 0)
         XCTAssertEqual(returnToBurnBarCallCount, 1)
     }
 

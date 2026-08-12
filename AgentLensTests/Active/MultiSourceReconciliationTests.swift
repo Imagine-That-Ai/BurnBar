@@ -500,8 +500,6 @@ final class MultiSourceReconciliationTests: XCTestCase {
         // Compute missing (same logic as supplementalUsages)
         let localInput = 1000
         let localOutput = 500
-        let localCacheRead = 0
-        let localCacheWrite = 0
         let localCost = 0.05
 
         let missingInput = max(apiRecord.inputTokens - localInput, 0)  // 500
@@ -565,8 +563,6 @@ final class MultiSourceReconciliationTests: XCTestCase {
 
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let windowStart = calendar.startOfDay(for: today)
-        let sessionId = "api-reconcile-claudecode-\(Int(windowStart.timeIntervalSince1970))-claude-4-sonnet"
 
         // Given: local usage that matches API (no missing tokens)
         let localUsage = TokenUsage(

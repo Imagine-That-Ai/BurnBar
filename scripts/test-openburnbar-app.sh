@@ -9,15 +9,24 @@
 #      isolated derived data and result bundles.
 #   3. Run process-global-state-sensitive tests in a fresh host and merge their
 #      result bundle into the canonical coverage evidence.
-#   4. Detect known XCTest startup hang families and retry with exponential
-#      backoff (4 attempts). Real test failures fail fast — no retry storms.
+#   4. Contain execution-timeout cascades, detect known XCTest startup hang
+#      families, and retry with exponential backoff (4 attempts). Real test
+#      failures fail fast — no retry storms.
 #   5. Emit structured JSONL telemetry per attempt + a final summary so failures
 #      are diagnosable without scrolling 5 MB of xcodebuild noise.
 #   6. Promote the successful attempt's xcresult to the canonical coverage path
 #      when OPENBURNBAR_ENABLE_COVERAGE=YES.
+#   7. Keep visual references bundle-local inside XCTest, then transactionally
+#      promote only known, uniquely mapped PNGs back to source in record mode.
 #
 # Environment knobs:
 #   OPENBURNBAR_ENABLE_COVERAGE=YES   Capture xcresult at canonical path.
+#   OPENBURNBAR_RUN_SNAPSHOT_TESTS=YES
+#                                      Execute visual snapshots instead of the
+#                                      normal app gate's fast snapshot skip.
+#   OPENBURNBAR_SNAPSHOT_RECORD=MODE  SnapshotTesting record mode: all, failed,
+#                                      missing, or never. Recordings are made
+#                                      in the test bundle and safely promoted.
 #   OPENBURNBAR_APP_TEST_ATTEMPTS=N   Override max attempts (default 4).
 #   OPENBURNBAR_APP_TEST_FILTER=...   Pass one custom -only-testing target.
 #   OPENBURNBAR_APP_TEST_FILTERS=...  Pass newline/comma/semicolon-separated
@@ -31,11 +40,41 @@
 #                                      isolation-sensitive tests (default 2).
 #   OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT=...
 #                                      Override runnable derived-data root.
+#   OPENBURNBAR_APP_TEST_TEMP_ROOT=...
+#                                      Base for default runnable DerivedData.
+#                                      Defaults to /tmp instead of inherited
+#                                      TMPDIR so stale/unmounted external build
+#                                      caches cannot break test-host startup.
+#   OPENBURNBAR_APP_TEST_PROCESS_TMPDIR=...
+#                                      TMPDIR exported to Xcode/SwiftPM child
+#                                      processes. Defaults to /tmp so package
+#                                      resolver locks cannot land on a stale or
+#                                      inaccessible external build volume.
 #   OPENBURNBAR_APP_TEST_DERIVED_DATA_DIR=...
 #                                      Reuse this exact prebuilt directory, then
 #                                      remove it on exit. Intended for CI steps
 #                                      that already built the app for a real-
 #                                      process gate on the same runner.
+#   OPENBURNBAR_APP_TEST_XCODEBUILD_JOBS=N
+#                                      Limit Xcode's concurrent build jobs to a
+#                                      positive integer. Unset preserves Xcode's
+#                                      default scheduler.
+#   OPENBURNBAR_APP_TEST_RESOLVE_TIMEOUT_SECONDS=N
+#                                      Bound initial SwiftPM package resolution
+#                                      wall time (default 600 seconds).
+#   OPENBURNBAR_APP_TEST_TIMEOUT_RESTART_GRACE_SECONDS=N
+#                                      Wait this long after XCTest reports an
+#                                      execution timeout for Xcode's explicit
+#                                      restart marker before containing the
+#                                      attempt (default 5 seconds).
+#   OPENBURNBAR_APP_TEST_TIMEOUT_INTERRUPT_GRACE_SECONDS=N
+#                                      Wait this long after containment SIGINT
+#                                      before escalating the exact xcodebuild
+#                                      attempt to SIGTERM (default 15 seconds).
+#   OPENBURNBAR_APP_TEST_TIMEOUT_TERMINATE_GRACE_SECONDS=N
+#                                      Wait this long after SIGTERM before the
+#                                      exact supervised xcodebuild PID receives
+#                                      SIGKILL (default 5 seconds).
 #
 # Exit status:
 #   0  — at least one attempt completed all tests successfully.
@@ -45,6 +84,15 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Xcode and SwiftPM use TMPDIR for package-workspace locks independently of
+# DerivedData. A globally configured external cache can disappear or become
+# inaccessible to sandboxed child processes even when the selected DerivedData
+# root is healthy. Keep the canonical harness on a launch-safe local temp root;
+# callers with a proven writable alternative may opt in explicitly.
+process_tmp_root="${OPENBURNBAR_APP_TEST_PROCESS_TMPDIR:-/tmp}"
+mkdir -p "$process_tmp_root"
+export TMPDIR="${process_tmp_root%/}/"
+
 # Keep CI/package resolution on the source-built Firestore graph. The prebuilt
 # grpc-binary path is unsafe for iOS 27 and can be reintroduced by Xcode package
 # resolution unless the environment is present.
@@ -52,9 +100,17 @@ export FIREBASE_SOURCE_FIRESTORE="${FIREBASE_SOURCE_FIRESTORE:-1}"
 
 cache_dir="$repo_root/.spm-cache-new"
 artifact_root="$repo_root/.derived-data"
+snapshot_record_mode="${OPENBURNBAR_SNAPSHOT_RECORD:-}"
+snapshot_source_directory="$repo_root/AgentLensTests/Active/UI/SnapshotTests/__Snapshots__"
+snapshot_promotion_helper="$repo_root/scripts/lib/promote_snapshot_recordings.py"
 
 # shellcheck source=scripts/lib/openburnbar-app-test-classifier.sh
 source "$repo_root/scripts/lib/openburnbar-app-test-classifier.sh"
+# shellcheck source=scripts/lib/libsignal-swift-compat.sh
+source "$repo_root/scripts/lib/libsignal-swift-compat.sh"
+# shellcheck source=scripts/lib/xcode-source-classification.sh
+source "$repo_root/scripts/lib/xcode-source-classification.sh"
+openburnbar_configure_xcode_process_tmpdir "$process_tmp_root"
 
 # Keep runnable app/test-host products out of the repo's Documents path. macOS
 # can launch test hosts via launchd/testmanagerd, and those child processes do
@@ -63,9 +119,9 @@ source "$repo_root/scripts/lib/openburnbar-app-test-classifier.sh"
 if [[ -n "${OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT:-}" ]]; then
     derived_data_root="$OPENBURNBAR_APP_TEST_DERIVED_DATA_ROOT"
 elif [[ -n "${OPENBURNBAR_SNAPSHOT_RECORD:-}" || "${OPENBURNBAR_RUN_SNAPSHOT_TESTS:-}" == "YES" ]]; then
-    derived_data_root="${TMPDIR:-/tmp}/openburnbar-snapshot-tests"
+    derived_data_root="${OPENBURNBAR_APP_TEST_TEMP_ROOT:-/tmp}/openburnbar-snapshot-tests"
 else
-    derived_data_root="${TMPDIR:-/tmp}/openburnbar-app-tests"
+    derived_data_root="${OPENBURNBAR_APP_TEST_TEMP_ROOT:-/tmp}/openburnbar-app-tests"
 fi
 attempt_log_path="$artifact_root/test-openburnbar-app-attempts.jsonl"
 
@@ -79,6 +135,8 @@ maximum_test_execution_allowance="${OPENBURNBAR_APP_TEST_MAX_ALLOWANCE:-1200}"
 # 4, the failure is real.
 max_test_attempts="${OPENBURNBAR_APP_TEST_ATTEMPTS:-4}"
 max_isolated_test_attempts="${OPENBURNBAR_APP_ISOLATED_TEST_ATTEMPTS:-2}"
+xcodebuild_jobs="${OPENBURNBAR_APP_TEST_XCODEBUILD_JOBS:-}"
+package_resolve_timeout_seconds="${OPENBURNBAR_APP_TEST_RESOLVE_TIMEOUT_SECONDS:-600}"
 
 # Test filter. Default to the active app test bundle. Callers can override
 # (e.g. for targeted snapshot re-records: -only-testing:OpenBurnBarTests/SomeClass).
@@ -118,6 +176,8 @@ Environment:
   OPENBURNBAR_APP_TEST_FILTERS=<targets>
       Newline/comma/semicolon-separated default filters when -only-testing is
       not supplied. Takes precedence over OPENBURNBAR_APP_TEST_FILTER.
+  OPENBURNBAR_APP_TEST_XCODEBUILD_JOBS=<positive integer>
+      Limit concurrent Xcode build jobs. Unset preserves Xcode's default.
 EOF
 }
 
@@ -168,6 +228,21 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
+if [[ -n "$xcodebuild_jobs" && ! "$xcodebuild_jobs" =~ ^[1-9][0-9]*$ ]]; then
+    echo "error: OPENBURNBAR_APP_TEST_XCODEBUILD_JOBS must be a positive integer" >&2
+    exit 64
+fi
+
+if [[ -n "$snapshot_record_mode" ]]; then
+    case "$snapshot_record_mode" in
+        all|failed|missing|never) ;;
+        *)
+            echo "error: OPENBURNBAR_SNAPSHOT_RECORD must be one of: all, failed, missing, never" >&2
+            exit 64
+            ;;
+    esac
+fi
+
 raw_test_filters=()
 if ((${#cli_test_filters[@]})); then
     raw_test_filters=("${cli_test_filters[@]}")
@@ -178,7 +253,7 @@ elif [[ -n "${OPENBURNBAR_APP_TEST_FILTERS:-}" ]]; then
         if [[ -n "$raw_filter" ]]; then
             raw_test_filters+=("$raw_filter")
         fi
-    done < <(printf '%s\n' "$OPENBURNBAR_APP_TEST_FILTERS" | tr ',;' '\n\n')
+    done < <(printf '%s\n' "$OPENBURNBAR_APP_TEST_FILTERS" | tr ',;' '\n')
 else
     raw_test_filters=("${OPENBURNBAR_APP_TEST_FILTER:-OpenBurnBarTests}")
 fi
@@ -240,6 +315,12 @@ if [[ "$print_xcodebuild_plan" == "1" ]]; then
         done
         printf 'fresh-host-expected-count\t%s\n' "$isolated_test_expected_count"
     fi
+    if [[ -n "$xcodebuild_jobs" ]]; then
+        printf 'xcodebuild-jobs\t%s\n' "$xcodebuild_jobs"
+    fi
+    if [[ -n "$snapshot_record_mode" ]]; then
+        printf 'snapshot-record-mode\t%s\n' "$snapshot_record_mode"
+    fi
     exit 0
 fi
 
@@ -262,6 +343,7 @@ create_derived_data_dir() {
 derived_data_dir="$(create_derived_data_dir)"
 xcodebuild_log=""
 xcodebuild_args=()
+xcodebuild_supervisor_pid=""
 last_test_exit_code=0
 invocation_start_epoch="$(date +%s)"
 
@@ -286,6 +368,38 @@ preserve_diagnostic_xcresult() {
     dest="$diagnostics_dir/$(basename "$bundle")"
     rm -rf "$dest"
     cp -R "$bundle" "$dest" 2>/dev/null || true
+}
+
+snapshot_test_bundle_path() {
+    local dd="$1"
+    printf '%s\n' \
+        "$dd/Build/Products/Debug/OpenBurnBar.app/Contents/PlugIns/OpenBurnBarTests.xctest"
+}
+
+promote_snapshot_recordings() {
+    # Args: derived_data_dir xcodebuild_status
+    local dd="$1"
+    local xcodebuild_status="$2"
+    local test_bundle
+    test_bundle="$(snapshot_test_bundle_path "$dd")"
+
+    if [[ ! -d "$test_bundle" ]]; then
+        if ((xcodebuild_status == 0)); then
+            echo "error: passing snapshot run did not produce OpenBurnBarTests.xctest at $test_bundle" >&2
+            return 65
+        fi
+        echo ">>> Snapshot recordings were not promoted because the failing build did not produce OpenBurnBarTests.xctest."
+        return 0
+    fi
+    if [[ ! -f "$snapshot_promotion_helper" ]]; then
+        echo "error: snapshot promotion helper is missing: $snapshot_promotion_helper" >&2
+        return 65
+    fi
+
+    python3 "$snapshot_promotion_helper" \
+        --source-directory "$snapshot_source_directory" \
+        --test-bundle "$test_bundle" \
+        --expected-record-mode "$snapshot_record_mode"
 }
 
 emit_attempt_event() {
@@ -391,14 +505,115 @@ preclean_stale_processes() {
     sleep 0.2
 }
 
+stop_active_xcodebuild_supervisor() {
+    if [[ -z "$xcodebuild_supervisor_pid" ]]; then
+        return 0
+    fi
+
+    local supervisor_pid="$xcodebuild_supervisor_pid"
+    xcodebuild_supervisor_pid=""
+    if kill -0 "$supervisor_pid" 2>/dev/null; then
+        kill -TERM "$supervisor_pid" 2>/dev/null || true
+    fi
+    wait "$supervisor_pid" 2>/dev/null || true
+}
+
+run_supervised_xcodebuild() {
+    # Args: log_path containment_receipt_path wall_timeout_seconds command...
+    local log_path="$1"
+    local containment_receipt_path="$2"
+    local wall_timeout_seconds="$3"
+    shift 3
+
+    local supervisor_args=(
+        --log "$log_path"
+        --receipt "$containment_receipt_path"
+    )
+    if [[ -n "$wall_timeout_seconds" ]]; then
+        supervisor_args+=(--wall-timeout-seconds "$wall_timeout_seconds")
+    fi
+
+    python3 "$repo_root/scripts/lib/run_xcodebuild_with_timeout_containment.py" \
+        "${supervisor_args[@]}" \
+        -- \
+        "$@" &
+    xcodebuild_supervisor_pid=$!
+
+    local supervisor_status=0
+    if wait "$xcodebuild_supervisor_pid"; then
+        supervisor_status=0
+    else
+        supervisor_status=$?
+    fi
+    xcodebuild_supervisor_pid=""
+    return "$supervisor_status"
+}
+
 cleanup() {
-    if [ -n "$xcodebuild_log" ]; then
+    local original_status=$?
+    local google_restore_status=0
+    local libsignal_restore_status=0
+    trap - EXIT
+    stop_active_xcodebuild_supervisor
+    if [[ -n "$xcodebuild_log" ]]; then
         rm -f "$xcodebuild_log" 2>/dev/null || true
     fi
     cleanup_derived_data "$derived_data_dir"
+    openburnbar_restore_google_sign_in_macos_compat || google_restore_status=$?
+    openburnbar_restore_libsignal_swift_compat || libsignal_restore_status=$?
+    local restore_status="$google_restore_status"
+    if ((restore_status == 0)); then
+        restore_status="$libsignal_restore_status"
+    fi
+    if ((original_status == 0 && restore_status != 0)); then
+        exit "$restore_status"
+    fi
+    exit "$original_status"
 }
 
-trap 'cleanup' EXIT
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Truncate per-invocation evidence before package resolution so an initial
+# preflight failure cannot be confused with artifacts from an earlier run.
+: > "$attempt_log_path"
+rm -rf "$diagnostics_dir"
+mkdir -p "$diagnostics_dir"
+
+package_resolve_log="$diagnostics_dir/OpenBurnBarTests-package-resolution.log"
+package_resolve_receipt="$diagnostics_dir/OpenBurnBarTests-package-resolution-containment.json"
+rm -f "$package_resolve_log" "$package_resolve_receipt"
+
+set +e
+OPENBURNBAR_SWIFTPM_RESOLVE_TIMEOUT_SECONDS="$package_resolve_timeout_seconds" \
+    bash "$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh" \
+        --project "$repo_root/OpenBurnBar.xcodeproj" \
+        --scheme "OpenBurnBar" \
+        --cache-dir "$cache_dir" \
+        --derived-data "$derived_data_dir" \
+        2>&1 | tee "$package_resolve_log"
+package_resolve_status=${PIPESTATUS[0]}
+set -e
+
+resolution_evidence_dir="$derived_data_dir/.openburnbar-swiftpm-resolution"
+for candidate_receipt in "$resolution_evidence_dir"/*-containment.json; do
+    if [[ -s "$candidate_receipt" ]]; then
+        cp "$candidate_receipt" "$package_resolve_receipt"
+    fi
+done
+if ((package_resolve_status != 0)); then
+    echo "error: locked Xcode package preparation failed with status $package_resolve_status." >&2
+    echo "Package-preparation log: $package_resolve_log" >&2
+    if [[ -s "$package_resolve_receipt" ]]; then
+        echo "Containment receipt: $package_resolve_receipt" >&2
+    fi
+    exit "$package_resolve_status"
+fi
+
+openburnbar_prepare_google_sign_in_macos_compat "$cache_dir"
+openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
 # ---------------------------------------------------------------------------
 # xcodebuild argument assembly
@@ -425,7 +640,13 @@ populate_xcodebuild_args() {
         SWIFT_ENABLE_BATCH_MODE=NO
         CODE_SIGNING_ALLOWED=NO
         CODE_SIGNING_REQUIRED=NO
+        -disableAutomaticPackageResolution
+        -onlyUsePackageVersionsFromResolvedFile
+        "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}"
     )
+    if [[ -n "$xcodebuild_jobs" ]]; then
+        xcodebuild_args+=(-jobs "$xcodebuild_jobs")
+    fi
     if [[ "$phase" == "isolated" ]]; then
         for filter in "${isolated_test_filters[@]}"; do
             xcodebuild_args+=("-only-testing:$filter")
@@ -443,13 +664,16 @@ populate_xcodebuild_args() {
     if [[ "${OPENBURNBAR_ENABLE_COVERAGE:-}" == "YES" ]]; then
         xcodebuild_args+=(-enableCodeCoverage YES)
     fi
-    # Forward the SnapshotTesting record-mode env var into the test runner
-    # process. xcodebuild only forwards env vars that begin with
-    # `TEST_RUNNER_`, so callers set `OPENBURNBAR_SNAPSHOT_RECORD=all`
-    # locally and we translate it to `TEST_RUNNER_SNAPSHOT_TESTING_RECORD`
-    # which the swift-snapshot-testing runtime reads on first access.
-    if [[ -n "${OPENBURNBAR_SNAPSHOT_RECORD:-}" ]]; then
-        xcodebuild_args+=("TEST_RUNNER_SNAPSHOT_TESTING_RECORD=${OPENBURNBAR_SNAPSHOT_RECORD}")
+    # Xcode 27 exposes TEST_RUNNER_* as build settings but does not reliably
+    # propagate them into app-hosted XCTest's process environment. Preserve the
+    # environment alias for compatible runners and also stamp the validated mode
+    # into OpenBurnBarTests' explicit bundle Info.plist. XCTest reads only its own
+    # bundle and never touches the checkout.
+    if [[ -n "$snapshot_record_mode" ]]; then
+        xcodebuild_args+=(
+            "TEST_RUNNER_SNAPSHOT_TESTING_RECORD=$snapshot_record_mode"
+            "OPENBURNBAR_SNAPSHOT_RECORD_MODE=$snapshot_record_mode"
+        )
     fi
 }
 
@@ -463,9 +687,9 @@ if [[ -n "${RUNNER_OS:-}" ]]; then
     export TEST_RUNNER_RUNNER_OS="${RUNNER_OS}"
 fi
 if [[ -z "${OPENBURNBAR_SNAPSHOT_RECORD:-}" && "${OPENBURNBAR_RUN_SNAPSHOT_TESTS:-}" != "YES" ]]; then
-    # Visual snapshot rendering can wedge under the full macOS app-test host on
-    # some Xcode/macOS pairs. The normal app gate matches GitHub by skipping
-    # snapshots; local snapshot audits stay available on demand.
+    # The normal app gate matches GitHub by keeping the expensive visual suite
+    # opt-in. Local snapshot audits remain available on demand and now keep all
+    # test-host I/O inside the built test bundle.
     export TEST_RUNNER_OPENBURNBAR_SKIP_SNAPSHOTS=true
 fi
 
@@ -501,12 +725,6 @@ if actual != expected or passed != expected or failed != 0 or result != "Passed"
     raise SystemExit(1)
 ' "$expected_count"
 }
-
-# Truncate the per-invocation telemetry stream so each fresh run is self-
-# contained for diagnostics. Append-only within the run. The preserved-xcresult
-# diagnostics directory is reset for the same reason.
-: > "$attempt_log_path"
-rm -rf "$diagnostics_dir"
 
 "$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
 
@@ -544,7 +762,7 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
         # covers both classes of hang we've observed: the "stale runner state"
         # variant (cleared by a fresh derived data dir) and the "macOS XCTest
         # IPC race" variant (cleared by a longer cooldown alone).
-        echo ">>> Retry attempt $test_attempt of $max_test_attempts after retryable XCTest/SwiftPM infrastructure failure. Sleeping ${wait_for}s."
+        echo ">>> Retry attempt $test_attempt of $max_test_attempts after retryable XCTest/Xcode/SwiftPM infrastructure failure. Sleeping ${wait_for}s."
         sleep "$wait_for"
         if (( test_attempt % 2 == 1 )); then
             echo ">>> Refreshing derived data for attempt $test_attempt."
@@ -558,18 +776,47 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
     preclean_stale_processes
 
     attempt_xcresult="$derived_data_dir/OpenBurnBarTests-attempt-$test_attempt.xcresult"
+    attempt_containment_receipt="$diagnostics_dir/OpenBurnBarTests-attempt-$test_attempt-timeout-containment.json"
     xcodebuild_log="$(mktemp "$derived_data_root/openburnbar-app-tests-log-XXXXXX")"
+    rm -f "$attempt_containment_receipt"
 
     # Assemble args for this attempt (per-attempt derived data + result bundle).
     populate_xcodebuild_args "$derived_data_dir" "$attempt_xcresult" main
 
     attempt_start_epoch="$(date +%s)"
+    snapshot_promotion_status=0
     set +e
-    xcodebuild test "${xcodebuild_args[@]}" 2>&1 | tee "$xcodebuild_log"
-    last_test_exit_code=${PIPESTATUS[0]}
+    run_supervised_xcodebuild \
+        "$xcodebuild_log" \
+        "$attempt_containment_receipt" \
+        "" \
+        xcodebuild test "${xcodebuild_args[@]}"
+    last_test_exit_code=$?
+    if [[ -n "$snapshot_record_mode" ]]; then
+        promote_snapshot_recordings "$derived_data_dir" "$last_test_exit_code"
+        snapshot_promotion_status=$?
+    fi
     set -e
     attempt_end_epoch="$(date +%s)"
     attempt_duration=$((attempt_end_epoch - attempt_start_epoch))
+
+    if ((snapshot_promotion_status != 0)); then
+        emit_attempt_event "$test_attempt" "$snapshot_promotion_status" "snapshot_promotion_failure" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> Snapshot recording promotion failed closed on attempt $test_attempt."
+        final_exit_code="$snapshot_promotion_status"
+        final_outcome="snapshot_promotion_failure"
+        final_xcresult="$attempt_xcresult"
+        break
+    fi
+
+    if openburnbar_app_test_timeout_containment_is_retryable \
+        "$xcodebuild_log" \
+        "$attempt_containment_receipt"; then
+        emit_attempt_event "$test_attempt" "$last_test_exit_code" "execution_timeout_contained_retry" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> Contained XCTest execution-timeout cascade on attempt $test_attempt (exit $last_test_exit_code); retrying without running the remaining selected tests in the timed-out host."
+        test_attempt=$((test_attempt + 1))
+        continue
+    fi
 
     if openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcodebuild_log"; then
         emit_attempt_event "$test_attempt" "$last_test_exit_code" "test_failure" "$attempt_duration" "$attempt_xcresult"
@@ -598,6 +845,13 @@ while [ "$test_attempt" -le "$max_test_attempts" ]; do
         final_outcome="passed"
         final_xcresult="$attempt_xcresult"
         break
+    fi
+
+    if is_xcode_build_service_transient "$xcodebuild_log"; then
+        emit_attempt_event "$test_attempt" "$last_test_exit_code" "xcode_build_service_retry" "$attempt_duration" "$attempt_xcresult"
+        echo ">>> Detected transient Xcode build-service crash on attempt $test_attempt (exit $last_test_exit_code)."
+        test_attempt=$((test_attempt + 1))
+        continue
     fi
 
     if is_known_hang "$xcodebuild_log"; then
@@ -651,19 +905,34 @@ if [[ "$final_outcome" == "passed" && "$run_isolated_test_phase" == "1" ]]; then
 
         preclean_stale_processes
         isolated_xcresult="$derived_data_dir/OpenBurnBarTests-fresh-host-attempt-$isolated_attempt.xcresult"
+        isolated_containment_receipt="$diagnostics_dir/OpenBurnBarTests-fresh-host-attempt-$isolated_attempt-timeout-containment.json"
         if [[ -n "$xcodebuild_log" ]]; then
             rm -f "$xcodebuild_log" 2>/dev/null || true
         fi
         xcodebuild_log="$(mktemp "$derived_data_root/openburnbar-app-isolated-log-XXXXXX")"
+        rm -f "$isolated_containment_receipt"
         populate_xcodebuild_args "$derived_data_dir" "$isolated_xcresult" isolated
 
         isolated_start_epoch="$(date +%s)"
         set +e
-        xcodebuild test-without-building "${xcodebuild_args[@]}" 2>&1 | tee "$xcodebuild_log"
-        isolated_exit_code=${PIPESTATUS[0]}
+        run_supervised_xcodebuild \
+            "$xcodebuild_log" \
+            "$isolated_containment_receipt" \
+            "" \
+            xcodebuild test-without-building "${xcodebuild_args[@]}"
+        isolated_exit_code=$?
         set -e
         isolated_end_epoch="$(date +%s)"
         isolated_duration=$((isolated_end_epoch - isolated_start_epoch))
+
+        if openburnbar_app_test_timeout_containment_is_retryable \
+            "$xcodebuild_log" \
+            "$isolated_containment_receipt"; then
+            emit_attempt_event "$isolated_attempt" "$isolated_exit_code" "isolated_execution_timeout_contained_retry" "$isolated_duration" "$isolated_xcresult"
+            echo ">>> Contained fresh-host XCTest execution-timeout cascade on attempt $isolated_attempt (exit $isolated_exit_code)."
+            isolated_attempt=$((isolated_attempt + 1))
+            continue
+        fi
 
         if openburnbar_app_test_has_terminal_concrete_xctest_failure "$xcodebuild_log"; then
             emit_attempt_event "$isolated_attempt" "$isolated_exit_code" "isolated_test_failure" "$isolated_duration" "$isolated_xcresult"
@@ -688,7 +957,9 @@ if [[ "$final_outcome" == "passed" && "$run_isolated_test_phase" == "1" ]]; then
             break
         fi
 
-        if is_known_hang "$xcodebuild_log" || is_swiftpm_dependency_resolution_transient "$xcodebuild_log"; then
+        if is_known_hang "$xcodebuild_log" ||
+            is_xcode_build_service_transient "$xcodebuild_log" ||
+            is_swiftpm_dependency_resolution_transient "$xcodebuild_log"; then
             emit_attempt_event "$isolated_attempt" "$isolated_exit_code" "isolated_infrastructure_retry" "$isolated_duration" "$isolated_xcresult"
             isolated_attempt=$((isolated_attempt + 1))
             continue

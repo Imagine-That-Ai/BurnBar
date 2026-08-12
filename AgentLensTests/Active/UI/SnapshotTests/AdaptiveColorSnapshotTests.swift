@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 import SnapshotTesting
+import OpenBurnBarKernel
 @testable import OpenBurnBar
 
 // MARK: - Adaptive Color Visual Regression Tests

@@ -25,7 +25,7 @@ public struct PrivilegedPeerAuthenticator: Sendable {
 
     public init(
         socketLabel: String,
-        validateCodeSignature: @escaping @Sendable CodeSignatureValidator = PrivilegedPeerAuthenticator.defaultCodeSignatureValidation
+        validateCodeSignature: @escaping CodeSignatureValidator = PrivilegedPeerAuthenticator.defaultCodeSignatureValidation
     ) {
         self.socketLabel = socketLabel
         self.validateCodeSignature = validateCodeSignature

@@ -17,8 +17,8 @@ public struct ComputerUseScopeRuleID: RawRepresentable, Hashable, Sendable, Coda
     public var description: String { rawValue }
 }
 
-/// Composable scope predicate. A rule is the conjunction of its three
-/// optional sub-predicates (URL prefix AND bundle id AND window title)
+/// Composable scope predicate. A rule is the conjunction of its optional
+/// sub-predicates (URL prefix AND URL regex AND bundle id AND window title)
 /// against the live action context. The set of all rules in the session
 /// is evaluated as a disjunction, with `deny` rules taking precedence
 /// over any `allow` rule that would otherwise match.
@@ -44,6 +44,10 @@ public struct ComputerUseScopeRule: Codable, Hashable, Sendable, Identifiable {
     /// URL prefix matched against the live frontmost browser tab's URL,
     /// case-insensitive. `nil` means "do not constrain on URL".
     public let urlPrefix: String?
+    /// Regex matched against the complete live page URL. This is distinct from
+    /// `windowTitleRegex`: built-in path denies such as `/admin` and `/billing`
+    /// must inspect the URL even when the browser window title omits it.
+    public let urlRegex: String?
     /// macOS bundle id matched against the frontmost application. `nil`
     /// means "do not constrain on bundle id". Wildcards: trailing `*` is
     /// treated as a prefix match (`com.apple.*`).
@@ -67,6 +71,7 @@ public struct ComputerUseScopeRule: Codable, Hashable, Sendable, Identifiable {
         origin: Origin,
         label: String,
         urlPrefix: String? = nil,
+        urlRegex: String? = nil,
         bundleId: String? = nil,
         windowTitleRegex: String? = nil,
         actionBudget: Int? = nil,
@@ -78,6 +83,7 @@ public struct ComputerUseScopeRule: Codable, Hashable, Sendable, Identifiable {
         self.origin = origin
         self.label = label
         self.urlPrefix = urlPrefix
+        self.urlRegex = urlRegex
         self.bundleId = bundleId
         self.windowTitleRegex = windowTitleRegex
         self.actionBudget = actionBudget
@@ -180,6 +186,14 @@ public struct ComputerUseScopeMatcher: Sendable {
             guard let url = context.url else { return false }
             if !url.lowercased().hasPrefix(prefix.lowercased()) { return false }
         }
+        if let regex = rule.urlRegex {
+            guard let url = context.url else { return false }
+            let decodedURL = url.removingPercentEncoding ?? url
+            guard Self.regex(regex, matches: url)
+                    || (decodedURL != url && Self.regex(regex, matches: decodedURL)) else {
+                return false
+            }
+        }
         if let bundleId = rule.bundleId {
             guard let liveBundle = context.bundleId else { return false }
             if bundleId.hasSuffix("*") {
@@ -195,15 +209,22 @@ public struct ComputerUseScopeMatcher: Sendable {
             // anywhere in the title — natural interpretation for a
             // user-provided window-title regex. Users who *want* an
             // exact match anchor the pattern themselves with `^...$`.
-            guard let compiled = try? NSRegularExpression(pattern: regex, options: [.caseInsensitive]) else {
-                return false
-            }
-            let range = NSRange(title.startIndex..<title.endIndex, in: title)
-            if compiled.firstMatch(in: title, options: [], range: range) == nil {
+            if Self.regex(regex, matches: title) == false {
                 return false
             }
         }
         return true
+    }
+
+    private static func regex(_ pattern: String, matches value: String) -> Bool {
+        guard let compiled = try? NSRegularExpression(
+            pattern: pattern,
+            options: [.caseInsensitive]
+        ) else {
+            return false
+        }
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        return compiled.firstMatch(in: value, options: [], range: range) != nil
     }
 }
 

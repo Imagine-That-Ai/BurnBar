@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Run-owned tab child</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/owned-tabs.js"></script>
+  </head>
+  <body data-fixture="run-owned-tab-child">
+    <main class="shell">
+      <p class="eyebrow">Fixture 10 · owned child</p>
+      <h1>The agent-opened room.</h1>
+      <section class="owned-flow panel">
+        <p id="owned-child-marker">owned-tab-child-marker-amber</p>
+        <button id="owned-child-action" type="button">Verify action in owned child</button>
+        <p id="owned-tab-status" class="status" role="status">Owned child awaits a verified action.</p>
+        <a class="button" id="owned-finish-link" href="/owned-tabs/finish">Navigate this owned tab to finish</a>
+      </section>
+    </main>
+  </body>
+</html>

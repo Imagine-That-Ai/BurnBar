@@ -55,11 +55,11 @@ enum BillingRefreshCoordinator {
     nonisolated static func reconcile(
         usageAPIService: ProviderUsageAPIService?,
         allParsedUsages: [TokenUsage],
-        fetchReconciliationBaseline: (Date) async throws -> [TokenUsage],
-        fetchCredentialCostTotals: () async throws -> [String: Double],
-        persistSupplemental: ([TokenUsage]) async throws -> Void,
-        deleteReconciled: (String) async throws -> Int,
-        recordDriftEvent: (BillingDriftEvent) -> Void = { _ in }
+        fetchReconciliationBaseline: @Sendable (Date) async throws -> [TokenUsage],
+        fetchCredentialCostTotals: @Sendable () async throws -> [String: Double],
+        persistSupplemental: @Sendable ([TokenUsage]) async throws -> Void,
+        deleteReconciled: @Sendable (String) async throws -> Int,
+        recordDriftEvent: @Sendable (BillingDriftEvent) -> Void = { _ in }
     ) async -> Result {
         var result = Result()
 

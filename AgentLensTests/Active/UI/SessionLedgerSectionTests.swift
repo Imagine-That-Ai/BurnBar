@@ -1,5 +1,6 @@
 import XCTest
 import SwiftUI
+import ViewInspector
 @testable import OpenBurnBar
 
 // MARK: - SessionLedgerSupport Logic Tests
@@ -102,28 +103,21 @@ final class SessionLedgerSupportTests: XCTestCase {
     }
 
     func test_entryRow_preservesButtonSemanticsForKeyboardActivation() throws {
-        let mainBundlePath = Bundle.main.bundlePath
-        if mainBundlePath.contains("/openburnbar-app-tests/") {
-            throw XCTSkip("Skipping host file validation in sandboxed test runner.")
+        var activationCount = 0
+        let row = SessionLedgerEntryRow(
+            usage: ViewTestFixtures.makeUsage(),
+            theme: .theme(for: .claudeCode),
+            displayMode: .currency,
+            showsAgentBadge: true
+        ) {
+            activationCount += 1
         }
-        
-        let testURL = URL(fileURLWithPath: #filePath)
-        let repositoryRoot = testURL
-            .deletingLastPathComponent() // UI
-            .deletingLastPathComponent() // Active
-            .deletingLastPathComponent() // AgentLensTests
-            .deletingLastPathComponent()
-        let sourceURL = repositoryRoot.appendingPathComponent("AgentLens/Views/Components/SessionLedgerSection.swift")
-        let source = try String(contentsOf: sourceURL, encoding: .utf8)
 
-        let rowStart = try XCTUnwrap(source.range(of: "private struct SessionLedgerEntryRow"))
-        let rowEnd = try XCTUnwrap(source.range(of: "private struct SessionLedgerEntryButtonStyle"))
-        let rowSource = String(source[rowStart.lowerBound..<rowEnd.lowerBound])
+        let inspected = try row.inspect()
+        let button = try inspected.find(ViewType.Button.self)
+        try button.tap()
 
-        XCTAssertTrue(rowSource.contains("Button(action: onTap)"))
-        XCTAssertTrue(rowSource.contains("GlassCard(interactive: false)"))
-        XCTAssertFalse(rowSource.contains(".onTapGesture(perform: onTap)"))
-        XCTAssertFalse(rowSource.contains("GlassCard(interactive: true)"))
+        XCTAssertEqual(activationCount, 1)
     }
 }
 

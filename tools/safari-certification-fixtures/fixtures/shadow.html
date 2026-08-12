@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Open and closed shadow roots</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/shadow.js"></script>
+  </head>
+  <body data-fixture="open-and-closed-shadow">
+    <main class="shell">
+      <p class="eyebrow">Fixtures 03 + 04 · shadow DOM</p>
+      <h1>Two rooms, two boundaries.</h1>
+      <p class="lede">
+        The first component exposes an open shadow root. The second keeps its root closed and offers
+        only a narrow, read-only page-world bridge.
+      </p>
+      <div class="shadow-grid">
+        <section class="panel">
+          <h2>Open root</h2>
+          <open-burnbar-open-shadow id="open-shadow-host"></open-burnbar-open-shadow>
+        </section>
+        <section class="panel">
+          <h2>Closed root</h2>
+          <open-burnbar-closed-shadow id="closed-shadow-host"></open-burnbar-closed-shadow>
+          <p id="closed-shadow-public-status" class="status" role="status">
+            Closed root mounted. Use the approved page-world bridge to read its fixture state.
+          </p>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

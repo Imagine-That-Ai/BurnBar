@@ -105,6 +105,7 @@ run_self_test() {
   rm -rf "$scratch"
 
   echo "PASS: SQLCipher test bundle discovery self-test passed."
+  python3 scripts/ci/stage-sqlcipher-framework.test.py
 }
 
 if [[ "${1:-}" == "--self-test" ]]; then
@@ -142,6 +143,9 @@ require_pattern 'https://github\.com/sqlcipher/SQLCipher\.swift\.git' OpenBurnBa
 require_pattern 'exact: "4\.16\.0"' OpenBurnBarDaemon/Package.swift "daemon package must pin SQLCipher exactly"
 require_pattern 'product\(name: "SQLCipher"' OpenBurnBarDaemon/Package.swift "daemon target must link the SQLCipher product"
 require_pattern 'define\("SQLITE_HAS_CODEC"\)' OpenBurnBarDaemon/Package.swift "daemon target must define SQLITE_HAS_CODEC"
+require_pattern 'stage_sqlcipher_framework\.py' scripts/test-openburnbar-swift.sh "daemon Swift test wrapper must use the verified SQLCipher staging helper"
+
+python3 scripts/ci/stage-sqlcipher-framework.test.py
 
 require_pattern 'case keychainPersistenceFailed' AgentLens/Services/DataStore/DatabaseEncryptionService.swift "DatabaseEncryptionService must expose typed Keychain persistence errors"
 require_pattern 'getOrCreatePersistedKey' AgentLens/Services/DataStore/DatabaseEncryptionService.swift "DatabaseEncryptionService must provide throwing persisted-key setup"
@@ -253,8 +257,11 @@ if [[ "${OPENBURNBAR_REQUIRE_SQLCIPHER_CODEC:-}" == "1" ]]; then
     find "$sqlcipher_scratch" -type d -name '*.xctest' -print >&2 || true
     fail "SQLCipher Release test bundle was not produced"
   fi
-  mkdir -p "${sqlcipher_test_bundle}/Contents/Frameworks"
-  cp -R "${sqlcipher_framework_dir}/SQLCipher.framework" "${sqlcipher_test_bundle}/Contents/Frameworks/"
+  python3 scripts/lib/stage_sqlcipher_framework.py \
+    --package-path "$sqlcipher_package" \
+    --scratch-path "$sqlcipher_scratch" \
+    --framework-source "${sqlcipher_framework_dir}/SQLCipher.framework" \
+    --destination "${sqlcipher_test_bundle}/Contents/Frameworks/SQLCipher.framework"
   swift test \
     --package-path "$sqlcipher_package" \
     --configuration release \

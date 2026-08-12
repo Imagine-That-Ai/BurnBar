@@ -588,8 +588,10 @@ final class PetCompanionController: ObservableObject {
     private func startObservingPanelFrame() {
         guard let panel, panelFrameObserver == nil else { return }
         let center = NotificationCenter.default
-        let update: (Notification) -> Void = { [weak self] _ in
-            DispatchQueue.main.async { self?.reanchorBubble() }
+        let update: @Sendable (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reanchorBubble()
+            }
         }
         let move = center.addObserver(forName: NSWindow.didMoveNotification, object: panel, queue: .main, using: update)
         let resize = center.addObserver(forName: NSWindow.didResizeNotification, object: panel, queue: .main, using: update)

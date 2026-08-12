@@ -167,16 +167,40 @@ final class HermesRelayContractTests: XCTestCase {
 
     func testResumeTargetCatalogMatchesLaunchBrief() {
         let targets = CLIAgentResumeTarget.allCases
-        XCTAssertEqual(targets.count, 10)
+        XCTAssertEqual(targets.count, 14)
         // Canonical wire ids must equal the daemon's `normalizeProvider`
         // output so `targetRuntime` round-trips unchanged.
         XCTAssertEqual(
             targets.map(\.wireID),
-            ["claude_code", "codex", "droid", "forge", "antigravity", "grok", "cursor_agent", "opencode", "gemini", "junie"]
+            [
+                "claude_code", "codex", "droid", "forge", "antigravity",
+                "grok", "cursor_agent", "opencode", "omp", "gemini",
+                "kimi", "pi", "junie", "prime-agent"
+            ]
         )
         XCTAssertEqual(
             targets.map(\.displayName),
-            ["Claude Code", "Codex", "Droid", "Forge", "Antigravity", "Grok", "Cursor Agent", "OpenCode", "Gemini CLI", "Junie"]
+            [
+                "Claude Code", "Codex", "Droid", "Forge", "Antigravity",
+                "Grok", "Cursor Agent", "OpenCode", "OMP", "Gemini CLI",
+                "Kimi", "Pi", "Junie", "Prime Agent"
+            ]
+        )
+        XCTAssertEqual(
+            targets.map(\.agentProvider),
+            [
+                .claudeCode, .codex, .factory, .forgeDev, .antigravity,
+                .xAI, .cursorAgent, .openCode, .omp, .geminiCLI,
+                .kimi, .piAgent, .junie, .primeAgent
+            ]
+        )
+        XCTAssertEqual(
+            targets.map(\.brandHex),
+            [
+                "CC785C", "2563EB", "8B5CF6", "F97316", "6C63FF",
+                "71767B", "00B8D4", "0EA5E9", "EC4899", "4285F4",
+                "6366F1", "7C3AED", "48E054", "582CFF"
+            ]
         )
     }
 
@@ -193,6 +217,10 @@ final class HermesRelayContractTests: XCTestCase {
         XCTAssertFalse(cliAgentProviderSupportsNativeResume(canonicalWireID: "grok"))
         XCTAssertFalse(cliAgentProviderSupportsNativeResume(canonicalWireID: "opencode"))
         XCTAssertFalse(cliAgentProviderSupportsNativeResume(canonicalWireID: "gemini"))
+        XCTAssertFalse(cliAgentProviderSupportsNativeResume(canonicalWireID: "omp"))
+        XCTAssertFalse(cliAgentProviderSupportsNativeResume(canonicalWireID: "kimi"))
+        XCTAssertFalse(cliAgentProviderSupportsNativeResume(canonicalWireID: "pi"))
+        XCTAssertFalse(cliAgentProviderSupportsNativeResume(canonicalWireID: "prime-agent"))
     }
 
     func testRuntimeCanonicalProviderIDsAreDaemonCanonical() {
@@ -221,6 +249,7 @@ final class HermesRelayContractTests: XCTestCase {
         // OpenClaw/OpenClaude have no first-class resume target (handoff only).
         XCTAssertNil(CLIAgentRuntime.openClaw.resumeTarget)
         XCTAssertNil(CLIAgentRuntime.openClaude.resumeTarget)
+        XCTAssertEqual(CLIAgentRuntime.omp.resumeTarget, .omp)
         XCTAssertEqual(CLIAgentRuntime.cursorAgent.resumeTarget, .cursorAgent)
         XCTAssertEqual(CLIAgentRuntime.junie.resumeTarget, .junie)
     }

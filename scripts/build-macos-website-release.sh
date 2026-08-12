@@ -4,6 +4,35 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 source scripts/lib/resolve-repo-path.sh
+# shellcheck source=scripts/lib/libsignal-swift-compat.sh
+source scripts/lib/libsignal-swift-compat.sh
+# shellcheck source=scripts/lib/xcode-source-classification.sh
+source scripts/lib/xcode-source-classification.sh
+openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
+
+cleanup() {
+  local original_status="${1:-0}"
+  local google_restore_status=0
+  local libsignal_restore_status=0
+  openburnbar_restore_google_sign_in_macos_compat || google_restore_status=$?
+  openburnbar_restore_libsignal_swift_compat || libsignal_restore_status=$?
+  local restore_status="$google_restore_status"
+  if ((restore_status == 0)); then
+    restore_status="$libsignal_restore_status"
+  fi
+  if ((original_status == 0 && restore_status != 0)); then
+    return "$restore_status"
+  fi
+  return "$original_status"
+}
+cleanup_on_exit() {
+  local original_status=$?
+  trap - EXIT
+  cleanup "$original_status"
+  exit $?
+}
+trap cleanup_on_exit EXIT
 
 bash scripts/ci/verify-apple-appcheck-release-env.sh
 bash scripts/ci/verify-iroh-release-artifact.sh
@@ -14,8 +43,24 @@ project="${OPENBURNBAR_PROJECT:-OpenBurnBar.xcodeproj}"
 destination="${OPENBURNBAR_DESTINATION:-platform=macOS,arch=arm64}"
 entitlements="AgentLens/Resources/OpenBurnBarRelease.entitlements"
 app_profile="${OPENBURNBAR_APP_PROFILE:-build/app-direct-profile/OpenBurnBar-MAC_APP_DIRECT.provisionprofile}"
+safari_extension_profile="${OPENBURNBAR_SAFARI_EXTENSION_PROFILE:-build/app-direct-profile/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile}"
 privileged_input_entitlements="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
 privileged_input_profile="${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE:-build/hid-managed-profile/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile}"
+expected_app_group="group.com.openburnbar.app"
+expected_source_keychain_group='$(AppIdentifierPrefix)com.openburnbar.app'
+
+require_entitlement_value() {
+  local entitlement_file="$1"
+  local entitlement_key="$2"
+  local expected_value="$3"
+  local actual_value
+
+  actual_value="$(/usr/libexec/PlistBuddy -c "Print :$entitlement_key" "$entitlement_file" 2>/dev/null | tr '\n' ' ' || true)"
+  if [[ "$actual_value" != *"$expected_value"* ]]; then
+    echo "ERROR: $entitlement_file must include $entitlement_key value '$expected_value'; found '${actual_value:-missing}'." >&2
+    exit 1
+  fi
+}
 
 read_project_version() {
   python3 - <<'PY'
@@ -45,6 +90,7 @@ release_dir="$(
     "${OPENBURNBAR_WEBSITE_RELEASE_DIR:-build/macos-website-${version}-${build}}"
 )"
 derived_data="$release_dir/DerivedData"
+package_cache="${OPENBURNBAR_WEBSITE_PACKAGE_CACHE:-$repo_root/.spm-cache}"
 app_path="$derived_data/Build/Products/$configuration/OpenBurnBar.app"
 dmg_name="OpenBurnBar-${version}-macOS.dmg"
 dmg_path="$release_dir/$dmg_name"
@@ -70,8 +116,20 @@ if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing release entitlements at $entitlements" >&2
   exit 1
 fi
+require_entitlement_value \
+  "$entitlements" \
+  "com.apple.security.application-groups" \
+  "$expected_app_group"
+require_entitlement_value \
+  "$entitlements" \
+  "keychain-access-groups" \
+  "$expected_source_keychain_group"
 if [[ ! -f "$app_profile" ]]; then
   echo "ERROR: Missing app Developer ID provisioning profile at $app_profile. Set OPENBURNBAR_APP_PROFILE to the MAC_APP_DIRECT profile for com.openburnbar.app." >&2
+  exit 1
+fi
+if [[ ! -f "$safari_extension_profile" ]]; then
+  echo "ERROR: Missing Safari extension Developer ID provisioning profile at $safari_extension_profile. Set OPENBURNBAR_SAFARI_EXTENSION_PROFILE to the dedicated MAC_APP_DIRECT profile for com.openburnbar.app.safari-extension." >&2
   exit 1
 fi
 if [[ ! -f "$privileged_input_entitlements" ]]; then
@@ -92,6 +150,9 @@ if [[ -z "$identity" ]]; then
   exit 1
 fi
 
+bash scripts/test-openburnbar-safari-extension.sh
+openburnbar_prepare_libsignal_swift_compat "$repo_root"
+
 if command -v xcodegen >/dev/null 2>&1; then
   xcodegen generate --spec project.yml
 fi
@@ -99,7 +160,14 @@ fi
 if [[ "${OPENBURNBAR_SKIP_XCODE_BUILD:-0}" != "1" ]]; then
   rm -rf "$release_dir"
 fi
-mkdir -p "$release_dir"
+mkdir -p "$release_dir" "$package_cache"
+
+bash scripts/prepare-openburnbar-app-swiftpm.sh \
+  --project "$project" \
+  --scheme "$scheme" \
+  --cache-dir "$package_cache" \
+  --derived-data "$derived_data"
+openburnbar_prepare_google_sign_in_macos_compat "$package_cache"
 
 privileged_input_profile_plist="$release_dir/privileged-input-profile.plist"
 privileged_input_signing_entitlements="$release_dir/privileged-input-entitlements.plist"
@@ -129,12 +197,16 @@ if [[ "${OPENBURNBAR_SKIP_XCODE_BUILD:-0}" != "1" ]]; then
     -scheme "$scheme" \
     -configuration "$configuration" \
     -destination "$destination" \
+    -clonedSourcePackagesDirPath "$package_cache" \
     -derivedDataPath "$derived_data" \
+    -disableAutomaticPackageResolution \
+    -onlyUsePackageVersionsFromResolvedFile \
     ARCHS=arm64 \
     ONLY_ACTIVE_ARCH=YES \
     CODE_SIGN_IDENTITY="-" \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGNING_ALLOWED=NO \
+    "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
     2>&1 | tee "$release_dir/build.log" | tail -120
 else
   echo "WARNING: OPENBURNBAR_SKIP_XCODE_BUILD=1; reusing existing app at $app_path." >&2
@@ -233,6 +305,12 @@ if ! grep -q "${app_profile_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$ap
   printf '%s\n' "$app_profile_keychain_groups" >&2
   exit 1
 fi
+app_profile_app_groups="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" "$app_profile_plist" 2>/dev/null || true)"
+if ! grep -Fq "$expected_app_group" <<<"$app_profile_app_groups"; then
+  echo "ERROR: App profile does not authorize shared Safari App Group $expected_app_group." >&2
+  printf '%s\n' "$app_profile_app_groups" >&2
+  exit 1
+fi
 python3 - "$entitlements" "$app_signing_entitlements" "$app_profile_team_id" "$bundle_id" <<'PY'
 import plistlib
 import sys
@@ -261,6 +339,8 @@ with Path(destination).open("wb") as file:
 PY
 
 bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$app_path"
+python3 scripts/ci/verify-openburnbar-safari-extension-layout.py \
+  "$app_path/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 
 sign_one() {
   local path="$1"
@@ -388,6 +468,12 @@ wrap_privileged_input_execution_helper \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution" \
   "$helpers_dir/OpenBurnBarPrivilegedInputExecution.app"
 
+bash scripts/ci/sign-openburnbar-safari-extension.sh \
+  "$app_path" \
+  "$identity" \
+  "$safari_extension_profile" \
+  "$app_profile_team_id"
+
 cp "$app_profile" "$app_path/Contents/embedded.provisionprofile"
 codesign --force --timestamp --options runtime,library \
   --entitlements "$app_signing_entitlements" \
@@ -403,6 +489,11 @@ assert_peer_signature "$helpers_dir/OpenBurnBarPrivilegedInputExecution" "com.op
 assert_peer_signature \
   "$helpers_dir/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
   "com.openburnbar.privileged-input-killswitch-watchdog"
+bash scripts/ci/verify-openburnbar-safari-extension.sh \
+  "$app_path" \
+  direct \
+  "$app_profile_team_id" \
+  "$safari_extension_profile"
 
 bash scripts/ci/verify-daemon-release-signing.sh "$app_path" "$app_profile_team_id"
 
@@ -416,6 +507,7 @@ fi
 actual_app_identifier="$(/usr/libexec/PlistBuddy -c "Print :com.apple.application-identifier" "$actual_entitlements" 2>/dev/null || true)"
 actual_team_identifier="$(/usr/libexec/PlistBuddy -c "Print :com.apple.developer.team-identifier" "$actual_entitlements" 2>/dev/null || true)"
 actual_keychain_groups="$(/usr/libexec/PlistBuddy -c "Print :keychain-access-groups" "$actual_entitlements" 2>/dev/null || true)"
+actual_app_groups="$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.application-groups" "$actual_entitlements" 2>/dev/null || true)"
 if [[ "$actual_app_identifier" != "$expected_app_identifier" || "$actual_team_identifier" != "$app_profile_team_id" ]]; then
   echo "ERROR: Direct-download app identity entitlements are wrong: app='${actual_app_identifier:-missing}' team='${actual_team_identifier:-missing}' expected app='$expected_app_identifier' team='$app_profile_team_id'." >&2
   exit 1
@@ -423,6 +515,11 @@ fi
 if ! grep -q "$expected_app_identifier" <<<"$actual_keychain_groups"; then
   echo "ERROR: Direct-download app is missing Firebase Auth Keychain group $expected_app_identifier." >&2
   printf '%s\n' "$actual_keychain_groups" >&2
+  exit 1
+fi
+if ! grep -Fq "$expected_app_group" <<<"$actual_app_groups"; then
+  echo "ERROR: Direct-download app is missing shared Safari App Group $expected_app_group." >&2
+  printf '%s\n' "$actual_app_groups" >&2
   exit 1
 fi
 

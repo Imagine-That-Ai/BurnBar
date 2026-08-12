@@ -15,8 +15,8 @@ final class SettingsManagerTests: XCTestCase {
     private var tempDirectories: [URL] = []
     private var originalAppSkinRawValue: String?
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         originalAppSkinRawValue = UserDefaults.standard.string(forKey: AppSkin.storageKey)
         UserDefaults.standard.set(AppSkin.aurora.rawValue, forKey: AppSkin.storageKey)
     }
@@ -41,7 +41,7 @@ final class SettingsManagerTests: XCTestCase {
         return directory
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         for directory in tempDirectories {
             try? FileManager.default.removeItem(at: directory)
         }
@@ -52,7 +52,7 @@ final class SettingsManagerTests: XCTestCase {
             UserDefaults.standard.removeObject(forKey: AppSkin.storageKey)
         }
         originalAppSkinRawValue = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Factory Methods

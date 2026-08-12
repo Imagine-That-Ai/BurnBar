@@ -41,6 +41,12 @@ final class BurnBarConfigStoreTests: XCTestCase {
         )
 
         XCTAssertTrue(gateSource.contains("SecKeychainSetUserInteractionAllowed"))
+        XCTAssertTrue(
+            gateSource.contains("LAContext")
+                && gateSource.contains("interactionNotAllowed = true")
+                && gateSource.contains("nonInteractiveKeychainAuthenticationContext"),
+            "The daemon must pair its legacy-ACL interaction gate with a modern noninteractive LAContext."
+        )
         func sourceWrapsSecurityCall(_ source: String, call: String) -> Bool {
             source.range(
                 of: #"withKeychainUserInteractionDisabled\s*\{\s*\#(call)"#,
@@ -78,8 +84,13 @@ final class BurnBarConfigStoreTests: XCTestCase {
         )
         for source in [connectorSource, providerSource, switcherSource, databaseCipherSource] {
             XCTAssertTrue(
-                source.contains("kSecUseAuthenticationUI as String") && source.contains("kSecUseAuthenticationUIFail"),
-                "Daemon keychain reads must explicitly fail instead of opening macOS SecurityAgent UI."
+                source.contains("kSecUseAuthenticationContext as String"),
+                "Daemon keychain reads must carry the shared noninteractive authentication context."
+            )
+            XCTAssertFalse(
+                source.contains("kSecUseAuthenticationUI")
+                    || source.contains("kSecUseAuthenticationUIFail"),
+                "Daemon keychain reads must not regress to deprecated Security.framework UI controls."
             )
         }
     }

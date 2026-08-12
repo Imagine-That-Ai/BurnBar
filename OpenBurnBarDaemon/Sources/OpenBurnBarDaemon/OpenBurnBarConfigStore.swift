@@ -1355,7 +1355,6 @@ public actor BurnBarConfigStore {
         providerID: String,
         snapshot: BurnBarProviderConfigurationSnapshot
     ) throws {
-        let normalizedAliasID = alias.aliasID.lowercased()
         for provider in snapshot.providers {
             if provider.modelVariants.contains(where: {
                 $0.variantID.caseInsensitiveCompare(alias.aliasID) == .orderedSame

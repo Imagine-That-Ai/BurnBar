@@ -85,8 +85,8 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
     private var savedFactory: ((@escaping () -> Void) -> AnyView)?
     private var savedFactoryChangedHook: (() -> Void)?
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         savedFactory = AppCommandRouter.shared.makeMenuBarPopoverContent
         savedFactoryChangedHook = AppCommandRouter.shared.onMenuBarPopoverFactoryChanged
         // Detach the hook BEFORE clearing the factory so resetting state
@@ -95,13 +95,13 @@ final class AppDelegatePopoverPrewarmWiringTests: XCTestCase {
         AppCommandRouter.shared.makeMenuBarPopoverContent = nil
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         AppCommandRouter.shared.onMenuBarPopoverFactoryChanged = nil
         AppCommandRouter.shared.makeMenuBarPopoverContent = savedFactory
         AppCommandRouter.shared.onMenuBarPopoverFactoryChanged = savedFactoryChangedHook
         savedFactory = nil
         savedFactoryChangedHook = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     /// The prewarmer schedules on the next main-queue turn; XCTest's

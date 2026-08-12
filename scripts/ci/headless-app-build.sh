@@ -66,6 +66,35 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
+# shellcheck source=scripts/lib/libsignal-swift-compat.sh
+source "$repo_root/scripts/lib/libsignal-swift-compat.sh"
+# shellcheck source=scripts/lib/xcode-source-classification.sh
+source "$repo_root/scripts/lib/xcode-source-classification.sh"
+openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
+
+cleanup() {
+  local original_status="${1:-0}"
+  local google_restore_status=0
+  local libsignal_restore_status=0
+  openburnbar_restore_google_sign_in_macos_compat || google_restore_status=$?
+  openburnbar_restore_libsignal_swift_compat || libsignal_restore_status=$?
+  local restore_status="$google_restore_status"
+  if ((restore_status == 0)); then
+    restore_status="$libsignal_restore_status"
+  fi
+  if ((original_status == 0 && restore_status != 0)); then
+    return "$restore_status"
+  fi
+  return "$original_status"
+}
+cleanup_on_exit() {
+  local original_status=$?
+  trap - EXIT
+  cleanup "$original_status"
+  exit $?
+}
+trap cleanup_on_exit EXIT
 
 # iOS 27 gRPC/Firestore source-build requirement: keep any resolve on the
 # source-built Firestore graph (docs/FIREBASE_IOS27_GRPC.md). Harmless for a
@@ -111,6 +140,7 @@ log "  mode:        $([[ $local_reuse -eq 1 ]] && echo 'local cache-reuse' || ec
 # ---------------------------------------------------------------------------
 prepare_signal_ffi() {
   local prep="$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
+  openburnbar_prepare_libsignal_swift_compat "$repo_root"
   if [[ -x "$prep" ]]; then
     log "Preparing Signal FFI XCFramework"
     "$prep"
@@ -126,6 +156,9 @@ xcodebuild_common_args=(
   SWIFT_ENABLE_EXPLICIT_MODULES=NO
   CODE_SIGNING_ALLOWED=NO
   CODE_SIGNING_REQUIRED=NO
+  -disableAutomaticPackageResolution
+  -onlyUsePackageVersionsFromResolvedFile
+  "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}"
 )
 
 if [[ $local_reuse -eq 1 ]]; then
@@ -165,13 +198,19 @@ if [[ $local_reuse -eq 1 ]]; then
   fi
 
   prepare_signal_ffi
+  bash "$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh" \
+    --project "$project" \
+    --scheme "$scheme" \
+    --cache-dir "$primary_cache" \
+    --derived-data "$derived_data" \
+    --check-only
+  openburnbar_prepare_google_sign_in_macos_compat "$primary_cache"
 
   # Reuse the already-resolved cache and forbid a fresh resolve (the TCC hit).
   log "Building (reusing $primary_cache, resolution disabled)"
   xcodebuild build \
     "${xcodebuild_common_args[@]}" \
-    -clonedSourcePackagesDirPath "$primary_cache" \
-    -disableAutomaticPackageResolution
+    -clonedSourcePackagesDirPath "$primary_cache"
 else
   # --- IN-TREE (CI) mode --------------------------------------------------
   # A fresh CI runner is outside ~/Documents: a normal resolve + extract works.
@@ -181,7 +220,15 @@ else
 
   prepare_signal_ffi
 
-  log "Building in-tree (fresh resolve allowed, cache at $cache_dir)"
+  log "Ensuring locked packages are available in-tree (cache at $cache_dir)"
+  bash "$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh" \
+    --project "$project" \
+    --scheme "$scheme" \
+    --cache-dir "$cache_dir" \
+    --derived-data "$derived_data"
+  openburnbar_prepare_google_sign_in_macos_compat "$cache_dir"
+
+  log "Building in-tree (locked package graph, cache at $cache_dir)"
   xcodebuild build \
     "${xcodebuild_common_args[@]}" \
     -clonedSourcePackagesDirPath "$cache_dir"

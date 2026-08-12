@@ -36,6 +36,8 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             BurnBarDaemonSocketRPCCoverage.membership,
             BurnBarDaemonSocketRPCCoverage.tooling,
             BurnBarDaemonSocketRPCCoverage.computerUse,
+            BurnBarDaemonSocketRPCCoverage.safari,
+            BurnBarDaemonSocketRPCCoverage.learning,
             BurnBarDaemonSocketRPCCoverage.media,
             BurnBarDaemonSocketRPCCoverage.missionControl,
             BurnBarDaemonSocketRPCCoverage.client,
@@ -43,7 +45,8 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             BurnBarDaemonSocketRPCCoverage.search,
             BurnBarDaemonSocketRPCCoverage.memory,
             BurnBarDaemonSocketRPCCoverage.code,
-            BurnBarDaemonSocketRPCCoverage.databaseRecovery
+            BurnBarDaemonSocketRPCCoverage.databaseRecovery,
+            BurnBarDaemonSocketRPCCoverage.inbox
         ]
 
         for (index, left) in domains.enumerated() {
@@ -64,5 +67,45 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
             XCTAssertTrue(BurnBarDaemonSocketRPCCoverage.chat.contains(method))
             XCTAssertEqual(BurnBarDaemonSocketRPCCoverage.domain(for: method), "chat")
         }
+    }
+
+    func testDedicatedSafariHandoffAndApprovalMethodsUseSafariDomain() {
+        for method in [
+            BurnBarRPCMethod.safariHandoff,
+            .safariApprovalRespond
+        ] {
+            XCTAssertTrue(BurnBarDaemonSocketRPCCoverage.safari.contains(method))
+            XCTAssertEqual(BurnBarDaemonSocketRPCCoverage.domain(for: method), "safari")
+            XCTAssertEqual(BurnBarRPCCapability.capability(for: method), .safari)
+        }
+    }
+
+    func testLearningRecallAndUpdateHaveExactReadWriteCapabilities() {
+        XCTAssertEqual(
+            BurnBarDaemonSocketRPCCoverage.domain(for: .learningRecall),
+            "learning"
+        )
+        XCTAssertEqual(
+            BurnBarDaemonSocketRPCCoverage.domain(for: .learningUpdate),
+            "learning"
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .learningRecall),
+            .memoryRead
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .learningUpdate),
+            .memoryWrite
+        )
+        XCTAssertTrue(
+            BurnBarPeerCapabilityProfile.safariExtension.permits(
+                .learningRecall
+            )
+        )
+        XCTAssertTrue(
+            BurnBarPeerCapabilityProfile.safariExtension.permits(
+                .learningUpdate
+            )
+        )
     }
 }

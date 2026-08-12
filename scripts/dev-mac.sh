@@ -11,16 +11,59 @@ TMUX_SESSION="${TMUX_SESSION:-openburnbar-dev}"
 
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
+# shellcheck source=scripts/lib/libsignal-swift-compat.sh
+source "$REPO_ROOT/scripts/lib/libsignal-swift-compat.sh"
+# shellcheck source=scripts/lib/xcode-source-classification.sh
+source "$REPO_ROOT/scripts/lib/xcode-source-classification.sh"
+openburnbar_configure_xcode_process_tmpdir
+export FIREBASE_SOURCE_FIRESTORE=1
+
+cleanup() {
+  local original_status="${1:-0}"
+  local google_restore_status=0
+  local libsignal_restore_status=0
+  openburnbar_restore_google_sign_in_macos_compat || google_restore_status=$?
+  openburnbar_restore_libsignal_swift_compat || libsignal_restore_status=$?
+  local restore_status="$google_restore_status"
+  if ((restore_status == 0)); then
+    restore_status="$libsignal_restore_status"
+  fi
+  if ((original_status == 0 && restore_status != 0)); then
+    return "$restore_status"
+  fi
+  return "$original_status"
+}
+cleanup_on_exit() {
+  local original_status=$?
+  trap - EXIT
+  cleanup "$original_status"
+  exit $?
+}
+trap cleanup_on_exit EXIT
+
 ABS_APP_PATH="$REPO_ROOT/$APP_PATH"
 OPENBURNBAR_DEV_APP_EXEC="$ABS_APP_PATH/Contents/MacOS/OpenBurnBar"
+PACKAGE_CACHE="${OPENBURNBAR_DEV_PACKAGE_CACHE:-$REPO_ROOT/.spm-cache}"
 
 echo "▶ Building $SCHEME for macOS…"
+mkdir -p "$PACKAGE_CACHE"
+bash "$REPO_ROOT/scripts/prepare-openburnbar-app-swiftpm.sh" \
+  --project OpenBurnBar.xcodeproj \
+  --scheme "$SCHEME" \
+  --cache-dir "$PACKAGE_CACHE" \
+  --derived-data "$DERIVED"
+openburnbar_prepare_google_sign_in_macos_compat "$PACKAGE_CACHE"
+openburnbar_prepare_libsignal_swift_compat "$REPO_ROOT"
 xcodebuild \
   -project OpenBurnBar.xcodeproj \
   -scheme "$SCHEME" \
   -destination 'platform=macOS' \
+  -clonedSourcePackagesDirPath "$PACKAGE_CACHE" \
   -derivedDataPath "$DERIVED" \
+  -disableAutomaticPackageResolution \
+  -onlyUsePackageVersionsFromResolvedFile \
   -allowProvisioningUpdates \
+  "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
   -quiet \
   build
 

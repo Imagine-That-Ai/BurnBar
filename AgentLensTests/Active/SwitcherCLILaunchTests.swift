@@ -20,7 +20,7 @@ private func makeTempExecutable(at path: String, content: String = "#!/bin/sh\ne
 
 /// Lightweight test helper for cross-task capture in deterministic seam assertions.
 /// Thread-safe mutable box backed by `OpenBurnBarCore.Locked<T>` from OpenBurnBarCore.
-private final class MutableBox<Value>: Sendable {
+private final class MutableBox<Value: Sendable>: Sendable {
     private let storage: OpenBurnBarCore.Locked<Value>
 
     init(_ value: Value) {

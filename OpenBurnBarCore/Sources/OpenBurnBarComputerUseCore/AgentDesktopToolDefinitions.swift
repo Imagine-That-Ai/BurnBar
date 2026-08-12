@@ -31,6 +31,24 @@ public enum AgentDesktopToolDefinitions {
         browserSelect,
         browserScreenshot,
         browserExtract,
+        safariPageContext,
+        safariScreenshot,
+        safariFullPageScreenshot,
+        safariClick,
+        safariType,
+        safariPressKey,
+        safariScroll,
+        safariHover,
+        safariFocus,
+        safariSelectOption,
+        safariNavigate,
+        safariOpenTab,
+        safariCloseTab,
+        safariListTabs,
+        safariWaitFor,
+        safariRunJavaScript,
+        safariExtract,
+        safariAbort,
         macInputClick,
         macInputType,
         macInputKey,
@@ -97,6 +115,39 @@ public enum AgentDesktopToolDefinitions {
             "additionalProperties": false,
             "required": required,
             "properties": browserTargetProperties
+        ]
+    }
+
+    nonisolated(unsafe) private static let safariTargetProperties: [String: Any] = [
+        "safariSessionId": ["type": "string", "description": "Attached Safari extension session identifier."],
+        "computerUseSessionId": ["type": "string", "description": "Bound Computer Use session identifier."],
+        "runId": ["type": "string", "description": "Owning OpenBurnBar run identifier."],
+        "tabId": ["type": "integer", "description": "Owned Safari tab identifier; defaults to the handed-off active tab."],
+        "expectedNavigationEpoch": ["type": "integer", "description": "Expected page navigation epoch used to reject stale selectors or coordinates."],
+        "selector": ["type": "string", "description": "CSS selector or snapshot reference when available."],
+        "text": ["type": "string", "description": "Text to type."],
+        "url": ["type": "string", "description": "URL for navigation or opening a tab."],
+        "operation": [
+            "type": "string",
+            "enum": BurnBarSafariNavigationOperation.allCases.map(\.rawValue),
+            "description": "Navigation operation. A url is required only when operation is url."
+        ],
+        "key": ["type": "string", "description": "Keyboard key name."],
+        "value": ["type": "string", "description": "Option value to select."],
+        "positionX": ["type": "number", "description": "Viewport-relative CSS x coordinate."],
+        "positionY": ["type": "number", "description": "Viewport-relative CSS y coordinate."],
+        "deltaX": ["type": "number", "description": "Horizontal scroll delta in CSS pixels."],
+        "deltaY": ["type": "number", "description": "Vertical scroll delta in CSS pixels."],
+        "script": ["type": "string", "description": "Explicitly approved JavaScript source."],
+        "timeoutMillis": ["type": "integer", "description": "Bounded action timeout in milliseconds."]
+    ]
+
+    private static func safariSchema(required: [String]) -> [String: Any] {
+        [
+            "type": "object",
+            "additionalProperties": false,
+            "required": Array(Set(required + ["safariSessionId"])).sorted(),
+            "properties": safariTargetProperties
         ]
     }
 
@@ -173,6 +224,132 @@ public enum AgentDesktopToolDefinitions {
         description: "Extract text/content from the current browser page.",
         requiredCapabilities: [.desktopBrowser],
         parameters: browserSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariPageContext = Tool(
+        name: BurnBarToolKind.safariPageContext.rawValue,
+        description: "Read bounded markdown, accessibility boxes, viewport metrics, and trusted page state from the handed-off Safari tab.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariScreenshot = Tool(
+        name: BurnBarToolKind.safariScreenshot.rawValue,
+        description: "Capture the visible viewport from the handed-off Safari tab.",
+        requiredCapabilities: [.desktopBrowser, .desktopScreenshot],
+        parameters: safariSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariFullPageScreenshot = Tool(
+        name: BurnBarToolKind.safariFullPageScreenshot.rawValue,
+        description: "Capture a bounded full-page Safari image after explicit user approval.",
+        requiredCapabilities: [.desktopBrowser, .desktopScreenshot],
+        parameters: safariSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariClick = Tool(
+        name: BurnBarToolKind.safariClick.rawValue,
+        description: "Click a selector, snapshot target, or viewport coordinate in the owned Safari tab.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariType = Tool(
+        name: BurnBarToolKind.safariType.rawValue,
+        description: "Type text into a Safari field with React-compatible input event synthesis.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["text"])
+    )
+
+    nonisolated(unsafe) public static let safariPressKey = Tool(
+        name: BurnBarToolKind.safariPressKey.rawValue,
+        description: "Press a key in the owned Safari tab.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["key"])
+    )
+
+    nonisolated(unsafe) public static let safariScroll = Tool(
+        name: BurnBarToolKind.safariScroll.rawValue,
+        description: "Scroll the owned Safari tab and re-read page geometry before the next action.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariHover = Tool(
+        name: BurnBarToolKind.safariHover.rawValue,
+        description: "Hover a target in the owned Safari tab.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["selector"])
+    )
+
+    nonisolated(unsafe) public static let safariFocus = Tool(
+        name: BurnBarToolKind.safariFocus.rawValue,
+        description: "Focus a target in the owned Safari tab.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["selector"])
+    )
+
+    nonisolated(unsafe) public static let safariSelectOption = Tool(
+        name: BurnBarToolKind.safariSelectOption.rawValue,
+        description: "Select an option in a Safari form control.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["selector", "value"])
+    )
+
+    nonisolated(unsafe) public static let safariNavigate = Tool(
+        name: BurnBarToolKind.safariNavigate.rawValue,
+        description: "Navigate the owned Safari tab to a URL, backward, forward, or reload.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["operation"])
+    )
+
+    nonisolated(unsafe) public static let safariOpenTab = Tool(
+        name: BurnBarToolKind.safariOpenTab.rawValue,
+        description: "Open a new Safari tab and add it to this agent session's owned-tab set.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["url"])
+    )
+
+    nonisolated(unsafe) public static let safariCloseTab = Tool(
+        name: BurnBarToolKind.safariCloseTab.rawValue,
+        description: "Close only a Safari tab owned by this agent session.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["tabId"])
+    )
+
+    nonisolated(unsafe) public static let safariListTabs = Tool(
+        name: BurnBarToolKind.safariListTabs.rawValue,
+        description: "List Safari tabs visible to the extension and mark which are owned by this agent session.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariWaitFor = Tool(
+        name: BurnBarToolKind.safariWaitFor.rawValue,
+        description: "Wait for a selector or bounded page condition in the owned Safari tab.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariRunJavaScript = Tool(
+        name: BurnBarToolKind.safariRunJavaScript.rawValue,
+        description: "Run explicitly approved JavaScript in the owned Safari tab through the isolated extension world.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: ["script"])
+    )
+
+    nonisolated(unsafe) public static let safariExtract = Tool(
+        name: BurnBarToolKind.safariExtract.rawValue,
+        description: "Extract bounded text and attributes from the owned Safari tab.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: [])
+    )
+
+    nonisolated(unsafe) public static let safariAbort = Tool(
+        name: BurnBarToolKind.safariAbort.rawValue,
+        description: "Abort the active Safari command queue and invalidate stale commands.",
+        requiredCapabilities: [.desktopBrowser],
+        parameters: safariSchema(required: [])
     )
 
     nonisolated(unsafe) public static let macInputClick = Tool(
