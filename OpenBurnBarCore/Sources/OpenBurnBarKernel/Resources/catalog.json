@@ -598,6 +598,10 @@
           "capabilityClassID": "anthropic:sonnet",
           "capabilityClassRank": 50
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -1572,6 +1576,9 @@
           "capabilityClassID": "openai:mini",
           "capabilityClassRank": 10
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -2065,6 +2072,10 @@
           "capabilityClassID": "factory-droid-core:minimax-m2.7",
           "capabilityClassRank": 20
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -2231,6 +2242,10 @@
           "capabilityClassID": "openai:codex",
           "capabilityClassRank": 100
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -2559,6 +2574,10 @@
           "capabilityClassID": "hy3-preview",
           "capabilityClassRank": 60
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -2798,6 +2817,9 @@
             "cacheReadPerMToken": 0.03
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -2946,6 +2968,9 @@
             "cacheReadPerMToken": 0.01
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3141,6 +3166,9 @@
             "cacheReadPerMToken": 0.02
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3284,6 +3312,9 @@
             "cacheReadPerMToken": 0.028
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3533,6 +3564,9 @@
             "cacheReadPerMToken": 0.02
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3778,6 +3812,9 @@
           },
           "canonicalModelID": "muse-spark-1.2-contributor"
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3908,6 +3945,9 @@
             "cacheReadPerMToken": 0.01875
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4014,6 +4054,9 @@
             "cacheReadPerMToken": 0.0035
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4362,6 +4405,9 @@
             "cacheReadPerMToken": 0.08
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4493,6 +4539,10 @@
             "cacheReadPerMToken": 0.11
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -4618,6 +4668,10 @@
             "cacheReadPerMToken": 0.03
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -4803,6 +4857,9 @@
             "cacheReadPerMToken": 0.15
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4946,6 +5003,9 @@
             "cacheReadPerMToken": 0.065
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4990,6 +5050,9 @@
             "cacheReadPerMToken": 0
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -5279,6 +5342,10 @@
             "cacheReadPerMToken": 0
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -5293,7 +5360,51 @@
         "routing",
         "accounting"
       ],
-      "models": []
+      "models": [],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
+      ]
+    },
+    {
+      "id": "devin",
+      "displayName": "Devin",
+      "baseURL": "devin://local",
+      "visibility": "public",
+      "logoKey": "DevinLogo",
+      "capabilities": [
+        "accounting"
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
+      ],
+      "models": [
+        {
+          "id": "devin-default-family",
+          "displayName": "Devin Default",
+          "visibility": "public",
+          "aliases": [
+            "devin"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "devin"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "devin:default",
+          "capabilityClassRank": 50
+        }
+      ]
     }
   ]
 }

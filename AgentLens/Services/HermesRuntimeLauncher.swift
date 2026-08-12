@@ -121,6 +121,18 @@ extension HermesRuntimeLauncher: ManagedAgentRuntimeAdapter {
 final class HermesRuntimeLauncher {
     private let dependencies: HermesRuntimeLauncherDependencies
 
+    /// Identity of a status probe. Callers targeting a different gateway, or
+    /// presenting a different bearer token, are asking a different question and
+    /// must never be served each other's answer.
+    private struct RefreshKey: Hashable {
+        let baseURL: URL
+        let bearerToken: String?
+    }
+
+    /// Perf: coalesce concurrent refreshes for the same gateway identity behind
+    /// a single Task.
+    @ObservationIgnored private var inFlightRefreshTasks: [RefreshKey: Task<HermesRuntimeStatus, Never>] = [:]
+
     var status = HermesRuntimeStatus()
     var isBusy = false
     var lastError: String?
@@ -132,6 +144,23 @@ final class HermesRuntimeLauncher {
     func refreshStatus(
         baseURL: URL = URL(string: "http://127.0.0.1:8642")!,
         bearerToken: String? = nil
+    ) async -> HermesRuntimeStatus {
+        let key = RefreshKey(baseURL: baseURL, bearerToken: bearerToken)
+        if let existing = inFlightRefreshTasks[key] {
+            return await existing.value
+        }
+        let task = Task { @MainActor [self] () -> HermesRuntimeStatus in
+            await self.refreshStatusImpl(baseURL: baseURL, bearerToken: bearerToken)
+        }
+        inFlightRefreshTasks[key] = task
+        let result = await task.value
+        inFlightRefreshTasks[key] = nil
+        return result
+    }
+
+    private func refreshStatusImpl(
+        baseURL: URL,
+        bearerToken: String?
     ) async -> HermesRuntimeStatus {
         isBusy = true
         defer { isBusy = false }

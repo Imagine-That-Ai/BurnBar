@@ -78,6 +78,7 @@ struct ProviderAccountGroup: View {
     let accounts: [ProviderAccountDoc]
     var externalAccounts: [ConnectionsSettingsView.ExternalOAuthAccount] = []
     let routingState: ProviderRoutingStateSnapshot?
+    @Bindable var settingsManager: SettingsManager
     var quotaWindowsForAccount: (ProviderAccountDoc) -> [SwitcherQuotaWindowDisplay] = { _ in [] }
     var quotaWindowsForExternalAccount: (ConnectionsSettingsView.ExternalOAuthAccount) -> [SwitcherQuotaWindowDisplay] = { _ in [] }
     var credentialNoticeForExternalAccount: (ConnectionsSettingsView.ExternalOAuthAccount) -> ConnectionsSettingsView.ExternalOAuthCredentialNotice? = { _ in nil }
@@ -121,6 +122,10 @@ struct ProviderAccountGroup: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             header
+            if let provider, settingsManager.visualCaptureSourceToggleEnabled {
+                VisualCaptureToggle(provider: provider, settingsManager: settingsManager)
+                    .settingsAnchor("agents.visualSurface.\(provider.persistedToken)")
+            }
             ForEach(accounts) { account in
                 AccountRowView(
                     account: account,
