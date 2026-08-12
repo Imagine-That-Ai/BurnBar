@@ -251,7 +251,12 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
         exactWire.append(0x0A)
         var exact =
             SafariHandoffProcessSupervisor.StatusFrameDecoder()
-        XCTAssertEqual(try exact.append(exactWire), [ready])
+        let exactMessages = try exact.append(exactWire)
+        XCTAssertEqual(exactMessages.count, 1)
+        assertMessage(
+            try XCTUnwrap(exactMessages.first),
+            equals: ready
+        )
         try exact.finish()
 
         var wire = try JSONEncoder().encode(ready)
@@ -266,7 +271,15 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
         let second = try decoder.append(wire.dropFirst(split))
         try decoder.finish()
 
-        XCTAssertEqual(first + second, [ready, terminal])
+        let decodedMessages = first + second
+        let expectedMessages = [ready, terminal]
+        XCTAssertEqual(decodedMessages.count, expectedMessages.count)
+        for (decoded, expected) in zip(
+            decodedMessages,
+            expectedMessages
+        ) {
+            assertMessage(decoded, equals: expected)
+        }
 
         var empty =
             SafariHandoffProcessSupervisor.StatusFrameDecoder()
@@ -318,6 +331,44 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 .malformed
             )
         }
+    }
+
+    private func assertMessage(
+        _ actual: SafariHandoffProcessWatchdog.Message,
+        equals expected: SafariHandoffProcessWatchdog.Message,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(
+            actual.kind.rawValue,
+            expected.kind.rawValue,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.processGroupID,
+            expected.processGroupID,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.containmentIdentity,
+            expected.containmentIdentity,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.waitStatus,
+            expected.waitStatus,
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            actual.error,
+            expected.error,
+            file: file,
+            line: line
+        )
     }
 
     #if os(macOS)

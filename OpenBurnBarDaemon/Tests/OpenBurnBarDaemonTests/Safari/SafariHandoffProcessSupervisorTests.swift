@@ -537,7 +537,8 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
         )
 
         drainGate.resume()
-        let terminal = try XCTUnwrap(await terminalTask.value)
+        let terminalValue = await terminalTask.value
+        let terminal = try XCTUnwrap(terminalValue)
 
         XCTAssertEqual(terminal.state, .cancelled)
         XCTAssertEqual(terminal.terminationReason, .cancelled)
@@ -1744,9 +1745,11 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
                 await supervisor.cancel(runID: runID)
             }
             sleep.resumeNext()
-            let terminal = try XCTUnwrap(await firstWaiter.value)
+            let firstTerminalValue = await firstWaiter.value
+            let terminal = try XCTUnwrap(firstTerminalValue)
+            let secondTerminalValue = await secondWaiter.value
             XCTAssertEqual(
-                try XCTUnwrap(await secondWaiter.value),
+                try XCTUnwrap(secondTerminalValue),
                 terminal,
                 "Every waiter must resume with the same generation-bound terminal observation"
             )
@@ -1799,9 +1802,8 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
             )
         )
         let session = try XCTUnwrap(factory.sessionsSnapshot().first)
-        let terminal = try XCTUnwrap(
-            await supervisor.cancel(runID: runID)
-        )
+        let terminalValue = await supervisor.cancel(runID: runID)
+        let terminal = try XCTUnwrap(terminalValue)
 
         XCTAssertEqual(clock.now, 2_000_000_000)
         XCTAssertEqual(session.requestTerminationCount, 1)
@@ -2496,7 +2498,7 @@ private final class SafariHandoffSleepSequence: @unchecked Sendable {
     }
 
     func resumeNext() {
-        let continuation = locked {
+        let continuation: CheckedContinuation<Void, Never>? = locked {
             guard continuations.isEmpty == false else { return nil }
             return continuations.removeFirst()
         }
