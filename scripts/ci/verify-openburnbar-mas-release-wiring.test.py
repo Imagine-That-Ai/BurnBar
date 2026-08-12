@@ -54,6 +54,21 @@ class VerifyOpenBurnBarMASReleaseWiringTests(unittest.TestCase):
         self.assertIn("APP_STORE_ASC_KEY_P8=\"$asc_key_payload\"", script)
         self.assertIn("App Store upload requires an App Store Connect key ID", script)
         self.assertIn("App Store upload requires numeric OPENBURNBAR_ASC_APPLE_ID", script)
+        for command in (
+            "bash scripts/test-openburnbar-safari-extension.sh",
+            "bash scripts/prepare-openburnbar-app-swiftpm.sh",
+            "xcodebuild archive",
+            "xcodebuild -exportArchive",
+        ):
+            self.assertIn(
+                "openburnbar_without_candidate_git_environment \\\n  " + command,
+                script,
+            )
+
+        swiftpm = (
+            ROOT / "scripts/prepare-openburnbar-app-swiftpm.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE", swiftpm)
 
     def test_readiness_uses_same_locked_source_preparation_lifecycle(self) -> None:
         script = (ROOT / "scripts/verify-macos-app-store-readiness.sh").read_text()

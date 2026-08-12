@@ -154,12 +154,12 @@ printf 'xcodebuild' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf ' <%s>' "$@" >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf '\n' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 
-target=""
+scheme=""
 build_products=""
 while (($# > 0)); do
   case "$1" in
-    -target)
-      target="${2:-}"
+    -scheme)
+      scheme="${2:-}"
       shift 2
       ;;
     CONFIGURATION_BUILD_DIR=*)
@@ -171,19 +171,13 @@ while (($# > 0)); do
       ;;
   esac
 done
-if [[ -z "$target" || -z "$build_products" ]]; then
-  echo "fixture xcodebuild requires -target and CONFIGURATION_BUILD_DIR" >&2
+if [[ -z "$scheme" || -z "$build_products" ]]; then
+  echo "fixture xcodebuild requires -scheme and CONFIGURATION_BUILD_DIR" >&2
   exit 2
 fi
 
-if [[ "$target" == "OpenBurnBarSafariExtension" ]]; then
-  mkdir -p "$build_products/OpenBurnBarSafariExtension.appex/Contents"
-  printf 'safari-profile\n' \
-    >"$build_products/OpenBurnBarSafariExtension.appex/Contents/embedded.provisionprofile"
-  exit 0
-fi
-if [[ "$target" != "OpenBurnBar" ]]; then
-  echo "unexpected target: $target" >&2
+if [[ "$scheme" != "OpenBurnBar" ]]; then
+  echo "unexpected scheme: $scheme" >&2
   exit 2
 fi
 
@@ -412,21 +406,18 @@ run_fixture() {
     "$@"
 }
 
-test_success_constructs_exact_target_scoped_provisioning() {
+test_success_constructs_exact_scheme_scoped_provisioning() {
   local fixture_root="$work_root/success"
   run_fixture "$fixture_root"
   assert_status 0 "$fixture_status" "$fixture_root/stderr.log"
 
   local log="$fixture_root/commands.log"
-  local first_xcode second_xcode
+  local first_xcode
   first_xcode="$(grep '^xcodebuild ' "$log" | sed -n '1p')"
-  second_xcode="$(grep '^xcodebuild ' "$log" | sed -n '2p')"
-  [[ "$first_xcode" == *"<-target> <OpenBurnBarSafariExtension>"* ]] ||
-    fail_test "Safari extension must provision before the host"
-  [[ "$second_xcode" == *"<-target> <OpenBurnBar>"* ]] ||
-    fail_test "host target build was not second"
-  if [[ "$(grep -c '^xcodebuild ' "$log")" != "2" ]]; then
-    fail_test "expected exactly two target-scoped xcodebuild calls"
+  [[ "$first_xcode" == *"<-scheme> <OpenBurnBar>"* ]] ||
+    fail_test "shared host scheme was not used"
+  if [[ "$(grep -c '^xcodebuild ' "$log")" != "1" ]]; then
+    fail_test "expected exactly one scheme-scoped xcodebuild call"
   fi
 
   for exact_argument in \
@@ -445,7 +436,7 @@ test_success_constructs_exact_target_scoped_provisioning() {
   done
   assert_file_not_contains "$log" "CODE_SIGN_IDENTITY=-"
   assert_file_not_contains "$log" "CODE_SIGNING_ALLOWED=NO"
-  assert_file_not_contains "$log" "<-scheme>"
+  assert_file_not_contains "$log" "<-target>"
   assert_file_contains "$log" \
     "verify <$fixture_root/output/OpenBurnBar.app> <$team_id> <$fixture_root/output/profiles/OpenBurnBar-host.provisionprofile> <$fixture_root/output/profiles/OpenBurnBar-Safari.provisionprofile> <$signing_identity> <$identity_sha1>"
   assert_file_contains "$log" \
@@ -591,7 +582,7 @@ test_rejects_existing_or_source_tree_output() {
   assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
 }
 
-test_success_constructs_exact_target_scoped_provisioning
+test_success_constructs_exact_scheme_scoped_provisioning
 test_rejects_candidate_mismatch_before_provisioning
 test_rejects_dirty_candidate_before_provisioning
 test_rejects_missing_and_ambiguous_identity

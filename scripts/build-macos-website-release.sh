@@ -188,7 +188,8 @@ if [[ ! -f "$privileged_input_profile" ]]; then
 fi
 
 identity="${OPENBURNBAR_SIGNING_IDENTITY:-}"
-bash scripts/test-openburnbar-safari-extension.sh
+openburnbar_without_candidate_git_environment \
+  bash scripts/test-openburnbar-safari-extension.sh
 openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
 openburnbar_verify_xcode_project_sync "$repo_root"

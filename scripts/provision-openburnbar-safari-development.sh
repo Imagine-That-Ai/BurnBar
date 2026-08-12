@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Build one exact OpenBurnBar candidate with target-scoped Apple Development
+# Build one exact OpenBurnBar candidate with scheme-scoped Apple Development
 # automatic provisioning, export the embedded host/Safari profiles byte-for-byte,
 # verify the signed product, and emit a sanitized candidate-bound receipt.
 #
@@ -29,7 +29,6 @@ package_cache="$repo_root/.spm-cache"
 project_path="$repo_root/OpenBurnBar.xcodeproj"
 configuration="Release"
 host_target="OpenBurnBar"
-safari_target="OpenBurnBarSafariExtension"
 
 usage() {
   cat <<'EOF'
@@ -44,10 +43,11 @@ Usage: scripts/provision-openburnbar-safari-development.sh \
   [--project <path>] \
   [--configuration <name>]
 
-The command uses Xcode automatic provisioning for exactly the
-OpenBurnBarSafariExtension and OpenBurnBar macOS targets. It may create or
-download development profiles and register the current Mac when Apple permits
-that operation. It never falls back to another identity or an unsigned build.
+The command uses the shared OpenBurnBar scheme to build and automatically
+provision exactly the OpenBurnBar host and its OpenBurnBarSafariExtension
+dependency. It may create or download development profiles and register the
+current Mac when Apple permits that operation. It never falls back to another
+identity or an unsigned build.
 
 Outputs:
   <output-dir>/OpenBurnBar.app
@@ -382,6 +382,7 @@ build_log="$output_dir/xcodebuild.log"
 
 common_build_args=(
   -project "$project_path"
+  -scheme "$host_target"
   -configuration "$configuration"
   -sdk macosx
   -clonedSourcePackagesDirPath "$package_cache"
@@ -402,25 +403,20 @@ common_build_args=(
   PROVISIONING_PROFILE_SPECIFIER=
 )
 
-run_target_build() {
-  local target="$1"
-  {
-    printf '=== target %s ===\n' "$target"
-    openburnbar_without_candidate_git_environment \
-      "$xcodebuild_bin" build \
-      "${common_build_args[@]}" \
-      -target "$target"
-  } 2>&1 | tee -a "$build_log"
-}
-
-# Provision the nested extension explicitly before the containing host. The
-# second target build embeds the already provisioned appex into the signed app.
-run_target_build "$safari_target"
-run_target_build "$host_target"
+# Xcode 27 requires a scheme when DerivedData is caller-isolated and rejects
+# combining a scheme with explicit targets. The shared host scheme owns the
+# Safari appex as a code-signed dependency, so this one build provisions,
+# signs, and embeds both products while retaining isolated DerivedData.
+{
+  printf '=== scheme %s ===\n' "$host_target"
+  openburnbar_without_candidate_git_environment \
+    "$xcodebuild_bin" build \
+    "${common_build_args[@]}"
+} 2>&1 | tee -a "$build_log"
 
 built_app="$build_products/OpenBurnBar.app"
 if [[ ! -d "$built_app" || -L "$built_app" ]]; then
-  fail "Target-scoped build did not produce a real OpenBurnBar.app: $built_app"
+  fail "Scheme build did not produce a real OpenBurnBar.app: $built_app"
 fi
 built_appex="$built_app/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 if [[ ! -d "$built_appex" || -L "$built_appex" ]]; then

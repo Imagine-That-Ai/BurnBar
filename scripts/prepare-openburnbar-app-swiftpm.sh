@@ -12,6 +12,11 @@
 
 set -euo pipefail
 
+# This helper owns Git discovery for SwiftPM dependency checkouts. Release
+# entrypoints may export generic GIT_* overrides to bind their own source
+# candidate; those overrides must never leak into Xcode's nested repositories.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 default_repo_root="$(cd "$script_dir/.." && pwd -P)"
 
