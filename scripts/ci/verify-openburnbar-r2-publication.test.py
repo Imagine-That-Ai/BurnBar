@@ -50,10 +50,13 @@ class ReleaseFixture:
         self.root = root
         self.downloads = root / "downloads"
         self.public = root / "public"
+        self.headers = root / "headers"
         self.downloads.mkdir(mode=0o700, parents=True)
         self.public.mkdir(mode=0o700)
+        self.headers.mkdir(mode=0o700)
         self.release_receipt = self.downloads / "developer-id-release-receipt.json"
         self.preflight = root / "preflight.json"
+        self.discovery_snapshot = root / "discovery-snapshot.json"
         self.publication_receipt = root / "publication.json"
 
         self.names = {
@@ -238,6 +241,28 @@ class ReleaseFixture:
         for artifact in preflight["artifacts"]:
             source = self.downloads / artifact["fileName"]
             shutil.copy2(source, self.public / artifact["fileName"])
+            (self.headers / f"{artifact['fileName']}.headers").write_text(
+                "HTTP/2 200\r\n"
+                f"Content-Type: {artifact['contentType']}\r\n"
+                f"Cache-Control: {artifact['cacheControl']}\r\n"
+                "\r\n",
+                encoding="iso-8859-1",
+            )
+
+    def write_discovery_snapshot(
+        self,
+        preflight: dict[str, object],
+    ) -> None:
+        snapshot = r2.build_discovery_snapshot(
+            preflight_path=self.preflight,
+            public_download_dir=self.public,
+            public_header_dir=self.headers,
+        )
+        self.discovery_snapshot.write_text(
+            json.dumps(snapshot, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self.discovery_snapshot.chmod(0o600)
 
     def refresh_artifact_binding(self, kind: str) -> None:
         path = self.downloads / self.names[kind]
@@ -285,8 +310,32 @@ class R2PublicationTests(unittest.TestCase):
                     f"{BASE_URL}/{self.fixture.release_receipt.name}"
                 ),
                 "contentType": "application/json; charset=utf-8",
-                "cacheControl": "public, max-age=31536000, immutable",
+                "cacheControl": "public, max-age=300",
+                "publicationPhase": "supporting-metadata",
+                "discoveryCommitSetMember": False,
             },
+        )
+        self.assertEqual(
+            [item["kind"] for item in artifacts],
+            [
+                "correspondingSource",
+                "dmg",
+                "sbom",
+                "zip",
+                "checksums",
+                "releaseReceipt",
+                "releaseMetadata",
+                "appcast",
+                "latestMetadata",
+            ],
+        )
+        self.assertEqual(
+            [
+                item["kind"]
+                for item in artifacts
+                if item["discoveryCommitSetMember"]
+            ],
+            ["appcast", "latestMetadata"],
         )
         self.assertEqual(
             preflight["sourceReleaseReceipt"]["publicUrl"],
@@ -296,16 +345,31 @@ class R2PublicationTests(unittest.TestCase):
     def test_receipt_proves_all_public_bytes_but_not_test_apple_trust(self) -> None:
         preflight = self.fixture.write_preflight()
         self.fixture.copy_public_objects(preflight)
+        self.fixture.write_discovery_snapshot(preflight)
         receipt = r2.build_publication_receipt(
             preflight_path=self.fixture.preflight,
             release_receipt_path=self.fixture.release_receipt,
             downloads_dir=self.fixture.downloads,
             public_download_dir=self.fixture.public,
+            public_header_dir=self.fixture.headers,
+            discovery_snapshot_path=self.fixture.discovery_snapshot,
             platform_trust_verifier="/tmp/test-trust-verifier",
             platform_trust_mode="test-override",
         )
         self.assertEqual(len(receipt["artifacts"]), 9)
         self.assertTrue(receipt["verification"]["publicBytesDigestEqual"])
+        self.assertTrue(receipt["verification"]["publicContentTypesMatch"])
+        self.assertTrue(receipt["verification"]["publicCacheControlsMatch"])
+        self.assertEqual(
+            receipt["verification"]["discoveryCommitSet"],
+            ["appcast", "latestMetadata"],
+        )
+        self.assertTrue(
+            all(
+                artifact["observedResponse"]["statusCode"] == 200
+                for artifact in receipt["artifacts"]
+            )
+        )
         self.assertFalse(
             receipt["verification"]["publicDmgAppleTrustVerified"]
         )
@@ -329,6 +393,7 @@ class R2PublicationTests(unittest.TestCase):
     def test_rejects_public_digest_mismatch(self) -> None:
         preflight = self.fixture.write_preflight()
         self.fixture.copy_public_objects(preflight)
+        self.fixture.write_discovery_snapshot(preflight)
         (self.fixture.public / self.fixture.names["zip"]).write_bytes(
             b"tampered public zip"
         )
@@ -338,6 +403,8 @@ class R2PublicationTests(unittest.TestCase):
                 release_receipt_path=self.fixture.release_receipt,
                 downloads_dir=self.fixture.downloads,
                 public_download_dir=self.fixture.public,
+                public_header_dir=self.fixture.headers,
+                discovery_snapshot_path=self.fixture.discovery_snapshot,
                 platform_trust_verifier="/tmp/test-trust-verifier",
                 platform_trust_mode="test-override",
             )
@@ -443,18 +510,23 @@ class R2PublicationTests(unittest.TestCase):
     def test_canonical_mode_rejects_noncanonical_verifier(self) -> None:
         preflight = self.fixture.write_preflight()
         self.fixture.copy_public_objects(preflight)
+        self.fixture.write_discovery_snapshot(preflight)
         with self.assertRaisesRegex(ValueError, "canonical public platform trust"):
             r2.build_publication_receipt(
                 preflight_path=self.fixture.preflight,
                 release_receipt_path=self.fixture.release_receipt,
                 downloads_dir=self.fixture.downloads,
                 public_download_dir=self.fixture.public,
+                public_header_dir=self.fixture.headers,
+                discovery_snapshot_path=self.fixture.discovery_snapshot,
                 platform_trust_verifier="/tmp/not-canonical",
                 platform_trust_mode="canonical",
             )
 
 
 class R2UploaderIntegrationTests(unittest.TestCase):
+    WRANGLER_VERSION = "3.114.0"
+
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory(
             prefix="openburnbar-r2-uploader-"
@@ -567,14 +639,65 @@ class R2UploaderIntegrationTests(unittest.TestCase):
 
         self.mock_bin = self.root / "mock-bin"
         self.mock_bin.mkdir()
+        self.remote_objects = self.root / "remote-objects"
+        self.remote_headers = self.root / "remote-headers"
+        self.remote_objects.mkdir()
+        self.remote_headers.mkdir()
         self.command_log = self.root / "commands.log"
+        self.failure_marker = self.root / "wrangler-failure.marker"
         self.site_log = self.root / "site.ts"
         self._write_mock(
             "wrangler",
             """#!/usr/bin/env bash
 set -euo pipefail
+
+if [[ "${1:-}" == "--version" && $# -eq 1 ]]; then
+  printf 'wrangler %s\\n' "$TEST_WRANGLER_VERSION"
+  exit 0
+fi
+
 printf '%s\n' "$*" >>"$TEST_COMMAND_LOG"
-[[ "$1 $2 $3" == "r2 object put" ]]
+[[ $# -ge 4 && "$1 $2" == "r2 object" ]]
+operation="$3"
+object="$4"
+file_name="${object#*/}"
+shift 4
+
+case "$operation" in
+  put)
+    source_path=""
+    content_type=""
+    cache_control=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --remote) shift ;;
+        --file) source_path="$2"; shift 2 ;;
+        --content-type) content_type="$2"; shift 2 ;;
+        --cache-control) cache_control="$2"; shift 2 ;;
+        *) exit 64 ;;
+      esac
+    done
+    [[ -f "$source_path" && -n "$content_type" && -n "$cache_control" ]]
+    if [[ "${TEST_FAIL_PUT_FILE:-}" == "$file_name" \
+      && ! -e "$TEST_FAILURE_MARKER" ]]; then
+      : >"$TEST_FAILURE_MARKER"
+      exit 42
+    fi
+    cp "$source_path" "$TEST_REMOTE_OBJECTS/$file_name"
+    printf '%s' "$content_type" >"$TEST_REMOTE_HEADERS/$file_name.content-type"
+    printf '%s' "$cache_control" >"$TEST_REMOTE_HEADERS/$file_name.cache-control"
+    ;;
+  delete)
+    [[ $# -eq 1 && "$1" == "--remote" ]]
+    rm -f \
+      "$TEST_REMOTE_OBJECTS/$file_name" \
+      "$TEST_REMOTE_HEADERS/$file_name.content-type" \
+      "$TEST_REMOTE_HEADERS/$file_name.cache-control"
+    ;;
+  *)
+    exit 64
+    ;;
+esac
 """,
         )
         self._write_mock(
@@ -582,17 +705,48 @@ printf '%s\n' "$*" >>"$TEST_COMMAND_LOG"
             """#!/usr/bin/env bash
 set -euo pipefail
 destination=""
+header_path=""
+write_out=""
 url=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output) destination="$2"; shift 2 ;;
+    --dump-header) header_path="$2"; shift 2 ;;
+    --write-out) write_out="$2"; shift 2 ;;
+    --retry|--connect-timeout|--max-time|--proto) shift 2 ;;
     http*) url="$1"; shift ;;
     *) shift ;;
   esac
 done
-[[ -n "$destination" && -n "$url" ]]
-cp "$TEST_DOWNLOADS_DIR/${url##*/}" "$destination"
-printf '%s\n' "$url" >>"$TEST_COMMAND_LOG"
+[[ -n "$destination" && -n "$header_path" && -n "$url" ]]
+file_name="${url##*/}"
+if [[ -f "$TEST_REMOTE_OBJECTS/$file_name" ]]; then
+  status=200
+  cp "$TEST_REMOTE_OBJECTS/$file_name" "$destination"
+  content_type="$(<"$TEST_REMOTE_HEADERS/$file_name.content-type")"
+  cache_control="$(<"$TEST_REMOTE_HEADERS/$file_name.cache-control")"
+  if [[ "${TEST_HEADER_MISMATCH_FILE:-}" == "$file_name" ]]; then
+    content_type="application/x-openburnbar-test-mismatch"
+  fi
+  if [[ "${TEST_CACHE_CONTROL_MISMATCH_FILE:-}" == "$file_name" ]]; then
+    cache_control="private, no-store"
+  fi
+  {
+    printf 'HTTP/2 200\\r\\n'
+    printf 'Content-Type: %s\\r\\n' "$content_type"
+    printf 'Cache-Control: %s\\r\\n' "$cache_control"
+    printf '\\r\\n'
+  } >"$header_path"
+else
+  status=404
+  : >"$destination"
+  printf 'HTTP/2 404\\r\\n\\r\\n' >"$header_path"
+fi
+printf 'curl %s %s\\n' "$status" "$url" >>"$TEST_COMMAND_LOG"
+if [[ -n "$write_out" ]]; then
+  [[ "$write_out" == "%{http_code}" ]]
+  printf '%s' "$status"
+fi
 """,
         )
         self._write_mock(
@@ -606,6 +760,20 @@ grep -Fq '"macReleaseFile": "OpenBurnBar-1.2.3-macOS.dmg"' "$1"
 grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
 """,
         )
+        self.wrangler = self.mock_bin / "wrangler"
+        self.wrangler_sha256 = digest(self.wrangler.read_bytes())
+        self.preflight = r2.build_preflight(
+            release_receipt_path=self.fixture.release_receipt,
+            downloads_dir=self.fixture.downloads,
+            candidate_commit=self.commit,
+            candidate_tree=self.tree,
+            bucket="openburnbar-downloads",
+            public_base_url=BASE_URL,
+        )
+        self.artifacts_by_kind = {
+            artifact["kind"]: artifact
+            for artifact in self.preflight["artifacts"]
+        }
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -615,8 +783,13 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         path.write_text(source, encoding="utf-8")
         path.chmod(0o755)
 
-    def test_uploader_verifies_candidate_specific_nine_object_publication(self) -> None:
-        publication_receipt = self.root / "r2-publication.json"
+    def _environment(
+        self,
+        publication_receipt: Path,
+        *,
+        overrides: dict[str, str] | None = None,
+        omitted: tuple[str, ...] = (),
+    ) -> dict[str, str]:
         environment = os.environ.copy()
         environment.update(
             {
@@ -630,34 +803,146 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
                     publication_receipt
                 ),
                 "OPENBURNBAR_R2_PUBLIC_BASE_URL": BASE_URL,
-                "WRANGLER_BIN": str(self.mock_bin / "wrangler"),
+                "WRANGLER_BIN": str(self.wrangler),
+                "OPENBURNBAR_WRANGLER_VERSION": self.WRANGLER_VERSION,
+                "OPENBURNBAR_WRANGLER_SHA256": self.wrangler_sha256,
                 "OPENBURNBAR_R2_CURL_BIN": str(self.mock_bin / "curl"),
                 "OPENBURNBAR_R2_PUBLIC_TRUST_VERIFIER": str(
                     self.mock_bin / "trust"
                 ),
                 "OPENBURNBAR_R2_ALLOW_TEST_TRUST_VERIFIER": "1",
+                "PYTHONDONTWRITEBYTECODE": "1",
                 "TEST_COMMAND_LOG": str(self.command_log),
-                "TEST_DOWNLOADS_DIR": str(self.fixture.downloads),
+                "TEST_FAILURE_MARKER": str(self.failure_marker),
+                "TEST_REMOTE_OBJECTS": str(self.remote_objects),
+                "TEST_REMOTE_HEADERS": str(self.remote_headers),
                 "TEST_SITE_LOG": str(self.site_log),
+                "TEST_WRANGLER_VERSION": self.WRANGLER_VERSION,
             }
         )
+        environment.update(overrides or {})
+        for name in omitted:
+            environment.pop(name, None)
+        return environment
+
+    def _run_uploader(
+        self,
+        *,
+        overrides: dict[str, str] | None = None,
+        omitted: tuple[str, ...] = (),
+    ) -> tuple[subprocess.CompletedProcess[str], Path]:
+        publication_receipt = self.root / "r2-publication.json"
         result = subprocess.run(
             [str(self.repo / "scripts/upload-macos-downloads-r2.sh")],
             cwd=self.repo,
-            env=environment,
+            env=self._environment(
+                publication_receipt,
+                overrides=overrides,
+                omitted=omitted,
+            ),
             capture_output=True,
             text=True,
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        log = self.command_log.read_text(encoding="utf-8").splitlines()
-        self.assertEqual(
-            sum(line.startswith("r2 object put ") for line in log),
-            9,
+        return result, publication_receipt
+
+    def _commands(self) -> list[str]:
+        if not self.command_log.exists():
+            return []
+        return self.command_log.read_text(encoding="utf-8").splitlines()
+
+    def _put_names(self) -> list[str]:
+        return [
+            line.split()[3].split("/", 1)[1]
+            for line in self._commands()
+            if line.startswith("r2 object put ")
+        ]
+
+    def _delete_names(self) -> list[str]:
+        return [
+            line.split()[3].split("/", 1)[1]
+            for line in self._commands()
+            if line.startswith("r2 object delete ")
+        ]
+
+    def _seed_remote(
+        self,
+        kind: str,
+        payload: bytes,
+        *,
+        content_type: str,
+        cache_control: str,
+    ) -> None:
+        file_name = self.artifacts_by_kind[kind]["fileName"]
+        (self.remote_objects / file_name).write_bytes(payload)
+        (self.remote_headers / f"{file_name}.content-type").write_text(
+            content_type,
+            encoding="utf-8",
         )
-        self.assertEqual(sum(line.startswith("https://") for line in log), 9)
+        (self.remote_headers / f"{file_name}.cache-control").write_text(
+            cache_control,
+            encoding="utf-8",
+        )
+
+    def _remote_state(self, kind: str) -> tuple[bytes, str, str]:
+        file_name = self.artifacts_by_kind[kind]["fileName"]
+        return (
+            (self.remote_objects / file_name).read_bytes(),
+            (
+                self.remote_headers / f"{file_name}.content-type"
+            ).read_text(encoding="utf-8"),
+            (
+                self.remote_headers / f"{file_name}.cache-control"
+            ).read_text(encoding="utf-8"),
+        )
+
+    def _seed_existing_discovery(self) -> dict[str, tuple[bytes, str, str]]:
+        states = {
+            "appcast": (
+                b"old appcast bytes\n",
+                "text/xml; charset=utf-8",
+                "public, max-age=41",
+            ),
+            "latestMetadata": (
+                b'{"old":"latest"}\n',
+                "application/vnd.openburnbar.previous+json",
+                "public, max-age=73",
+            ),
+        }
+        for kind, (payload, content_type, cache_control) in states.items():
+            self._seed_remote(
+                kind,
+                payload,
+                content_type=content_type,
+                cache_control=cache_control,
+            )
+        return states
+
+    def test_uploader_verifies_candidate_specific_nine_object_publication(self) -> None:
+        result, publication_receipt = self._run_uploader()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        put_names = self._put_names()
+        self.assertEqual(len(put_names), 9)
+        self.assertEqual(
+            put_names,
+            [
+                self.artifacts_by_kind[kind]["fileName"]
+                for kind, _ in r2.PUBLICATION_PLAN
+            ],
+        )
+        self.assertEqual(
+            put_names[-2:],
+            [
+                self.artifacts_by_kind["appcast"]["fileName"],
+                self.artifacts_by_kind["latestMetadata"]["fileName"],
+            ],
+        )
+        self.assertEqual(
+            sum(line.startswith("curl ") for line in self._commands()),
+            11,
+        )
         self.assertIn(
             self.fixture.release_receipt.name,
-            "\n".join(log),
+            "\n".join(self._commands()),
         )
         self.assertIn(
             '"macReleaseLatest": "1.2.3"',
@@ -666,6 +951,23 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         receipt = json.loads(publication_receipt.read_text(encoding="utf-8"))
         self.assertEqual(receipt["candidate"]["commit"], self.commit)
         self.assertEqual(len(receipt["artifacts"]), 9)
+        self.assertEqual(
+            receipt["verification"]["discoveryCommitSet"],
+            ["appcast", "latestMetadata"],
+        )
+        self.assertTrue(
+            receipt["verification"]["discoveryCommitSetVerified"]
+        )
+        self.assertEqual(
+            [item["state"] for item in receipt["prePublicationDiscovery"]],
+            ["absent", "absent"],
+        )
+        self.assertTrue(
+            all(
+                item["observedResponse"]["statusCode"] == 200
+                for item in receipt["artifacts"]
+            )
+        )
         self.assertFalse(
             receipt["verification"]["publicDmgAppleTrustVerified"]
         )
@@ -673,6 +975,159 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
             stat.S_IMODE(publication_receipt.stat().st_mode),
             0o600,
         )
+        uploader_source = (
+            self.repo / "scripts/upload-macos-downloads-r2.sh"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("wrangler@latest", uploader_source)
+        self.assertNotIn("npm exec", uploader_source)
+
+    def test_immutable_failure_preserves_existing_discovery(self) -> None:
+        old_states = self._seed_existing_discovery()
+
+        result, publication_receipt = self._run_uploader(
+            overrides={
+                "TEST_FAIL_PUT_FILE": self.artifacts_by_kind["dmg"]["fileName"]
+            }
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(publication_receipt.exists())
+        self.assertNotIn(
+            self.artifacts_by_kind["appcast"]["fileName"],
+            self._put_names(),
+        )
+        self.assertNotIn(
+            self.artifacts_by_kind["latestMetadata"]["fileName"],
+            self._put_names(),
+        )
+        for kind, expected in old_states.items():
+            self.assertEqual(self._remote_state(kind), expected)
+
+    def test_partial_discovery_failure_restores_existing_commit_set(self) -> None:
+        old_states = self._seed_existing_discovery()
+
+        result, publication_receipt = self._run_uploader(
+            overrides={
+                "TEST_FAIL_PUT_FILE": self.artifacts_by_kind[
+                    "latestMetadata"
+                ]["fileName"]
+            }
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(publication_receipt.exists())
+        for kind, expected in old_states.items():
+            self.assertEqual(self._remote_state(kind), expected)
+        self.assertEqual(
+            self._put_names()[-2:],
+            [
+                self.artifacts_by_kind["latestMetadata"]["fileName"],
+                self.artifacts_by_kind["appcast"]["fileName"],
+            ],
+        )
+        self.assertEqual(self._delete_names(), [])
+
+    def test_partial_discovery_failure_restores_first_release_absence(self) -> None:
+        result, publication_receipt = self._run_uploader(
+            overrides={
+                "TEST_FAIL_PUT_FILE": self.artifacts_by_kind[
+                    "latestMetadata"
+                ]["fileName"]
+            }
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(publication_receipt.exists())
+        expected_deletes = [
+            self.artifacts_by_kind["latestMetadata"]["fileName"],
+            self.artifacts_by_kind["appcast"]["fileName"],
+        ]
+        self.assertEqual(self._delete_names(), expected_deletes)
+        for file_name in expected_deletes:
+            self.assertFalse((self.remote_objects / file_name).exists())
+            self.assertFalse(
+                (self.remote_headers / f"{file_name}.content-type").exists()
+            )
+            self.assertFalse(
+                (self.remote_headers / f"{file_name}.cache-control").exists()
+            )
+
+    def test_public_header_mismatch_fails_before_discovery(self) -> None:
+        file_name = self.artifacts_by_kind["dmg"]["fileName"]
+        cases = (
+            (
+                "Content-Type",
+                {"TEST_HEADER_MISMATCH_FILE": file_name},
+                "public Content-Type for dmg",
+            ),
+            (
+                "Cache-Control",
+                {"TEST_CACHE_CONTROL_MISMATCH_FILE": file_name},
+                "public Cache-Control for dmg",
+            ),
+        )
+        discovery_names = {
+            self.artifacts_by_kind["appcast"]["fileName"],
+            self.artifacts_by_kind["latestMetadata"]["fileName"],
+        }
+        for label, overrides, expected_error in cases:
+            with self.subTest(header=label):
+                self.command_log.unlink(missing_ok=True)
+                result, publication_receipt = self._run_uploader(
+                    overrides=overrides
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(publication_receipt.exists())
+                self.assertIn(expected_error, result.stderr)
+                self.assertTrue(
+                    discovery_names.isdisjoint(self._put_names())
+                )
+
+    def test_wrangler_pin_is_required_and_verified_before_upload(self) -> None:
+        cases = (
+            (
+                "missing binary",
+                {},
+                ("WRANGLER_BIN",),
+                "Required environment is missing: wrangler_bin",
+            ),
+            (
+                "missing version",
+                {},
+                ("OPENBURNBAR_WRANGLER_VERSION",),
+                "Required environment is missing: wrangler_version",
+            ),
+            (
+                "missing digest",
+                {},
+                ("OPENBURNBAR_WRANGLER_SHA256",),
+                "Required environment is missing: wrangler_sha256",
+            ),
+            (
+                "wrong digest",
+                {"OPENBURNBAR_WRANGLER_SHA256": "0" * 64},
+                (),
+                "WRANGLER_BIN SHA-256 does not match",
+            ),
+            (
+                "wrong version",
+                {"OPENBURNBAR_WRANGLER_VERSION": "3.113.0"},
+                (),
+                "version output does not uniquely match",
+            ),
+        )
+        for label, overrides, omitted, expected_error in cases:
+            with self.subTest(label=label):
+                self.command_log.unlink(missing_ok=True)
+                self.failure_marker.unlink(missing_ok=True)
+                result, publication_receipt = self._run_uploader(
+                    overrides=overrides,
+                    omitted=omitted,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_error, result.stderr)
+                self.assertFalse(publication_receipt.exists())
+                self.assertEqual(self._put_names(), [])
 
 
 if __name__ == "__main__":
