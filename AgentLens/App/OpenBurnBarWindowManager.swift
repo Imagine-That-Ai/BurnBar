@@ -32,6 +32,7 @@ final class WindowManager: ObservableObject {
     private var settingsWindow: NSWindow?
     private var safariLearningWindow: NSWindow?
     private var safariLearningModel: SafariLearningTimelineViewModel?
+    private var safariLearningWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
     private var onboardingWindow: NSWindow?
     private var onboardingWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
     private var hermesSetupWindowLifecycleHandler: DocumentWindowLifecycleDelegate?
@@ -62,6 +63,7 @@ final class WindowManager: ObservableObject {
         let documentWindows: [NSWindow?] = [
             dashboardWindow,
             settingsWindow,
+            safariLearningWindow,
             onboardingWindow,
             hermesSetupWindow,
             switcherOnboardingWindow,
@@ -233,9 +235,7 @@ final class WindowManager: ObservableObject {
     func openSafariLearning(
         client: any SafariLearningTimelineClient
     ) -> NSWindow {
-        if !OpenBurnBarRuntime.isRunningTests {
-            NSApplication.shared.activate(ignoringOtherApps: true)
-        }
+        promoteToRegularActivation()
 
         if let window = safariLearningWindow,
            let model = safariLearningModel {
@@ -288,9 +288,17 @@ final class WindowManager: ObservableObject {
             window.makeKeyAndOrderFront(nil)
         }
         window.isReleasedWhenClosed = false
+        let lifecycle = DocumentWindowLifecycleDelegate { [weak self] in
+            self?.safariLearningWindow = nil
+            self?.safariLearningModel = nil
+            self?.safariLearningWindowLifecycleHandler = nil
+            self?.demoteToAccessoryIfIdle()
+        }
+        window.delegate = lifecycle
 
         safariLearningWindow = window
         safariLearningModel = model
+        safariLearningWindowLifecycleHandler = lifecycle
         return window
     }
 
