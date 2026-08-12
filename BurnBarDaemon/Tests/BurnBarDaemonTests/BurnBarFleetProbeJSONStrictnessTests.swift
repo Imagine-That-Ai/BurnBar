@@ -78,37 +78,149 @@ final class BurnBarFleetProbeJSONStrictnessTests: XCTestCase {
         )
     }
 
-    // MARK: - dateFromStartTime (probe-hardening-repair-b: hermes start_time
-    // dual encoding — the real gateway.pid writes epoch-ms while the
-    // heartbeat writes fractional epoch-seconds)
+    // MARK: - dateFromStartTimeTriState (probe-hardening-repair-b: hermes
+    // start_time dual encoding — the real gateway.pid writes epoch-ms while
+    // the heartbeat writes fractional epoch-seconds)
 
     func testDateFromStartTime_epochSeconds() {
-        let date = BurnBarFleetProbeJSON.dateFromStartTime(1_750_000_000)
-        XCTAssertEqual(date?.timeIntervalSince1970 ?? 0, 1_750_000_000.0, accuracy: 0.001)
+        let outcome = BurnBarFleetProbeJSON.dateFromStartTimeTriState(1_750_000_000)
+        guard case .valid(let date) = outcome else {
+            return XCTFail("epoch-seconds must be valid, got \(outcome)")
+        }
+        XCTAssertEqual(date.timeIntervalSince1970, 1_750_000_000.0, accuracy: 0.001)
     }
 
     func testDateFromStartTime_epochMilliseconds() {
         // The real gateway.pid writes epoch-milliseconds; a plausible
         // integral ms value parses as ms, not seconds.
-        let date = BurnBarFleetProbeJSON.dateFromStartTime(1_750_000_000_000)
-        XCTAssertEqual(date?.timeIntervalSince1970 ?? 0, 1_750_000_000.0, accuracy: 0.001)
+        let outcome = BurnBarFleetProbeJSON.dateFromStartTimeTriState(1_750_000_000_000)
+        guard case .valid(let date) = outcome else {
+            return XCTFail("epoch-milliseconds must be valid, got \(outcome)")
+        }
+        XCTAssertEqual(date.timeIntervalSince1970, 1_750_000_000.0, accuracy: 0.001)
     }
 
     func testDateFromStartTime_fractionalEpochSeconds() {
         // The real heartbeat writes fractional epoch-seconds.
-        let date = BurnBarFleetProbeJSON.dateFromStartTime(1_786_536_834.708_521)
-        XCTAssertEqual(date?.timeIntervalSince1970 ?? 0, 1_786_536_834.708_521, accuracy: 0.001)
+        let outcome = BurnBarFleetProbeJSON.dateFromStartTimeTriState(1_786_536_834.708_521)
+        guard case .valid(let date) = outcome else {
+            return XCTFail("fractional epoch-seconds must be valid, got \(outcome)")
+        }
+        XCTAssertEqual(date.timeIntervalSince1970, 1_786_536_834.708_521, accuracy: 0.001)
     }
 
     func testDateFromStartTime_rejectsMalformed() {
-        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(true), "boolean must be rejected")
-        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime("1750000000"), "string must be rejected")
-        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(nil))
-        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(NSNull()))
+        if case .invalid = BurnBarFleetProbeJSON.dateFromStartTimeTriState(true) {
+            // boolean must be rejected as invalid
+        } else {
+            XCTFail("boolean must be invalid")
+        }
+        if case .invalid = BurnBarFleetProbeJSON.dateFromStartTimeTriState("1750000000") {
+            // string must be rejected as invalid
+        } else {
+            XCTFail("string must be invalid")
+        }
+        XCTAssertEqual(BurnBarFleetProbeJSON.dateFromStartTimeTriState(nil), .absent)
+        XCTAssertEqual(BurnBarFleetProbeJSON.dateFromStartTimeTriState(NSNull()), .absent)
         // Fractional epoch-milliseconds are malformed (integral only).
-        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(178_653_683_051.5))
+        if case .invalid = BurnBarFleetProbeJSON.dateFromStartTimeTriState(178_653_683_051.5) {
+            // fractional epoch-ms must be invalid
+        } else {
+            XCTFail("fractional epoch-ms must be invalid")
+        }
         // The real gateway.pid's ms-in-seconds bug maps to 1975 — implausible
         // for any current process and treated as absent.
-        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(178_653_683_051 / 1000))
+        XCTAssertEqual(BurnBarFleetProbeJSON.dateFromStartTimeTriState(178_653_683_051 / 1000), .absent)
+    }
+
+    // MARK: - dateFromEpochMillisecondsTriState: absent vs invalid
+
+    func testDateFromEpochMillisecondsTriState_absentVsInvalid() {
+        XCTAssertEqual(BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(nil), .absent)
+        XCTAssertEqual(BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(NSNull()), .absent)
+        if case .invalid(let reason) = BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(true) {
+            XCTAssertTrue(reason.contains("boolean"), "unexpected reason: \(reason)")
+        } else {
+            XCTFail("boolean startTime must be invalid, not absent")
+        }
+        if case .invalid(let reason) = BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(1_750_000_000.5) {
+            XCTAssertTrue(reason.contains("fractional"), "unexpected reason: \(reason)")
+        } else {
+            XCTFail("fractional startTime must be invalid, not absent")
+        }
+        if case .invalid = BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState("not-a-number") {
+            // non-numeric must be invalid
+        } else {
+            XCTFail("non-numeric startTime must be invalid, not absent")
+        }
+        if case .valid = BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(1_750_000_000_000) {
+            // integral epoch-ms is valid
+        } else {
+            XCTFail("integral epoch-ms must be valid")
+        }
+    }
+
+    // MARK: - pidValue: positive macOS pid_t range (reviewer issue 2)
+
+    func testPidValue_acceptsPositivePidRange() {
+        XCTAssertEqual(BurnBarFleetProbeJSON.pidValue(1), 1)
+        XCTAssertEqual(BurnBarFleetProbeJSON.pidValue(Int32.max), Int(Int32.max))
+        XCTAssertEqual(BurnBarFleetProbeJSON.pidValue(42_000), 42_000)
+    }
+
+    func testPidValue_rejectsZeroNegativeAndOversize() {
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue(0), "pid 0 is not a positive pid")
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue(-1), "negative pid must be rejected")
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue(-42), "negative pid must be rejected")
+        XCTAssertNil(
+            BurnBarFleetProbeJSON.pidValue(Int64(Int32.max) + 1),
+            "pid beyond Int32.max must be rejected before pid_t conversion"
+        )
+        XCTAssertNil(
+            BurnBarFleetProbeJSON.pidValue(3_000_000_000),
+            "pid 3000000000 must be rejected before pid_t conversion"
+        )
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue(1e30), "huge pid must be rejected")
+    }
+
+    func testPidValue_rejectsNonIntegralAndNonNumeric() {
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue(true), "boolean must never coerce to a pid")
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue(1.5), "fractional pid must be rejected")
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue("42"), "string pid must be rejected")
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue(nil))
+        XCTAssertNil(BurnBarFleetProbeJSON.pidValue(NSNull()))
+    }
+
+    func testPidRejectionReason_namesMalformedValue() {
+        XCTAssertNil(BurnBarFleetProbeJSON.pidRejectionReason(42))
+        XCTAssertTrue(
+            BurnBarFleetProbeJSON.pidRejectionReason(0)?.contains("positive") == true,
+            "reason must name the malformed pid: \(String(describing: BurnBarFleetProbeJSON.pidRejectionReason(0)))"
+        )
+        XCTAssertTrue(
+            BurnBarFleetProbeJSON.pidRejectionReason(-1)?.contains("positive") == true
+        )
+        XCTAssertTrue(
+            BurnBarFleetProbeJSON.pidRejectionReason(3_000_000_000)?.contains("pid_t") == true,
+            "reason must name the pid_t range: "
+                + String(describing: BurnBarFleetProbeJSON.pidRejectionReason(3_000_000_000))
+        )
+        XCTAssertTrue(
+            BurnBarFleetProbeJSON.pidRejectionReason(true)?.contains("numeric") == true
+        )
+    }
+
+    // MARK: - Liveness range guard: out-of-range pids never reach pid_t
+
+    func testLiveness_rejectsOutOfRangePidsWithoutTrap() {
+        // The liveness helpers themselves must never trap on out-of-range
+        // Int values (second line of defense behind pidValue).
+        XCTAssertFalse(BurnBarFleetProcessLiveness.isAlive(pid: 0))
+        XCTAssertFalse(BurnBarFleetProcessLiveness.isAlive(pid: -1))
+        XCTAssertFalse(BurnBarFleetProcessLiveness.isAlive(pid: Int(Int32.max) + 1))
+        XCTAssertFalse(BurnBarFleetProcessLiveness.isAlive(pid: 3_000_000_000))
+        XCTAssertNil(BurnBarFleetProcessLiveness.processStartTime(pid: 0))
+        XCTAssertNil(BurnBarFleetProcessLiveness.processStartTime(pid: -5))
+        XCTAssertNil(BurnBarFleetProcessLiveness.processStartTime(pid: Int(Int32.max) + 1))
     }
 }

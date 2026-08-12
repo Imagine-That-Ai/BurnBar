@@ -139,7 +139,9 @@ extension BurnBarFleetFactoryDroidProbe {
         /// claude-code probe: a pid whose current process started after the
         /// entry's recorded `startTime` is a reused pid and is treated as
         /// dead. A missing/unqueryable record skips the guard (`kill -0`
-        /// decides).
+        /// decides). A PRESENT-but-invalid `startTime` is malformed (the
+        /// entry never reaches liveness) — it is never silently converted to
+        /// nil and treated like an absent record.
         var isLive: Bool {
             guard malformedReason == nil, let pid else { return false }
             return BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: startTime)
@@ -170,21 +172,50 @@ extension BurnBarFleetFactoryDroidProbe {
         var entries: [BackgroundEntry] = []
         var malformedCount = 0
         for raw in rawEntries {
-            let pid = BurnBarFleetProbeJSON.integerValue(raw["pid"])
+            let pid = BurnBarFleetProbeJSON.pidValue(raw["pid"])
             let cwd = BurnBarFleetProbeJSON.stringValue(raw["cwd"])
-            let startTime = BurnBarFleetProbeJSON.dateFromEpochMilliseconds(raw["startTime"])
+            let startTimeOutcome = BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(raw["startTime"])
             if pid == nil {
                 malformedCount += 1
-                let reason = "Entry is missing a numeric pid."
+                let reason = BurnBarFleetProbeJSON.pidRejectionReason(raw["pid"])
+                    ?? "Entry is missing a numeric pid."
                 entries.append(
-                    BackgroundEntry(pid: nil, cwd: cwd, startTime: startTime, malformedReason: reason)
+                    BackgroundEntry(pid: nil, cwd: cwd, startTime: nil, malformedReason: reason)
+                )
+            } else if case .invalid(let reason) = startTimeOutcome {
+                // A PRESENT-but-invalid startTime is malformed: the entry
+                // degrades typed and never reaches liveness — it is never
+                // treated like an absent record (which would skip the
+                // pid-reuse guard and let a live pid pass).
+                malformedCount += 1
+                entries.append(
+                    BackgroundEntry(pid: nil, cwd: cwd, startTime: nil, malformedReason: reason)
                 )
             } else {
+                let startTime: Date?
+                if case .valid(let date) = startTimeOutcome {
+                    startTime = date
+                } else {
+                    startTime = nil
+                }
                 entries.append(BackgroundEntry(pid: pid, cwd: cwd, startTime: startTime, malformedReason: nil))
             }
         }
 
-        let reason = malformedCount > 0 ? "\(malformedCount) background entry(ies) malformed." : nil
+        let reason: String?
+        if malformedCount > 0 {
+            // Surface the first malformed entry's reason verbatim so the
+            // offending pid/startTime is visible in the probeHealth reason
+            // (same pattern as the task ledger).
+            let firstReason = entries.first { $0.malformedReason != nil }?.malformedReason ?? "malformed"
+            if malformedCount == 1 {
+                reason = "Background entry malformed: \(firstReason)"
+            } else {
+                reason = "\(malformedCount) background entries malformed; first: \(firstReason)"
+            }
+        } else {
+            reason = nil
+        }
         return BackgroundRegistry(path: path, entries: entries, malformedReason: reason)
     }
 

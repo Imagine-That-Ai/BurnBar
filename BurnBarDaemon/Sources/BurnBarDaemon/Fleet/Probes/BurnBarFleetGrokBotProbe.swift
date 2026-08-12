@@ -285,13 +285,19 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
         }
 
         // Required keys: pid and inflightCount. Missing or mistyped → malformed.
-        guard let pid = BurnBarFleetProbeJSON.integerValue(object["pid"]) else {
+        // The pid must be in the positive macOS pid_t range (strict helper);
+        // a PRESENT-but-invalid startedAt is malformed — it is never silently
+        // converted to nil and treated like an absent record (which would
+        // skip the pid-reuse guard and let a live pid pass).
+        guard let pid = BurnBarFleetProbeJSON.pidValue(object["pid"]) else {
+            let reason = BurnBarFleetProbeJSON.pidRejectionReason(object["pid"])
+                ?? "local-exec-daemon.json is missing a numeric pid."
             return DaemonSignal(
                 path: path,
                 pid: nil,
                 startedAt: nil,
                 inflightCount: nil,
-                malformedReason: "local-exec-daemon.json is missing a numeric pid."
+                malformedReason: "local-exec-daemon.json pid is malformed: \(reason)"
             )
         }
         guard let inflightCount = BurnBarFleetProbeJSON.integerValue(object["inflightCount"]) else {
@@ -304,12 +310,28 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
             )
         }
 
+        let startedAtOutcome = BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(object["startedAt"])
+        guard case .invalid(let reason) = startedAtOutcome else {
+            let startedAt: Date?
+            if case .valid(let date) = startedAtOutcome {
+                startedAt = date
+            } else {
+                startedAt = nil
+            }
+            return DaemonSignal(
+                path: path,
+                pid: pid,
+                startedAt: startedAt,
+                inflightCount: inflightCount,
+                malformedReason: nil
+            )
+        }
         return DaemonSignal(
             path: path,
-            pid: pid,
-            startedAt: BurnBarFleetProbeJSON.dateFromEpochMilliseconds(object["startedAt"]),
-            inflightCount: inflightCount,
-            malformedReason: nil
+            pid: nil,
+            startedAt: nil,
+            inflightCount: nil,
+            malformedReason: "local-exec-daemon.json startedAt is malformed: \(reason)"
         )
     }
 
@@ -337,20 +359,32 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
             )
         }
 
-        guard let pid = BurnBarFleetProbeJSON.integerValue(object["pid"]) else {
+        guard let pid = BurnBarFleetProbeJSON.pidValue(object["pid"]) else {
+            let reason = BurnBarFleetProbeJSON.pidRejectionReason(object["pid"])
+                ?? "local-exec-supervisor.json is missing a numeric pid."
             return SupervisorSignal(
                 path: path,
                 pid: nil,
                 at: nil,
-                malformedReason: "local-exec-supervisor.json is missing a numeric pid."
+                malformedReason: "local-exec-supervisor.json pid is malformed: \(reason)"
             )
         }
 
+        let atOutcome = BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(object["at"])
+        guard case .invalid(let reason) = atOutcome else {
+            let at: Date?
+            if case .valid(let date) = atOutcome {
+                at = date
+            } else {
+                at = nil
+            }
+            return SupervisorSignal(path: path, pid: pid, at: at, malformedReason: nil)
+        }
         return SupervisorSignal(
             path: path,
-            pid: pid,
-            at: BurnBarFleetProbeJSON.dateFromEpochMilliseconds(object["at"]),
-            malformedReason: nil
+            pid: nil,
+            at: nil,
+            malformedReason: "local-exec-supervisor.json at is malformed: \(reason)"
         )
     }
 

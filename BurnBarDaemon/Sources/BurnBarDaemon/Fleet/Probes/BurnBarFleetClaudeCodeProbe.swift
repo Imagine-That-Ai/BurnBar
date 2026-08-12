@@ -282,23 +282,39 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
         }
 
         // Required keys: pid and updatedAt. Missing or mistyped → malformed.
-        guard let pid = BurnBarFleetProbeJSON.integerValue(object["pid"]) else {
-            return .failure("Session file is missing a numeric pid.")
+        // The pid must be in the positive macOS pid_t range (strict helper);
+        // a PRESENT-but-invalid startedAt is malformed — it is never silently
+        // converted to nil and treated like an absent record (which would
+        // skip the pid-reuse guard and let a live pid pass).
+        guard let pid = BurnBarFleetProbeJSON.pidValue(object["pid"]) else {
+            let reason = BurnBarFleetProbeJSON.pidRejectionReason(object["pid"])
+                ?? "Session file is missing a numeric pid."
+            return .failure(reason)
         }
         guard let updatedAt = BurnBarFleetProbeJSON.dateFromEpochMilliseconds(object["updatedAt"]) else {
             return .failure("Session file is missing a numeric updatedAt.")
         }
 
-        return .success(
-            ParsedSession(
-                filePath: path,
-                pid: pid,
-                updatedAt: updatedAt,
-                cwd: BurnBarFleetProbeJSON.stringValue(object["cwd"]),
-                startedAt: BurnBarFleetProbeJSON.dateFromEpochMilliseconds(object["startedAt"]),
-                malformedReason: nil
+        let startedAtOutcome = BurnBarFleetProbeJSON.dateFromEpochMillisecondsTriState(object["startedAt"])
+        guard case .invalid(let reason) = startedAtOutcome else {
+            let startedAt: Date?
+            if case .valid(let date) = startedAtOutcome {
+                startedAt = date
+            } else {
+                startedAt = nil
+            }
+            return .success(
+                ParsedSession(
+                    filePath: path,
+                    pid: pid,
+                    updatedAt: updatedAt,
+                    cwd: BurnBarFleetProbeJSON.stringValue(object["cwd"]),
+                    startedAt: startedAt,
+                    malformedReason: nil
+                )
             )
-        )
+        }
+        return .failure("Session file startedAt is malformed: \(reason)")
     }
 
     private static func signalDetail(for session: ParsedSession) -> String? {

@@ -161,6 +161,23 @@ without data loss.
   and fractional values. A malformed value produces a typed non-running /
   degraded row with a probeHealth reason — never a live-looking integer,
   never silently healthy.
+- **Pid range (pinned).** A JSON pid is valid only when it is an integral
+  number in the positive macOS pid_t range (`1...Int32.max`). Zero,
+  negative, and values beyond `Int32.max` are REJECTED before any
+  pid_t/liveness conversion — on macOS pid_t is Int32 and the checked
+  `pid_t(pid)` conversion traps on out-of-range values. The strict
+  `pidValue` helper is the single home for the range guard: every probe
+  converts JSON numbers to pid_t only through it, and the liveness helpers
+  re-check the range as a second line of defense. A rejected pid degrades
+  its entry typed with a probeHealth reason naming the malformed value.
+- **Absent vs invalid process-start timestamps (pinned).** A signal file's
+  process-start record (`startedAt`/`startTime`/`start_time`/`at`) is
+  tri-state: ABSENT (field missing or null) keeps the documented fallback —
+  the pid-reuse guard is skipped and `kill -0` decides; PRESENT-but-invalid
+  (boolean, fractional, non-numeric) is malformed and degrades the entry
+  typed with a probeHealth reason naming the malformed timestamp — it is
+  never silently converted to nil and treated like an absent record (which
+  would skip the identity guard and let a live pid pass liveness).
 
 ---
 
@@ -342,7 +359,10 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
     before `kill -0` (same standard as the claude-code probe). A pid whose
     current process started after the entry's recorded `startTime` is a
     reused pid and is treated as dead; a missing/unqueryable record skips
-    the guard (`kill -0` decides).
+    the guard (`kill -0` decides). A PRESENT-but-invalid `startTime`
+    (boolean, fractional, non-numeric) is malformed: the entry degrades
+    typed with a probeHealth reason naming the malformed timestamp and
+    never reaches liveness — it is never treated like an absent record.
   - **Installed-root evidence:** a present root with no signal files at all
     is `idle` (installed-but-inactive) and carries a `root-presence` signal
     source naming the declared root — every determined (non-unknown) row

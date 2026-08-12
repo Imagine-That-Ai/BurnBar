@@ -34,15 +34,21 @@ public enum BurnBarFleetProbeConstants {
 /// Read-only process liveness checks. The mission never signals, kills, or
 /// renicies processes: probes use `kill -0`-style existence checks only.
 public enum BurnBarFleetProcessLiveness: Sendable {
-    /// `kill -0` existence check.
+    /// `kill -0` existence check. The positive pid_t range guard runs BEFORE
+    /// the `pid_t(pid)` conversion: on macOS pid_t is Int32 and the checked
+    /// conversion traps on out-of-range Int values, so zero, negative, and
+    /// values beyond Int32.max are rejected here as a second line of defense
+    /// behind the probes' strict `pidValue` decoding.
     public static func isAlive(pid: Int) -> Bool {
-        guard pid > 0 else { return false }
+        guard pid > 0, pid <= Int(Int32.max) else { return false }
         return kill(pid_t(pid), 0) == 0
     }
 
     /// Process start time (seconds since 1970) via `proc_pidinfo`, or nil
-    /// when the process is not queryable.
+    /// when the process is not queryable. Same pid_t range guard as
+    /// `isAlive` — an out-of-range pid is never converted.
     public static func processStartTime(pid: Int) -> TimeInterval? {
+        guard pid > 0, pid <= Int(Int32.max) else { return nil }
         var info = proc_bsdinfo()
         let size = MemoryLayout<proc_bsdinfo>.size
         let result = withUnsafeMutablePointer(to: &info) { pointer in
@@ -147,6 +153,84 @@ public enum BurnBarFleetProbeJSON {
         return Date(timeIntervalSince1970: milliseconds / 1000.0)
     }
 
+    /// Tri-state epoch-milliseconds timestamp: `.absent` when the field is
+    /// missing/null, `.invalid(reason)` when it is PRESENT but malformed
+    /// (boolean, fractional, non-numeric), `.valid(Date)` otherwise.
+    ///
+    /// The absent-vs-invalid distinction is a hard probe rule: an ABSENT
+    /// process-start record keeps the documented fallback behavior (the
+    /// pid-reuse guard is skipped and `kill -0` decides), while a
+    /// PRESENT-but-invalid record is malformed and must degrade the entry
+    /// typed — it is never silently converted to nil and treated like an
+    /// absent record (probe-hardening-repair-a follow-up, reviewer issue 1).
+    public static func dateFromEpochMillisecondsTriState(_ value: Any?) -> TimestampOutcome {
+        guard let number = value as? NSNumber else {
+            if value == nil || value is NSNull {
+                return .absent
+            }
+            return .invalid(reason: "startTime is not a number.")
+        }
+        guard !isBoolean(number) else {
+            return .invalid(reason: "startTime is a boolean, not a numeric timestamp.")
+        }
+        let milliseconds = number.doubleValue
+        guard milliseconds.isFinite, milliseconds.rounded() == milliseconds else {
+            return .invalid(
+                reason: "startTime is fractional or non-finite, not an integral epoch-milliseconds timestamp."
+            )
+        }
+        return .valid(Date(timeIntervalSince1970: milliseconds / 1000.0))
+    }
+
+    /// Tri-state process-start timestamp from a signal file's `start_time`
+    /// field, with the same absent-vs-invalid distinction as
+    /// `dateFromEpochMillisecondsTriState`. The documented encoding is
+    /// epoch-seconds (e.g. `1750000000`), but the real hermes `gateway.pid`
+    /// writes epoch-milliseconds (e.g. `178653683051`): values >= 1e11 are
+    /// treated as integral epoch-milliseconds, smaller values as epoch-seconds
+    /// (fractional allowed, matching the real heartbeat's `1786536834.708521`).
+    /// Booleans, non-finite values, and fractional epoch-milliseconds are
+    /// malformed and return `.invalid` — they never become a live-looking
+    /// start time. Records mapping to before 2000 are implausible for any
+    /// current process (the real gateway.pid's ms-in-seconds bug yields
+    /// 1975) and are treated as `.absent` so a corrupt record can neither
+    /// resurrect a dead pid nor falsely kill a live one.
+    public static func dateFromStartTimeTriState(_ value: Any?) -> TimestampOutcome {
+        guard let number = value as? NSNumber else {
+            if value == nil || value is NSNull {
+                return .absent
+            }
+            return .invalid(reason: "start_time is not a number.")
+        }
+        guard !isBoolean(number) else {
+            return .invalid(reason: "start_time is a boolean, not a numeric timestamp.")
+        }
+        let double = number.doubleValue
+        guard double.isFinite else {
+            return .invalid(reason: "start_time is non-finite.")
+        }
+        let date: Date
+        if double >= 100_000_000_000 {
+            guard double.rounded() == double else {
+                return .invalid(reason: "start_time is fractional epoch-milliseconds; integral only.")
+            }
+            date = Date(timeIntervalSince1970: double / 1000.0)
+        } else {
+            date = Date(timeIntervalSince1970: double)
+        }
+        guard date.timeIntervalSince1970 >= 946_684_800 else { return .absent }
+        return .valid(date)
+    }
+
+    /// Tri-state outcome for a signal-file timestamp field: absent (field
+    /// missing/null), invalid (field present but malformed, with a reason
+    /// naming the malformed value), or valid.
+    public enum TimestampOutcome: Equatable, Sendable {
+        case absent
+        case invalid(reason: String)
+        case valid(Date)
+    }
+
     /// Integer value (nil when absent, null, mistyped, boolean, fractional,
     /// or out of Int64 range). Strict by design: a malformed
     /// pid/inflightCount/active_agents must degrade typed — it is never
@@ -162,6 +246,53 @@ public enum BurnBarFleetProbeJSON {
         return Int(number.int64Value)
     }
 
+    /// Strict pid decoding for JSON pid fields: a valid pid is an integral
+    /// number in the positive macOS pid_t range (1...Int32.max). Zero,
+    /// negative, and values beyond Int32.max are REJECTED before any
+    /// pid_t/liveness conversion — on macOS pid_t is Int32 and the checked
+    /// `pid_t(pid)` conversion traps on out-of-range Int values
+    /// (probe-hardening-repair-a follow-up, reviewer issue 2). The strict
+    /// helper is the single home for the range guard: every probe converts
+    /// JSON numbers to pid_t only through this function.
+    public static func pidValue(_ value: Any?) -> Int? {
+        guard let number = value as? NSNumber else { return nil }
+        guard !isBoolean(number) else { return nil }
+        let double = number.doubleValue
+        guard double.isFinite,
+              double.rounded() == double,
+              double >= 1,
+              double <= Double(Int32.max) else { return nil }
+        return Int(number.int64Value)
+    }
+
+    /// Human-readable reason for a rejected pid value, for probeHealth
+    /// reasons that must name the malformed value. Returns nil when the
+    /// value is a valid pid.
+    public static func pidRejectionReason(_ value: Any?) -> String? {
+        if pidValue(value) != nil { return nil }
+        if let number = value as? NSNumber, !isBoolean(number) {
+            let double = number.doubleValue
+            if double.isFinite, double.rounded() == double {
+                if double < 1 {
+                    if double >= Double(Int64.min) {
+                        return "pid \(Int64(double)) is not a positive pid."
+                    }
+                    return "pid is not a positive pid."
+                }
+                if double > Double(Int32.max) {
+                    // Double(Int64.max) rounds to 2^63, which Int64 cannot
+                    // hold — convert only values strictly below it.
+                    if double < Double(Int64.max) {
+                        return "pid \(Int64(double)) exceeds the macOS pid_t range (Int32.max)."
+                    }
+                    return "pid exceeds the macOS pid_t range (Int32.max)."
+                }
+            }
+            return "pid is not an integral number."
+        }
+        return "pid is not a numeric value."
+    }
+
     /// JSON `true`/`false` bridge to `NSNumber`; never a valid integer or
     /// timestamp signal value.
     private static func isBoolean(_ number: NSNumber) -> Bool {
@@ -172,34 +303,6 @@ public enum BurnBarFleetProbeJSON {
     public static func stringValue(_ value: Any?) -> String? {
         guard let string = value as? String else { return nil }
         return string
-    }
-
-    /// Process-start timestamp from a signal file's `start_time` field.
-    /// The documented encoding is epoch-seconds (e.g. `1750000000`), but
-    /// the real hermes `gateway.pid` writes epoch-milliseconds (e.g.
-    /// `178653683051`): values >= 1e11 are treated as integral
-    /// epoch-milliseconds, smaller values as epoch-seconds (fractional
-    /// allowed, matching the real heartbeat's `1786536834.708521`).
-    /// Booleans, non-finite values, and fractional epoch-milliseconds are
-    /// malformed and return nil — they never become a live-looking start
-    /// time. Records mapping to before 2000 are implausible for any current
-    /// process (the real gateway.pid's ms-in-seconds bug yields 1975) and
-    /// are treated as absent so a corrupt record can neither resurrect a
-    /// dead pid nor falsely kill a live one.
-    public static func dateFromStartTime(_ value: Any?) -> Date? {
-        guard let number = value as? NSNumber else { return nil }
-        guard !isBoolean(number) else { return nil }
-        let double = number.doubleValue
-        guard double.isFinite else { return nil }
-        let date: Date
-        if double >= 100_000_000_000 {
-            guard double.rounded() == double else { return nil }
-            date = Date(timeIntervalSince1970: double / 1000.0)
-        } else {
-            date = Date(timeIntervalSince1970: double)
-        }
-        guard date.timeIntervalSince1970 >= 946_684_800 else { return nil }
-        return date
     }
 }
 

@@ -81,19 +81,32 @@ extension BurnBarFleetHermesProbe {
             )
         }
 
-        guard let pid = BurnBarFleetProbeJSON.integerValue(object["pid"]) else {
+        guard let pid = BurnBarFleetProbeJSON.pidValue(object["pid"]) else {
+            let reason = BurnBarFleetProbeJSON.pidRejectionReason(object["pid"])
+                ?? "gateway.pid is missing a numeric pid."
             return GatewayPidSignal(
                 path: path,
                 pid: nil,
                 startTime: nil,
-                malformedReason: "gateway.pid is missing a numeric pid."
+                malformedReason: reason
             )
+        }
+
+        let startTimeOutcome = BurnBarFleetProbeJSON.dateFromStartTimeTriState(object["start_time"])
+        guard case .invalid(let reason) = startTimeOutcome else {
+            let startTime: Date?
+            if case .valid(let date) = startTimeOutcome {
+                startTime = date
+            } else {
+                startTime = nil
+            }
+            return GatewayPidSignal(path: path, pid: pid, startTime: startTime, malformedReason: nil)
         }
         return GatewayPidSignal(
             path: path,
-            pid: pid,
-            startTime: BurnBarFleetProbeJSON.dateFromStartTime(object["start_time"]),
-            malformedReason: nil
+            pid: nil,
+            startTime: nil,
+            malformedReason: "gateway.pid start_time is malformed: \(reason)"
         )
     }
 
@@ -123,13 +136,15 @@ extension BurnBarFleetHermesProbe {
             )
         }
 
-        guard let pid = BurnBarFleetProbeJSON.integerValue(object["pid"]) else {
+        guard let pid = BurnBarFleetProbeJSON.pidValue(object["pid"]) else {
+            let reason = BurnBarFleetProbeJSON.pidRejectionReason(object["pid"])
+                ?? "gateway.heartbeat is missing a numeric pid."
             return HeartbeatSignal(
                 path: path,
                 pid: nil,
                 updatedAt: nil,
                 startTime: nil,
-                malformedReason: "gateway.heartbeat is missing a numeric pid."
+                malformedReason: reason
             )
         }
 
@@ -144,12 +159,28 @@ extension BurnBarFleetHermesProbe {
             )
         }
 
+        let startTimeOutcome = BurnBarFleetProbeJSON.dateFromStartTimeTriState(object["start_time"])
+        guard case .invalid(let reason) = startTimeOutcome else {
+            let startTime: Date?
+            if case .valid(let date) = startTimeOutcome {
+                startTime = date
+            } else {
+                startTime = nil
+            }
+            return HeartbeatSignal(
+                path: path,
+                pid: pid,
+                updatedAt: updatedAt,
+                startTime: startTime,
+                malformedReason: nil
+            )
+        }
         return HeartbeatSignal(
             path: path,
-            pid: pid,
-            updatedAt: updatedAt,
-            startTime: BurnBarFleetProbeJSON.dateFromStartTime(object["start_time"]),
-            malformedReason: nil
+            pid: nil,
+            updatedAt: nil,
+            startTime: nil,
+            malformedReason: "gateway.heartbeat start_time is malformed: \(reason)"
         )
     }
 

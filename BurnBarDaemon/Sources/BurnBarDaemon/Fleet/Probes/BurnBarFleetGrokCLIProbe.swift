@@ -115,10 +115,8 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
         if let live, let pid = live.pid {
             // Malformed sibling entries degrade the health state but never
             // the row's liveness.
-            let malformedCount = entries.filter { $0.malformedReason != nil }.count
-            let healthState: BurnBarFleetProbeHealthState = malformedCount > 0
-                ? .degraded(reason: "\(malformedCount) entry(ies) malformed.")
-                : .ok
+            let healthState: BurnBarFleetProbeHealthState = Self.degradedReason(entries: entries)
+                .map { .degraded(reason: $0) } ?? .ok
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -176,9 +174,8 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
         if let fileMtime, now.timeIntervalSince(fileMtime) <= fileFreshnessSeconds {
             // Pid dead but the file is fresh: confidence ladder step-down to
             // activeSessionFile — never running, never exactProcess.
-            let healthState: BurnBarFleetProbeHealthState = hasMalformed
-                ? .degraded(reason: "\(malformedCount) entry(ies) malformed.")
-                : .ok
+            let healthState: BurnBarFleetProbeHealthState = Self.degradedReason(entries: entries)
+                .map { .degraded(reason: $0) } ?? .ok
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -193,7 +190,7 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
         }
 
         if hasMalformed {
-            let reason = "\(malformedCount) entry(ies) malformed."
+            let reason = Self.degradedReason(entries: entries) ?? "\(malformedCount) entry(ies) malformed."
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -221,6 +218,20 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
 
     // MARK: - Parsing
 
+    /// Builds the degraded-health reason from malformed registry entries.
+    /// The first malformed entry's reason is surfaced verbatim (so the
+    /// offending pid is visible, not hidden behind a count); when several
+    /// entries are malformed the count is appended.
+    private static func degradedReason(entries: [ParsedEntry]) -> String? {
+        let malformed = entries.filter { $0.malformedReason != nil }
+        guard !malformed.isEmpty else { return nil }
+        let firstReason = malformed.first?.malformedReason ?? "malformed"
+        if malformed.count == 1 {
+            return "Entry malformed: \(firstReason)"
+        }
+        return "\(malformed.count) entries malformed; first: \(firstReason)"
+    }
+
     private struct ParsedEntry {
         let filePath: String
         let pid: Int?
@@ -231,13 +242,16 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
 
     private static func parseEntry(_ object: [String: Any], at path: String) -> ParsedEntry {
         // Required keys: pid, session_id, cwd. Missing or mistyped → malformed.
-        guard let pid = BurnBarFleetProbeJSON.integerValue(object["pid"]) else {
+        // The pid must be in the positive macOS pid_t range (strict helper).
+        guard let pid = BurnBarFleetProbeJSON.pidValue(object["pid"]) else {
+            let reason = BurnBarFleetProbeJSON.pidRejectionReason(object["pid"])
+                ?? "Entry is missing a numeric pid."
             return ParsedEntry(
                 filePath: path,
                 pid: nil,
                 cwd: nil,
                 openedAt: nil,
-                malformedReason: "Entry is missing a numeric pid."
+                malformedReason: reason
             )
         }
         guard BurnBarFleetProbeJSON.stringValue(object["session_id"]) != nil else {
