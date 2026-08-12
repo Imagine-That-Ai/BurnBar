@@ -80,14 +80,47 @@ snapshot and the last-good file stays byte-identical (VAL-FLEET-021). It is
 never misreported through per-agent `probeHealth`. A fully successful persist
 clears degradation.
 
+**Payload parity rule (single documented rule).** **The store persists
+exactly the same snapshot payload that RPC and the well-known file serve for
+that generation, including `persistenceHealth`.** The persister writes the
+well-known file first with the final health, then writes the store row with
+that same payload. Consequences, per surface:
+
+- **RPC == file (VAL-API-004):** the served snapshot and `fleet-snapshot.json`
+  are field-for-field identical for every completed generation.
+- **RPC == sqlite:** the latest `fleet_snapshots` row is the exact served
+  payload for its generation — including `persistenceHealth` when a writer
+  failure degrades it. A sqlite consumer never observes a health that
+  contradicts the served generation.
+- **Store-write failure:** no row exists for the failed generation (the
+  latest row remains the previous generation); the failure is surfaced
+  through the served snapshot's `persistenceHealth`, and the file is
+  re-written with the final degraded health so RPC and file stay identical.
+- **Writer failure (VAL-FLEET-021):** the file intentionally lags at the
+  last-good generation (byte-identical) while RPC and the store row agree on
+  the current generation with the degraded health.
+
+**Transition-baseline semantics.** The transition baseline
+(`lastPersistedSnapshot`) advances ONLY after the store write AND the
+transition-event insertion succeed — they run in one transaction (snapshot
+insert, event inserts, retention pruning). A failed persist never advances
+the baseline, so a later running-to-idle transition is never lost across a
+failure: the next successful persist recomputes the transitions against the
+last persisted state. Event pruning runs in the same transaction as the
+insert, so an event whose timestamp is already beyond the retention cutoff
+at insert time is pruned immediately (it never survives even one persist).
+
 **Rebuild semantics (invariant 6).** The live fleet projection always
 rebuilds from probes. Store corruption is detected on open: the store is
 deleted + recreated and the recovery is surfaced through
-`persistenceHealth: degraded(reason: "... rebuilt ...")` until the next
-successful persist. **Store deletion discards daemon-owned orchestration
-history and re-initializes designation to `none`** — this loss is by design
-and disclosed here; the live projection itself is rebuildable without data
-loss.
+`persistenceHealth: degraded(reason: "... rebuilt ...")`. The rebuild window
+spans the FIRST published recovery snapshot: the degraded health is visible
+on that snapshot via RPC, in `fleet-snapshot.json`, and in the
+`fleet_snapshots` row, and clears only on the NEXT successful persist after
+that publication (VAL-HARD-012/013). **Store deletion discards daemon-owned
+orchestration history and re-initializes designation to `none`** — this loss
+is by design and disclosed here; the live projection itself is rebuildable
+without data loss.
 
 ### Snapshot builder behavior (M1 core)
 

@@ -4,6 +4,14 @@ import Foundation
 /// environment seam, the default per-agent probe set (signal probes for all
 /// ten roster agents), and the daemon-owned persistence layer (fleet.sqlite
 /// store + atomic well-known-file writer) rooted in the daemon's support dir.
+///
+/// Open semantics: the factory does NOT open the persister. The store is
+/// opened (created/migrated) by `BurnBarDaemonServer.start()` before the
+/// fleet ticker starts, so a corrupt store is recovered typed (delete +
+/// recreate) with the rebuild window surfaced through `persistenceHealth` on
+/// the first published recovery snapshot. The support dir is created lazily
+/// by the store's open — read-only RPCs (health/catalog/config.get) never
+/// write.
 public enum BurnBarFleetServiceFactory {
     public static func makeDefault(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration()
@@ -23,7 +31,6 @@ public enum BurnBarFleetServiceFactory {
         )
         let fileWriter = BurnBarFleetFileWriter(fileURL: URL(fileURLWithPath: configuration.fleetSnapshotFilePath))
         let persister = BurnBarFleetPersister(store: store, fileWriter: fileWriter)
-        try? persister.open()
 
         return BurnBarFleetService(builder: builder, persister: persister)
     }

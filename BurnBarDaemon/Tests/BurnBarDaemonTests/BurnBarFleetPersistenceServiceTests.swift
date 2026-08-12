@@ -206,15 +206,18 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
         )
 
         // The store still persists the latest snapshot (RPC truth is fresh).
-        // The store row carries the builder's embedded (pre-persist) health —
-        // the served snapshot carries the post-persist degraded health.
+        // Parity rule: the store row carries the SAME payload the RPC/file
+        // serve for this generation — including the degraded
+        // persistenceHealth. RPC, file, and sqlite never contradict each
+        // other for the same generation.
         let storedPayload = try XCTUnwrap(servicePersister.store.latestSnapshotPayload())
         let stored = try JSONDecoder().decode(BurnBarFleetSnapshot.self, from: Data(storedPayload.utf8))
         let degradedWire = try JSONDecoder().decode(
             BurnBarFleetSnapshot.self,
             from: JSONEncoder().encode(degraded)
         )
-        XCTAssertEqual(stored.persistenceHealth, .ok, "store row carries the builder's pre-persist health")
+        XCTAssertEqual(stored.persistenceHealth, degraded.persistenceHealth, "store row carries the served degraded health")
+        XCTAssertEqual(stored, degradedWire, "store row is the exact served payload for this generation")
         XCTAssertEqual(stored.generatedAt, degradedWire.generatedAt)
         XCTAssertEqual(stored.cadenceSeconds, degraded.cadenceSeconds)
         XCTAssertEqual(stored.agents.first { $0.id == .claudeCode }?.status, .running)
@@ -270,6 +273,115 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
         let fileData = try Data(contentsOf: fixtureRoot.appendingPathComponent("fleet-snapshot.json"))
         let fileSnapshot = try JSONDecoder().decode(BurnBarFleetSnapshot.self, from: fileData)
         XCTAssertEqual(fileSnapshot, snapshot)
+    }
+
+    // MARK: - Corruption window observable via RPC (VAL-HARD-012/013)
+
+    func testRPC_corruptionRebuild_degradedOnFirstRecoverySnapshot_clearsOnNextPersist() async throws {
+        let socketPath = "/tmp/burnbar-fleet-persist-rebuild-\(UUID().uuidString).sock"
+        let (probes, _) = makeProbes(claudeStatus: .idle, claudeConfidence: .exactProcess)
+        // A 5s cadence gives a wide, deterministic window between the first
+        // published recovery snapshot and the next tick.
+        let builder = BurnBarFleetSnapshotBuilder(cadenceSeconds: 5, probes: probes)
+
+        // A corrupt store: plant garbage at the store path before the
+        // persister opens it.
+        let storeDir = fixtureRoot.appendingPathComponent("store", isDirectory: true)
+        try FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
+        let storePath = storeDir.appendingPathComponent("fleet.sqlite").path
+        try Data("this is not a sqlite database".utf8).write(to: URL(fileURLWithPath: storePath))
+
+        let store = BurnBarFleetStore(
+            databasePath: storePath,
+            eventRetentionSeconds: 3600,
+            snapshotRetentionCount: 5
+        )
+        let writer = BurnBarFleetFileWriter(
+            fileURL: fixtureRoot.appendingPathComponent("fleet-snapshot.json")
+        )
+        let persister = BurnBarFleetPersister(store: store, fileWriter: writer)
+        let service = BurnBarFleetService(builder: builder, persister: persister)
+
+        // The server opens the persister on start (corruption recovered
+        // typed) and the ticker's first tick publishes the recovery snapshot.
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
+            fleetService: service
+        )
+        try await server.start()
+        defer { Task { await server.stop() } }
+
+        // Poll RPC until the first ready snapshot: it is the FIRST published
+        // snapshot after the delete+recreate and must carry the degraded
+        // rebuild health.
+        let first = try await waitForSnapshot(socketPath: socketPath, timeout: 10)
+        guard case .degraded(let reason) = first.persistenceHealth else {
+            return XCTFail("first recovery snapshot must stay degraded, got \(first.persistenceHealth)")
+        }
+        XCTAssertTrue(reason.contains("rebuilt"), "unexpected reason: \(reason)")
+
+        // The file and the store row carry the same degraded health for this
+        // generation (parity rule).
+        let fileSnapshot = try JSONDecoder().decode(
+            BurnBarFleetSnapshot.self,
+            from: Data(contentsOf: fixtureRoot.appendingPathComponent("fleet-snapshot.json"))
+        )
+        XCTAssertEqual(fileSnapshot.persistenceHealth, first.persistenceHealth, "file carries the degraded health")
+        let stored = try XCTUnwrap(persister.store.latestSnapshot())
+        XCTAssertEqual(stored.persistenceHealth, first.persistenceHealth, "store row carries the degraded health")
+
+        // The next successful persist after that publication clears the
+        // rebuild window: wait for the next tick (generatedAt advances).
+        let second = try await waitForSnapshotAfter(
+            socketPath: socketPath,
+            after: first.generatedAt,
+            timeout: 15
+        )
+        XCTAssertEqual(second.persistenceHealth, .ok, "rebuild degradation clears on the next successful persist")
+    }
+
+    /// Polls `daemon.fleet.snapshot` until a ready snapshot is served.
+    private func waitForSnapshot(socketPath: String, timeout: TimeInterval) async throws -> BurnBarFleetSnapshot {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let snapshot = try? self.snapshotViaRPC(socketPath: socketPath) {
+                return snapshot
+            }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        throw XCTSkip("snapshot never became ready within \(timeout)s")
+    }
+
+    /// Polls `daemon.fleet.snapshot` until a snapshot with a `generatedAt`
+    /// strictly after `after` is served.
+    private func waitForSnapshotAfter(
+        socketPath: String,
+        after: Date,
+        timeout: TimeInterval
+    ) async throws -> BurnBarFleetSnapshot {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let snapshot = try? self.snapshotViaRPC(socketPath: socketPath),
+               snapshot.generatedAt > after {
+                return snapshot
+            }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        throw XCTSkip("snapshot after \(after) never became ready within \(timeout)s")
+    }
+
+    /// One `daemon.fleet.snapshot` RPC round-trip returning the served
+    /// snapshot (nil when the not-ready error is still returned).
+    private func snapshotViaRPC(socketPath: String) throws -> BurnBarFleetSnapshot? {
+        let response: BurnBarRPCResponseEnvelope<BurnBarFleetSnapshotResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "poll",
+                method: .fleetSnapshot,
+                params: BurnBarFleetSnapshotRequest()
+            ),
+            socketPath: socketPath
+        )
+        return response.result?.snapshot
     }
 
     // MARK: - Socket helper (mirrors BurnBarFleetServerRPCTests)

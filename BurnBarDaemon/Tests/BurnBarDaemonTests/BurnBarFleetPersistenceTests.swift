@@ -120,8 +120,12 @@ final class BurnBarFleetPersistenceTests: XCTestCase {
             store: store,
             fileWriter: BurnBarFleetFileWriter(fileURL: snapshotFileURL)
         )
-        let t0 = Date(timeIntervalSince1970: 1_752_000_000)
-        let t1 = t0.addingTimeInterval(15)
+        // Timestamps are relative to real now so the events stay inside the
+        // retention window (pruning runs in the same transaction as the
+        // insert — an event older than the cutoff is pruned immediately).
+        let now = Date()
+        let t0 = now
+        let t1 = now.addingTimeInterval(15)
 
         // First persist: no prior state, no events.
         _ = persister.persist(
@@ -140,7 +144,9 @@ final class BurnBarFleetPersistenceTests: XCTestCase {
         XCTAssertEqual(event.kind, "status_changed")
         XCTAssertEqual(event.fromStatus, "running")
         XCTAssertEqual(event.toStatus, "idle")
-        XCTAssertEqual(event.at, t1)
+        // The event timestamp round-trips through the REAL column; compare
+        // with sub-millisecond tolerance.
+        XCTAssertEqual(event.at.timeIntervalSince1970, t1.timeIntervalSince1970, accuracy: 0.001)
         XCTAssertTrue(event.detail?.contains("status: running -> idle") == true)
     }
 
@@ -150,8 +156,9 @@ final class BurnBarFleetPersistenceTests: XCTestCase {
             store: store,
             fileWriter: BurnBarFleetFileWriter(fileURL: snapshotFileURL)
         )
-        let t0 = Date(timeIntervalSince1970: 1_752_000_000)
-        let t1 = t0.addingTimeInterval(15)
+        let now = Date()
+        let t0 = now
+        let t1 = now.addingTimeInterval(15)
 
         _ = persister.persist(
             snapshot: try makeSnapshot(generatedAt: t0, claudeStatus: .running, claudeConfidence: .exactProcess)
@@ -217,12 +224,12 @@ final class BurnBarFleetPersistenceTests: XCTestCase {
             fileWriter: BurnBarFleetFileWriter(fileURL: snapshotFileURL)
         )
         let now = Date()
-        let t0 = now.addingTimeInterval(-120) // running (older than the window)
-        let t1 = now.addingTimeInterval(-90) // idle (older than the window)
-        let t2 = now.addingTimeInterval(-30) // stale (inside the window)
+        let t0 = now.addingTimeInterval(-120) // running (baseline, no event)
+        let t1 = now.addingTimeInterval(-30) // idle (inside the window)
+        let t2 = now.addingTimeInterval(-5) // stale (inside the window)
 
         // running -> idle at t1: the t0 baseline records nothing; the t1
-        // event is inside the window relative to the t1 persist.
+        // event (30s old) is inside the 60s window and survives.
         _ = persister.persist(
             snapshot: try makeSnapshot(generatedAt: t0, claudeStatus: .running, claudeConfidence: .exactProcess)
         )
@@ -231,12 +238,17 @@ final class BurnBarFleetPersistenceTests: XCTestCase {
         )
         XCTAssertEqual(try store.events(for: .claudeCode).count, 1)
 
-        // idle -> stale at t2 (status-only change): the t1 event (90s old) is
-        // now beyond the 60s window and must be pruned; the t2 event (30s
-        // old) stays.
+        // idle -> stale at t2: both events are inside the window at this
+        // persist (pruning runs in the same transaction as the insert).
         _ = persister.persist(
             snapshot: try makeSnapshot(generatedAt: t2, claudeStatus: .stale, claudeConfidence: .exactProcess)
         )
+        XCTAssertEqual(try store.events(for: .claudeCode).count, 2)
+
+        // Boundary via the retention seam: advance the clock past the t1
+        // event (t1 + 61s > t1 + 60s window) — only the older event is
+        // pruned; the t2 event survives.
+        _ = try store.pruneEvents(olderThan: 60, now: t1.addingTimeInterval(61))
 
         let events = try store.events(for: .claudeCode)
         XCTAssertEqual(events.count, 1, "only the event inside the retention window survives")
@@ -244,6 +256,34 @@ final class BurnBarFleetPersistenceTests: XCTestCase {
         XCTAssertEqual(surviving.kind, "status_changed")
         XCTAssertEqual(surviving.fromStatus, "idle")
         XCTAssertEqual(surviving.toStatus, "stale")
+    }
+
+    func testStore_eventOlderThanCutoffAtInsert_prunedImmediately() async throws {
+        // Atomic insert+prune: an event whose timestamp is already beyond the
+        // wall-clock retention cutoff is pruned in the SAME transaction that
+        // inserts it — it never survives even one persist (the reviewer's
+        // prune-before-insert ordering bug is fixed).
+        let store = try makeStore(eventRetentionSeconds: 60)
+        let persister = BurnBarFleetPersister(
+            store: store,
+            fileWriter: BurnBarFleetFileWriter(fileURL: snapshotFileURL)
+        )
+        let now = Date()
+        let t0 = now.addingTimeInterval(-120) // running (baseline)
+        let t1 = now.addingTimeInterval(-90) // idle (older than the 60s window)
+
+        _ = persister.persist(
+            snapshot: try makeSnapshot(generatedAt: t0, claudeStatus: .running, claudeConfidence: .exactProcess)
+        )
+        _ = persister.persist(
+            snapshot: try makeSnapshot(generatedAt: t1, claudeStatus: .idle, claudeConfidence: .exactProcess)
+        )
+
+        XCTAssertEqual(
+            try store.events(for: .claudeCode).count,
+            0,
+            "an event older than the retention cutoff at insert time is pruned immediately"
+        )
     }
 
     func testStore_retentionOverrideSeamParsesEnvironment() {
@@ -411,7 +451,10 @@ final class BurnBarFleetPersistenceTests: XCTestCase {
         let writer = BurnBarFleetFileWriter(fileURL: snapshotFileURL)
         let persister = BurnBarFleetPersister(store: store, fileWriter: writer)
 
-        let t0 = Date(timeIntervalSince1970: 1_752_000_000)
+        // Timestamps relative to real now so the transition event stays
+        // inside the default 24h retention window.
+        let now = Date()
+        let t0 = now
         _ = persister.persist(snapshot: try makeSnapshot(generatedAt: t0, claudeStatus: .running, claudeConfidence: .exactProcess))
         XCTAssertEqual(try store.events(for: .claudeCode).count, 0)
 

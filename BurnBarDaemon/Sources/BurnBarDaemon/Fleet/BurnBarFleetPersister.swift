@@ -21,10 +21,31 @@ import Foundation
 /// persist, then persisted. The returned snapshot carries the post-persist
 /// health (re-embedded), and the well-known file is written with that same
 /// final payload — so the file and the RPC payload are always field-for-field
-/// identical (VAL-API-004). The `fleet_snapshots` row carries the payload as
-/// written to the store (its health field reflects the store's state at that
-/// moment); the two differ only in the `persistenceHealth` field and only
-/// when health transitions on that tick.
+/// identical (VAL-API-004).
+///
+/// Payload parity rule (single documented rule, pinned in
+/// `docs/fleet/BURNBAR_FLEET_SIGNALS.md`): **the store persists exactly the
+/// same snapshot payload that RPC/file serve for that generation, including
+/// `persistenceHealth`.** The well-known file is written first with the final
+/// health; the store row is then written with that same payload. When the
+/// store write fails, no row exists for that generation (the latest row
+/// remains the previous generation) and the failure is surfaced through the
+/// served snapshot's `persistenceHealth` — RPC and file always agree, and a
+/// sqlite consumer reading the latest row never observes a health that
+/// contradicts the served generation. During a writer failure the file
+/// intentionally lags (last-good generation, byte-identical) per
+/// VAL-FLEET-021 while RPC and the store row agree on the current generation.
+///
+/// Rebuild-window semantics: after a delete+recreate the store reports
+/// `degraded(storeRebuilt)` until the first successful persist publishes the
+/// recovery snapshot (RPC + file + store row all carry the degraded health);
+/// the degradation clears on the NEXT successful persist after that
+/// publication (VAL-HARD-012/013).
+///
+/// Transition-baseline semantics: `lastPersistedSnapshot` advances ONLY after
+/// the store write + event insertion succeed (they run in one transaction).
+/// A failed persist never advances the baseline, so a later running-to-idle
+/// transition is never lost across a failure.
 public final class BurnBarFleetPersister {
     public let store: BurnBarFleetStore
     public let fileWriter: BurnBarFleetFileWriter
@@ -65,38 +86,60 @@ public final class BurnBarFleetPersister {
     /// `persistenceHealth` (typed, non-empty reason) — they never throw into
     /// the ticker and never stop RPC serving. A fully successful persist
     /// clears degradation.
+    ///
+    /// Ordering (parity rule): the well-known file is written FIRST with the
+    /// base health, then the store row is written with that same payload.
+    /// When the store write fails, the file is re-written with the final
+    /// degraded health so RPC and file stay field-for-field identical; the
+    /// store keeps the previous generation as its latest row (a failed
+    /// persist never leaves a row for the failed generation). The transition
+    /// baseline advances only when the store transaction (snapshot + events)
+    /// succeeds.
     @discardableResult
     public func persist(snapshot: BurnBarFleetSnapshot) -> BurnBarFleetSnapshot {
-        var degradedReasons: [String] = []
-
-        do {
-            _ = try store.persistLatestSnapshot(snapshot)
-        } catch {
-            degradedReasons.append(BurnBarFleetPersistenceReason.storeWriteFailed("\(error)"))
-        }
-
         // Transition events: compare against the previous persisted snapshot
         // (fixed-roster model). The first persist records no transitions —
         // there is no prior state to transition from.
-        if let previous = lastPersistedSnapshot {
-            degradedReasons.append(contentsOf: recordTransitions(from: previous, to: snapshot))
-        }
-        lastPersistedSnapshot = snapshot
+        let transitions = lastPersistedSnapshot.map { Self.deriveTransitions(from: $0, to: snapshot) } ?? []
 
-        combinedHealth = degradedReasons.isEmpty
-            ? .ok
-            : .degraded(reason: degradedReasons.joined(separator: "; "))
-
-        var finalSnapshot = snapshot.withPersistenceHealth(combinedHealth)
+        // Base health: the store's current health (includes any pending
+        // rebuild window from a delete+recreate).
+        var healths: [BurnBarFleetPersistenceHealth] = [store.currentHealth()]
+        var finalSnapshot = snapshot.withPersistenceHealth(Self.mergedHealth(healths))
 
         do {
             try fileWriter.write(snapshot: finalSnapshot)
         } catch {
-            degradedReasons.append(BurnBarFleetPersistenceReason.fileWriteFailed("\(error)"))
-            combinedHealth = .degraded(reason: degradedReasons.joined(separator: "; "))
-            finalSnapshot = snapshot.withPersistenceHealth(combinedHealth)
+            healths.append(.degraded(reason: BurnBarFleetPersistenceReason.fileWriteFailed("\(error)")))
+            finalSnapshot = snapshot.withPersistenceHealth(Self.mergedHealth(healths))
         }
 
+        do {
+            _ = try store.persistSnapshotAndTransitions(finalSnapshot, transitions: transitions)
+            // The store write + event insertion succeeded: the baseline
+            // advances to this generation.
+            lastPersistedSnapshot = finalSnapshot
+        } catch {
+            // The store row for this generation does not exist; the latest
+            // row remains the previous generation (documented parity rule).
+            // The baseline does NOT advance, so the next successful persist
+            // recomputes the transitions against the last persisted state.
+            healths.append(.degraded(reason: BurnBarFleetPersistenceReason.storeWriteFailed("\(error)")))
+            finalSnapshot = snapshot.withPersistenceHealth(Self.mergedHealth(healths))
+            // Compensating write: keep the file in parity with the served
+            // snapshot. When the file writer is also down, the file stays at
+            // the last-good generation (byte-identical) and RPC remains the
+            // only current-generation surface (degraded).
+            do {
+                try fileWriter.write(snapshot: finalSnapshot)
+            } catch {
+                // Both writers down: the file stays last-good; the store has
+                // no row for this generation. No surface contradicts the
+                // served snapshot for the same generation.
+            }
+        }
+
+        combinedHealth = finalSnapshot.persistenceHealth
         return finalSnapshot
     }
 
@@ -112,13 +155,19 @@ public final class BurnBarFleetPersister {
         lastPersistedSnapshot = try? store.latestSnapshot()
     }
 
-    private func recordTransitions(from previous: BurnBarFleetSnapshot, to current: BurnBarFleetSnapshot) -> [String] {
+    /// Derives the fixed-roster transitions between two snapshots. The store
+    /// records `status_changed` only when the status differs and
+    /// `confidence_changed` only when the confidence differs.
+    private static func deriveTransitions(
+        from previous: BurnBarFleetSnapshot,
+        to current: BurnBarFleetSnapshot
+    ) -> [BurnBarFleetTransition] {
         let previousByID = Dictionary(uniqueKeysWithValues: previous.agents.map { ($0.id, $0) })
-        var failures: [String] = []
+        var transitions: [BurnBarFleetTransition] = []
         for agent in current.agents {
             guard let prior = previousByID[agent.id] else { continue }
-            do {
-                try store.recordTransition(
+            transitions.append(
+                BurnBarFleetTransition(
                     agentID: agent.id,
                     fromStatus: prior.status,
                     toStatus: agent.status,
@@ -126,15 +175,21 @@ public final class BurnBarFleetPersister {
                     toConfidence: agent.confidence,
                     at: current.generatedAt
                 )
-            } catch {
-                // A transition-record failure degrades the store health; the
-                // snapshot itself still persists.
-                failures.append(
-                    BurnBarFleetPersistenceReason.storeWriteFailed("transition record: \(error)")
-                )
-            }
+            )
         }
-        return failures
+        return transitions
+    }
+
+    /// Merges health states: `.ok` when every input is `.ok`, otherwise
+    /// `degraded` with the non-empty reasons joined by "; ".
+    private static func mergedHealth(_ healths: [BurnBarFleetPersistenceHealth]) -> BurnBarFleetPersistenceHealth {
+        let reasons = healths.compactMap { health -> String? in
+            if case .degraded(let reason) = health {
+                return reason
+            }
+            return nil
+        }
+        return reasons.isEmpty ? .ok : .degraded(reason: reasons.joined(separator: "; "))
     }
 }
 

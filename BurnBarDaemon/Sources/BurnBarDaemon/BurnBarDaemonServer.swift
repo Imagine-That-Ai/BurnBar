@@ -182,9 +182,18 @@ public actor BurnBarDaemonServer {
 
         // Open the fleet persistence layer (fleet.sqlite + well-known file).
         // Corruption is recovered typed (delete + recreate) — the daemon
-        // never crashes over a corrupt fleet store.
+        // never crashes over a corrupt fleet store. A non-corrupt open
+        // failure degrades persistenceHealth (typed storeUnavailable) and is
+        // logged; the daemon keeps serving with the degraded health surface.
         if let persister = await fleetService.persister {
-            try? persister.open()
+            do {
+                try persister.open()
+            } catch {
+                logger.error(
+                    "fleet_persistence_open_failed",
+                    metadata: ["reason": "\(error)"]
+                )
+            }
         }
 
         await fleetService.start()

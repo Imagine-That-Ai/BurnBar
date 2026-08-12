@@ -30,16 +30,17 @@ import GRDB
 /// discards daemon-owned orchestration history and re-initializes designation
 /// to `none` — disclosed in `docs/fleet/BURNBAR_FLEET_SIGNALS.md`.
 public final class BurnBarFleetStore {
-    public struct Health: Equatable, Sendable {
-        public var persistenceHealth: BurnBarFleetPersistenceHealth
-    }
-
     public let databasePath: String
     public let eventRetentionSeconds: TimeInterval
     public let snapshotRetentionCount: Int
 
     private var queue: DatabaseQueue?
     private var health: BurnBarFleetPersistenceHealth = .ok
+    /// Rebuild degradation that must remain visible on the FIRST published
+    /// snapshot after a delete+recreate (served via RPC, written to
+    /// fleet-snapshot.json, persisted to fleet_snapshots) and clear only on
+    /// the NEXT successful persist after that publication (VAL-HARD-012/013).
+    private var pendingRebuildHealth: BurnBarFleetPersistenceHealth?
 
     public init(
         databasePath: String,
@@ -80,7 +81,14 @@ public final class BurnBarFleetStore {
                 health = .degraded(reason: BurnBarFleetPersistenceReason.storeUnavailable("\(error)"))
                 throw error
             }
-            health = .degraded(reason: BurnBarFleetPersistenceReason.storeRebuilt("recreated after corruption"))
+            let rebuildHealth = BurnBarFleetPersistenceHealth.degraded(
+                reason: BurnBarFleetPersistenceReason.storeRebuilt("recreated after corruption")
+            )
+            health = rebuildHealth
+            // The rebuild window spans the first published recovery snapshot:
+            // it must be visible on that snapshot (RPC + file + store row) and
+            // clear only on the next successful persist after publication.
+            pendingRebuildHealth = rebuildHealth
             return health
         }
     }
@@ -93,7 +101,12 @@ public final class BurnBarFleetStore {
     }
 
     public func currentHealth() -> BurnBarFleetPersistenceHealth {
-        health
+        // The pending rebuild window is part of the current health until the
+        // first published recovery snapshot has been persisted.
+        if let pendingRebuildHealth {
+            return pendingRebuildHealth
+        }
+        return health
     }
 
     private static func openQueue(at path: String, migrate: Bool) throws -> DatabaseQueue {
@@ -160,11 +173,16 @@ public final class BurnBarFleetStore {
 
     /// Persists the latest completed snapshot VERBATIM: the payload is the
     /// exact JSON of the served snapshot (its `cadenceSeconds` is already the
-    /// configured cadence — never re-stamped). Older snapshots are pruned to
-    /// `snapshotRetentionCount` and events older than the retention window
+    /// configured cadence — never re-stamped). The snapshot insert and the
+    /// retention pruning run in ONE transaction. Older snapshots are pruned
+    /// to `snapshotRetentionCount` and events older than the retention window
     /// are pruned in the same transaction. Returns the persisted snapshot's
-    /// decoded form (equal to the input) and clears any rebuild degradation
-    /// on success.
+    /// decoded form (equal to the input).
+    ///
+    /// Rebuild-window semantics: the first successful persist after a
+    /// delete+recreate publishes the recovery snapshot (the caller embeds
+    /// the pending rebuild health in it); the rebuild degradation clears on
+    /// the NEXT successful persist after that publication.
     @discardableResult
     public func persistLatestSnapshot(_ snapshot: BurnBarFleetSnapshot) throws -> BurnBarFleetSnapshot {
         guard let queue else { throw BurnBarFleetPersistenceError.storeNotOpen }
@@ -183,6 +201,13 @@ public final class BurnBarFleetStore {
                 sql: "DELETE FROM fleet_events WHERE at < ?",
                 arguments: [Date().addingTimeInterval(-eventRetentionSeconds).timeIntervalSince1970]
             )
+        }
+        if pendingRebuildHealth != nil {
+            // The recovery snapshot has now been published (persisted with
+            // the rebuild health embedded). The window closes after this
+            // persist; the next successful persist reports the store's
+            // normal health.
+            pendingRebuildHealth = nil
         }
         health = .ok
         return snapshot
@@ -211,8 +236,6 @@ public final class BurnBarFleetStore {
         }
     }
 
-    // MARK: - Transition events
-
     /// Records the transition events for one roster row between a previous
     /// snapshot and the current one (fixed-roster model):
     /// - `status_changed` is ALWAYS recorded for a status change, with exact
@@ -221,6 +244,10 @@ public final class BurnBarFleetStore {
     ///   agent/from/to values (detail: "confidence: <from> -> <to>").
     /// A fixed-roster row is never removed, so `appeared`/`disappeared` are
     /// never produced.
+    ///
+    /// The events are inserted in the SAME transaction as the snapshot
+    /// persist (see `persistLatestSnapshot`), so a failed persist never
+    /// advances the transition baseline and never loses a transition.
     public func recordTransition(
         agentID: BurnBarFleetAgentID,
         fromStatus: BurnBarFleetAgentStatus?,
@@ -230,37 +257,104 @@ public final class BurnBarFleetStore {
         at: Date
     ) throws {
         guard let queue else { return }
+        let transition = BurnBarFleetTransition(
+            agentID: agentID,
+            fromStatus: fromStatus,
+            toStatus: toStatus,
+            fromConfidence: fromConfidence,
+            toConfidence: toConfidence,
+            at: at
+        )
         try queue.write { db in
-            if let fromStatus, fromStatus != toStatus {
-                try db.execute(
-                    sql: """
-                        INSERT INTO fleet_events (at, agent, kind, from_status, to_status, detail)
-                        VALUES (?, ?, 'status_changed', ?, ?, ?)
-                        """,
-                    arguments: [
-                        at.timeIntervalSince1970,
-                        agentID.wireValue,
-                        fromStatus.rawValue,
-                        toStatus.rawValue,
-                        "status: \(fromStatus.rawValue) -> \(toStatus.rawValue)"
-                    ]
-                )
+            try Self.insertTransition(transition, into: db)
+        }
+    }
+
+    /// Persists the latest completed snapshot AND its fixed-roster transition
+    /// events in ONE transaction (snapshot insert, event inserts, and
+    /// retention pruning). The persister uses this so the transition
+    /// baseline can advance only when the store write AND the event
+    /// insertion succeed — a failed persist never loses a later transition
+    /// event. Returns the persisted snapshot's decoded form (equal to the
+    /// input).
+    ///
+    /// Rebuild-window semantics: the first successful persist after a
+    /// delete+recreate publishes the recovery snapshot (the caller embeds
+    /// the pending rebuild health in it); the rebuild degradation clears on
+    /// the NEXT successful persist after that publication.
+    @discardableResult
+    public func persistSnapshotAndTransitions(
+        _ snapshot: BurnBarFleetSnapshot,
+        transitions: [BurnBarFleetTransition]
+    ) throws -> BurnBarFleetSnapshot {
+        guard let queue else { throw BurnBarFleetPersistenceError.storeNotOpen }
+
+        let payload = try Self.encodeSnapshot(snapshot)
+        try queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO fleet_snapshots (generated_at, payload) VALUES (?, ?)",
+                arguments: [snapshot.generatedAt.timeIntervalSince1970, payload]
+            )
+            for transition in transitions {
+                try Self.insertTransition(transition, into: db)
             }
-            if let fromConfidence, fromConfidence != toConfidence {
-                try db.execute(
-                    sql: """
-                        INSERT INTO fleet_events (at, agent, kind, from_status, to_status, detail)
-                        VALUES (?, ?, 'confidence_changed', ?, ?, ?)
-                        """,
-                    arguments: [
-                        at.timeIntervalSince1970,
-                        agentID.wireValue,
-                        fromConfidence.rawValue,
-                        toConfidence.rawValue,
-                        "confidence: \(fromConfidence.rawValue) -> \(toConfidence.rawValue)"
-                    ]
-                )
-            }
+            try db.execute(
+                sql: """
+                    DELETE FROM fleet_snapshots WHERE id NOT IN
+                    (SELECT id FROM fleet_snapshots ORDER BY id DESC LIMIT ?)
+                    """,
+                arguments: [snapshotRetentionCount]
+            )
+            try db.execute(
+                sql: "DELETE FROM fleet_events WHERE at < ?",
+                arguments: [Date().addingTimeInterval(-eventRetentionSeconds).timeIntervalSince1970]
+            )
+        }
+        if pendingRebuildHealth != nil {
+            // The recovery snapshot has now been published (persisted with
+            // the rebuild health embedded). The window closes after this
+            // persist; the next successful persist reports the store's
+            // normal health.
+            pendingRebuildHealth = nil
+        }
+        health = .ok
+        return snapshot
+    }
+
+    /// Inserts the `status_changed` (when status differs) and
+    /// `confidence_changed` (when confidence differs) events for one
+    /// transition. Shared by the single-transition and the atomic
+    /// snapshot+transitions paths so both record identical rows.
+    private static func insertTransition(_ transition: BurnBarFleetTransition, into db: Database) throws {
+        if let fromStatus = transition.fromStatus, fromStatus != transition.toStatus {
+            try db.execute(
+                sql: """
+                    INSERT INTO fleet_events (at, agent, kind, from_status, to_status, detail)
+                    VALUES (?, ?, 'status_changed', ?, ?, ?)
+                    """,
+                arguments: [
+                    transition.at.timeIntervalSince1970,
+                    transition.agentID.wireValue,
+                    fromStatus.rawValue,
+                    transition.toStatus.rawValue,
+                    "status: \(fromStatus.rawValue) -> \(transition.toStatus.rawValue)"
+                ]
+            )
+        }
+        if let fromConfidence = transition.fromConfidence, fromConfidence != transition.toConfidence {
+            try db.execute(
+                sql: """
+                    INSERT INTO fleet_events (at, agent, kind, from_status, to_status, detail)
+                    VALUES (?, ?, 'confidence_changed', ?, ?, ?)
+                    """,
+                arguments: [
+                    transition.at.timeIntervalSince1970,
+                    transition.agentID.wireValue,
+                    fromConfidence.rawValue,
+                    transition.toConfidence.rawValue,
+                    "confidence: \(fromConfidence.rawValue) -> \(transition.toConfidence.rawValue)"
+                ]
+            )
         }
     }
 
@@ -344,6 +438,35 @@ public struct StoredFleetEvent: Equatable, Sendable {
     public let fromStatus: String?
     public let toStatus: String?
     public let detail: String?
+}
+
+/// One fixed-roster transition to record atomically with the snapshot
+/// persist (status_changed always; confidence_changed when confidence
+/// changes). The persister derives these from the previous persisted
+/// snapshot and the current one.
+public struct BurnBarFleetTransition: Sendable {
+    public let agentID: BurnBarFleetAgentID
+    public let fromStatus: BurnBarFleetAgentStatus?
+    public let toStatus: BurnBarFleetAgentStatus
+    public let fromConfidence: BurnBarFleetConfidence?
+    public let toConfidence: BurnBarFleetConfidence
+    public let at: Date
+
+    public init(
+        agentID: BurnBarFleetAgentID,
+        fromStatus: BurnBarFleetAgentStatus?,
+        toStatus: BurnBarFleetAgentStatus,
+        fromConfidence: BurnBarFleetConfidence?,
+        toConfidence: BurnBarFleetConfidence,
+        at: Date
+    ) {
+        self.agentID = agentID
+        self.fromStatus = fromStatus
+        self.toStatus = toStatus
+        self.fromConfidence = fromConfidence
+        self.toConfidence = toConfidence
+        self.at = at
+    }
 }
 
 public enum BurnBarFleetPersistenceError: Error, LocalizedError {
