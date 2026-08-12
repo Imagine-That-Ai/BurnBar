@@ -47,8 +47,8 @@ def profile(bundle_id: str, *, get_task_allow: bool | None = None) -> dict:
     entitlements = {
         "com.apple.application-identifier": f"{team_id}.{bundle_id}",
         "com.apple.developer.team-identifier": team_id,
-        "com.apple.security.application-groups": [app_group],
-        "keychain-access-groups": [keychain_group],
+        "com.apple.security.application-groups": [f"{team_id}.*"],
+        "keychain-access-groups": [f"{team_id}.*"],
     }
     if get_task_allow is not None:
         entitlements["com.apple.security.get-task-allow"] = get_task_allow

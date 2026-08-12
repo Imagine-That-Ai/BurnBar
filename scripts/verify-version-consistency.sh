@@ -59,6 +59,8 @@ homebrew_file="$repo_root/homebrew/burnbar.rb"
 homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 homebrew_sha="$(sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 placeholder_sha="0000000000000000000000000000000000000000000000000000000000000000"
+pending_homebrew_version="PENDING_RELEASE_VERSION"
+pending_homebrew_sha="PENDING_RELEASE_SHA256"
 canonical_repository="Imagine-That-Ai/BurnBar"
 canonical_homebrew_url="https://github.com/${canonical_repository}/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"
 canonical_homebrew_homepage="https://github.com/${canonical_repository}"
@@ -75,7 +77,12 @@ fi
 if [[ -n "$tag_name" && "$tag_name" != windows-v* ]]; then
   require_current_homebrew=1
 fi
-if [[ -z "$homebrew_version" ]]; then
+if [[
+  "$homebrew_version" == "$pending_homebrew_version" &&
+    "$homebrew_sha" == "$pending_homebrew_sha"
+]]; then
+  echo "PASS: Homebrew cask publication deferred until the notarized v$expected_version DMG exists"
+elif [[ -z "$homebrew_version" ]]; then
   echo "FAIL: Homebrew cask — version not found in $homebrew_file" >&2
   fail=1
 elif [[ "$homebrew_version" == "$expected_version" && "$homebrew_sha" == "$placeholder_sha" ]]; then

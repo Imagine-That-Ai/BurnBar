@@ -361,12 +361,6 @@ if ! grep -q "${app_profile_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$ap
   printf '%s\n' "$app_profile_keychain_groups" >&2
   exit 1
 fi
-app_profile_app_groups="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" "$app_profile_plist" 2>/dev/null || true)"
-if ! grep -Fq "$expected_app_group" <<<"$app_profile_app_groups"; then
-  echo "ERROR: App profile does not authorize shared Safari App Group $expected_app_group." >&2
-  printf '%s\n' "$app_profile_app_groups" >&2
-  exit 1
-fi
 python3 - "$entitlements" "$app_signing_entitlements" "$app_profile_team_id" "$bundle_id" <<'PY'
 import plistlib
 import sys

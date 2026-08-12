@@ -52,6 +52,11 @@ assert.ok(
   versionConsistency.includes("OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK"),
   "version consistency must expose an explicit Homebrew enforcement mode",
 );
+assert.ok(
+  versionConsistency.includes('pending_homebrew_version="PENDING_RELEASE_VERSION"') &&
+    versionConsistency.includes('pending_homebrew_sha="PENDING_RELEASE_SHA256"'),
+  "version consistency must explicitly recognize the post-DMG Homebrew template",
+);
 assert.match(
   versionConsistency,
   /GITHUB_REF_TYPE:-\}" == "tag"/,
@@ -226,6 +231,16 @@ const nonWindowsTagGate = spawnSync(
       OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "0",
     },
   },
+);
+assert.equal(
+  nonWindowsTagGate.status,
+  0,
+  nonWindowsTagGate.stderr || nonWindowsTagGate.stdout,
+);
+assert.match(
+  nonWindowsTagGate.stdout,
+  /Homebrew cask publication deferred until the notarized/,
+  "ordinary v* tags must permit the checked-in post-DMG Homebrew template",
 );
 assert.match(
   nonWindowsTagGate.stdout,

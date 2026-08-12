@@ -161,7 +161,7 @@ def development_profile(bundle_id: str) -> dict:
             "com.apple.application-identifier": f"{team_id}.{bundle_id}",
             "com.apple.developer.team-identifier": team_id,
             "com.apple.security.get-task-allow": True,
-            "com.apple.security.application-groups": [app_group, f"{team_id}.*"],
+            "com.apple.security.application-groups": [f"{team_id}.*"],
             "keychain-access-groups": [f"{team_id}.*"],
         },
     }
@@ -348,7 +348,6 @@ team_id = sys.argv[2]
 with path.open("rb") as file:
     profile = plistlib.load(file)
 profile["Entitlements"]["com.apple.application-identifier"] = f"{team_id}.*"
-profile["Entitlements"].pop("com.apple.security.application-groups", None)
 with path.open("wb") as file:
     plistlib.dump(profile, file)
 PY
@@ -364,24 +363,6 @@ assert_fails_with \
   bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
   "$app_path" "$team_id"
 unset MOCK_APPEX_FLAGS
-
-python3 - "$app_profile" <<'PY'
-import plistlib
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-with path.open("rb") as file:
-    profile = plistlib.load(file)
-profile["Entitlements"]["com.apple.security.application-groups"] = []
-with path.open("wb") as file:
-    plistlib.dump(profile, file)
-PY
-assert_fails_with \
-  "development app profile App Groups must include 'group.com.openburnbar.app'" \
-  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
-  "$app_path" "$team_id"
-cp "$good_app_profile" "$app_profile"
 
 python3 - "$app_profile" <<'PY'
 import plistlib
@@ -619,4 +600,4 @@ assert_fails_with \
   bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
   "$app_path" "$team_id"
 
-echo "PASS: development signing gate accepts exact macOS/current-device profiles and rejects wildcard profiles, platform/device/debug mismatches, excess signed shared authority, weak flags, wrong entitlements, and wrong identity classes"
+echo "PASS: development signing gate accepts macOS/current-device profiles with wildcard App Group authorization and rejects bundle, platform, device, debug, signed-authority, flag, entitlement, and identity mismatches"

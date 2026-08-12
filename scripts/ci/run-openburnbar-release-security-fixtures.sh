@@ -19,6 +19,7 @@ shell_fixtures=(
   scripts/lib/resolve-repo-path.test.sh
   scripts/materialize-openburnbar-safari-xcode-project.test.sh
   scripts/provision-openburnbar-safari-development.test.sh
+  scripts/update-homebrew.test.sh
 )
 
 python_fixtures=(
@@ -30,6 +31,7 @@ python_fixtures=(
   scripts/ci/verify-openburnbar-mas-app-store-connect.test.py
   scripts/ci/verify-openburnbar-mas-installed-receipt.test.py
   scripts/ci/verify-openburnbar-mas-release-wiring.test.py
+  scripts/ci/verify-openburnbar-r2-publication.test.py
   scripts/ci/verify-openburnbar-safari-xcodegen-transition.test.py
   scripts/lib/exclusive_json.test.py
 )

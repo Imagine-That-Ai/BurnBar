@@ -134,11 +134,8 @@ if profile_entitlements.get("com.apple.application-identifier") != expected_appl
         f"{expected_application_identifier!r}; found "
         f"{profile_entitlements.get('com.apple.application-identifier')!r}."
     )
-require_member(
-    profile_entitlements.get("com.apple.security.application-groups"),
-    app_group,
-    "Safari profile App Groups",
-)
+# macOS App Groups are unrestricted entitlements, so a Developer ID profile
+# may carry a team wildcard. The source and final signed appex remain exact.
 profile_keychain_groups = profile_entitlements.get("keychain-access-groups")
 if not isinstance(profile_keychain_groups, list) or not {
     expected_keychain_group,

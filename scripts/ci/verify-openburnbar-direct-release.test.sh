@@ -44,8 +44,10 @@ def profile(bundle_id: str) -> dict:
         "Entitlements": {
             "com.apple.application-identifier": f"{team_id}.{bundle_id}",
             "com.apple.developer.team-identifier": team_id,
-            "com.apple.security.application-groups": [app_group],
-            "keychain-access-groups": [keychain_group],
+            # Apple may materialize a team wildcard in Developer ID profiles.
+            # Exact App Group scope is enforced on the signed code.
+            "com.apple.security.application-groups": [f"{team_id}.*"],
+            "keychain-access-groups": [f"{team_id}.*"],
         },
         "ExpirationDate": dt.datetime(2099, 8, 12, tzinfo=dt.timezone.utc),
         "Platform": ["OSX"],

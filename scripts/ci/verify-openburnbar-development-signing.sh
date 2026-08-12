@@ -294,11 +294,8 @@ require_equal(
 profile_team = profile_entitlements.get("com.apple.developer.team-identifier")
 if profile_team is not None:
     require_equal(profile_team, team_id, "development app profile team identifier")
-require_member(
-    profile_entitlements.get("com.apple.security.application-groups"),
-    app_group,
-    "development app profile App Groups",
-)
+# macOS App Groups are unrestricted entitlements, so a provisioning profile's
+# value may be a team wildcard. The exact group remains mandatory on signed code.
 profile_keychain_groups = profile_entitlements.get("keychain-access-groups")
 if not isinstance(profile_keychain_groups, list) or not {
     expected_keychain_group,

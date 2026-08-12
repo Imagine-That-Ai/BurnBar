@@ -182,11 +182,9 @@ def validate_profile(profile: dict, bundle_id: str, label: str) -> None:
     profile_team = entitlements.get("com.apple.developer.team-identifier")
     if profile_team is not None:
         require_equal(profile_team, team_id, f"{label} profile team identifier")
-    require_equal(
-        entitlements.get("com.apple.security.application-groups"),
-        [app_group],
-        f"{label} profile App Groups",
-    )
+    # macOS App Groups are unrestricted entitlements, so Developer ID profiles
+    # can carry a team wildcard instead of the concrete shared group. The exact
+    # group is still mandatory on the signed host and Safari extension.
     keychain_groups = entitlements.get("keychain-access-groups")
     expected_keychain = f"{team_id}.{keychain_suffix}"
     if not isinstance(keychain_groups, list) or not {

@@ -36,8 +36,8 @@ def write_profile(
     entitlements: dict[str, object] = {
         "com.apple.application-identifier": f"{TEAM}.{bundle_identifier}",
         "com.apple.developer.team-identifier": TEAM,
-        "com.apple.security.application-groups": ["group.com.openburnbar.app"],
-        "keychain-access-groups": [f"{TEAM}.com.openburnbar.app"],
+        "com.apple.security.application-groups": [f"{TEAM}.*"],
+        "keychain-access-groups": [f"{TEAM}.*"],
     }
     if get_task_allow is not None:
         entitlements["com.apple.security.get-task-allow"] = get_task_allow

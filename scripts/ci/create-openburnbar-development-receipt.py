@@ -182,11 +182,8 @@ def profile_summary(
         != expected_application_identifier
     ):
         fail(f"{label} profile application identifier does not match.")
-    if (
-        entitlements.get("com.apple.security.application-groups")
-        != ["group.com.openburnbar.app"]
-    ):
-        fail(f"{label} profile App Group authority does not match.")
+    # macOS App Groups are unrestricted entitlements. Profiles may carry a
+    # team wildcard; exact App Group scope is verified on the signed bundles.
     expected_keychain_group = f"{team_id}.com.openburnbar.app"
     keychain_groups = entitlements.get("keychain-access-groups")
     if not isinstance(keychain_groups, list) or not {

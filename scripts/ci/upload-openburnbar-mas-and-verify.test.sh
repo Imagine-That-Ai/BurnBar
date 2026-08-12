@@ -66,8 +66,8 @@ def profile(bundle_id: str) -> dict:
         "Entitlements": {
             "com.apple.application-identifier": f"{team_id}.{bundle_id}",
             "com.apple.developer.team-identifier": team_id,
-            "com.apple.security.application-groups": [app_group],
-            "keychain-access-groups": [keychain_group],
+            "com.apple.security.application-groups": [f"{team_id}.*"],
+            "keychain-access-groups": [f"{team_id}.*"],
         },
     }
 
