@@ -1,5 +1,9 @@
 name: Linux PR Gate
 
+# Path-filtered PR gate for Linux-touching changes. Intentionally NOT on
+# merge_group — MQ wall time must not pay for this ~33m parity lane.
+# Broader Linux soak already lives in linux-nightly.yml (cron 17 10 * * *).
+
 on:
   pull_request:
     branches: [main]
@@ -14,9 +18,6 @@ on:
       - "tools/linux-toolchain/**"
       - "OpenBurnBarCore/**"
       - "OpenBurnBarDaemon/**"
-  merge_group:
-    branches: [main]
-    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
