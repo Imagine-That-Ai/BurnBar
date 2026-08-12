@@ -3,6 +3,9 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
+# shellcheck source=scripts/lib/exact-candidate-git.sh
+source scripts/lib/exact-candidate-git.sh
+openburnbar_configure_exact_candidate_git "$repo_root"
 
 version=""
 output=""
@@ -47,23 +50,28 @@ fi
 
 mkdir -p "$(dirname "$output")"
 output="$(cd "$(dirname "$output")" && pwd)/$(basename "$output")"
-commit="$(git rev-parse HEAD)"
+commit="$(openburnbar_candidate_git rev-parse HEAD)"
 tmpdir="$(mktemp -d)"
 worktree="$tmpdir/worktree"
 
 cleanup() {
   if [[ -d "$worktree" ]]; then
-    git worktree remove --force "$worktree" >/dev/null 2>&1 || true
+    openburnbar_candidate_repository_git worktree remove --force "$worktree" >/dev/null 2>&1 || true
   fi
   rm -rf "$tmpdir"
 }
 trap cleanup EXIT
 
-git worktree add --detach "$worktree" "$commit" >/dev/null
+openburnbar_candidate_repository_git worktree add --detach "$worktree" "$commit" >/dev/null
 
 (
   cd "$worktree"
   env \
+    -u GIT_DIR \
+    -u GIT_WORK_TREE \
+    -u GIT_INDEX_FILE \
+    -u OPENBURNBAR_CANDIDATE_GIT_DIR \
+    -u OPENBURNBAR_CANDIDATE_GIT_INDEX_FILE \
     HERMES_AGENT_SRC="${HERMES_AGENT_SRC:-}" \
     OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE="${OPENBURNBAR_REQUIRE_HERMES_AGENT_SOURCE:-0}" \
     scripts/create-corresponding-source.sh --version "$version" --output "$output"

@@ -71,7 +71,10 @@ openburnbar_libsignal_compat_restore_lock() {
     # Preparation writes the complete state file before touching either source
     # file. A process that died earlier therefore leaves a clean submodule and
     # an incomplete lock that is safe to discard.
-    if [[ -z "$(git -C "$libsignal_dir" status --porcelain --untracked-files=no)" ]]; then
+    if [[ -z "$(
+      env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+        git -C "$libsignal_dir" status --porcelain --untracked-files=no
+    )" ]]; then
       rm -rf "$lock_dir"
       return 0
     fi
@@ -122,7 +125,10 @@ openburnbar_libsignal_compat_restore_lock() {
   fi
 
   local dirty
-  dirty="$(git -C "$libsignal_dir" status --porcelain --untracked-files=no)"
+  dirty="$(
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      git -C "$libsignal_dir" status --porcelain --untracked-files=no
+  )"
   if [[ -n "$dirty" ]]; then
     echo "LibSignal submodule is still dirty after compatibility restoration:" >&2
     printf '%s\n' "$dirty" >&2
@@ -185,7 +191,10 @@ openburnbar_prepare_libsignal_swift_compat() {
   local expected_commit
   expected_commit="${OPENBURNBAR_LIBSIGNAL_COMPAT_EXPECTED_COMMIT:-$OPENBURNBAR_LIBSIGNAL_COMPAT_EXPECTED_COMMIT_DEFAULT}"
   local actual_commit
-  actual_commit="$(git -C "$libsignal_dir" rev-parse HEAD)"
+  actual_commit="$(
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      git -C "$libsignal_dir" rev-parse HEAD
+  )"
   if [[ "$expected_commit" != "any" && "$actual_commit" != "$expected_commit" ]]; then
     echo "LibSignal compatibility patch is reviewed for $expected_commit, found $actual_commit." >&2
     return 1
@@ -199,7 +208,10 @@ openburnbar_prepare_libsignal_swift_compat() {
   OPENBURNBAR_LIBSIGNAL_COMPAT_LOCK_DIR="$lock_dir"
 
   local dirty
-  dirty="$(git -C "$libsignal_dir" status --porcelain --untracked-files=no)"
+  dirty="$(
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      git -C "$libsignal_dir" status --porcelain --untracked-files=no
+  )"
   if [[ -n "$dirty" ]]; then
     echo "Refusing to patch a dirty LibSignal submodule:" >&2
     printf '%s\n' "$dirty" >&2

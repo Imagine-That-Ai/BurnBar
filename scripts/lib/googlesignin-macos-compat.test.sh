@@ -73,6 +73,19 @@ export OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_ORIGINAL_SHA256="$original_hash"
 export OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_PATCHED_SHA256="$patched_hash"
 export OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_TMPDIR="$fixture_root/locks"
 
+# A parent release may carry an alternate-index Git authority. Nested package
+# probes must still resolve the GoogleSignIn checkout itself.
+parent_git_dir="$fixture_root/parent.git"
+git clone --bare -q "$checkout_dir" "$parent_git_dir"
+parent_index="$parent_git_dir/candidate-index"
+GIT_DIR="$parent_git_dir" \
+GIT_WORK_TREE="$fixture_root" \
+GIT_INDEX_FILE="$parent_index" \
+  git read-tree HEAD
+export GIT_DIR="$parent_git_dir"
+export GIT_WORK_TREE="$fixture_root"
+export GIT_INDEX_FILE="$parent_index"
+
 # A failed `cd` must not fall through to `pwd -P` and accidentally canonicalize
 # the caller's current directory as the requested cache.
 canonicalization_caller="$fixture_root/canonicalization-caller"
@@ -108,9 +121,13 @@ if ! rg -qU '#import "GIDConfiguration.h"\n#import "GIDSignInButton.h"' "$header
   echo "GIDSignInButton.h was not made an unconditional umbrella import." >&2
   exit 1
 fi
-if [[ "$(git -C "$checkout_dir" status --short --untracked-files=no)" != " M GoogleSignIn/Sources/Public/GoogleSignIn/GoogleSignIn.h" ]]; then
+if [[ "$(
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    git -C "$checkout_dir" status --short --untracked-files=no
+)" != " M GoogleSignIn/Sources/Public/GoogleSignIn/GoogleSignIn.h" ]]; then
   echo "Compatibility preparation changed more than the reviewed umbrella header." >&2
-  git -C "$checkout_dir" status --short --untracked-files=no >&2
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    git -C "$checkout_dir" status --short --untracked-files=no >&2
   exit 1
 fi
 
@@ -120,7 +137,10 @@ if [[ "$(stat -f '%Lp' "$header_path")" != "444" ]]; then
   echo "GoogleSignIn compatibility did not restore the read-only source mode." >&2
   exit 1
 fi
-if [[ -n "$(git -C "$checkout_dir" status --porcelain --untracked-files=no)" ]]; then
+if [[ -n "$(
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    git -C "$checkout_dir" status --porcelain --untracked-files=no
+)" ]]; then
   echo "GoogleSignIn checkout was not restored cleanly." >&2
   exit 1
 fi
@@ -171,4 +191,5 @@ if find "$fixture_root/locks" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; 
   exit 1
 fi
 
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 echo "GoogleSignIn macOS compatibility fixture passed."

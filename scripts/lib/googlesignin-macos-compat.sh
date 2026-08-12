@@ -91,7 +91,10 @@ openburnbar_google_sign_in_compat_restore_lock() {
     # Preparation writes the complete state before touching the checkout. A
     # process that died earlier leaves a clean package and a discardable lock.
     if [[ -d "$checkout_dir" \
-      && -z "$(git -C "$checkout_dir" status --porcelain --untracked-files=no)" ]]
+      && -z "$(
+        env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+          git -C "$checkout_dir" status --porcelain --untracked-files=no
+      )" ]]
     then
       rm -rf "$lock_dir"
       return 0
@@ -140,7 +143,10 @@ openburnbar_google_sign_in_compat_restore_lock() {
   fi
 
   local dirty
-  dirty="$(git -C "$checkout_dir" status --porcelain --untracked-files=no)"
+  dirty="$(
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      git -C "$checkout_dir" status --porcelain --untracked-files=no
+  )"
   if [[ -n "$dirty" ]]; then
     echo "GoogleSignIn checkout is still dirty after compatibility restoration:" >&2
     printf '%s\n' "$dirty" >&2
@@ -213,7 +219,10 @@ openburnbar_prepare_google_sign_in_macos_compat() {
   local expected_commit
   expected_commit="${OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_EXPECTED_COMMIT:-$OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_EXPECTED_COMMIT_DEFAULT}"
   local actual_commit
-  actual_commit="$(git -C "$checkout_dir" rev-parse HEAD)"
+  actual_commit="$(
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      git -C "$checkout_dir" rev-parse HEAD
+  )"
   if [[ "$expected_commit" != "any" && "$actual_commit" != "$expected_commit" ]]; then
     echo "GoogleSignIn compatibility is reviewed for $expected_commit, found $actual_commit." >&2
     return 1
@@ -227,7 +236,10 @@ openburnbar_prepare_google_sign_in_macos_compat() {
   OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_LOCK_DIR="$lock_dir"
 
   local dirty
-  dirty="$(git -C "$checkout_dir" status --porcelain --untracked-files=no)"
+  dirty="$(
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+      git -C "$checkout_dir" status --porcelain --untracked-files=no
+  )"
   if [[ -n "$dirty" ]]; then
     echo "Refusing to patch a dirty GoogleSignIn checkout:" >&2
     printf '%s\n' "$dirty" >&2

@@ -1,23 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 source scripts/lib/resolve-repo-path.sh
+# shellcheck source=scripts/lib/exact-candidate-git.sh
+source scripts/lib/exact-candidate-git.sh
 # shellcheck source=scripts/lib/libsignal-swift-compat.sh
 source scripts/lib/libsignal-swift-compat.sh
+# shellcheck source=scripts/lib/pinned-xcodegen.sh
+source scripts/lib/pinned-xcodegen.sh
 # shellcheck source=scripts/lib/xcode-source-classification.sh
 source scripts/lib/xcode-source-classification.sh
 openburnbar_configure_xcode_process_tmpdir
+openburnbar_configure_exact_candidate_git "$repo_root"
 export FIREBASE_SOURCE_FIRESTORE=1
 
+notary_work_dir=""
+app_notary_artifact_name=""
+app_notary_artifact_sha256=""
+app_notary_artifact_size=""
+dmg_notary_artifact_name=""
+dmg_notary_artifact_sha256=""
+dmg_notary_artifact_size=""
 cleanup() {
   local original_status="${1:-0}"
+  local notary_cleanup_status=0
   local google_restore_status=0
   local libsignal_restore_status=0
+  if [[ -n "$notary_work_dir" ]]; then
+    rm -rf "$notary_work_dir" || notary_cleanup_status=$?
+  fi
   openburnbar_restore_google_sign_in_macos_compat || google_restore_status=$?
   openburnbar_restore_libsignal_swift_compat || libsignal_restore_status=$?
-  local restore_status="$google_restore_status"
+  local restore_status="$notary_cleanup_status"
+  if ((restore_status == 0)); then
+    restore_status="$google_restore_status"
+  fi
   if ((restore_status == 0)); then
     restore_status="$libsignal_restore_status"
   fi
@@ -46,6 +66,7 @@ app_profile="${OPENBURNBAR_APP_PROFILE:-build/app-direct-profile/OpenBurnBar-MAC
 safari_extension_profile="${OPENBURNBAR_SAFARI_EXTENSION_PROFILE:-build/app-direct-profile/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile}"
 privileged_input_entitlements="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
 privileged_input_profile="${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE:-build/hid-managed-profile/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile}"
+expected_host_bundle_id="com.openburnbar.app"
 expected_app_group="group.com.openburnbar.app"
 expected_source_keychain_group='$(AppIdentifierPrefix)com.openburnbar.app'
 
@@ -85,9 +106,10 @@ version_info="$(read_project_version)"
 version="${OPENBURNBAR_MAC_VERSION:-$(printf "%s\n" "$version_info" | sed -n "1p")}"
 build="${OPENBURNBAR_MAC_BUILD:-$(printf "%s\n" "$version_info" | sed -n "2p")}"
 release_dir="$(
-  resolve_repo_path \
+  resolve_fresh_release_output_dir \
     "$repo_root" \
-    "${OPENBURNBAR_WEBSITE_RELEASE_DIR:-build/macos-website-${version}-${build}}"
+    "${OPENBURNBAR_WEBSITE_RELEASE_DIR:-build/macos-website-${version}-${build}}" \
+    "Developer ID release directory"
 )"
 derived_data="$release_dir/DerivedData"
 package_cache="${OPENBURNBAR_WEBSITE_PACKAGE_CACHE:-$repo_root/.spm-cache}"
@@ -99,6 +121,10 @@ zip_path="$release_dir/$zip_name"
 checksums_path="$release_dir/checksums-v${version}.txt"
 metadata_path="$release_dir/release-metadata.json"
 sbom_path="$release_dir/sbom-v${version}.spdx.json"
+signing_receipt_path="$release_dir/developer-id-signing-receipt.json"
+release_receipt_path="$release_dir/developer-id-release-receipt.json"
+app_notary_result_path="$release_dir/app-notarization-result.json"
+dmg_notary_result_path="$release_dir/dmg-notarization-result.json"
 default_update_base_url="$(
   # Do not derive release-feed payload URLs from SITE.macDownloadBaseUrl: the website
   # can temporarily fall back to an older public asset while new artifacts are rebuilt.
@@ -111,6 +137,26 @@ latest_name="latest-macos.json"
 latest_path="$release_dir/$latest_name"
 source_archive_name="OpenBurnBar-${version}-corresponding-source.tar.gz"
 source_archive_path="$release_dir/$source_archive_name"
+candidate_commit="${OPENBURNBAR_CANDIDATE_COMMIT:-$(openburnbar_candidate_git rev-parse HEAD)}"
+candidate_tree="${OPENBURNBAR_CANDIDATE_TREE:-$(openburnbar_candidate_git rev-parse 'HEAD^{tree}')}"
+
+if [[ ! "$candidate_commit" =~ ^[0-9a-f]{40}$ || ! "$candidate_tree" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ERROR: Direct-release candidate commit and tree must be full lowercase Git SHAs." >&2
+  exit 1
+fi
+actual_candidate_commit="$(openburnbar_candidate_git rev-parse HEAD)"
+if [[ "$actual_candidate_commit" != "$candidate_commit" ]]; then
+  echo "ERROR: Direct-release candidate commit $candidate_commit does not match checked-out HEAD $actual_candidate_commit." >&2
+  exit 1
+fi
+if [[ "$(openburnbar_candidate_git rev-parse "$candidate_commit^{tree}")" != "$candidate_tree" ]]; then
+  echo "ERROR: Direct-release candidate tree $candidate_tree does not belong to commit $candidate_commit." >&2
+  exit 1
+fi
+if [[ -n "$(openburnbar_candidate_git status --porcelain=v1 --untracked-files=all)" ]]; then
+  echo "ERROR: Direct-release builds require a clean exact-candidate checkout; commit or remove candidate drift before signing." >&2
+  exit 1
+fi
 
 if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing release entitlements at $entitlements" >&2
@@ -142,25 +188,14 @@ if [[ ! -f "$privileged_input_profile" ]]; then
 fi
 
 identity="${OPENBURNBAR_SIGNING_IDENTITY:-}"
-if [[ -z "$identity" ]]; then
-  identity="$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -n 1)"
-fi
-if [[ -z "$identity" ]]; then
-  echo "ERROR: No Developer ID Application signing identity found. Set OPENBURNBAR_SIGNING_IDENTITY." >&2
-  exit 1
-fi
-
 bash scripts/test-openburnbar-safari-extension.sh
 openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
-if command -v xcodegen >/dev/null 2>&1; then
-  xcodegen generate --spec project.yml
-fi
+openburnbar_verify_xcode_project_sync "$repo_root"
 
-if [[ "${OPENBURNBAR_SKIP_XCODE_BUILD:-0}" != "1" ]]; then
-  rm -rf "$release_dir"
-fi
-mkdir -p "$release_dir" "$package_cache"
+mkdir -p "$release_dir"
+chmod 700 "$release_dir"
+mkdir -p "$package_cache"
 
 bash scripts/prepare-openburnbar-app-swiftpm.sh \
   --project "$project" \
@@ -178,6 +213,31 @@ if [[ "$(/usr/libexec/PlistBuddy -c "Print :ProvisionsAllDevices" "$app_profile_
   echo "ERROR: App profile must be a Developer ID / MAC_APP_DIRECT all-devices profile." >&2
   exit 1
 fi
+app_profile_team_id="$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$app_profile_plist" 2>/dev/null || true)"
+app_profile_identifier="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$app_profile_plist" 2>/dev/null || true)"
+expected_app_identifier="${app_profile_team_id}.${expected_host_bundle_id}"
+if [[ ! "$app_profile_team_id" =~ ^[A-Z0-9]{10}$ || "$app_profile_identifier" != "$expected_app_identifier" ]]; then
+  echo "ERROR: App profile must authorize $expected_host_bundle_id for team ${app_profile_team_id:-<missing>}; found application identifier '${app_profile_identifier:-missing}'." >&2
+  exit 1
+fi
+if [[ -z "$identity" ]]; then
+  echo "ERROR: OPENBURNBAR_SIGNING_IDENTITY must name the exact Developer ID Application identity for team $app_profile_team_id; first-identity fallback is forbidden." >&2
+  exit 1
+fi
+if [[ "$identity" != "Developer ID Application:"* || "$identity" != *"($app_profile_team_id)" ]]; then
+  echo "ERROR: OPENBURNBAR_SIGNING_IDENTITY must be a Developer ID Application identity for exact team $app_profile_team_id; found '$identity'." >&2
+  exit 1
+fi
+identity_matches=0
+while IFS= read -r available_identity; do
+  if [[ "$available_identity" == "$identity" ]]; then
+    identity_matches=$((identity_matches + 1))
+  fi
+done < <(security find-identity -v -p codesigning | sed -n 's/.*"\([^"]*\)".*/\1/p')
+if [[ "$identity_matches" -ne 1 ]]; then
+  echo "ERROR: Expected exactly one installed codesigning identity named '$identity'; found $identity_matches." >&2
+  exit 1
+fi
 security cms -D -i "$privileged_input_profile" > "$privileged_input_profile_plist"
 /usr/libexec/PlistBuddy -x -c "Print :Entitlements" \
   "$privileged_input_profile_plist" > "$privileged_input_signing_entitlements"
@@ -191,26 +251,22 @@ swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarDae
 swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI
 
 set -o pipefail
-if [[ "${OPENBURNBAR_SKIP_XCODE_BUILD:-0}" != "1" ]]; then
-  xcodebuild build \
-    -project "$project" \
-    -scheme "$scheme" \
-    -configuration "$configuration" \
-    -destination "$destination" \
-    -clonedSourcePackagesDirPath "$package_cache" \
-    -derivedDataPath "$derived_data" \
-    -disableAutomaticPackageResolution \
-    -onlyUsePackageVersionsFromResolvedFile \
-    ARCHS=arm64 \
-    ONLY_ACTIVE_ARCH=YES \
-    CODE_SIGN_IDENTITY="-" \
-    CODE_SIGNING_REQUIRED=NO \
-    CODE_SIGNING_ALLOWED=NO \
-    "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
-    2>&1 | tee "$release_dir/build.log" | tail -120
-else
-  echo "WARNING: OPENBURNBAR_SKIP_XCODE_BUILD=1; reusing existing app at $app_path." >&2
-fi
+xcodebuild build \
+  -project "$project" \
+  -scheme "$scheme" \
+  -configuration "$configuration" \
+  -destination "$destination" \
+  -clonedSourcePackagesDirPath "$package_cache" \
+  -derivedDataPath "$derived_data" \
+  -disableAutomaticPackageResolution \
+  -onlyUsePackageVersionsFromResolvedFile \
+  ARCHS=arm64 \
+  ONLY_ACTIVE_ARCH=YES \
+  CODE_SIGN_IDENTITY="-" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  "${OPENBURNBAR_XCODE_SOURCE_CLASSIFICATION_ARGS[@]}" \
+  2>&1 | tee "$release_dir/build.log" | tail -120
 
 if [[ ! -d "$app_path" ]]; then
   echo "ERROR: App build missing at $app_path" >&2
@@ -288,15 +344,8 @@ fi
 bundle_id="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app_path/Contents/Info.plist")"
 app_version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app_path/Contents/Info.plist")"
 app_build="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app_path/Contents/Info.plist")"
-if [[ "$bundle_id" != "com.openburnbar.app" || "$app_version" != "$version" || "$app_build" != "$build" ]]; then
-  echo "ERROR: App metadata mismatch: bundle=$bundle_id version=$app_version build=$app_build expected com.openburnbar.app $version $build" >&2
-  exit 1
-fi
-app_profile_team_id="$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$app_profile_plist" 2>/dev/null || true)"
-app_profile_identifier="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$app_profile_plist" 2>/dev/null || true)"
-expected_app_identifier="${app_profile_team_id}.${bundle_id}"
-if [[ ! "$app_profile_team_id" =~ ^[A-Z0-9]{10}$ || "$app_profile_identifier" != "$expected_app_identifier" ]]; then
-  echo "ERROR: App profile must authorize $bundle_id for team ${app_profile_team_id:-<missing>}; found application identifier '${app_profile_identifier:-missing}'." >&2
+if [[ "$bundle_id" != "$expected_host_bundle_id" || "$app_version" != "$version" || "$app_build" != "$build" ]]; then
+  echo "ERROR: App metadata mismatch: bundle=$bundle_id version=$app_version build=$app_build expected $expected_host_bundle_id $version $build" >&2
   exit 1
 fi
 app_profile_keychain_groups="$(/usr/libexec/PlistBuddy -c "Print :Entitlements:keychain-access-groups" "$app_profile_plist" 2>/dev/null || true)"
@@ -479,8 +528,6 @@ codesign --force --timestamp --options runtime,library \
   --entitlements "$app_signing_entitlements" \
   --sign "$identity" \
   "$app_path"
-bash scripts/ci/verify-signing-profile-certificate.sh "$app_path" "$app_profile"
-codesign --verify --deep --strict --verbose=2 "$app_path"
 assert_peer_signature "$app_path" "com.openburnbar.app"
 assert_peer_signature "$helpers_dir/OpenBurnBarDaemon" "com.openburnbar.app"
 assert_peer_signature "$helpers_dir/OpenBurnBarCLI" "com.openburnbar.cli"
@@ -489,39 +536,14 @@ assert_peer_signature "$helpers_dir/OpenBurnBarPrivilegedInputExecution" "com.op
 assert_peer_signature \
   "$helpers_dir/OpenBurnBarPrivilegedInputKillSwitchWatchdog" \
   "com.openburnbar.privileged-input-killswitch-watchdog"
-bash scripts/ci/verify-openburnbar-safari-extension.sh \
+bash scripts/ci/verify-openburnbar-direct-release.sh \
   "$app_path" \
-  direct \
   "$app_profile_team_id" \
-  "$safari_extension_profile"
+  "$app_profile" \
+  "$safari_extension_profile" \
+  "$signing_receipt_path"
 
 bash scripts/ci/verify-daemon-release-signing.sh "$app_path" "$app_profile_team_id"
-
-actual_entitlements="$release_dir/direct-entitlements.plist"
-codesign -d --entitlements :- "$app_path" > "$actual_entitlements" 2>/dev/null
-app_sandbox="$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.app-sandbox" "$actual_entitlements" 2>/dev/null || true)"
-if [[ "$app_sandbox" != "false" ]]; then
-  echo "ERROR: Direct-download app must not be sandboxed; found '${app_sandbox:-missing}'." >&2
-  exit 1
-fi
-actual_app_identifier="$(/usr/libexec/PlistBuddy -c "Print :com.apple.application-identifier" "$actual_entitlements" 2>/dev/null || true)"
-actual_team_identifier="$(/usr/libexec/PlistBuddy -c "Print :com.apple.developer.team-identifier" "$actual_entitlements" 2>/dev/null || true)"
-actual_keychain_groups="$(/usr/libexec/PlistBuddy -c "Print :keychain-access-groups" "$actual_entitlements" 2>/dev/null || true)"
-actual_app_groups="$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.application-groups" "$actual_entitlements" 2>/dev/null || true)"
-if [[ "$actual_app_identifier" != "$expected_app_identifier" || "$actual_team_identifier" != "$app_profile_team_id" ]]; then
-  echo "ERROR: Direct-download app identity entitlements are wrong: app='${actual_app_identifier:-missing}' team='${actual_team_identifier:-missing}' expected app='$expected_app_identifier' team='$app_profile_team_id'." >&2
-  exit 1
-fi
-if ! grep -q "$expected_app_identifier" <<<"$actual_keychain_groups"; then
-  echo "ERROR: Direct-download app is missing Firebase Auth Keychain group $expected_app_identifier." >&2
-  printf '%s\n' "$actual_keychain_groups" >&2
-  exit 1
-fi
-if ! grep -Fq "$expected_app_group" <<<"$actual_app_groups"; then
-  echo "ERROR: Direct-download app is missing shared Safari App Group $expected_app_group." >&2
-  printf '%s\n' "$actual_app_groups" >&2
-  exit 1
-fi
 
 write_notary_key() {
   local destination="$1"
@@ -535,9 +557,14 @@ write_notary_key() {
   fi
 
   if grep -q "BEGIN PRIVATE KEY" <<<"$payload"; then
-    printf "%s\n" "$payload" > "$destination"
+    (umask 077 && printf "%s\n" "$payload" > "$destination")
   else
-    printf "%s" "$payload" | base64 --decode > "$destination"
+    (
+      umask 077
+      printf "%s" "$payload" \
+        | python3 -c 'import base64, sys; sys.stdout.buffer.write(base64.b64decode(sys.stdin.buffer.read(), validate=True))' \
+        > "$destination"
+    )
   fi
 }
 
@@ -560,12 +587,71 @@ prepare_notary_credentials() {
   printf "%s\n%s\n" "$key_id" "$issuer_id"
 }
 
-reset_notary_cache() {
-  rm -f "$HOME/Library/Caches/com.apple.gke.notary.tool/Cache.db"*
+write_notary_receipt() {
+  local raw_result_path="$1"
+  local receipt_path="$2"
+  local label="$3"
+  local artifact_name="$4"
+  local artifact_sha256="$5"
+  local artifact_size="$6"
+  python3 - \
+    "$raw_result_path" \
+    "$receipt_path" \
+    "$repo_root/scripts/lib" \
+    "$label" \
+    "$artifact_name" \
+    "$artifact_sha256" \
+    "$artifact_size" <<'PY'
+import json
+import re
+import sys
+from pathlib import Path
+
+raw_path = Path(sys.argv[1])
+receipt_path = Path(sys.argv[2])
+sys.path.insert(0, sys.argv[3])
+from exclusive_json import write_exclusive_json
+
+label = sys.argv[4]
+artifact_name = sys.argv[5]
+artifact_sha256 = sys.argv[6]
+artifact_size = sys.argv[7]
+try:
+    result = json.loads(raw_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f"ERROR: {label} notarization result is unreadable or invalid JSON: {error}")
+if result.get("status") != "Accepted":
+    raise SystemExit(
+        f"ERROR: {label} notarization status must be 'Accepted'; found {result.get('status')!r}."
+    )
+submission_id = result.get("id")
+if not isinstance(submission_id, str) or not re.fullmatch(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+    submission_id,
+):
+    raise SystemExit(f"ERROR: {label} notarization result is missing a valid submission id.")
+if not re.fullmatch(r"[0-9a-f]{64}", artifact_sha256):
+    raise SystemExit(f"ERROR: {label} notarization artifact SHA-256 is invalid.")
+if not artifact_size.isdigit() or int(artifact_size) <= 0:
+    raise SystemExit(f"ERROR: {label} notarization artifact size must be positive.")
+receipt = {
+    "schemaVersion": 1,
+    "artifact": {
+        "fileName": artifact_name,
+        "sha256": artifact_sha256,
+        "sizeBytes": int(artifact_size),
+    },
+    "submission": {
+        "id": submission_id.lower(),
+        "status": "Accepted",
+    },
+}
+write_exclusive_json(receipt_path, receipt)
+PY
 }
 
 notarize_zip_and_staple_app() {
-  local key_file="$release_dir/AuthKey.p8"
+  local key_file="$notary_work_dir/AuthKey.p8"
   local notary_zip="$release_dir/OpenBurnBar-${version}-app-notary.zip"
   local credentials key_id issuer_id
 
@@ -574,21 +660,48 @@ notarize_zip_and_staple_app() {
   issuer_id="$(printf "%s\n" "$credentials" | sed -n "2p")"
 
   ditto -c -k --keepParent "$app_path" "$notary_zip"
-  reset_notary_cache
+  app_notary_artifact_name="$(basename "$notary_zip")"
+  app_notary_artifact_sha256="$(shasum -a 256 "$notary_zip" | awk '{print $1}')"
+  app_notary_artifact_size="$(stat -f %z "$notary_zip")"
   xcrun notarytool submit "$notary_zip" \
     --key "$key_file" \
     --key-id "$key_id" \
     --issuer "$issuer_id" \
     --wait \
-    --timeout 30m
+    --timeout 30m \
+    --output-format json > "$notary_work_dir/app-notarytool-result.json"
+  write_notary_receipt \
+    "$notary_work_dir/app-notarytool-result.json" \
+    "$app_notary_result_path" \
+    "app" \
+    "$app_notary_artifact_name" \
+    "$app_notary_artifact_sha256" \
+    "$app_notary_artifact_size"
+  rm -f "$notary_zip"
   xcrun stapler staple "$app_path"
   xcrun stapler validate "$app_path"
 }
 
 if [[ "${OPENBURNBAR_SKIP_NOTARY:-0}" != "1" ]]; then
+  notary_tmp_root="${OPENBURNBAR_NOTARY_TMPDIR:-${TMPDIR:-/tmp}}"
+  notary_work_dir="$(mktemp -d "$notary_tmp_root/openburnbar-notary.XXXXXX")"
+  chmod 700 "$notary_work_dir"
+  python3 - "$notary_work_dir" "$release_dir" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+notary_work_dir = Path(sys.argv[1]).resolve()
+release_dir = Path(sys.argv[2]).resolve()
+if os.path.commonpath((notary_work_dir, release_dir)) == str(release_dir):
+    raise SystemExit(
+        "ERROR: Ephemeral notarization credentials must be stored outside "
+        "the release output directory."
+    )
+PY
   notarize_zip_and_staple_app
 else
-  echo "WARNING: OPENBURNBAR_SKIP_NOTARY=1; direct-download artifact will not be release-ready." >&2
+  echo "WARNING: OPENBURNBAR_SKIP_NOTARY=1; this invocation is an uncertified dry-run and cannot emit a release receipt." >&2
 fi
 
 staging="$release_dir/dmg-staging"
@@ -605,17 +718,27 @@ codesign --force --timestamp --sign "$identity" "$dmg_path"
 codesign --verify --verbose=2 "$dmg_path"
 
 if [[ "${OPENBURNBAR_SKIP_NOTARY:-0}" != "1" ]]; then
-  key_file="$release_dir/AuthKey.p8"
+  key_file="$notary_work_dir/AuthKey.p8"
   credentials="$(prepare_notary_credentials "$key_file")"
   key_id="$(printf "%s\n" "$credentials" | sed -n "1p")"
   issuer_id="$(printf "%s\n" "$credentials" | sed -n "2p")"
-  reset_notary_cache
+  dmg_notary_artifact_name="$(basename "$dmg_path")"
+  dmg_notary_artifact_sha256="$(shasum -a 256 "$dmg_path" | awk '{print $1}')"
+  dmg_notary_artifact_size="$(stat -f %z "$dmg_path")"
   xcrun notarytool submit "$dmg_path" \
     --key "$key_file" \
     --key-id "$key_id" \
     --issuer "$issuer_id" \
     --wait \
-    --timeout 30m
+    --timeout 30m \
+    --output-format json > "$notary_work_dir/dmg-notarytool-result.json"
+  write_notary_receipt \
+    "$notary_work_dir/dmg-notarytool-result.json" \
+    "$dmg_notary_result_path" \
+    "DMG" \
+    "$dmg_notary_artifact_name" \
+    "$dmg_notary_artifact_sha256" \
+    "$dmg_notary_artifact_size"
   xcrun stapler staple "$dmg_path"
   xcrun stapler validate "$dmg_path"
 fi
@@ -623,6 +746,26 @@ fi
 cd "$(dirname "$app_path")"
 ditto -c -k --keepParent "$(basename "$app_path")" "$zip_path"
 cd "$repo_root"
+
+require_unique_release_artifact() {
+  local expected_path="$1"
+  local pattern="$2"
+  local label="$3"
+  local matches=()
+  local match
+
+  while IFS= read -r -d '' match; do
+    matches+=("$match")
+  done < <(compgen -G "$pattern" | while IFS= read -r match; do printf '%s\0' "$match"; done)
+  if [[ "${#matches[@]}" -ne 1 || "${matches[0]}" != "$expected_path" ]]; then
+    echo "ERROR: Expected exactly one $label artifact at $expected_path; found ${#matches[@]} matching artifacts." >&2
+    printf '  %s\n' "${matches[@]}" >&2
+    exit 1
+  fi
+}
+
+require_unique_release_artifact "$dmg_path" "$release_dir/OpenBurnBar-*-macOS.dmg" "DMG"
+require_unique_release_artifact "$zip_path" "$release_dir/OpenBurnBar-*-macOS.zip" "ZIP"
 
 bash scripts/ci/verify-apple-appcheck-release-artifact.sh "$dmg_path" "$zip_path"
 
@@ -671,7 +814,7 @@ appcast_args=(
   --zip-name "$zip_name"
   --source-archive-name "$source_archive_name"
   --base-url "$update_base_url"
-  --commit "$(git rev-parse HEAD)"
+  --commit "$candidate_commit"
   --minimum-system-version "14.0"
   --appcast-name "$appcast_name"
   --latest-name "$latest_name"
@@ -681,10 +824,12 @@ if [[ -n "$sparkle_ed_signature" ]]; then
 fi
 node scripts/generate-macos-appcast.mjs "${appcast_args[@]}"
 
+python3 scripts/generate-sbom.py --version "$version" --repo-root "$repo_root" --output "$sbom_path"
+
 {
   echo "# OpenBurnBar v${version} macOS release checksums"
   echo "# Generated at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "# Commit: $(git rev-parse HEAD)"
+  echo "# Commit: $candidate_commit"
   echo ""
   shasum -a 256 "$dmg_path"
   shasum -a 512 "$dmg_path"
@@ -696,14 +841,13 @@ node scripts/generate-macos-appcast.mjs "${appcast_args[@]}"
   shasum -a 512 "$appcast_path"
   shasum -a 256 "$latest_path"
   shasum -a 512 "$latest_path"
+  shasum -a 256 "$sbom_path"
+  shasum -a 512 "$sbom_path"
 } > "$checksums_path"
-
-python3 scripts/generate-sbom.py --version "$version" --repo-root "$repo_root" --output "$sbom_path" || true
 
 python3 - <<PY > "$metadata_path"
 import datetime
 import json
-import subprocess
 
 metadata = {
     "version": "$version",
@@ -714,10 +858,12 @@ metadata = {
     "zip": "$zip_name",
     "appcast": "$appcast_name",
     "latestMetadata": "$latest_name",
+    "developerIdReceipt": "$(basename "$release_receipt_path")",
     "updateBaseUrl": "$update_base_url",
     "correspondingSource": "$source_archive_name",
     "sparkleEdSignaturePresent": bool("$sparkle_ed_signature"),
-    "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+    "commit": "$candidate_commit",
+    "tree": "$candidate_tree",
     "createdAt": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
 }
 print(json.dumps(metadata, indent=2, sort_keys=True))
@@ -726,7 +872,38 @@ PY
 if [[ "${OPENBURNBAR_SKIP_NOTARY:-0}" != "1" ]]; then
   spctl --assess --type execute --verbose=2 "$app_path"
   spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg_path"
+else
+  echo "ERROR: OPENBURNBAR_SKIP_NOTARY=1 produced dry-run artifacts only; release certification fails closed." >&2
+  exit 1
 fi
+
+bash scripts/ci/smoke-openburnbar-release-dmg.sh "$dmg_path"
+
+python3 scripts/ci/create-openburnbar-direct-release-receipt.py \
+  --output "$release_receipt_path" \
+  --candidate-commit "$candidate_commit" \
+  --candidate-tree "$candidate_tree" \
+  --version "$version" \
+  --build "$build" \
+  --team-id "$app_profile_team_id" \
+  --signing-receipt "$signing_receipt_path" \
+  --app-notary-result "$app_notary_result_path" \
+  --app-notary-artifact-name "$app_notary_artifact_name" \
+  --app-notary-artifact-sha256 "$app_notary_artifact_sha256" \
+  --app-notary-artifact-size "$app_notary_artifact_size" \
+  --dmg-notary-result "$dmg_notary_result_path" \
+  --dmg-notary-artifact-name "$dmg_notary_artifact_name" \
+  --dmg-notary-artifact-sha256 "$dmg_notary_artifact_sha256" \
+  --dmg-notary-artifact-size "$dmg_notary_artifact_size" \
+  --artifact dmg "$dmg_path" \
+  --artifact zip "$zip_path" \
+  --artifact sbom "$sbom_path" \
+  --artifact correspondingSource "$source_archive_path" \
+  --artifact appcast "$appcast_path" \
+  --artifact latestMetadata "$latest_path" \
+  --artifact checksums "$checksums_path" \
+  --artifact releaseMetadata "$metadata_path" \
+  --smoke-script "scripts/ci/smoke-openburnbar-release-dmg.sh"
 
 echo "Website/direct-download release ready:"
 echo "  Version: $version ($build)"
@@ -738,3 +915,4 @@ echo "  Latest metadata: $latest_path"
 echo "  Checksums: $checksums_path"
 echo "  SBOM: $sbom_path"
 echo "  Corresponding source: $source_archive_path"
+echo "  Developer ID receipt: $release_receipt_path"
