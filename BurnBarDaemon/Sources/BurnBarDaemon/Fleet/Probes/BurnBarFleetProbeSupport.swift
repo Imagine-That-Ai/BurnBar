@@ -173,6 +173,34 @@ public enum BurnBarFleetProbeJSON {
         guard let string = value as? String else { return nil }
         return string
     }
+
+    /// Process-start timestamp from a signal file's `start_time` field.
+    /// The documented encoding is epoch-seconds (e.g. `1750000000`), but
+    /// the real hermes `gateway.pid` writes epoch-milliseconds (e.g.
+    /// `178653683051`): values >= 1e11 are treated as integral
+    /// epoch-milliseconds, smaller values as epoch-seconds (fractional
+    /// allowed, matching the real heartbeat's `1786536834.708521`).
+    /// Booleans, non-finite values, and fractional epoch-milliseconds are
+    /// malformed and return nil — they never become a live-looking start
+    /// time. Records mapping to before 2000 are implausible for any current
+    /// process (the real gateway.pid's ms-in-seconds bug yields 1975) and
+    /// are treated as absent so a corrupt record can neither resurrect a
+    /// dead pid nor falsely kill a live one.
+    public static func dateFromStartTime(_ value: Any?) -> Date? {
+        guard let number = value as? NSNumber else { return nil }
+        guard !isBoolean(number) else { return nil }
+        let double = number.doubleValue
+        guard double.isFinite else { return nil }
+        let date: Date
+        if double >= 100_000_000_000 {
+            guard double.rounded() == double else { return nil }
+            date = Date(timeIntervalSince1970: double / 1000.0)
+        } else {
+            date = Date(timeIntervalSince1970: double)
+        }
+        guard date.timeIntervalSince1970 >= 946_684_800 else { return nil }
+        return date
+    }
 }
 
 /// Typed bounded-read failures (per-probe timeout seam).
@@ -186,6 +214,25 @@ public enum BurnBarFleetProbeReadError: Error, Equatable, Sendable {
 /// Shared probe result builders so every probe reports the same typed shapes
 /// for missing roots, absent evidence, and ordinary rows.
 public enum BurnBarFleetProbeSupport {
+    /// Merges a typed reason into an existing health state: an `ok` state
+    /// becomes `degraded(reason:)`; a degraded/failed state keeps its kind
+    /// and appends the new reason. Used when a branch adds its own typed
+    /// evidence reason (e.g. a stale/absent supervisor or heartbeat) on top
+    /// of any malformed-signal reasons already collected.
+    public static func degradedHealth(
+        _ health: BurnBarFleetProbeHealthState,
+        reason: String
+    ) -> BurnBarFleetProbeHealthState {
+        switch health {
+        case .ok:
+            return .degraded(reason: reason)
+        case .degraded(let existing):
+            return .degraded(reason: existing + " " + reason)
+        case .failed(let existing):
+            return .failed(reason: existing + " " + reason)
+        }
+    }
+
     /// Typed result for a missing declared root: `unknown`/`unsupported` row
     /// with `failed` health naming the root path.
     public static func missingRootResult(

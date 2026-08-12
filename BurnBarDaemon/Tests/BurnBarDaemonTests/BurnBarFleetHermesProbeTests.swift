@@ -48,15 +48,28 @@ final class BurnBarFleetHermesProbeTests: XCTestCase {
     }
 
     private func writeGatewayPid(pid: Int) throws {
+        // The recorded start_time must match the real process start so the
+        // pid-reuse guard passes for live fixture pids (the guard compares
+        // the current process start against the recorded start).
+        let startTime = BurnBarFleetProcessLiveness.processStartTime(pid: pid) ?? 1_750_000_000
         try writeJSONFixture(
-            ["pid": pid, "kind": "hermes-gateway", "start_time": 1_750_000_000],
+            ["pid": pid, "kind": "hermes-gateway", "start_time": Int(startTime)],
             to: gatewayPidPath
         )
     }
 
     private func writeHeartbeat(pid: Int, updatedAt: Date) throws {
+        // The real heartbeat writes a fractional epoch-seconds start_time;
+        // matching it keeps the heartbeat identity + pid-reuse guard green
+        // for live fixture pids.
+        let startTime = BurnBarFleetProcessLiveness.processStartTime(pid: pid) ?? 1_750_000_000
         try writeJSONFixture(
-            ["pid": pid, "updated_at": ISO8601DateFormatter().string(from: updatedAt), "monotonic": 0],
+            [
+                "pid": pid,
+                "updated_at": ISO8601DateFormatter().string(from: updatedAt),
+                "monotonic": 0,
+                "start_time": startTime
+            ],
             to: heartbeatPath
         )
     }
@@ -146,8 +159,14 @@ final class BurnBarFleetHermesProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.status, .stale)
         XCTAssertEqual(result.agent.confidence, .activeSessionFile)
         XCTAssertNil(result.agent.process)
-        XCTAssertEqual(result.health.state, .ok)
         XCTAssertTrue(result.agent.note?.contains("stale") == true, "stale heartbeat must carry a typed note")
+        // VAL-FLEET-023: the stale heartbeat must surface as a typed
+        // degraded probeHealth reason, not only the agent note.
+        if case .degraded(let reason) = result.health.state {
+            XCTAssertTrue(reason.contains("stale"), "unexpected reason: \(reason)")
+        } else {
+            XCTFail("stale heartbeat must be typed degraded, got \(result.health.state)")
+        }
     }
 
     func testLivePidActiveAgentsMissingHeartbeat_nonRunningTypedReason() async throws {
@@ -166,6 +185,13 @@ final class BurnBarFleetHermesProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.confidence, .activeSessionFile)
         XCTAssertNil(result.agent.process)
         XCTAssertTrue(result.agent.note?.contains("stale") == true, "missing heartbeat must carry a typed note")
+        // VAL-FLEET-023: the missing heartbeat must surface as a typed
+        // degraded probeHealth reason, not only the agent note.
+        if case .degraded(let reason) = result.health.state {
+            XCTAssertTrue(reason.contains("missing"), "unexpected reason: \(reason)")
+        } else {
+            XCTFail("missing heartbeat must be typed degraded, got \(result.health.state)")
+        }
     }
 
     func testDeadGatewayPid_neverRunning() async throws {
@@ -236,9 +262,13 @@ final class BurnBarFleetHermesProbeTests: XCTestCase {
 
         let result = await makeProbe().probe(now: now)
 
+        // A missing active_agents key is malformed-shape: the row is typed
+        // unknown/degraded — NEVER defaulted to zero, which would fabricate
+        // an idle/exactProcess row (VAL-FLEET-024).
         XCTAssertNotEqual(result.agent.status, .running)
-        XCTAssertEqual(result.agent.status, .idle)
-        XCTAssertEqual(result.agent.confidence, .exactProcess)
+        XCTAssertEqual(result.agent.status, .unknown)
+        XCTAssertEqual(result.agent.confidence, .unsupported)
+        XCTAssertNil(result.agent.process)
         if case .degraded(let reason) = result.health.state {
             XCTAssertTrue(reason.contains("active_agents"), "unexpected reason: \(reason)")
         } else {

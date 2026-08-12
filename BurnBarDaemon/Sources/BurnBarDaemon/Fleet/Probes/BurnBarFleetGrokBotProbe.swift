@@ -11,11 +11,18 @@ import Foundation
 ///   daemon, so a fresh supervisor signal alone cannot distinguish active
 ///   work from a merely alive daemon. Claiming it would risk reporting
 ///   `running` from stale evidence (VAL-FLEET-023).
+/// - **Pid-reuse guard:** every pid-bearing liveness check (daemon pid,
+///   supervisor pid) applies the process-start identity check
+///   (`isLiveProcess`) before `kill -0` — a reused pid whose current process
+///   started after the recorded `startedAt`/`at` is treated as dead and can
+///   never resurrect `running`/`exactProcess` (VAL-HARD-007).
 /// - **Idle:** daemon/supervisor alive with `inflightCount == 0` — the common
 ///   case; the daemon existing is NOT running (VAL-FLEET-004).
 /// - **Stale/absent supervisor signal:** never yields `running` from stale
 ///   evidence. A live daemon with a stale or absent supervisor signal stays
-///   `idle`/`unknown` (VAL-FLEET-023).
+///   `idle`/`unknown` (VAL-FLEET-023) AND surfaces a typed `degraded`
+///   probeHealth reason — the missing/stale corroboration is never silently
+///   healthy.
 /// - **Malformed shape:** valid JSON with a missing/mistyped required key
 ///   (`pid`, `inflightCount`) → typed `unknown`/`stale` row with a
 ///   `degraded` health reason — never fabricated `running`.
@@ -94,6 +101,7 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
             agentID: agentID,
             rootPath: rootPath,
             now: now,
+            supervisorFreshnessSeconds: supervisorFreshnessSeconds,
             daemon: daemon,
             supervisor: supervisor,
             signals: signals,
@@ -101,22 +109,24 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
         )
     }
 
-    /// Classifies the row. Running requires a live daemon pid AND
+    /// Classifies the row. Running requires a live daemon pid (verified with
+    /// the process-start identity check — a reused pid is never live) AND
     /// `inflightCount > 0`; a stale/absent supervisor signal never yields
     /// running from stale evidence.
     private static func classify(
         agentID: BurnBarFleetAgentID,
         rootPath: String,
         now: Date,
+        supervisorFreshnessSeconds: TimeInterval,
         daemon: DaemonSignal?,
         supervisor: SupervisorSignal?,
         signals: [BurnBarFleetSignalSource],
         healthState: BurnBarFleetProbeHealthState
     ) -> BurnBarFleetProbeResult {
-        // Running: live daemon pid + inflightCount > 0.
+        // Running: live daemon pid (pid-reuse guarded) + inflightCount > 0.
         if let daemon, daemon.malformedReason == nil,
            let pid = daemon.pid, let inflight = daemon.inflightCount,
-           BurnBarFleetProcessLiveness.isAlive(pid: pid), inflight > 0 {
+           BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: daemon.startedAt), inflight > 0 {
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -130,12 +140,35 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
             )
         }
 
-        // Idle: daemon alive with inflight 0 (the common case). A stale or
-        // absent supervisor signal does not change this — it never flips the
-        // row to running (VAL-FLEET-023).
+        // Idle: daemon alive (pid-reuse guarded) with inflight 0 (the common
+        // case). A stale or absent supervisor signal does not change the
+        // status — the daemon is genuinely idle — but it MUST surface as a
+        // typed degraded probeHealth reason (VAL-FLEET-023): an idle row with
+        // healthy probeHealth while the supervisor corroboration is
+        // stale/absent silently hides the missing evidence.
         if let daemon, daemon.malformedReason == nil,
            let pid = daemon.pid, let inflight = daemon.inflightCount,
-           BurnBarFleetProcessLiveness.isAlive(pid: pid), inflight == 0 {
+           BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: daemon.startedAt), inflight == 0 {
+            var branchHealth = healthState
+            if let supervisor, supervisor.malformedReason == nil {
+                let supervisorLive = supervisor.pid.map {
+                    BurnBarFleetProcessLiveness.isLiveProcess(pid: $0, fileStartedAt: supervisor.at)
+                } ?? false
+                let supervisorFresh = supervisor.at.map {
+                    now.timeIntervalSince($0) <= supervisorFreshnessSeconds
+                } ?? false
+                if !supervisorLive || !supervisorFresh {
+                    branchHealth = BurnBarFleetProbeSupport.degradedHealth(
+                        branchHealth,
+                        reason: "Supervisor signal is stale or its pid is not alive; daemon idle with inflightCount 0."
+                    )
+                }
+            } else if supervisor == nil {
+                branchHealth = BurnBarFleetProbeSupport.degradedHealth(
+                    branchHealth,
+                    reason: "Supervisor signal absent; daemon idle with inflightCount 0."
+                )
+            }
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -146,11 +179,11 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
                 process: BurnBarFleetProcessInfo(pid: pid),
                 signals: signals,
                 note: "Daemon alive with inflightCount 0; idle, not running.",
-                healthState: healthState
+                healthState: branchHealth
             )
         }
 
-        // Daemon pid dead (or pid-reuse guarded): never running.
+        // Daemon pid dead (or fails the pid-reuse guard): never running.
         if let daemon, daemon.malformedReason == nil, let pid = daemon.pid {
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,

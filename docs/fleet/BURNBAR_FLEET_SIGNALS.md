@@ -358,6 +358,35 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
 - **Repo attribution:** `processes.json` entries / session dirs.
 - **Notes:**
   - History: `~/.hermes/sessions/` (302 dirs at verification); `~/.hermes/state.db` is a 1.1 GB SQLite — do NOT open casually.
+  - **`start_time` encoding (pinned):** the real `gateway.pid` writes
+    epoch-milliseconds (`178653683051`) while the real heartbeat writes
+    fractional epoch-seconds (`1786536834.708521`). The probe accepts both:
+    values >= 1e11 are integral epoch-milliseconds, smaller values are
+    epoch-seconds (fractional allowed). Records mapping to before 2000 are
+    implausible for any current process (the real gateway.pid's
+    ms-in-seconds bug yields 1975) and are treated as absent — a corrupt
+    record can neither resurrect a dead pid nor falsely kill a live one.
+  - **Pid-reuse guard (VAL-HARD-007):** the gateway pid is verified with the
+    process-start identity check before `kill -0`. The heartbeat's recorded
+    `start_time` is the authoritative identity (the real heartbeat writes
+    accurate epoch-seconds); when the heartbeat carries no usable
+    `start_time`, `gateway.pid`'s own record is used. A reused pid whose
+    current process started after the recorded start is treated as dead and
+    never yields `running`/`exactProcess`.
+  - **Heartbeat identity:** the heartbeat's pid must match the gateway pid
+    (or be absent). A fresh heartbeat written by a DIFFERENT live process is
+    not evidence for the gateway — the row degrades typed, never running.
+  - **Typed stale/missing-heartbeat degradation (VAL-FLEET-023):** a live
+    gateway pid with `active_agents > 0` but a stale or missing heartbeat is
+    NON-running (`stale`/`activeSessionFile`) AND carries a typed
+    `degraded(reason)` probeHealth state naming the stale/missing heartbeat —
+    the missing corroboration is never silently healthy.
+  - **Malformed `active_agents` (VAL-FLEET-024):** a `gateway_state.json`
+    missing or mistyping `active_agents` (including JSON booleans, which
+    must never coerce to 1) is malformed-shape: the row is typed
+    `unknown`/`unsupported` with a `degraded` health reason. It is NEVER
+    defaulted to zero, which would fabricate an idle/exactProcess row from
+    a malformed primary signal.
   - M4 delivery channel: the gateway exposes an `api_server` platform ("connected"); `gateway_state.json.platforms.burnbar` exists ("paused: failed to reconnect" since 2026-06-24), suggesting a BurnBar integration point once existed. M4 investigates writability; if no documented writable channel exists, ship honest `unsupported` + proposal-only.
 
 ### 5. `grok-bot` — Grok Bot
@@ -388,6 +417,17 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
 - **Repo attribution:** connection/workspace hints if present; else null (the declared signal files carry no workspace hints, so projectName stays null).
 - **Notes:**
   - `~/.grokbot/local-exec-daemon-connection.json` contains SECRETS (tokens) — never read beyond structural keys, never log contents, never copy into fixtures (see [Honest-liveness caveats](#honest-liveness-caveats)).
+  - **Pid-reuse guard (VAL-HARD-007):** every pid-bearing liveness check
+    (daemon pid, supervisor pid) applies the process-start identity check
+    (`isLiveProcess`) before `kill -0` — a reused pid whose current process
+    started after the recorded `startedAt`/`at` is treated as dead and can
+    never resurrect `running`/`exactProcess`.
+  - **Typed stale/absent-supervisor degradation (VAL-FLEET-023):** a live
+    daemon with `inflightCount == 0` and a stale or absent supervisor signal
+    stays `idle`/`exactProcess` (the daemon is genuinely idle) BUT carries a
+    typed `degraded(reason)` probeHealth state naming the stale/absent
+    supervisor — the missing corroboration is never silently healthy. A
+    fresh supervisor with a live pid keeps the idle row's health `ok`.
 
 ### 6. `grok-cli` — Grok CLI
 
@@ -435,6 +475,14 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
 - **Running rule:** worker ids present AND `ai-tracking/` mtime fresh (< **300 s**). There are no pids.
 - **Idle/stale rule:** absent worker ids, or tracking mtime outside the documented window, is `idle`/`stale` with honest partial confidence.
 - **Notes:** worker ids without pids; mtime corroboration never becomes `exactProcess`. Cursor is exactly one fixed roster/probe-health row, even when only partial evidence exists.
+  - **Worker-id value validation (VAL-FLEET-024):** every
+    `workerIdsByDisplayName` VALUE must be a non-empty string. A null,
+    non-string, or empty value (e.g. `{"Repo": null}`) is a malformed
+    primary signal: the row is typed `unknown`/`unsupported` with a
+    `degraded` health reason — never `running`/`activeSessionFile` with
+    healthy probeHealth, even when `ai-tracking/` is fresh. One malformed
+    value degrades the whole signal (no partial rows from the valid
+    entries).
 
 ### 9. `kimi` — Kimi (typed unsupported)
 

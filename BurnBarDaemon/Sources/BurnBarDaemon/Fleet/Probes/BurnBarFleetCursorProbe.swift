@@ -11,8 +11,11 @@ import Foundation
 /// - **Idle/stale:** absent worker ids, or tracking mtime outside the
 ///   documented window, is `idle`/`stale` with honest partial confidence.
 /// - **Malformed shape:** valid JSON with a missing/mistyped
-///   `workerIdsByDisplayName` → typed `unknown`/`stale` row with a
-///   `degraded` health reason — never fabricated `running`.
+///   `workerIdsByDisplayName`, or a worker-id VALUE that is null, a
+///   non-string, or an empty string → typed `unknown`/`stale` row with a
+///   `degraded` health reason — never fabricated `running`. A malformed
+///   value with otherwise-fresh tracking never yields
+///   `running`/`activeSessionFile` with healthy probeHealth.
 /// - **Repo attribution:** the first worker-id display name (`<project> @
 ///   <host>`), split at ` @ `, yields the project name.
 public struct BurnBarFleetCursorProbe: BurnBarFleetProbe {
@@ -218,7 +221,24 @@ public struct BurnBarFleetCursorProbe: BurnBarFleetProbe {
             )
         }
 
-        let workerIDs = rawWorkerIDs.keys.sorted()
+        // Every worker-id VALUE must be a non-empty string. A null,
+        // non-string, or empty value is a malformed primary signal: it
+        // degrades typed and never yields running/activeSessionFile with
+        // healthy probeHealth (VAL-FLEET-024).
+        var workerIDs: [String] = []
+        for (displayName, value) in rawWorkerIDs {
+            guard let workerID = BurnBarFleetProbeJSON.stringValue(value), !workerID.isEmpty else {
+                return StateSignal(
+                    path: path,
+                    workerIDs: [],
+                    firstProjectName: nil,
+                    malformedReason: "workerIdsByDisplayName contains a null, non-string, or empty worker id."
+                )
+            }
+            workerIDs.append(displayName)
+        }
+        workerIDs.sort()
+
         let firstProjectName = workerIDs.first.map { Self.projectName(fromDisplayName: $0) } ?? nil
         return StateSignal(
             path: path,

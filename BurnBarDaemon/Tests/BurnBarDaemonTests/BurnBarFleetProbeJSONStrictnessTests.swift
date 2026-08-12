@@ -77,4 +77,38 @@ final class BurnBarFleetProbeJSONStrictnessTests: XCTestCase {
             "a fractional pid must never coerce to the live pid"
         )
     }
+
+    // MARK: - dateFromStartTime (probe-hardening-repair-b: hermes start_time
+    // dual encoding — the real gateway.pid writes epoch-ms while the
+    // heartbeat writes fractional epoch-seconds)
+
+    func testDateFromStartTime_epochSeconds() {
+        let date = BurnBarFleetProbeJSON.dateFromStartTime(1_750_000_000)
+        XCTAssertEqual(date?.timeIntervalSince1970 ?? 0, 1_750_000_000.0, accuracy: 0.001)
+    }
+
+    func testDateFromStartTime_epochMilliseconds() {
+        // The real gateway.pid writes epoch-milliseconds; a plausible
+        // integral ms value parses as ms, not seconds.
+        let date = BurnBarFleetProbeJSON.dateFromStartTime(1_750_000_000_000)
+        XCTAssertEqual(date?.timeIntervalSince1970 ?? 0, 1_750_000_000.0, accuracy: 0.001)
+    }
+
+    func testDateFromStartTime_fractionalEpochSeconds() {
+        // The real heartbeat writes fractional epoch-seconds.
+        let date = BurnBarFleetProbeJSON.dateFromStartTime(1_786_536_834.708_521)
+        XCTAssertEqual(date?.timeIntervalSince1970 ?? 0, 1_786_536_834.708_521, accuracy: 0.001)
+    }
+
+    func testDateFromStartTime_rejectsMalformed() {
+        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(true), "boolean must be rejected")
+        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime("1750000000"), "string must be rejected")
+        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(nil))
+        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(NSNull()))
+        // Fractional epoch-milliseconds are malformed (integral only).
+        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(178_653_683_051.5))
+        // The real gateway.pid's ms-in-seconds bug maps to 1975 — implausible
+        // for any current process and treated as absent.
+        XCTAssertNil(BurnBarFleetProbeJSON.dateFromStartTime(178_653_683_051 / 1000))
+    }
 }

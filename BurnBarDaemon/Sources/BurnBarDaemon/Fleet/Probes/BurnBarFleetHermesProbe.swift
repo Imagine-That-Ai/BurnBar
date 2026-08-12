@@ -5,20 +5,33 @@ import Foundation
 /// `gateway_state.json` + `processes.json`.
 ///
 /// Rules (docs/fleet/BURNBAR_FLEET_SIGNALS.md §4):
-/// - **Running:** gateway heartbeat fresh (< 120 s) AND (`active_agents > 0`
-///   OR `processes.json` non-empty). Confidence `exactProcess`; the process
-///   block carries the gateway pid.
+/// - **Running:** gateway pid live (pid-reuse guarded) AND heartbeat fresh
+///   (< 120 s) AND (`active_agents > 0` OR `processes.json` non-empty).
+///   Confidence `exactProcess`; the process block carries the gateway pid.
+/// - **Pid-reuse guard:** the gateway pid is verified with the process-start
+///   identity check before `kill -0`. The heartbeat's recorded `start_time`
+///   is the authoritative identity (the real heartbeat writes accurate
+///   epoch-seconds while `gateway.pid`'s `start_time` is a known-buggy
+///   epoch-milliseconds value); when the heartbeat carries no usable
+///   `start_time`, `gateway.pid`'s own record is used. A reused pid whose
+///   current process started after the recorded start is treated as dead and
+///   can never resurrect `running`/`exactProcess` (VAL-HARD-007).
+/// - **Heartbeat identity:** the heartbeat's pid must match the gateway pid
+///   (or be absent). A fresh heartbeat written by a DIFFERENT live process
+///   is not evidence for the gateway — it degrades typed, never running.
 /// - **Idle:** gateway alive (live pid + fresh heartbeat) with
 ///   `active_agents == 0` and empty `processes.json` (VAL-FLEET-005).
 /// - **Stale heartbeat:** a live pid with `active_agents > 0` but a heartbeat
 ///   beyond the 120 s window is NON-running with a typed stale/unknown
-///   confidence and a typed health reason — stale evidence never yields
-///   `running` (VAL-FLEET-023).
+///   confidence AND a typed `degraded` probeHealth reason — stale evidence
+///   never yields `running` and never looks healthy (VAL-FLEET-023).
 /// - **Missing heartbeat:** the documented missing-signal state — non-running
-///   with a typed health reason.
+///   with a typed `degraded` probeHealth reason.
 /// - **Malformed shape:** valid JSON with a missing/mistyped required key
 ///   (`pid`, heartbeat `updated_at`, `active_agents`) → typed `unknown`/`stale`
-///   row with a `degraded` health reason — never fabricated `running`.
+///   row with a `degraded` health reason — never fabricated `running`. A
+///   missing `active_agents` key is malformed-shape: it is NEVER defaulted
+///   to zero (which would fabricate an idle/exactProcess row).
 /// - **Repo attribution:** `processes.json` entries when present; else nil.
 public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
     public let agentID: BurnBarFleetAgentID
@@ -133,10 +146,10 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
         )
     }
 
-    /// Classifies the row. Running requires a live gateway pid, a FRESH
-    /// heartbeat, and active work (`active_agents > 0` or non-empty
-    /// `processes.json`). Stale or missing heartbeat evidence never yields
-    /// running (VAL-FLEET-023).
+    /// Classifies the row. Running requires a live gateway pid (pid-reuse
+    /// guarded), a FRESH heartbeat whose pid matches the gateway, and active
+    /// work (`active_agents > 0` or non-empty `processes.json`). Stale or
+    /// missing heartbeat evidence never yields running (VAL-FLEET-023).
     private static func classify(
         agentID: BurnBarFleetAgentID,
         rootPath: String,
@@ -149,13 +162,32 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
         let gatewayState = signals.gatewayState
         let processes = signals.processes
         let pid = gatewayPid?.pid
-        let pidAlive = pid.map { BurnBarFleetProcessLiveness.isAlive(pid: $0) } ?? false
+        let pidAlive = pid.map { Self.isLiveGatewayPid($0, gatewayPid: gatewayPid, heartbeat: heartbeat) } ?? false
         let heartbeatFresh = heartbeat?.isFresh(now: now, freshnessSeconds: heartbeatFreshnessSeconds) ?? false
+        let heartbeatMatchesGateway = Self.heartbeatMatchesGateway(heartbeat: heartbeat, gatewayPid: pid)
         let activeAgents = gatewayState?.activeAgents
         let hasActiveWork = (activeAgents ?? 0) > 0 || (processes?.entries.isEmpty == false)
 
+        // Malformed gateway_state.json (missing/mistyped active_agents):
+        // the active-work count is unknown, so the row is typed unknown —
+        // NEVER defaulted to zero, which would fabricate an idle/exactProcess
+        // row from a malformed primary signal (VAL-FLEET-024).
+        if let gatewayState, gatewayState.malformedReason != nil {
+            return BurnBarFleetProbeSupport.result(
+                agentID: agentID,
+                rootPath: rootPath,
+                now: now,
+                status: .unknown,
+                confidence: .unsupported,
+                lastActivityAt: heartbeat?.updatedAt,
+                signals: signals.sources,
+                note: "Gateway state signal malformed; status unknown.",
+                healthState: signals.healthState
+            )
+        }
+
         // Running: live pid + fresh heartbeat + active work.
-        if pidAlive, heartbeatFresh, hasActiveWork, let pid {
+        if pidAlive, heartbeatFresh, heartbeatMatchesGateway, hasActiveWork, let pid {
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -171,7 +203,7 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
         }
 
         // Idle: live pid + fresh heartbeat, zero active agents.
-        if pidAlive, heartbeatFresh, let pid {
+        if pidAlive, heartbeatFresh, heartbeatMatchesGateway, let pid {
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -186,20 +218,20 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
             )
         }
 
-        // Stale heartbeat: live pid + active work but the heartbeat is beyond
-        // the freshness window — never running from stale evidence.
-        if pidAlive, let pid {
-            let reason = "Gateway heartbeat is stale or missing; active work is not claimed."
-            return BurnBarFleetProbeSupport.result(
+        // Stale or missing heartbeat with a live pid: never running from
+        // stale evidence, and the missing/stale heartbeat MUST surface as a
+        // typed degraded probeHealth reason — an active-work row with healthy
+        // probeHealth while the heartbeat is stale/absent silently hides the
+        // missing corroboration (VAL-FLEET-023). A heartbeat written by a
+        // DIFFERENT live process is not evidence for the gateway either and
+        // degrades the same way.
+        if pidAlive {
+            return Self.staleHeartbeatResult(
                 agentID: agentID,
                 rootPath: rootPath,
                 now: now,
-                status: .stale,
-                confidence: .activeSessionFile,
-                lastActivityAt: heartbeat?.updatedAt,
-                signals: signals.sources,
-                note: reason,
-                healthState: signals.healthState
+                heartbeatMatchesGateway: heartbeatMatchesGateway,
+                signals: signals
             )
         }
 
@@ -247,215 +279,58 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
         )
     }
 
-    // MARK: - Parsing
-
-    /// Bundles the parsed signal files plus the derived evidence trail and
-    /// health state for one probe run.
-    private struct Signals {
-        let gatewayPid: GatewayPidSignal?
-        let heartbeat: HeartbeatSignal?
-        let gatewayState: GatewayStateSignal?
-        let processes: ProcessesSignal?
-        let sources: [BurnBarFleetSignalSource]
-        let healthState: BurnBarFleetProbeHealthState
-    }
-
-    private struct GatewayPidSignal {
-        let path: String
-        let pid: Int?
-        let malformedReason: String?
-    }
-
-    private struct HeartbeatSignal {
-        let path: String
-        let pid: Int?
-        let updatedAt: Date?
-        let malformedReason: String?
-
-        func isFresh(now: Date, freshnessSeconds: TimeInterval) -> Bool {
-            guard let updatedAt else { return false }
-            return now.timeIntervalSince(updatedAt) <= freshnessSeconds
+    /// The gateway pid is live only when the process-start identity check
+    /// passes. The heartbeat's recorded `start_time` is the authoritative
+    /// identity record (the real heartbeat writes accurate epoch-seconds);
+    /// when the heartbeat carries no usable record, `gateway.pid`'s own
+    /// `start_time` is used. A reused pid whose current process started after
+    /// the recorded start is treated as dead (VAL-HARD-007).
+    private static func isLiveGatewayPid(
+        _ pid: Int,
+        gatewayPid: GatewayPidSignal?,
+        heartbeat: HeartbeatSignal?
+    ) -> Bool {
+        if let heartbeatStart = heartbeat?.startTime {
+            return BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: heartbeatStart)
         }
+        return BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: gatewayPid?.startTime)
     }
 
-    private struct GatewayStateSignal {
-        let path: String
-        let activeAgents: Int?
-        let malformedReason: String?
+    /// The heartbeat is evidence for the gateway only when its pid matches
+    /// the gateway pid. A heartbeat with no pid field cannot be associated
+    /// and is treated as matching (the pid-reuse guard still applies via the
+    /// gateway pid's own record).
+    private static func heartbeatMatchesGateway(heartbeat: HeartbeatSignal?, gatewayPid: Int?) -> Bool {
+        guard let heartbeatPid = heartbeat?.pid else { return true }
+        return heartbeatPid == gatewayPid
     }
 
-    private struct ProcessesSignal {
-        let path: String
-        let entries: [ProcessEntry]
-        let malformedReason: String?
-    }
-
-    private struct ProcessEntry {
-        let cwd: String?
-    }
-
-    private static func readGatewayPid(at path: String, timeoutSeconds: TimeInterval) -> GatewayPidSignal? {
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
-
-        let object: [String: Any]
-        do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
-            guard let dictionary = raw as? [String: Any] else {
-                return GatewayPidSignal(
-                    path: path,
-                    pid: nil,
-                    malformedReason: "gateway.pid is not a JSON object."
-                )
-            }
-            object = dictionary
-        } catch {
-            return GatewayPidSignal(
-                path: path,
-                pid: nil,
-                malformedReason: BurnBarFleetProbeJSON.readFailureReason(error)
-            )
-        }
-
-        guard let pid = BurnBarFleetProbeJSON.integerValue(object["pid"]) else {
-            return GatewayPidSignal(
-                path: path,
-                pid: nil,
-                malformedReason: "gateway.pid is missing a numeric pid."
-            )
-        }
-        return GatewayPidSignal(path: path, pid: pid, malformedReason: nil)
-    }
-
-    private static func readHeartbeat(at path: String, timeoutSeconds: TimeInterval) -> HeartbeatSignal? {
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
-
-        let object: [String: Any]
-        do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
-            guard let dictionary = raw as? [String: Any] else {
-                return HeartbeatSignal(
-                    path: path,
-                    pid: nil,
-                    updatedAt: nil,
-                    malformedReason: "gateway.heartbeat is not a JSON object."
-                )
-            }
-            object = dictionary
-        } catch {
-            return HeartbeatSignal(
-                path: path,
-                pid: nil,
-                updatedAt: nil,
-                malformedReason: BurnBarFleetProbeJSON.readFailureReason(error)
-            )
-        }
-
-        guard let pid = BurnBarFleetProbeJSON.integerValue(object["pid"]) else {
-            return HeartbeatSignal(
-                path: path,
-                pid: nil,
-                updatedAt: nil,
-                malformedReason: "gateway.heartbeat is missing a numeric pid."
-            )
-        }
-
-        let updatedAt: Date?
-        if let raw = object["updated_at"] as? String {
-            updatedAt = ISO8601DateFormatter().date(from: raw)
+    /// Stale/missing-heartbeat result for a live gateway pid: non-running
+    /// with a typed degraded probeHealth reason naming the missing
+    /// corroboration (VAL-FLEET-023).
+    private static func staleHeartbeatResult(
+        agentID: BurnBarFleetAgentID,
+        rootPath: String,
+        now: Date,
+        heartbeatMatchesGateway: Bool,
+        signals: Signals
+    ) -> BurnBarFleetProbeResult {
+        let reason: String
+        if signals.heartbeat != nil, !heartbeatMatchesGateway {
+            reason = "Gateway heartbeat pid does not match the gateway pid; active work is not claimed."
         } else {
-            updatedAt = BurnBarFleetProbeJSON.dateFromEpochMilliseconds(object["updated_at"])
+            reason = "Gateway heartbeat is stale or missing; active work is not claimed."
         }
-        guard updatedAt != nil else {
-            return HeartbeatSignal(
-                path: path,
-                pid: pid,
-                updatedAt: nil,
-                malformedReason: "gateway.heartbeat is missing a parseable updated_at."
-            )
-        }
-
-        return HeartbeatSignal(path: path, pid: pid, updatedAt: updatedAt, malformedReason: nil)
-    }
-
-    private static func readGatewayState(at path: String, timeoutSeconds: TimeInterval) -> GatewayStateSignal? {
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
-
-        let object: [String: Any]
-        do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
-            guard let dictionary = raw as? [String: Any] else {
-                return GatewayStateSignal(
-                    path: path,
-                    activeAgents: nil,
-                    malformedReason: "gateway_state.json is not a JSON object."
-                )
-            }
-            object = dictionary
-        } catch {
-            return GatewayStateSignal(
-                path: path,
-                activeAgents: nil,
-                malformedReason: BurnBarFleetProbeJSON.readFailureReason(error)
-            )
-        }
-
-        guard let activeAgents = BurnBarFleetProbeJSON.integerValue(object["active_agents"]) else {
-            return GatewayStateSignal(
-                path: path,
-                activeAgents: nil,
-                malformedReason: "gateway_state.json is missing a numeric active_agents."
-            )
-        }
-        return GatewayStateSignal(path: path, activeAgents: activeAgents, malformedReason: nil)
-    }
-
-    private static func readProcesses(at path: String, timeoutSeconds: TimeInterval) -> ProcessesSignal? {
-        guard FileManager.default.fileExists(atPath: path) else { return nil }
-
-        let object: [Any]
-        do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
-            guard let array = raw as? [Any] else {
-                return ProcessesSignal(
-                    path: path,
-                    entries: [],
-                    malformedReason: "processes.json is not a JSON array."
-                )
-            }
-            object = array
-        } catch {
-            return ProcessesSignal(
-                path: path,
-                entries: [],
-                malformedReason: BurnBarFleetProbeJSON.readFailureReason(error)
-            )
-        }
-
-        var entries: [ProcessEntry] = []
-        for item in object {
-            if let dictionary = item as? [String: Any] {
-                entries.append(ProcessEntry(cwd: BurnBarFleetProbeJSON.stringValue(dictionary["cwd"])))
-            }
-        }
-        return ProcessesSignal(path: path, entries: entries, malformedReason: nil)
-    }
-
-    private static func pidDetail(_ signal: GatewayPidSignal) -> String? {
-        guard let pid = signal.pid else { return nil }
-        return "pid \(pid)"
-    }
-
-    private static func heartbeatDetail(_ signal: HeartbeatSignal, now: Date) -> String? {
-        guard let pid = signal.pid else { return nil }
-        if let updatedAt = signal.updatedAt {
-            let age = Int(now.timeIntervalSince(updatedAt))
-            return "pid \(pid), \(age)s ago"
-        }
-        return "pid \(pid)"
-    }
-
-    private static func stateDetail(_ signal: GatewayStateSignal) -> String? {
-        guard let activeAgents = signal.activeAgents else { return nil }
-        return "active_agents \(activeAgents)"
+        return BurnBarFleetProbeSupport.result(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now,
+            status: .stale,
+            confidence: .activeSessionFile,
+            lastActivityAt: signals.heartbeat?.updatedAt,
+            signals: signals.sources,
+            note: reason,
+            healthState: BurnBarFleetProbeSupport.degradedHealth(signals.healthState, reason: reason)
+        )
     }
 }
