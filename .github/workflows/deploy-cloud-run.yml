@@ -38,7 +38,7 @@ jobs:
   resolve-release:
     name: Resolve release tag
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -239,7 +239,7 @@ jobs:
   verify-attestations:
     name: Verify dry-run attestations
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     needs: resolve-release
     if: needs.resolve-release.outputs.dry_run != 'true'
     permissions:

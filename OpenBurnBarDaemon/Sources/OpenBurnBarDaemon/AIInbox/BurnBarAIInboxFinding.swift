@@ -79,4 +79,12 @@ struct BurnBarAIInboxFinding: Sendable, Hashable {
     static func fingerprint(kind: BurnBarInboxItemKind, scope: String, subject: String) -> String {
         "\(kind.rawValue):" + BurnBarAIInboxStableHasher.hash([scope, subject])
     }
+
+    /// Identity of the "the analyst could not run" notice. One condition, not
+    /// one per pinned route — see `BurnBarAIInboxService.analystUnavailableFinding`.
+    static let analystUnavailableFingerprint = fingerprint(
+        kind: .system,
+        scope: "analyst",
+        subject: "unavailable"
+    )
 }

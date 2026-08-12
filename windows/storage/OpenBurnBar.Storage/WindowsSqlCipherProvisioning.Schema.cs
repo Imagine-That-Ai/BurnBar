@@ -64,13 +64,16 @@ public sealed partial class WindowsSqlCipherProvisioner
             provenanceMethod TEXT NOT NULL DEFAULT 'api',
             provenanceConfidence TEXT NOT NULL DEFAULT 'exact',
             estimatorVersion TEXT NOT NULL DEFAULT 'windows-provisioner-v1',
-            parentRequestID TEXT
+            parentRequestID TEXT,
+            billingKind TEXT NOT NULL DEFAULT 'unknown'
         )
         """,
         "CREATE UNIQUE INDEX IF NOT EXISTS token_usage_unique_session_model_idx ON token_usage(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, ''))",
         "CREATE INDEX IF NOT EXISTS token_usage_created_at_idx ON token_usage(createdAt DESC)",
         "CREATE INDEX IF NOT EXISTS token_usage_session_idx ON token_usage(sessionId)",
         "CREATE INDEX IF NOT EXISTS token_usage_execution_source_time_idx ON token_usage(executionSourceID, startTime)",
+        // v60_billing_kind — mirrors OpenBurnBarDatabase+DataMigrationV60.swift.
+        "CREATE INDEX IF NOT EXISTS token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime)",
         """
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT NOT NULL PRIMARY KEY,

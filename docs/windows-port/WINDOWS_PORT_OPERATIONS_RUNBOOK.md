@@ -2,7 +2,7 @@
 
 **Owner:** OpenBurnBar release engineering
 
-**Last verified:** 2026-07-19
+**Last verified:** 2026-08-11
 
 **Applies to:** Windows x64 and ARM64 source, CI, staging, signing, physical certification, and Microsoft Store flights
 
@@ -24,7 +24,76 @@ Source parity can be complete while a release is still `NO-GO`. A signed build
 is also not a release by itself. The release becomes `GO` only when every
 required evidence gate for that exact artifact is `PASS`.
 
-### Dated checkpoint
+### Measured source-parity checkpoint
+
+This is an automated source checkpoint for one exact commit. It is not a
+signed-release claim, and it is not by itself the current release candidate:
+
+- Exact measured commit: `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`
+- Merge source: PR #2203, independently approved and merged on 2026-08-10
+- Source parity: 51/51 `Real`, with zero substituted, deferred, blocked, or
+  authored rows
+- Clean local certification: 65/65 commands passed
+- Windows Full: run `31358055958` passed x64, ARM64, and the aggregate gate
+- Windows engine: run `31358056003` passed x64 and ARM64
+- Candidate export/foundation: run `31358681287` imported 13,535/13,535 files
+  with zero mismatches and passed all nine foundation commands
+- Distribution/MSIX: run `31354131189` passed
+- Staging preparation: dry run `31358681447` verified all 969 checksums and
+  skipped deployment
+- Shared domain-core: run `31354131316` passed the exact same SHA across all
+  required consumers
+- Intended Windows release version: `1.0.39`
+- Protected release tag: not created; `windows-v1.0.39` does not exist
+- Release verdict: `NO-GO`
+
+That commit is where those numbers were measured. It is not a standing claim
+about `origin/main`: this documentation change and every later commit land on
+top of it, so `main` moves past it. Step 1 requires `CANDIDATE_SHA` to equal
+`origin/main` and Step 2 requires each dispatched run's `headSha` to equal
+`CANDIDATE_SHA`, so the run IDs above are evidence for that one commit and never
+transfer to a later head. Before the next candidate is tagged, re-run at the new
+`origin/main` head: the parity ledger verifier, the version-consistency gate,
+`pr-windows-full.yml`, `pr-windows-fast.yml`, and the Windows engine,
+candidate-export, distribution/MSIX, staging dry-run, and shared domain-core
+gates.
+
+Five open external receipt groups block the release: physical x64 performance,
+accessibility/display, the signed-in OAuth/App Check/physical TPM/CloudVault
+staging protocol, paired media/Computer Use safety, and Store/update lifecycle.
+The staging deployment and infrastructure portion passed on 2026-08-11; the
+person-and-device protocol did not run. Physical ARM64 is a sixth open group
+but is not blocking. Section 7 and
+[`ALBERTO_PARITY_CHECKLIST.md`](ALBERTO_PARITY_CHECKLIST.md) both allow shipping
+it as an explicit, uncertified beta limitation, so never hold a release waiting
+for ARM64 hardware; state the limitation instead. Historical signed artifacts do
+not satisfy any of these gates for the current exact source.
+
+### Exact staging infrastructure checkpoint
+
+This is current staging-infrastructure proof, not signed Windows release
+certification:
+
+- Candidate: `0b8c208537bcf7786ff43370ffb28d0d4becb0f4`, retained on
+  open, unmerged PR #2208
+- Trusted dispatch head: `b5f927866ede91795fa2dadb1f1f915e42b98ab5`
+- Successful run:
+  [31439802683](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31439802683),
+  completed `2026-08-11T02:13:37Z`
+- Scope: `dry_run=false`, Functions on, Hosting off, and exactly four approved
+  selectors
+- Result: Firestore/Storage drift and all 12 TTL checks passed; exactly four
+  candidate-bound Node 22 Functions became active and denied anonymous calls
+- Isolation: non-target staging, production, Hosting, and Azure state matched
+  their saved pre-deploy fingerprints
+
+This proves the bounded cloud deployment path. It does not replace the
+signed-in OAuth, App Check, physical TPM, CloudVault,
+offline/revocation/sign-out, secret-scan, and fixture-restoration protocol on
+the exact signed Windows candidate. Step 3 contains the detailed receipt and
+the reusable procedure.
+
+### Historical signed-candidate checkpoint
 
 This checkpoint is history, not a substitute for live verification:
 
@@ -147,7 +216,7 @@ candidate identity.
 
 ```bash
 export REPO=Imagine-That-Ai/BurnBar
-export VERSION=1.0.38
+export VERSION=1.0.39
 export TAG="windows-v${VERSION}"
 ```
 
@@ -192,12 +261,56 @@ a newer run as evidence for the older candidate.
 First run the safe dry run, then deploy the reviewed four-function Windows
 surface. The `staging` Environment approval is intentional.
 
+The current release campaign completed this infrastructure step in run
+`31439802683` for candidate
+`0b8c208537bcf7786ff43370ffb28d0d4becb0f4`. Trusted job `93656565440`
+deployed Firestore indexes/rules, Storage rules, and exactly the four selectors
+below with Hosting off. Post-deploy drift and all 12 TTL checks passed. Live
+readback found
+revisions `issuewindowsappcheckchallenge-00003-lix`,
+`mintwindowsappchecktoken-00003-tol`,
+`getwindowsruntimesafetyconfig-00003-mov`, and
+`submitdomaincoreshadowsamples-00003-sax`; all were `ACTIVE`, candidate-bound,
+had no configured minimum instance count, and returned `401` to anonymous
+callable POSTs. Saved non-target staging, production, Hosting, TTL, and Azure
+fingerprints stayed unchanged. The 92-index production JSON hashed to
+`8bcfaac80d623481b061737aca15d3de1ef5c03430b63d8aa676deec01570873`
+with its final newline and
+`793a9e4a66211992218506c39962809b6e5250d6e9d0b227d424bb1740fa8ac0`
+without it. Firestore Admin audit logs recorded zero production index changes
+during the staging window. The earlier zero-step job `93622386842` was
+cancelled after receiving no runner, and the pending production Firestore guard
+remained at zero jobs.
+
+Keep the procedure below for every later exact candidate. A past approval or
+successful run never authorizes a future staging mutation.
+
+**Stop after the dry run until the operator explicitly types
+`approve staging deployment`.** Approval of a pull request, merge, CI run, or
+release-preparation task is not staging-deployment approval. Neither is the
+`staging` Environment reviewer prompt: that prompt appears only after the
+mutating dispatch has already been fired, so it cannot stand in for the phrase.
+
+The two dispatches are deliberately kept in separate blocks. Never merge them.
+
+Dry run. This block is safe to run as a unit:
+
 ```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=true -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken,functions:getWindowsRuntimeSafetyConfig,functions:submitDomainCoreShadowSamples'
+```
 
+Read the dry run's result, then stop. Ask for the phrase and wait for it.
+
+**Post-approval only. This dispatch mutates `burnbar-staging`.** Run it as a
+single standalone command once the operator has typed
+`approve staging deployment` for this exact candidate:
+
+```bash
 gh workflow run deploy-staging.yml --repo "$REPO" --ref main \
+  -f candidate_sha="$CANDIDATE_SHA" \
   -f dry_run=false -f deploy_functions=true \
   -f function_targets='functions:issueWindowsAppCheckChallenge,functions:mintWindowsAppCheckToken,functions:getWindowsRuntimeSafetyConfig,functions:submitDomainCoreShadowSamples'
 ```
@@ -215,7 +328,8 @@ gcloud firestore fields ttls list --project burnbar-staging
 Required live checks:
 
 - source SHA equals `CANDIDATE_SHA` on all four Functions;
-- all four are active, `minInstances=0`, and unauthenticated calls return `401`;
+- all four are active, have no configured minimum instance count (effective
+  `minInstances=0`), and unauthenticated calls return `401`;
 - Firestore/Storage drift checks and TTL checks pass;
 - Remote Config equals the reviewed baseline after any kill-switch drill;
 - Azure verifier `/healthz` returns `200` and unauthenticated `/verify` returns
@@ -247,6 +361,35 @@ evidence. Under rule 9 above, pushing `windows-vX.Y.Z` is therefore a public
 release action. If public GitHub release approval has not been given, keep the
 verified candidate on `main` and do not create or push the tag.
 
+Certification precedes publication. Signing and publication are separable only
+if the publication job can be held, so hold it before the tag exists:
+
+- Verified 2026-08-10: the `windows-release` GitHub Environment has no
+  protection rules, so a single tag push runs signing and public publication
+  end to end with no second approval.
+- Before pushing, add a required reviewer to the repository's
+  `windows-release` Environment. Both `build-sign` and the publishing
+  `domain-core-windows-release-evidence` job declare that environment, so each
+  then waits for its own approval.
+- Approve `build-sign` only. It produces the signed candidate as a workflow
+  artifact for Step 5 and creates no release.
+- Leave `domain-core-windows-release-evidence` pending until Step 7 and Step 8
+  pass. Step 9 approves it. Before starting Step 7, confirm with
+  `gh run view <RELEASE_RUN_ID> --repo "$REPO" --json jobs` that this job is
+  still waiting and that no release exists at
+  `repos/$REPO/releases/tags/$TAG`. If either check fails, the candidate is
+  already public and rule 9 was breached; report it rather than continuing
+  quietly.
+- GitHub cancels a run whose deployment stays pending beyond its approval
+  window (30 days at the time of writing) and publishes nothing. Re-dispatch
+  `openburnbar-release-windows.yml` from `refs/tags/${TAG}` when the gates
+  finally pass.
+
+If that reviewer is not added there is no private signing path, and the honest
+consequence is that the tag itself is the public release: hold the tag until
+every Step 7 and Step 8 gate is `PASS`. Never push the tag expecting to delete
+the release afterwards.
+
 ```bash
 git config user.name
 git config user.email
@@ -255,9 +398,11 @@ git tag -a "$TAG" -m "OpenBurnBar Windows ${VERSION} candidate ${CANDIDATE_SHA}"
 git push origin "refs/tags/${TAG}"
 ```
 
-This triggers `.github/workflows/openburnbar-release-windows.yml` and, when all
-release jobs pass, publishes the public GitHub Release described above. It does
-not authorize Partner Center, winget, production staging, or any wider rollout;
+This triggers `.github/workflows/openburnbar-release-windows.yml`. With the
+publication job held it stops at a pending deployment after signing and
+supply-chain verification; without the hold it runs straight through and
+publishes the public GitHub Release described above. Either way it does not
+authorize Partner Center, winget, production staging, or any wider rollout;
 those remain separate explicit decisions.
 
 ### Step 5: verify the signed build
@@ -289,6 +434,12 @@ Required release evidence:
 - x64 hosted install/launch/uninstall/reinstall is green;
 - Ed25519 feed self-verification, SPDX SBOM, OpenVEX, and every Sigstore bundle
   verify against the exact artifact digest.
+
+These downloads come from the workflow run, not from a GitHub Release, so every
+gate from here to Step 8 runs against a private signed candidate. Keep
+`domain-core-windows-release-evidence` pending throughout. With that job held,
+`gh run watch` never returns; stop watching once `build-sign` and `supply-chain`
+are `success` and the release artifacts are downloadable.
 
 The GitHub artifact expires after seven days. Copy the verified release and
 provenance to the candidate's content-addressed evidence directory promptly.
@@ -400,6 +551,27 @@ authorizes a private flight:
 
 Private-flight success is not permission for public submission.
 
+### Step 9: publish the public GitHub Release
+
+This is the last step, not part of Step 4. Run it only after Step 7 and Step 8
+are `PASS` and the Section 7 table reads `GO` for this exact candidate.
+
+1. Re-check every row of the Section 7 table against this candidate's validated
+   evidence bundle. Physical ARM64 may be an explicit beta limitation; no other
+   required gate may be `FAIL`, `BLOCKED`, or `NOT_RUN`.
+2. Get the operator's explicit public-release approval. Tag approval, the
+   `staging` Environment prompt, and private-flight authorization are each a
+   different decision and none of them is this one.
+3. Approve the pending `domain-core-windows-release-evidence` deployment. It
+   publishes the non-prerelease `windows-vX.Y.Z` GitHub Release, created with
+   `latest=false`, carrying the signed release bundle, update-feed files, and
+   immutable domain-core evidence.
+4. Confirm the published release tag resolves to `CANDIDATE_SHA` and the
+   published asset digests match the checksums verified in Step 5.
+
+Publishing this release still does not authorize Partner Center public
+submission, winget, or production rollout.
+
 ## 7. Definition of done
 
 A Windows release is `GO` only when this table is true for one exact candidate:
@@ -411,7 +583,7 @@ A Windows release is `GO` only when this table is true for one exact candidate:
 | Signed release | checksums, exact signer/timestamp, lifecycle, feed, SBOM, OpenVEX, and Sigstore `PASS` |
 | Physical x64 performance | `PASS` |
 | Accessibility/display | `PASS`; an unavailable physical setup remains `BLOCKED` and keeps the candidate `NO-GO`, never silently waived |
-| Staging cloud | `PASS` |
+| Staging cloud | `PASS` for both the bounded deployment and the exact signed candidate's physical signed-in OAuth/App Check/TPM/CloudVault protocol |
 | Media/Computer Use safety | `PASS` |
 | Store/update lifecycle | `PASS` in an authorized private flight |
 | Evidence validator | `PASS` with no identity or secret-leak error |
@@ -419,6 +591,12 @@ A Windows release is `GO` only when this table is true for one exact candidate:
 
 If any required non-waived gate is `FAIL`, `BLOCKED`, or `NOT_RUN`, the release
 verdict is `NO-GO`.
+
+The publication order is fixed by that verdict. A `windows-v*` tag may be signed
+while the verdict is still `NO-GO`, because the physical and Store gates need a
+signed artifact; the public GitHub Release is approved only once this table
+reads `GO`. Physical ARM64 is the single waivable row, and waiving it means
+stating the beta limitation in the release notes, never labelling it certified.
 
 ## 8. Rollback and incident response
 

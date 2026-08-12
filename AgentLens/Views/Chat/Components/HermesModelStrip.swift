@@ -134,6 +134,49 @@ struct HermesModelStrip: View {
         .help(model.displayName)
     }
 
+    // MARK: - Route rows for the Agent Sigil's model menu
+
+    /// The same routing choices this strip renders as pills, shaped as menu
+    /// rows so the Agent Deck can host them inside the Sigil's model menu
+    /// (`docs/CHAT_AGENT_SWITCHER_REDESIGN.md` §3.4).
+    ///
+    /// Hermes is a router; a 12pt "Hermes" with no route was the app's least
+    /// honest label. This is the first time the routing ladder is reachable on
+    /// the full-canvas chat surface — with no second toolbar row, so the
+    /// transcript never jumps 24pt when a Hermes tab is selected.
+    @ViewBuilder
+    static func routeMenuRows(
+        controller: ChatSessionController,
+        settingsManager: SettingsManager
+    ) -> some View {
+        if controller.chatBackend == .hermes {
+            let families = settingsManager.enabledHermesModels
+            Section("Route") {
+                if families.isEmpty {
+                    Button("Enable Hermes routes in Settings → Chat") {
+                        AppCommandRouter.shared.openSettings?()
+                    }
+                } else {
+                    Button(routeRowTitle("Automatic (gateway picks)", selected: settingsManager.selectedHermesModel == nil)) {
+                        settingsManager.applyHermesModelSelection(nil)
+                    }
+                    ForEach(families) { family in
+                        Button(routeRowTitle(family.displayName, selected: settingsManager.selectedHermesModel == family)) {
+                            settingsManager.applyHermesModelSelection(family)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// macOS `Menu` renders plain `Button(title)` text, so the selection mark
+    /// is part of the string (the same trick the model rows already use for
+    /// their quota suffix).
+    private static func routeRowTitle(_ title: String, selected: Bool) -> String {
+        (selected ? "✓ " : "  ") + title
+    }
+
     private func handleModelTap(_ model: HermesModelID) {
         if settingsManager.selectedHermesModel == model {
             // Tap to clear → fall back to gateway-advertised default.
