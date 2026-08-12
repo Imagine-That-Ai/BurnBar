@@ -7,10 +7,10 @@ Pushing a `v*` tag builds, signs, notarizes, staples, and publishes a GitHub Rel
 
 OpenBurnBar should ship through both channels, but not as the exact same binary.
 
-| Channel | Use it for | Constraints |
-|---|---|---|
-| Mac App Store | Discovery, Apple-hosted updates, App Store trust, Apple billing, simpler install for conservative users | App Sandbox is required; system-level Computer Use, broad filesystem access, direct LaunchAgent installation, and other unsandboxed helper behavior must be disabled or redesigned behind MAS-safe APIs |
-| Direct download | Power-user build with full local daemon, faster hotfixes, system Computer Use, notarized DMG/ZIP, website-driven onboarding | We own hosting, updater, billing/support, and trust messaging; must keep Developer ID signing, hardened runtime, notarization, stapling, checksums, and smoke tests green |
+| Channel         | Use it for                                                                                                                  | Constraints                                                                                                                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mac App Store   | Discovery, Apple-hosted updates, App Store trust, Apple billing, simpler install for conservative users                     | App Sandbox is required; system-level Computer Use, broad filesystem access, direct LaunchAgent installation, and other unsandboxed helper behavior must be disabled or redesigned behind MAS-safe APIs |
+| Direct download | Power-user build with full local daemon, faster hotfixes, system Computer Use, notarized DMG/ZIP, website-driven onboarding | We own hosting, updater, billing/support, and trust messaging; must keep Developer ID signing, hardened runtime, notarization, stapling, checksums, and smoke tests green                               |
 
 The product policy is:
 
@@ -421,6 +421,7 @@ git push origin v0.2.0
 ```
 
 The `tag-release.sh` script:
+
 - Validates semver format
 - Checks that the version in `project.yml` matches the tag
 - Verifies the version exists in `CHANGELOG.md`
@@ -428,6 +429,7 @@ The `tag-release.sh` script:
 - Pushes the tag to origin
 
 The workflow will:
+
 1. Require the protected `release` GitHub environment before any Apple signing material is available to the job
 2. Scan the publishable tree with `gitleaks` and verified-secret `trufflehog`
 3. Run Swift, app, editor-extension, and Safari-extension tests. Release Swift/app tests intentionally run without coverage instrumentation; coverage belongs to PR/CI gates, while release publication needs bounded pass/fail proof.
@@ -562,19 +564,19 @@ provenance, publish, and live feed verification still run.
 
 Each release includes:
 
-| Asset | Purpose |
-|-------|---------|
-| `OpenBurnBar-VERSION-macOS.dmg` | Signed, notarized DMG installer |
-| `OpenBurnBar-VERSION-macOS.zip` | Signed app archive |
-| `appcast.xml` | Sparkle-compatible direct-download update appcast; production releases must include `sparkle:edSignature` |
-| `latest-macos.json` | Machine-readable latest release feed consumed by the direct-download app; unsigned metadata is ignored |
-| `checksums-vVERSION.txt` | SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata |
-| `checksums-vVERSION.txt.asc` | GPG detached signature (if configured) |
-| `sbom-vVERSION.spdx.json` | Software Bill of Materials (SPDX format) |
-| `*.sigstore.json` | Sigstore verification bundles for keyless blob attestations |
-| `*.predicate.json` | Release-artifact predicates bound into the Sigstore blob attestations |
-| `OpenBurnBar-VERSION-corresponding-source.tar.gz` | Corresponding source archive for AGPL-covered binaries and services |
-| `release-metadata.json` | Build provenance: version, commit, timestamp, update feed, runner |
+| Asset                                             | Purpose                                                                                                   |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `OpenBurnBar-VERSION-macOS.dmg`                   | Signed, notarized DMG installer                                                                           |
+| `OpenBurnBar-VERSION-macOS.zip`                   | Signed app archive                                                                                        |
+| `appcast.xml`                                     | Sparkle-compatible direct-download update appcast; production releases must include `sparkle:edSignature` |
+| `latest-macos.json`                               | Machine-readable latest release feed consumed by the direct-download app; unsigned metadata is ignored    |
+| `checksums-vVERSION.txt`                          | SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata                        |
+| `checksums-vVERSION.txt.asc`                      | GPG detached signature (if configured)                                                                    |
+| `sbom-vVERSION.spdx.json`                         | Software Bill of Materials (SPDX format)                                                                  |
+| `*.sigstore.json`                                 | Sigstore verification bundles for keyless blob attestations                                               |
+| `*.predicate.json`                                | Release-artifact predicates bound into the Sigstore blob attestations                                     |
+| `OpenBurnBar-VERSION-corresponding-source.tar.gz` | Corresponding source archive for AGPL-covered binaries and services                                       |
+| `release-metadata.json`                           | Build provenance: version, commit, timestamp, update feed, runner                                         |
 
 ## Release provenance
 
@@ -696,28 +698,40 @@ See [RELEASE_ROLLBACK.md](RELEASE_ROLLBACK.md) for the full rollback decision tr
 
 Tagged releases are **fail-hard**: if any required secret below is missing, the workflow fails and no fallback unsigned release is produced.
 
-| Secret | Description |
-|--------|-------------|
-| `APPLE_TEAM_ID` | 10-character Apple Developer Team ID |
-| `APPLE_SIGNING_IDENTITY` | Developer ID identity, e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_CERTIFICATE_P12` | Base64-encoded `.p12` (Developer ID cert + private key) |
-| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting `.p12` |
-| `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
-| `APPLE_NOTARY_ISSUER_ID` | App Store Connect API issuer ID (required for team keys, optional for individual keys) |
-| `APPLE_NOTARY_API_KEY_P8` | Base64-encoded contents of `AuthKey_<KEYID>.p8` |
-| `OPENBURNBAR_APP_PROFILE_BASE64` | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; must authorize `group.com.openburnbar.app` and `TEAMID.com.openburnbar.app` for Safari host/appex transport and shared Keychain access |
-| `OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64` | Base64-encoded dedicated `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app.safari-extension`; must authorize the Safari appex App Group and shared host Keychain group |
-| `FIREBASE_PLIST_BASE64` | Base64-encoded Firebase plist for CI |
-| `FIREBASE_APP_CHECK_DEBUG_TOKEN` | Firebase App Check debug token for CI |
-| `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast |
-| `OPENBURNBAR_MAC_UPDATE_BASE_URL` | *(Optional)* Override for generated update feed URLs; defaults to the GitHub Release latest-download host |
-| `RELEASE_SIGNING_KEY` | *(Optional)* Base64-encoded GPG private key for signing checksums |
+| Secret                                                                                                | Description                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APPLE_TEAM_ID`                                                                                       | 10-character Apple Developer Team ID                                                                                                                                                                                   |
+| `APPLE_SIGNING_IDENTITY`                                                                              | Developer ID identity, e.g. `Developer ID Application: Your Name (TEAMID)`                                                                                                                                             |
+| `APPLE_CERTIFICATE_P12`                                                                               | Base64-encoded `.p12` (Developer ID cert + private key)                                                                                                                                                                |
+| `APPLE_CERTIFICATE_PASSWORD`                                                                          | Password used when exporting `.p12`                                                                                                                                                                                    |
+| `APPLE_NOTARY_KEY_ID`                                                                                 | App Store Connect API key ID                                                                                                                                                                                           |
+| `APPLE_NOTARY_ISSUER_ID`                                                                              | App Store Connect API issuer ID (required for team keys, optional for individual keys)                                                                                                                                 |
+| `APPLE_NOTARY_API_KEY_P8`                                                                             | Base64-encoded contents of `AuthKey_<KEYID>.p8`                                                                                                                                                                        |
+| `OPENBURNBAR_APP_PROFILE_BASE64`                                                                      | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; must authorize `group.com.openburnbar.app` and `TEAMID.com.openburnbar.app` for Safari host/appex transport and shared Keychain access |
+| `OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64`                                                         | Base64-encoded dedicated `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app.safari-extension`; must authorize the Safari appex App Group and shared host Keychain group                                    |
+| `OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64`                                                         | Base64-encoded managed-capability `MAC_APP_DIRECT` profile for `com.openburnbar.privileged-input-execution`; must authorize the exact Developer ID team/certificate and `com.apple.developer.hid.virtual.device`       |
+| `FIREBASE_PLIST_BASE64`                                                                               | Base64-encoded Firebase plist for CI                                                                                                                                                                                   |
+| `FIREBASE_APP_CHECK_DEBUG_TOKEN`                                                                      | Firebase App Check debug token for CI                                                                                                                                                                                  |
+| `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast                                                                                                                                                        |
+| `OPENBURNBAR_MAC_UPDATE_BASE_URL`                                                                     | _(Optional)_ Override for generated update feed URLs; defaults to the GitHub Release latest-download host                                                                                                              |
+| `RELEASE_SIGNING_KEY`                                                                                 | _(Optional)_ Base64-encoded GPG private key for signing checksums                                                                                                                                                      |
 
 Never commit raw Apple credentials. Local `.p12`, `.p8`, provisioning profile,
 and developer-profile files are ignored by `.gitignore`; the workflow decodes
 secret payloads only into `$RUNNER_TEMP`, imports them into a temporary keychain
 or chmod-600 notary key file, and deletes those artifacts in an `always()` cleanup
 step from the same job that created them.
+
+The protected release job treats all three Developer ID profiles as mandatory.
+It decodes each profile into a newly created, non-symlinked `0600` file; validates
+the profile's macOS platform, all-device distribution class, exact team and
+application identifier, future expiration, release-safe entitlements, and
+signing-certificate membership; and then removes the temporary profile material
+in the job's unconditional cleanup step. The privileged-input executable remains
+available at its compatibility path, while a separately signed
+`Contents/Helpers/OpenBurnBarPrivilegedInputExecution.app` wrapper embeds the
+managed-capability profile and is verified with strict/deep Code Signing before
+the containing app is signed.
 
 ### Generating secret payloads
 

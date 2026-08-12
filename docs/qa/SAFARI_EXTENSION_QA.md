@@ -9,19 +9,19 @@ distribution channels.
 
 Record this before testing:
 
-| Field | Value |
-|---|---|
-| Commit SHA | |
-| Branch/tag | |
-| Marketing/build version | |
-| macOS version/build | |
-| Safari version/build | |
-| Mac model/architecture | |
-| Distribution | source / Developer ID DMG / MAS archive-export |
-| App SHA-256 | |
-| DMG/PKG SHA-256 | |
-| Extension bundle ID | `com.openburnbar.app.safari-extension` |
-| Tester/date | |
+| Field                   | Value                                          |
+| ----------------------- | ---------------------------------------------- |
+| Commit SHA              |                                                |
+| Branch/tag              |                                                |
+| Marketing/build version |                                                |
+| macOS version/build     |                                                |
+| Safari version/build    |                                                |
+| Mac model/architecture  |                                                |
+| Distribution            | source / Developer ID DMG / MAS archive-export |
+| App SHA-256             |                                                |
+| DMG/PKG SHA-256         |                                                |
+| Extension bundle ID     | `com.openburnbar.app.safari-extension`         |
+| Tester/date             |                                                |
 
 ## Automated preflight
 
@@ -273,19 +273,19 @@ candidate. Before collecting measurements:
 
 The popup's **Performance evidence** drawer records:
 
-| JSON metric | Required exercise |
-|---|---|
-| `popup_bootstrap` | At least 5 cold and 20 warm popup openings |
-| `native_attach` | At least 5 cold and 20 warm daemon attachments |
-| `command_poll` | Idle polls and polls that issue controlled commands |
-| `command_completion` | Successful, rejected/failed, and aborted command acknowledgements |
-| `viewport_capture` | Normal viewport plus zoomed/offset and full-page-segment captures |
-| `image_resize` | Offscreen path, content fallback when available, and full-page stitching |
-| `ask_first_token` | Local and cloud Ask routes, including one intentional abort |
-| `action_verification` | Click, type, scroll, navigation, tab, and failure/stale-target cases |
-| `stop_panic` | Popup Stop, popup-local shortcut, and daemon-issued abort; correlate the separate native global-panic proof |
-| `learning_load` | Cold and warm learning projection loads |
-| `learning_mutation` | Opt-in/out, correction proposal, approve, reject, and forget |
+| JSON metric           | Required exercise                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `popup_bootstrap`     | At least 5 cold and 20 warm popup openings                                                                  |
+| `native_attach`       | At least 5 cold and 20 warm daemon attachments                                                              |
+| `command_poll`        | Idle polls and polls that issue controlled commands                                                         |
+| `command_completion`  | Successful, rejected/failed, and aborted command acknowledgements                                           |
+| `viewport_capture`    | Normal viewport plus zoomed/offset and full-page-segment captures                                           |
+| `image_resize`        | Offscreen path, content fallback when available, and full-page stitching                                    |
+| `ask_first_token`     | Local and cloud Ask routes, including one intentional abort                                                 |
+| `action_verification` | Click, type, scroll, navigation, tab, and failure/stale-target cases                                        |
+| `stop_panic`          | Popup Stop, popup-local shortcut, and daemon-issued abort; correlate the separate native global-panic proof |
+| `learning_load`       | Cold and warm learning projection loads                                                                     |
+| `learning_mutation`   | Opt-in/out, correction proposal, approve, reject, and forget                                                |
 
 The metric boundary is part of the evidence:
 
@@ -385,6 +385,15 @@ Acceptance:
       and Keychain group.
 - [ ] Host `MAC_APP_DIRECT` profile independently authorizes the exact shared
       App Group and Keychain group.
+- [ ] Privileged-input helper embeds its own exact `MAC_APP_DIRECT` profile in
+      `Contents/Helpers/OpenBurnBarPrivilegedInputExecution.app`; the profile is
+      macOS/all-devices, future-dated, certificate-bound, and authorizes
+      `com.apple.developer.hid.virtual.device` for
+      `TEAMID.com.openburnbar.privileged-input-execution`.
+- [ ] The raw privileged-input executable remains present for compatibility,
+      while both it and the managed-profile app wrapper use the exact
+      `com.openburnbar.privileged-input-execution` identifier, Developer ID team,
+      hardened runtime, and library validation.
 - [ ] Signed host entitlements retain `group.com.openburnbar.app` and
       `TEAMID.com.openburnbar.app`.
 - [ ] Signed appex entitlements retain App Sandbox and outbound network client.

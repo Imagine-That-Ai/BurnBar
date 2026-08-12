@@ -1145,6 +1145,7 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           OPENBURNBAR_APP_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_APP_PROFILE_BASE64 }}
           OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 }}
+          OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64 }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
           APPLE_NOTARY_API_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8 }}
@@ -1159,6 +1160,7 @@ jobs:
             APPLE_CERTIFICATE_PASSWORD \
             OPENBURNBAR_APP_PROFILE_BASE64 \
             OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 \
+            OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64 \
             APPLE_NOTARY_KEY_ID \
             APPLE_NOTARY_ISSUER_ID \
             APPLE_NOTARY_API_KEY_P8 \
@@ -1802,7 +1804,10 @@ jobs:
           SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           OPENBURNBAR_APP_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_APP_PROFILE_BASE64 }}
           OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 }}
+          OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64: ${{ secrets.OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64 }}
         run: |
+          set -euo pipefail
+
           APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/OpenBurnBar.app"
           FRAMEWORKS_DIR="$APP_PATH/Contents/Frameworks"
           HELPERS_DIR="$APP_PATH/Contents/Helpers"
@@ -1811,10 +1816,15 @@ jobs:
           APP_PROFILE_PLIST="$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.plist"
           APP_SIGNING_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBarRelease-signing.entitlements"
           SAFARI_EXTENSION_PROFILE="$RUNNER_TEMP/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile"
+          PRIVILEGED_INPUT_PROFILE="$RUNNER_TEMP/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile"
+          PRIVILEGED_INPUT_PROFILE_PLIST="$RUNNER_TEMP/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.plist"
+          PRIVILEGED_INPUT_SIGNING_ENTITLEMENTS="$RUNNER_TEMP/OpenBurnBarPrivilegedInputExecution-signing.entitlements"
+          PRIVILEGED_INPUT_HELPER_APP="$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution.app"
+          EXPECTED_PRIVILEGED_INPUT_BUNDLE_ID="com.openburnbar.privileged-input-execution"
           EXPECTED_APP_GROUP="group.com.openburnbar.app"
           PRIVILEGED_INPUT_ENTITLEMENTS="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
           VIRTUAL_HID_BRIDGE_ENTITLEMENTS="OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements"
-          export APP_PROFILE SAFARI_EXTENSION_PROFILE
+          export APP_PROFILE SAFARI_EXTENSION_PROFILE PRIVILEGED_INPUT_PROFILE
 
           if [[ ! -d "$APP_PATH" ]]; then
             echo "::error::App bundle not found at $APP_PATH"
@@ -1828,20 +1838,61 @@ jobs:
             echo "::error::OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64 is required. Store the dedicated com.openburnbar.app.safari-extension MAC_APP_DIRECT profile as a GitHub Actions secret."
             exit 1
           fi
+          if [[ -z "${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64:-}" ]]; then
+            echo "::error::OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64 is required. Store the managed-capability com.openburnbar.privileged-input-execution MAC_APP_DIRECT profile as a GitHub Actions secret."
+            exit 1
+          fi
 
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Contents/Info.plist")"
           python3 - <<'PY'
           import base64
           import os
+          import stat
           from pathlib import Path
 
-          payload = "".join(os.environ["OPENBURNBAR_APP_PROFILE_BASE64"].split())
-          Path(os.environ["APP_PROFILE"]).write_bytes(base64.b64decode(payload))
-          safari_payload = "".join(
-              os.environ["OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64"].split()
+          def decode_profile(environment_key: str, destination_key: str) -> None:
+              destination = Path(os.environ[destination_key])
+              payload = "".join(os.environ[environment_key].split())
+              try:
+                  decoded = base64.b64decode(payload, validate=True)
+              except ValueError as error:
+                  raise SystemExit(
+                      f"ERROR: {environment_key} is not strict base64: {error}"
+                  ) from error
+              if not decoded:
+                  raise SystemExit(f"ERROR: {environment_key} decoded to an empty profile.")
+
+              flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+              if hasattr(os, "O_NOFOLLOW"):
+                  flags |= os.O_NOFOLLOW
+              descriptor = os.open(destination, flags, 0o600)
+              try:
+                  with os.fdopen(descriptor, "wb") as file:
+                      file.write(decoded)
+              except BaseException:
+                  destination.unlink(missing_ok=True)
+                  raise
+
+              metadata = destination.lstat()
+              if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+                  destination.unlink(missing_ok=True)
+                  raise SystemExit(
+                      f"ERROR: Decoded {environment_key} destination is not a regular file."
+                  )
+              if stat.S_IMODE(metadata.st_mode) != 0o600:
+                  destination.unlink(missing_ok=True)
+                  raise SystemExit(
+                      f"ERROR: Decoded {environment_key} permissions are not 0600."
+                  )
+
+          decode_profile("OPENBURNBAR_APP_PROFILE_BASE64", "APP_PROFILE")
+          decode_profile(
+              "OPENBURNBAR_SAFARI_EXTENSION_PROFILE_BASE64",
+              "SAFARI_EXTENSION_PROFILE",
           )
-          Path(os.environ["SAFARI_EXTENSION_PROFILE"]).write_bytes(
-              base64.b64decode(safari_payload)
+          decode_profile(
+              "OPENBURNBAR_PRIVILEGED_INPUT_PROFILE_BASE64",
+              "PRIVILEGED_INPUT_PROFILE",
           )
           PY
           security cms -D -i "$APP_PROFILE" > "$APP_PROFILE_PLIST"
@@ -1868,6 +1919,75 @@ jobs:
             printf '%s\n' "$APP_PROFILE_APP_GROUPS"
             exit 1
           fi
+          security cms -D -i "$PRIVILEGED_INPUT_PROFILE" > "$PRIVILEGED_INPUT_PROFILE_PLIST"
+          python3 - \
+            "$PRIVILEGED_INPUT_PROFILE_PLIST" \
+            "$PRIVILEGED_INPUT_SIGNING_ENTITLEMENTS" \
+            "$APP_PROFILE_TEAM_ID" \
+            "$EXPECTED_PRIVILEGED_INPUT_BUNDLE_ID" <<'PY'
+          import datetime as dt
+          import plistlib
+          import sys
+          from pathlib import Path
+
+          profile_path, entitlements_path, team_id, bundle_id = sys.argv[1:]
+          with Path(profile_path).open("rb") as file:
+              profile = plistlib.load(file)
+
+          def fail(message: str) -> None:
+              raise SystemExit(f"ERROR: {message}")
+
+          if profile.get("Platform") != ["OSX"]:
+              fail(
+                  "Privileged input profile Platform must be ['OSX']; "
+                  f"found {profile.get('Platform')!r}."
+              )
+          if profile.get("ProvisionsAllDevices") is not True:
+              fail(
+                  "Privileged input profile must set ProvisionsAllDevices=true "
+                  "(MAC_APP_DIRECT)."
+              )
+          if profile.get("TeamIdentifier") != [team_id]:
+              fail(
+                  "Privileged input profile TeamIdentifier must contain only "
+                  f"{team_id!r}; found {profile.get('TeamIdentifier')!r}."
+              )
+
+          expiration = profile.get("ExpirationDate")
+          if not isinstance(expiration, dt.datetime):
+              fail("Privileged input profile is missing ExpirationDate.")
+          if expiration.tzinfo is None:
+              expiration = expiration.replace(tzinfo=dt.timezone.utc)
+          if expiration <= dt.datetime.now(dt.timezone.utc):
+              fail(f"Privileged input profile expired at {expiration.isoformat()}.")
+
+          entitlements = profile.get("Entitlements")
+          if not isinstance(entitlements, dict):
+              fail("Privileged input profile is missing Entitlements.")
+          expected_identifier = f"{team_id}.{bundle_id}"
+          if entitlements.get("com.apple.application-identifier") != expected_identifier:
+              fail(
+                  "Privileged input profile must authorize "
+                  f"{expected_identifier!r}; found "
+                  f"{entitlements.get('com.apple.application-identifier')!r}."
+              )
+          profile_team = entitlements.get("com.apple.developer.team-identifier")
+          if profile_team is not None and profile_team != team_id:
+              fail(
+                  "Privileged input profile entitlement team identifier must be "
+                  f"{team_id!r}; found {profile_team!r}."
+              )
+          if entitlements.get("com.apple.developer.hid.virtual.device") is not True:
+              fail(
+                  "Privileged input profile is missing the managed "
+                  "com.apple.developer.hid.virtual.device entitlement."
+              )
+          if entitlements.get("com.apple.security.get-task-allow") is True:
+              fail("Privileged input release profile must not enable get-task-allow.")
+
+          with Path(entitlements_path).open("wb") as file:
+              plistlib.dump(entitlements, file)
+          PY
           python3 - "$ENTITLEMENTS" "$APP_SIGNING_ENTITLEMENTS" "$APP_PROFILE_TEAM_ID" "$BUNDLE_ID" <<'PY'
           import plistlib
           import sys
@@ -1939,6 +2059,62 @@ jobs:
             fi
           }
 
+          wrap_privileged_input_execution_helper() {
+            local executable_path="$1"
+            local helper_app="$2"
+            local contents_dir="$helper_app/Contents"
+            local macos_dir="$contents_dir/MacOS"
+            local app_version
+            local app_build
+
+            if [[ ! -x "$executable_path" ]]; then
+              echo "::error::Privileged input executable is missing or not executable: $executable_path"
+              exit 1
+            fi
+            app_version="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist")"
+            app_build="$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP_PATH/Contents/Info.plist")"
+            rm -rf "$helper_app"
+            mkdir -p "$macos_dir"
+            cp "$executable_path" "$macos_dir/OpenBurnBarPrivilegedInputExecution"
+            chmod 755 "$macos_dir/OpenBurnBarPrivilegedInputExecution"
+            cp "$PRIVILEGED_INPUT_PROFILE" "$contents_dir/embedded.provisionprofile"
+            cat > "$contents_dir/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDisplayName</key>
+            <string>OpenBurnBar Privileged Input Execution</string>
+            <key>CFBundleExecutable</key>
+            <string>OpenBurnBarPrivilegedInputExecution</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.openburnbar.privileged-input-execution</string>
+            <key>CFBundleName</key>
+            <string>OpenBurnBarPrivilegedInputExecution</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>$app_version</string>
+            <key>CFBundleVersion</key>
+            <string>$app_build</string>
+            <key>LSBackgroundOnly</key>
+            <true/>
+            <key>LSMinimumSystemVersion</key>
+            <string>14.0</string>
+          </dict>
+          </plist>
+          PLIST
+            codesign --force --timestamp --options runtime,library \
+              --entitlements "$PRIVILEGED_INPUT_SIGNING_ENTITLEMENTS" \
+              --sign "$SIGNING_IDENTITY" \
+              "$helper_app"
+            bash scripts/ci/verify-signing-profile-certificate.sh \
+              "$helper_app" \
+              "$PRIVILEGED_INPUT_PROFILE"
+            codesign --verify --deep --strict --verbose=2 "$helper_app"
+            assert_peer_signature "$helper_app" "$EXPECTED_PRIVILEGED_INPUT_BUNDLE_ID"
+          }
+
           if [[ -d "$FRAMEWORKS_DIR" ]]; then
             while IFS= read -r -d '' item; do
               sign_one "$item"
@@ -1965,6 +2141,9 @@ jobs:
             "$PRIVILEGED_INPUT_ENTITLEMENTS" \
             "runtime,library" \
             "com.openburnbar.privileged-input-execution"
+          wrap_privileged_input_execution_helper \
+            "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" \
+            "$PRIVILEGED_INPUT_HELPER_APP"
           sign_one_with_entitlements \
             "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" \
             "$VIRTUAL_HID_BRIDGE_ENTITLEMENTS" \
@@ -1993,6 +2172,7 @@ jobs:
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.app"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputExecution" "com.openburnbar.privileged-input-execution"
+          assert_peer_signature "$PRIVILEGED_INPUT_HELPER_APP" "com.openburnbar.privileged-input-execution"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarVirtualHIDBridge" "com.openburnbar.virtual-hid-bridge"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarPrivilegedInputKillSwitchWatchdog" "com.openburnbar.privileged-input-killswitch-watchdog"
           bash scripts/ci/verify-openburnbar-safari-extension.sh \
@@ -2732,7 +2912,15 @@ jobs:
           if [[ -n "${notary_key_path:-}" ]]; then
             rm -f "$notary_key_path"
           fi
-          rm -f "$RUNNER_TEMP/certificate.p12"
+          rm -f \
+            "$RUNNER_TEMP/certificate.p12" \
+            "$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.provisionprofile" \
+            "$RUNNER_TEMP/OpenBurnBar-MAC_APP_DIRECT.plist" \
+            "$RUNNER_TEMP/OpenBurnBarRelease-signing.entitlements" \
+            "$RUNNER_TEMP/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile" \
+            "$RUNNER_TEMP/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile" \
+            "$RUNNER_TEMP/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.plist" \
+            "$RUNNER_TEMP/OpenBurnBarPrivilegedInputExecution-signing.entitlements"
 
   domain-core-ios-release-evidence:
     name: Domain Core iOS release evidence
