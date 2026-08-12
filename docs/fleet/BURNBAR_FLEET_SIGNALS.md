@@ -123,6 +123,56 @@ loss.
 
 ---
 
+## RPC transport & error envelope matrix (M1, implemented)
+
+The daemon RPC is newline-terminated JSON over a unix socket
+(`~/Library/Application Support/BurnBar/burnbar-daemon.sock` by default;
+`--socket-path` / `BURNBAR_DAEMON_SOCKET_PATH` override). The transport is
+**one-shot**: one request on one connection produces exactly one response
+line and the server then closes cleanly; a second request requires a second
+connection. A client that connects and sends nothing never delays another
+client's request (each connection is handled independently).
+
+**Frame cap.** The request frame is capped at **65536 raw UTF-8 payload
+bytes, excluding the trailing newline delimiter** (VAL-RPC-004). A payload
+of exactly 65536 bytes plus its newline is at-cap and accepted; a payload of
+65537 bytes is rejected with the typed oversize error. The cap counts raw
+UTF-8 bytes, never characters.
+
+**Error envelope shape (VAL-RPC-016).** Every error response is one
+`BurnBarRPCResponseEnvelope` line: `protocolVersion: 1`, the request `id`
+when it is syntactically recoverable, **no** `result`, and an `error` object
+with one enumerated `code` plus a non-empty `message`. When the id is absent
+or wrong-typed (non-string), the documented sentinel id `"no-id"` is used —
+the daemon never fabricates a client-supplied id.
+
+| Failure class | Example input | Code | id in envelope |
+|---|---|---|---|
+| Unknown method | `{"id":"2","method":"daemon.fleet.nonexistent"}` | `-32601` (methodNotFound) | echoed |
+| Malformed JSON | `{not json` | `-32700` (parseError) | `"no-id"` (not recoverable) |
+| Oversized frame | valid JSON payload of 65537 bytes | `-32002` (frameTooLarge) | recovered from the partial frame when present |
+| Missing id | `{"method":"daemon.health"}` | `-32600` (invalidRequest) | `"no-id"` |
+| Wrong-typed id | `{"id":123,"method":"daemon.health"}` | `-32600` (invalidRequest) | `"no-id"` |
+| Wrong params type | `{"id":"p-1","method":"daemon.fleet.orchestrator.set","params":"x"}` | `-32602` (invalidParams) | echoed |
+| protocolVersion mismatch | `{"id":"v-1","method":"daemon.health","protocolVersion":2}` | `-32001` (protocolVersionMismatch) | echoed |
+
+**Versioning policy (VAL-RPC-012).** A request envelope that declares a
+`protocolVersion` outside the supported set (`[1]`) is rejected with the
+typed `-32001` mismatch error — never silently processed under v1 semantics.
+An absent `protocolVersion` field means v1 (existing clients predate the
+field). `BurnBarProtocolVersion.current` remains `1`; fleet methods are
+additive and need no bump.
+
+**Daemon stays usable.** Every failure class returns its typed error and the
+daemon keeps serving: a follow-up `daemon.health` (or any valid request) on a
+fresh connection succeeds. Oversized frames get the typed error response
+instead of a silent close.
+
+**Pre-first-tick reads** return the typed `-32603` not-ready error (see
+"Snapshot builder behavior") — never a fabricated snapshot.
+
+---
+
 ## Confidence model
 
 Wire strings (golden, from `BurnBarFleetConfidence` in BurnBarCore):
