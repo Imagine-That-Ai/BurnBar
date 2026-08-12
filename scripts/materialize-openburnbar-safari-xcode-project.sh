@@ -33,6 +33,7 @@ project_path="$repo_root/$project_relative"
 pbx_path="$project_path/project.pbxproj"
 transition_verifier="$repo_root/$transition_verifier_relative"
 semantic_verifier="$repo_root/$semantic_verifier_relative"
+preserved_project_paths=()
 
 usage() {
   cat >&2 <<'EOF'
@@ -48,7 +49,9 @@ This one-time certification transition accepts only the audited source change:
 OpenBurnBarDaemon Sources 230->232 and OpenBurnBarDaemonTests Sources 119->121.
 It performs two independent pinned XcodeGen passes, compares their complete
 semantic project graphs, restores every generated Info.plist byte-for-byte,
-and keeps the generated project only if all checks pass.
+preserves every tracked project-bundle artifact except the audited
+project.pbxproj transition, and keeps the generated project only if all checks
+pass.
 EOF
 }
 
@@ -129,6 +132,28 @@ original_pbx_sha256="$(shasum --algorithm 256 "$pbx_path" | awk '{print $1}')"
 if [[ "$original_pbx_sha256" != "$expected_original_pbx_sha256" ]]; then
   fail "historical project.pbxproj checksum mismatch: expected $expected_original_pbx_sha256, found $original_pbx_sha256. Do not regenerate from an unreviewed base."
 fi
+while IFS= read -r -d '' relative_path; do
+  if [[ "$relative_path" == "$project_relative/project.pbxproj" ]]; then
+    continue
+  fi
+  case "$relative_path" in
+    "$project_relative/"*) ;;
+    *) fail "tracked project artifact escaped the project bundle: $relative_path" ;;
+  esac
+  require_real_file "$repo_root/$relative_path" "tracked project artifact"
+  preserved_project_paths+=("$relative_path")
+done < <(
+  openburnbar_candidate_git ls-tree \
+    -r \
+    -z \
+    --name-only \
+    "$expected_commit" \
+    -- \
+    "$project_relative"
+)
+if ((${#preserved_project_paths[@]} == 0)); then
+  fail "exact candidate contains no tracked project artifacts to preserve."
+fi
 
 xcodegen_bin="$(openburnbar_resolve_pinned_xcodegen)"
 work_root="$(mktemp -d "${TMPDIR:-/tmp}/openburnbar-safari-xcodegen-transition.XXXXXX")"
@@ -159,18 +184,45 @@ restore_original_state() {
       cp -p "$backup_path" "$repo_root/$relative_path"
     fi
   done
+  for relative_path in "${preserved_project_paths[@]}"; do
+    backup_path="$work_root/project/$relative_path"
+    if [[ -f "$backup_path" ]]; then
+      mkdir -p "$(dirname "$repo_root/$relative_path")"
+      cp -p "$backup_path" "$repo_root/$relative_path"
+    fi
+  done
   rm -rf "$work_root"
   exit "$exit_status"
 }
 trap restore_original_state EXIT
 
-mkdir -p "$work_root/info"
+mkdir -p "$work_root/info" "$work_root/project"
 for relative_path in "${generated_info_paths[@]}"; do
   mkdir -p "$work_root/info/$(dirname "$relative_path")"
   cp -p "$repo_root/$relative_path" "$work_root/info/$relative_path"
 done
+for relative_path in "${preserved_project_paths[@]}"; do
+  mkdir -p "$work_root/project/$(dirname "$relative_path")"
+  cp -p "$repo_root/$relative_path" "$work_root/project/$relative_path"
+done
 mv "$project_path" "$original_project"
 original_project_moved=1
+
+restore_preserved_project_artifacts() {
+  local relative_path
+  local backup_path
+  local destination_path
+
+  for relative_path in "${preserved_project_paths[@]}"; do
+    backup_path="$work_root/project/$relative_path"
+    destination_path="$repo_root/$relative_path"
+    mkdir -p "$(dirname "$destination_path")"
+    cp -p "$backup_path" "$destination_path"
+    if ! cmp -s "$backup_path" "$destination_path"; then
+      fail "tracked project artifact was not restored byte-for-byte: $relative_path"
+    fi
+  done
+}
 
 generate_pass() {
   local destination="$1"
@@ -181,6 +233,7 @@ generate_pass() {
     "$xcodegen_bin" generate --spec project.yml
   )
   require_real_file "$pbx_path" "pinned XcodeGen output"
+  restore_preserved_project_artifacts
   mv "$project_path" "$destination"
   for relative_path in "${generated_info_paths[@]}"; do
     cp -p "$work_root/info/$relative_path" "$repo_root/$relative_path"
@@ -201,12 +254,25 @@ python3 "$semantic_verifier" \
   "$second_project/project.pbxproj"
 
 mv "$second_project" "$project_path"
+restore_preserved_project_artifacts
 for relative_path in "${generated_info_paths[@]}"; do
   cp -p "$work_root/info/$relative_path" "$repo_root/$relative_path"
   if ! cmp -s "$work_root/info/$relative_path" "$repo_root/$relative_path"; then
     fail "XcodeGen-managed Info.plist was not restored byte-for-byte: $relative_path"
   fi
 done
+final_worktree_state="$(
+  openburnbar_candidate_git status \
+    --porcelain=v1 \
+    --untracked-files=all \
+    --ignore-submodules=none
+)"
+expected_worktree_state=" M $project_relative/project.pbxproj"
+if [[ "$final_worktree_state" != "$expected_worktree_state" ]]; then
+  echo "ERROR: Safari XcodeGen materialization produced an unexpected repository delta:" >&2
+  printf '%s\n' "${final_worktree_state:-<clean>}" >&2
+  exit 1
+fi
 installed_generated_project=1
 original_project_moved=0
 
@@ -214,5 +280,6 @@ echo "PASS: materialized the exact two-pass Safari XcodeGen transition."
 echo "  Original project SHA-256: $expected_original_pbx_sha256"
 echo "  OpenBurnBarDaemon Sources: 230 -> 232"
 echo "  OpenBurnBarDaemonTests Sources: 119 -> 121"
+echo "  Preserved tracked project artifacts: ${#preserved_project_paths[@]}"
 echo "  Candidate checkpoint: $expected_commit"
 echo "  Candidate checkpoint tree: $expected_tree"
