@@ -6,7 +6,10 @@ import {
   evaluateGate,
   githubJson,
   isTransientGithubStatus,
+  parseActionsJobRef,
   pendingComponentAllowanceMs,
+  reconcileStalledChecks,
+  stalledJobConclusion,
   resolveObservedSha,
 } from "./await-burnbar-ci-gate.mjs";
 
@@ -77,7 +80,10 @@ test("umbrella timeout outlives the longest required component", () => {
     umbrellaTimeout > config.timeout_minutes + 15,
     "workflow timeout must fund queueing skew beyond the base deadline",
   );
-  assert.ok(umbrellaTimeout < 300, "workflow must stay below the merge-queue response timeout");
+  assert.ok(
+    umbrellaTimeout < 300,
+    "workflow must stay below the merge-queue response timeout",
+  );
 });
 
 test("deadline re-anchors to the observed component start, never to unstarted work", () => {
@@ -102,8 +108,16 @@ test("deadline re-anchors to the observed component start, never to unstarted wo
   assert.equal(
     pendingComponentAllowanceMs(
       [
-        { context: "early", status: "in_progress", startedAt: "2026-07-28T12:00:00Z" },
-        { context: "late", status: "in_progress", startedAt: "2026-07-28T13:30:00Z" },
+        {
+          context: "early",
+          status: "in_progress",
+          startedAt: "2026-07-28T12:00:00Z",
+        },
+        {
+          context: "late",
+          status: "in_progress",
+          startedAt: "2026-07-28T13:30:00Z",
+        },
       ],
       { componentBudgetMs, headroomMs },
     ),
@@ -114,18 +128,31 @@ test("deadline re-anchors to the observed component start, never to unstarted wo
   assert.equal(
     pendingComponentAllowanceMs(
       [
-        { context: "started", status: "in_progress", startedAt: "2026-07-28T13:00:00Z" },
+        {
+          context: "started",
+          status: "in_progress",
+          startedAt: "2026-07-28T13:00:00Z",
+        },
         { context: "unstarted", status: "replacement_pending" },
       ],
       { componentBudgetMs, headroomMs },
     ),
     null,
   );
-  assert.equal(pendingComponentAllowanceMs([], { componentBudgetMs, headroomMs }), null);
+  assert.equal(
+    pendingComponentAllowanceMs([], { componentBudgetMs, headroomMs }),
+    null,
+  );
   // Without a configured budget the evaluator keeps its fixed deadline.
   assert.equal(
     pendingComponentAllowanceMs(
-      [{ context: "started", status: "in_progress", startedAt: "2026-07-28T13:00:00Z" }],
+      [
+        {
+          context: "started",
+          status: "in_progress",
+          startedAt: "2026-07-28T13:00:00Z",
+        },
+      ],
       { componentBudgetMs: 0, headroomMs },
     ),
     null,
@@ -368,7 +395,8 @@ test("transient API failures retry with backoff instead of killing the wait", as
   let calls = 0;
   globalThis.fetch = async () => {
     calls += 1;
-    if (calls === 1) return { ok: false, status: 502, text: async () => "Server Error" };
+    if (calls === 1)
+      return { ok: false, status: 502, text: async () => "Server Error" };
     if (calls === 2) throw new TypeError("fetch failed");
     return { ok: true, json: async () => ({ value: "recovered" }) };
   };
@@ -380,7 +408,11 @@ test("transient API failures retry with backoff instead of killing the wait", as
     });
     assert.deepEqual(payload, { value: "recovered" });
     assert.equal(calls, 3);
-    assert.deepEqual(delays, [1_000, 2_000], "backoff must grow between retries");
+    assert.deepEqual(
+      delays,
+      [1_000, 2_000],
+      "backoff must grow between retries",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -477,4 +509,169 @@ test("collector keeps the newest duplicate commit status", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+// MARK: - Stalled check-run reconciliation
+//
+// Both 2026-08-11 merge-queue stalls had the same shape: a check run frozen
+// non-terminal over a job whose steps had all finished. These pin that the
+// gate now reads the steps rather than waiting out its full budget.
+
+test("a stalled job whose step failed reconciles to failure immediately", () => {
+  const resolution = stalledJobConclusion(
+    {
+      conclusion: null,
+      completed_at: "2026-08-11T03:02:59Z",
+      steps: [
+        { name: "Set up job", status: "completed", conclusion: "success" },
+        {
+          name: "Check native jobs passed (or were correctly skipped)",
+          status: "completed",
+          conclusion: "failure",
+        },
+        { name: "Complete job", status: "completed", conclusion: "success" },
+      ],
+    },
+    // No grace is consumed: a failed step is unambiguous, and this is the case
+    // that hung PR Native Gate for 4.5h.
+    { graceMs: 60 * 60_000, now: Date.parse("2026-08-11T03:06:00Z") },
+  );
+  assert.equal(resolution?.conclusion, "failure");
+  assert.match(resolution.reason, /Check native jobs passed/u);
+});
+
+test("a stalled all-successful job reconciles to success only after the grace", () => {
+  const job = {
+    conclusion: null,
+    completed_at: "2026-08-11T03:54:30Z",
+    steps: [
+      { name: "Set up job", status: "completed", conclusion: "success" },
+      {
+        name: "Require every Rust and Swift prerequisite job",
+        status: "completed",
+        conclusion: "success",
+      },
+      { name: "Complete job", status: "completed", conclusion: "success" },
+    ],
+  };
+  const graceMs = 10 * 60_000;
+  // Inside the grace this is ordinary lag between the last step and the
+  // published conclusion, not a zombie.
+  assert.equal(
+    stalledJobConclusion(job, {
+      graceMs,
+      now: Date.parse("2026-08-11T03:58:00Z"),
+    }),
+    null,
+  );
+  // Four hours later — the real App build + test (AgentLens) stall.
+  const resolution = stalledJobConclusion(job, {
+    graceMs,
+    now: Date.parse("2026-08-11T07:43:00Z"),
+  });
+  assert.equal(resolution?.conclusion, "success");
+});
+
+test("a job that published its own conclusion is never second-guessed", () => {
+  assert.equal(
+    stalledJobConclusion(
+      {
+        conclusion: "failure",
+        completed_at: "2026-08-11T03:00:00Z",
+        steps: [
+          { name: "Set up job", status: "completed", conclusion: "success" },
+        ],
+      },
+      { graceMs: 0, now: Date.parse("2026-08-11T09:00:00Z") },
+    ),
+    null,
+  );
+});
+
+test("a job with a step still running is not treated as stalled", () => {
+  assert.equal(
+    stalledJobConclusion(
+      {
+        conclusion: null,
+        started_at: "2026-08-11T03:00:00Z",
+        steps: [
+          { name: "Set up job", status: "completed", conclusion: "success" },
+          { name: "Build", status: "in_progress", conclusion: null },
+        ],
+      },
+      { graceMs: 0, now: Date.parse("2026-08-11T09:00:00Z") },
+    ),
+    null,
+  );
+});
+
+test("parseActionsJobRef only matches Actions job URLs", () => {
+  assert.deepEqual(
+    parseActionsJobRef(
+      "https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31456785998/job/93672189722",
+    ),
+    { runId: "31456785998", jobId: "93672189722" },
+  );
+  // External reporters and commit statuses must fall through untouched.
+  assert.equal(parseActionsJobRef("https://example.com/build/17"), null);
+  assert.equal(parseActionsJobRef(undefined), null);
+});
+
+test("reconcileStalledChecks resolves a zombie and leaves healthy pending alone", async () => {
+  const jobs = {
+    93672189722: {
+      conclusion: null,
+      completed_at: "2026-08-11T03:54:30Z",
+      steps: [
+        { name: "Set up job", status: "completed", conclusion: "success" },
+      ],
+    },
+    11111: {
+      conclusion: null,
+      started_at: "2026-08-11T07:40:00Z",
+      steps: [{ name: "Build", status: "in_progress", conclusion: null }],
+    },
+  };
+  const reconciled = await reconcileStalledChecks(
+    [
+      {
+        context: "App build + test (AgentLens)",
+        url: "https://github.com/o/r/actions/runs/1/job/93672189722",
+      },
+      {
+        context: "Still genuinely running",
+        url: "https://github.com/o/r/actions/runs/1/job/11111",
+      },
+      { context: "External reporter", url: "https://example.com/x" },
+    ],
+    {
+      graceMs: 10 * 60_000,
+      now: Date.parse("2026-08-11T07:43:00Z"),
+      fetchJob: async (jobId) => jobs[jobId],
+    },
+  );
+  assert.equal(reconciled.size, 1);
+  assert.equal(
+    reconciled.get("App build + test (AgentLens)").conclusion,
+    "success",
+  );
+});
+
+test("an unreadable job keeps waiting instead of inventing a verdict", async () => {
+  const reconciled = await reconcileStalledChecks(
+    [
+      {
+        context: "Flaky to read",
+        url: "https://github.com/o/r/actions/runs/1/job/42",
+      },
+    ],
+    {
+      graceMs: 0,
+      now: Date.now(),
+      fetchJob: async () => {
+        throw new Error("GitHub API 502");
+      },
+    },
+  );
+  assert.equal(reconciled.size, 0);
 });

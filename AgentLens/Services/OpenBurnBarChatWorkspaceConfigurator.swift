@@ -14,7 +14,7 @@ enum OpenBurnBarChatWorkspaceConfigurator {
         switch targetHarness.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "cursor":
             hintDirectory = ".cursor"
-        case "windsurf":
+        case "windsurf", "devin":
             hintDirectory = ".windsurf"
         default:
             hintDirectory = ".openburnbar"

@@ -363,6 +363,7 @@ public struct CLIAgentResumeOutcome: Hashable, Sendable {
         case "goose":    return "Goose"
         case "cursor":   return "Cursor"
         case "windsurf": return "Windsurf"
+        case "devin": return "Devin"
         default:         return nil
         }
     }

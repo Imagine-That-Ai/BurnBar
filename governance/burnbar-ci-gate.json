@@ -1,6 +1,7 @@
 {
   "context": "BurnBar CI Gate",
   "cancelled_grace_seconds": 120,
+  "stalled_check_grace_minutes": 10,
   "poll_interval_seconds": 20,
   "timeout_minutes": 270,
   "component_runtime_budget_minutes": 240,
