@@ -272,18 +272,16 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
             }
         )
 
-        let first = try XCTUnwrap(
-            await authority.issue(
-                clientID: clientID,
-                sessionID: sessionID
-            )
+        let firstValue = await authority.issue(
+            clientID: clientID,
+            sessionID: sessionID
         )
-        let repeated = try XCTUnwrap(
-            await authority.issue(
-                clientID: clientID,
-                sessionID: sessionID
-            )
+        let first = try XCTUnwrap(firstValue)
+        let repeatedValue = await authority.issue(
+            clientID: clientID,
+            sessionID: sessionID
         )
+        let repeated = try XCTUnwrap(repeatedValue)
 
         XCTAssertEqual(repeated.token, first.token)
         XCTAssertGreaterThanOrEqual(repeated.expiresAt, first.expiresAt)
@@ -314,9 +312,11 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
                 observedClientID == clientID && observedSessionID == sessionID
             }
         )
-        let first = try XCTUnwrap(
-            await authority.issue(clientID: clientID, sessionID: sessionID)
+        let firstValue = await authority.issue(
+            clientID: clientID,
+            sessionID: sessionID
         )
+        let first = try XCTUnwrap(firstValue)
         let consumedCorrelation =
             "2B0D4A57-A4E2-4C18-9AF0-2026E06EAF51"
         let freshBeforeRenewal =
@@ -341,27 +341,29 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
             firstResolution.attribution.clientSource,
             GatewayRequestAttribution.safariClientSource
         )
+        let replayResolution = await authority.resolve(
+            headers: headers(first.token, consumedCorrelation)
+        )
         XCTAssertEqual(
-            await authority.resolve(
-                headers: headers(first.token, consumedCorrelation)
-            ),
+            replayResolution,
             .rejected,
             "Replaying correlation A must reject only that request, not invalidate the capability"
         )
+        let freshBeforeRenewalResolution = await authority.resolve(
+            headers: headers(first.token, freshBeforeRenewal)
+        )
         XCTAssertEqual(
-            (
-                await authority.resolve(
-                    headers: headers(first.token, freshBeforeRenewal)
-                )
-            ).attribution.clientSource,
+            freshBeforeRenewalResolution.attribution.clientSource,
             GatewayRequestAttribution.safariClientSource,
             "Fresh correlation B must remain usable after replay A is rejected"
         )
 
         observedNow.write(first.expiresAt.addingTimeInterval(-29))
-        let renewed = try XCTUnwrap(
-            await authority.issue(clientID: clientID, sessionID: sessionID)
+        let renewedValue = await authority.issue(
+            clientID: clientID,
+            sessionID: sessionID
         )
+        let renewed = try XCTUnwrap(renewedValue)
 
         XCTAssertEqual(renewed.token, first.token)
         XCTAssertEqual(
@@ -398,9 +400,11 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
                 await validator.validate()
             }
         )
-        let first = try XCTUnwrap(
-            await authority.issue(clientID: clientID, sessionID: sessionID)
+        let firstValue = await authority.issue(
+            clientID: clientID,
+            sessionID: sessionID
         )
+        let first = try XCTUnwrap(firstValue)
         await validator.setSuspended(true)
 
         let renewalTask = Task {
@@ -417,7 +421,8 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
         await validator.waitUntilCallCount(3)
 
         await validator.release(call: 2)
-        XCTAssertNil(await renewalTask.value)
+        let renewalValue = await renewalTask.value
+        XCTAssertNil(renewalValue)
         await validator.release(call: 3)
         let rotatedValue = await rotationTask.value
         let rotated = try XCTUnwrap(rotatedValue)
