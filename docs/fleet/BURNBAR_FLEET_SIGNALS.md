@@ -50,7 +50,27 @@ The daemon's fleet snapshot core exposes the following environment seams. Valida
 - **Machine status.** `cpuPercent`, `memoryUsedBytes`, `memoryTotalBytes`, `loadAverage` (3 elements), and `diskFreeBytes` are populated from Mach/`getloadavg`/`statfs`; `thermal` and `power` are typed `unavailable(reason)` on this machine (`pmset -g thermlog` is empty) — values are never invented.
 - **Pre-first-tick RPC behavior (typed).** `daemon.fleet.snapshot` before the first tick completes returns the documented typed error `BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly.` (code `-32603`, internalError) — never a fabricated empty snapshot presented as probed truth. The first tick runs immediately at daemon start, so the not-ready window is one build duration.
 - **Cadence reflection.** Every ready snapshot and the well-known file report the same `cadenceSeconds` as the tick interval (both derive from the builder). Changing `BURNBAR_FLEET_CADENCE_SECONDS` changes both the tick interval and the reported value.
-- **Default probes (until per-agent probes land).** Until the per-agent signal probes are implemented, each roster agent is served by a root-presence probe: root present → `ok` health + `unknown`/`unsupported` row with an honest note; root missing → `failed` health + `unknown`/`unsupported` row. This keeps the roster complete and honest on empty roots.
+- **Default probes.** Three roster agents are served by real file/pid-based
+  signal probes (implemented M1): `claude-code` (sessions registry),
+  `grok-cli` (active-sessions registry), and `factory-droid` (task ledger +
+  background registry + session/mission dir mtimes). The remaining roster
+  agents are served by a root-presence probe: root present → `ok` health +
+  `unknown`/`unsupported` row with an honest note; root missing → `failed`
+  health + `unknown`/`unsupported` row. This keeps the roster complete and
+  honest on empty roots until the remaining per-agent probes land.
+- **Probe behavior (file/pid-based probes).** The three signal probes follow
+  the per-agent rules in this document exactly: live-pid + fresh signal →
+  `running` with the documented confidence; dead pid → non-running with a
+  confidence step-down (never `running`); stale signal → `stale`; malformed
+  (valid-JSON, missing/mistyped required key) → typed `unknown`/`stale` with
+  a `degraded(reason)` health entry — never fabricated liveness, and only
+  the affected row degrades. Multi-session agents: one live session drives
+  the row; dead/stale sessions never mask a live one, and `signals[]`
+  reflects every evidence source read. Signal evidence paths are always
+  inside the agent's declared roots; `~/.factory/artifacts/` is never read,
+  listed, or traversed. Pid-reuse guarding: a pid whose process start time
+  postdates the signal file's recorded `startedAt` is treated as dead
+  (VAL-HARD-007).
 
 ---
 

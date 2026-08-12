@@ -111,17 +111,7 @@ public actor BurnBarDaemonServer {
         if let fleetService {
             self.fleetService = fleetService
         } else {
-            let fleetConfiguration = BurnBarFleetConfiguration()
-            var probes: [BurnBarFleetAgentID: any BurnBarFleetProbe] = [:]
-            for agentID in BurnBarFleetAgentID.declaredRoster {
-                let rootPath = fleetConfiguration.rootResolver.rootPath(for: agentID)
-                probes[agentID] = BurnBarFleetRootPresenceProbe(agentID: agentID, rootPath: rootPath)
-            }
-            let builder = BurnBarFleetSnapshotBuilder(
-                cadenceSeconds: fleetConfiguration.cadenceSeconds,
-                probes: probes
-            )
-            self.fleetService = BurnBarFleetService(builder: builder)
+            self.fleetService = BurnBarFleetServiceFactory.makeDefault()
         }
     }
 
@@ -469,29 +459,7 @@ public actor BurnBarDaemonServer {
                     )
                 }
             case .fleetSnapshot:
-                // The snapshot request carries no parameters; decode the plain
-                // envelope so both `{"id":...,"method":"daemon.fleet.snapshot"}`
-                // and a params-bearing form are accepted.
-                let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
-                let readState = await fleetService.readLatestSnapshot()
-                switch readState {
-                case .notReady:
-                    // Typed pre-first-tick behavior: never a fabricated empty
-                    // snapshot presented as probed truth.
-                    return encodeErrorResponse(
-                        id: typedRequest.id,
-                        code: BurnBarRPCErrorCode.internalError,
-                        message:
-                            "BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly."
-                    )
-                case .ready(let snapshot):
-                    let response = BurnBarRPCResponseEnvelope(
-                        id: typedRequest.id,
-                        protocolVersion: BurnBarProtocolVersion.current,
-                        result: BurnBarFleetSnapshotResponse(snapshot: snapshot)
-                    )
-                    return encode(response)
-                }
+                return try await handleFleetSnapshot(requestData: requestData, decoder: decoder)
             case .fleetOrchestratorGet, .fleetOrchestratorSet, .fleetDirectiveRecord:
                 // M0 placeholder: orchestrator/directive handlers land in M4.
                 // Until then every call returns this documented typed error;
@@ -512,6 +480,31 @@ public actor BurnBarDaemonServer {
                 code: error is DecodingError ? BurnBarRPCErrorCode.invalidParams : BurnBarRPCErrorCode.internalError,
                 message: error.localizedDescription
             )
+        }
+    }
+
+    /// Handles `daemon.fleet.snapshot`. The request carries no parameters;
+    /// the plain envelope is decoded so both `{"id":...,"method":"daemon.fleet.snapshot"}`
+    /// and a params-bearing form are accepted. Pre-first-tick reads return
+    /// the typed not-ready error — never a fabricated snapshot.
+    private func handleFleetSnapshot(requestData: Data, decoder: JSONDecoder) async throws -> Data {
+        let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+        let readState = await fleetService.readLatestSnapshot()
+        switch readState {
+        case .notReady:
+            return encodeErrorResponse(
+                id: typedRequest.id,
+                code: BurnBarRPCErrorCode.internalError,
+                message:
+                    "BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly."
+            )
+        case .ready(let snapshot):
+            let response = BurnBarRPCResponseEnvelope(
+                id: typedRequest.id,
+                protocolVersion: BurnBarProtocolVersion.current,
+                result: BurnBarFleetSnapshotResponse(snapshot: snapshot)
+            )
+            return encode(response)
         }
     }
 
