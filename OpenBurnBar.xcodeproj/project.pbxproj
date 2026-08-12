@@ -9942,7 +9942,7 @@
 				F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */,
 				F8714EEAF9893F18F827916D /* Block Mac App Check Debug Token In Release */,
 				A3B6B6DFDAF6BB3707742792 /* Stamp Build Provenance */,
-				8A38C8EE41C5257032CEB552 /* Bundle Remote Unlock Input Helpers */,
+				DCC984DE1D22E3AA3960E177 /* Bundle Required Runtime and Remote Unlock Input Helpers */,
 				4D5D25B9C20B6B325DFD55C5 /* Bundle Agent Runtime Resources */,
 			);
 			buildRules = (
@@ -10703,30 +10703,6 @@
 			shellPath = /bin/sh;
 			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 		};
-		8A38C8EE41C5257032CEB552 /* Bundle Remote Unlock Input Helpers */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputExecution",
-				"$(BUILT_PRODUCTS_DIR)/OpenBurnBarVirtualHIDBridge",
-				"$(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputKillSwitchWatchdog",
-			);
-			name = "Bundle Remote Unlock Input Helpers";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputExecution",
-				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarVirtualHIDBridge",
-				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nHELPERS_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nmkdir -p \"${HELPERS_DIR}\"\nfor NAME in OpenBurnBarPrivilegedInputExecution OpenBurnBarVirtualHIDBridge OpenBurnBarPrivilegedInputKillSwitchWatchdog; do\n  SOURCE=\"${BUILT_PRODUCTS_DIR}/${NAME}\"\n  if [[ ! -x \"${SOURCE}\" ]]; then\n    echo \"warning: ${NAME} helper not built; Remote Unlock setup may be unavailable.\"\n    continue\n  fi\n  cp \"${SOURCE}\" \"${HELPERS_DIR}/${NAME}\"\n  chmod 755 \"${HELPERS_DIR}/${NAME}\"\ndone\n";
-		};
 		A0179ED15466BB0DD8186459 /* Guard source-built gRPC (iOS 27 Firestore crash) */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -10800,6 +10776,32 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\nif [[ \"${CONFIGURATION:-}\" != \"Release\" ]]; then\n  exit 0\nfi\n/bin/bash \"${SRCROOT}/scripts/ci/verify-ios-debug-bridge-release.sh\" \\\n  \"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\"\n";
+		};
+		DCC984DE1D22E3AA3960E177 /* Bundle Required Runtime and Remote Unlock Input Helpers */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/OpenBurnBarDaemon",
+				"$(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputExecution",
+				"$(BUILT_PRODUCTS_DIR)/OpenBurnBarVirtualHIDBridge",
+				"$(BUILT_PRODUCTS_DIR)/OpenBurnBarPrivilegedInputKillSwitchWatchdog",
+			);
+			name = "Bundle Required Runtime and Remote Unlock Input Helpers";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarDaemon",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputExecution",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarVirtualHIDBridge",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nHELPERS_DIR=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nmkdir -p \"${HELPERS_DIR}\"\n\nDAEMON_SOURCE=\"${BUILT_PRODUCTS_DIR}/OpenBurnBarDaemon\"\nif [[ ! -x \"${DAEMON_SOURCE}\" ]]; then\n  echo \"error: required OpenBurnBarDaemon product is missing or not executable at ${DAEMON_SOURCE}.\" >&2\n  exit 1\nfi\ncp \"${DAEMON_SOURCE}\" \"${HELPERS_DIR}/OpenBurnBarDaemon\"\nchmod 755 \"${HELPERS_DIR}/OpenBurnBarDaemon\"\n\nfor NAME in OpenBurnBarPrivilegedInputExecution OpenBurnBarVirtualHIDBridge OpenBurnBarPrivilegedInputKillSwitchWatchdog; do\n  SOURCE=\"${BUILT_PRODUCTS_DIR}/${NAME}\"\n  if [[ ! -x \"${SOURCE}\" ]]; then\n    echo \"warning: ${NAME} helper not built; Remote Unlock setup may be unavailable.\"\n    continue\n  fi\n  cp \"${SOURCE}\" \"${HELPERS_DIR}/${NAME}\"\n  chmod 755 \"${HELPERS_DIR}/${NAME}\"\ndone\n";
 		};
 		F19F6F508537047AB82F67A8 /* Configure Firebase Auth Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -13395,11 +13397,11 @@
 		};
 		3D86C882AF3E0903D2B6AEC1 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_6DEBA226-BFEC-4472-9D40-F1AC02AF8085" /* OpenBurnBarInsights */;
+			productRef = "TEMP_495CA89E-2573-4E22-95EB-D869346AB332" /* OpenBurnBarInsights */;
 		};
 		443FF277670BA948D441326F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_B9BF10BE-F292-4B16-B151-C514BD6D3BF0" /* OpenBurnBarEngine */;
+			productRef = "TEMP_CA36E2BD-8819-4C7D-AED4-DC3AC8DA2186" /* OpenBurnBarEngine */;
 		};
 		5499EFD4C8229C93F39C16E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13413,7 +13415,7 @@
 		};
 		5F473CBA91EA3EDB5979FCF0 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_4E9D7B15-DAC3-439A-B0FD-629449869C52" /* OpenBurnBarMedia */;
+			productRef = "TEMP_9349F6A7-A075-442E-946F-C68A3C2DE836" /* OpenBurnBarMedia */;
 		};
 		65381FC60CCDA6ECB17D631F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13432,11 +13434,11 @@
 		};
 		8229DDE642E5DC615FF30C8F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_CCCC209F-E9AA-41EB-8B97-020C1E966F92" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_47A1ED20-AB0A-48D7-9B46-FDD862F1893D" /* OpenBurnBarComputerUseCore */;
 		};
 		84623C60942B5FF3BB9AC227 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_332E51B0-833F-40BC-8371-CD5BD91CC7C6" /* OpenBurnBarLinuxSecurity */;
+			productRef = "TEMP_82C3176D-8104-40FF-8BF0-E62855C18747" /* OpenBurnBarLinuxSecurity */;
 		};
 		8DA8E1A1A0D1FEBA7474F3C7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13460,7 +13462,7 @@
 		};
 		A6FB5F544F37FA83D0398F77 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_E1F54A7A-1823-4536-BEE8-917AB1C5A042" /* OpenBurnBarCore */;
+			productRef = "TEMP_BF732F7E-3438-4913-849D-5760255DD8C5" /* OpenBurnBarCore */;
 		};
 		B0DD6D2AA24F4537C1FD53E7 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13477,7 +13479,7 @@
 		};
 		DAD9D7BB77FED252BF883D7C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_13986F60-B4AE-47FE-BFA1-B784B43359F2" /* OpenBurnBarIrohRelay */;
+			productRef = "TEMP_ED1BA554-B088-48B5-868E-178993DA57C2" /* OpenBurnBarIrohRelay */;
 		};
 		DB969356C591A565802DBBD9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -13495,11 +13497,11 @@
 		};
 		F34772D139441B426AAE80E8 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_96CABC00-FED0-4612-8322-6CEB17709E7B" /* OpenBurnBarMedia */;
+			productRef = "TEMP_64FDE1DA-535D-4564-BDC9-C54302B49649" /* OpenBurnBarMedia */;
 		};
 		FF93F13225A86244B6415A4C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			productRef = "TEMP_0E29AB79-C72C-406D-A31C-046D337E5A2A" /* OpenBurnBarComputerUseCore */;
+			productRef = "TEMP_59DED79D-B867-4B71-94E2-1A6869AF58BD" /* OpenBurnBarComputerUseCore */;
 		};
 /* End PBXTargetDependency section */
 
@@ -15005,41 +15007,41 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarKernel;
 		};
-		"TEMP_0E29AB79-C72C-406D-A31C-046D337E5A2A" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_47A1ED20-AB0A-48D7-9B46-FDD862F1893D" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_13986F60-B4AE-47FE-BFA1-B784B43359F2" /* OpenBurnBarIrohRelay */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarIrohRelay;
-		};
-		"TEMP_332E51B0-833F-40BC-8371-CD5BD91CC7C6" /* OpenBurnBarLinuxSecurity */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarLinuxSecurity;
-		};
-		"TEMP_4E9D7B15-DAC3-439A-B0FD-629449869C52" /* OpenBurnBarMedia */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarMedia;
-		};
-		"TEMP_6DEBA226-BFEC-4472-9D40-F1AC02AF8085" /* OpenBurnBarInsights */ = {
+		"TEMP_495CA89E-2573-4E22-95EB-D869346AB332" /* OpenBurnBarInsights */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarInsights;
 		};
-		"TEMP_96CABC00-FED0-4612-8322-6CEB17709E7B" /* OpenBurnBarMedia */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarMedia;
-		};
-		"TEMP_B9BF10BE-F292-4B16-B151-C514BD6D3BF0" /* OpenBurnBarEngine */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = OpenBurnBarEngine;
-		};
-		"TEMP_CCCC209F-E9AA-41EB-8B97-020C1E966F92" /* OpenBurnBarComputerUseCore */ = {
+		"TEMP_59DED79D-B867-4B71-94E2-1A6869AF58BD" /* OpenBurnBarComputerUseCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarComputerUseCore;
 		};
-		"TEMP_E1F54A7A-1823-4536-BEE8-917AB1C5A042" /* OpenBurnBarCore */ = {
+		"TEMP_64FDE1DA-535D-4564-BDC9-C54302B49649" /* OpenBurnBarMedia */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarMedia;
+		};
+		"TEMP_82C3176D-8104-40FF-8BF0-E62855C18747" /* OpenBurnBarLinuxSecurity */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarLinuxSecurity;
+		};
+		"TEMP_9349F6A7-A075-442E-946F-C68A3C2DE836" /* OpenBurnBarMedia */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarMedia;
+		};
+		"TEMP_BF732F7E-3438-4913-849D-5760255DD8C5" /* OpenBurnBarCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = OpenBurnBarCore;
+		};
+		"TEMP_CA36E2BD-8819-4C7D-AED4-DC3AC8DA2186" /* OpenBurnBarEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarEngine;
+		};
+		"TEMP_ED1BA554-B088-48B5-868E-178993DA57C2" /* OpenBurnBarIrohRelay */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OpenBurnBarIrohRelay;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
