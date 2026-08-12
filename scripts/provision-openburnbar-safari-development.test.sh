@@ -150,6 +150,10 @@ for name in GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; do
     exit 2
   fi
 done
+if [[ "${FIREBASE_SOURCE_FIRESTORE:-}" != "1" ]]; then
+  echo "signed build did not select the locked source-built Firestore graph" >&2
+  exit 2
+fi
 printf 'xcodebuild' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf ' <%s>' "$@" >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
 printf '\n' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
