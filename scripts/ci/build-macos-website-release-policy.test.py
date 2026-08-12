@@ -107,6 +107,27 @@ class WebsiteReleasePolicyTests(unittest.TestCase):
         self.assertNotIn('chmod 700 "$release_dir"', self.source)
         self.assertNotIn('rm -rf "$release_dir"', self.source)
 
+    def test_dependency_tools_do_not_inherit_candidate_git_overrides(self) -> None:
+        expected_commands = (
+            "bash scripts/test-openburnbar-safari-extension.sh",
+            "bash scripts/prepare-openburnbar-app-swiftpm.sh",
+            "swift build --package-path OpenBurnBarDaemon "
+            "-c release --product OpenBurnBarDaemon",
+            "swift build --package-path OpenBurnBarDaemon "
+            "-c release --product OpenBurnBarCLI",
+            "xcodebuild build",
+        )
+        for command in expected_commands:
+            self.assertIn(
+                "openburnbar_without_candidate_git_environment \\\n  " + command,
+                self.source,
+            )
+
+        swiftpm = (
+            SCRIPT.parent / "prepare-openburnbar-app-swiftpm.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE", swiftpm)
+
 
 if __name__ == "__main__":
     unittest.main()

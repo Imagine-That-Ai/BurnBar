@@ -92,6 +92,28 @@ for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
 assert os.environ["OPENBURNBAR_CANDIDATE_GIT_DIR"]
 assert os.environ["OPENBURNBAR_CANDIDATE_GIT_INDEX_FILE"]
 PY
+
+  dependency_repo="$fixture_root/dependency"
+  openburnbar_without_candidate_git_environment \
+    git -C "$fixture_root" init -q dependency
+  openburnbar_without_candidate_git_environment \
+    git -C "$dependency_repo" config user.name "OpenBurnBar Dependency Fixture"
+  openburnbar_without_candidate_git_environment \
+    git -C "$dependency_repo" config user.email "dependency@openburnbar.invalid"
+  printf 'dependency\n' >"$dependency_repo/dependency.txt"
+  openburnbar_without_candidate_git_environment \
+    git -C "$dependency_repo" add dependency.txt
+  openburnbar_without_candidate_git_environment \
+    git -C "$dependency_repo" commit -qm "dependency fixture"
+  dependency_head="$(
+    openburnbar_without_candidate_git_environment \
+      git -C "$dependency_repo" rev-parse HEAD
+  )"
+  [[ "$(
+    openburnbar_without_candidate_git_environment \
+      git -C "$dependency_repo" rev-parse HEAD
+  )" == "$dependency_head" ]]
+  [[ "$dependency_head" != "$alternate_commit" ]]
 )
 
 if env \

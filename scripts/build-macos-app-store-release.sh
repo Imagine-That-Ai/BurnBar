@@ -234,7 +234,8 @@ if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" "$entit
 fi
 validate_app_store_connect_auth_configuration
 
-bash scripts/test-openburnbar-safari-extension.sh
+openburnbar_without_candidate_git_environment \
+  bash scripts/test-openburnbar-safari-extension.sh
 openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
 openburnbar_verify_xcode_project_sync "$repo_root"
