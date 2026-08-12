@@ -323,24 +323,45 @@ fi
 rm -rf "$daemon_helper_resource_bundle" "$daemon_helper_kernel_resource_bundle" "$helpers_dir/ProjectCodeMemory"
 cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"
 cp -R "$daemon_kernel_resource_bundle" "$daemon_helper_kernel_resource_bundle"
-if otool -L "$helpers_dir/OpenBurnBarDaemon" | grep -q 'SQLCipher.framework'; then
-  if [[ ! -d "$frameworks_dir/SQLCipher.framework" ]]; then
-    echo "ERROR: OpenBurnBarDaemon links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2
+
+configure_bundled_sqlcipher_linkage() {
+  local executable="$1"
+  local label="$2"
+  local expected_dependency="@rpath/SQLCipher.framework/Versions/A/SQLCipher"
+  local dependencies sqlcipher_dependencies unexpected_dependencies
+
+  dependencies="$(otool -L "$executable")"
+  sqlcipher_dependencies="$(
+    awk 'NR > 1 && tolower($1) ~ /sqlcipher/ { print $1 }' <<<"$dependencies"
+  )"
+  if ! grep -Fxq "$expected_dependency" <<<"$sqlcipher_dependencies"; then
+    echo "ERROR: $label must link the bundled $expected_dependency dependency." >&2
+    printf '%s\n' "$dependencies" >&2
     exit 1
   fi
-  if ! otool -l "$helpers_dir/OpenBurnBarDaemon" | grep -q '@executable_path/../Frameworks'; then
-    install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"
-  fi
-fi
-if otool -L "$helpers_dir/OpenBurnBarCLI" | grep -q 'SQLCipher.framework'; then
-  if [[ ! -d "$frameworks_dir/SQLCipher.framework" ]]; then
-    echo "ERROR: OpenBurnBarCLI links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2
+  unexpected_dependencies="$(
+    grep -Fvx "$expected_dependency" <<<"$sqlcipher_dependencies" || true
+  )"
+  if [[ -n "$unexpected_dependencies" ]]; then
+    echo "ERROR: $label contains unexpected non-bundled SQLCipher dependencies:" >&2
+    printf '%s\n' "$unexpected_dependencies" >&2
     exit 1
   fi
-  if ! otool -l "$helpers_dir/OpenBurnBarCLI" | grep -q '@executable_path/../Frameworks'; then
-    install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarCLI"
+  if [[ ! -d "$frameworks_dir/SQLCipher.framework" ]]; then
+    echo "ERROR: $label links SQLCipher.framework but the app bundle is missing Contents/Frameworks/SQLCipher.framework" >&2
+    exit 1
   fi
-fi
+  if ! otool -l "$executable" | grep -q '@executable_path/../Frameworks'; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$executable"
+  fi
+}
+
+configure_bundled_sqlcipher_linkage \
+  "$helpers_dir/OpenBurnBarDaemon" \
+  "OpenBurnBarDaemon"
+configure_bundled_sqlcipher_linkage \
+  "$helpers_dir/OpenBurnBarCLI" \
+  "OpenBurnBarCLI"
 
 core_framework="$derived_data/Build/Products/$configuration/PackageFrameworks/OpenBurnBarCore.framework"
 if [[ -d "$core_framework" ]]; then

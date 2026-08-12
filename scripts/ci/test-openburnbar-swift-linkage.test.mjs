@@ -25,6 +25,14 @@ const signalBuilder = readFileSync(
   "scripts/build-signal-ffi-xcframework.sh",
   "utf8",
 );
+const grdbSQLCipherManifest = readFileSync(
+  "Vendor/GRDB-SQLCipher/Package.swift",
+  "utf8",
+);
+const websiteReleaseBuilder = readFileSync(
+  "scripts/build-macos-website-release.sh",
+  "utf8",
+);
 
 test("macOS Swift tests build dynamic Signal FFI before linking domain-core Rust", () => {
   assert.match(
@@ -291,5 +299,23 @@ test("daemon tests stage verified SQLCipher before building the XCTest graph", (
     daemonBranch,
     /rm -rf/u,
     "the wrapper must never broadly delete a caller-selected scratch tree",
+  );
+});
+
+test("macOS release binaries cannot inherit a second machine SQLCipher dependency", () => {
+  assert.match(
+    grdbSQLCipherManifest,
+    /pkgConfig:\s*useSystemSQLCipher\s*&&\s*explicitSQLCipherLibrary\s*==\s*nil\s*\?\s*"sqlcipher"\s*:\s*nil/u,
+    "pkg-config must be disabled when the bundled SQLCipher package owns linkage",
+  );
+  assert.match(
+    websiteReleaseBuilder,
+    /configure_bundled_sqlcipher_linkage[\s\S]*unexpected non-bundled SQLCipher dependencies/u,
+    "the release builder must reject absolute Homebrew or other machine-local SQLCipher load commands",
+  );
+  assert.match(
+    websiteReleaseBuilder,
+    /@rpath\/SQLCipher\.framework\/Versions\/A\/SQLCipher/u,
+    "the daemon and CLI must retain the relocatable bundled SQLCipher framework dependency",
   );
 });
