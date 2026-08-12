@@ -431,7 +431,7 @@ test_success_constructs_exact_scheme_scoped_provisioning() {
     "<CODE_SIGNING_ALLOWED=YES>" \
     "<CODE_SIGNING_REQUIRED=YES>" \
     "<DEVELOPMENT_TEAM=$team_id>" \
-    "<CODE_SIGN_IDENTITY=$identity_sha1>" \
+    "<CODE_SIGN_IDENTITY=Apple Development>" \
     "<PROVISIONING_PROFILE=>" \
     "<PROVISIONING_PROFILE_SPECIFIER=>" \
     "<CONFIGURATION_BUILD_DIR=$fixture_root/output/build-products>" \
@@ -439,6 +439,7 @@ test_success_constructs_exact_scheme_scoped_provisioning() {
     assert_file_contains "$log" "$exact_argument"
   done
   assert_file_not_contains "$log" "CODE_SIGN_IDENTITY=-"
+  assert_file_not_contains "$log" "<CODE_SIGN_IDENTITY=$identity_sha1>"
   assert_file_not_contains "$log" "CODE_SIGNING_ALLOWED=NO"
   assert_file_not_contains "$log" "<-target>"
   assert_file_contains "$log" \

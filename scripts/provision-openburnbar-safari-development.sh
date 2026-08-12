@@ -405,7 +405,12 @@ common_build_args=(
   CODE_SIGNING_ALLOWED=YES
   CODE_SIGNING_REQUIRED=YES
   DEVELOPMENT_TEAM="$team_id"
-  CODE_SIGN_IDENTITY="$signing_identity_sha1"
+  # Xcode 27 propagates command-line build settings into Swift package
+  # targets. A certificate SHA here conflicts with their automatic-signing
+  # model; the standard selector does not. The artifact verifier below still
+  # fails closed unless both host and appex use the exact requested
+  # certificate SHA-1.
+  CODE_SIGN_IDENTITY="Apple Development"
   PROVISIONING_PROFILE=
   PROVISIONING_PROFILE_SPECIFIER=
 )
