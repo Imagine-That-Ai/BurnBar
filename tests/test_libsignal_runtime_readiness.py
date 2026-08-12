@@ -22,7 +22,7 @@ from scripts.ci.check_libsignal_runtime_readiness import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-v1.0.33.json")
+RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-v1.0.34.json")
 
 
 def _valid_manifest(*, status: str = "not_ready", complete_ids: tuple[str, ...] = ()) -> dict:
@@ -80,6 +80,30 @@ def _allows_synthetic_merge_history() -> bool:
     event_name = os.environ.get("GITHUB_EVENT_NAME", "")
     ref = os.environ.get("GITHUB_REF", "")
     return event_name == "merge_group" or (event_name == "push" and ref == "refs/heads/main")
+
+
+def _tag_binding_violation(repo_root, tested_commit: str, tag_commit: str, tag_name: str):
+    """Why this tag may not carry this evidence, or None when the binding holds.
+
+    The tag may name the tested commit, or a descendant that changes nothing
+    outside ``launch-evidence/``. Requiring strict equality is unsatisfiable — a
+    commit cannot contain its own hash — so the binding commit is necessarily a
+    descendant of the source it records. What must still hold is that no source,
+    build input, or submodule moved between the two.
+    """
+    if tag_commit == tested_commit:
+        return None
+    if _git_stdout(repo_root, "merge-base", "--is-ancestor", tested_commit, tag_commit) is None:
+        return f"tag {tag_name} ({tag_commit}) does not descend from testedSourceCommit ({tested_commit})"
+    changed = _git_stdout(repo_root, "diff", "--name-only", tested_commit, tag_commit)
+    if changed is None:
+        return f"could not diff testedSourceCommit ({tested_commit}) against tag {tag_name} ({tag_commit})"
+    offending = sorted(
+        path for path in changed.decode().split("\n") if path and not path.startswith("launch-evidence/")
+    )
+    if offending:
+        return f"tag {tag_name} changes non-evidence paths after testedSourceCommit: {offending}"
+    return None
 
 
 def _write(tmp_path: Path, data: dict) -> Path:
@@ -201,13 +225,31 @@ def test_tracked_rust_core_bridge_gate_has_commit_bound_cross_platform_evidence(
                 if blob is not None:
                     assert hashlib.sha256(blob).hexdigest() == digest, artifact
 
-    # Tag binding: the candidate tag may not exist yet, but once it does it
-    # must name the tested commit; evidence claiming an unrelated tag fails.
+    # Tag binding: the candidate tag may not exist yet, but once it does it must
+    # name the tested commit, or a descendant of it that changes nothing except
+    # this evidence.
+    #
+    # Strict equality is unsatisfiable, because a commit cannot contain its own
+    # hash. Binding the evidence to commit X and tagging X ships the tree at X,
+    # whose copy of this file still records the *previous* commit; binding X and
+    # tagging the commit that records it breaks equality instead. v1.0.33 is the
+    # standing proof — its tag resolves to cc0c6e0b27 while its evidence records
+    # 64d3a01b09, so the gate has never actually held.
+    #
+    # The invariant that is both meaningful and reachable is: no source changed
+    # between what was tested and what is tagged. So the tag may be a descendant
+    # of testedSourceCommit provided every path differing between them lives
+    # under launch-evidence/ — metadata recording the binding itself. Any source,
+    # build input, or submodule change in that window still fails closed, and the
+    # artifact-digest check above independently re-hashes the tested tree.
     tag_target = _git_stdout(
         REPO_ROOT, "rev-parse", "--verify", "--quiet", f"refs/tags/{evidence['candidateReleaseTag']}^{{commit}}"
     )
     if tag_target is not None:
-        assert tag_target.decode().strip() == tested_commit
+        violation = _tag_binding_violation(
+            REPO_ROOT, tested_commit, tag_target.decode().strip(), evidence["candidateReleaseTag"]
+        )
+        assert violation is None, violation
 
 
 def test_rust_core_bridge_evidence_detects_artifact_drift() -> None:
@@ -268,3 +310,65 @@ def test_gate_without_proof_fails(tmp_path: Path) -> None:
 def test_missing_manifest_fails(tmp_path: Path) -> None:
     errors = check_manifest(tmp_path / "nope.json")
     assert errors and "missing libsignal runtime-readiness manifest" in errors[0]
+
+
+def _git(repo, *args):
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def _commit(repo, path: str, body: str, message: str) -> str:
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(body, encoding="utf-8")
+    _git(repo, "add", path)
+    _git(repo, "commit", "-m", message)
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, check=True
+    ).stdout.decode().strip()
+
+
+def _seed_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "t")
+    return repo
+
+
+def test_tag_binding_accepts_an_evidence_only_descendant(tmp_path: Path) -> None:
+    # The shape the release actually needs: source is tested at X, a metadata
+    # commit records X, and the tag lands on that metadata commit.
+    repo = _seed_repo(tmp_path)
+    tested = _commit(repo, "src/app.swift", "let a = 1\n", "source")
+    tag_commit = _commit(repo, "launch-evidence/bridge.json", '{"testedSourceCommit":"%s"}\n' % tested, "bind")
+    assert _tag_binding_violation(repo, tested, tag_commit, "v1.0.34") is None
+
+
+def test_tag_binding_rejects_source_changed_after_testing(tmp_path: Path) -> None:
+    # The case the gate exists to catch: code moved between tested and tagged.
+    repo = _seed_repo(tmp_path)
+    tested = _commit(repo, "src/app.swift", "let a = 1\n", "source")
+    _commit(repo, "launch-evidence/bridge.json", '{"testedSourceCommit":"%s"}\n' % tested, "bind")
+    tag_commit = _commit(repo, "src/app.swift", "let a = 2\n", "sneak a source change in")
+    violation = _tag_binding_violation(repo, tested, tag_commit, "v1.0.34")
+    assert violation is not None
+    assert "src/app.swift" in violation
+
+
+def test_tag_binding_rejects_an_unrelated_tag(tmp_path: Path) -> None:
+    # An evidence file claiming a tag from a different line of history.
+    repo = _seed_repo(tmp_path)
+    tested = _commit(repo, "src/app.swift", "let a = 1\n", "source")
+    _git(repo, "checkout", "-q", "--orphan", "other")
+    _git(repo, "rm", "-rq", "--cached", ".")
+    unrelated = _commit(repo, "other.txt", "x\n", "unrelated history")
+    violation = _tag_binding_violation(repo, tested, unrelated, "v1.0.34")
+    assert violation is not None
+    assert "does not descend" in violation
+
+
+def test_tag_binding_accepts_the_tested_commit_itself(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    tested = _commit(repo, "src/app.swift", "let a = 1\n", "source")
+    assert _tag_binding_violation(repo, tested, tested, "v1.0.34") is None

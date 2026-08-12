@@ -5,11 +5,11 @@ import SwiftUI
 struct AlertsSettingsView: View {
     @Bindable var settingsManager: SettingsManager
 
+    /// Shared with the Control Deck's Alerts tile via `SettingsBindings`, so
+    /// the two surfaces cannot drift on what "off" means or which amount a
+    /// re-enable restores.
     private var costAlertBinding: Binding<Double> {
-        Binding(
-            get: { settingsManager.costAlertThreshold ?? 0 },
-            set: { settingsManager.costAlertThreshold = $0 > 0 ? $0 : nil }
-        )
+        SettingsBindings.costAlertThreshold(settingsManager)
     }
 
     var body: some View {
@@ -94,11 +94,9 @@ struct SpendAlertDetailView: View {
                         subtitle: "Highlight unusually expensive usage days before spend quietly drifts upward.",
                         icon: "dollarsign.circle",
                         isOn: Binding(
-                            get: { settingsManager.costAlertThreshold != nil },
+                            get: { SettingsBindings.costAlertEnabled(settingsManager).wrappedValue },
                             set: { enabled in
-                                settingsManager.costAlertThreshold = enabled
-                                    ? max(settingsManager.costAlertThreshold ?? 25, 1)
-                                    : nil
+                                SettingsBindings.costAlertEnabled(settingsManager).wrappedValue = enabled
                                 Analytics.shared.track(.settingsChanged, [
                                     "setting_key": "cost_threshold_alert",
                                     "new_value": .bool(enabled)

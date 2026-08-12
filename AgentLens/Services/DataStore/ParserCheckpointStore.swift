@@ -430,8 +430,9 @@ final class AtomicIngestionTransaction {
                         executionSourceKind, executionSourceConfidence,
                         sourceDeviceId, sourceDeviceName, isRemote,
                         providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                        provenanceMethod, provenanceConfidence, estimatorVersion
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        provenanceMethod, provenanceConfidence, estimatorVersion,
+                        billingKind
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
@@ -508,6 +509,36 @@ final class AtomicIngestionTransaction {
                             ELSE token_usage.provenanceConfidence
                         END,
                         estimatorVersion = excluded.estimatorVersion,
+                        -- Billing provenance follows the same source/confidence
+                        -- precedence as `usageSource` (see UsageStore+Upsert
+                        -- for the full rationale): unknown never erases a
+                        -- classified kind, a stale unknown is improvable, a
+                        -- strictly higher-confidence source re-classifies, and
+                        -- an equal-confidence source may re-classify only when
+                        -- the row already records that same source.
+                        billingKind = CASE
+                            WHEN excluded.billingKind = 'unknown' THEN token_usage.billingKind
+                            WHEN token_usage.billingKind = 'unknown' THEN excluded.billingKind
+                            WHEN
+                                CASE excluded.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                                >
+                                CASE token_usage.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                            THEN excluded.billingKind
+                            WHEN excluded.usageSource = token_usage.usageSource THEN excluded.billingKind
+                            ELSE token_usage.billingKind
+                        END,
                         syncedAt = NULL
                     WHERE
                         CASE excluded.provenanceConfidence
@@ -555,7 +586,14 @@ final class AtomicIngestionTransaction {
                         usage.providerAccountSource?.rawValue,
                         usage.provenanceMethod.rawValue,
                         usage.provenanceConfidence.rawValue,
-                        usage.estimatorVersion
+                        usage.estimatorVersion,
+                        // Stamp at write time; derive for unclassified callers.
+                        (usage.billingKind == .unknown
+                            ? BurnBarBillingProvenance.classify(
+                                provider: usage.provider,
+                                usageSource: usage.usageSource
+                            )
+                            : usage.billingKind).rawValue
                     ])
             }
             // Sampled BEFORE the checkpoint upsert so the delta covers

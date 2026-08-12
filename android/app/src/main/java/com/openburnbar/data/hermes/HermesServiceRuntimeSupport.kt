@@ -3,6 +3,7 @@ package com.openburnbar.data.hermes
 import com.openburnbar.data.hermes.relay.HermesRelayCrypto
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -242,10 +243,12 @@ internal class HermesServiceRuntimeSupport(
                 updatedAt = now,
                 lastSeenAt = if (status == HermesConnectionStatus.ONLINE) now else connection.lastSeenAt,
             )
-        probeState.connections.value = probeState.connections.value.map { if (it.id == updated.id) updated else it }
-        if (probeState.selectedConnectionFlow.value.id == updated.id) {
-            probeState.selectedConnectionFlow.value = updated
-        }
+        // Atomic CAS updates: the probe runs on the service's IO scope, so a plain
+        // read-modify-write here can race registry mutations on other threads
+        // (e.g. revokeConnection) and write back a stale list that resurrects a
+        // removed connection or overrides a newer selection.
+        probeState.connections.update { current -> current.map { if (it.id == updated.id) updated else it } }
+        probeState.selectedConnectionFlow.update { current -> if (current.id == updated.id) updated else current }
         if (error != null) {
             probeState.runtimeInfo.value = probeState.runtimeInfo.value + ("last_error" to error)
         }

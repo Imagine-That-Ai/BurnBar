@@ -1,58 +1,118 @@
 import SwiftUI
 import OpenBurnBarCore
 
+/// Shared, observable cache of the per-runtime Mac model catalogs.
+///
+/// The rows used to be `@State` on `ChatEngineModelMenu` itself, which meant
+/// only that view could ever render them. The Agent Deck's Sigil absorbs the
+/// same rows as its model segment (`docs/CHAT_AGENT_SWITCHER_REDESIGN.md` §3.2),
+/// so the catalog moved here: both surfaces read one cache, one discovery call
+/// per runtime, and a menu opened from either place is already populated.
+@MainActor
+@Observable
+final class CLIRuntimeModelCatalogCache {
+    private(set) var rows: [AssistantRuntimeID: [CLIRuntimeModelOption]] = [:]
+    private(set) var errors: [AssistantRuntimeID: String] = [:]
+    @ObservationIgnored private var inFlight: Set<AssistantRuntimeID> = []
+
+    func options(for runtime: AssistantRuntimeID) -> [CLIRuntimeModelOption]? {
+        rows[runtime]
+    }
+
+    func error(for runtime: AssistantRuntimeID) -> String? {
+        errors[runtime]
+    }
+
+    /// Loads a runtime's catalog once. `nil` runtimes (the gateway agents) and
+    /// already-loaded / in-flight runtimes are no-ops, so callers can fire this
+    /// from every surface without fanning out discovery processes.
+    func refreshIfNeeded(runtime: AssistantRuntimeID?, settingsManager: SettingsManager) async {
+        guard let runtime, rows[runtime] == nil, !inFlight.contains(runtime) else { return }
+        inFlight.insert(runtime)
+        defer { inFlight.remove(runtime) }
+        do {
+            let response = try await CLIRuntimeModelCatalogDiscovery(settingsManager: settingsManager)
+                .modelCatalog(for: CLIRuntimeModelCatalogRequest(runtime: runtime.rawValue))
+            rows[runtime] = response.options
+            errors[runtime] = nil
+        } catch {
+            rows[runtime] = nil
+            errors[runtime] = error.localizedDescription
+        }
+    }
+}
+
+/// The compact model picker used by `ChatPanelHeader`, `ChatMenuPopover`,
+/// `ChatPanel` and `HermesPopoverChatView`.
+///
+/// **This view is deliberately not deleted.** The Agent Deck absorbs its *rows*
+/// as the Sigil's second segment (see `modelRows(controller:)`); the view itself
+/// keeps its four other call sites working untouched.
 struct ChatEngineModelMenu: View {
     @Bindable var controller: ChatSessionController
-    @Environment(SettingsManager.self) private var settingsManager
-    @State private var quotaService = ProviderQuotaService.shared
-    @State private var cliRows: [AssistantRuntimeID: [CLIRuntimeModelOption]] = [:]
-    @State private var cliErrors: [AssistantRuntimeID: String] = [:]
+
+    var body: some View {
+        Menu {
+            Self.modelRows(controller: controller)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "cpu").font(.system(size: 11, weight: .medium))
+                Text(controller.chatModelMenuTitle())
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .frame(maxWidth: 120, alignment: .leading)
+            }
+            .foregroundStyle(controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.textSecondary)
+        }
+        .menuStyle(.borderlessButton)
+        .help("Model for \(controller.chatBackend.displayName) chat. Each agent remembers its own choice.")
+        .animation(DesignSystem.Animation.snappy, value: controller.chatBackend)
+        .animation(DesignSystem.Animation.snappy, value: controller.chatModelSelection(for: controller.chatBackend))
+        .animation(DesignSystem.Animation.snappy, value: controller.hermesModelName)
+        .task(id: controller.chatBackend) {
+            // Warm the catalog eagerly (as this view always has), so the menu is
+            // populated the first time it is opened — from here or from the
+            // Sigil.
+            await controller.agentDeck.modelCatalog.refreshIfNeeded(
+                runtime: Self.cliRuntime(for: controller.chatBackend),
+                settingsManager: controller.settingsManager
+            )
+        }
+        .task(id: controller.isElderWandActive) {
+            if controller.isElderWandActive {
+                await controller.probeBurnBarGatewayAvailability()
+            }
+        }
+    }
+
+    /// The menu's rows, extracted so the Agent Sigil's model segment can host
+    /// the identical content. Hermes additionally gets its `ROUTE` section —
+    /// the first time the Hermes routing ladder is legible on the full-canvas
+    /// surface.
+    @ViewBuilder
+    static func modelRows(controller: ChatSessionController) -> some View {
+        ChatEngineModelRows(controller: controller)
+    }
+
+    static func cliRuntime(for backend: ChatBackendID) -> AssistantRuntimeID? {
+        switch backend {
+        case .codex: return .codex
+        case .claude: return .claude
+        case .droid: return .droid
+        case .forge: return .forge
+        case .antigravity: return .antigravity
+        case .cursorAgent: return .cursorAgent
+        case .omp: return .omp
+        case .openClaude: return .openClaude
+        case .junie: return .junie
+        case .hermes, .openclaw, .piAgent: return nil
+        }
+    }
 
     struct ModelMenuRow: Identifiable, Equatable {
         let id: String
         let title: String
         var disabled = false
-    }
-
-    private var menuOptions: [ModelMenuRow] {
-        switch controller.chatBackend {
-        case .codex:
-            return liveCLIRows(for: .codex, defaultTitle: "Default (Codex profile)")
-        case .claude:
-            return liveCLIRows(for: .claude, defaultTitle: "Default (Claude Code profile)")
-        case .hermes:
-            return liveGatewayRows(for: .hermes, automaticTitle: "Automatic")
-        case .openclaw:
-            return liveGatewayRows(for: .openclaw, automaticTitle: "Automatic")
-        case .piAgent:
-            return liveGatewayRows(for: .piAgent, automaticTitle: "Automatic")
-        case .droid:
-            return liveCLIRows(for: .droid, defaultTitle: nil)
-        case .forge:
-            return liveCLIRows(for: .forge, defaultTitle: nil)
-        case .antigravity:
-            return liveCLIRows(for: .antigravity, defaultTitle: nil)
-        case .cursorAgent:
-            return liveCLIRows(for: .cursorAgent, defaultTitle: "Default (Cursor Agent profile)")
-        case .omp:
-            return liveCLIRows(for: .omp, defaultTitle: "Default (OMP profile)")
-        case .openClaude:
-            return liveCLIRows(for: .openClaude, defaultTitle: "Default (OpenClaude profile)")
-        case .junie:
-            return liveCLIRows(for: .junie, defaultTitle: "Default (Junie profile)")
-        }
-    }
-
-    private func liveCLIRows(
-        for runtime: AssistantRuntimeID,
-        defaultTitle: String?
-    ) -> [ModelMenuRow] {
-        Self.cliMenuRows(
-            options: cliRows[runtime],
-            error: cliErrors[runtime],
-            selected: controller.chatModelSelection(for: controller.chatBackend),
-            defaultTitle: defaultTitle
-        )
     }
 
     static func cliMenuRows(
@@ -90,6 +150,92 @@ struct ChatEngineModelMenu: View {
         }
         return result
     }
+}
+
+// MARK: - Rows
+
+/// The menu content, hosted by both `ChatEngineModelMenu` and the Agent Sigil.
+struct ChatEngineModelRows: View {
+    @Bindable var controller: ChatSessionController
+
+    @State private var quotaService = ProviderQuotaService.shared
+
+    /// The shared Mac catalog, injected on the controller (see `AgentDeck.swift`).
+    private var catalog: CLIRuntimeModelCatalogCache { controller.agentDeck.modelCatalog }
+
+    typealias ModelMenuRow = ChatEngineModelMenu.ModelMenuRow
+
+    var body: some View {
+        let suffix = perRowQuotaSuffix
+        Group {
+            if controller.chatBackend == .hermes {
+                HermesModelStrip.routeMenuRows(
+                    controller: controller,
+                    settingsManager: controller.settingsManager
+                )
+                Divider()
+            }
+            Section("Model") {
+                ForEach(Array(menuOptions.enumerated()), id: \.offset) { _, row in
+                    Button(row.title + (row.disabled ? "" : suffix)) {
+                        controller.setChatModelSelection(row.id, for: controller.chatBackend)
+                        Analytics.shared.track(.chatModelSelected, [
+                            "backend": .string(controller.chatBackend.rawValue),
+                            "model_id": .string(row.id)
+                        ])
+                    }
+                    .disabled(row.disabled)
+                }
+            }
+        }
+        .task(id: controller.chatBackend) {
+            await catalog.refreshIfNeeded(
+                runtime: ChatEngineModelMenu.cliRuntime(for: controller.chatBackend),
+                settingsManager: controller.settingsManager
+            )
+        }
+    }
+
+    private var menuOptions: [ModelMenuRow] {
+        switch controller.chatBackend {
+        case .codex:
+            return liveCLIRows(for: .codex, defaultTitle: "Default (Codex profile)")
+        case .claude:
+            return liveCLIRows(for: .claude, defaultTitle: "Default (Claude Code profile)")
+        case .hermes:
+            return liveGatewayRows(for: .hermes, automaticTitle: "Automatic")
+        case .openclaw:
+            return liveGatewayRows(for: .openclaw, automaticTitle: "Automatic")
+        case .piAgent:
+            return liveGatewayRows(for: .piAgent, automaticTitle: "Automatic")
+        case .droid:
+            return liveCLIRows(for: .droid, defaultTitle: nil)
+        case .forge:
+            return liveCLIRows(for: .forge, defaultTitle: nil)
+        case .antigravity:
+            return liveCLIRows(for: .antigravity, defaultTitle: nil)
+        case .cursorAgent:
+            return liveCLIRows(for: .cursorAgent, defaultTitle: "Default (Cursor Agent profile)")
+        case .omp:
+            return liveCLIRows(for: .omp, defaultTitle: "Default (OMP profile)")
+        case .openClaude:
+            return liveCLIRows(for: .openClaude, defaultTitle: "Default (OpenClaude profile)")
+        case .junie:
+            return liveCLIRows(for: .junie, defaultTitle: "Default (Junie profile)")
+        }
+    }
+
+    private func liveCLIRows(
+        for runtime: AssistantRuntimeID,
+        defaultTitle: String?
+    ) -> [ModelMenuRow] {
+        ChatEngineModelMenu.cliMenuRows(
+            options: catalog.options(for: runtime),
+            error: catalog.error(for: runtime),
+            selected: controller.chatModelSelection(for: controller.chatBackend),
+            defaultTitle: defaultTitle
+        )
+    }
 
     private func liveGatewayRows(
         for backend: ChatBackendID,
@@ -115,8 +261,8 @@ struct ChatEngineModelMenu: View {
     }
 
     /// Same provider drains the same quota for every row in single-provider
-    /// CLI backends (Codex, Claude Code, Droid, Antigravity). We append " · NN%" once
-    /// to make the pressure visible per row without inventing a richer
+    /// CLI agents (Codex, Claude Code, Droid, Antigravity). We append " · NN%"
+    /// once to make the pressure visible per row without inventing a richer
     /// macOS Menu item (Menu only renders plain `Button(title)` text).
     /// Hermes, OpenClaw, Pi route across many providers so we skip them;
     /// Forge has no quota signal.
@@ -129,82 +275,13 @@ struct ChatEngineModelMenu: View {
                     provider: provider,
                     style: .full,
                     displayName: backend.displayName,
-                    service: quotaService
+                    service: quotaService,
+                    cumulative: controller.settingsManager.cumulativeAcrossAccounts
                   )
             else { return "" }
             return " · \(resolution.text) left"
         case .hermes, .openclaw, .piAgent, .forge:
             return ""
-        }
-    }
-
-    var body: some View {
-        let suffix = perRowQuotaSuffix
-        Menu {
-            ForEach(Array(menuOptions.enumerated()), id: \.offset) { _, row in
-                Button(row.title + (row.disabled ? "" : suffix)) {
-                    controller.setChatModelSelection(row.id, for: controller.chatBackend)
-                    Analytics.shared.track(.chatModelSelected, [
-                        "backend": .string(controller.chatBackend.rawValue),
-                        "model_id": .string(row.id)
-                    ])
-                }
-                .disabled(row.disabled)
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "cpu").font(.system(size: 11, weight: .medium))
-                Text(controller.chatModelMenuTitle())
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                    .frame(maxWidth: 120, alignment: .leading)
-            }
-            .foregroundStyle(controller.chatBackend == .hermes ? DesignSystem.Colors.hermesAureate : DesignSystem.Colors.textSecondary)
-        }
-        .menuStyle(.borderlessButton)
-        .help("Model for \(controller.chatBackend.displayName) chat. Each engine remembers its own choice.")
-        .animation(DesignSystem.Animation.snappy, value: controller.chatBackend)
-        .animation(DesignSystem.Animation.snappy, value: controller.chatModelSelection(for: controller.chatBackend))
-        .animation(DesignSystem.Animation.snappy, value: controller.hermesModelName)
-        .task(id: controller.chatBackend) {
-            await refreshCLIRowsIfNeeded()
-        }
-        .task(id: controller.isElderWandActive) {
-            if controller.isElderWandActive {
-                await controller.probeBurnBarGatewayAvailability()
-            }
-        }
-    }
-
-    @MainActor
-    private func refreshCLIRowsIfNeeded() async {
-        guard let runtime = cliRuntime(for: controller.chatBackend),
-              cliRows[runtime] == nil else {
-            return
-        }
-        do {
-            let response = try await CLIRuntimeModelCatalogDiscovery(settingsManager: controller.settingsManager)
-                .modelCatalog(for: CLIRuntimeModelCatalogRequest(runtime: runtime.rawValue))
-            cliRows[runtime] = response.options
-            cliErrors[runtime] = nil
-        } catch {
-            cliRows[runtime] = nil
-            cliErrors[runtime] = error.localizedDescription
-        }
-    }
-
-    private func cliRuntime(for backend: ChatBackendID) -> AssistantRuntimeID? {
-        switch backend {
-        case .codex: return .codex
-        case .claude: return .claude
-        case .droid: return .droid
-        case .forge: return .forge
-        case .antigravity: return .antigravity
-        case .cursorAgent: return .cursorAgent
-        case .omp: return .omp
-        case .openClaude: return .openClaude
-        case .junie: return .junie
-        case .hermes, .openclaw, .piAgent: return nil
         }
     }
 }

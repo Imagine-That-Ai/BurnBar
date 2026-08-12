@@ -23,6 +23,11 @@ struct SubscriptionEntry: Identifiable, Hashable {
     let isStale: Bool
     let isRefreshing: Bool
     let lastValidatedAt: Date?
+    /// How many real accounts this entry stands for — 1 for a per-account
+    /// entry, N for the synthetic merge produced when `cumulativeAcrossAccounts`
+    /// collapses a provider. Carried from the snapshot rather than recounted by
+    /// a view, because after the collapse there is only one entry to count.
+    let accountCount: Int
 
     var remainingPercentRounded: Int {
         guard primaryDisplayableBucket != nil else { return 0 }
@@ -293,9 +298,7 @@ final class QuotaWorkspaceViewModel {
         )
         let upcomingResets = displayable.compactMap(\.resetsAt).filter { $0 > Date() }
         let nextReset = upcomingResets.min()
-        let accountLabel = snapshot.accountLabel
-            ?? snapshot.accountID
-            ?? snapshot.sourceId
+        let accountLabel = ProviderQuotaAccountDisplay.label(for: snapshot, provider: provider)
         let planTierBadge: String? = {
             if provider == .factory {
                 let tier = (snapshot.statusMessage ?? "").lowercased()
@@ -335,7 +338,8 @@ final class QuotaWorkspaceViewModel {
             managementURL: snapshot.managementLink,
             isStale: snapshot.isStale(),
             isRefreshing: isRefreshing,
-            lastValidatedAt: snapshot.fetchedAt
+            lastValidatedAt: snapshot.fetchedAt,
+            accountCount: max(snapshot.mergedAccountCount ?? 1, 1)
         )
     }
 
@@ -357,19 +361,54 @@ final class QuotaWorkspaceViewModel {
             snapshotsByIdentity[key, default: []].append(snapshot)
         }
 
-        return order.compactMap { key in
+        // The synthetic "Current <CLI> login" snapshot and the isolated
+        // switcher profile for that same login arrive under different account
+        // ids, so they only collapse via their shared label. That bridge runs
+        // as a second pass — scoped to pairs where exactly one side is the
+        // synthetic current-CLI record — instead of being folded into
+        // `accountIdentityKey`. Keying on the label directly would also merge
+        // two genuinely distinct accounts that happen to share a name, which
+        // is easy to hit: unnamed switcher profiles all fall back to
+        // "<CLI> OAuth profile", and nothing stops two daemon credential
+        // slots from carrying the same user-typed label.
+        let deduped: [ProviderQuotaSnapshot] = order.compactMap { key in
             snapshotsByIdentity[key]?.reduce(nil as ProviderQuotaSnapshot?) { preferred, snapshot in
                 guard let preferred else { return snapshot }
                 return isPreferredSnapshot(snapshot, over: preferred) ? snapshot : preferred
             }
         }
+        return coalescingCurrentCLIWithMatchingProfile(deduped)
+    }
+
+    /// Drops each synthetic current-CLI snapshot whose label matches a real
+    /// switcher-profile snapshot for the same provider — they are the same
+    /// login seen twice. Non-synthetic snapshots are never merged with each
+    /// other here, however similar their labels.
+    private static func coalescingCurrentCLIWithMatchingProfile(
+        _ snapshots: [ProviderQuotaSnapshot]
+    ) -> [ProviderQuotaSnapshot] {
+        func labelIdentity(_ snapshot: ProviderQuotaSnapshot) -> String? {
+            normalizedAccountIdentity(snapshot.accountLabel).map {
+                "\(snapshot.providerID.rawValue.lowercased()):\($0)"
+            }
+        }
+
+        let profileIdentities = Set(
+            snapshots.filter { !isSyntheticCurrentCLISnapshot($0) }.compactMap(labelIdentity)
+        )
+        guard !profileIdentities.isEmpty else { return snapshots }
+
+        return snapshots.filter { snapshot in
+            guard isSyntheticCurrentCLISnapshot(snapshot),
+                  let identity = labelIdentity(snapshot) else {
+                return true
+            }
+            return !profileIdentities.contains(identity)
+        }
     }
 
     private static func accountIdentityKey(for snapshot: ProviderQuotaSnapshot) -> String {
         let providerKey = snapshot.providerID.rawValue.lowercased()
-        if let label = normalizedAccountIdentity(snapshot.accountLabel) {
-            return "\(providerKey):label:\(label)"
-        }
         if let accountID = normalizedAccountIdentity(snapshot.accountID) {
             return "\(providerKey):account:\(accountID)"
         }
@@ -409,17 +448,15 @@ final class QuotaWorkspaceViewModel {
         return candidate.fetchedAt > incumbent.fetchedAt
     }
 
+    // The two switcher predicates live on `ProviderQuotaAccountDisplay` so the
+    // cumulative merge and this de-duplication pass agree on which records are
+    // real accounts and which are the current-login mirror.
     private static func isExplicitSwitcherProfileSnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
-        let sourceID = snapshot.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return sourceID.hasPrefix("switcher-cli:")
-            && !sourceID.hasPrefix("switcher-cli-current:")
+        ProviderQuotaAccountDisplay.isSwitcherProfile(snapshot)
     }
 
     private static func isSyntheticCurrentCLISnapshot(_ snapshot: ProviderQuotaSnapshot) -> Bool {
-        let sourceID = snapshot.sourceId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let accountID = snapshot.accountID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return sourceID.hasPrefix("switcher-cli-current:")
-            || accountID?.hasPrefix("current-") == true
+        ProviderQuotaAccountDisplay.isCurrentCLIMirror(snapshot)
     }
 
     static func makeSetupSlots(

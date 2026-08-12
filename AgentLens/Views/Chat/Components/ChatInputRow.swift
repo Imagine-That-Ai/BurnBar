@@ -104,6 +104,17 @@ struct ChatInputRow: View {
                 cliPermissionPrompt
             }
             HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
+                // The identity that survives the first keystroke. The placeholder
+                // ("Ask Codex…") dies the moment you type; this 3pt leading bar
+                // does not. Containment law: a 3pt bar is the widest fill the
+                // per-agent tint is ever allowed (§6.1).
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(chatBackend.sigilTint.opacity(0.85))
+                    .frame(width: 3)
+                    .frame(maxHeight: .infinity)
+                    .padding(.vertical, 2)
+                    .accessibilityHidden(true)
+                    .animation(DesignSystem.Animation.standard, value: chatBackend)
                 attachmentMenu
                 TextField(inputPlaceholder, text: $controller.inputText, axis: .vertical)
                     .textFieldStyle(.plain)

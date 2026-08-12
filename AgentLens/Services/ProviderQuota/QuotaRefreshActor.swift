@@ -593,8 +593,18 @@ private func resolveDaemonAccountCredentials(
               let provider = quotaCapableProvider(for: configuration.providerID) else {
             continue
         }
-        guard provider != .openAI else { continue }
-        let normalizedProviderID = ProviderID(rawValue: configuration.providerID)
+        // Organization-scoped providers report the same numbers for every
+        // credential slot, so a per-slot fetch would render N identical cards
+        // and multiply one org's usage in the cumulative merge. They stay
+        // provider-level; the workspace labels their rollup card accordingly.
+        guard QuotaCapableProviderMap.supportsPerAccountQuota(provider) else { continue }
+        // Canonical, not as-configured: the account identity has to match what
+        // `DaemonCredentialSlotAccountProjection` writes and what
+        // `snapshots(for:)` looks up, or an alias-configured provider (`x-ai`,
+        // `grok`, `anthropic`, …) fetches quota nobody can find. The keychain
+        // account below deliberately stays on the raw configured id — that is
+        // where the daemon actually stored the secret.
+        let canonicalProviderID = provider.providerID
 
         for slot in configuration.credentialSlots where slot.isEnabled {
             let secretAccount = "provider.\(configuration.providerID).slot.\(slot.slotID).apiKey"
@@ -607,14 +617,16 @@ private func resolveDaemonAccountCredentials(
                 continue
             }
 
-            let normalizedSlotID = ProviderID.normalize(slot.slotID)
             credentials.append(ProviderQuotaAccountCredential(
                 provider: provider,
-                providerID: normalizedProviderID,
-                accountID: "\(normalizedProviderID.rawValue)-\(normalizedSlotID)",
+                providerID: canonicalProviderID,
+                accountID: DaemonCredentialSlotAccountProjection.accountID(
+                    providerID: canonicalProviderID,
+                    slotID: slot.slotID
+                ),
                 label: slot.label,
                 storageScope: .deviceKeychain,
-                sourceID: "daemon-slot:\(normalizedProviderID.rawValue):\(slot.slotID)",
+                sourceID: "daemon-slot:\(canonicalProviderID.rawValue):\(slot.slotID)",
                 apiKey: normalizedKey
             ))
         }
@@ -783,28 +795,7 @@ private func quotaSwitcherProfileLabel(
 }
 
 private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
-    switch ProviderID.normalize(providerID) {
-    case "minimax":
-        return .minimax
-    case "zai", "z-ai":
-        return .zai
-    case "ollama":
-        return .ollama
-    case "openai":
-        return .openAI
-    case "anthropic", "claude", "claude-code":
-        return .claudeCode
-    case "opencode", "open-code":
-        return .openCode
-    case "deepseek", "deep-seek":
-        return .deepSeek
-    case "moonshot", "kimi":
-        return .kimi
-    case "xai", "x-ai", "x.ai", "grok":
-        return .xAI
-    default:
-        return nil
-    }
+    QuotaCapableProviderMap.provider(forDaemonProviderID: providerID)
 }
 
 private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {
