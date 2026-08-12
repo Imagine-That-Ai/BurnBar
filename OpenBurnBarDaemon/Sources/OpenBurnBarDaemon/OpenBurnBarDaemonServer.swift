@@ -96,10 +96,12 @@ public actor BurnBarDaemonServer {
     #endif
     let clientRegistry: BurnBarClientRegistry
     let runService: BurnBarRunService
+    let safariHandoffSupervisor: any SafariHandoffProcessSupervising
     let toolingProxy: BurnBarToolingProxyService
     let computerUseService: ComputerUseService
     let computerUseAuthorizationRegistry: ComputerUseAuthorizationRegistry
     let safariSessionBroker: BurnBarSafariSessionBroker
+    let safariGatewayAttributionAuthority: SafariGatewayAttributionAuthority
     let safariTrustStore: BurnBarSafariTrustStore
     let safariAppGroupPayloadResolver: BurnBarSafariAppGroupPayloadResolver?
     let learningCoordinator: LearningCoordinator
@@ -161,6 +163,10 @@ public actor BurnBarDaemonServer {
         safariSessionBroker: BurnBarSafariSessionBroker? = nil,
         safariTrustStore: BurnBarSafariTrustStore? = nil,
         safariAppGroupPayloadResolver: BurnBarSafariAppGroupPayloadResolver? = nil,
+        safariHandoffSupervisor: (
+            any SafariHandoffProcessSupervising
+        )? = nil,
+        safariHandoffRootURL: URL? = nil,
         learningCoordinator: LearningCoordinator? = nil,
         missionControlService: (any BurnBarMissionControlServing)? = nil,
         membershipService: (any BurnBarMembershipServing)? = nil,
@@ -188,8 +194,26 @@ public actor BurnBarDaemonServer {
         self.connectionGate = BurnBarConnectionGate()
         self.peerAuthenticator = peerAuthenticator
         self.capabilityProfile = capabilityProfile
+        let resolvedSafariHandoffRootURL =
+            safariHandoffRootURL
+            ?? runService?.safariHandoffRootURL
+            ?? BurnBarResumeService.defaultSafariHandoffRootURLForSupervisor()
+        let resolvedSafariHandoffSupervisor: any SafariHandoffProcessSupervising
+        if let safariHandoffSupervisor {
+            resolvedSafariHandoffSupervisor = safariHandoffSupervisor
+        } else if let runService {
+            resolvedSafariHandoffSupervisor =
+                runService.safariHandoffSupervisor
+        } else {
+            resolvedSafariHandoffSupervisor =
+                SafariHandoffProcessSupervisor(
+                    rootURL: resolvedSafariHandoffRootURL
+                )
+        }
+        self.safariHandoffSupervisor = resolvedSafariHandoffSupervisor
         self.safariHandoffService = BurnBarResumeService(
-            logger: BurnBarDaemonLogger(category: "safari-handoff")
+            logger: BurnBarDaemonLogger(category: "safari-handoff"),
+            safariHandoffRootURL: resolvedSafariHandoffRootURL
         )
         self.localAuthProofVerifier = localAuthProofVerifier
         self.phoneControlPinStore = phoneControlPinStore
@@ -461,6 +485,32 @@ public actor BurnBarDaemonServer {
             authorizationRegistry: resolvedComputerUseAuthorizationRegistry
         )
         #endif
+        let resolvedSafariGatewayAttributionAuthority =
+            SafariGatewayAttributionAuthority(
+                sessionAttachmentValidator: { clientID, sessionID in
+                    guard await resolvedClientRegistry.sessionID(for: clientID)
+                            == sessionID else {
+                        return false
+                    }
+                    do {
+                        let brokerStatus =
+                            try await resolvedSafariSessionBroker.status(
+                                sessionID: sessionID.rawValue
+                            )
+                        guard brokerStatus.attached else {
+                            return false
+                        }
+                        let serviceStatus =
+                            try await resolvedComputerUseService
+                                .safariSessionStatus(
+                                    sessionID: sessionID.rawValue
+                                )
+                        return serviceStatus.attached
+                    } catch {
+                        return false
+                    }
+                }
+            )
         let computerUseBrowserDispatcher: BurnBarComputerUseBrowserDispatcher?
         let computerUseRunBindingChecker: BurnBarComputerUseRunBindingChecker?
         let computerUseRunRevoker: BurnBarComputerUseRunRevoker?
@@ -563,6 +613,8 @@ public actor BurnBarDaemonServer {
             safariComputerUseRunDispatcher: safariComputerUseRunDispatcher,
             safariComputerUseRunBindingChecker: safariComputerUseRunBindingChecker,
             safariComputerUseRunRevoker: safariComputerUseRunRevoker,
+            safariHandoffSupervisor: resolvedSafariHandoffSupervisor,
+            safariHandoffRootURL: resolvedSafariHandoffRootURL,
             safariLearningRecallProvider: { query, limit in
                 try await resolvedLearningCoordinator.recallForPrompt(
                     query: query,
@@ -605,6 +657,8 @@ public actor BurnBarDaemonServer {
         self.computerUseService = resolvedComputerUseService
         self.computerUseAuthorizationRegistry = resolvedComputerUseAuthorizationRegistry
         self.safariSessionBroker = resolvedSafariSessionBroker
+        self.safariGatewayAttributionAuthority =
+            resolvedSafariGatewayAttributionAuthority
         self.safariTrustStore = resolvedSafariTrustStore
         self.safariAppGroupPayloadResolver = resolvedSafariAppGroupPayloadResolver
         self.learningCoordinator = resolvedLearningCoordinator
@@ -818,7 +872,9 @@ public actor BurnBarDaemonServer {
                 // stop fanning out live provider HTTP (and spawning Factory's
                 // `droid exec --help`) on every request.
                 modelCatalogCacheTTL: BurnBarHTTPGatewayServer.defaultModelCatalogCacheTTL,
-                logger: BurnBarDaemonLogger(category: "http-gateway")
+                logger: BurnBarDaemonLogger(category: "http-gateway"),
+                safariAttributionAuthority:
+                    resolvedSafariGatewayAttributionAuthority
             )
         } else {
             self.gatewayServer = nil
@@ -1397,6 +1453,12 @@ public actor BurnBarDaemonServer {
 
     public func stop() async {
         cancelAllSafariRunResumeTasks()
+        // Safari CLI hand-offs are daemon-owned child processes, not detached
+        // user sessions. Always terminate and await them before any shutdown
+        // return path, including a server that never acquired its listener.
+        // This keeps graceful daemon shutdown from orphaning a read-only agent
+        // process and makes repeated stop calls idempotent.
+        await safariHandoffSupervisor.shutdownAll()
         guard let listenerFileDescriptor else {
             logger.debug(
                 "shutdown_skipped",

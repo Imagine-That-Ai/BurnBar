@@ -455,7 +455,8 @@ async function maybeRunCursorSmokeWithoutUI(
       getRunDetail: async (runID) =>
         daemonClient.getRun({
           runID,
-          clientID
+          clientID,
+          sessionID
         }),
       createRun: async (resolvedModelID, prompt, metadata) => {
         const result = await daemonClient.createRun({
@@ -479,7 +480,11 @@ async function maybeRunCursorSmokeWithoutUI(
         });
       },
       getRunPhase: async (runID) => {
-        const detail = await daemonClient.getRun({ runID, clientID });
+        const detail = await daemonClient.getRun({
+          runID,
+          clientID,
+          sessionID
+        });
         return detail.run?.phase;
       }
     });

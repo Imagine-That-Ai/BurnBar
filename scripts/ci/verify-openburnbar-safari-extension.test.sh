@@ -357,14 +357,32 @@ from pathlib import Path
 path = Path(sys.argv[1])
 with path.open("rb") as file:
     profile = plistlib.load(file)
-profile["Entitlements"].pop("com.apple.security.get-task-allow", None)
+profile["Entitlements"]["com.apple.security.get-task-allow"] = False
 with path.open("wb") as file:
     plistlib.dump(profile, file)
 PY
   assert_fails_with \
-    "development Safari profile get-task-allow entitlement must be True" \
+    "development Safari profile must not explicitly disable get-task-allow" \
     bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
     "$app_path" development "$team_id"
+  cp "$good_development_profile" "$embedded_profile"
+
+  python3 - "$embedded_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["Entitlements"].pop("com.apple.security.get-task-allow", None)
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+  bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
+    "$app_path" \
+    development \
+    "$team_id"
 fi
 
 cp "$good_direct_profile" "$embedded_profile"
@@ -464,8 +482,22 @@ path = Path(sys.argv[1])
 with path.open("rb") as file:
     profile = plistlib.load(file)
 profile.pop("ProvisionsAllDevices", None)
+profile["Platform"] = ["OSX"]
+profile["Entitlements"]["com.apple.security.get-task-allow"] = False
 with path.open("wb") as file:
     plistlib.dump(profile, file)
+PY
+python3 - "$signed_entitlements_path" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    entitlements = plistlib.load(file)
+entitlements["com.apple.security.get-task-allow"] = False
+with path.open("wb") as file:
+    plistlib.dump(entitlements, file)
 PY
 export MOCK_CODESIGN_AUTHORITY="Apple Distribution: OpenBurnBar Test ($team_id)"
 bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \

@@ -755,6 +755,9 @@ def test_safari_host_entitlements_share_exact_app_group_and_keychain_across_chan
     website_release = (
         ROOT / "scripts/build-macos-website-release.sh"
     ).read_text(encoding="utf-8")
+    direct_release_verifier = (
+        ROOT / "scripts/ci/verify-openburnbar-direct-release.sh"
+    ).read_text(encoding="utf-8")
     release_workflow = (ROOT / ".github/workflows/release.yml").read_text(
         encoding="utf-8"
     )
@@ -774,7 +777,10 @@ def test_safari_host_entitlements_share_exact_app_group_and_keychain_across_chan
         assert "Keychain" in direct_surface
 
     assert "app_profile_app_groups" in website_release
-    assert "actual_app_groups" in website_release
+    assert "scripts/ci/verify-openburnbar-direct-release.sh" in website_release
+    assert 'codesign -d --entitlements :- "$app_path"' in direct_release_verifier
+    assert "signed host App Groups" in direct_release_verifier
+    assert "signed host Keychain groups" in direct_release_verifier
     assert "APP_PROFILE_APP_GROUPS" in release_workflow
     assert "ACTUAL_APP_GROUPS" in release_workflow
     assert "profile_app_groups" in public_trust
@@ -817,6 +823,7 @@ def test_safari_appex_release_signing_is_explicit_profile_bound_and_nested_first
     development_verify_helper = (
         "scripts/ci/verify-openburnbar-development-signing.sh"
     )
+    mas_verify_helper = "scripts/ci/verify-openburnbar-mas-artifact.sh"
     host_entitlement_variable = "OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS"
 
     assert profile_secret in workflow
@@ -848,7 +855,9 @@ def test_safari_appex_release_signing_is_explicit_profile_bound_and_nested_first
     assert development_verify_helper in makefile
     assert "OTHER_CODE_SIGN_FLAGS: --options runtime,library" in project
     assert "$script_dir/verify-openburnbar-safari-extension.sh" in dmg_smoke
-    assert mas_release.count(verify_helper) >= 2
+    assert mas_release.count(mas_verify_helper) >= 2
+    mas_verify = (ROOT / mas_verify_helper).read_text(encoding="utf-8")
+    assert verify_helper in mas_verify
     assert "pkgutil --expand-full" in mas_release
     assert "export-inspection" in mas_release
 

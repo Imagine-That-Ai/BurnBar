@@ -132,6 +132,7 @@ public actor BurnBarHTTPGatewayServer {
     let logger: any BurnBarDaemonLogging
     let rateLimiter: BurnBarRateLimiter?
     let unauthenticatedLoopbackRateLimiter: BurnBarRateLimiter?
+    let safariAttributionAuthority: SafariGatewayAttributionAuthority?
 
     private let modelCatalogCacheTTL: TimeInterval
     private var modelCatalogCache: LinuxModelCatalogCache?
@@ -151,7 +152,8 @@ public actor BurnBarHTTPGatewayServer {
         modelHealthStore: BurnBarGatewayModelHealthStore = BurnBarGatewayModelHealthStore(),
         modelCatalogCacheTTL: TimeInterval = 0,
         logger: any BurnBarDaemonLogging = BurnBarDaemonLogger(category: "http-gateway"),
-        rateLimiter: BurnBarRateLimiter? = nil
+        rateLimiter: BurnBarRateLimiter? = nil,
+        safariAttributionAuthority: SafariGatewayAttributionAuthority? = nil
     ) {
         self.configuration = configuration
         self.configStore = configStore
@@ -164,6 +166,7 @@ public actor BurnBarHTTPGatewayServer {
         self.modelHealthStore = modelHealthStore
         self.modelCatalogCacheTTL = max(0, modelCatalogCacheTTL)
         self.logger = logger
+        self.safariAttributionAuthority = safariAttributionAuthority
         self.rateLimiter = rateLimiter ?? configuration.rateLimit.map {
             BurnBarRateLimiter(configuration: $0)
         }
@@ -357,7 +360,17 @@ public actor BurnBarHTTPGatewayServer {
         return [
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key",
+            "Access-Control-Allow-Headers": [
+                "Authorization",
+                "Content-Type",
+                "x-api-key",
+                "OpenAI-Data-Storage",
+                "X-Data-Retention",
+                "X-Model-Training",
+                "X-OpenBurnBar-Client",
+                "X-OpenBurnBar-Correlation-ID",
+                "X-OpenBurnBar-Attribution-Capability"
+            ].joined(separator: ", "),
             "Vary": "Origin"
         ]
     }
@@ -432,9 +445,15 @@ public actor BurnBarHTTPGatewayServer {
             let body = (try? String(data: JSONEncoder().encode(snapshot), encoding: .utf8)) ?? #"{"gatewayEnabled":true}"#
             response = .buffered(httpResponse(status: 200, headers: ["Content-Type": "application/json"], body: body))
         case ("GET", "/v1/models"):
-            response = .buffered(await linuxModelsListResponse(catalog: false))
+            response = await linuxModelsResponse(
+                catalog: false,
+                headers: request.headers
+            )
         case ("GET", "/v1/models/catalog"):
-            response = .buffered(await linuxModelsListResponse(catalog: true))
+            response = await linuxModelsResponse(
+                catalog: true,
+                headers: request.headers
+            )
         case ("POST", "/v1/chat/completions"):
             response = await handleModelEndpoint(.chatCompletions, request: request, fileDescriptor: fileDescriptor, corsHeaders: cors)
         case ("POST", "/v1/responses"):
@@ -451,6 +470,32 @@ public actor BurnBarHTTPGatewayServer {
         return addingCORSHeaders(to: response, headers: cors)
     }
 
+    private func linuxModelsResponse(
+        catalog: Bool,
+        headers: [String: String]
+    ) async -> LinuxGatewayResponse {
+        guard await safariAttributionIsAcceptedOrAbsent(headers: headers) else {
+            return .buffered(safariAttributionRejectionResponse())
+        }
+        return .buffered(await linuxModelsListResponse(catalog: catalog))
+    }
+
+    private func safariAttributionIsAcceptedOrAbsent(
+        headers: [String: String]
+    ) async -> Bool {
+        let safariMarker = headers["x-openburnbar-client"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(GatewayRequestAttribution.safariClientSource)
+            == .orderedSame
+        if let safariAttributionAuthority {
+            let resolution = await safariAttributionAuthority.resolve(
+                headers: headers
+            )
+            return resolution != .rejected
+        }
+        return safariMarker == false
+    }
+
     private func handleModelEndpoint(
         _ endpoint: LinuxGatewayEndpoint,
         request: LinuxHTTPRequest,
@@ -458,12 +503,33 @@ public actor BurnBarHTTPGatewayServer {
         corsHeaders: [String: String]
     ) async -> LinuxGatewayResponse {
         let startedAt = Date()
-        let executionSource = UsageExecutionSourceResolver.fromClientMarker(
-            request.headers["x-openburnbar-client"],
-            allowCustom: true
-        ) ?? UsageExecutionSourceResolver.fromClientMarker(
-            request.headers["user-agent"]
-        ) ?? .unknown
+        let safariMarker = request.headers["x-openburnbar-client"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(GatewayRequestAttribution.safariClientSource)
+            == .orderedSame
+        let attributionResolution: GatewayRequestAttributionResolution
+        if let safariAttributionAuthority {
+            attributionResolution = await safariAttributionAuthority.resolve(
+                headers: request.headers
+            )
+        } else {
+            attributionResolution = safariMarker ? .rejected : .absent
+        }
+        let attribution = attributionResolution.attribution
+        let executionSource: UsageExecutionSource
+        switch attributionResolution {
+        case .accepted(let attribution):
+            executionSource = UsageExecutionSourceResolver.fromClientMarker(
+                attribution.clientSource
+            ) ?? .unknown
+        case .absent:
+            executionSource = nonSafariExecutionSource(
+                clientMarker: request.headers["x-openburnbar-client"],
+                userAgent: request.headers["user-agent"]
+            )
+        case .rejected:
+            return .buffered(safariAttributionRejectionResponse())
+        }
         guard !request.body.isEmpty else {
             return .buffered(jsonResponse(status: 400, message: "request body required"))
         }
@@ -559,7 +625,8 @@ public actor BurnBarHTTPGatewayServer {
                                     httpStatus: proxyStream.statusCode,
                                     attempts: attempts,
                                     usage: relay.usage,
-                                    streamInterrupted: relay.interrupted
+                                    streamInterrupted: relay.interrupted,
+                                    attribution: attribution
                                 )
                                 return .streamed
                             } catch is BurnBarProxyStreamingUnsupported {
@@ -611,7 +678,8 @@ public actor BurnBarHTTPGatewayServer {
                             streamed: false,
                             httpStatus: response.statusCode,
                             attempts: attempts,
-                            usage: response.usage
+                            usage: response.usage,
+                            attribution: attribution
                         )
                         return .buffered(httpResponse(
                             status: response.statusCode,
@@ -668,7 +736,8 @@ public actor BurnBarHTTPGatewayServer {
                                 attempts: attempts,
                                 usage: nil,
                                 streamInterrupted: true,
-                                failureMessage: Self.routeLogFailureMessage(from: error)
+                                failureMessage: Self.routeLogFailureMessage(from: error),
+                                attribution: attribution
                             )
                             return .streamed
                         }
@@ -706,7 +775,8 @@ public actor BurnBarHTTPGatewayServer {
                 httpStatus: 503,
                 attempts: attempts,
                 usage: nil,
-                failureMessage: "No eligible route for \(modelID) on \(endpoint.requestPath)."
+                failureMessage: "No eligible route for \(modelID) on \(endpoint.requestPath).",
+                attribution: attribution
             )
             return .buffered(noEligibleRouteResponse(modelID: modelID, endpoint: endpoint))
         } catch let error as BurnBarProviderRouterError {
@@ -721,7 +791,8 @@ public actor BurnBarHTTPGatewayServer {
                 httpStatus: 503,
                 attempts: attempts,
                 usage: nil,
-                failureMessage: error.localizedDescription
+                failureMessage: error.localizedDescription,
+                attribution: attribution
             )
             return .buffered(noEligibleRouteResponse(modelID: modelID, endpoint: endpoint))
         } catch {
@@ -736,7 +807,8 @@ public actor BurnBarHTTPGatewayServer {
                 httpStatus: Self.httpStatus(from: error) ?? 502,
                 attempts: attempts,
                 usage: nil,
-                failureMessage: Self.routeLogFailureMessage(from: error)
+                failureMessage: Self.routeLogFailureMessage(from: error),
+                attribution: attribution
             )
             return .buffered(typedDegradedResponse(
                 BurnBarHTTPGatewayDegradedError.upstreamUnavailable(
@@ -746,6 +818,30 @@ public actor BurnBarHTTPGatewayServer {
                 )
             ))
         }
+    }
+
+    private func nonSafariExecutionSource(
+        clientMarker: String?,
+        userAgent: String?
+    ) -> UsageExecutionSource {
+        let resolved = UsageExecutionSourceResolver.fromClientMarker(
+            clientMarker,
+            allowCustom: true
+        ) ?? UsageExecutionSourceResolver.fromClientMarker(userAgent)
+        guard resolved?.id
+                != GatewayRequestAttribution.safariClientSource else {
+            return .unknown
+        }
+        return resolved ?? .unknown
+    }
+
+    private func safariAttributionRejectionResponse() -> Data {
+        httpResponse(
+            status: 401,
+            headers: ["Content-Type": "application/json"],
+            body:
+                #"{"error":{"message":"Safari attribution capability is invalid or expired.","code":"gateway_attribution_rejected"}}"#
+        )
     }
 
     private func gatewayAuthToken(from headers: [String: String]) -> String? {
@@ -1319,7 +1415,8 @@ public actor BurnBarHTTPGatewayServer {
         attempts: [BurnBarProxyRouteAttempt],
         usage: BurnBarProviderProxyUsage?,
         streamInterrupted: Bool = false,
-        failureMessage: String? = nil
+        failureMessage: String? = nil,
+        attribution: GatewayRequestAttribution = .none
     ) async {
         guard let proxyRouteLogStore else { return }
         let completedAt = Date()
@@ -1356,6 +1453,8 @@ public actor BurnBarHTTPGatewayServer {
             attempts: attempts,
             usage: route.flatMap { proxyRouteUsage(from: usage, route: $0) },
             failureMessage: Self.sanitizedFailureMessage(failureMessage),
+            clientSource: attribution.clientSource,
+            clientRequestCorrelationID: attribution.clientRequestCorrelationID,
             parentRequestID: nil
         )
         await proxyRouteLogStore.append(entry)

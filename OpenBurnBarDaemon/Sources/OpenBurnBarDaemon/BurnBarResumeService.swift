@@ -72,12 +72,72 @@ final class BurnBarResumeService: @unchecked Sendable {
         let cleanupPath: String?
     }
 
-    struct SafariHandoffLaunch: Sendable, Equatable {
+    struct SafariHandoffPreparation: Sendable, Equatable {
         let targetHarness: String
         let packageDirectory: URL
+        let packageDevice: UInt64
+        let packageInode: UInt64
         let briefingPath: String
         let screenshotPath: String
-        let pid: Int?
+        let executableURL: URL
+        let arguments: [String]
+    }
+
+    /// The only CLI targets that Safari may advertise or launch.
+    ///
+    /// Ordinary `run.resume` intentionally keeps the broader target catalog:
+    /// this narrower roster exists because browser-originated page content
+    /// requires a mechanically enforced no-tools/read-only CLI mode. Keep
+    /// bootstrap advertising and launch preparation bound to this one policy.
+    static let safariHandoffEligibleTargets: [CLIAgentResumeTarget] = {
+        CLIAgentResumeTarget.allCases.filter {
+            safariHandoffUnavailableReason(for: $0) == nil
+        }
+    }()
+
+    static let safariHandoffEligibleTargetIDs: Set<String> = {
+        Set(safariHandoffEligibleTargets.map(\.wireID))
+    }()
+
+    func installedSafariHandoffAgents() -> [BurnBarSafariInstalledAgent] {
+        queue.sync {
+            Self.safariHandoffEligibleTargets.compactMap { target in
+                guard let discoveredExecutableURL = cliExecutableResolver(
+                    Self.cliType(for: target)
+                ),
+                    (try? Self.canonicalSafariHandoffExecutableURL(
+                        discoveredExecutableURL
+                    )) != nil
+                else {
+                    return nil
+                }
+                return BurnBarSafariInstalledAgent(
+                    id: target.wireID,
+                    displayName: target.displayName,
+                    providerName: "Installed agents"
+                )
+            }
+        }
+    }
+
+    /// A product-facing explanation for known CLIs that are deliberately not
+    /// eligible for browser-originated hand-off.
+    static func safariHandoffUnavailableReason(
+        for target: CLIAgentResumeTarget
+    ) -> String? {
+        switch target {
+        case .droid:
+            return "Droid is unavailable for Safari hand-off because --disable-builtin-skills does not enforce a no-tools, read-only session."
+        case .forge:
+            return "Forge is unavailable for Safari hand-off because its Sage agent does not enforce a no-tools, read-only session."
+        case .kimi:
+            return "Kimi is unavailable for Safari hand-off because its Explore agent does not enforce a no-tools, read-only session."
+        case .junie:
+            return "Junie is unavailable for Safari hand-off because plan mode has not been verified to enforce a no-tools, read-only session."
+        case .claudeCode, .codex, .antigravity, .grok, .cursorAgent,
+             .opencode, .omp, .gemini, .pi, .primeAgent:
+            return nil
+        }
     }
 
     typealias DetachedLauncher = (
@@ -134,7 +194,9 @@ final class BurnBarResumeService: @unchecked Sendable {
         self.logger = logger
         self.fileManager = fileManager
         self.safariHandoffRootURL = safariHandoffRootURL
-            ?? Self.defaultSafariHandoffRootURL(fileManager: fileManager)
+            ?? Self.defaultSafariHandoffRootURLForSupervisor(
+                fileManager: fileManager
+            )
         self.detachedLauncher = detachedLauncher
         self.cliExecutableResolver = cliExecutableResolver
     }
@@ -153,7 +215,9 @@ final class BurnBarResumeService: @unchecked Sendable {
         self.logger = logger
         self.fileManager = fileManager
         self.safariHandoffRootURL = safariHandoffRootURL
-            ?? Self.defaultSafariHandoffRootURL(fileManager: fileManager)
+            ?? Self.defaultSafariHandoffRootURLForSupervisor(
+                fileManager: fileManager
+            )
         self.detachedLauncher = detachedLauncher
         self.cliExecutableResolver = cliExecutableResolver
     }
@@ -273,14 +337,18 @@ final class BurnBarResumeService: @unchecked Sendable {
         }
     }
 
-    /// Creates a daemon-owned, owner-only Safari briefing package and launches
-    /// one allowlisted installed CLI through the same invocation machinery as
-    /// ordinary `run.resume`. No path or argv supplied by the WebExtension is
-    /// accepted, and no generated path is returned across the browser boundary.
-    func launchSafariHandoff(
+    /// Creates a daemon-owned, owner-only Safari briefing package and prepares
+    /// one allowlisted installed CLI for the daemon-owned process supervisor.
+    ///
+    /// This path deliberately does not use the ordinary detached/Terminal
+    /// launcher. The Safari bridge must observe the real companion lifecycle
+    /// through `run.poll`, including nonzero exit, timeout, Stop, and daemon
+    /// restart. No path or argv supplied by the WebExtension is accepted, and
+    /// no generated path is returned across the browser boundary.
+    func prepareSafariHandoff(
         _ request: BurnBarSafariHandoffRequest,
         runID: BurnBarRunID
-    ) throws -> SafariHandoffLaunch {
+    ) throws -> SafariHandoffPreparation {
         try queue.sync {
             let normalizedPrompt = request.prompt
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -321,8 +389,9 @@ final class BurnBarResumeService: @unchecked Sendable {
                     ]
                 )
             }
+            try Self.requireSafariHandoffEligibility(target)
             let cliType = Self.cliType(for: target)
-            guard let executableURL = cliExecutableResolver(cliType) else {
+            guard let discoveredExecutableURL = cliExecutableResolver(cliType) else {
                 throw NSError(
                     domain: "BurnBarResumeService",
                     code: 404,
@@ -332,6 +401,10 @@ final class BurnBarResumeService: @unchecked Sendable {
                     ]
                 )
             }
+            let executableURL =
+                try Self.canonicalSafariHandoffExecutableURL(
+                    discoveredExecutableURL
+                )
 
             let redactedTitle = try redactSafariPageContext(
                 request.pageState.title,
@@ -350,30 +423,21 @@ final class BurnBarResumeService: @unchecked Sendable {
                 label: "accessibility snapshot"
             )
 
-            try ensurePrivateDirectory(safariHandoffRootURL)
-            let packageDirectory = safariHandoffRootURL
-                .appendingPathComponent(runID.rawValue, isDirectory: true)
-            guard fileManager.fileExists(atPath: packageDirectory.path) == false else {
-                throw NSError(
-                    domain: "BurnBarResumeService",
-                    code: 409,
-                    userInfo: [
-                        NSLocalizedDescriptionKey:
-                            "The Safari hand-off package identity already exists."
-                    ]
-                )
-            }
-            try ensurePrivateDirectory(packageDirectory)
+            let package = try prepareSafariHandoffPackage(runID: runID)
+            let packageDirectory = package.url
             var packageCommitted = false
             defer {
                 if packageCommitted == false {
-                    try? fileManager.removeItem(at: packageDirectory)
+                    try? package.removePreparedPackage()
                 }
             }
 
             let screenshotURL = packageDirectory
                 .appendingPathComponent("viewport.jpg", isDirectory: false)
-            try writeData0600(request.screenshotJPEG, to: screenshotURL)
+            try package.writeData0600(
+                request.screenshotJPEG,
+                fileName: screenshotURL.lastPathComponent
+            )
 
             let briefingURL = packageDirectory
                 .appendingPathComponent("BRIEFING.md", isDirectory: false)
@@ -390,18 +454,22 @@ final class BurnBarResumeService: @unchecked Sendable {
                 screenshotHeight: request.screenshotHeight,
                 screenshotTruncated: request.screenshotTruncated
             )
-            try writeData0600(Data(briefing.utf8), to: briefingURL)
+            try package.writeData0600(
+                Data(briefing.utf8),
+                fileName: briefingURL.lastPathComponent
+            )
 
             if target == .opencode {
                 let configurationURL = packageDirectory
                     .appendingPathComponent("opencode.json", isDirectory: false)
-                try writeData0600(
+                try package.writeData0600(
                     Data(Self.safariOpenCodeConfiguration.utf8),
-                    to: configurationURL
+                    fileName: configurationURL.lastPathComponent
                 )
             }
+            try package.synchronizeDirectory()
 
-            var invocation = safariHandoffInvocation(
+            var invocation = try safariHandoffInvocation(
                 target: target,
                 briefingPath: briefingURL.path
             )
@@ -419,18 +487,16 @@ final class BurnBarResumeService: @unchecked Sendable {
                 argv: [executableURL.path] + Array(invocation.argv.dropFirst()),
                 cleanupPath: invocation.cleanupPath
             )
-            let pid = try launchDetached(
-                argv: invocation.argv,
-                workingDirectory: packageDirectory.path
-            )
             packageCommitted = true
-            scheduleDelete(packageDirectory.path, after: 24 * 60 * 60)
-            return SafariHandoffLaunch(
+            return SafariHandoffPreparation(
                 targetHarness: target.rawValue,
                 packageDirectory: packageDirectory,
+                packageDevice: package.device,
+                packageInode: package.inode,
                 briefingPath: briefingURL.path,
                 screenshotPath: screenshotURL.path,
-                pid: pid
+                executableURL: executableURL,
+                arguments: Array(invocation.argv.dropFirst())
             )
         }
     }
@@ -985,7 +1051,7 @@ final class BurnBarResumeService: @unchecked Sendable {
     private func safariHandoffInvocation(
         target: CLIAgentResumeTarget,
         briefingPath: String
-    ) -> TargetInvocation {
+    ) throws -> TargetInvocation {
         let briefingURL = URL(fileURLWithPath: briefingPath)
         let packageDirectory = briefingURL.deletingLastPathComponent().path
         let screenshotURL = briefingURL
@@ -1028,27 +1094,8 @@ final class BurnBarResumeService: @unchecked Sendable {
             }
             argv.append(prompt)
             return TargetInvocation(argv: argv, cleanupPath: nil)
-        case .droid:
-            return TargetInvocation(
-                argv: [
-                    "droid",
-                    "exec",
-                    "--file", briefingPath,
-                    "--cwd", packageDirectory,
-                    "--disable-builtin-skills"
-                ],
-                cleanupPath: nil
-            )
-        case .forge:
-            return TargetInvocation(
-                argv: [
-                    "forge",
-                    "--agent", "sage",
-                    "--directory", packageDirectory,
-                    "--prompt", prompt
-                ],
-                cleanupPath: nil
-            )
+        case .droid, .forge:
+            throw Self.safariHandoffUnavailableError(for: target)
         case .antigravity:
             return TargetInvocation(
                 argv: [
@@ -1127,16 +1174,7 @@ final class BurnBarResumeService: @unchecked Sendable {
                 cleanupPath: nil
             )
         case .kimi:
-            return TargetInvocation(
-                argv: [
-                    "kimi",
-                    "--agent", "explore",
-                    "--add-dir", packageDirectory,
-                    "--prompt", prompt,
-                    "--output-format", "text"
-                ],
-                cleanupPath: nil
-            )
+            throw Self.safariHandoffUnavailableError(for: target)
         case .pi:
             var argv = [
                 "pi",
@@ -1153,15 +1191,7 @@ final class BurnBarResumeService: @unchecked Sendable {
             argv.append(prompt)
             return TargetInvocation(argv: argv, cleanupPath: nil)
         case .junie:
-            return TargetInvocation(
-                argv: [
-                    "junie",
-                    "--plan",
-                    "--prompt", prompt,
-                    "--project", packageDirectory
-                ],
-                cleanupPath: nil
-            )
+            throw Self.safariHandoffUnavailableError(for: target)
         case .primeAgent:
             var argv = [
                 "prime-agent",
@@ -1439,8 +1469,8 @@ final class BurnBarResumeService: @unchecked Sendable {
         return output
     }
 
-    private static func defaultSafariHandoffRootURL(
-        fileManager: FileManager
+    static func defaultSafariHandoffRootURLForSupervisor(
+        fileManager: FileManager = .default
     ) -> URL {
         let support = fileManager.urls(
             for: .applicationSupportDirectory,
@@ -1450,6 +1480,66 @@ final class BurnBarResumeService: @unchecked Sendable {
         return support
             .appendingPathComponent("OpenBurnBar", isDirectory: true)
             .appendingPathComponent("SafariHandoffs", isDirectory: true)
+    }
+
+    private static func requireSafariHandoffEligibility(
+        _ target: CLIAgentResumeTarget
+    ) throws {
+        if safariHandoffUnavailableReason(for: target) != nil {
+            throw safariHandoffUnavailableError(for: target)
+        }
+    }
+
+    private static func safariHandoffUnavailableError(
+        for target: CLIAgentResumeTarget
+    ) -> NSError {
+        NSError(
+            domain: "BurnBarResumeService",
+            code: 422,
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    safariHandoffUnavailableReason(for: target)
+                    ?? "The selected Safari hand-off agent does not provide a verified no-tools, read-only mode."
+            ]
+        )
+    }
+
+    private static func canonicalSafariHandoffExecutableURL(
+        _ discoveredURL: URL
+    ) throws -> URL {
+        let discoveredHost = discoveredURL.host ?? ""
+        guard discoveredURL.isFileURL,
+              discoveredHost.isEmpty,
+              discoveredURL.path.hasPrefix("/"),
+              discoveredURL.path.contains("\0") == false else {
+            throw safariHandoffExecutableUnavailableError()
+        }
+
+        let canonicalURL = discoveredURL
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let canonicalHost = canonicalURL.host ?? ""
+        var info = stat()
+        guard canonicalURL.isFileURL,
+              canonicalHost.isEmpty,
+              canonicalURL.path.hasPrefix("/"),
+              canonicalURL.path.contains("\0") == false,
+              lstat(canonicalURL.path, &info) == 0,
+              info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else {
+            throw safariHandoffExecutableUnavailableError()
+        }
+        return canonicalURL
+    }
+
+    private static func safariHandoffExecutableUnavailableError() -> NSError {
+        NSError(
+            domain: "BurnBarResumeService",
+            code: 404,
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "The selected Safari hand-off agent is not installed in a trusted location."
+            ]
+        )
     }
 
     private static func cliType(
@@ -1482,16 +1572,205 @@ final class BurnBarResumeService: @unchecked Sendable {
             && data[data.index(before: data.endIndex)] == 0xD9
     }
 
-    private func ensurePrivateDirectory(_ url: URL) throws {
+    private final class PreparedSafariHandoffPackage {
+        let url: URL
+        let device: UInt64
+        let inode: UInt64
+
+        private let rootDescriptor: Int32
+        private let packageDescriptor: Int32
+        private let packageName: String
+        private var createdFileNames: [String] = []
+
+        init(
+            url: URL,
+            device: UInt64,
+            inode: UInt64,
+            rootDescriptor: Int32,
+            packageDescriptor: Int32,
+            packageName: String
+        ) {
+            self.url = url
+            self.device = device
+            self.inode = inode
+            self.rootDescriptor = rootDescriptor
+            self.packageDescriptor = packageDescriptor
+            self.packageName = packageName
+        }
+
+        deinit {
+            close(packageDescriptor)
+            close(rootDescriptor)
+        }
+
+        func writeData0600(_ data: Data, fileName: String) throws {
+            guard Self.isSafeChildName(fileName) else {
+                throw POSIXError(.EINVAL)
+            }
+            let descriptor = openat(
+                packageDescriptor,
+                fileName,
+                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+                S_IRUSR | S_IWUSR
+            )
+            guard descriptor >= 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            var committed = false
+            defer {
+                close(descriptor)
+                if committed == false {
+                    _ = unlinkat(packageDescriptor, fileName, 0)
+                }
+            }
+
+            var info = stat()
+            guard fstat(descriptor, &info) == 0,
+                  (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG),
+                  info.st_uid == geteuid(),
+                  info.st_nlink == 1 else {
+                throw POSIXError(.EPERM)
+            }
+            try Self.writeAll(data, to: descriptor)
+            guard fchmod(descriptor, mode_t(0o600)) == 0,
+                  fsync(descriptor) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            committed = true
+            createdFileNames.append(fileName)
+        }
+
+        func synchronizeDirectory() throws {
+            try validateIdentity()
+            guard fsync(packageDescriptor) == 0,
+                  fsync(rootDescriptor) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        }
+
+        func removePreparedPackage() throws {
+            try validateIdentity()
+            for fileName in createdFileNames.reversed() {
+                if unlinkat(packageDescriptor, fileName, 0) != 0,
+                   errno != ENOENT {
+                    throw POSIXError(
+                        POSIXErrorCode(rawValue: errno) ?? .EIO
+                    )
+                }
+            }
+            guard unlinkat(
+                rootDescriptor,
+                packageName,
+                AT_REMOVEDIR
+            ) == 0 || errno == ENOENT else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+            guard fsync(rootDescriptor) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        }
+
+        private func validateIdentity() throws {
+            var packageInfo = stat()
+            guard fstat(packageDescriptor, &packageInfo) == 0,
+                  (packageInfo.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR),
+                  packageInfo.st_uid == geteuid(),
+                  UInt64(packageInfo.st_dev) == device,
+                  UInt64(packageInfo.st_ino) == inode else {
+                throw POSIXError(.EPERM)
+            }
+
+            var currentInfo = stat()
+            guard fstatat(
+                rootDescriptor,
+                packageName,
+                &currentInfo,
+                AT_SYMLINK_NOFOLLOW
+            ) == 0,
+                  (currentInfo.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR),
+                  currentInfo.st_uid == geteuid(),
+                  UInt64(currentInfo.st_dev) == device,
+                  UInt64(currentInfo.st_ino) == inode else {
+                throw POSIXError(.EPERM)
+            }
+        }
+
+        private static func isSafeChildName(_ value: String) -> Bool {
+            value.isEmpty == false
+                && value != "."
+                && value != ".."
+                && value.utf8.count <= 255
+                && value.contains("/") == false
+                && value.contains("\0") == false
+        }
+
+        private static func writeAll(_ data: Data, to descriptor: Int32) throws {
+            try data.withUnsafeBytes { buffer in
+                guard let baseAddress = buffer.baseAddress else { return }
+                var offset = 0
+                while offset < buffer.count {
+                    let written = write(
+                        descriptor,
+                        baseAddress.advanced(by: offset),
+                        buffer.count - offset
+                    )
+                    if written < 0, errno == EINTR {
+                        continue
+                    }
+                    guard written > 0 else {
+                        throw POSIXError(
+                            POSIXErrorCode(rawValue: errno) ?? .EIO
+                        )
+                    }
+                    offset += written
+                }
+            }
+        }
+    }
+
+    private func prepareSafariHandoffPackage(
+        runID: BurnBarRunID
+    ) throws -> PreparedSafariHandoffPackage {
+        let packageName = runID.rawValue
+        guard packageName.isEmpty == false,
+              packageName != ".",
+              packageName != "..",
+              packageName.utf8.count <= 128,
+              packageName.contains("/") == false,
+              packageName.contains("\0") == false else {
+            throw NSError(
+                domain: "BurnBarResumeService",
+                code: 422,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The Safari hand-off package identity is invalid."
+                ]
+            )
+        }
+
         try fileManager.createDirectory(
-            at: url,
+            at: safariHandoffRootURL,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: NSNumber(value: 0o700)]
         )
-        var info = stat()
-        guard lstat(url.path, &info) == 0,
-              (info.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR),
-              info.st_uid == geteuid() else {
+        let rootDescriptor = open(
+            safariHandoffRootURL.path,
+            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
+        )
+        guard rootDescriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        var rootCommitted = false
+        defer {
+            if rootCommitted == false {
+                close(rootDescriptor)
+            }
+        }
+        var rootInfo = stat()
+        guard fstat(rootDescriptor, &rootInfo) == 0,
+              (rootInfo.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR),
+              rootInfo.st_uid == geteuid(),
+              fchmod(rootDescriptor, mode_t(0o700)) == 0 else {
             throw NSError(
                 domain: "BurnBarResumeService",
                 code: 403,
@@ -1501,45 +1780,62 @@ final class BurnBarResumeService: @unchecked Sendable {
                 ]
             )
         }
-        guard chmod(url.path, mode_t(0o700)) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EACCES)
-        }
-    }
-
-    private func writeData0600(_ data: Data, to url: URL) throws {
-        let fd = open(
-            url.path,
-            O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW,
-            S_IRUSR | S_IWUSR
-        )
-        guard fd >= 0 else {
+        guard mkdirat(rootDescriptor, packageName, mode_t(0o700)) == 0 else {
+            if errno == EEXIST {
+                throw NSError(
+                    domain: "BurnBarResumeService",
+                    code: 409,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The Safari hand-off package identity already exists."
+                    ]
+                )
+            }
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        defer { close(fd) }
-
-        try data.withUnsafeBytes { buffer in
-            guard let baseAddress = buffer.baseAddress else { return }
-            var remaining = buffer.count
-            var offset = 0
-            while remaining > 0 {
-                let written = write(
-                    fd,
-                    baseAddress.advanced(by: offset),
-                    remaining
-                )
-                if written < 0 {
-                    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-                }
-                guard written > 0 else {
-                    throw POSIXError(.EIO)
-                }
-                remaining -= written
-                offset += written
+        var packageCreated = true
+        defer {
+            if packageCreated {
+                _ = unlinkat(rootDescriptor, packageName, AT_REMOVEDIR)
+                _ = fsync(rootDescriptor)
             }
         }
-        guard fchmod(fd, mode_t(0o600)) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EACCES)
+        let packageDescriptor = openat(
+            rootDescriptor,
+            packageName,
+            O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW
+        )
+        guard packageDescriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
+        var packageDescriptorCommitted = false
+        defer {
+            if packageDescriptorCommitted == false {
+                close(packageDescriptor)
+            }
+        }
+        var packageInfo = stat()
+        guard fstat(packageDescriptor, &packageInfo) == 0,
+              (packageInfo.st_mode & mode_t(S_IFMT)) == mode_t(S_IFDIR),
+              packageInfo.st_uid == geteuid(),
+              fchmod(packageDescriptor, mode_t(0o700)) == 0,
+              fsync(rootDescriptor) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        packageCreated = false
+        packageDescriptorCommitted = true
+        rootCommitted = true
+        return PreparedSafariHandoffPackage(
+            url: safariHandoffRootURL.appendingPathComponent(
+                packageName,
+                isDirectory: true
+            ),
+            device: UInt64(packageInfo.st_dev),
+            inode: UInt64(packageInfo.st_ino),
+            rootDescriptor: rootDescriptor,
+            packageDescriptor: packageDescriptor,
+            packageName: packageName
+        )
     }
 
     private func redactSafariPageContext(

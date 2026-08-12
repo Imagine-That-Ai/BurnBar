@@ -179,13 +179,21 @@ describe('Safari native bridge protocol', () => {
         protocolVersion: 1,
         gatewayBaseURL: 'http://127.0.0.1:8317',
         gatewayBearerToken: 'loopback-only',
+        gatewayAttributionCapability: 'ab'.repeat(32),
+        gatewayAttributionExpiresAt: '2026-08-10T12:05:00.000Z',
         gatewayAvailable: true,
         computerUseAvailable: true,
         learningAvailable: true,
         learningOptedIn: false,
         tier: 'burnbar_pro'
       })
-    ).toMatchObject({ daemonVersion: '1.0.34', gatewayAvailable: true, tier: 'burnbar_pro' });
+    ).toMatchObject({
+      daemonVersion: '1.0.34',
+      gatewayAvailable: true,
+      gatewayAttributionCapability: 'ab'.repeat(32),
+      gatewayAttributionExpiresAt: '2026-08-10T12:05:00.000Z',
+      tier: 'burnbar_pro'
+    });
 
     expect(
       parseBridgePopupActionResult({

@@ -207,6 +207,13 @@ public struct BurnBarProxyRouteLogEntry: Codable, Hashable, Identifiable, Sendab
     public let attempts: [BurnBarProxyRouteAttempt]
     public let usage: BurnBarProxyRouteUsage?
     public let failureMessage: String?
+    /// Fixed, allow-listed client marker for a product surface that initiated
+    /// this request. Arbitrary inbound header values must never be persisted.
+    public let clientSource: String?
+    /// Opaque per-client-request UUID used to correlate a local request with
+    /// its route outcome without retaining prompts, page data, URLs, browser
+    /// identifiers, credentials, or other request content.
+    public let clientRequestCorrelationID: String?
     /// Optional rollup key tying several sub-call route-log rows to one
     /// originating request. The Elder Wand model-fusion router stamps each
     /// panel/judge/synthesis sub-call with a shared `parentRequestID` so the
@@ -249,6 +256,8 @@ public struct BurnBarProxyRouteLogEntry: Codable, Hashable, Identifiable, Sendab
         attempts: [BurnBarProxyRouteAttempt] = [],
         usage: BurnBarProxyRouteUsage? = nil,
         failureMessage: String? = nil,
+        clientSource: String? = nil,
+        clientRequestCorrelationID: String? = nil,
         parentRequestID: String? = nil
     ) {
         self.id = id
@@ -284,6 +293,8 @@ public struct BurnBarProxyRouteLogEntry: Codable, Hashable, Identifiable, Sendab
         self.attempts = attempts
         self.usage = usage
         self.failureMessage = failureMessage
+        self.clientSource = clientSource
+        self.clientRequestCorrelationID = clientRequestCorrelationID
         self.parentRequestID = parentRequestID
     }
 }

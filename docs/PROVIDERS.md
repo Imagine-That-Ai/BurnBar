@@ -68,7 +68,23 @@ Token usage stores three independent identities:
 
 Gateway clients should send `X-OpenBurnBar-Client` with a stable product marker.
 Known user-agent markers are accepted as a fallback, but raw header values are
-never stored. Dedicated local parsers provide derived-exact historical source
+never stored. The Safari extension sends the fixed
+`openburnbar-safari-extension` marker and a fresh opaque UUID v4 in
+`X-OpenBurnBar-Correlation-ID` for each gateway request. Authenticated native
+bootstrap also issues a short-lived, memory-only
+`X-OpenBurnBar-Attribution-Capability` bound to the exact attached Safari
+client/session and daemon instance. The marker, canonical UUID, and capability
+must all validate; each UUID is accepted once, and expiry or session replacement
+fails closed. Routine bootstrap refresh revalidates and reuses the current live
+generation; an explicit security rotation revokes the prior generation. Only an
+accepted capability can produce either Safari route attribution or the Safari
+execution source. The capability grants attribution only: provider access still
+requires the gateway bearer, and it grants no page-action or Computer Use
+authority. Only its SHA-256 digest is retained in daemon memory; the raw
+capability, session identifiers, and page data are never written to route logs.
+The correlation value is generated independently of prompts, page data, URLs,
+screenshots, credentials, tab/command/session identifiers, or other request
+content. Dedicated local parsers provide derived-exact historical source
 identity. Codex history is attributed from each rollout's `session_meta`; rows
 without durable source evidence stay `unknown`.
 

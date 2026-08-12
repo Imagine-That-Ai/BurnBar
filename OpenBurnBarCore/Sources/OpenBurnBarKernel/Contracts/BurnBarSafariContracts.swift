@@ -451,6 +451,12 @@ public struct BurnBarSafariBootstrapResponse: Codable, Hashable, Sendable {
     /// WebExtension keeps it in the background worker's memory and never
     /// exposes it to content scripts or page-world code.
     public let gatewayBearerToken: String?
+    /// Opaque, short-lived proof that the general loopback gateway request was
+    /// initiated by the exact currently attached Safari extension session.
+    /// This capability grants attribution only: it is not provider, page-action,
+    /// or Computer Use authority.
+    public let gatewayAttributionCapability: String?
+    public let gatewayAttributionExpiresAt: String?
     public let gatewayAvailable: Bool
     public let computerUseAvailable: Bool
     public let learningAvailable: Bool
@@ -462,6 +468,8 @@ public struct BurnBarSafariBootstrapResponse: Codable, Hashable, Sendable {
         protocolVersion: Int,
         gatewayBaseURL: String?,
         gatewayBearerToken: String?,
+        gatewayAttributionCapability: String? = nil,
+        gatewayAttributionExpiresAt: String? = nil,
         gatewayAvailable: Bool,
         computerUseAvailable: Bool,
         learningAvailable: Bool,
@@ -472,6 +480,8 @@ public struct BurnBarSafariBootstrapResponse: Codable, Hashable, Sendable {
         self.protocolVersion = protocolVersion
         self.gatewayBaseURL = gatewayBaseURL
         self.gatewayBearerToken = gatewayBearerToken
+        self.gatewayAttributionCapability = gatewayAttributionCapability
+        self.gatewayAttributionExpiresAt = gatewayAttributionExpiresAt
         self.gatewayAvailable = gatewayAvailable
         self.computerUseAvailable = computerUseAvailable
         self.learningAvailable = learningAvailable
@@ -496,18 +506,49 @@ public struct BurnBarSafariUISnapshotRequest: Codable, Hashable, Sendable {
     }
 }
 
+/// A trusted, installed CLI that the native Safari hand-off boundary can
+/// actually launch in its mechanically enforced read-only mode.
+///
+/// Execution flags and filesystem paths remain daemon-private. The browser
+/// receives only presentation identity; its normalizer assigns the fixed
+/// `cli` / installed / local / no-vision invariants.
+public struct BurnBarSafariInstalledAgent: Codable, Hashable, Sendable {
+    public let id: String
+    public let displayName: String
+    public let providerName: String
+
+    public init(id: String, displayName: String, providerName: String) {
+        self.id = id
+        self.displayName = displayName
+        self.providerName = providerName
+    }
+}
+
 public struct BurnBarSafariUISnapshotResponse: Codable, Sendable {
     public let bootstrap: BurnBarSafariBootstrapResponse
     public let catalog: BurnBarCatalogResponse
+    public let installedAgents: [BurnBarSafariInstalledAgent]
     public let membership: BurnBarMembershipStatusResponse
     public let safariSession: BurnBarSafariSessionStatusResponse?
     public let run: BurnBarRunStateSnapshot?
     public let approvals: ComputerUseApprovalPendingResponse
     public let learning: BurnBarSafariLearningTimelineResponse
 
+    private enum CodingKeys: String, CodingKey {
+        case bootstrap
+        case catalog
+        case installedAgents
+        case membership
+        case safariSession
+        case run
+        case approvals
+        case learning
+    }
+
     public init(
         bootstrap: BurnBarSafariBootstrapResponse,
         catalog: BurnBarCatalogResponse,
+        installedAgents: [BurnBarSafariInstalledAgent] = [],
         membership: BurnBarMembershipStatusResponse,
         safariSession: BurnBarSafariSessionStatusResponse?,
         run: BurnBarRunStateSnapshot?,
@@ -516,11 +557,48 @@ public struct BurnBarSafariUISnapshotResponse: Codable, Sendable {
     ) {
         self.bootstrap = bootstrap
         self.catalog = catalog
+        self.installedAgents = installedAgents
         self.membership = membership
         self.safariSession = safariSession
         self.run = run
         self.approvals = approvals
         self.learning = learning
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bootstrap = try container.decode(
+            BurnBarSafariBootstrapResponse.self,
+            forKey: .bootstrap
+        )
+        catalog = try container.decode(
+            BurnBarCatalogResponse.self,
+            forKey: .catalog
+        )
+        installedAgents = try container.decodeIfPresent(
+            [BurnBarSafariInstalledAgent].self,
+            forKey: .installedAgents
+        ) ?? []
+        membership = try container.decode(
+            BurnBarMembershipStatusResponse.self,
+            forKey: .membership
+        )
+        safariSession = try container.decodeIfPresent(
+            BurnBarSafariSessionStatusResponse.self,
+            forKey: .safariSession
+        )
+        run = try container.decodeIfPresent(
+            BurnBarRunStateSnapshot.self,
+            forKey: .run
+        )
+        approvals = try container.decode(
+            ComputerUseApprovalPendingResponse.self,
+            forKey: .approvals
+        )
+        learning = try container.decode(
+            BurnBarSafariLearningTimelineResponse.self,
+            forKey: .learning
+        )
     }
 }
 

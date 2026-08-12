@@ -349,6 +349,8 @@ export interface SafariBootstrapResponse {
   protocolVersion: number;
   gatewayBaseURL?: string;
   gatewayBearerToken?: string;
+  gatewayAttributionCapability?: string;
+  gatewayAttributionExpiresAt?: string;
   gatewayAvailable: boolean;
   computerUseAvailable: boolean;
   learningAvailable: boolean;
@@ -789,6 +791,8 @@ export function parseSafariBootstrapResponse(value: unknown): SafariBootstrapRes
       'protocolVersion',
       'gatewayBaseURL',
       'gatewayBearerToken',
+      'gatewayAttributionCapability',
+      'gatewayAttributionExpiresAt',
       'gatewayAvailable',
       'computerUseAvailable',
       'learningAvailable',
@@ -799,6 +803,8 @@ export function parseSafariBootstrapResponse(value: unknown): SafariBootstrapRes
   );
   const gatewayBaseURL = optionalString(value, 'gatewayBaseURL', 'safari.bootstrap');
   const gatewayBearerToken = optionalString(value, 'gatewayBearerToken', 'safari.bootstrap');
+  const gatewayAttributionCapability = optionalString(value, 'gatewayAttributionCapability', 'safari.bootstrap');
+  const gatewayAttributionExpiresAt = optionalString(value, 'gatewayAttributionExpiresAt', 'safari.bootstrap');
   return {
     daemonVersion: requireString(value, 'daemonVersion', 'safari.bootstrap'),
     protocolVersion: requireSafeInteger(value, 'protocolVersion', 'safari.bootstrap'),
@@ -808,7 +814,9 @@ export function parseSafariBootstrapResponse(value: unknown): SafariBootstrapRes
     learningOptedIn: requireBoolean(value, 'learningOptedIn', 'safari.bootstrap'),
     tier: requireString(value, 'tier', 'safari.bootstrap'),
     ...(gatewayBaseURL === undefined ? {} : { gatewayBaseURL }),
-    ...(gatewayBearerToken === undefined ? {} : { gatewayBearerToken })
+    ...(gatewayBearerToken === undefined ? {} : { gatewayBearerToken }),
+    ...(gatewayAttributionCapability === undefined ? {} : { gatewayAttributionCapability }),
+    ...(gatewayAttributionExpiresAt === undefined ? {} : { gatewayAttributionExpiresAt })
   };
 }
 
