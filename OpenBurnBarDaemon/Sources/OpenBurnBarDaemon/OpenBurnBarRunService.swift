@@ -237,12 +237,14 @@ public actor BurnBarRunService {
         safariHandoffSupervisor: (
             any SafariHandoffProcessSupervising
         )? = nil,
-        safariHandoffRootURL: URL = BurnBarResumeService
-            .defaultSafariHandoffRootURLForSupervisor(),
+        safariHandoffRootURL: URL? = nil,
         maxInMemoryRuns: Int = 200,
         evictionPolicy: BurnBarRunRegistryEvictionPolicy = .maxCount(200),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "run-service")
     ) {
+        let resolvedSafariHandoffRootURL =
+            safariHandoffRootURL
+            ?? BurnBarResumeService.defaultSafariHandoffRootURLForSupervisor()
         self.router = router
         self.usageRecorder = usageRecorder
         self.clientRegistry = clientRegistry
@@ -264,11 +266,11 @@ public actor BurnBarRunService {
         self.safariComputerUseRunRevoker = safariComputerUseRunRevoker
         self.safariLearningRecallProvider = safariLearningRecallProvider
         self.safariLearningObservationSink = safariLearningObservationSink
-        self.safariHandoffRootURL = safariHandoffRootURL
+        self.safariHandoffRootURL = resolvedSafariHandoffRootURL
         self.safariHandoffSupervisor =
             safariHandoffSupervisor
             ?? SafariHandoffProcessSupervisor(
-                rootURL: safariHandoffRootURL
+                rootURL: resolvedSafariHandoffRootURL
             )
         self.maxInMemoryRuns = max(maxInMemoryRuns, 1)
         self.evictionPolicy = evictionPolicy
@@ -384,9 +386,9 @@ public actor BurnBarRunService {
                         "packageInode": .string(
                             String(packageIdentity.inode)
                         ),
-                        "launchedAt": .string(Self.safariHandoffDateFormatter.string(
-                            from: launchedAt
-                        ))
+                        "launchedAt": .string(
+                            Self.safariHandoffDateString(from: launchedAt)
+                        )
                     ]),
                     emittedAt: snapshot.updatedAt
                 )
@@ -1161,14 +1163,24 @@ public actor BurnBarRunService {
         }
     }
 
-    private static let safariHandoffDateFormatter: ISO8601DateFormatter = {
+    private static func makeSafariHandoffDateFormatter()
+        -> ISO8601DateFormatter
+    {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [
             .withInternetDateTime,
             .withFractionalSeconds
         ]
         return formatter
-    }()
+    }
+
+    private static func safariHandoffDateString(from date: Date) -> String {
+        makeSafariHandoffDateFormatter().string(from: date)
+    }
+
+    private static func safariHandoffDate(from rawValue: String) -> Date? {
+        makeSafariHandoffDateFormatter().date(from: rawValue)
+    }
 
     private static func canonicalUInt64Decimal(
         _ rawValue: String?
@@ -1212,7 +1224,7 @@ public actor BurnBarRunService {
                       payload.stringValue(forKey: "packageInode")
                   ),
                   let launchedAtRaw = payload.stringValue(forKey: "launchedAt"),
-                  let launchedAt = Self.safariHandoffDateFormatter.date(
+                  let launchedAt = Self.safariHandoffDate(
                       from: launchedAtRaw
                   ) else {
                 continue
