@@ -29,6 +29,10 @@ public enum BurnBarRPCMethod: String, Codable, Hashable, Sendable {
     case clientDetach = "client.detach"
     /// Planner-backed lexical + aggregate search over the local BurnBar SQLite index (daemon must have DB path).
     case searchQuery = "daemon.search.query"
+    case fleetSnapshot = "daemon.fleet.snapshot"
+    case fleetOrchestratorGet = "daemon.fleet.orchestrator.get"
+    case fleetOrchestratorSet = "daemon.fleet.orchestrator.set"
+    case fleetDirectiveRecord = "daemon.fleet.directive.record"
 }
 
 // MARK: - Indexed search (daemon + extension)

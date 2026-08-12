@@ -446,6 +446,17 @@ public actor BurnBarDaemonServer {
                         message: error.localizedDescription
                     )
                 }
+            case .fleetSnapshot, .fleetOrchestratorGet, .fleetOrchestratorSet, .fleetDirectiveRecord:
+                // M0 placeholder: the fleet RPC methods are part of the contract
+                // (BurnBarRPCMethod raw values) but have no handlers yet. M1's
+                // daemon-fleet-rpc-core replaces these arms with real handlers
+                // delegating to BurnBarFleetService. Until then every fleet call
+                // returns this documented typed error; the daemon keeps serving.
+                return encodeErrorResponse(
+                    id: request.id,
+                    code: BurnBarRPCErrorCode.internalError,
+                    message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented."
+                )
             }
         } catch {
             logger.error(

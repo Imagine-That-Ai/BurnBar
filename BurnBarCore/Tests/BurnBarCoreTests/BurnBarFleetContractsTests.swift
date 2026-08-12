@@ -346,17 +346,16 @@ final class BurnBarFleetContractsTests: XCTestCase {
     // MARK: - VAL-CONTRACT-006: RPC method cases
 
     func test_fleetRPCMethodWireStrings_exactFour() {
-        let expected: [(BurnBarFleetRPCMethod, String)] = [
-            (.snapshot, "daemon.fleet.snapshot"),
-            (.orchestratorGet, "daemon.fleet.orchestrator.get"),
-            (.orchestratorSet, "daemon.fleet.orchestrator.set"),
-            (.directiveRecord, "daemon.fleet.directive.record")
+        let expected: [(BurnBarRPCMethod, String)] = [
+            (.fleetSnapshot, "daemon.fleet.snapshot"),
+            (.fleetOrchestratorGet, "daemon.fleet.orchestrator.get"),
+            (.fleetOrchestratorSet, "daemon.fleet.orchestrator.set"),
+            (.fleetDirectiveRecord, "daemon.fleet.directive.record")
         ]
         for (method, wire) in expected {
             XCTAssertEqual(method.rawValue, wire, "rawValue mismatch for \(method)")
-            XCTAssertEqual(BurnBarFleetRPCMethod(rawValue: wire), method, "rawValue lookup failed for \(wire)")
+            XCTAssertEqual(BurnBarRPCMethod(rawValue: wire), method, "rawValue lookup failed for \(wire)")
         }
-        XCTAssertEqual(BurnBarFleetRPCMethod.allCases.count, 4)
     }
 
     // MARK: - VAL-CONTRACT-007: RPC envelope pattern
@@ -364,7 +363,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
     func test_fleetRPCEnvelopes_followEnvelopePattern() throws {
         let snapshotRequest = BurnBarFleetRPCRequestEnvelopeWithParams(
             id: "fleet-1",
-            method: .snapshot,
+            method: .fleetSnapshot,
             params: BurnBarFleetSnapshotRequest()
         )
         let requestData = try JSONEncoder().encode(snapshotRequest)
@@ -377,7 +376,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
             from: requestData
         )
         XCTAssertEqual(decodedRequest.id, "fleet-1")
-        XCTAssertEqual(decodedRequest.method, .snapshot)
+        XCTAssertEqual(decodedRequest.method, .fleetSnapshot)
 
         let response = BurnBarRPCResponseEnvelope(
             id: "fleet-1",
@@ -401,7 +400,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
     func test_fleetRPCEnvelopes_orchestratorAndDirectiveRoundTrip() throws {
         let getRequest = BurnBarFleetRPCRequestEnvelopeWithParams(
             id: "orch-1",
-            method: .orchestratorGet,
+            method: .fleetOrchestratorGet,
             params: BurnBarFleetOrchestratorGetRequest()
         )
         let getData = try JSONEncoder().encode(getRequest)
@@ -409,11 +408,11 @@ final class BurnBarFleetContractsTests: XCTestCase {
             BurnBarFleetRPCRequestEnvelopeWithParams<BurnBarFleetOrchestratorGetRequest>.self,
             from: getData
         )
-        XCTAssertEqual(decodedGet.method, .orchestratorGet)
+        XCTAssertEqual(decodedGet.method, .fleetOrchestratorGet)
 
         let setRequest = BurnBarFleetRPCRequestEnvelopeWithParams(
             id: "orch-2",
-            method: .orchestratorSet,
+            method: .fleetOrchestratorSet,
             params: BurnBarFleetOrchestratorSetRequest(
                 state: BurnBarOrchestratorState(designation: .none, setAt: nil, pendingDirectives: 0)
             )
@@ -423,7 +422,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
             BurnBarFleetRPCRequestEnvelopeWithParams<BurnBarFleetOrchestratorSetRequest>.self,
             from: setData
         )
-        XCTAssertEqual(decodedSet.method, .orchestratorSet)
+        XCTAssertEqual(decodedSet.method, .fleetOrchestratorSet)
         XCTAssertEqual(decodedSet.params.state.designation, .none)
 
         let directive = BurnBarFleetDirective(
@@ -436,7 +435,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
         )
         let recordRequest = BurnBarFleetRPCRequestEnvelopeWithParams(
             id: "dir-1",
-            method: .directiveRecord,
+            method: .fleetDirectiveRecord,
             params: BurnBarFleetDirectiveRecordRequest(directive: directive)
         )
         let recordData = try JSONEncoder().encode(recordRequest)
@@ -444,7 +443,7 @@ final class BurnBarFleetContractsTests: XCTestCase {
             BurnBarFleetRPCRequestEnvelopeWithParams<BurnBarFleetDirectiveRecordRequest>.self,
             from: recordData
         )
-        XCTAssertEqual(decodedRecord.method, .directiveRecord)
+        XCTAssertEqual(decodedRecord.method, .fleetDirectiveRecord)
         XCTAssertEqual(decodedRecord.params.directive, directive)
     }
 

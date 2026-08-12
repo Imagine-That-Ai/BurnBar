@@ -330,6 +330,41 @@ final class BurnBarDaemonServerTests: XCTestCase {
         await server.stop()
     }
 
+    func testFleetRPCPlaceholdersReturnTypedNotImplementedError() async throws {
+        let socketPath = makeSocketPath(name: "fleet-placeholder")
+        let server = BurnBarDaemonServer(
+            configuration: BurnBarDaemonConfiguration(socketPath: socketPath)
+        )
+        try await server.start()
+
+        // M0 contract: the four fleet methods resolve in BurnBarRPCMethod but have no
+        // real handlers until M1; each returns a documented typed error, never a crash.
+        let fleetMethods: [BurnBarRPCMethod] = [
+            .fleetSnapshot,
+            .fleetOrchestratorGet,
+            .fleetOrchestratorSet,
+            .fleetDirectiveRecord
+        ]
+        for method in fleetMethods {
+            let response: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendEnvelope(
+                BurnBarRPCRequestEnvelope(id: "fleet-\(method.rawValue)", method: method),
+                socketPath: socketPath
+            )
+            XCTAssertEqual(response.id, "fleet-\(method.rawValue)")
+            XCTAssertEqual(response.protocolVersion, BurnBarProtocolVersion.current)
+            XCTAssertNil(response.result)
+            XCTAssertEqual(response.error?.code, -32603)
+            XCTAssertTrue(response.error?.message.contains("not yet implemented") == true)
+        }
+        let health: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
+            BurnBarRPCRequestEnvelope(id: "health-after-fleet", method: .health),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(health.result?.ok, true)
+
+        await server.stop()
+    }
+
     private func makeSocketPath(name: String) -> String {
         "/tmp/burnbar-daemon-tests-\(name)-\(UUID().uuidString).sock"
     }

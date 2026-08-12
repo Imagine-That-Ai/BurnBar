@@ -2,28 +2,17 @@ import Foundation
 
 // MARK: - RPC contract
 
-/// Fleet RPC methods. These are colocated with the fleet DTOs (rather than
-/// added to `BurnBarRPCMethod`) so the fleet contract layer stays in its own
-/// file; the wire strings are the authoritative method names.
-///
-/// Wire strings (golden): `daemon.fleet.snapshot`,
-/// `daemon.fleet.orchestrator.get`, `daemon.fleet.orchestrator.set`,
-/// `daemon.fleet.directive.record`.
-public enum BurnBarFleetRPCMethod: String, Codable, CaseIterable, Hashable, Sendable {
-    case snapshot = "daemon.fleet.snapshot"
-    case orchestratorGet = "daemon.fleet.orchestrator.get"
-    case orchestratorSet = "daemon.fleet.orchestrator.set"
-    case directiveRecord = "daemon.fleet.directive.record"
-}
-
 /// Fleet request envelope mirroring `BurnBarRPCRequestEnvelopeWithParams`
-/// (`{id, method, params}`) with the fleet method enum.
+/// (`{id, method, params}`). Fleet methods are cases on `BurnBarRPCMethod`
+/// (see `BurnBarContracts.swift`); the wire strings are the authoritative
+/// method names: `daemon.fleet.snapshot`, `daemon.fleet.orchestrator.get`,
+/// `daemon.fleet.orchestrator.set`, `daemon.fleet.directive.record`.
 public struct BurnBarFleetRPCRequestEnvelopeWithParams<Params: Codable & Sendable>: Codable, Sendable {
     public let id: String
-    public let method: BurnBarFleetRPCMethod
+    public let method: BurnBarRPCMethod
     public let params: Params
 
-    public init(id: String = UUID().uuidString, method: BurnBarFleetRPCMethod, params: Params) {
+    public init(id: String = UUID().uuidString, method: BurnBarRPCMethod, params: Params) {
         self.id = id
         self.method = method
         self.params = params
