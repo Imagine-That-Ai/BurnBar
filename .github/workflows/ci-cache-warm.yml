@@ -21,6 +21,19 @@ name: CI cache warm (default branch)
 # This workflow builds those artifacts once per relevant change on `main` so
 # every PR restores them instead of rebuilding.
 #
+# SPM FOLLOW-UP (app-spm / mobile-spm)
+#
+# App PR Gate also restores SwiftPM caches under `*-app-spm-*` and
+# `*-mobile-spm-*`, keyed on the anchored Package.resolved list. Those keys
+# were only ever saved on PR/merge-queue refs, which no other ref can read —
+# every MQ candidate therefore started SPM-cold (measured ~4.6GB post-save on
+# Mobile after a miss). The `spm` job below resolves packages on hosted
+# macos-26 and saves the SAME keys + paths on `main` so MQ/PR restores hit.
+# Prefer `xcodebuild -resolvePackageDependencies` over a full app build: the
+# checkout + download caches under `.spm-cache-new` and
+# `~/.cache/org.swift.swiftpm` are what turn a cold resolve into a hit;
+# derived-data from a full compile is optional bulk we deliberately avoid.
+#
 # SECOND EFFECT -- DE-RACING A SHARED KEY
 #
 # The signal-ffi cache key intentionally covers the vendored libsignal SHA and
@@ -75,6 +88,11 @@ on:
       - "scripts/build-signal-ffi-xcframework.sh"
       - "scripts/lib/prepare-signal-ffi-xcframework.sh"
       - ".github/workflows/ci-cache-warm.yml"
+      # SPM key inputs (must match hashFiles in app-pr-gate.yml byte-for-byte).
+      - "OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+      - "OpenBurnBarCore/Package.resolved"
+      - "OpenBurnBarDaemon/Package.resolved"
+      - "Vendor/GRDB-SQLCipher/Package.resolved"
   # GitHub evicts caches untouched for 7 days. A daily pass keeps the entry warm
   # on a quiet week so PRs never silently fall back to a cold build.
   schedule:
@@ -289,3 +307,132 @@ jobs:
             # Slice directories are the per-platform arch folders inside the xcframework.
             find "${fw}" -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | sort | sed 's/^/    /'
           done
+
+  spm:
+    name: Warm SwiftPM caches
+    # Same hosted macos-26 image as App PR Gate consumers. Do not route through
+    # MACOS_GATE_POOL — warm must stay on the image PRs/MQ restore from.
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+        with:
+          submodules: false
+
+      # OpenBurnBarCore's Package.swift probes Vendor/libsignal as a local path
+      # dependency; without the submodule, resolve fails before SPM checkouts land.
+      - name: Initialize libsignal submodule with retry
+        run: bash scripts/ci/update-submodules-with-retry.sh Vendor/libsignal
+
+      # Keys + path lists MUST match app-pr-gate.yml byte-for-byte or the warm
+      # entry is unreachable from MQ/PR restores.
+      - name: Restore AgentLens SwiftPM cache
+        id: restore-app-spm
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache-new
+            .build
+            .derived-data
+            ~/.cache/org.swift.swiftpm
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-app-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
+
+      - name: Restore Mobile SwiftPM cache
+        id: restore-mobile-spm
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache-new
+            .derived-data
+            ~/.cache/org.swift.swiftpm
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-mobile-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
+
+      # Cheap populate: resolve clones packages into .spm-cache-new and fills the
+      # SwiftPM download cache. Skip a full xcodebuild build — derived-data from
+      # compile is the bulk of the ~4.6GB Mobile save and is not required for an
+      # SPM checkout hit. FIREBASE_SOURCE_FIRESTORE=1 keeps the committed
+      # source-built Firestore graph (docs/FIREBASE_IOS27_GRPC.md).
+      - name: Resolve Swift packages into consumer cache paths
+        if: steps.restore-app-spm.outputs.cache-hit != 'true' || steps.restore-mobile-spm.outputs.cache-hit != 'true'
+        env:
+          FIREBASE_SOURCE_FIRESTORE: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p .spm-cache-new .derived-data .build
+          resolve_scheme() {
+            local scheme="$1"
+            local derived=".derived-data/spm-warm-${scheme}"
+            local attempt=1
+            local max_attempts=3
+            local status=0
+            while (( attempt <= max_attempts )); do
+              status=0
+              rm -rf "${derived}"
+              mkdir -p "${derived}"
+              xcodebuild -resolvePackageDependencies \
+                -project OpenBurnBar.xcodeproj \
+                -scheme "${scheme}" \
+                -clonedSourcePackagesDirPath .spm-cache-new \
+                -derivedDataPath "${derived}" \
+                && return 0 || status=$?
+              # Exit 134 == SIGABRT: known transient Xcode IDE model-graph crash
+              # (see scripts/check-openburnbar-app-swiftpm-lock.sh).
+              if (( status != 134 )); then
+                echo "::error::xcodebuild -resolvePackageDependencies failed for ${scheme} with exit ${status}"
+                return "${status}"
+              fi
+              echo "resolve ${scheme} aborted (exit 134) on attempt ${attempt}/${max_attempts}; retrying."
+              attempt=$(( attempt + 1 ))
+            done
+            echo "::error::resolve ${scheme} aborted (exit 134) on every attempt"
+            return "${status}"
+          }
+          resolve_scheme OpenBurnBar
+          resolve_scheme OpenBurnBarMobile
+          echo "SPM cache tree sizes after resolve:"
+          du -sh .spm-cache-new .derived-data "${HOME}/.cache/org.swift.swiftpm" 2>/dev/null || true
+
+      - name: Save AgentLens SwiftPM cache on main
+        if: steps.restore-app-spm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache-new
+            .build
+            .derived-data
+            ~/.cache/org.swift.swiftpm
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-app-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
+
+      - name: Save Mobile SwiftPM cache on main
+        if: steps.restore-mobile-spm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
+        with:
+          path: |
+            .spm-cache-new
+            .derived-data
+            ~/.cache/org.swift.swiftpm
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-mobile-spm-${{ hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved') }}
+
+      - name: Report what was warmed
+        env:
+          APP_HIT: ${{ steps.restore-app-spm.outputs.cache-hit }}
+          MOBILE_HIT: ${{ steps.restore-mobile-spm.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          echo "AgentLens app-spm cache-hit on restore: ${APP_HIT:-false}"
+          echo "Mobile mobile-spm cache-hit on restore: ${MOBILE_HIT:-false}"
+          if [[ ! -d .spm-cache-new ]]; then
+            echo "::error::.spm-cache-new missing after warm; consumers would still resolve cold."
+            exit 1
+          fi
+          echo "--- .spm-cache-new top-level:"
+          ls -la .spm-cache-new | head -n 40
