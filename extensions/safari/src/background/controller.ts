@@ -134,6 +134,21 @@ function boundedUTF8Prefix(value: string, maximumBytes: number): string {
   return result;
 }
 
+function pageTitleForTab(tab: BrowserTab): string {
+  const title = tab.title?.trim();
+  if (title) {
+    return boundedUTF8Prefix(title, 8192);
+  }
+  try {
+    const parsed = new URL(tab.url ?? '');
+    const path = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname : '';
+    const fallback = `${parsed.hostname}${path}`.trim();
+    return boundedUTF8Prefix(fallback || 'Safari page', 8192);
+  } catch {
+    return 'Safari page';
+  }
+}
+
 function targetFromArguments(argumentsValue: Record<string, unknown>): ActionTarget {
   const candidate = isRecord(argumentsValue.target) ? argumentsValue.target : argumentsValue;
   const target: ActionTarget = {};
@@ -1736,7 +1751,7 @@ export class SafariBackgroundController {
       tabId: id,
       ...(typeof tab.windowId === 'number' ? { windowId: tab.windowId } : {}),
       url: tab.url || 'about:blank',
-      title: tab.title ?? '',
+      title: pageTitleForTab(tab),
       isActive: tab.active === true,
       isOwned: this.ownership.isOwned(id, this.bridge.sessionId),
       navigationEpoch: this.navigationEpochs.get(id) ?? 0
@@ -1759,7 +1774,7 @@ export class SafariBackgroundController {
       tabId: id,
       ...(typeof tab.windowId === 'number' ? { windowId: tab.windowId } : {}),
       url: tab.url || 'about:blank',
-      title: tab.title ?? '',
+      title: pageTitleForTab(tab),
       navigationEpoch: this.navigationEpochs.get(id) ?? 0,
       isActive: tab.active === true,
       isTopFrame: true,

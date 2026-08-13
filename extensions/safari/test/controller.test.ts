@@ -445,6 +445,25 @@ function command(
 }
 
 describe('Safari background controller integration', () => {
+  it('keeps bridge hello valid when Safari reports an empty tab title', async () => {
+    const harness = createControllerHarness();
+    const activeTab = harness.controls.tabs.get(1);
+    if (!activeTab) {
+      throw new Error('Expected the mock active Safari tab.');
+    }
+    activeTab.title = '';
+
+    await harness.controller.initialize();
+
+    const hello = [...harness.controls.nativeMessages]
+      .map(requireNativeRequest)
+      .find((message) => message.method === 'bridge.hello');
+    expect(hello?.params.activePage).toMatchObject({
+      url: 'https://example.com/',
+      title: 'example.com'
+    });
+  });
+
   it('initializes, grants site access, and streams Ask directly through the loopback gateway', async () => {
     const harness = createControllerHarness();
     await harness.controller.initialize();
