@@ -146,46 +146,6 @@ final class DatabaseWorkspaceSnapshotBuilder {
     ) async -> DatabaseWorkspaceSnapshot {
         var snap = DatabaseWorkspaceSnapshot()
 
-        func capture<T>(
-            metric: DatabaseWorkspaceMetric,
-            context: String,
-            assign: (T) -> Void,
-            work: () throws -> T
-        ) {
-            do {
-                assign(try work())
-            } catch {
-                snap.unavailableMetrics.insert(metric)
-                snap.loadIssues.append(
-                    DatabaseWorkspaceLoadIssue(
-                        metric: metric,
-                        context: context,
-                        message: error.localizedDescription
-                    )
-                )
-            }
-        }
-
-        func captureAsync<T>(
-            metric: DatabaseWorkspaceMetric,
-            context: String,
-            assign: (T) -> Void,
-            work: () async throws -> T
-        ) async {
-            do {
-                assign(try await work())
-            } catch {
-                snap.unavailableMetrics.insert(metric)
-                snap.loadIssues.append(
-                    DatabaseWorkspaceLoadIssue(
-                        metric: metric,
-                        context: context,
-                        message: error.localizedDescription
-                    )
-                )
-            }
-        }
-
         // Corpus
         let usages = dataStore.usages
         let providerSummaries = dataStore.providerSummaries
@@ -208,24 +168,42 @@ final class DatabaseWorkspaceSnapshotBuilder {
         // Indexing
         snap.indexingEnabled = indexingEnabled
 
-        // Search/index coverage
-        await captureAsync(metric: .indexedDocuments, context: "document_count", assign: { snap.indexedDocuments = $0 }, work: {
-            try await dataStore.countSearchDocuments()
-        })
-        await captureAsync(metric: .indexedChunks, context: "chunk_count", assign: { snap.indexedChunks = $0 }, work: {
-            try await dataStore.countSearchChunks()
-        })
+        func resultOf<T>(_ work: () async throws -> T) async -> Result<T, Error> {
+            do {
+                return .success(try await work())
+            } catch {
+                return .failure(error)
+            }
+        }
 
-        // Conversations
-        await captureAsync(metric: .totalConversations, context: "conversation_count", assign: { snap.totalConversations = $0 }, work: {
-            try await dataStore.countConversations()
-        })
+        func take<T>(
+            _ result: Result<T, Error>,
+            metric: DatabaseWorkspaceMetric,
+            context: String,
+            assign: (T) -> Void
+        ) {
+            switch result {
+            case .success(let value):
+                assign(value)
+            case .failure(let error):
+                snap.unavailableMetrics.insert(metric)
+                snap.loadIssues.append(
+                    DatabaseWorkspaceLoadIssue(
+                        metric: metric,
+                        context: context,
+                        message: error.localizedDescription
+                    )
+                )
+            }
+        }
 
-        // Source artifacts
-        await captureAsync(metric: .sourceArtifacts, context: "artifact_count", assign: { snap.sourceArtifacts = $0 }, work: {
-            try await dataStore.countSourceArtifacts()
-        })
-        await captureAsync(metric: .sourceArtifacts, context: "artifact_recent", assign: { snap.sourceArtifactRecords = $0 }, work: {
+        // Independent GRDB reads start together so pool readers overlap; we
+        // assign into `snap` only after each Result lands.
+        async let indexedDocuments = resultOf { try await dataStore.countSearchDocuments() }
+        async let indexedChunks = resultOf { try await dataStore.countSearchChunks() }
+        async let totalConversations = resultOf { try await dataStore.countConversations() }
+        async let sourceArtifactCount = resultOf { try await dataStore.countSourceArtifacts() }
+        async let sourceArtifactRecords = resultOf {
             try await dataStore.fetchSourceArtifacts(
                 includeDeleted: true,
                 rootPaths: nil,
@@ -233,75 +211,96 @@ final class DatabaseWorkspaceSnapshotBuilder {
                 limit: 100,
                 offset: 0
             )
-        })
+        }
+        async let sharedSyncCounts = resultOf { try await dataStore.countSharedArtifactSyncStatesByStatus() }
+        async let sharedSyncRecent = resultOf { try await dataStore.fetchSharedArtifactSyncStates(limit: 100) }
+        async let permissionCount = resultOf { try await dataStore.countSharedArtifactPermissions() }
+        async let permissionRecent = resultOf { try await dataStore.fetchSharedArtifactPermissions(limit: 100) }
+        async let auditCount = resultOf { try await dataStore.countSharedArtifactAuditEvents() }
+        async let auditRecent = resultOf { try await dataStore.fetchSharedArtifactAuditEvents(limit: 50) }
+        async let projectionRecent = resultOf {
+            try await dataStore.fetchProjectionJobs(
+                statuses: ProjectionJobStatus.allCases,
+                limit: 100
+            )
+        }
+        async let projectionCounts = resultOf { try await dataStore.countProjectionJobsByStatus() }
+        async let retrievalHealth = resultOf { try await dataStore.fetchRetrievalHealth() }
+        async let embeddingModels = resultOf { try await dataStore.fetchEmbeddingModels() }
+        async let embeddingModelCount = resultOf { try await dataStore.countEmbeddingModels() }
+        async let embeddingVersions = resultOf { try await dataStore.fetchEmbeddingVersions() }
+        async let embeddingVersionCount = resultOf { try await dataStore.countEmbeddingVersions() }
+        async let embeddedChunks = resultOf { try await dataStore.countChunkEmbeddings() }
 
-        // Shared state
-        await captureAsync(metric: .sharedArtifacts, context: "shared_sync_counts", assign: { (counts: [SharedArtifactSyncStatus: Int]) in
+        take(await indexedDocuments, metric: .indexedDocuments, context: "document_count") {
+            snap.indexedDocuments = $0
+        }
+        take(await indexedChunks, metric: .indexedChunks, context: "chunk_count") {
+            snap.indexedChunks = $0
+        }
+        take(await totalConversations, metric: .totalConversations, context: "conversation_count") {
+            snap.totalConversations = $0
+        }
+        take(await sourceArtifactCount, metric: .sourceArtifacts, context: "artifact_count") {
+            snap.sourceArtifacts = $0
+        }
+        take(await sourceArtifactRecords, metric: .sourceArtifacts, context: "artifact_recent") {
+            snap.sourceArtifactRecords = $0
+        }
+        take(await sharedSyncCounts, metric: .sharedArtifacts, context: "shared_sync_counts") { (counts: [SharedArtifactSyncStatus: Int]) in
             snap.sharedArtifactCount = counts.values.reduce(0, +)
             snap.syncedArtifactCount = counts[.synced] ?? 0
             snap.pendingArtifactCount = (counts[.pendingUpload] ?? 0) + (counts[.pendingPull] ?? 0)
             snap.conflictedArtifactCount = counts[.conflicted] ?? 0
             snap.failedArtifactCount = counts[.failed] ?? 0
-        }, work: {
-            try await dataStore.countSharedArtifactSyncStatesByStatus()
-        })
-        await captureAsync(metric: .sharedArtifacts, context: "shared_sync_recent", assign: { snap.syncStates = $0 }, work: {
-            try await dataStore.fetchSharedArtifactSyncStates(limit: 100)
-        })
-        await captureAsync(metric: .permissions, context: "permission_count", assign: { snap.permissionCount = $0 }, work: {
-            try await dataStore.countSharedArtifactPermissions()
-        })
-        await captureAsync(metric: .permissions, context: "permission_recent", assign: { snap.permissions = $0 }, work: {
-            try await dataStore.fetchSharedArtifactPermissions(limit: 100)
-        })
-        await captureAsync(metric: .auditEvents, context: "audit_count", assign: { snap.auditEventCount = $0 }, work: {
-            try await dataStore.countSharedArtifactAuditEvents()
-        })
-        await captureAsync(metric: .auditEvents, context: "audit_recent", assign: { snap.auditEvents = $0 }, work: {
-            try await dataStore.fetchSharedArtifactAuditEvents(limit: 50)
-        })
-
-        // System: projection jobs
-        await captureAsync(metric: .projectionJobs, context: "projection_recent", assign: { snap.projectionJobs = $0 }, work: {
-            try await dataStore.fetchProjectionJobs(
-                statuses: ProjectionJobStatus.allCases,
-                limit: 100
-            )
-        })
-        await captureAsync(metric: .projectionJobs, context: "projection_counts", assign: { (counts: [ProjectionJobStatus: Int]) in
+        }
+        take(await sharedSyncRecent, metric: .sharedArtifacts, context: "shared_sync_recent") {
+            snap.syncStates = $0
+        }
+        take(await permissionCount, metric: .permissions, context: "permission_count") {
+            snap.permissionCount = $0
+        }
+        take(await permissionRecent, metric: .permissions, context: "permission_recent") {
+            snap.permissions = $0
+        }
+        take(await auditCount, metric: .auditEvents, context: "audit_count") {
+            snap.auditEventCount = $0
+        }
+        take(await auditRecent, metric: .auditEvents, context: "audit_recent") {
+            snap.auditEvents = $0
+        }
+        take(await projectionRecent, metric: .projectionJobs, context: "projection_recent") {
+            snap.projectionJobs = $0
+        }
+        take(await projectionCounts, metric: .projectionJobs, context: "projection_counts") { (counts: [ProjectionJobStatus: Int]) in
             snap.projectionJobCounts.total = counts.values.reduce(0, +)
             snap.projectionJobCounts.active = (counts[.running] ?? 0) + (counts[.leased] ?? 0)
             snap.projectionJobCounts.queued = counts[.queued] ?? 0
             snap.projectionJobCounts.failed = counts[.failed] ?? 0
-        }, work: {
-            try await dataStore.countProjectionJobsByStatus()
-        })
+        }
+        take(await retrievalHealth, metric: .retrievalHealth, context: "retrieval_health") {
+            snap.retrievalHealth = $0
+        }
+        take(await embeddingModels, metric: .embeddingModels, context: "embedding_models") {
+            snap.embeddingModelRecords = $0
+        }
+        take(await embeddingModelCount, metric: .embeddingModels, context: "embedding_model_count") {
+            snap.embeddingModels = $0
+        }
+        take(await embeddingVersions, metric: .embeddingVersions, context: "embedding_versions") {
+            snap.embeddingVersionRecords = $0
+        }
+        take(await embeddingVersionCount, metric: .embeddingVersions, context: "embedding_version_count") {
+            snap.embeddingVersions = $0
+        }
+        take(await embeddedChunks, metric: .embeddedChunks, context: "embedding_chunk_count") {
+            snap.embeddedChunks = $0
+        }
 
-        // System: retrieval health
-        await captureAsync(metric: .retrievalHealth, context: "retrieval_health", assign: { snap.retrievalHealth = $0 }, work: {
-            try await dataStore.fetchRetrievalHealth()
-        })
         snap.retrievalSystemHealth = await RetrievalHealthService(dataStore: dataStore).snapshot(
             indexingEnabled: settingsManager.conversationIndexingEnabled,
             sharedFeaturesAvailable: accountManager?.isSignedIn ?? false
         )
-
-        // Embeddings
-        await captureAsync(metric: .embeddingModels, context: "embedding_models", assign: { snap.embeddingModelRecords = $0 }, work: {
-            try await dataStore.fetchEmbeddingModels()
-        })
-        await captureAsync(metric: .embeddingModels, context: "embedding_model_count", assign: { snap.embeddingModels = $0 }, work: {
-            try await dataStore.countEmbeddingModels()
-        })
-        await captureAsync(metric: .embeddingVersions, context: "embedding_versions", assign: { snap.embeddingVersionRecords = $0 }, work: {
-            try await dataStore.fetchEmbeddingVersions()
-        })
-        await captureAsync(metric: .embeddingVersions, context: "embedding_version_count", assign: { snap.embeddingVersions = $0 }, work: {
-            try await dataStore.countEmbeddingVersions()
-        })
-        await captureAsync(metric: .embeddedChunks, context: "embedding_chunk_count", assign: { snap.embeddedChunks = $0 }, work: {
-            try await dataStore.countChunkEmbeddings()
-        })
 
         // Freshness
         snap.lastRefresh = dataStore.lastRefresh

@@ -66,6 +66,16 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
     /// displayable quota buckets. Users can override in Settings → Providers
     /// once they confirm their plan tier. Marked `isEstimated` on the bucket
     /// so the UI reflects the inferred-vs-confirmed distinction.
+    public static let sessionFreshnessWindow: TimeInterval = 30 * 24 * 60 * 60
+
+    /// Files whose mtime is older than the 30-day window cannot contribute to
+    /// the 5h / 7d / 30d displayable buckets. Missing mtime fail-closes to a
+    /// full read.
+    public static func shouldSkipStaleSession(modifiedAt: Date?, freshnessCutoff: Date) -> Bool {
+        guard let modifiedAt else { return false }
+        return modifiedAt < freshnessCutoff
+    }
+
     private static let inferredMonthlyTokenCap: Double = 20_000_000
 
     private func fetchDroidSessionSnapshot(context: ProviderQuotaAdapterContext) async -> ProviderQuotaSnapshot? {
@@ -86,7 +96,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         let now = Date()
         let fiveHoursAgo = now.addingTimeInterval(-5 * 60 * 60)
         let sevenDaysAgo = now.addingTimeInterval(-7 * 24 * 60 * 60)
-        let thirtyDaysAgo = now.addingTimeInterval(-30 * 24 * 60 * 60)
+        let thirtyDaysAgo = now.addingTimeInterval(-Self.sessionFreshnessWindow)
 
         // Lane-segregated accumulators. Sessions are filtered by
         // FactorySessionClassifier so user-configured custom proxies
@@ -105,6 +115,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         var cacheReadTokens: Int64 = 0
         var filesScanned = 0
         var filesWithUsage = 0
+        var sawSessionFile = false
         var factoryBilledSessions = 0
         var customProxySessions = 0
         var modelCounts: [String: Int] = [:]
@@ -115,6 +126,12 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
                   fileURL.lastPathComponent.hasSuffix(".settings.json") else { continue }
 
             filesScanned += 1
+            sawSessionFile = true
+
+            let modifiedAt = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate // try?-ok(mtime skip)
+            if Self.shouldSkipStaleSession(modifiedAt: modifiedAt, freshnessCutoff: thirtyDaysAgo) {
+                continue
+            }
 
             guard let data = try? Data(contentsOf: fileURL), // try?-ok(skip unreadable session)
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed json)
@@ -177,7 +194,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
             }
         }
 
-        guard filesWithUsage > 0 else { return nil }
+        guard filesWithUsage > 0 || sawSessionFile else { return nil }
 
         // Combined Standard + Droid Core token totals for the "Total
         // Factory burn" buckets. Until Standard Usage is exhausted,

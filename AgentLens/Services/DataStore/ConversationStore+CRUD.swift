@@ -8,12 +8,21 @@ extension ConversationStore {
         // MARK: - Conversation CRUD
 
         func upsertConversation(_ record: OpenBurnBarCore.ConversationRecord) async throws {
+            try await dbQueue.write { db in
+                _ = try upsertConversation(record, db: db)
+            }
+        }
+
+        /// Upserts inside an already-open write. Returns whether the row is
+        /// live (`deletedAt == nil`) after the statement — tombstones stay
+        /// buried because `deletedAt` is omitted from the SET clause.
+        @discardableResult
+        func upsertConversation(_ record: OpenBurnBarCore.ConversationRecord, db: Database) throws -> Bool {
             let keyFilesJSON = try OpenBurnBarDatabase.encodeJSON(record.keyFiles)
             let keyCommandsJSON = try OpenBurnBarDatabase.encodeJSON(record.keyCommands)
             let keyToolsJSON = try OpenBurnBarDatabase.encodeJSON(record.keyTools)
 
-            try await dbQueue.write { db in
-                let existing = try Self.fetchConversationRow(db, id: record.id)
+            let existing = try Self.fetchConversationRow(db, id: record.id)
                 let priorSyncedAt: Date? = try Date.fetchOne(
                     db,
                     sql: "SELECT conversationSyncedAt FROM conversations WHERE id = ?",
@@ -150,7 +159,7 @@ extension ConversationStore {
                         summaryModelOut
                     ]
                 )
-            }
+            return existing?.deletedAt == nil
         }
 
         func fileModifiedAtForConversation(id: String) async throws -> Date? {

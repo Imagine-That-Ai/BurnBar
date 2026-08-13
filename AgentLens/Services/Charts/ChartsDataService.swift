@@ -36,29 +36,46 @@ final class ChartsDataService {
         guard key != currentKey else { return }
         currentKey = key
 
+        // One clock for the selected range and the 31-day heatmap window so
+        // the two filters cannot drift across a midnight tick mid-refresh.
+        let now = Date()
+        let recentRange = Self.recentRange(now: now)
+        let requestedRange = timeRange.dateRange(now: now)
+
         // Keep the bounded warm cache only as a failure fallback. Charts must
         // read the requested database window or long-running users would see
         // analytics silently truncated to the newest hydration rows.
-        let fallbackRows = dataStore.usages(in: timeRange.dateRange())
-        let now = Date()
-        let recentLower = Calendar.current.date(byAdding: .day, value: -31, to: now) ?? now
-        let fallbackRecentRows = dataStore.usages(in: recentLower...now)
+        let fallbackCovering = requestedRange == nil
+            ? dataStore.usages(in: nil)
+            : dataStore.usages(in: recentRange)
+        let fallbackWindows = Self.deriveWindows(
+            coveringRows: fallbackCovering,
+            requestedRange: requestedRange,
+            recentRange: recentRange
+        )
 
         buildTask?.cancel()
         isBuilding = snapshot == nil
         buildTask = Task { [weak self] in
             let fetchedRows: (selected: [TokenUsage], recent: [TokenUsage])
             do {
-                let selectedRows: [TokenUsage]
-                if let requestedRange = timeRange.dateRange() {
-                    selectedRows = try await dataStore.fetchUsage(in: requestedRange, limit: Int.max)
+                // Bounded TimeRange cases (today / 7d / 30d / month) all sit
+                // inside the last 31 days, so one intersection scan covers
+                // both windows. All-time still materializes every row — the
+                // heatmap needs per-session values, not a SQL aggregate.
+                let coveringRows: [TokenUsage]
+                if requestedRange == nil {
+                    coveringRows = try await dataStore.fetchAllUsage()
                 } else {
-                    selectedRows = try await dataStore.fetchAllUsage()
+                    coveringRows = try await dataStore.fetchUsage(in: recentRange, limit: Int.max)
                 }
-                let recentRows = try await dataStore.fetchUsage(in: recentLower...now, limit: Int.max)
-                fetchedRows = (selectedRows, recentRows)
+                fetchedRows = Self.deriveWindows(
+                    coveringRows: coveringRows,
+                    requestedRange: requestedRange,
+                    recentRange: recentRange
+                )
             } catch {
-                fetchedRows = (fallbackRows, fallbackRecentRows)
+                fetchedRows = fallbackWindows
             }
             guard !Task.isCancelled else { return }
             let built = await Self.buildDetached(
@@ -73,6 +90,31 @@ final class ChartsDataService {
             self.snapshot = built
             self.isBuilding = false
         }
+    }
+
+    /// Last 31 calendar days ending at `now` — the Charts heatmap / outlier window.
+    nonisolated static func recentRange(now: Date, calendar: Calendar = .current) -> ClosedRange<Date> {
+        let lower = calendar.date(byAdding: .day, value: -31, to: now) ?? now
+        return lower...now
+    }
+
+    /// Splits one covering fetch into the selected range and the 31-day window
+    /// using the same intersection predicate as `fetchUsage(in:)`.
+    nonisolated static func deriveWindows(
+        coveringRows: [TokenUsage],
+        requestedRange: ClosedRange<Date>?,
+        recentRange: ClosedRange<Date>
+    ) -> (selected: [TokenUsage], recent: [TokenUsage]) {
+        if let requestedRange {
+            return (
+                coveringRows.filter { $0.intersects(dateRange: requestedRange) },
+                coveringRows
+            )
+        }
+        return (
+            coveringRows,
+            coveringRows.filter { $0.intersects(dateRange: recentRange) }
+        )
     }
 
     private nonisolated static func buildDetached(

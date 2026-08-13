@@ -111,42 +111,23 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
             }()
 
             // --- Parse history events in rolling 5h quota window ---
-            let data = try Data(contentsOf: historyURL)
-            guard let contentString = String(data: data, encoding: .utf8) else {
-                throw NSError(domain: "AntigravityQuotaAdapter", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode history file as UTF-8"])
-            }
-
-            let lines = contentString.components(separatedBy: .newlines)
-            let decoder = JSONDecoder()
             let windowSeconds = Self.quotaWindowSeconds
-            let cutoff = now.addingTimeInterval(-windowSeconds)
-
-            var eventsInWindow: [HistoryEvent] = []
-
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { continue }
-
-                guard let lineData = trimmed.data(using: .utf8),
-                      let event = try? decoder.decode(HistoryEvent.self, from: lineData) else { // try?-ok(skip malformed line)
-                    continue
-                }
-
-                let eventDate = Date(timeIntervalSince1970: event.timestamp / 1000.0)
-                if eventDate >= cutoff && eventDate <= now {
-                    eventsInWindow.append(event)
-                }
+            guard let scan = Self.scanHistoryLog(
+                at: historyURL,
+                fileManager: context.fileManager,
+                now: now
+            ) else {
+                throw NSError(
+                    domain: "AntigravityQuotaAdapter",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Failed to decode history file as UTF-8"]
+                )
             }
-
-            let usedCount = Double(eventsInWindow.count)
-
-            // --- Compute resetsAt from the earliest event in the 5h window ---
+            let usedCount = Double(scan.inWindowCount)
             var resetsAt: Date?
-            if !eventsInWindow.isEmpty {
-                let sortedTimestamps = eventsInWindow.map { $0.timestamp }.sorted()
-                if let earliestTimestamp = sortedTimestamps.first {
-                    resetsAt = Date(timeIntervalSince1970: earliestTimestamp / 1000.0).addingTimeInterval(windowSeconds)
-                }
+            if let earliestTimestamp = scan.earliestInWindowTimestamp {
+                resetsAt = Date(timeIntervalSince1970: earliestTimestamp / 1000.0)
+                    .addingTimeInterval(windowSeconds)
             }
 
             // --- Build per-model buckets ---
@@ -208,5 +189,160 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                 buckets: []
             )
         }
+    }
+
+    // MARK: - JSONL tail scan
+
+    struct HistoryLogScan: Equatable, Sendable {
+        var inWindowCount: Int
+        var earliestInWindowTimestamp: Double?
+        var sawAnyEvent: Bool
+        var bytesRead: Int
+    }
+
+    static let historyTailChunkBytes = 64 * 1024
+
+    static func scanHistoryLog(
+        at historyURL: URL,
+        fileManager: FileManager,
+        now: Date,
+        chunkBytes: Int = historyTailChunkBytes
+    ) -> HistoryLogScan? {
+        guard fileManager.fileExists(atPath: historyURL.path) else {
+            return HistoryLogScan(inWindowCount: 0, earliestInWindowTimestamp: nil, sawAnyEvent: false, bytesRead: 0)
+        }
+        let windowSeconds = quotaWindowSeconds
+        let cutoffMs = now.addingTimeInterval(-windowSeconds).timeIntervalSince1970 * 1000.0
+        let nowMs = now.timeIntervalSince1970 * 1000.0
+        let decoder = JSONDecoder()
+        return scanHistoryLogFromEnd(
+            at: historyURL,
+            cutoffMs: cutoffMs,
+            nowMs: nowMs,
+            chunkBytes: chunkBytes,
+            decoder: decoder
+        ) ?? fallbackFullHistoryRead(
+            at: historyURL,
+            cutoffMs: cutoffMs,
+            nowMs: nowMs,
+            decoder: decoder
+        )
+    }
+
+    private static func scanHistoryLogFromEnd(
+        at historyURL: URL,
+        cutoffMs: Double,
+        nowMs: Double,
+        chunkBytes: Int,
+        decoder: JSONDecoder
+    ) -> HistoryLogScan? {
+        do {
+            let handle = try FileHandle(forReadingFrom: historyURL)
+            defer { try? handle.close() } // try?-ok(handle teardown)
+            let fileSize = try handle.seekToEnd()
+            var offset = fileSize
+            var suffixCarry = Data()
+            var bytesRead = 0
+            var inWindowCount = 0
+            var earliestInWindowTimestamp: Double?
+            var sawAnyEvent = false
+            var reachedOlder = false
+
+            while offset > 0, !reachedOlder {
+                let chunkLen = min(UInt64(max(chunkBytes, 1)), offset)
+                offset -= chunkLen
+                try handle.seek(toOffset: offset)
+                var data = try handle.read(upToCount: Int(chunkLen)) ?? Data()
+                bytesRead += data.count
+                if !suffixCarry.isEmpty {
+                    data.append(suffixCarry)
+                }
+
+                let atStart = offset == 0
+                if !atStart {
+                    if let newline = data.firstIndex(of: 0x0A) {
+                        suffixCarry = Data(data[..<newline])
+                        data = Data(data[data.index(after: newline)...])
+                    } else {
+                        suffixCarry = data
+                        continue
+                    }
+                } else {
+                    suffixCarry = Data()
+                }
+
+                guard let text = String(data: data, encoding: .utf8) else {
+                    return nil
+                }
+
+                var newestInChunk: Double?
+                for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty,
+                          let lineData = trimmed.data(using: .utf8),
+                          let event = try? decoder.decode(HistoryEvent.self, from: lineData) else { // try?-ok(skip malformed line)
+                        continue
+                    }
+                    sawAnyEvent = true
+                    let timestamp = event.timestamp
+                    newestInChunk = max(newestInChunk ?? timestamp, timestamp)
+                    if timestamp >= cutoffMs && timestamp <= nowMs {
+                        inWindowCount += 1
+                        if earliestInWindowTimestamp == nil || timestamp < earliestInWindowTimestamp! {
+                            earliestInWindowTimestamp = timestamp
+                        }
+                    }
+                }
+                if let newestInChunk, newestInChunk < cutoffMs {
+                    reachedOlder = true
+                }
+            }
+
+            return HistoryLogScan(
+                inWindowCount: inWindowCount,
+                earliestInWindowTimestamp: earliestInWindowTimestamp,
+                sawAnyEvent: sawAnyEvent,
+                bytesRead: bytesRead
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private static func fallbackFullHistoryRead(
+        at historyURL: URL,
+        cutoffMs: Double,
+        nowMs: Double,
+        decoder: JSONDecoder
+    ) -> HistoryLogScan? {
+        guard let data = try? Data(contentsOf: historyURL), // try?-ok(UTF-8 fail-closed)
+              let text = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+        var inWindowCount = 0
+        var earliestInWindowTimestamp: Double?
+        var sawAnyEvent = false
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  let lineData = trimmed.data(using: .utf8),
+                  let event = try? decoder.decode(HistoryEvent.self, from: lineData) else { // try?-ok(skip malformed line)
+                continue
+            }
+            sawAnyEvent = true
+            let timestamp = event.timestamp
+            if timestamp >= cutoffMs && timestamp <= nowMs {
+                inWindowCount += 1
+                if earliestInWindowTimestamp == nil || timestamp < earliestInWindowTimestamp! {
+                    earliestInWindowTimestamp = timestamp
+                }
+            }
+        }
+        return HistoryLogScan(
+            inWindowCount: inWindowCount,
+            earliestInWindowTimestamp: earliestInWindowTimestamp,
+            sawAnyEvent: sawAnyEvent,
+            bytesRead: data.count
+        )
     }
 }

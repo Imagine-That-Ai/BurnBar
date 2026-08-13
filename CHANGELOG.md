@@ -36,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (30m / 10m / 3m by remaining fraction). SuperGrok pacing tail-reads
   the 2h window; Claude JSONL quota scans resume on append-only growth;
   Codex rollout walks skip files older than the 7-day cutoff.
+- **Charts page** uses one covering SQL scan (all-time, or last 31 days
+  for every bounded range) and splits selected vs heatmap rows in memory
+  with the intersection predicate. Conversation first-index writes land
+  in chunks of 64 inside one transaction each (upsert + projection
+  enqueue). Factory skips `.settings.json` older than 30 days; Antigravity
+  history.jsonl tail-reads the 5h window. Decorative loaders, the Cloud
+  store orbit, and the iOS easter-egg canvas cap at 30 fps. Database
+  workspace snapshot reads overlap instead of awaiting one-by-one.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

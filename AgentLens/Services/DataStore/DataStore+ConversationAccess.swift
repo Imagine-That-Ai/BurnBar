@@ -14,6 +14,16 @@ extension DataStore {
         try await actor.conversationStore.upsertConversation(record)
     }
 
+    /// Upserts changed conversations and enqueues their projection jobs in one
+    /// SQLite write. Returns how many live rows actually received a job.
+    @discardableResult
+    func persistIndexedConversations(
+        _ items: [IndexedConversationWrite],
+        now: Date = Date()
+    ) async throws -> Int {
+        try await actor.persistIndexedConversations(items, now: now)
+    }
+
     func fileModifiedAtForConversation(id: String) async throws -> Date? {
         try await actor.conversationStore.fileModifiedAtForConversation(id: id)
     }

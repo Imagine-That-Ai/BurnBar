@@ -68,6 +68,42 @@ final class IncrementalConversationIndexingTests: XCTestCase {
         XCTAssertNotNil(newRow)
     }
 
+    func test_conversationIndexer_enqueuesProjectionJobs_andSkipsTombstones() async throws {
+        let store = try makeInMemoryStore()
+        let mtime = Date(timeIntervalSince1970: 1_700_000_000)
+        let live = makeFactoryConversationRecord(
+            id: "Factory:live-job",
+            indexedAt: mtime,
+            fileModifiedAt: mtime
+        )
+        let doomed = makeFactoryConversationRecord(
+            id: "Factory:doomed-job",
+            indexedAt: mtime,
+            fileModifiedAt: mtime
+        )
+
+        let first = try await ConversationIndexer.shared.index([live, doomed], in: store)
+        XCTAssertEqual(first.changedRecordCount, 2)
+        XCTAssertEqual(first.enqueuedProjectionJobCount, 2)
+        let jobsAfterFirst = try await store.fetchProjectionJobs(
+            statuses: ProjectionJobStatus.allCases,
+            limit: 20
+        )
+        XCTAssertEqual(jobsAfterFirst.count, 2)
+
+        try await store.softDeleteConversation(id: doomed.id)
+        let second = try await ConversationIndexer.shared.index([live, doomed], in: store)
+        XCTAssertEqual(second.skippedRecordCount, 1)
+        XCTAssertEqual(second.changedRecordCount, 1)
+        XCTAssertEqual(second.enqueuedProjectionJobCount, 0)
+        let jobsAfterSecond = try await store.fetchProjectionJobs(
+            statuses: ProjectionJobStatus.allCases,
+            limit: 20
+        )
+        XCTAssertEqual(jobsAfterSecond.count, 2)
+        XCTAssertNil(try await store.fetchConversation(id: doomed.id))
+    }
+
     // MARK: - 3. Checkpoint watermark filtering: unchanged corpus filtered
 
     func test_runConversationIndexing_checkpointFiltersUnchangedCorpus() async throws {

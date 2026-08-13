@@ -198,6 +198,27 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
         )
     }
 
+    func testDecorativeLoadersAndHeroes_capFrameRateAt30() throws {
+        let mainBundlePath = Bundle.main.bundlePath
+        if mainBundlePath.contains("/openburnbar-app-tests/") {
+            throw XCTSkip("Skipping source code validation in sandboxed test runner.")
+        }
+        let cooking = try Self.loadSource("OpenBurnBarCore/Sources/OpenBurnBarUI/Views/CookingLoader.swift")
+        XCTAssertTrue(cooking.contains("minimumInterval: 1.0 / 30"), "Cooking loader is decorative; 30 fps is enough.")
+        XCTAssertFalse(cooking.contains("1.0 / 60"))
+        let mining = try Self.loadSource("OpenBurnBarCore/Sources/OpenBurnBarUI/Views/MiningPickLoader.swift")
+        XCTAssertTrue(mining.contains("minimumInterval: 1.0 / 30"), "Mining loader is decorative; 30 fps is enough.")
+        XCTAssertFalse(mining.contains("1.0 / 60"))
+        let hero = try Self.loadSource("OpenBurnBarMobile/Views/Store/CloudHeroAnimation.swift")
+        XCTAssertTrue(hero.contains("minimumInterval: 1.0 / 30.0"), "Cloud store orbit must not run uncapped.")
+        XCTAssertFalse(hero.contains("TimelineView(.animation) {"))
+        let egg = try Self.loadSource("OpenBurnBarMobile/Views/Aurora/EasterEgg/EasterEggEventCanvas.swift")
+        XCTAssertTrue(
+            egg.contains("minimumInterval: 1.0 / 30.0"),
+            "iOS easter-egg canvas must match the macOS 30 fps cap."
+        )
+    }
+
     func testBucketKey_separatesDifferentColors() {
         let red = RGBA(r: 1.0, g: 0.0, b: 0.0, a: 1.0)
         let green = RGBA(r: 0.0, g: 1.0, b: 0.0, a: 1.0)

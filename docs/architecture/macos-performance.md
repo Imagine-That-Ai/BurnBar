@@ -795,3 +795,77 @@ Validation:
 - `OpenBurnBarCoreTests/ClaudeJSONLResumeTests`
 - `OpenBurnBarDaemonTests/BurnBarLinuxQuotaRefreshServiceTests` (Linux)
 
+---
+
+## §21 — Remaining hot paths (August 2026, round 3)
+
+Round 2 closed adaptive quota TTL, SQL window flags, and Claude JSONL
+resume. This round burns down the leftovers that were still on the
+Charts appear path, first-index writes, and decorative 60 fps loops.
+
+### Lane 1 — Graphics
+
+Cooking and mining loaders were ticking `TimelineView` at 60 fps for a
+bounce/swing the eye cannot resolve above ~30 Hz. Both now request
+`1.0 / 30`. The Cloud store hero orbit was `TimelineView(.animation)`
+uncapped (sparks were already 30 fps); the orbit matches. iOS easter-egg
+canvas now uses the same 30 fps cap as macOS.
+
+### Lane 2 — GRDB / Charts
+
+`ChartsDataService.refresh` issued `fetchAllUsage()` (or the selected
+window) **and** a second last-31-day `fetchUsage`. Every bounded
+`TimeRange` (today / 7d / 30d / month) sits inside that 31-day covering
+window, so one intersection scan now supplies both row sets.
+`deriveWindows` filters with `TokenUsage.intersects(dateRange:)`, the
+same predicate as `fetchUsage(in:)`. All-time still materializes every
+row because heatmap / outliers / entropy need per-session values.
+
+`ConversationIndexer.index` still skipped unchanged rows from a batched
+identity map, then opened **two** transactions per changed row (upsert +
+`fetchConversation` + enqueue). Changed rows now persist in chunks of 64
+inside one write: upsert uses the existing ON CONFLICT body, and a
+projection job is enqueued only when `deletedAt` is nil so tombstones
+stay buried. Steady-state ticks remain O(ceil(N/500)) reads and zero
+writes.
+
+Database workspace snapshot counts/fetches launch concurrently so GRDB
+pool reads overlap; assignments still hop back to the main actor.
+
+### Lane 3 — Quota
+
+Factory droid `.settings.json` files whose mtime is older than 30 days
+cannot contribute to the 5h / 7d / 30d displayable buckets, so they are
+skipped (missing mtime fail-closes to a full read). Historical-only trees
+still return a local snapshot instead of flipping to unavailable.
+Antigravity `history.jsonl` tail-reads from EOF in 64KB chunks until the
+newest timestamp in a chunk is older than the 5h window, with the same
+long-line carry as SuperGrok. UTF-8 split fail-closes to a full-file
+read, then to unavailable.
+
+### Named leftovers
+
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Overlapping
+  the phases would race the Codex rollout cache (whole-cache last-write-wins).
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Warp / Kilo Code quota fallbacks still `Data(contentsOf:)` whole files
+  (JSON arrays / unstructured telemetry, not append-only JSONL).
+- Goose / Antigravity **usage parsers** still scan from offset 0 because
+  they accumulate conversation bodies, not just windowed quota counts.
+
+Validation:
+- `OpenBurnBarTests/ChartsSnapshotBuilderTests`
+- `OpenBurnBarTests/IncrementalConversationIndexingTests`
+- `OpenBurnBarTests/SwarmCanvasFrameRateTests`
+- `OpenBurnBarTests/LocalSearchSchemaStoreTests` (workspace snapshot)
+- `OpenBurnBarCoreTests/FactoryQuotaSessionSkipTests`
+- `OpenBurnBarCoreTests/AntigravityJSONLTailTests`
+- plus the §20 quota / dashboard suites
+

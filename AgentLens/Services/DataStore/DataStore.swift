@@ -112,6 +112,48 @@ actor DataStoreActor {
         usageStore.writeMarker.value
     }
 
+    /// One write for a chunk of indexer upserts plus their projection jobs.
+    /// Tombstoned rows stay buried (`deletedAt` is not in the SET clause) and
+    /// do not enqueue a job — matching `enqueueConversationProjectionJob`'s
+    /// live-row `fetchConversation` guard.
+    func persistIndexedConversations(
+        _ items: [IndexedConversationWrite],
+        now: Date
+    ) async throws -> Int {
+        guard items.isEmpty == false else { return 0 }
+        return try await dbQueue.write { db in
+            var enqueued = 0
+            for item in items {
+                let isLive = try conversationStore.upsertConversation(item.record, db: db)
+                guard isLive else { continue }
+                let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: item.record)
+                let job = ProjectionJobRecord(
+                    id: ProjectionIdentity.jobID(
+                        jobType: item.jobType,
+                        sourceKind: .conversation,
+                        sourceID: item.record.id,
+                        sourceVersionID: sourceVersionID
+                    ),
+                    jobType: item.jobType,
+                    sourceKind: .conversation,
+                    sourceID: item.record.id,
+                    sourceVersionID: sourceVersionID,
+                    status: .queued,
+                    priority: 5,
+                    attempts: 0,
+                    maxAttempts: 5,
+                    scheduledAt: now,
+                    availableAt: now,
+                    createdAt: now,
+                    updatedAt: now
+                )
+                try projectionStore.enqueueProjectionJob(job, db: db)
+                enqueued += 1
+            }
+            return enqueued
+        }
+    }
+
 }
 
 // MARK: - DataStore compatibility typealias
