@@ -642,7 +642,12 @@ describe('popup rendering', () => {
     expect(root.getAttribute('aria-busy')).toBe('false');
     expect(root.textContent).toContain('Offline');
     expect(root.textContent).toContain('No compatible agents found');
-    expect(root.querySelector('.composer')).toBeNull();
+    expect(root.querySelector('.composer')).not.toBeNull();
+    expect(root.querySelector<HTMLTextAreaElement>('.composer-input')?.readOnly).toBe(true);
+    expect(root.querySelector('.disabled-reason')?.textContent).toMatch(/Open the OpenBurnBar app/u);
+    expect(root.querySelector('.shell')?.getAttribute('data-tools-open')).toBe('true');
+    expect(root.querySelectorAll('.composer')).toHaveLength(1);
+    expect(root.querySelector('.popup-tools')?.nextElementSibling).toBe(root.querySelector('.composer'));
     expect(root.querySelector('.popup-tools')?.textContent).toContain('No run activity yet.');
 
     root.dataset.toolsOpen = 'true';

@@ -538,25 +538,22 @@ function renderApprovals(approvals: ApprovalPreview[]): HTMLElement | undefined 
   return section;
 }
 
-function renderComposer(
-  viewModel: PopupViewModel,
-  modePopoverOpen: boolean,
-  modelPickerOpen: boolean
-): HTMLElement | undefined {
-  if (!viewModel.composerVisible) {
-    return undefined;
-  }
+function renderComposer(viewModel: PopupViewModel, modePopoverOpen: boolean, modelPickerOpen: boolean): HTMLElement {
   const form = element('form', 'composer');
   form.dataset.form = 'composer';
   const textarea = element('textarea', 'composer-input');
   textarea.value = viewModel.draft;
   textarea.placeholder = viewModel.composerPlaceholder;
+  textarea.readOnly = viewModel.composerReadOnly;
   textarea.rows = 2;
   textarea.maxLength = 8_000;
   textarea.dataset.input = 'draft';
   focusKey(textarea, 'input:draft');
   textarea.setAttribute('aria-label', viewModel.composerPlaceholder);
   textarea.setAttribute('aria-keyshortcuts', 'Meta+Enter');
+  if (viewModel.composerReadOnly) {
+    textarea.setAttribute('aria-readonly', 'true');
+  }
   const footer = element('div', 'composer-footer');
   const agent = renderModelPicker(viewModel, modelPickerOpen);
   const selectedMode = viewModel.modes.find((mode) => mode.id === viewModel.selectedMode);
@@ -981,6 +978,7 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
   const shell = element('main', 'shell');
   shell.dataset.popupShape = popupExpanded ? 'expanded' : 'compact';
   shell.dataset.modePopoverOpen = String(modePopoverWasOpen);
+  shell.dataset.toolsOpen = String(toolsWereOpen);
   shell.append(renderHeader(viewModel, toolsWereOpen, popupExpanded), renderModes(viewModel, modePopoverWasOpen));
 
   const scroll = element('div', 'content-scroll');
@@ -1007,10 +1005,7 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
     );
     shell.append(tools);
   }
-  const composer = renderComposer(viewModel, modePopoverWasOpen, modelPickerWasOpen);
-  if (composer) {
-    shell.append(composer);
-  }
+  shell.append(renderComposer(viewModel, modePopoverWasOpen, modelPickerWasOpen));
   root.replaceChildren(shell);
   initializeModeVisuals(root);
 
