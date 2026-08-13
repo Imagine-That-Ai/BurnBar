@@ -87,7 +87,16 @@ describe('shared utilities', () => {
       { type: 'popup.startAgentic', prompt: 'Click the CTA' },
       { type: 'popup.handoff', prompt: 'Review this page' },
       { type: 'popup.approval', approvalId: 'approval-1', decision: 'allow_once' },
-      { type: 'popup.abort' },
+      { type: 'popup.abort', trigger: 'stop_button' },
+      { type: 'popup.abort', trigger: 'popup_shortcut' },
+      { type: 'popup.performanceSnapshot' },
+      { type: 'popup.clearPerformance' },
+      {
+        type: 'popup.recordPerformance',
+        metric: 'popup_bootstrap',
+        durationMs: 42.5,
+        outcome: 'success'
+      },
       {
         type: 'popup.setTrust',
         patch: {
@@ -116,6 +125,27 @@ describe('shared utilities', () => {
       { type: 'popup.selectAgent', agentId: '   ' },
       { type: 'popup.ask', prompt: 42 },
       { type: 'popup.approval', approvalId: 'approval-1', decision: 'always' },
+      { type: 'popup.abort' },
+      { type: 'popup.abort', trigger: 'timer' },
+      { type: 'popup.abort', trigger: 'stop_button', extra: true },
+      {
+        type: 'popup.recordPerformance',
+        metric: 'ask_first_token',
+        durationMs: 42.5,
+        outcome: 'success'
+      },
+      {
+        type: 'popup.recordPerformance',
+        metric: 'popup_bootstrap',
+        durationMs: Number.POSITIVE_INFINITY,
+        outcome: 'success'
+      },
+      {
+        type: 'popup.recordPerformance',
+        metric: 'popup_bootstrap',
+        durationMs: 42.5,
+        outcome: 'partial'
+      },
       { type: 'popup.setTrust', patch: {} },
       { type: 'popup.setTrust', patch: { siteAllowed: 'yes' } },
       { type: 'popup.setTrust', patch: { siteAllowed: true, arbitrary: true } },

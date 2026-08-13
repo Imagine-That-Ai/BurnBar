@@ -1,5 +1,6 @@
 import type { ActivityEvent, ApprovalPreview, LearningItem, TranscriptEntry } from '../shared/messages';
 import type { BridgeAgentOption } from '../shared/protocol';
+import { SAFARI_PERFORMANCE_LABELS, formatPerformanceDuration } from './diagnostics';
 import type { PopupViewModel } from './viewModel';
 
 const TRANSCRIPT_FOLLOW_THRESHOLD_PX = 32;
@@ -56,6 +57,10 @@ function icon(name: string): SVGSVGElement {
     refresh: 'M18.4 5.6A8 8 0 1 0 20 14h-2.1a6 6 0 1 1-1-6.9L14 10h7V3l-2.6 2.6Z',
     chevron: 'm8 10 4 4 4-4',
     lock: 'M7 10V7a5 5 0 0 1 10 0v3h2v12H5V10h2Zm2 0h6V7a3 3 0 0 0-6 0v3Z',
+    gauge:
+      'M12 4a9 9 0 0 0-9 9c0 2.4.9 4.7 2.5 6.4l1.5-1.3A7 7 0 1 1 17 18l1.5 1.4A9 9 0 0 0 12 4Zm4.7 4.3-5.6 3.2A2.5 2.5 0 1 0 13 13.4l4.7-4.1-1-1Z',
+    copy: 'M8 7V3h13v13h-4v5H3V7h5Zm2-2v2h7v7h2V5h-9Zm5 4H5v10h10V9Z',
+    download: 'M11 3h2v9l3.5-3.5L18 10l-6 6-6-6 1.5-1.5L11 12V3ZM4 19h16v2H4v-2Z',
     brain:
       'M9.2 3.1A4 4 0 0 0 5 7v.2A4.5 4.5 0 0 0 4 16v.2A3.8 3.8 0 0 0 10 19v-5H8v-2h2V7.5A4.4 4.4 0 0 0 9.2 3.1ZM14.8 3.1A4 4 0 0 1 19 7v.2a4.5 4.5 0 0 1 1 8.8v.2A3.8 3.8 0 0 1 14 19v-5h2v-2h-2V7.5a4.4 4.4 0 0 1 .8-4.4Z'
   };
@@ -432,6 +437,126 @@ function renderActivity(events: ActivityEvent[]): HTMLElement {
   return section;
 }
 
+function renderPerformance(viewModel: PopupViewModel, preserveOpen: boolean): HTMLElement {
+  const diagnostics = viewModel.snapshot?.performance;
+  const retainedCount = diagnostics?.samples.length ?? 0;
+  const details = element('details', 'drawer performance-drawer');
+  details.open = preserveOpen;
+  const summary = element('summary', 'drawer-summary');
+  focusKey(summary, 'drawer:performance');
+  const title = element('span', 'drawer-title');
+  title.append(icon('gauge'), document.createTextNode('Performance evidence'));
+  const statusLabel =
+    diagnostics?.persistence === 'memory_only'
+      ? 'Memory only'
+      : retainedCount === 0
+        ? 'No samples'
+        : `${retainedCount.toLocaleString()} retained`;
+  summary.append(title, element('span', 'drawer-status', statusLabel), icon('chevron'));
+  details.append(summary);
+
+  const body = element('div', 'drawer-body performance-body');
+  body.append(
+    element(
+      'p',
+      'performance-privacy',
+      'Local timing only. Excludes page content, screenshots, URLs, prompts, provider IDs, tokens, tabs, and command IDs.'
+    )
+  );
+  if (diagnostics?.persistence === 'memory_only') {
+    const warning = element(
+      'p',
+      'performance-notice performance-notice--error',
+      'Safari storage is unavailable. Samples remain exportable until this extension process exits.'
+    );
+    warning.setAttribute('role', 'status');
+    body.append(warning);
+  }
+
+  if (!diagnostics || diagnostics.summaries.length === 0) {
+    body.append(
+      element(
+        'p',
+        'drawer-empty',
+        'Open the popup and exercise Ask, Agentic, Stop, capture, and learning flows to collect candidate-bound samples.'
+      )
+    );
+  } else {
+    const grid = element('div', 'performance-grid');
+    for (const metric of diagnostics.summaries) {
+      const card = element('article', 'performance-card');
+      card.setAttribute('aria-label', `${SAFARI_PERFORMANCE_LABELS[metric.metric]} latency summary`);
+      const heading = element('div', 'performance-card-heading');
+      heading.append(
+        element('strong', undefined, SAFARI_PERFORMANCE_LABELS[metric.metric]),
+        element('span', undefined, `n=${metric.retainedCount.toLocaleString()}`)
+      );
+      const values = element('dl', 'performance-values');
+      const medianTerm = element('dt', undefined, 'Median');
+      const medianValue = element('dd', undefined, formatPerformanceDuration(metric.medianMs));
+      const p95Term = element('dt', undefined, 'P95');
+      const p95Value = element('dd', undefined, formatPerformanceDuration(metric.p95Ms));
+      values.append(medianTerm, medianValue, p95Term, p95Value);
+      card.append(heading, values);
+      const nonSuccessCount = metric.errorCount + metric.abortedCount;
+      if (nonSuccessCount > 0) {
+        card.append(
+          element(
+            'span',
+            'performance-outcomes',
+            `${metric.errorCount.toLocaleString()} errors · ${metric.abortedCount.toLocaleString()} stopped`
+          )
+        );
+      }
+      grid.append(card);
+    }
+    body.append(grid);
+  }
+
+  const metadata = element(
+    'p',
+    'performance-metadata',
+    diagnostics
+      ? `${diagnostics.totalRecorded.toLocaleString()} recorded · ${diagnostics.droppedCount.toLocaleString()} expired from the ${diagnostics.retentionLimit.toLocaleString()}-sample local window`
+      : 'The bounded local sample window has not initialized yet.'
+  );
+  const actions = element('div', 'performance-actions');
+  const clear = button(
+    viewModel.diagnosticsClearArmed ? 'Confirm clear' : 'Clear samples',
+    'diagnostics-clear',
+    'button button--quiet compact'
+  );
+  clear.disabled = !diagnostics || retainedCount === 0;
+  clear.setAttribute(
+    'aria-label',
+    viewModel.diagnosticsClearArmed
+      ? 'Confirm clearing all retained local Safari performance samples'
+      : 'Clear all retained local Safari performance samples'
+  );
+  const copy = button('Copy JSON', 'diagnostics-copy', 'button button--quiet compact');
+  copy.prepend(icon('copy'));
+  copy.disabled = !diagnostics;
+  copy.setAttribute('aria-label', 'Copy privacy-safe Safari performance evidence as JSON');
+  const download = button('Download JSON', 'diagnostics-download', 'button button--secondary compact');
+  download.prepend(icon('download'));
+  download.disabled = !diagnostics;
+  download.setAttribute('aria-label', 'Download privacy-safe Safari performance evidence as JSON');
+  actions.append(clear, copy, download);
+  body.append(metadata, actions);
+
+  if (viewModel.diagnosticsNotice) {
+    const notice = element(
+      'p',
+      `performance-notice performance-notice--${viewModel.diagnosticsNotice.tone}`,
+      viewModel.diagnosticsNotice.text
+    );
+    notice.setAttribute('role', 'status');
+    body.append(notice);
+  }
+  details.append(body);
+  return details;
+}
+
 function checkboxRow(
   label: string,
   description: string,
@@ -672,6 +797,7 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
   root.setAttribute('aria-busy', String(!viewModel.ready));
   const trustWasOpen = root.querySelector<HTMLDetailsElement>('.trust-drawer')?.open ?? false;
   const learningWasOpen = root.querySelector<HTMLDetailsElement>('.learning-drawer')?.open ?? false;
+  const performanceWasOpen = root.querySelector<HTMLDetailsElement>('.performance-drawer')?.open ?? false;
   const previousFocus = captureFocus(root);
   const previousContentScroll = captureScroll(root.querySelector<HTMLElement>('.content-scroll'));
   const previousTranscriptScroll = captureTranscriptScroll(root.querySelector<HTMLElement>('.transcript'));
@@ -699,6 +825,7 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
   }
   scroll.append(
     renderActivity(viewModel.snapshot?.activity ?? []),
+    renderPerformance(viewModel, performanceWasOpen),
     renderTrust(viewModel, trustWasOpen),
     renderLearning(viewModel, learningWasOpen)
   );

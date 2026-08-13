@@ -7,6 +7,7 @@ import {
 } from '../shared/protocol';
 import { ImagePipeline, type ScreenshotSegment } from './imagePipeline';
 import type { SafariPageAdapter } from './pageAdapter';
+import type { SafariPerformanceRecorder } from './performance';
 
 const MAX_FULL_PAGE_CSS_HEIGHT = 12_000;
 const MAX_FULL_PAGE_SEGMENTS = 12;
@@ -21,34 +22,71 @@ export class SafariCaptureService {
   constructor(
     private readonly browserAPI: BrowserAPI,
     private readonly pageAdapter: SafariPageAdapter,
-    private readonly imagePipeline = new ImagePipeline()
+    private readonly imagePipeline = new ImagePipeline(),
+    private readonly performanceRecorder?: SafariPerformanceRecorder
   ) {}
 
   async viewport(tab: BrowserTab): Promise<ScreenshotResult> {
     requireActiveTab(tab);
-    const raw = await this.browserAPI.tabs.captureVisibleTab(tab.windowId, {
-      format: 'jpeg',
-      quality: SAFARI_SCREENSHOT_JPEG_QUALITY
-    });
+    const captureStartedAt = this.performanceRecorder?.start();
+    let raw: string;
     try {
-      return await this.imagePipeline.resize(
-        raw,
-        SAFARI_SCREENSHOT_MAX_LONG_EDGE,
-        SAFARI_SCREENSHOT_JPEG_QUALITY,
-        'viewport'
-      );
-    } catch {
-      const resized = await this.pageAdapter.resizeImage(
-        tab,
-        raw,
-        SAFARI_SCREENSHOT_MAX_LONG_EDGE,
-        SAFARI_SCREENSHOT_JPEG_QUALITY
-      );
-      return {
-        ...resized,
-        source: 'viewport',
-        truncated: false
-      };
+      raw = await this.browserAPI.tabs.captureVisibleTab(tab.windowId, {
+        format: 'jpeg',
+        quality: SAFARI_SCREENSHOT_JPEG_QUALITY
+      });
+      if (captureStartedAt !== undefined) {
+        this.performanceRecorder?.recordElapsed('viewport_capture', captureStartedAt, 'success', {
+          capture: 'viewport'
+        });
+      }
+    } catch (error) {
+      if (captureStartedAt !== undefined) {
+        this.performanceRecorder?.recordElapsed('viewport_capture', captureStartedAt, 'error', {
+          capture: 'viewport'
+        });
+      }
+      throw error;
+    }
+
+    const resizeStartedAt = this.performanceRecorder?.start();
+    try {
+      try {
+        const resized = await this.imagePipeline.resize(
+          raw,
+          SAFARI_SCREENSHOT_MAX_LONG_EDGE,
+          SAFARI_SCREENSHOT_JPEG_QUALITY,
+          'viewport'
+        );
+        if (resizeStartedAt !== undefined) {
+          this.performanceRecorder?.recordElapsed('image_resize', resizeStartedAt, 'success', {
+            imagePath: 'offscreen'
+          });
+        }
+        return resized;
+      } catch {
+        const resized = await this.pageAdapter.resizeImage(
+          tab,
+          raw,
+          SAFARI_SCREENSHOT_MAX_LONG_EDGE,
+          SAFARI_SCREENSHOT_JPEG_QUALITY
+        );
+        if (resizeStartedAt !== undefined) {
+          this.performanceRecorder?.recordElapsed('image_resize', resizeStartedAt, 'success', {
+            imagePath: 'content_fallback'
+          });
+        }
+        return {
+          ...resized,
+          source: 'viewport',
+          truncated: false
+        };
+      }
+    } catch (error) {
+      if (resizeStartedAt !== undefined) {
+        this.performanceRecorder?.recordElapsed('image_resize', resizeStartedAt, 'error');
+      }
+      throw error;
     }
   }
 
@@ -78,22 +116,54 @@ export class SafariCaptureService {
           break;
         }
         seenScrollPositions.add(actual.scrollY);
-        const dataUrl = await this.browserAPI.tabs.captureVisibleTab(tab.windowId, {
-          format: 'jpeg',
-          quality: SAFARI_SCREENSHOT_JPEG_QUALITY
-        });
+        const captureStartedAt = this.performanceRecorder?.start();
+        let dataUrl: string;
+        try {
+          dataUrl = await this.browserAPI.tabs.captureVisibleTab(tab.windowId, {
+            format: 'jpeg',
+            quality: SAFARI_SCREENSHOT_JPEG_QUALITY
+          });
+          if (captureStartedAt !== undefined) {
+            this.performanceRecorder?.recordElapsed('viewport_capture', captureStartedAt, 'success', {
+              capture: 'full_page_segment'
+            });
+          }
+        } catch (error) {
+          if (captureStartedAt !== undefined) {
+            this.performanceRecorder?.recordElapsed('viewport_capture', captureStartedAt, 'error', {
+              capture: 'full_page_segment'
+            });
+          }
+          throw error;
+        }
         segments.push({ dataUrl, scrollY: actual.scrollY });
       }
       truncated ||=
         segments.length === MAX_FULL_PAGE_SEGMENTS && cappedHeight > prepared.viewportHeight * segments.length;
-      return await this.imagePipeline.stitch(
-        segments,
-        cappedHeight,
-        prepared.devicePixelRatio,
-        SAFARI_SCREENSHOT_MAX_LONG_EDGE,
-        SAFARI_SCREENSHOT_JPEG_QUALITY,
-        truncated
-      );
+      const resizeStartedAt = this.performanceRecorder?.start();
+      try {
+        const stitched = await this.imagePipeline.stitch(
+          segments,
+          cappedHeight,
+          prepared.devicePixelRatio,
+          SAFARI_SCREENSHOT_MAX_LONG_EDGE,
+          SAFARI_SCREENSHOT_JPEG_QUALITY,
+          truncated
+        );
+        if (resizeStartedAt !== undefined) {
+          this.performanceRecorder?.recordElapsed('image_resize', resizeStartedAt, 'success', {
+            imagePath: 'full_page_stitch'
+          });
+        }
+        return stitched;
+      } catch (error) {
+        if (resizeStartedAt !== undefined) {
+          this.performanceRecorder?.recordElapsed('image_resize', resizeStartedAt, 'error', {
+            imagePath: 'full_page_stitch'
+          });
+        }
+        throw error;
+      }
     } finally {
       await this.pageAdapter.restoreFullPage(tab, token).catch(() => {
         // The page may have navigated during capture. Never mask the primary result/error.

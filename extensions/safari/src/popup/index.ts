@@ -1,10 +1,13 @@
 import { getBrowserAPI } from '../shared/browser';
 import type { BackgroundPush, PopupRequest, PopupResponse, TrustSettings } from '../shared/messages';
+import type { SafariPerformanceOutcome } from '../shared/performance';
+import { buildSafariPerformanceExport, safariPerformanceExportFilename } from './diagnostics';
 import { renderPopup } from './render';
 import { createInitialPopupState, reducePopupState, type PopupLocalAction, type PopupLocalState } from './state';
 import { buildPopupViewModel } from './viewModel';
 
 const browserAPI = getBrowserAPI();
+const popupOpenedAt = performance.now();
 const root = document.getElementById('app');
 if (!root) {
   throw new Error('OpenBurnBar popup root is missing.');
@@ -23,7 +26,7 @@ function dispatch(action: PopupLocalAction): void {
 async function send(
   request: PopupRequest,
   options: { clearCorrectionDraft?: boolean; clearDraft?: boolean } = {}
-): Promise<void> {
+): Promise<PopupResponse> {
   dispatch({ type: 'submitting', value: true });
   try {
     const response = (await browserAPI.runtime.sendMessage(request)) as PopupResponse;
@@ -36,8 +39,146 @@ async function send(
     if (response.ok && options.clearCorrectionDraft) {
       dispatch({ type: 'correctionDraft', value: '' });
     }
+    return response;
   } finally {
     dispatch({ type: 'submitting', value: false });
+  }
+}
+
+function performanceExportJSON(snapshot: PopupResponse['snapshot'], exportedAt: Date): string {
+  return JSON.stringify(
+    buildSafariPerformanceExport(snapshot, browserAPI.runtime.getManifest().version, exportedAt),
+    null,
+    2
+  );
+}
+
+async function refreshPerformanceSnapshot(): Promise<NonNullable<PopupResponse['snapshot']>> {
+  const response = (await browserAPI.runtime.sendMessage({
+    type: 'popup.performanceSnapshot'
+  } satisfies PopupRequest)) as PopupResponse;
+  if (!response.ok || !response.snapshot?.performance) {
+    throw new Error('Performance evidence is not ready.');
+  }
+  dispatch({ type: 'snapshot', snapshot: response.snapshot });
+  return response.snapshot;
+}
+
+async function copyPerformanceDiagnostics(): Promise<void> {
+  dispatch({ type: 'diagnosticsClearArmed', value: false });
+  try {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error('Safari clipboard access is unavailable.');
+    }
+    const snapshot = await refreshPerformanceSnapshot();
+    await navigator.clipboard.writeText(performanceExportJSON(snapshot, new Date()));
+    dispatch({
+      type: 'diagnosticsNotice',
+      notice: {
+        tone: 'success',
+        text: 'Privacy-safe performance JSON copied.'
+      }
+    });
+  } catch {
+    dispatch({
+      type: 'diagnosticsNotice',
+      notice: {
+        tone: 'error',
+        text: 'Could not copy in Safari. Use Download JSON instead.'
+      }
+    });
+  }
+}
+
+async function downloadPerformanceDiagnostics(): Promise<void> {
+  dispatch({ type: 'diagnosticsClearArmed', value: false });
+  try {
+    const snapshot = await refreshPerformanceSnapshot();
+    const exportedAt = new Date();
+    const url = URL.createObjectURL(
+      new Blob([performanceExportJSON(snapshot, exportedAt)], {
+        type: 'application/json;charset=utf-8'
+      })
+    );
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = safariPerformanceExportFilename(exportedAt);
+    anchor.hidden = true;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    dispatch({
+      type: 'diagnosticsNotice',
+      notice: {
+        tone: 'success',
+        text: 'Privacy-safe performance JSON downloaded.'
+      }
+    });
+  } catch {
+    dispatch({
+      type: 'diagnosticsNotice',
+      notice: {
+        tone: 'error',
+        text: 'Safari could not create the JSON download.'
+      }
+    });
+  }
+}
+
+async function clearPerformanceDiagnostics(): Promise<void> {
+  if (!state.diagnosticsClearArmed) {
+    dispatch({ type: 'diagnosticsClearArmed', value: true });
+    dispatch({
+      type: 'diagnosticsNotice',
+      notice: {
+        tone: 'warning',
+        text: 'Click Confirm clear to erase the retained local timing window.'
+      }
+    });
+    return;
+  }
+  try {
+    const response = (await browserAPI.runtime.sendMessage({
+      type: 'popup.clearPerformance'
+    } satisfies PopupRequest)) as PopupResponse;
+    if (!response.ok || !response.snapshot?.performance) {
+      throw new Error('Performance evidence could not be cleared.');
+    }
+    dispatch({ type: 'snapshot', snapshot: response.snapshot });
+    dispatch({ type: 'diagnosticsClearArmed', value: false });
+    dispatch({
+      type: 'diagnosticsNotice',
+      notice: {
+        tone: 'success',
+        text: 'Local performance samples cleared.'
+      }
+    });
+  } catch {
+    dispatch({ type: 'diagnosticsClearArmed', value: false });
+    dispatch({
+      type: 'diagnosticsNotice',
+      notice: {
+        tone: 'error',
+        text: 'Safari could not clear the local performance samples.'
+      }
+    });
+  }
+}
+
+async function recordPopupBootstrap(outcome: SafariPerformanceOutcome): Promise<void> {
+  try {
+    const response = (await browserAPI.runtime.sendMessage({
+      type: 'popup.recordPerformance',
+      metric: 'popup_bootstrap',
+      durationMs: Math.max(0, performance.now() - popupOpenedAt),
+      outcome
+    } satisfies PopupRequest)) as PopupResponse;
+    if (response.snapshot) {
+      dispatch({ type: 'snapshot', snapshot: response.snapshot });
+    }
+  } catch {
+    // Diagnostics must never make the popup unavailable.
   }
 }
 
@@ -90,9 +231,21 @@ appRoot.addEventListener('click', (event) => {
     }
     return;
   }
+  if (action === 'diagnostics-copy') {
+    void copyPerformanceDiagnostics();
+    return;
+  }
+  if (action === 'diagnostics-download') {
+    void downloadPerformanceDiagnostics();
+    return;
+  }
+  if (action === 'diagnostics-clear') {
+    void clearPerformanceDiagnostics();
+    return;
+  }
   switch (action) {
     case 'abort':
-      void send({ type: 'popup.abort' });
+      void send({ type: 'popup.abort', trigger: 'stop_button' });
       break;
     case 'refresh':
       void send({ type: 'popup.refresh' });
@@ -186,7 +339,7 @@ appRoot.addEventListener('submit', (event) => {
 appRoot.addEventListener('keydown', (event) => {
   if (event.key === '.' && event.ctrlKey && event.altKey && event.metaKey) {
     event.preventDefault();
-    void send({ type: 'popup.abort' });
+    void send({ type: 'popup.abort', trigger: 'popup_shortcut' });
     return;
   }
   if (event.key === 'Enter' && event.metaKey && event.target instanceof HTMLTextAreaElement) {
@@ -204,4 +357,17 @@ browserAPI.runtime.onMessage.addListener((message) => {
 });
 
 renderPopup(appRoot, buildPopupViewModel(state));
-void send({ type: 'popup.bootstrap' });
+void (async () => {
+  let outcome: SafariPerformanceOutcome = 'success';
+  try {
+    const response = await send({ type: 'popup.bootstrap' });
+    if (!response.ok) {
+      outcome = 'error';
+    }
+  } catch {
+    outcome = 'error';
+    dispatch({ type: 'initialized' });
+  } finally {
+    await recordPopupBootstrap(outcome);
+  }
+})();
