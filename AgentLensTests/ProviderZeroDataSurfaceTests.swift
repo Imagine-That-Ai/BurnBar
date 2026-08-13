@@ -220,6 +220,70 @@ final class ProviderZeroDataSurfaceTests: XCTestCase {
         }
     }
 
+    // MARK: Round-4 scrutiny (provider-zero-label chain) — UNSUPPORTED
+    // providers route typed tiles UNCONDITIONALLY, even with usage rows: the
+    // round-3 condition (`usages.isEmpty && supportLevel != .supported`)
+    // regressed Augment (parser rows exist while the provider stays
+    // .unsupported). The empty-partial predicate is a SEPARATE condition.
+
+    func test_nonEmptyUnsupportedProviderHeaderMetricsUseTypedTiles() {
+        // Augment is the reachable regression path; grokBot covers the other
+        // registered unsupported provider. Typed tiles win regardless of rows.
+        let now = Date()
+        for provider in [AgentProvider.augment, .grokBot] {
+            let usages = [
+                TokenUsage(
+                    provider: provider,
+                    sessionId: "s1",
+                    projectName: "p",
+                    model: "augment",
+                    inputTokens: 10,
+                    outputTokens: 10,
+                    costUSD: 0.5,
+                    startTime: now,
+                    endTime: now
+                )
+            ]
+            for mode in [UsageDisplayMode.currency, .tokens] {
+                assertTypedUnsupportedTiles(
+                    provider: provider,
+                    usages: usages,
+                    mode: mode,
+                    topModelName: "augment"
+                )
+            }
+        }
+    }
+
+    private func assertTypedUnsupportedTiles(
+        provider: AgentProvider,
+        usages: [TokenUsage],
+        mode: UsageDisplayMode,
+        topModelName: String
+    ) {
+        let metrics = ProviderDetailMetrics.headerMetrics(
+            provider: provider,
+            usages: usages,
+            displayMode: mode,
+            topModelName: topModelName
+        )
+        XCTAssertEqual(metrics.count, 3, "\(provider) \(mode) typed tiles")
+        XCTAssertEqual(metrics[0].label, "Tracking")
+        XCTAssertEqual(metrics[0].value, ProviderSupportLevel.unsupported.label,
+                       "\(provider) \(mode) support tile")
+        XCTAssertEqual(metrics[1].label, "Data confidence")
+        XCTAssertEqual(metrics[1].value, DataConfidence.unavailable.label,
+                       "\(provider) \(mode) confidence tile")
+        XCTAssertEqual(metrics[2].label, "Top Model")
+        XCTAssertEqual(metrics[2].value, topModelName)
+        XCTAssertFalse(metrics.contains { $0.label == "Spend" || $0.label == "Volume" },
+                       "\(provider) \(mode) must never render Spend/Volume tiles for an unsupported provider")
+        XCTAssertFalse(metrics.contains { $0.value == "$0.50" },
+                       "\(provider) \(mode) must never render exact cost")
+        XCTAssertFalse(metrics.contains { $0.value == "20" },
+                       "\(provider) \(mode) must never render exact token volume")
+    }
+
     func test_dataBearingPartialProviderKeepsStandardMetricTiles() {
         // A partial provider with real usage rows in range keeps the standard
         // Spend/Volume tiles — the typed no-data branch applies only to empty

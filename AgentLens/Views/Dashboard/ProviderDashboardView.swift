@@ -10,10 +10,11 @@ struct ProviderDetailMetric: Equatable {
 }
 
 /// Single presentation helper for provider-detail header metrics. Unsupported
-/// providers (e.g. grokBot) and empty partial providers (e.g. grokCLI, pi
-/// with no usage rows in range) render typed support/confidence labels from
-/// the canonical `ProviderSupportLevel`/`DataConfidence` copy — never an
-/// exact-looking "$0.00"/zero metric (VAL-PROV-010, round-3 scrutiny).
+/// providers (e.g. grokBot, augment) ALWAYS render typed support/confidence
+/// labels from the canonical `ProviderSupportLevel`/`DataConfidence` copy —
+/// regardless of usage rows — and empty partial providers (e.g. grokCLI, pi
+/// with no usage rows in range) get the same typed treatment; never an
+/// exact-looking "$0.00"/zero metric (VAL-PROV-010, round-4 scrutiny).
 /// Zero-usage providers render "No data" for averages instead of fabricated
 /// zeros.
 enum ProviderDetailMetrics {
@@ -23,7 +24,12 @@ enum ProviderDetailMetrics {
         displayMode: UsageDisplayMode,
         topModelName: String
     ) -> [ProviderDetailMetric] {
-        if usages.isEmpty && provider.supportLevel != .supported {
+        // Unsupported is unconditional: a non-empty unsupported provider
+        // (e.g. augment with parser rows) must never surface exact-looking
+        // Spend/Volume tiles. The empty-partial predicate is a separate
+        // additional condition (round-4 scrutiny).
+        if provider.supportLevel == .unsupported
+            || (provider.supportLevel == .partial && usages.isEmpty) {
             return [
                 ProviderDetailMetric(label: "Tracking", value: provider.supportLevel.label),
                 ProviderDetailMetric(label: "Data confidence", value: provider.dataConfidence.label),
