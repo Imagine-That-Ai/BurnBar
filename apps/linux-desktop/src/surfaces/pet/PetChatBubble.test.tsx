@@ -7,7 +7,24 @@ import { bridgeStubDefaults } from '../../testing/bridgeStubs.js';
 import type { LinuxShellBridge } from '../../tauriBridge.js';
 import { PetChatBubble } from './PetChatBubble.js';
 
+function stubMatchMedia(matches = false): void {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  });
+}
+
 function resetState(): void {
+  stubMatchMedia(false);
   useShellStore.setState({
     bridge: null,
     bridgeReady: true,
@@ -104,5 +121,90 @@ describe('PetChatBubble', () => {
       expect.objectContaining({ attachmentId: 'attachment-1' })
     ]);
     expect(screen.queryByTestId('pet-chat-pending-attachment')).toBeNull();
+  });
+
+  it('emits companion behavior states as the user focuses and completes a turn', async () => {
+    const onStateChange = vi.fn();
+    const sendMessage = vi.fn(async () => {});
+    useChatStore.setState({ sendMessage } as Partial<ChatState>);
+
+    render(
+      <PetChatBubble
+        onClose={vi.fn()}
+        onOpenFullChat={vi.fn()}
+        onStateChange={onStateChange}
+      />
+    );
+
+    fireEvent.focus(screen.getByLabelText('Companion message'));
+    fireEvent.change(screen.getByLabelText('Companion message'), { target: { value: 'Hello companion' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send companion message' }));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('Hello companion', undefined));
+    expect(onStateChange).toHaveBeenCalledWith('listen');
+    expect(onStateChange).toHaveBeenCalledWith('think');
+    expect(onStateChange).toHaveBeenCalledWith('react');
+    // The busy flag clearing must not immediately replace the reaction.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send companion message' })).toBeTruthy());
+    expect(onStateChange.mock.calls.at(-1)).toEqual(['react']);
+  });
+
+  it('emits speak while a busy turn is streaming its reply', async () => {
+    const onStateChange = vi.fn();
+    let finishStream: () => void = () => {};
+    const sendMessage = vi.fn(async () => {
+      useChatStore.setState({ streaming: true, streamPhase: 'streaming' });
+      await new Promise<void>((resolve) => {
+        finishStream = resolve;
+      });
+      useChatStore.setState({ streaming: false, streamPhase: 'done' });
+    });
+    useChatStore.setState({ sendMessage } as Partial<ChatState>);
+
+    render(
+      <PetChatBubble
+        onClose={vi.fn()}
+        onOpenFullChat={vi.fn()}
+        onStateChange={onStateChange}
+      />
+    );
+    fireEvent.change(screen.getByLabelText('Companion message'), { target: { value: 'Hello companion' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send companion message' }));
+
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith('speak'));
+    finishStream();
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith('react'));
+  });
+
+  it('emits alert when an unsupported attachment is rejected', async () => {
+    const onStateChange = vi.fn();
+    render(
+      <PetChatBubble
+        onClose={vi.fn()}
+        onOpenFullChat={vi.fn()}
+        onStateChange={onStateChange}
+      />
+    );
+    fireEvent.drop(screen.getByRole('dialog'), {
+      dataTransfer: {
+        types: ['Files'],
+        files: [new File(['binary'], 'program.exe', { type: 'application/octet-stream' })]
+      }
+    });
+
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith('alert'));
+  });
+
+  it('resets the companion to idle when the bubble unmounts', () => {
+    const onStateChange = vi.fn();
+    const { unmount } = render(
+      <PetChatBubble
+        onClose={vi.fn()}
+        onOpenFullChat={vi.fn()}
+        onStateChange={onStateChange}
+      />
+    );
+    unmount();
+    expect(onStateChange).toHaveBeenLastCalledWith('idle');
   });
 });

@@ -24,4 +24,10 @@ describe('pet atlas runtime', () => {
   it('falls back to idle for an unknown logical state', () => {
     expect(resolvePetAtlasState(atlas, 'unknown').name).toBe('idle');
   });
+
+  it('maps conversation states to the closest pet-specific animation rows', () => {
+    expect(resolvePetAtlasState(atlas, 'think').name).toBe('idle');
+    expect(resolvePetAtlasState(atlas, 'speak').name).toBe('idle');
+    expect(resolvePetAtlasState({ ...atlas, states: { ...atlas.states, work: atlas.states.cheer! } }, 'think').name).toBe('work');
+  });
 });

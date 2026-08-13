@@ -17,6 +17,13 @@ vi.mock('../petGltfRuntime.js', () => ({
   stopPetGltfRuntime: () => stopMock()
 }));
 
+const setAtlasStateMock = vi.fn();
+vi.mock('../petAtlasRuntime.js', () => ({
+  mountPetAtlasRuntime: vi.fn(async () => {}),
+  stopPetAtlasRuntime: vi.fn(),
+  setPetAtlasState: (...args: unknown[]) => setAtlasStateMock(...args)
+}));
+
 vi.mock('../petCompanionWindow.js', () => ({
   openPetCompanionWindow: (...args: unknown[]) => openCompanionMock(...args),
   setPetCompanionClickThrough: (...args: unknown[]) => clickThroughMock(...args),
@@ -111,6 +118,7 @@ describe('PetSurface', () => {
     clickThroughMock.mockReset();
     closeCompanionMock.mockReset();
     openChatMock.mockReset();
+    setAtlasStateMock.mockReset();
     stubPetCatalogFetch();
     mountMock.mockResolvedValue({
       asset: { version: '2.0' },
@@ -170,6 +178,7 @@ describe('PetSurface', () => {
 
     fireEvent.keyDown(stage, { key: 'ArrowRight' });
     expect(stage.getAttribute('data-contained-offset')).toBe('16,0');
+    expect(setAtlasStateMock).toHaveBeenCalledWith('wander');
     expect(document.querySelector('.pet-action-status')?.textContent).toMatch(/keyboard/i);
 
     fireEvent.keyDown(stage, { key: 'ArrowDown', shiftKey: true });
@@ -187,6 +196,7 @@ describe('PetSurface', () => {
 
     fireEvent.mouseDown(stage, { button: 0, clientX: 10, clientY: 20 });
     fireEvent.mouseMove(stage, { clientX: 200, clientY: 160 });
+    expect(setAtlasStateMock).toHaveBeenCalledWith('drag');
     fireEvent.mouseUp(stage, { clientX: 200, clientY: 160 });
 
     expect(stage.getAttribute('data-contained-offset')).toBe('96,64');
