@@ -922,16 +922,35 @@ select:disabled {
 }
 
 .composer-footer {
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   margin-top: 7px;
 }
 
 .composer-hint {
-  margin-left: 3px;
+  margin-left: auto;
   color: var(--text-dim);
   font-family: var(--font-mono, monospace);
   font-size: 9px;
+}
+
+.composer-context {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-xs);
+  color: var(--text-muted);
+  background: var(--surface-soft);
+  font-size: 9.5px;
+  font-weight: 650;
+}
+
+.composer-context .icon {
+  width: 13px;
+  height: 13px;
 }
 
 .composer-submit {
@@ -941,6 +960,11 @@ select:disabled {
 .composer-submit .icon {
   width: 14px;
   height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .disabled-reason {

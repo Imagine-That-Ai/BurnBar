@@ -443,6 +443,9 @@ describe('popup rendering', () => {
     expect(root.querySelector<HTMLButtonElement>('.learning-correction-submit')?.disabled).toBe(false);
     expect(root.querySelector('.composer-input')?.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter');
     expect(root.querySelector('.composer-submit')?.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter');
+    expect(root.querySelector<HTMLButtonElement>('.composer-context')?.textContent).toContain('Page');
+    expect(root.querySelector<HTMLButtonElement>('.composer-context')?.disabled).toBe(true);
+    expect(root.querySelector('.composer-submit .icon')?.getAttribute('aria-hidden')).toBe('true');
     expect(root.querySelector('.error-banner')?.getAttribute('role')).toBe('alert');
     expect(root.querySelector('img[src="x"]')).toBeNull();
     expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
