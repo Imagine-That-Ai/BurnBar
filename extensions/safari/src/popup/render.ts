@@ -211,6 +211,7 @@ function renderHeader(viewModel: PopupViewModel): HTMLElement {
 
 function renderModes(viewModel: PopupViewModel, open: boolean): HTMLElement {
   const section = element('section', 'mode-section mode-popover');
+  section.id = 'mode-popover';
   section.setAttribute('role', 'group');
   section.setAttribute('aria-label', 'OpenBurnBar mode');
   section.setAttribute('aria-describedby', 'mode-description');
@@ -240,8 +241,28 @@ function renderModes(viewModel: PopupViewModel, open: boolean): HTMLElement {
   range.dataset.input = 'mode-range';
   focusKey(range, 'input:mode-range');
   range.setAttribute('aria-label', 'OpenBurnBar mode');
+  range.setAttribute('aria-describedby', 'mode-description');
   range.setAttribute('aria-valuetext', selected.label);
-  section.append(range);
+  const track = element('div', 'mode-track');
+  const selectedIndex = Math.max(
+    0,
+    viewModel.modes.findIndex((mode) => mode.id === viewModel.selectedMode)
+  );
+  const knob = element('img', 'mode-knob');
+  knob.src = 'icons/app-logo.svg';
+  knob.alt = '';
+  knob.setAttribute('aria-hidden', 'true');
+  knob.style.left = `${viewModel.modes.length > 1 ? (selectedIndex / (viewModel.modes.length - 1)) * 100 : 0}%`;
+  track.append(knob);
+  for (let index = 0; index < viewModel.modes.length; index += 1) {
+    const tick = element('span', 'mode-tick');
+    tick.setAttribute('aria-hidden', 'true');
+    tick.style.setProperty('--mode-index', String(index));
+    tick.style.setProperty('--mode-denominator', String(Math.max(1, viewModel.modes.length - 1)));
+    track.append(tick);
+  }
+  track.append(range);
+  section.append(track);
 
   const control = element('div', 'mode-control mode-options');
   control.setAttribute('role', 'group');
@@ -443,6 +464,7 @@ function renderComposer(viewModel: PopupViewModel, modePopoverOpen: boolean): HT
   );
   modeTrigger.setAttribute('aria-haspopup', 'true');
   modeTrigger.setAttribute('aria-expanded', String(modePopoverOpen));
+  modeTrigger.setAttribute('aria-controls', 'mode-popover');
   const submit = element('button', 'send composer-submit');
   submit.type = 'submit';
   focusKey(submit, 'submit:composer');
