@@ -369,7 +369,6 @@ struct DashboardView: View {
                         provider: nil,
                         isSelected: mainRoute == .overview,
                         primaryMetric: settingsManager.formatUsageMetric(cost: totalCostForTimeRange, tokens: totalTokensForTimeRange),
-                        totalCost: totalCostForTimeRange,
                         sessionCount: filteredUsages.count
                     ) {
                         withAnimation(DesignSystem.Animation.standard) {
@@ -384,8 +383,8 @@ struct DashboardView: View {
                                 provider: summary.provider,
                                 isSelected: mainRoute == .provider(summary.provider),
                                 primaryMetric: settingsManager.formatUsageMetric(cost: summary.totalCost, tokens: summary.totalTokens),
-                                totalCost: summary.totalCost,
-                                sessionCount: summary.sessionCount
+                                sessionCount: summary.sessionCount,
+                                hasUsageData: summary.hasUsageData
                             ) {
                                 withAnimation(DesignSystem.Animation.standard) {
                                     navigate(to: .provider(summary.provider))
@@ -1191,8 +1190,11 @@ private struct SidebarItem: View {
     let provider: AgentProvider?
     let isSelected: Bool
     let primaryMetric: String
-    let totalCost: Double
     let sessionCount: Int
+    /// False for explicit zero-data entries (no usage rows in the window):
+    /// those render typed support/confidence copy, never bare zeros
+    /// (VAL-PROV-010, round-2 scrutiny).
+    var hasUsageData: Bool = true
     let action: () -> Void
 
     private var theme: ProviderTheme {
@@ -1229,10 +1231,11 @@ private struct SidebarItem: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 2) {
-                    if provider?.supportLevel == .unsupported && totalCost == 0 {
-                        Text("Not tracked")
+                    if !hasUsageData, let provider {
+                        Text(ProviderSidebarLabel.metricLabel(provider: provider, hasUsageData: hasUsageData, primaryMetric: primaryMetric))
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(isSelected ? theme.primaryColor : DesignSystem.Colors.textMuted)
+                            .lineLimit(1)
                     } else {
                         Text(primaryMetric)
                             .font(DesignSystem.Typography.monoSmall)

@@ -337,9 +337,33 @@ struct ProviderSummary: Identifiable, Hashable {
     let totalOutputTokens: Int
     let sessionCount: Int
     let modelBreakdown: [ModelUsage]
-    
+    /// True when this summary is backed by real usage rows; false for the
+    /// explicit zero-data entries injected by
+    /// `DataStore.providerSummariesIncludingZeroData(in:)` (VAL-PROV-019).
+    var hasUsageData: Bool = true
+
     var formattedCost: String {
         totalCost.formatAsCost()
+    }
+}
+
+// MARK: - Sidebar Honest Labeling
+
+/// Single presentation path for the Agents-sidebar metric label. Zero-data
+/// entries for partial/unsupported providers render typed support/confidence
+/// copy (canonical `DataConfidence`/`ProviderSupportLevel` labels) instead of
+/// an exact-looking "$0.00"/"0" metric (VAL-PROV-010, round-2 scrutiny).
+enum ProviderSidebarLabel {
+    static func metricLabel(provider: AgentProvider?, hasUsageData: Bool, primaryMetric: String) -> String {
+        guard let provider, !hasUsageData else { return primaryMetric }
+        switch provider.supportLevel {
+        case .unsupported:
+            return "Not tracked"
+        case .partial:
+            return "\(provider.dataConfidence.label) / no sessions yet"
+        case .supported:
+            return primaryMetric
+        }
     }
 }
 

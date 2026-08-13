@@ -190,6 +190,171 @@ final class ProviderZeroDataSurfaceTests: XCTestCase {
         XCTAssertEqual(metrics[1].value, "No data", "zero-usage average must be typed no-data")
     }
 
+    // MARK: Round-2 scrutiny (grokbot-usage-honesty-repair follow-up) —
+    // empty PARTIAL providers (grokCLI, pi) and the composed detail header
+
+    func test_emptyPartialProviderSidebarLabelIsHonestNeverBareZero() {
+        // Empty partial providers (grokCLI, pi) must carry the honest
+        // support/confidence labeling treatment, never an exact-looking
+        // "$0.00"/"0" metric (VAL-PROV-010, round-2 scrutiny).
+        for provider in [AgentProvider.grokCLI, .pi] {
+            let label = ProviderSidebarLabel.metricLabel(
+                provider: provider,
+                hasUsageData: false,
+                primaryMetric: "$0.00"
+            )
+            XCTAssertEqual(label, "\(DataConfidence.estimated.label) / no sessions yet", "\(provider) zero-data sidebar label")
+            XCTAssertFalse(label.contains("$0.00"), "\(provider) must never render bare $0.00")
+            XCTAssertFalse(label.contains("0"), "\(provider) must never render a bare zero metric")
+        }
+    }
+
+    func test_emptyUnsupportedProviderSidebarLabelIsNotTracked() {
+        let label = ProviderSidebarLabel.metricLabel(
+            provider: .grokBot,
+            hasUsageData: false,
+            primaryMetric: "$0.00"
+        )
+        XCTAssertEqual(label, "Not tracked")
+        XCTAssertFalse(label.contains("$0.00"))
+        XCTAssertFalse(label.contains("0"))
+    }
+
+    func test_dataBearingProviderSidebarLabelKeepsPrimaryMetric() {
+        // A provider with real usage rows keeps the formatted metric — the
+        // honest-label branch applies only to zero-data entries.
+        let label = ProviderSidebarLabel.metricLabel(
+            provider: .grokCLI,
+            hasUsageData: true,
+            primaryMetric: "$1.25"
+        )
+        XCTAssertEqual(label, "$1.25")
+    }
+
+    func test_supportedZeroDataSidebarLabelKeepsRealZero() {
+        // A supported provider with no rows in the window is genuinely tracked
+        // at zero for that window — "$0.00" is a real zero, not a fabricated one.
+        let label = ProviderSidebarLabel.metricLabel(
+            provider: .claudeCode,
+            hasUsageData: false,
+            primaryMetric: "$0.00"
+        )
+        XCTAssertEqual(label, "$0.00")
+    }
+
+    func test_unsupportedProviderHeaderSubtitleIsTypedUnavailability() {
+        // The composed detail header must never surface "0 sessions in range •
+        // 0 tokens processed" for a live-signal-only provider (round-2 scrutiny).
+        let subtitle = ProviderDetailMetrics.headerSubtitle(
+            provider: .grokBot,
+            usages: [],
+            totalTokens: "0"
+        )
+        XCTAssertEqual(subtitle, "\(ProviderSupportLevel.unsupported.label) • \(DataConfidence.unavailable.label) — no usage data")
+        XCTAssertFalse(subtitle.contains("0 sessions"), "unsupported header must not claim 0 sessions")
+        XCTAssertFalse(subtitle.contains("0 tokens"), "unsupported header must not claim 0 tokens")
+        XCTAssertTrue(subtitle.contains(ProviderSupportLevel.unsupported.label))
+        XCTAssertTrue(subtitle.contains(DataConfidence.unavailable.label))
+    }
+
+    func test_emptyPartialProviderHeaderSubtitleIsHonest() {
+        let subtitle = ProviderDetailMetrics.headerSubtitle(
+            provider: .grokCLI,
+            usages: [],
+            totalTokens: "0"
+        )
+        XCTAssertEqual(subtitle, "\(DataConfidence.estimated.label) • no sessions yet")
+        XCTAssertFalse(subtitle.contains("0 sessions"))
+        XCTAssertFalse(subtitle.contains("0 tokens"))
+    }
+
+    func test_emptySupportedProviderHeaderSubtitleIsNoSessions() {
+        let subtitle = ProviderDetailMetrics.headerSubtitle(
+            provider: .claudeCode,
+            usages: [],
+            totalTokens: "0"
+        )
+        XCTAssertEqual(subtitle, "No sessions in range")
+        XCTAssertFalse(subtitle.contains("0 tokens"))
+    }
+
+    func test_dataBearingProviderHeaderSubtitleShowsRealCounts() {
+        let now = Date()
+        let usages = [
+            TokenUsage(
+                provider: .grokCLI,
+                sessionId: "s1",
+                projectName: "p",
+                model: "grok-4",
+                inputTokens: 10,
+                outputTokens: 10,
+                startTime: now,
+                endTime: now
+            )
+        ]
+        let subtitle = ProviderDetailMetrics.headerSubtitle(
+            provider: .grokCLI,
+            usages: usages,
+            totalTokens: "20"
+        )
+        XCTAssertEqual(subtitle, "1 sessions in range • 20 tokens processed")
+    }
+
+    func test_zeroDataFreeProviderSortsBelowDataBearingProviders() throws {
+        // Round-2 non-blocking finding: a legitimate data-bearing provider with
+        // sessionCount > 0 and totalCost == 0 must rank above the injected
+        // zero-data entries (the documented ordering invariant partitions on
+        // data presence before cost).
+        let store = try makeInMemoryStore()
+        let usage = TokenUsage(
+            provider: .kimi,
+            sessionId: "s1",
+            projectName: "p",
+            model: "kimi-k2",
+            inputTokens: 10,
+            outputTokens: 10,
+            costUSD: 0,
+            startTime: Date(),
+            endTime: Date()
+        )
+        try store.insert(usage)
+        store.refresh()
+
+        let summaries = store.providerSummariesIncludingZeroData(in: nil)
+        let kimi = summaries.first { $0.provider == .kimi }
+        XCTAssertNotNil(kimi)
+        XCTAssertEqual(kimi?.sessionCount, 1, "data-bearing free provider keeps its real session count")
+        XCTAssertEqual(kimi?.totalCost, 0)
+        XCTAssertTrue(kimi?.hasUsageData ?? false, "data-bearing summary must be marked as having usage data")
+        let kimiIndex = summaries.firstIndex { $0.provider == .kimi }
+        let grokBotIndex = summaries.firstIndex { $0.provider == .grokBot }
+        XCTAssertNotNil(kimiIndex)
+        XCTAssertNotNil(grokBotIndex)
+        XCTAssertLessThan(kimiIndex!, grokBotIndex!, "data-bearing free provider must rank above zero-data entries")
+    }
+
+    func test_zeroDataSummariesMarkHasUsageData() throws {
+        let store = try makeInMemoryStore()
+        let usage = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "s1",
+            projectName: "p",
+            model: "claude-sonnet-4",
+            inputTokens: 10,
+            outputTokens: 10,
+            startTime: Date(),
+            endTime: Date()
+        )
+        try store.insert(usage)
+        store.refresh()
+
+        let summaries = store.providerSummariesIncludingZeroData(in: nil)
+        let claude = summaries.first { $0.provider == .claudeCode }
+        let grokBot = summaries.first { $0.provider == .grokBot }
+        XCTAssertEqual(claude?.hasUsageData, true, "data-bearing summary is marked with usage data")
+        XCTAssertEqual(grokBot?.hasUsageData, false, "injected zero-data entry is marked without usage data")
+    }
+
     // MARK: Helpers
 
     private func makeInMemoryStore() throws -> DataStore {

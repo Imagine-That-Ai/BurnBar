@@ -46,6 +46,30 @@ enum ProviderDetailMetrics {
             ProviderDetailMetric(label: "Top Model", value: topModelName)
         ]
     }
+
+    /// Header subtitle. Unsupported providers (e.g. grokBot, a live-signal-only
+    /// provider with an honest no-op usage parser) never claim exact
+    /// "0 sessions / 0 tokens" counts — they render typed unavailability copy
+    /// from the canonical support/confidence labels (VAL-PROV-010, round-2
+    /// scrutiny). Partial providers with no rows in the window get an honest
+    /// "no sessions yet" note instead of a bare zero claim.
+    static func headerSubtitle(
+        provider: AgentProvider,
+        usages: [TokenUsage],
+        totalTokens: String
+    ) -> String {
+        if usages.isEmpty {
+            switch provider.supportLevel {
+            case .unsupported:
+                return "\(provider.supportLevel.label) • \(provider.dataConfidence.label) — no usage data"
+            case .partial:
+                return "\(provider.dataConfidence.label) • no sessions yet"
+            case .supported:
+                return "No sessions in range"
+            }
+        }
+        return "\(usages.count) sessions in range • \(totalTokens) tokens processed"
+    }
 }
 
 // MARK: - Provider Card
@@ -279,7 +303,7 @@ struct ProviderDashboardView: View {
                             .font(DesignSystem.Typography.display)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                        Text("\(usages.count) sessions in range • \(totalTokens) tokens processed")
+                        Text(headerSubtitle)
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
 
@@ -429,6 +453,20 @@ struct ProviderDashboardView: View {
 
     private var totalTokens: String {
         formatTokens(usages.reduce(0) { $0 + $1.totalTokens })
+    }
+
+    /// Header subtitle. Unsupported providers (e.g. grokBot, a live-signal-only
+    /// provider with an honest no-op usage parser) never claim exact
+    /// "0 sessions / 0 tokens" counts — they render typed unavailability copy
+    /// from the canonical support/confidence labels (VAL-PROV-010, round-2
+    /// scrutiny). Partial providers with no rows in the window get an honest
+    /// "no sessions yet" note instead of a bare zero claim.
+    private var headerSubtitle: String {
+        ProviderDetailMetrics.headerSubtitle(
+            provider: provider,
+            usages: usages,
+            totalTokens: totalTokens
+        )
     }
 
     private var headerMetrics: [ProviderDetailMetric] {

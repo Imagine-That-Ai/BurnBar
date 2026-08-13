@@ -796,8 +796,10 @@ final class DataStore {
     /// explicit zero-data entries for every tracked provider. Zero-data
     /// providers (e.g. grokBot, whose parser is an honest no-op) stay reachable
     /// in the usage surface instead of vanishing from the sidebar (VAL-PROV-019).
-    /// Data-bearing providers are ranked by cost first; zero-data entries sort
-    /// below them, tie-broken by provider name for determinism.
+    /// Data-bearing providers rank above zero-data entries (partitioned by
+    /// `hasUsageData` before cost, so a data-bearing free provider with
+    /// `totalCost == 0` still outranks the injected zero-data rows); within each
+    /// partition, cost desc, then provider name for determinism.
     func providerSummariesIncludingZeroData(in dateRange: ClosedRange<Date>?) -> [ProviderSummary] {
         let withData = Self.makeProviderSummaries(from: usages(in: dateRange))
         var byProvider: [AgentProvider: ProviderSummary] = [:]
@@ -813,10 +815,12 @@ final class DataStore {
                 totalInputTokens: 0,
                 totalOutputTokens: 0,
                 sessionCount: 0,
-                modelBreakdown: []
+                modelBreakdown: [],
+                hasUsageData: false
             )
         }
         return (withData + zeroData).sorted {
+            if $0.hasUsageData != $1.hasUsageData { return $0.hasUsageData }
             if $0.totalCost != $1.totalCost { return $0.totalCost > $1.totalCost }
             return $0.provider.rawValue < $1.provider.rawValue
         }
