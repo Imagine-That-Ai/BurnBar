@@ -780,6 +780,72 @@ generic injection seam (all defaults preserve the real-root behavior):
 
 ---
 
+## App-side fleet polling contract (M3, implemented)
+
+The BurnBar app consumes fleet truth exclusively via `daemon.fleet.snapshot`
+over the daemon socket (the app never probes agent roots itself). The app-side
+`FleetService` (one per dashboard window) implements the following documented
+contract; validators and the M3 dashboard assertions depend on it.
+
+**Polling bounds (VAL-DASH-015/018).**
+- Exactly **one active poller** exists at any time. `start()` is idempotent
+  (a second start while active is a no-op), so close/reopen and
+  navigate-away/back cycles never accumulate timers.
+- At most **one request per cadence interval** after the documented initial
+  request. The initial request runs synchronously on `start()`; the poll loop
+  then waits a full cadence (`cadenceSeconds` from the last completed
+  snapshot, default 15s) between subsequent requests.
+- The poller is lifecycle-aware: `start()` begins polling, `stop()` ends it.
+  The documented hidden-window behavior is **paused**: when the Fleet view
+  disappears (navigate away, window close) the poller stops; when it reappears
+  the poller restarts and the reopened view receives its first refresh within
+  one cadence interval plus the documented small scheduling tolerance.
+
+**Typed load states (VAL-DASH-026/028).** `FleetLoadState` is one of:
+- `loading` — no completed response yet (explicit, accessible state);
+- `ready(snapshot)` — healthy snapshot with ≥1 running agent;
+- `empty(snapshot)` — healthy snapshot with zero running agents (all ten
+  declared rows present and non-running — never an empty `agents[]`);
+- `daemonDown(reason)` — the daemon socket is unreachable, the daemon's
+  protocol/method set mismatches this app (old daemon vs new app,
+  VAL-CROSS-007), or a typed RPC error was returned.
+
+The daemon's typed pre-first-tick error (`-32603` "not ready") keeps the app
+in `loading` (the daemon is alive but its first tick has not completed) —
+never a fabricated empty board. No state presents agent or machine data as
+current before a completed snapshot arrives.
+
+**Staleness threshold (VAL-DASH-006/009).** A snapshot is **stale** exactly
+when `now - generatedAt > 2 × cadenceSeconds` (strict `>`; at the boundary it
+is not stale). The threshold uses the snapshot's own `cadenceSeconds`, not a
+hardcoded default. The Fleet view renders a visible stale banner with the
+snapshot age when the threshold is exceeded; at or below the threshold it
+never claims staleness from age alone.
+
+**View-mode presence (VAL-DASH-016).** The `.fleet` route is present in
+`sidebarRouteOrder` in BOTH dashboard view modes (Agents and Models): the
+Fleet sidebar row renders and is selectable in either mode, and the Fleet
+detail renders identically regardless of the active mode. Switching modes
+while Fleet is selected follows the documented route policy: the mode switch
+resets the main route to Overview and clears the route history (the
+`onChange(of: viewMode)` handler), so a mode switch never leaves Fleet
+selected with a stale detail or corrupts the selection — the user re-selects
+Fleet in the new mode. Back navigation from Fleet returns to the previous
+route (or Overview when Fleet was opened directly).
+
+**Multi-window consistency (VAL-DASH-029).** The app's documented window
+model is **single-dashboard-window**: `WindowManager` keeps exactly one
+dashboard `NSWindow` and reuses it (close/reopen never creates a second
+window). That one window owns exactly one `FleetService` polling the daemon
+socket, so there is exactly one documented polling owner at any time; closing
+the window stops that poller and reopening restarts it (never duplicated).
+All windows (the one dashboard window plus any future scene) converge on the
+same `generatedAt`/counts because the daemon serves the same last-completed
+snapshot to every client; closing one window stops only that window's poller
+and never stops or duplicates another window's polling.
+
+---
+
 ## Probe etiquette (binding)
 
 - Read-only everything; `kill -0` / `proc_pidinfo` for liveness; no signals, no writes, no deletes outside your own temp dirs.

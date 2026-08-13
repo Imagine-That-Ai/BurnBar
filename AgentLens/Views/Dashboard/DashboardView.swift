@@ -9,6 +9,7 @@ private enum DashboardMainRoute: Hashable {
     case database
     case projects
     case sessionLogs
+    case fleet
     case provider(AgentProvider)
     case model(String)
 }
@@ -36,6 +37,12 @@ struct DashboardView: View {
     @State private var showSessionLogCloudConsent = false
     @State private var chatController: ChatSessionController
     @State private var quotaService = ProviderQuotaService.shared
+    /// The single fleet service for this dashboard window (M3). Exactly one
+    /// poller exists while the Fleet route is visible; the service is owned
+    /// here so close/reopen cycles never accumulate pollers (VAL-DASH-015/018).
+    @State private var fleetService = FleetService(
+        socketURL: BurnBarDaemonRuntimePaths.live().socketURL
+    )
 
     init(
         dataStore: DataStore,
@@ -95,6 +102,7 @@ struct DashboardView: View {
         case .database: return "Database"
         case .projects: return "Projects"
         case .sessionLogs: return "Session Logs"
+        case .fleet: return "Fleet"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -441,6 +449,13 @@ struct DashboardView: View {
                         }
                     }
                     .focusable()
+
+                    SidebarFleetRow(isSelected: mainRoute == .fleet) {
+                        withAnimation(DesignSystem.Animation.standard) {
+                            navigate(to: .fleet)
+                        }
+                    }
+                    .focusable()
                 }
 
                 GlassCard {
@@ -570,6 +585,7 @@ struct DashboardView: View {
         routes.append(.database)
         routes.append(.projects)
         routes.append(.sessionLogs)
+        routes.append(.fleet)
         return routes
     }
 
@@ -598,6 +614,8 @@ struct DashboardView: View {
                     cloudSyncService: cloudSyncService,
                     iCloudMirrorService: iCloudSessionMirrorService
                 )
+            case .fleet:
+                FleetView(service: fleetService)
             case .provider(let provider):
                 ProviderDashboardView(
                     provider: provider,
@@ -1471,6 +1489,56 @@ private struct SidebarSessionLogsRow: View {
             .overlay(
                 RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
                     .stroke(isSelected ? DesignSystem.Colors.ember.opacity(0.3) : DesignSystem.Colors.border.opacity(0.35), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Sidebar Fleet Row
+
+private struct SidebarFleetRow: View {
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: DesignSystem.Spacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? DesignSystem.Colors.success.opacity(0.18) : DesignSystem.Colors.surfaceElevated)
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isSelected ? DesignSystem.Colors.success : DesignSystem.Colors.textSecondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Fleet")
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
+
+                    Text("Live agents & machine state")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(isSelected ? DesignSystem.Colors.success.opacity(0.8) : DesignSystem.Colors.textMuted)
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .fill(isSelected ? DesignSystem.Colors.success.opacity(0.08) : DesignSystem.Colors.surfaceElevated.opacity(0.35))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.md)
+                    .stroke(isSelected ? DesignSystem.Colors.success.opacity(0.3) : DesignSystem.Colors.border.opacity(0.35), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

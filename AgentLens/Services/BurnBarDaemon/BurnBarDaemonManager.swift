@@ -584,21 +584,21 @@ enum BurnBarDaemonSocketClient {
         return result.usage
     }
 
-    private static func send<Response: Codable & Sendable>(
+    static func send<Response: Codable & Sendable>(
         _ request: BurnBarRPCRequestEnvelope,
         socketURL: URL
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
         try sendEncoded(request, socketURL: socketURL)
     }
 
-    private static func send<Params: Codable & Sendable, Response: Codable & Sendable>(
+    static func send<Params: Codable & Sendable, Response: Codable & Sendable>(
         _ request: BurnBarRPCRequestEnvelopeWithParams<Params>,
         socketURL: URL
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
         try sendEncoded(request, socketURL: socketURL)
     }
 
-    private static func sendEncoded<Request: Encodable, Response: Codable & Sendable>(
+    static func sendEncoded<Request: Encodable, Response: Codable & Sendable>(
         _ request: Request,
         socketURL: URL
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
