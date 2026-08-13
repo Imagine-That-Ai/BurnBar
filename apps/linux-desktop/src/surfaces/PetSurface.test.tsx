@@ -56,6 +56,49 @@ function resetShell(): void {
   });
 }
 
+function stubPetCatalogFetch(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes('catalog.json')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            schema: 'linux-pet-catalog/1',
+            source: 'test',
+            pets: [
+              {
+                id: 'kawaii-aurora-fox',
+                displayName: 'Aurora Fox',
+                group: 'Kawaii Animals',
+                description: '',
+                glb: 'kawaii-aurora-fox-actions.glb',
+                modelKind: 'rigged',
+                clipNames: ['idle']
+              },
+              {
+                id: 'ada-lovelace',
+                displayName: 'Ada Lovelace',
+                group: 'Legends',
+                description: '',
+                glb: 'ada-lovelace-actions.glb',
+                modelKind: 'rigged',
+                clipNames: ['idle']
+              }
+            ]
+          })
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => new ArrayBuffer(32)
+      });
+    })
+  );
+}
+
 describe('PetSurface', () => {
   beforeEach(() => {
     stubMatchMedia(false);
@@ -66,6 +109,7 @@ describe('PetSurface', () => {
     clickThroughMock.mockReset();
     closeCompanionMock.mockReset();
     openChatMock.mockReset();
+    stubPetCatalogFetch();
     mountMock.mockResolvedValue({
       asset: { version: '2.0' },
       nodes: [],
@@ -76,6 +120,7 @@ describe('PetSurface', () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -408,8 +453,9 @@ describe('PetSurface', () => {
     });
   });
 
-  it('stops the GLB runtime on unmount', () => {
+  it('stops the GLB runtime on unmount after the catalog is ready', async () => {
     const view = render(<PetSurface />);
+    await waitFor(() => expect(mountMock).toHaveBeenCalled());
     view.unmount();
     expect(stopMock).toHaveBeenCalledTimes(1);
   });
@@ -419,5 +465,44 @@ describe('PetSurface', () => {
     expect(await screen.findByText(/pet tier matrix/i)).toBeTruthy();
     expect(screen.getByText('GNOME Wayland')).toBeTruthy();
     expect(screen.getByText('KDE Wayland')).toBeTruthy();
+  });
+
+  it('loads the macOS-shaped catalog and switches the selected Linux model', async () => {
+    render(<PetSurface />);
+    fireEvent.click(await screen.findByRole('button', { name: /choose pet/i }));
+    expect(await screen.findByRole('region', { name: /pet library/i })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /ada lovelace/i }));
+    const stage = screen.getByRole('img', { name: /ada lovelace/i });
+    expect(stage.getAttribute('data-pet-id')).toBe('ada-lovelace');
+    expect(localStorage.getItem('openburnbar.linux.pet.selection.v1')).toBe('ada-lovelace');
+  });
+
+  it('reports the selected model in the glTF diagnostic instead of the hard-coded default', async () => {
+    render(<PetSurface />);
+    expect(await screen.findByText('glTF: /pets/kawaii-aurora-fox-actions.glb')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /choose pet/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /ada lovelace/i }));
+    expect(await screen.findByText('glTF: /pets/ada-lovelace-actions.glb')).toBeTruthy();
+    expect(screen.queryByText('glTF: /pets/kawaii-aurora-fox-actions.glb')).toBeNull();
+  });
+
+  it('follows avatar selections persisted by another pet surface via storage events', async () => {
+    render(<PetSurface companionMode />);
+    const stage = await screen.findByRole('img', { name: /aurora fox/i });
+    expect(stage.getAttribute('data-pet-id')).toBe('kawaii-aurora-fox');
+
+    localStorage.setItem('openburnbar.linux.pet.selection.v1', 'ada-lovelace');
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'openburnbar.linux.pet.selection.v1',
+          newValue: 'ada-lovelace'
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('img', { name: /ada lovelace/i }).getAttribute('data-pet-id')).toBe('ada-lovelace');
+    });
   });
 });
