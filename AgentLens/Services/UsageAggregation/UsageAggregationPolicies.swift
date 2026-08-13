@@ -92,20 +92,26 @@ enum UsageIngestionPolicy {
     }
 
     /// Live ticks must not apply a parser invalidation unless this persist
-    /// set also carries a replacement (exact id or `id#…` day bucket).
-    /// Otherwise Codex can delete a lifetime row whose historical day
-    /// replacements were filtered out of the live window.
+    /// set carries the *complete* replacement for the deleted id.
+    ///
+    /// `deleteUsage(provider:sessionIDs:)` removes the lifetime row **and**
+    /// every `id#day-…` bucket derived from it, so a partial replacement is
+    /// destructive rather than merely stale: the live window filters a Codex
+    /// session's historical day buckets out of the publish set, and deleting
+    /// on the strength of the surviving recent buckets drops the session's
+    /// historical usage for good.
+    ///
+    /// Only an exact-id republish proves completeness on this lane. The live
+    /// filter runs per usage, so a surviving bucket says nothing about the
+    /// buckets it was published alongside — the set is complete only by
+    /// accident, and never provably. Bucketed invalidations therefore defer
+    /// to the catch-up lane, which publishes the whole parse; parsers keep
+    /// re-reporting the invalidation from cache, so waiting loses nothing.
     static func deletesSafeForLivePublish(
         _ deleteIDs: Set<String>,
         publishedSessionIDs: [String]
     ) -> Set<String> {
-        guard !deleteIDs.isEmpty else { return [] }
-        let published = Set(publishedSessionIDs)
-        return Set(deleteIDs.filter { id in
-            if published.contains(id) { return true }
-            let prefix = id + "#"
-            return publishedSessionIDs.contains { $0.hasPrefix(prefix) }
-        })
+        deleteIDs.intersection(publishedSessionIDs)
     }
 }
 
