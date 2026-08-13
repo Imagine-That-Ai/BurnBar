@@ -10,6 +10,7 @@ interface CanvasHarness {
   root: HTMLElement;
   fire: HTMLCanvasElement;
   knob: HTMLCanvasElement;
+  fallback: HTMLImageElement;
 }
 
 function installCanvasHarness(open: boolean): CanvasHarness {
@@ -18,6 +19,7 @@ function installCanvasHarness(open: boolean): CanvasHarness {
     <section id="mode-popover" ${open ? '' : 'hidden'}>
       <div class="mode-track">
         <canvas class="mode-fire"></canvas>
+        <img class="mode-knob-fallback" src="icons/app-logo.svg" alt="" aria-hidden="true">
         <canvas class="mode-knob"></canvas>
       </div>
     </section>
@@ -25,7 +27,8 @@ function installCanvasHarness(open: boolean): CanvasHarness {
   document.body.append(root);
   const fire = root.querySelector<HTMLCanvasElement>('.mode-fire');
   const knob = root.querySelector<HTMLCanvasElement>('.mode-knob');
-  if (!fire || !knob) {
+  const fallback = root.querySelector<HTMLImageElement>('.mode-knob-fallback');
+  if (!fire || !knob || !fallback) {
     throw new Error('Mode visual canvases were not created.');
   }
   vi.spyOn(fire, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 204, 26));
@@ -45,7 +48,7 @@ function installCanvasHarness(open: boolean): CanvasHarness {
     putImageData: vi.fn()
   };
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
-  return { context, root, fire, knob };
+  return { context, root, fire, knob, fallback };
 }
 
 describe('mode visuals', () => {
@@ -113,5 +116,52 @@ describe('mode visuals', () => {
     expect(harness.context.putImageData).toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
+  });
+
+  it('pauses live timers while hidden and resumes pending visual loops when visible again', async () => {
+    vi.useFakeTimers();
+    let visibilityState: DocumentVisibilityState = 'visible';
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibilityState
+    });
+    const harness = installCanvasHarness(true);
+    const { initializeModeVisuals } = await import('../src/popup/modeVisuals');
+    initializeModeVisuals(harness.root);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    visibilityState = 'hidden';
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(vi.getTimerCount()).toBe(0);
+
+    visibilityState = 'visible';
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    vi.useRealTimers();
+  });
+
+  it('keeps the image fallback visible when the knob canvas context is unavailable', async () => {
+    const harness = installCanvasHarness(true);
+    vi.spyOn(harness.knob, 'getContext').mockReturnValue(null);
+    const { initializeModeVisuals } = await import('../src/popup/modeVisuals');
+    initializeModeVisuals(harness.root);
+    expect(harness.knob.dataset.rendered).toBeUndefined();
+    expect(harness.fallback.hidden).toBe(false);
+  });
+
+  it('reveals the liquid-metal canvas only after its first successful paint', async () => {
+    class FakeImage {
+      onload: (() => void) | null = null;
+
+      set src(_value: string) {
+        this.onload?.();
+      }
+    }
+    vi.stubGlobal('Image', FakeImage);
+    const harness = installCanvasHarness(true);
+    const { initializeModeVisuals } = await import('../src/popup/modeVisuals');
+    initializeModeVisuals(harness.root);
+    expect(harness.knob.dataset.rendered).toBe('true');
+    expect(harness.fallback.hidden).toBe(true);
   });
 });

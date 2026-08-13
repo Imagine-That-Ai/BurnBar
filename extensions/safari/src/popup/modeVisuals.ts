@@ -221,73 +221,82 @@ function animateLiquidMetalKnob(canvas: HTMLCanvasElement, schedule: (callback: 
     if (!canvas.isConnected) {
       return;
     }
-    const maskCanvas = document.createElement('canvas');
-    maskCanvas.width = size;
-    maskCanvas.height = size;
-    const maskContext = maskCanvas.getContext('2d');
-    if (!maskContext) {
-      return;
-    }
-    const padding = size * 0.11;
-    maskContext.drawImage(logo, padding, padding, size - padding * 2, size - padding * 2);
-    const source = maskContext.getImageData(0, 0, size, size).data;
-    const alpha = new Float32Array(size * size);
-    for (let pixel = 0; pixel < size * size; pixel += 1) {
-      alpha[pixel] = (source[pixel * 4 + 3] ?? 0) / 255;
-    }
-    const blurred = blurLogoMask(alpha, size);
-    const edge = new Float32Array(size * size);
-    for (let pixel = 0; pixel < size * size; pixel += 1) {
-      edge[pixel] = clamp(1 - (blurred[pixel] ?? 0));
-    }
-    const image = context.createImageData(size, size);
-    const directionX = Math.cos(LIQUID_METAL.angle);
-    const directionY = Math.sin(LIQUID_METAL.angle);
-    const contour = smoothstep(0.1, 1, LIQUID_METAL.contour);
-    const blur = 0.02 + 0.45 * LIQUID_METAL.softness;
-    const scale = 0.55 * LIQUID_METAL.scale;
-
-    const paint = (time: number): void => {
-      for (let y = 0; y < size; y += 1) {
-        for (let x = 0; x < size; x += 1) {
-          const pixel = y * size + x;
-          const output = pixel * 4;
-          const coverage = alpha[pixel] ?? 0;
-          if (coverage <= 0.004) {
-            image.data[output + 3] = 0;
-            continue;
-          }
-          const fieldX = (x / size - 0.5) / scale;
-          const fieldY = (y / size - 0.5) / scale;
-          const edgeAmount = edge[pixel] ?? 0;
-          const noise = valueNoise(fieldX * 1.3, fieldY * 1.3 + time * 0.2);
-          const distortedEdge = clamp(edgeAmount + (1 - edgeAmount) * LIQUID_METAL.distortion * (0.5 + 0.5 * noise));
-          let phase = directionX * fieldX + directionY * fieldY;
-          phase *= 1 - distortedEdge * contour;
-          phase -= 1.7 * distortedEdge * contour;
-          phase *= 0.9 * LIQUID_METAL.repetition;
-          phase -= 0.1 * time;
-          const dispersion = 0.25 + 0.75 * distortedEdge;
-          const red = liquidMetalProfile(fract(phase + LIQUID_METAL.shiftRed * 0.05 * dispersion), blur);
-          const green = liquidMetalProfile(fract(phase), blur);
-          const blue = liquidMetalProfile(fract(phase - LIQUID_METAL.shiftBlue * 0.05 * dispersion), blur);
-          const under = liquidMetalProfile(fract(phase * 0.47 - 0.06 * time + 0.31), blur + 0.18);
-          const multiplier = 0.88 + 0.24 * under;
-          image.data[output] = 255 * clamp(red * multiplier);
-          image.data[output + 1] = 255 * clamp(green * multiplier);
-          image.data[output + 2] = 255 * clamp(blue * multiplier);
-          image.data[output + 3] = 255 * coverage;
-        }
+    try {
+      const maskCanvas = document.createElement('canvas');
+      maskCanvas.width = size;
+      maskCanvas.height = size;
+      const maskContext = maskCanvas.getContext('2d');
+      if (!maskContext) {
+        return;
       }
-      context.putImageData(image, 0, 0);
-    };
+      const padding = size * 0.11;
+      maskContext.drawImage(logo, padding, padding, size - padding * 2, size - padding * 2);
+      const source = maskContext.getImageData(0, 0, size, size).data;
+      const alpha = new Float32Array(size * size);
+      for (let pixel = 0; pixel < size * size; pixel += 1) {
+        alpha[pixel] = (source[pixel * 4 + 3] ?? 0) / 255;
+      }
+      const blurred = blurLogoMask(alpha, size);
+      const edge = new Float32Array(size * size);
+      for (let pixel = 0; pixel < size * size; pixel += 1) {
+        edge[pixel] = clamp(1 - (blurred[pixel] ?? 0));
+      }
+      const image = context.createImageData(size, size);
+      const directionX = Math.cos(LIQUID_METAL.angle);
+      const directionY = Math.sin(LIQUID_METAL.angle);
+      const contour = smoothstep(0.1, 1, LIQUID_METAL.contour);
+      const blur = 0.02 + 0.45 * LIQUID_METAL.softness;
+      const scale = 0.55 * LIQUID_METAL.scale;
 
-    const startedAt = performance.now();
-    const animate = (): void => {
-      paint((performance.now() - startedAt) / 1_000);
-      schedule(animate);
-    };
-    animate();
+      const paint = (time: number): void => {
+        for (let y = 0; y < size; y += 1) {
+          for (let x = 0; x < size; x += 1) {
+            const pixel = y * size + x;
+            const output = pixel * 4;
+            const coverage = alpha[pixel] ?? 0;
+            if (coverage <= 0.004) {
+              image.data[output + 3] = 0;
+              continue;
+            }
+            const fieldX = (x / size - 0.5) / scale;
+            const fieldY = (y / size - 0.5) / scale;
+            const edgeAmount = edge[pixel] ?? 0;
+            const noise = valueNoise(fieldX * 1.3, fieldY * 1.3 + time * 0.2);
+            const distortedEdge = clamp(edgeAmount + (1 - edgeAmount) * LIQUID_METAL.distortion * (0.5 + 0.5 * noise));
+            let phase = directionX * fieldX + directionY * fieldY;
+            phase *= 1 - distortedEdge * contour;
+            phase -= 1.7 * distortedEdge * contour;
+            phase *= 0.9 * LIQUID_METAL.repetition;
+            phase -= 0.1 * time;
+            const dispersion = 0.25 + 0.75 * distortedEdge;
+            const red = liquidMetalProfile(fract(phase + LIQUID_METAL.shiftRed * 0.05 * dispersion), blur);
+            const green = liquidMetalProfile(fract(phase), blur);
+            const blue = liquidMetalProfile(fract(phase - LIQUID_METAL.shiftBlue * 0.05 * dispersion), blur);
+            const under = liquidMetalProfile(fract(phase * 0.47 - 0.06 * time + 0.31), blur + 0.18);
+            const multiplier = 0.88 + 0.24 * under;
+            image.data[output] = 255 * clamp(red * multiplier);
+            image.data[output + 1] = 255 * clamp(green * multiplier);
+            image.data[output + 2] = 255 * clamp(blue * multiplier);
+            image.data[output + 3] = 255 * coverage;
+          }
+        }
+        context.putImageData(image, 0, 0);
+        canvas.dataset.rendered = 'true';
+        const fallback = canvas.parentElement?.querySelector<HTMLImageElement>('.mode-knob-fallback');
+        if (fallback) {
+          fallback.hidden = true;
+        }
+      };
+
+      const startedAt = performance.now();
+      const animate = (): void => {
+        paint((performance.now() - startedAt) / 1_000);
+        schedule(animate);
+      };
+      animate();
+    } catch {
+      // Preserve the image fallback if canvas pixel access is unavailable.
+    }
   };
   logo.src = 'icons/app-logo.svg';
 }
@@ -304,40 +313,67 @@ export function initializeModeVisuals(root: HTMLElement): void {
   }
   const fire = root.querySelector<HTMLCanvasElement>('.mode-fire');
   const knob = root.querySelector<HTMLCanvasElement>('.mode-knob');
-  const timers = new Set<number>();
+  const timers = new Map<() => void, number>();
+  const pending = new Set<() => void>();
   let disposed = false;
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-  const schedule = (callback: () => void): void => {
-    if (disposed || reduceMotion || document.visibilityState === 'hidden') {
+  const canAnimate = (): boolean =>
+    !disposed && popover.isConnected && !popover.hidden && document.visibilityState === 'visible';
+  const arm = (callback: () => void): void => {
+    if (!canAnimate() || timers.has(callback)) {
       return;
     }
     const timer = window.setTimeout(() => {
-      timers.delete(timer);
-      if (!disposed && popover.isConnected && !popover.hidden && document.visibilityState !== 'hidden') {
+      timers.delete(callback);
+      pending.delete(callback);
+      if (canAnimate()) {
         callback();
       }
     }, 55);
-    timers.add(timer);
+    timers.set(callback, timer);
+  };
+  const schedule = (callback: () => void): void => {
+    if (disposed || reduceMotion) {
+      return;
+    }
+    pending.add(callback);
+    arm(callback);
   };
   const dispose = (): void => {
     disposed = true;
-    for (const timer of timers) {
+    for (const timer of timers.values()) {
       window.clearTimeout(timer);
     }
     timers.clear();
+    pending.clear();
     document.removeEventListener('visibilitychange', handleVisibility);
   };
   const handleVisibility = (): void => {
-    if (document.visibilityState === 'hidden') {
-      dispose();
+    if (document.visibilityState !== 'visible') {
+      for (const timer of timers.values()) {
+        window.clearTimeout(timer);
+      }
+      timers.clear();
+      return;
+    }
+    for (const callback of pending) {
+      arm(callback);
     }
   };
   document.addEventListener('visibilitychange', handleVisibility);
   disposeActiveVisuals = dispose;
   if (fire) {
-    animateFire(fire, schedule);
+    try {
+      animateFire(fire, schedule);
+    } catch {
+      // The CSS gradient remains visible if Safari cannot allocate the fire canvas.
+    }
   }
   if (knob) {
-    animateLiquidMetalKnob(knob, schedule);
+    try {
+      animateLiquidMetalKnob(knob, schedule);
+    } catch {
+      // The logo image remains visible if Safari cannot initialize the liquid-metal canvas.
+    }
   }
 }

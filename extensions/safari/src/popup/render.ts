@@ -259,13 +259,17 @@ function renderModes(viewModel: PopupViewModel, open: boolean): HTMLElement {
     0,
     viewModel.modes.findIndex((mode) => mode.id === viewModel.selectedMode)
   );
+  const knobFraction = viewModel.modes.length > 1 ? selectedIndex / (viewModel.modes.length - 1) : 0;
+  track.style.setProperty('--mode-fraction', String(knobFraction));
   const fire = element('canvas', 'mode-fire');
   fire.setAttribute('aria-hidden', 'true');
+  const knobFallback = element('img', 'mode-knob-fallback');
+  knobFallback.src = 'icons/app-logo.svg';
+  knobFallback.alt = '';
+  knobFallback.setAttribute('aria-hidden', 'true');
   const knob = element('canvas', 'mode-knob');
   knob.setAttribute('aria-hidden', 'true');
-  const knobFraction = viewModel.modes.length > 1 ? selectedIndex / (viewModel.modes.length - 1) : 0;
-  knob.style.setProperty('--mode-fraction', String(knobFraction));
-  track.append(fire, knob);
+  track.append(fire, knobFallback, knob);
   for (let index = 0; index < viewModel.modes.length; index += 1) {
     const tick = element('span', 'mode-tick');
     tick.setAttribute('aria-hidden', 'true');

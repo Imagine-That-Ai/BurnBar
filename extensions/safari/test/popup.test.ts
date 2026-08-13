@@ -416,7 +416,9 @@ describe('popup rendering', () => {
     expect(root.querySelector('.mode-fire')?.tagName).toBe('CANVAS');
     expect(root.querySelector('.mode-knob')?.tagName).toBe('CANVAS');
     expect(root.querySelector('.mode-knob')?.getAttribute('aria-hidden')).toBe('true');
-    expect(root.querySelector<HTMLElement>('.mode-knob')?.style.getPropertyValue('--mode-fraction')).toBe('0');
+    expect(root.querySelector<HTMLElement>('.mode-track')?.style.getPropertyValue('--mode-fraction')).toBe('0');
+    expect(root.querySelector<HTMLImageElement>('.mode-knob-fallback')?.src).toContain('icons/app-logo.svg');
+    expect(root.querySelector('.mode-knob-fallback')?.getAttribute('aria-hidden')).toBe('true');
     expect(root.querySelectorAll('.mode-tick[aria-hidden="true"]')).toHaveLength(4);
     expect(root.querySelectorAll('.mode-button')).toHaveLength(4);
     expect(root.querySelectorAll('.mode-button[aria-pressed="true"]')).toHaveLength(1);

@@ -426,7 +426,7 @@ describe('WebExtension runtime entrypoints', () => {
     expect(modeRange.getAttribute('aria-valuetext')).toBe('Watch');
     expect(root.querySelector('.mode-popover-value')?.textContent).toBe('Watch');
     expect(root.querySelector('.mode-description')?.textContent).toContain('approve from Safari');
-    expect(root.querySelector<HTMLElement>('.mode-knob')?.style.getPropertyValue('--mode-fraction')).toBe(
+    expect(root.querySelector<HTMLElement>('.mode-track')?.style.getPropertyValue('--mode-fraction')).toBe(
       String(2 / 3)
     );
     expect(requests.filter((request) => request.type === 'popup.setMode')).toHaveLength(setModeCountBeforeInput);

@@ -312,13 +312,13 @@ appRoot.addEventListener('input', (event) => {
       const description = option?.dataset.modeDescription;
       const value = appRoot.querySelector<HTMLElement>('.mode-popover-value');
       const descriptionNode = appRoot.querySelector<HTMLElement>('.mode-description');
-      const knob = appRoot.querySelector<HTMLElement>('.mode-knob');
-      if (option && label && description && value && descriptionNode && knob) {
+      const track = appRoot.querySelector<HTMLElement>('.mode-track');
+      if (option && label && description && value && descriptionNode && track) {
         value.textContent = label;
         descriptionNode.textContent = description;
         input.setAttribute('aria-valuetext', label);
         const knobFraction = options.length > 1 ? index / (options.length - 1) : 0;
-        knob.style.setProperty('--mode-fraction', String(knobFraction));
+        track.style.setProperty('--mode-fraction', String(knobFraction));
       }
       break;
     }
