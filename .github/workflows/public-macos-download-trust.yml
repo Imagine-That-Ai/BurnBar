@@ -51,6 +51,9 @@ jobs:
           changed=false
           gate_changed=false
           changed_paths="$(mktemp)"
+          trust_gate_changed() {
+            grep -Eq '^(OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension\.entitlements|\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/verify-public-macos-download-trust-workflow\.test\.py|scripts/ci/verify-openburnbar-development-signing(\.test)?\.sh|scripts/ci/(sign|verify)-openburnbar-safari-extension(\.test)?\.sh|scripts/ci/verify-openburnbar-safari-extension-layout\.py|scripts/ci/verify-signing-profile-certificate\.sh|scripts/ci/verify-signing-profile-certificate\.py|scripts/ci/verify-signing-profile-certificate\.test\.py|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh|scripts/lib/parse-macos-provisioning-udid(\.test)?\.py|scripts/test-openburnbar-safari-extension\.sh|tools/safari-certification-fixtures/.*)$' "$changed_paths"
+          }
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             changed=true
             gate_changed=true
@@ -59,7 +62,7 @@ jobs:
             if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
               changed=true
             fi
-            if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/(sign|verify)-openburnbar-safari-extension(\.test)?\.sh|scripts/ci/verify-openburnbar-safari-extension-layout\.py|scripts/ci/verify-signing-profile-certificate\.sh|scripts/ci/verify-signing-profile-certificate\.py|scripts/ci/verify-signing-profile-certificate\.test\.py|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
+            if trust_gate_changed; then
               gate_changed=true
             fi
           elif [[ "$EVENT_NAME" == "push" ]]; then
@@ -71,7 +74,7 @@ jobs:
               if grep -qx 'website/src/data/site.ts' "$changed_paths"; then
                 changed=true
               fi
-              if grep -Eq '^(\.github/workflows/public-macos-download-trust\.yml|scripts/ci/verify-public-macos-download-trust\.sh|scripts/ci/verify-public-macos-download-trust\.test\.sh|scripts/ci/(sign|verify)-openburnbar-safari-extension(\.test)?\.sh|scripts/ci/verify-openburnbar-safari-extension-layout\.py|scripts/ci/verify-signing-profile-certificate\.sh|scripts/ci/verify-signing-profile-certificate\.py|scripts/ci/verify-signing-profile-certificate\.test\.py|scripts/ci/verify-apple-release-firebase-config\.sh|scripts/ci/verify-apple-release-firebase-config\.test\.sh|scripts/ci/verify-apple-appcheck-release-artifact\.sh)$' "$changed_paths"; then
+              if trust_gate_changed; then
                 gate_changed=true
               fi
             fi
@@ -90,6 +93,10 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
 
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 (node24-native)
+        with:
+          node-version: "22"
+
       - name: Install SITE parser dependency
         run: npm ci --prefix website --ignore-scripts
 
@@ -107,12 +114,36 @@ jobs:
           bash -n scripts/ci/verify-openburnbar-safari-extension.sh
           bash -n scripts/ci/verify-openburnbar-safari-extension.test.sh
           bash -n scripts/ci/verify-signing-profile-certificate.sh
-          python3 -m py_compile scripts/ci/verify-openburnbar-safari-extension-layout.py
+          python3 -m py_compile \
+            scripts/ci/verify-openburnbar-safari-extension-layout.py \
+            scripts/lib/parse-macos-provisioning-udid.py \
+            scripts/lib/parse-macos-provisioning-udid.test.py \
+            scripts/ci/verify-public-macos-download-trust-workflow.test.py
           bash scripts/ci/verify-apple-release-firebase-config.test.sh
           bash scripts/ci/verify-public-macos-download-trust.test.sh
-          bash scripts/ci/verify-openburnbar-development-signing.test.sh
           bash scripts/ci/verify-openburnbar-safari-extension.test.sh
           python3 scripts/ci/verify-signing-profile-certificate.test.py
+          python3 scripts/lib/parse-macos-provisioning-udid.test.py
+          python3 scripts/ci/verify-public-macos-download-trust-workflow.test.py
+          node tools/safari-certification-fixtures/verify.mjs
+          node --test tools/safari-certification-fixtures/*.test.mjs
+
+  verify-public-macos-development-signing-code:
+    needs: detect-public-macos-download-change
+    if: ${{ needs.detect-public-macos-download-change.outputs.gate_changed == 'true' }}
+    runs-on: macos-26
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
+
+      - name: Verify hardware-bound Apple Development signing gates
+        run: |
+          set -euo pipefail
+          bash scripts/ci/verify-openburnbar-development-signing.test.sh
+          bash scripts/ci/verify-openburnbar-safari-extension.test.sh
+          /usr/sbin/system_profiler SPHardwareDataType -json 2>/dev/null \
+            | python3 scripts/lib/parse-macos-provisioning-udid.py \
+            | python3 -c 'import re, sys; value = sys.stdin.read().strip(); raise SystemExit(0 if re.fullmatch(r"[A-Za-z0-9-]{8,128}", value) else 1)'
 
   verify-public-macos-download-trust:
     needs: detect-public-macos-download-change

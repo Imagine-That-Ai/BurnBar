@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zoom and offset fixture</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/zoom-offset.js"></script>
+  </head>
+  <body data-fixture="zoom-offset">
+    <main class="wide-canvas">
+      <p class="eyebrow">Fixture 07 · zoom + x/y offsets</p>
+      <h1>Coordinates after the world moves.</h1>
+      <p class="lede">
+        The page applies 125% body zoom, then scrolls to x=480 and y=720 after load.
+      </p>
+      <section id="zoom-offset-target" class="offset-target" tabindex="-1">
+        <h2>Offset target Aurora</h2>
+        <p>Stable target coordinate region: left 1480 CSS px, top 1280 CSS px.</p>
+        <button id="zoom-offset-button" type="button">Verify fresh target box</button>
+        <p id="zoom-offset-status" class="status" role="status">Target has not been activated.</p>
+      </section>
+    </main>
+  </body>
+</html>

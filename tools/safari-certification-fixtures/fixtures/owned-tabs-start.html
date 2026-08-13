@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Run-owned tab start</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/owned-tabs.js"></script>
+  </head>
+  <body data-fixture="run-owned-tab-start">
+    <main class="shell">
+      <p class="eyebrow">Fixture 10 · run-owned tab</p>
+      <h1>A tab with an explicit provenance.</h1>
+      <div class="owned-flow panel">
+        <div class="step">
+          <span class="step-number">1</span>
+          <div>
+            <h2>Start in the user-handed tab</h2>
+            <p id="owned-start-marker">owned-tab-start-marker-cobalt</p>
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-number">2</span>
+          <div>
+            <h2>Open the controlled child</h2>
+            <p>Use the agent's audited <code>open_tab</code> action with this exact local destination.</p>
+            <a class="button" id="owned-child-link" href="/owned-tabs/child">Open child manually for comparison</a>
+          </div>
+        </div>
+        <p id="owned-tab-status" class="status" role="status">Start page ready.</p>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Infinite-scroll fixture</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/infinite-scroll.js"></script>
+  </head>
+  <body data-fixture="infinite-scroll">
+    <main class="shell">
+      <p class="eyebrow">Fixture 06 · deterministic infinite scroll</p>
+      <h1>The list keeps its promises.</h1>
+      <p class="lede">
+        Each batch contains exactly 20 stable records. Observer and explicit-button paths call the
+        same idempotent loader.
+      </p>
+      <p id="infinite-status" class="status" role="status">Loading the first 20 records.</p>
+      <p class="visually-hidden">The terminal generated record has ID harbor-record-100.</p>
+      <ol id="infinite-list" class="infinite-list" aria-label="Harbor log records"></ol>
+      <div id="infinite-sentinel" class="scroll-sentinel" aria-hidden="true"></div>
+      <button id="infinite-more" type="button">Load the next 20 records</button>
+    </main>
+  </body>
+</html>
