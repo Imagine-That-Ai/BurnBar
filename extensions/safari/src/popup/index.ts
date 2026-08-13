@@ -237,8 +237,23 @@ appRoot.addEventListener('click', (event) => {
     return;
   }
   if (action === 'toggle-mode-popover') {
+    appRoot.dataset.modelPickerOpen = 'false';
     appRoot.dataset.modePopoverOpen = appRoot.dataset.modePopoverOpen === 'true' ? 'false' : 'true';
     renderPopup(appRoot, buildPopupViewModel(state));
+    return;
+  }
+  if (action === 'toggle-model-picker') {
+    appRoot.dataset.modePopoverOpen = 'false';
+    appRoot.dataset.modelPickerOpen = appRoot.dataset.modelPickerOpen === 'true' ? 'false' : 'true';
+    renderPopup(appRoot, buildPopupViewModel(state));
+    return;
+  }
+  if (action === 'select-agent') {
+    const agentId = target.dataset.agentId;
+    if (agentId) {
+      appRoot.dataset.modelPickerOpen = 'false';
+      void send({ type: 'popup.selectAgent', agentId });
+    }
     return;
   }
   if (action === 'toggle-tools') {
@@ -330,10 +345,6 @@ appRoot.addEventListener('input', (event) => {
 
 appRoot.addEventListener('change', (event) => {
   const input = event.target;
-  if (input instanceof HTMLSelectElement && input.dataset.input === 'agent') {
-    void send({ type: 'popup.selectAgent', agentId: input.value });
-    return;
-  }
   if (!(input instanceof HTMLInputElement)) {
     return;
   }
@@ -419,6 +430,35 @@ appRoot.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && event.metaKey && event.target instanceof HTMLTextAreaElement) {
     event.preventDefault();
     event.target.form?.requestSubmit();
+    return;
+  }
+  const modelTrigger =
+    event.target instanceof Element ? event.target.closest<HTMLElement>('.model-picker-trigger') : null;
+  const modelOption =
+    event.target instanceof Element ? event.target.closest<HTMLButtonElement>('.model-picker-option') : null;
+  if (modelTrigger && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+    event.preventDefault();
+    appRoot.dataset.modelPickerOpen = 'true';
+    renderPopup(appRoot, buildPopupViewModel(state));
+    const options = [...appRoot.querySelectorAll<HTMLButtonElement>('.model-picker-option')];
+    const selected = options.findIndex((option) => option.getAttribute('aria-selected') === 'true');
+    const index = event.key === 'ArrowUp' ? Math.max(0, selected - 1) : Math.min(options.length - 1, selected + 1);
+    options[index]?.focus();
+    return;
+  }
+  if (modelOption && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+    event.preventDefault();
+    const options = [...appRoot.querySelectorAll<HTMLButtonElement>('.model-picker-option')];
+    const index = options.indexOf(modelOption);
+    const nextIndex = event.key === 'ArrowDown' ? Math.min(options.length - 1, index + 1) : Math.max(0, index - 1);
+    options[nextIndex]?.focus();
+    return;
+  }
+  if (event.key === 'Escape' && appRoot.dataset.modelPickerOpen === 'true') {
+    event.preventDefault();
+    appRoot.dataset.modelPickerOpen = 'false';
+    renderPopup(appRoot, buildPopupViewModel(state));
+    appRoot.querySelector<HTMLButtonElement>('.model-picker-trigger')?.focus();
   }
 });
 

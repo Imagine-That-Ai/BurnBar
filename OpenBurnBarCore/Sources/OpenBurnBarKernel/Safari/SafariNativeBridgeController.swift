@@ -987,10 +987,10 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
     private func updateTrust(
         _ update: BurnBarSafariTrustUpdateRequest
     ) throws -> BurnBarJSONValue {
-        guard update.origin == "*" || Self.validHTTPSOrigin(update.origin) else {
+        guard update.origin == "*" || Self.validSafariTrustOrigin(update.origin) else {
             throw BurnBarSafariBridgeFailure(
                 code: "invalid_trust_origin",
-                message: "Safari trust updates require an exact HTTPS origin."
+                message: "Safari trust updates require an exact HTTPS origin or an exact HTTP loopback origin."
             )
         }
         guard ["manual", "step", "trusted"].contains(update.trustMode) else {
@@ -1369,10 +1369,11 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
         return true
     }
 
-    private static func validHTTPSOrigin(_ raw: String) -> Bool {
+    private static func validSafariTrustOrigin(_ raw: String) -> Bool {
         guard let components = URLComponents(string: raw),
-              components.scheme?.lowercased() == "https",
-              components.host?.isEmpty == false,
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host?.lowercased(),
+              !host.isEmpty,
               components.user == nil,
               components.password == nil,
               components.path.isEmpty,
@@ -1380,7 +1381,10 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
               components.fragment == nil else {
             return false
         }
-        return true
+        if scheme == "https" {
+            return true
+        }
+        return scheme == "http" && ["127.0.0.1", "localhost", "::1"].contains(host)
     }
 
     private func sessionMismatch() -> BurnBarSafariBridgeFailure {

@@ -509,10 +509,20 @@ describe('WebExtension runtime entrypoints', () => {
 
     requireElement(root.querySelector<HTMLButtonElement>('[data-action="mode:handoff"]'), 'Handoff mode').click();
     await flushTasks();
-    const agentSelect = requireElement(root.querySelector<HTMLSelectElement>('[data-input="agent"]'), 'agent select');
-    agentSelect.value = 'codex';
-    agentSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="toggle-model-picker"]'),
+      'model picker'
+    ).click();
+    expect(root.querySelector<HTMLElement>('#model-picker-options')?.hidden).toBe(false);
+    const codexOption = requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="select-agent"][data-agent-id="codex"]'),
+      'Codex option'
+    );
+    expect(codexOption.getAttribute('role')).toBe('option');
+    expect(codexOption.getAttribute('aria-label')).toContain('local');
+    codexOption.click();
     await flushTasks();
+    expect(requests).toContainEqual({ type: 'popup.selectAgent', agentId: 'codex' });
     const handoffDraft = requireElement(
       root.querySelector<HTMLTextAreaElement>('[data-input="draft"]'),
       'Handoff draft'

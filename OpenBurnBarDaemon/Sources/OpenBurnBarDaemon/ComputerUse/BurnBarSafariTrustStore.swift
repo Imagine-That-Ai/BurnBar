@@ -6,7 +6,8 @@ import OpenBurnBarKernel
 ///
 /// The popup may propose future-session policy changes, but it never supplies
 /// live scope rules to the Computer Use coordinator. This actor normalizes one
-/// exact HTTPS origin, bounds its lifetime/action budget, persists it with
+/// exact HTTPS origin (or exact HTTP loopback origin), bounds its
+/// lifetime/action budget, persists it with
 /// owner-only permissions, and materializes immutable rules only when a new
 /// Computer Use session is admitted.
 public actor BurnBarSafariTrustStore {
@@ -44,7 +45,7 @@ public actor BurnBarSafariTrustStore {
         public var errorDescription: String? {
             switch self {
             case .invalidOrigin:
-                return "Safari trust policy requires one exact HTTPS origin."
+                return "Safari trust policy requires one exact HTTPS origin or exact HTTP loopback origin."
             case .invalidTrustMode:
                 return "Safari trust mode is invalid."
             case .invalidActionBudget:
@@ -122,7 +123,7 @@ public actor BurnBarSafariTrustStore {
         var responseOrigin = request.origin
         var responseRuleID: String?
         if request.origin != "*" {
-            let origin = try Self.normalizedHTTPSOrigin(request.origin)
+            let origin = try Self.normalizedTrustOrigin(request.origin)
             responseOrigin = origin
             switch request.decision {
             case .remove:
@@ -189,7 +190,7 @@ public actor BurnBarSafariTrustStore {
         guard envelope.killSwitchEnabled == false else {
             throw StoreError.killSwitchEnabled
         }
-        let origin = try Self.normalizedHTTPSOrigin(fromPageURL: pageURL)
+        let origin = try Self.normalizedTrustOrigin(fromPageURL: pageURL)
         guard let record = envelope.rules[origin] else {
             return SessionPolicy(
                 origin: origin,
@@ -260,7 +261,7 @@ public actor BurnBarSafariTrustStore {
         }
         for (origin, record) in decoded.rules {
             guard origin == record.origin,
-                  (try? Self.normalizedHTTPSOrigin(origin)) == origin,
+                  (try? Self.normalizedTrustOrigin(origin)) == origin,
                   record.decision != .remove,
                   ComputerUseTrustMode(rawValue: record.trustMode) != nil,
                   (1...Self.maximumActionBudget).contains(record.actionBudget),
@@ -299,12 +300,12 @@ public actor BurnBarSafariTrustStore {
         )
     }
 
-    static func normalizedHTTPSOrigin(_ raw: String) throws -> String {
+    static func normalizedTrustOrigin(_ raw: String) throws -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               trimmed.utf8.count <= 2_048,
               var components = URLComponents(string: trimmed),
-              components.scheme?.lowercased() == "https",
+              let scheme = components.scheme?.lowercased(),
               let host = components.host?.lowercased(),
               !host.isEmpty,
               components.user == nil,
@@ -314,39 +315,57 @@ public actor BurnBarSafariTrustStore {
               components.path.isEmpty || components.path == "/" else {
             throw StoreError.invalidOrigin
         }
-        components.scheme = "https"
+        guard scheme == "https"
+                || (scheme == "http" && Self.loopbackHosts.contains(host)) else {
+            throw StoreError.invalidOrigin
+        }
+        components.scheme = scheme
         components.host = host
         components.path = ""
-        if components.port == 443 {
+        if (scheme == "https" && components.port == 443)
+            || (scheme == "http" && components.port == 80) {
             components.port = nil
         }
         guard let normalized = components.string,
               let url = URL(string: normalized),
-              url.scheme == "https",
+              url.scheme == scheme,
               url.host != nil else {
             throw StoreError.invalidOrigin
         }
         return normalized
     }
 
-    static func normalizedHTTPSOrigin(fromPageURL raw: String) throws -> String {
+    static func normalizedTrustOrigin(fromPageURL raw: String) throws -> String {
         guard let page = URLComponents(string: raw),
-              page.scheme?.lowercased() == "https",
+              let scheme = page.scheme?.lowercased(),
               let host = page.host?.lowercased(),
               !host.isEmpty,
               page.user == nil,
               page.password == nil else {
             throw StoreError.invalidOrigin
         }
+        guard scheme == "https"
+                || (scheme == "http" && Self.loopbackHosts.contains(host)) else {
+            throw StoreError.invalidOrigin
+        }
         var origin = URLComponents()
-        origin.scheme = "https"
+        origin.scheme = scheme
         origin.host = host
-        origin.port = page.port == 443 ? nil : page.port
+        origin.port = (scheme == "https" && page.port == 443)
+            || (scheme == "http" && page.port == 80)
+            ? nil
+            : page.port
         guard let value = origin.string else {
             throw StoreError.invalidOrigin
         }
         return value
     }
+
+    private static let loopbackHosts: Set<String> = [
+        "127.0.0.1",
+        "localhost",
+        "::1"
+    ]
 
     private static func moreRestrictive(
         _ lhs: ComputerUseTrustMode,

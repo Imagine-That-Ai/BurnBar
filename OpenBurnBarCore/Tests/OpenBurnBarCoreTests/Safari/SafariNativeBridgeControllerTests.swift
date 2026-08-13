@@ -318,6 +318,64 @@ final class SafariNativeBridgeControllerTests: XCTestCase {
         XCTAssertTrue(recorder.calls.isEmpty)
     }
 
+    func test_trustUpdateAllowsExactHTTPLoopbackAndRejectsRemoteHTTP() throws {
+        let recorder = SafariRPCRecorder { method, request in
+            XCTAssertEqual(method, .safariTrustUpdate)
+            let update = try BurnBarSafariNativeBridgeCodec.decodeDaemonValue(
+                BurnBarSafariTrustUpdateRequest.self,
+                from: request
+            )
+            XCTAssertEqual(update.origin, "http://127.0.0.1:42771")
+            return try BurnBarSafariNativeBridgeCodec.daemonJSONValue(
+                BurnBarSafariTrustUpdateResponse(
+                    accepted: true,
+                    ruleId: "safari-origin:http://127.0.0.1:42771",
+                    origin: update.origin,
+                    decision: update.decision,
+                    killSwitchEnabled: false
+                )
+            )
+        }
+        let controller = try makeController(recorder: recorder)
+
+        let loopbackResponse = try responseObject(
+            controller.handle(
+                propertyList: popupRequest(
+                    id: "popup-loopback-trust",
+                    action: "trust.update",
+                    payload: [
+                        "safariSessionId": "session-1",
+                        "origin": "http://127.0.0.1:42771",
+                        "decision": "allow",
+                        "trustMode": "step"
+                    ]
+                )
+            )
+        )
+        XCTAssertNil(loopbackResponse["error"])
+        XCTAssertEqual(recorder.methods, [.safariTrustUpdate])
+
+        let remoteHTTPResponse = try responseObject(
+            controller.handle(
+                propertyList: popupRequest(
+                    id: "popup-remote-http-trust",
+                    action: "trust.update",
+                    payload: [
+                        "safariSessionId": "session-1",
+                        "origin": "http://example.com",
+                        "decision": "allow",
+                        "trustMode": "step"
+                    ]
+                )
+            )
+        )
+        XCTAssertEqual(
+            (remoteHTTPResponse["error"] as? [String: Any])?["code"] as? String,
+            "invalid_trust_origin"
+        )
+        XCTAssertEqual(recorder.methods, [.safariTrustUpdate])
+    }
+
     func test_popupSessionBindingCannotBeSubstitutedInsidePayload() throws {
         let recorder = SafariRPCRecorder { _, _ in
             XCTFail("mismatched session must not reach daemon")
