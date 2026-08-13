@@ -6,14 +6,18 @@ import Foundation
 import XCTest
 
 final class SafariDaemonSocketClientTests: XCTestCase {
-    func test_liveRuntimePathsUseInjectedCanonicalLoginHome() {
-        let paths = BurnBarSafariDaemonRuntimePaths.live(
+    func test_liveRuntimePathsUseSharedContainerSocketAndCanonicalLoginToken() throws {
+        let paths = try BurnBarSafariDaemonRuntimePaths.live(
+            sharedContainerRoot: URL(
+                fileURLWithPath: "/Users/tester/Library/Group Containers/group.com.openburnbar.app",
+                isDirectory: true
+            ),
             homeDirectoryURL: URL(fileURLWithPath: "/Users/tester", isDirectory: true)
         )
 
         XCTAssertEqual(
             paths.socketURL.path,
-            "/Users/tester/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock"
+            "/Users/tester/Library/Group Containers/group.com.openburnbar.app/daemon.sock"
         )
         XCTAssertEqual(
             paths.socketAuthTokenFileURL.path,
@@ -21,14 +25,18 @@ final class SafariDaemonSocketClientTests: XCTestCase {
         )
     }
 
-    func test_liveSocketClientPreservesCanonicalHomeInjection() {
-        let client = BurnBarSafariDaemonSocketClient.live(
+    func test_liveSocketClientPreservesSharedContainerAndCanonicalHomeInjection() throws {
+        let client = try BurnBarSafariDaemonSocketClient.live(
+            sharedContainerRoot: URL(
+                fileURLWithPath: "/Users/tester/Library/Group Containers/group.com.openburnbar.app",
+                isDirectory: true
+            ),
             homeDirectoryURL: URL(fileURLWithPath: "/Users/tester", isDirectory: true)
         )
 
         XCTAssertEqual(
             client.socketURL.path,
-            "/Users/tester/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock"
+            "/Users/tester/Library/Group Containers/group.com.openburnbar.app/daemon.sock"
         )
         XCTAssertEqual(
             client.tokenResolver.tokenFileURL.path,
@@ -37,8 +45,13 @@ final class SafariDaemonSocketClientTests: XCTestCase {
     }
 
     #if canImport(Darwin)
-    func test_liveRuntimeSocketPathFitsDarwinUnixSocketLimit() {
-        let paths = BurnBarSafariDaemonRuntimePaths.live()
+    func test_liveRuntimeSocketPathFitsDarwinUnixSocketLimit() throws {
+        let paths = try BurnBarSafariDaemonRuntimePaths.live(
+            sharedContainerRoot: URL(
+                fileURLWithPath: "/Users/tester/Library/Group Containers/group.com.openburnbar.app",
+                isDirectory: true
+            )
+        )
         XCTAssertLessThan(
             paths.socketURL.path.utf8.count,
             MemoryLayout.size(ofValue: sockaddr_un().sun_path)

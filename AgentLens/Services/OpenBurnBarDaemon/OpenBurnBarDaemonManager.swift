@@ -79,20 +79,29 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
         }
     }
 
-    static func live(fileManager: FileManager = .default) -> OpenBurnBarDaemonRuntimePaths {
+    static func live(
+        fileManager: FileManager = .default,
+        sharedContainerRoot: URL? = nil
+    ) -> OpenBurnBarDaemonRuntimePaths {
         let supportDirectory = resolveSupportDirectory(
             prepare: { try OpenBurnBarCore.OpenBurnBarMigration.prepareSupportDirectory(fileManager: fileManager) },
             fallback: { OpenBurnBarCore.OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory }
         )
         let daemonDirectory = supportDirectory.appendingPathComponent("daemon", isDirectory: true)
         let homeDirectory = fileManager.homeDirectoryForCurrentUser
+        let sharedContainer = sharedContainerRoot
+            ?? OpenBurnBarCore.BurnBarSafariSharedContainer.liveRoot(fileManager: fileManager)
 
         return OpenBurnBarDaemonRuntimePaths(
             supportDirectory: supportDirectory,
             daemonDirectory: daemonDirectory,
             frameworksDirectory: supportDirectory.appendingPathComponent("Frameworks", isDirectory: true),
             installedBinaryURL: daemonDirectory.appendingPathComponent("OpenBurnBarDaemon", isDirectory: false),
-            socketURL: supportDirectory.appendingPathComponent("openburnbar-daemon.sock", isDirectory: false),
+            socketURL: (sharedContainer ?? supportDirectory)
+                .appendingPathComponent(
+                    sharedContainer == nil ? "openburnbar-daemon.sock" : "daemon.sock",
+                    isDirectory: false
+                ),
             logURL: daemonDirectory.appendingPathComponent("openburnbar-daemon.log", isDirectory: false),
             launchAgentPlistURL: homeDirectory
                 .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
