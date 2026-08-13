@@ -42,7 +42,16 @@ public enum OpenBurnBarIdentity {
     public static let hermesBearerTokenAccount = "settings.chat.hermes.bearerToken"
     public static let piAgentBearerTokenAccount = "settings.chat.piagent.bearerToken"
     public static let gatewayAuthTokenAccount = "settings.gateway.http.authToken"
-    public static let daemonSocketAuthTokenAccount = "daemon.socket.authToken"
+    /// Per-install daemon socket bearer credential shared by the host and
+    /// Safari extension.
+    ///
+    /// Version 1 was originally written as an ordinary login-keychain item.
+    /// Updating that item with an App-Group query changed its value but
+    /// preserved the legacy prompt ACL, so sandboxed Safari extension reads
+    /// failed non-interactively. Versioning the account forces a fresh
+    /// App-Group-owned item without deleting or weakening the legacy item.
+    public static let daemonSocketAuthTokenAccount = "daemon.socket.authToken.v2"
+    public static let legacyDaemonSocketAuthTokenAccounts = ["daemon.socket.authToken"]
     public static let switcherAuthKeychainService = "com.openburnbar.switcher-auth"
     public static let homeAssistantKeychainService = "com.openburnbar.home-assistant"
     public static let homeAssistantAccessTokenAccount = "smarthub.homeAssistant.accessToken"
