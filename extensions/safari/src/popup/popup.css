@@ -1059,6 +1059,118 @@ select:disabled {
   line-height: 1.45;
 }
 
+.performance-body {
+  gap: 7px;
+  padding: 9px 10px 10px;
+}
+
+.performance-privacy,
+.performance-metadata,
+.performance-notice {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 8.6px;
+  line-height: 1.45;
+}
+
+.performance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.performance-card {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(199, 207, 221, 0.1);
+  border-radius: 10px;
+  background: radial-gradient(circle at 100% 0, rgba(60, 214, 192, 0.07), transparent 48%), rgba(5, 5, 8, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.performance-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.performance-card-heading strong {
+  color: var(--text);
+  font-size: 8.8px;
+  line-height: 1.25;
+}
+
+.performance-card-heading span {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font-family: var(--font-mono, monospace);
+  font-size: 7.7px;
+}
+
+.performance-values {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1px 5px;
+  margin: 7px 0 0;
+}
+
+.performance-values dt {
+  color: var(--text-muted);
+  font-size: 7.8px;
+}
+
+.performance-values dd {
+  margin: 0;
+  color: var(--text-bright);
+  font-family: var(--font-mono, monospace);
+  font-size: 8.2px;
+  text-align: right;
+}
+
+.performance-outcomes {
+  display: block;
+  margin-top: 5px;
+  color: var(--warning);
+  font-size: 7.5px;
+}
+
+.performance-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.performance-actions .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.performance-notice {
+  padding: 7px 8px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+}
+
+.performance-notice--success {
+  border-color: rgba(60, 214, 192, 0.2);
+  color: #8de7d8;
+  background: rgba(60, 214, 192, 0.06);
+}
+
+.performance-notice--warning {
+  border-color: rgba(253, 196, 44, 0.24);
+  color: #ffe394;
+  background: rgba(253, 196, 44, 0.07);
+}
+
+.performance-notice--error {
+  border-color: rgba(250, 80, 83, 0.24);
+  color: #ffd9da;
+  background: rgba(197, 34, 31, 0.08);
+}
+
 .learning-correction {
   display: grid;
   gap: 7px;
@@ -1255,6 +1367,7 @@ select:disabled {
   .agent-section,
   .message,
   .drawer,
+  .performance-card,
   .composer,
   .approval-card {
     color: CanvasText;

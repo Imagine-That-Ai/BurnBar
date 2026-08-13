@@ -33,6 +33,11 @@ export interface PopupViewModel {
   correctionByteCount: number;
   correctionSubmitDisabled: boolean;
   correctionDisabledReason?: string;
+  diagnosticsNotice?: {
+    tone: 'success' | 'warning' | 'error';
+    text: string;
+  };
+  diagnosticsClearArmed: boolean;
   draft: string;
   composerVisible: boolean;
   composerPlaceholder: string;
@@ -217,6 +222,8 @@ export function buildPopupViewModel(state: PopupLocalState): PopupViewModel {
     correctionByteCount,
     correctionSubmitDisabled: Boolean(learningCorrectionDisabledReason),
     ...(learningCorrectionDisabledReason ? { correctionDisabledReason: learningCorrectionDisabledReason } : {}),
+    ...(state.diagnosticsNotice ? { diagnosticsNotice: state.diagnosticsNotice } : {}),
+    diagnosticsClearArmed: state.diagnosticsClearArmed,
     draft: state.draft,
     composerVisible: selectedMode !== 'watch',
     composerPlaceholder:

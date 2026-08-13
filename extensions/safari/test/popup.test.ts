@@ -2,6 +2,7 @@ import { renderPopup } from '../src/popup/render';
 import { createInitialPopupState, reducePopupState } from '../src/popup/state';
 import { buildPopupViewModel } from '../src/popup/viewModel';
 import type { PopupSnapshot } from '../src/shared/messages';
+import { buildSafariPerformanceDiagnostics } from '../src/shared/performance';
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -128,6 +129,41 @@ function snapshot(overrides: Partial<PopupSnapshot> = {}): PopupSnapshot {
         createdAt: '2026-08-10T12:00:02Z'
       }
     ],
+    performance: buildSafariPerformanceDiagnostics(
+      {
+        schemaVersion: 1,
+        retentionLimit: 240,
+        totalRecorded: 3,
+        droppedCount: 0,
+        nextSequence: 4,
+        samples: [
+          {
+            sequence: 1,
+            metric: 'popup_bootstrap',
+            durationMs: 38,
+            outcome: 'success',
+            recordedAt: '2026-08-12T12:00:00Z'
+          },
+          {
+            sequence: 2,
+            metric: 'ask_first_token',
+            durationMs: 410,
+            outcome: 'success',
+            recordedAt: '2026-08-12T12:00:01Z',
+            context: { route: 'cloud' }
+          },
+          {
+            sequence: 3,
+            metric: 'ask_first_token',
+            durationMs: 520,
+            outcome: 'aborted',
+            recordedAt: '2026-08-12T12:00:02Z',
+            context: { route: 'cloud' }
+          }
+        ]
+      },
+      'ready'
+    ),
     running: true,
     busy: false,
     ...overrides
@@ -145,7 +181,21 @@ describe('popup state and view model', () => {
       value: 'Prefer annual totals.'
     });
     expect(withCorrection.correctionDraft).toBe('Prefer annual totals.');
-    const filtered = reducePopupState(withCorrection, { type: 'agentFilter', value: 'vision' });
+    const withNotice = reducePopupState(withCorrection, {
+      type: 'diagnosticsNotice',
+      notice: {
+        tone: 'success',
+        text: 'Copied.'
+      }
+    });
+    expect(withNotice.diagnosticsNotice).toEqual({ tone: 'success', text: 'Copied.' });
+    const withoutNotice = reducePopupState(withNotice, {
+      type: 'diagnosticsNotice'
+    });
+    expect(withoutNotice.diagnosticsNotice).toBeUndefined();
+    const armed = reducePopupState(withoutNotice, { type: 'diagnosticsClearArmed', value: true });
+    expect(armed.diagnosticsClearArmed).toBe(true);
+    const filtered = reducePopupState(armed, { type: 'agentFilter', value: 'vision' });
     expect(filtered.agentFilter).toBe('vision');
     const submitting = reducePopupState(filtered, { type: 'submitting', value: true });
     expect(submitting.submitting).toBe(true);
@@ -368,6 +418,17 @@ describe('popup rendering', () => {
     );
     expect(root.querySelector('.trust-drawer')?.textContent).toContain('Screenshots stay on this Mac');
     expect(root.querySelector('.learning-drawer')?.textContent).toContain('Extract store prices');
+    expect(root.querySelector('.performance-drawer')?.textContent).toContain('Ask first token');
+    expect(root.querySelector('.performance-drawer')?.textContent).toContain('Local timing only');
+    expect(root.querySelector('[data-action="diagnostics-copy"]')?.getAttribute('aria-label')).toContain(
+      'privacy-safe'
+    );
+    expect(root.querySelector('[data-action="diagnostics-download"]')?.getAttribute('aria-label')).toContain(
+      'privacy-safe'
+    );
+    expect(root.querySelector('[data-action="diagnostics-clear"]')?.getAttribute('aria-label')).toContain(
+      'retained local'
+    );
     expect(root.querySelector('.learning-correction')?.textContent).toContain('Explicit only');
     expect(root.querySelector('.learning-correction-note')?.textContent).toContain('does not infer a correction');
     expect((root.querySelector('[data-input="correction-draft"]') as HTMLTextAreaElement | null)?.value).toBe(
@@ -411,17 +472,20 @@ describe('popup rendering', () => {
 
     const trust = root.querySelector<HTMLDetailsElement>('.trust-drawer');
     const learning = root.querySelector<HTMLDetailsElement>('.learning-drawer');
+    const performance = root.querySelector<HTMLDetailsElement>('.performance-drawer');
     const content = root.querySelector<HTMLElement>('.content-scroll');
     const transcript = root.querySelector<HTMLElement>('.transcript');
     const search = root.querySelector<HTMLInputElement>('[data-input="agent-filter"]');
     expect(trust).not.toBeNull();
     expect(learning).not.toBeNull();
+    expect(performance).not.toBeNull();
     expect(content).not.toBeNull();
     expect(transcript).not.toBeNull();
     expect(search).not.toBeNull();
 
     trust!.open = true;
     learning!.open = true;
+    performance!.open = true;
     content!.scrollTop = 173;
     Object.defineProperties(transcript!, {
       clientHeight: { configurable: true, value: 200 },
@@ -435,6 +499,7 @@ describe('popup rendering', () => {
 
     expect(root.querySelector<HTMLDetailsElement>('.trust-drawer')?.open).toBe(true);
     expect(root.querySelector<HTMLDetailsElement>('.learning-drawer')?.open).toBe(true);
+    expect(root.querySelector<HTMLDetailsElement>('.performance-drawer')?.open).toBe(true);
     expect(root.querySelector<HTMLElement>('.content-scroll')?.scrollTop).toBe(173);
     expect(root.querySelector<HTMLElement>('.transcript')?.scrollTop).toBe(211);
     const restoredSearch = root.querySelector<HTMLInputElement>('[data-input="agent-filter"]');
