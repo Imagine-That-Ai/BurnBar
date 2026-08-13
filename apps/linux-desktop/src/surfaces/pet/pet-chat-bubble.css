@@ -1,0 +1,216 @@
+.pet-chat-bubble {
+  width: min(100%, 360px);
+  margin: 12px auto 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--color-ink, #1f2430) 18%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--color-paper, #fff) 92%, transparent);
+  box-shadow: 0 16px 34px color-mix(in srgb, #000 18%, transparent);
+  color: var(--color-ink, #1f2430);
+}
+
+.pet-chat-bubble[data-drop-active='true'] {
+  border-color: var(--color-accent, #6a5cff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #6a5cff) 22%, transparent),
+    0 16px 34px color-mix(in srgb, #000 18%, transparent);
+}
+
+.pet-chat-bubble-header,
+.pet-chat-bubble-header-actions,
+.pet-chat-composer-row,
+.pet-chat-attachment {
+  display: flex;
+  align-items: center;
+}
+
+.pet-chat-bubble-header {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pet-chat-bubble-header > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.pet-chat-bubble-header span {
+  color: color-mix(in srgb, currentColor 62%, transparent);
+  font-size: 0.72rem;
+}
+
+.pet-chat-bubble-header-actions {
+  gap: 6px;
+}
+
+.pet-chat-bubble-link,
+.pet-chat-bubble-close,
+.pet-chat-attach,
+.pet-chat-send,
+.pet-chat-stop,
+.pet-chat-attachment button,
+.pet-chat-new {
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pet-chat-bubble-link,
+.pet-chat-new {
+  padding: 5px 8px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  font-size: 0.72rem;
+}
+
+.pet-chat-bubble-close {
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  color: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.pet-chat-messages {
+  display: grid;
+  gap: 7px;
+  max-height: 220px;
+  margin: 10px 0;
+  overflow: auto;
+  padding: 2px;
+}
+
+.pet-chat-message,
+.pet-chat-empty {
+  margin: 0;
+  padding: 7px 9px;
+  border-radius: 11px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pet-chat-message--user {
+  justify-self: end;
+  max-width: 88%;
+  background: color-mix(in srgb, var(--color-accent, #6a5cff) 18%, transparent);
+}
+
+.pet-chat-message--assistant,
+.pet-chat-message--thinking {
+  justify-self: start;
+  max-width: 94%;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.pet-chat-message--tool,
+.pet-chat-message--system {
+  font-size: 0.72rem;
+  opacity: 0.72;
+}
+
+.pet-chat-empty {
+  color: color-mix(in srgb, currentColor 64%, transparent);
+  font-style: italic;
+}
+
+.pet-chat-composer {
+  display: grid;
+  gap: 6px;
+}
+
+.pet-chat-composer-row {
+  gap: 6px;
+}
+
+.pet-chat-composer-row textarea {
+  min-width: 0;
+  flex: 1;
+  resize: none;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+  color: inherit;
+  font: inherit;
+  line-height: 1.25;
+  padding: 8px 9px;
+}
+
+.pet-chat-composer-row textarea:focus-visible,
+.pet-chat-bubble button:focus-visible {
+  outline: 2px solid var(--color-accent, #6a5cff);
+  outline-offset: 2px;
+}
+
+.pet-chat-attach,
+.pet-chat-send,
+.pet-chat-stop {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 5px 8px;
+  background: color-mix(in srgb, var(--color-accent, #6a5cff) 16%, transparent);
+  color: inherit;
+}
+
+.pet-chat-send:disabled,
+.pet-chat-attach:disabled,
+.pet-chat-stop:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pet-chat-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.pet-chat-attachment {
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--color-accent, #6a5cff) 10%, transparent);
+  font-size: 0.72rem;
+}
+
+.pet-chat-attachment span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet-chat-attachment button {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 0.7rem;
+}
+
+.pet-chat-status,
+.pet-chat-error {
+  margin: 7px 0 0;
+  font-size: 0.72rem;
+}
+
+.pet-chat-error {
+  color: var(--color-danger, #b42318);
+}
+
+.pet-chat-new {
+  margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-chat-bubble {
+    scroll-behavior: auto;
+  }
+}

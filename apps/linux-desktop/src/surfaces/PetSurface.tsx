@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type DragEvent,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent
@@ -25,6 +26,7 @@ import { openChatPopoutWindow } from './chat/chatWindow.js';
 import { useShellStore } from '../state/shellStore.js';
 import type { PetCompanionStatus } from '../tauriBridge.js';
 import { BehaviorGraphView } from './pet/BehaviorGraphView.js';
+import { PetChatBubble } from './pet/PetChatBubble.js';
 import { TierMatrixTable } from './pet/TierMatrixTable.js';
 import './pet/pet.css';
 
@@ -78,6 +80,9 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
   const [containedPetSelected, setContainedPetSelected] = useState(false);
   const [containedActionStatus, setContainedActionStatus] = useState<string | null>(null);
   const [containedPetOffset, setContainedPetOffset] = useState<ContainedPetOffset>({ x: 0, y: 0 });
+  const [petChatOpen, setPetChatOpen] = useState(false);
+  const [petDroppedFile, setPetDroppedFile] = useState<File | null>(null);
+  const [petDropActive, setPetDropActive] = useState(false);
   const graph = buildPetBehaviorGraph(capability.tier);
   const containedFallback = !capability.actions.overlay.supported;
 
@@ -316,6 +321,30 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     );
   }, []);
 
+  const handlePetDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    setPetDropActive(true);
+  }, []);
+
+  const handlePetDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (event.currentTarget === event.target) setPetDropActive(false);
+  }, []);
+
+  const handlePetDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+    event.preventDefault();
+    setPetDropActive(false);
+    const file =
+      event.dataTransfer.files?.[0] ??
+      (typeof event.dataTransfer.files?.item === 'function' ? event.dataTransfer.files.item(0) : undefined);
+    if (!file) return;
+    setPetDroppedFile(file);
+    setPetChatOpen(true);
+    setContainedActionStatus(`Dropped ${file.name} onto the companion. Review it in chat before sending.`);
+  }, []);
+
   const stageClasses = [
     'pet-stage',
     reactWaveActive ? 'pet-stage--react-wave' : '',
@@ -325,7 +354,18 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
     .join(' ');
 
   return (
-    <div className="pet-surface">
+    <div
+      className="pet-surface"
+      data-pet-chat-open={petChatOpen ? 'true' : 'false'}
+      data-pet-drop-active={petDropActive ? 'true' : 'false'}
+      aria-describedby="pet-drop-help"
+      onDragOver={handlePetDragOver}
+      onDragLeave={handlePetDragLeave}
+      onDrop={handlePetDrop}
+    >
+      <p id="pet-drop-help" className="sr-only">
+        Drop a supported document, image, or audio file on the companion to stage it in companion chat before sending.
+      </p>
       <div
         ref={stageRef}
         className={stageClasses}
@@ -379,6 +419,14 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
           <button type="button" className="pet-wave-button" onClick={waveAtPet}>
             Wave
           </button>
+          <button
+            type="button"
+            className="pet-action-button"
+            aria-expanded={petChatOpen}
+            onClick={() => setPetChatOpen((open) => !open)}
+          >
+            {petChatOpen ? 'Close companion chat' : 'Chat with companion'}
+          </button>
           <button type="button" className="pet-action-button" onClick={() => void openCompanionChat()}>
             Open chat
           </button>
@@ -387,6 +435,14 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
         <div className="pet-actions">
           <button type="button" className="pet-wave-button" onClick={waveAtPet}>
             Wave at preview
+          </button>
+          <button
+            type="button"
+            className="pet-action-button"
+            aria-expanded={petChatOpen}
+            onClick={() => setPetChatOpen((open) => !open)}
+          >
+            {petChatOpen ? 'Close companion chat' : 'Chat with companion'}
           </button>
           <button
             type="button"
@@ -427,6 +483,15 @@ export function PetSurface({ companionMode = false }: { companionMode?: boolean 
           ) : null}
         </div>
       )}
+      {petChatOpen ? (
+        <PetChatBubble
+          droppedFile={petDroppedFile}
+          onDroppedFileConsumed={() => setPetDroppedFile(null)}
+          onClose={() => setPetChatOpen(false)}
+          onOpenFullChat={() => void openCompanionChat()}
+          onReact={waveAtPet}
+        />
+      ) : null}
       {containedActionStatus ? (
         <p className="pet-action-status" role="status" aria-live="polite">
           {containedActionStatus}
