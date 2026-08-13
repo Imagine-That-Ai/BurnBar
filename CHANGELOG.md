@@ -53,6 +53,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ISO-8601 formatter; Cursor Agent skips conversation assembly on
   usage-only ticks. Factory quota timestamps use the same formatter.
   Logo formation (splash/onboarding) matches the 30 fps decorative cap.
+- **Idle usage ticks** resume unchanged Cursor Agent, Cline-family,
+  Copilot, Antigravity, and Goose transcripts from a mtime+size cache
+  (token totals only). Copilot's process-log fallback integers and
+  Antigravity's settings-model string participate in the signature.
+  Quota spend/reset parsers reuse `ThreadSafeISO8601DateFormatter`
+  (`parse` for fractional-then-basic, `parseBasic` where the default
+  formatter's acceptance must not widen).
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

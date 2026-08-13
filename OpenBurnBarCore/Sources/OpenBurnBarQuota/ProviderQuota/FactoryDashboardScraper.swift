@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -333,7 +334,7 @@ public enum FactoryDashboardScraper {
             let keys = ["endDate", "end_date"]
             for key in keys {
                 if let ts = usage[key] as? String {
-                    return ISO8601DateFormatter().date(from: ts)
+                    return ThreadSafeISO8601DateFormatter.parseBasic(ts)
                 }
             }
             return nil

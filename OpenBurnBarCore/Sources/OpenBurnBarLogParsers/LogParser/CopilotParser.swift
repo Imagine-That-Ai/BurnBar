@@ -3,26 +3,61 @@ import OpenBurnBarKernel
 
 /// Parses Copilot CLI sessions from `~/.copilot/session-state` and the legacy
 /// CompactionProcessor fallback in `~/.copilot/logs`.
+///
+/// Idle usage ticks resume unchanged session directories from a mtime+size disk
+/// cache (token totals only — never conversation bodies). The process-log
+/// fallback token integers participate in the signature.
 public final class CopilotParser: LogParser, Sendable {
     public let provider: AgentProvider = .copilot
 
     private let fileManager: FileManager
     private let sessionStateURL: URL
     private let logsURL: URL
+    private let cacheStore: ParserDiskCacheStore<CachedUsageEntry<CopilotCacheSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    /// Session-directory file set plus the process-log fallback used when JSONL
+    /// rows omit token counts. The fallback integers are part of the key so a
+    /// later process-log parse that fills in tokens cannot reuse a zeroed cache
+    /// row.
+    private struct CopilotCacheSignature: Codable, Equatable, Sendable {
+        var files: FileSetSignature
+        var fallbackInput: Int
+        var fallbackOutput: Int
+    }
 
     public init(
         fileManager: FileManager = .default,
         sessionStateURL: URL? = nil,
-        logsURL: URL? = nil
+        logsURL: URL? = nil,
+        appPaths: OpenBurnBarAppPaths = .live()
     ) {
         self.fileManager = fileManager
         self.sessionStateURL = sessionStateURL
             ?? URL(fileURLWithPath: NSString(string: "~/.copilot/session-state").expandingTildeInPath)
         self.logsURL = logsURL
             ?? URL(fileURLWithPath: NSString(string: "~/.copilot/logs").expandingTildeInPath)
+        let cacheURL: URL
+        if sessionStateURL != nil {
+            cacheURL = self.sessionStateURL.appendingPathComponent(".obb-copilot-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.copilotParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "CopilotParser"
+        )
     }
 
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         guard fileManager.fileExists(atPath: sessionStateURL.path) else {
             return ParseResult(usages: [], conversations: [])
         }
@@ -39,6 +74,15 @@ public final class CopilotParser: LogParser, Sendable {
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
+
         for directory in sessionDirectories {
             let eventFiles = try eventFiles(in: directory)
             guard !eventFiles.isEmpty else { continue }
@@ -48,8 +92,29 @@ public final class CopilotParser: LogParser, Sendable {
             if fileManager.fileExists(atPath: metadataURL.path) {
                 readableFiles.append(metadataURL)
             }
+            let cacheKey = directory.standardizedFileURL.path
+            activePaths.insert(cacheKey)
             guard try gate.shouldRead(readableFiles) else { continue }
 
+            let files = FileSetSignature(urls: readableFiles, using: fileManager)
+            let fallback = fallbackBySession[directory.lastPathComponent]
+            let signature = files.map {
+                CopilotCacheSignature(
+                    files: $0,
+                    fallbackInput: fallback?.input ?? 0,
+                    fallbackOutput: fallback?.output ?? 0
+                )
+            }
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(cached.totals.makeUsage(provider: .copilot, sessionId: directory.lastPathComponent))
+                continue
+            }
+
+            sessionScanCount.withLock { $0 += 1 }
             let metadata = readableFiles.contains(metadataURL) ? parseMetadata(metadataURL) : nil
             if let parsed = parseSession(
                 eventFiles: eventFiles,
@@ -62,10 +127,23 @@ public final class CopilotParser: LogParser, Sendable {
                 if let conversation = parsed.conversation {
                     conversations.append(conversation)
                 }
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageEntry(signature: signature, usage: parsed.usage)
+                    cacheMutated = true
+                }
             } else {
                 options.metrics?.recordDeferred(.contentReadFailed)
             }
         }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
+        }
+
         return ParseResult(usages: usages, conversations: conversations)
     }
 

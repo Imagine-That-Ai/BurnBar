@@ -137,6 +137,26 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("gemini_cli_parser_cache.json")
     }
 
+    public var cursorAgentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("cursor_agent_parser_cache.json")
+    }
+
+    public var copilotParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("copilot_parser_cache.json")
+    }
+
+    public var antigravityParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("antigravity_parser_cache.json")
+    }
+
+    public var gooseParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("goose_parser_cache.json")
+    }
+
+    public func clineFormatParserCacheURL(for provider: AgentProvider) -> URL {
+        supportDirectory.appendingPathComponent("\(provider.persistedToken)_parser_cache.json")
+    }
+
     public var claudeCodeParserCacheURL: URL {
         supportDirectory.appendingPathComponent("claude_code_parser_cache.json")
     }

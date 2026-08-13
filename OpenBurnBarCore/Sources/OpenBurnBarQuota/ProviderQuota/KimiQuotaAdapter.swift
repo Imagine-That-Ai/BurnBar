@@ -279,9 +279,7 @@ public struct KimiQuotaAdapter: ProviderQuotaAdapter {
     // MARK: - Helpers
 
     private func parseISO8601(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: string) ?? ISO8601DateFormatter().date(from: string)
+        ThreadSafeISO8601DateFormatter.parse(string)
     }
 
     private func unavailableSnapshot(

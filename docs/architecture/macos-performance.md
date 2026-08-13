@@ -925,12 +925,12 @@ still count characters.
 - Kilo Code's `KiloCodeQuotaAdapter` still `Data(contentsOf:)` task JSON
   arrays, but it is not on the quota refresh path (`quotaSignalProviders`
   / the adapter registry omit it). Cline-family usage still goes through
-  `ClineFormatParser` + `ParserFileReadGate`.
+  `ClineFormatParser` (now with the idle-tick disk cache in §23).
 - Warp **usage** parsing still reads a changed `warp_network*.log` in
   full because every Body object can contribute a usage row.
-- Goose / Antigravity **usage parsers** still scan from offset 0 because
-  token estimates accumulate conversation characters, not just windowed
-  quota counts.
+- Goose / Antigravity **usage parsers** no longer rescan unchanged
+  transcripts on idle ticks (see §23). A miss still reads from offset 0
+  because token estimates accumulate conversation characters.
 
 Validation:
 - `OpenBurnBarTests/SwarmCanvasFrameRateTests`
@@ -940,5 +940,75 @@ Validation:
 - `OpenBurnBarCoreTests/GrokParserTests`
 - `OpenBurnBarCoreTests/LiftedParserBoundaryTests` (Cursor Agent usage-only)
 - plus the §21 Charts / indexer / quota suites
+
+---
+
+## §23 — Remaining hot paths (August 2026, round 5)
+
+Round 4 cached Gemini CLI and tailed Warp quota. Usage ticks still had
+no `fileDiscoveryTracker` / `minimumFileModificationDate`, so
+`ParserFileReadGate` admitted every remaining session tree every 60s.
+
+### Lane 1 — Idle usage parser caches
+
+Cursor Agent, Cline-family (`ClineFormatParser` for Cline / Kilo / Roo),
+Copilot CLI, Antigravity, and Goose now keep a mtime+size disk cache of
+**token totals only** (never conversation bodies). Usage-only ticks
+skip `fullText` / titles / key-files / tool-names on a miss; character
+counts for token estimates still run.
+
+Signatures fail closed:
+
+- Cursor Agent includes nested `summary.json` so a sidecar model/title
+  change busts the hit.
+- Copilot includes process-log fallback integers so a later
+  `CompactionProcessor` parse cannot reuse a zeroed JSONL row.
+- Antigravity includes the `settings.json` fallback model string so a
+  selector change cannot reuse a cached row that still carried the
+  previous model.
+- Goose caches both legacy JSONL sessions and `sessions.db` as a
+  session bundle (one SQLite file yields many rows).
+
+Cache keys for files that still exist stay even when a watermark or
+tracker skips the content read, so an indexing pass cannot evict a warm
+usage cache.
+
+### Lane 2 — Quota ISO-8601
+
+Spend / reset parsers that allocated a fractional+basic
+`ISO8601DateFormatter` pair per payload now use
+`ThreadSafeISO8601DateFormatter.parse` (xAI spend points, Kimi, Warp
+GraphQL `nextRefreshTime`, Ollama Cloud HTML). Parsers that used a
+default `ISO8601DateFormatter()` now use `parseBasic` (Copilot
+`quotaResetDate`, Cursor `billingCycleEnd`, Factory dashboard
+`endDate`) so `resetsAt` acceptance does not widen to fractional
+strings. Codex `last_refresh` stays on its throwing Codable path.
+
+### Named leftovers
+
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Overlapping
+  the phases would race the Codex rollout cache (whole-cache last-write-wins).
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Warp **usage** parsing still reads a changed `warp_network*.log` in
+  full because every Body object can contribute a usage row.
+- Windsurf / Hermes / Forge / Augment / Muse / Prime / Kimi usage
+  parsers still reread admitted session files on every usage tick.
+  Cache them the same way only with a bit-identical equality test per
+  provider.
+
+Validation:
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests`
+- `OpenBurnBarCoreTests/CopilotParserTests`
+- `OpenBurnBarCoreTests/LiftedParserBoundaryTests`
+- `OpenBurnBarCoreTests/ParserParseOptionsTests` (Antigravity / Goose gates)
+- `OpenBurnBarCoreTests/GeminiCLIParserCacheTests`
+- plus the §22 Warp / Gemini / Grok suites
 
 

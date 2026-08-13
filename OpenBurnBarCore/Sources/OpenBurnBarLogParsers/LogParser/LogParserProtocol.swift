@@ -73,7 +73,14 @@ public struct ParserConversationCacheScrubber {
             appPaths.factoryDroidParserCacheURL,
             appPaths.junieParserCacheURL,
             appPaths.grokParserCacheURL,
-            appPaths.geminiCLIParserCacheURL
+            appPaths.geminiCLIParserCacheURL,
+            appPaths.cursorAgentParserCacheURL,
+            appPaths.copilotParserCacheURL,
+            appPaths.antigravityParserCacheURL,
+            appPaths.gooseParserCacheURL,
+            appPaths.clineFormatParserCacheURL(for: .cline),
+            appPaths.clineFormatParserCacheURL(for: .kiloCode),
+            appPaths.clineFormatParserCacheURL(for: .rooCode)
         ]
 
         if let dynamicURLs = try? fileManager.contentsOfDirectory( // try?-ok(optional cache directory scan)

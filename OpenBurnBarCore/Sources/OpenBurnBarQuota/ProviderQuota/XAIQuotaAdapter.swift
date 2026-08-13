@@ -272,9 +272,6 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
             }
             let payload = try JSONDecoder().decode(UsageResponse.self, from: data)
             let points = (payload.timeSeries ?? []).flatMap { $0.dataPoints ?? [] }
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let fallbackFormatter = ISO8601DateFormatter()
 
             var total24h = 0.0
             var total7d = 0.0
@@ -284,7 +281,7 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
 
             for point in points {
                 guard let ts = point.timestamp,
-                      let date = formatter.date(from: ts) ?? fallbackFormatter.date(from: ts) else {
+                      let date = ThreadSafeISO8601DateFormatter.parse(ts) else {
                     continue
                 }
                 let usd = point.values?.first(where: { $0.name == "usd" })?.value ?? 0.0
