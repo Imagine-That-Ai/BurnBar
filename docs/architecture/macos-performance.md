@@ -35,14 +35,17 @@ when nil.
 ### Bucketed fills
 
 The data-driven draw branch used to call `ctx.fill` once per particle —
-hundreds of `CGContextFillRect`-like ops per frame. The new path
-accumulates particles into `[UInt32: (color: RGBA, path: Path)]` keyed
-on `RGBA.bucketKey` (an 8-bit-per-channel quantization of the colour),
+hundreds of `CGContextFillRect`-like ops per frame. Every live path
+(swarm palette, logo/shape formation, and color-driver) now accumulates
+particles into `[UInt32: (color: RGBA, path: Path)]` keyed on
+`RGBA.bucketKey` (an 8-bit-per-channel quantization of the colour),
 then issues exactly one `ctx.fill` per bucket. Sparkles render in a
-deferred pass so the draw order is preserved.
+deferred pass so they still sit on top of their dots.
 
-Net effect: a frame that used to be 600 fills is now ~12 fills, with no
-visible difference to the eye.
+Net effect: a formed constellation that used to be ~900 fills is now
+tens of fills plus a handful of sparkle overlays, with no visible
+difference to the eye. `SwarmSimulation.planParticleFills` pins the
+budget without a `GraphicsContext`.
 
 ### Pointer throttling
 
@@ -649,3 +652,57 @@ tick-path-vs-legacy-full-recompute aggregate equality).
 `DownloadSyncServiceRollupTotalsTests` covers the rollup read end to end:
 one-read proof, verbatim costUsd, integer-stored cost decode, and nil on
 missing or undecodable rollups.
+
+---
+
+## §19 — Graphics / GRDB / quota mining (August 2026)
+
+Three remaining hot paths after §18, measured without Instruments:
+
+### Lane 1 — Constellation / logo fills
+
+`SwarmSimulation.draw` still took the per-particle fill path for
+shape, provider-logo, and color-driver frames (`shouldRenderIndividually`).
+Dashboard Constellation and Website backgrounds spend half their cycle
+formed, so the 30 Hz cap was paying ~900 `ctx.fill` calls/frame.
+
+The individual path is gone. Every non-glyph dot batches through
+`RGBA.bucketKey`; sparkles stay a deferred second pass. Fill counts are
+pinned by `SwarmCanvasFrameRateTests` (`planParticleFills`).
+
+### Lane 2 — Dashboard snapshot + idle persist
+
+`fetchDashboardUsageSnapshot` ran 14 separate `fetchUsageTotals`
+round-trips for the last-7-day series and rolling average (two loops
+over the same days). Those windows now come from one
+`fetchOverlappingDayCostAndTokens` scan using the same intersection
+predicate, so overlapping long-runners stay bit-identical.
+`test_dashboardSnapshot_last7DaySeriesMatchesPerDayTotals` pins that
+equality; `test_dashboardSnapshotQueryCount_isIndependentOfRowCount`
+tightens the SELECT ceiling from 64 to 24.
+
+Idle usage ticks still issued `INSERT…ON CONFLICT` for every parsed row
+even when the value-diff WHERE gate changed nothing. `insertChunked`
+now fingerprints persist-visible content (not UUID/`createdAt`) and
+skips the upsert storm when the fingerprint matches and
+`UsageTableWriteMarker` has not advanced. Fail-closed: any other writer
+or a token/cost change re-runs the upserts.
+`UsagePersistSkipTests` pins skip vs. write.
+
+### Lane 3 — Grok `updates.jsonl` resume
+
+Codex and Claude already resume from `ParserDiskCache`. Grok re-read
+every `~/.grok/sessions/**/updates.jsonl` on every usage tick.
+`GrokParser` now caches exact turn totals by mtime+size (token
+breakdowns only — no conversation bodies) and skips `chat_history.jsonl`
+on usage-only passes when exact totals exist. Child-session
+reconciliation still runs in memory so parent totals stay correct.
+`test_parse_skipsUnchangedUpdatesJsonlOnSecondPass` pins scan vs. hit
+counts and grown-file invalidation.
+
+Validation:
+- `OpenBurnBarTests/SwarmCanvasFrameRateTests`
+- `OpenBurnBarTests/DashboardUsageViewModelTests`
+- `OpenBurnBarTests/RefreshTickPerfTests` (`UsagePersistSkipTests`)
+- `OpenBurnBarCoreTests/GrokParserTests`
+

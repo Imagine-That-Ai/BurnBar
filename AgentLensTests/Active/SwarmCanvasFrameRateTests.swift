@@ -119,6 +119,64 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
         XCTAssertEqual(a.bucketKey, b.bucketKey)
     }
 
+    @MainActor
+    func testLogoModeFillPlan_batchesByColorBucketInsteadOfPerParticle() {
+        let sim = SwarmSimulation(
+            particleCount: 900,
+            pace: .cinematic,
+            enabledProviderGlyphs: []
+        )
+        sim.assignMode(.shapeBurnBarLogo, at: 0)
+        sim.shapeSettledAt = 1
+        sim.enableSwarmSparkles = false
+
+        let plan = sim.planParticleFills(isBatteryThrottled: false)
+        XCTAssertGreaterThan(plan.drawnDotCount, 200, "fixture must draw a formed logo, not an empty field")
+        XCTAssertLessThan(
+            plan.colorBucketCount,
+            plan.drawnDotCount / 4,
+            "logo frames must batch fills by RGBA.bucketKey; per-particle fills regress constellation cost"
+        )
+        XCTAssertEqual(plan.sparkleFillCount, 0)
+        XCTAssertEqual(plan.totalFillCount, plan.colorBucketCount)
+    }
+
+    @MainActor
+    func testLogoModeFillPlan_sparklesStayDeferredAndStillBeatPerParticleFills() {
+        let sim = SwarmSimulation(
+            particleCount: 900,
+            pace: .cinematic,
+            enabledProviderGlyphs: []
+        )
+        sim.assignMode(.shapeBurnBarLogo, at: 0)
+        sim.shapeSettledAt = 1
+        sim.enableSwarmSparkles = true
+        sim.flowTime = 1.7
+
+        let plan = sim.planParticleFills(isBatteryThrottled: false)
+        XCTAssertGreaterThan(plan.drawnDotCount, 200)
+        XCTAssertLessThan(plan.totalFillCount, plan.drawnDotCount)
+        XCTAssertEqual(plan.totalFillCount, plan.colorBucketCount + plan.sparkleFillCount)
+    }
+
+    @MainActor
+    func testFillPlan_batteryThrottleHalvesDrawnDots() {
+        let sim = SwarmSimulation(
+            particleCount: 400,
+            pace: .cinematic,
+            enabledProviderGlyphs: []
+        )
+        sim.enableSwarmSparkles = false
+        let full = sim.planParticleFills(isBatteryThrottled: false)
+        let throttled = sim.planParticleFills(isBatteryThrottled: true)
+        let expectedThrottled = sim.particles.enumerated().filter { index, particle in
+            !particle.isGlyph && index % 2 == 0
+        }.count
+        XCTAssertEqual(full.drawnDotCount, sim.particles.filter { !$0.isGlyph }.count)
+        XCTAssertEqual(throttled.drawnDotCount, expectedThrottled)
+        XCTAssertLessThan(throttled.drawnDotCount, full.drawnDotCount)
+    }
+
     func testBucketKey_separatesDifferentColors() {
         let red = RGBA(r: 1.0, g: 0.0, b: 0.0, a: 1.0)
         let green = RGBA(r: 0.0, g: 1.0, b: 0.0, a: 1.0)

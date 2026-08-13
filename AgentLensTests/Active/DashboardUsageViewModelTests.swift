@@ -344,7 +344,55 @@ final class DashboardUsageViewModelTests: XCTestCase {
             baseline,
             "Dashboard snapshot must run a constant number of data queries — growth with row count is an N+1 regression"
         )
-        tracer.assertMaxQueries(count: 64)
+        tracer.assertMaxQueries(count: 24)
+    }
+
+    func test_dashboardSnapshot_last7DaySeriesMatchesPerDayTotals() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+
+        for offset in 0...7 {
+            let day = try XCTUnwrap(calendar.date(byAdding: .day, value: -offset, to: todayStart))
+            let start = day.addingTimeInterval(3_600)
+            try await usageStore.insert(ViewTestFixtures.makeUsage(
+                provider: .codex,
+                sessionId: "day-\(offset)",
+                model: "gpt-5",
+                inputTokens: 100 * (offset + 1),
+                outputTokens: 50,
+                costUSD: Double(offset + 1),
+                startTime: start,
+                endTime: start.addingTimeInterval(60)
+            ))
+        }
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        XCTAssertEqual(snapshot.last7DayCosts.count, 7)
+        XCTAssertEqual(snapshot.last7DayTokenTotals.count, 7)
+
+        for (index, offset) in (0..<7).reversed().enumerated() {
+            let day = try XCTUnwrap(calendar.date(byAdding: .day, value: -offset, to: todayStart))
+            let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: day))
+            let totals = try await usageStore.fetchUsageTotals(in: day...nextDay)
+            XCTAssertEqual(
+                snapshot.last7DayCosts[index],
+                totals.cost,
+                accuracy: 0.0001,
+                "last7DayCosts[\(index)] (offset \(offset)) must match the intersection-day total"
+            )
+            XCTAssertEqual(snapshot.last7DayTokenTotals[index], totals.tokens)
+        }
+
+        var expectedRolling = 0.0
+        for offset in 1...7 {
+            let day = try XCTUnwrap(calendar.date(byAdding: .day, value: -offset, to: todayStart))
+            let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: day))
+            expectedRolling += try await usageStore.fetchUsageTotals(in: day...nextDay).cost
+        }
+        XCTAssertEqual(snapshot.rollingDailyAverage, expectedRolling / 7, accuracy: 0.0001)
     }
 
     func test_sqliteDateStringFormatsCanonicalUTCForDashboardWindows() {

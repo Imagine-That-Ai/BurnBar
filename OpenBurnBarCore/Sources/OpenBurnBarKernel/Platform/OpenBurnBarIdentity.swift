@@ -129,6 +129,10 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("VectorIndexes", isDirectory: true)
     }
 
+    public var grokParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("grok_parser_cache.json")
+    }
+
     public var claudeCodeParserCacheURL: URL {
         supportDirectory.appendingPathComponent("claude_code_parser_cache.json")
     }

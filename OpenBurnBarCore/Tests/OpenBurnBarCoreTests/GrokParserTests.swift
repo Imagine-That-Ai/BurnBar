@@ -40,6 +40,44 @@ final class GrokParserTests: XCTestCase {
         XCTAssertEqual(usage.provenanceConfidence, .exact)
     }
 
+    func test_parse_skipsUnchangedUpdatesJsonlOnSecondPass() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-grok-cache-\(UUID().uuidString)", isDirectory: true)
+        let session = root
+            .appendingPathComponent("%2Ftmp%2Fgrok-project", isDirectory: true)
+            .appendingPathComponent("grok-cache-session", isDirectory: true)
+        try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try #"{"info":{"id":"grok-cache-session","cwd":"/tmp/grok-project"},"current_model_id":"grok-4.5","created_at":"2026-07-13T01:00:00Z","updated_at":"2026-07-13T01:05:00Z"}"#
+            .write(to: session.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)
+        let updatesURL = session.appendingPathComponent("updates.jsonl")
+        try #"{"method":"session/update","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"turn-1","usage":{"inputTokens":1000,"outputTokens":200,"totalTokens":1200,"cachedReadTokens":600,"reasoningTokens":50}}}}"#
+            .write(to: updatesURL, atomically: true, encoding: .utf8)
+
+        let parser = GrokParser(logDirectoryOverride: root.path)
+        let first = try await parser.parse()
+        XCTAssertEqual(parser.lastUpdatesScanCount, 1)
+        XCTAssertEqual(parser.lastUpdatesCacheHitCount, 0)
+        let firstUsage = try XCTUnwrap(first.usages.first)
+        XCTAssertEqual(firstUsage.totalTokens, 1_800)
+
+        let second = try await parser.parse()
+        XCTAssertEqual(parser.lastUpdatesScanCount, 0)
+        XCTAssertEqual(parser.lastUpdatesCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.totalTokens, firstUsage.totalTokens)
+        XCTAssertEqual(second.usages.first?.inputTokens, firstUsage.inputTokens)
+        XCTAssertEqual(second.usages.first?.provenanceConfidence, .exact)
+
+        let extraTurn = #"{"method":"session/update","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"turn-2","usage":{"inputTokens":500,"outputTokens":100,"totalTokens":600,"cachedReadTokens":300,"reasoningTokens":20}}}}"#
+        let existing = try String(contentsOf: updatesURL, encoding: .utf8)
+        try (existing + "\n" + extraTurn).write(to: updatesURL, atomically: true, encoding: .utf8)
+
+        let third = try await parser.parse()
+        XCTAssertEqual(parser.lastUpdatesScanCount, 1)
+        XCTAssertEqual(third.usages.first?.totalTokens, 2_400)
+    }
+
     func test_parse_doesNotDoubleCountChildUsageAggregatedIntoParent() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("obb-grok-child-usage-\(UUID().uuidString)", isDirectory: true)

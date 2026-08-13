@@ -100,25 +100,20 @@ extension UsageStore {
             let allTime = windowSummaries[.allTime] ?? .empty
             let today = windowSummaries[.today] ?? .empty
 
-            var last7DayCosts: [Double] = []
-            var last7DayTokenTotals: [Int] = []
-            for offset in (0..<7).reversed() {
-                guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart),
-                      let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
-                    last7DayCosts.append(0)
-                    last7DayTokenTotals.append(0)
-                    continue
-                }
-                let totals = try Self.fetchUsageTotals(db: db, dateRange: day...nextDay)
-                last7DayCosts.append(totals.cost)
-                last7DayTokenTotals.append(totals.tokens)
+            let dayTotals = try Self.fetchOverlappingDayCostAndTokens(
+                db: db,
+                calendar: calendar,
+                todayStart: todayStart,
+                offsets: 0...7
+            )
+            let last7DayCosts = (0..<7).reversed().map { offset in
+                dayTotals[offset]?.cost ?? 0
             }
-
-            var rollingDailyTotal: Double = 0
-            for dayOffset in 1...7 {
-                guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: todayStart),
-                      let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { continue }
-                rollingDailyTotal += try Self.fetchUsageTotals(db: db, dateRange: day...nextDay).cost
+            let last7DayTokenTotals = (0..<7).reversed().map { offset in
+                dayTotals[offset]?.tokens ?? 0
+            }
+            let rollingDailyTotal = (1...7).reduce(0.0) { partial, offset in
+                partial + (dayTotals[offset]?.cost ?? 0)
             }
 
             return DashboardUsageSnapshot(

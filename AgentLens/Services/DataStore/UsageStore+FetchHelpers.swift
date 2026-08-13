@@ -114,6 +114,60 @@ extension UsageStore {
         )
     }
 
+    /// One table scan for N calendar-day windows using the same intersection
+    /// predicate as `fetchUsageTotals`. Replaces the 14 per-day round-trips
+    /// the dashboard snapshot used for last-7-day series + rolling average.
+    static func fetchOverlappingDayCostAndTokens(
+        db: Database,
+        calendar: Calendar,
+        todayStart: Date,
+        offsets: ClosedRange<Int>
+    ) throws -> [Int: (cost: Double, tokens: Int)] {
+        var selectParts: [String] = []
+        var arguments = StatementArguments()
+        var includedOffsets: [Int] = []
+        selectParts.reserveCapacity(offsets.count * 2)
+
+        for offset in offsets {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart),
+                  let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
+                continue
+            }
+            let predicate = dateRangePredicate(day...nextDay)
+            let condition = String(predicate.whereSQL.drop(while: { $0 != "(" }))
+            guard condition.hasPrefix("(") else { continue }
+            selectParts.append(
+                "COALESCE(SUM(CASE WHEN \(condition) THEN cost ELSE 0 END), 0) AS cost_\(offset)"
+            )
+            selectParts.append(
+                "COALESCE(SUM(CASE WHEN \(condition) THEN totalTokens ELSE 0 END), 0) AS tokens_\(offset)"
+            )
+            arguments += predicate.arguments
+            arguments += predicate.arguments
+            includedOffsets.append(offset)
+        }
+
+        guard !selectParts.isEmpty else { return [:] }
+
+        let row = try Row.fetchOne(
+            db,
+            sql: """
+                SELECT \(selectParts.joined(separator: ",\n                       "))
+                FROM token_usage
+                """,
+            arguments: arguments
+        )
+
+        var result: [Int: (cost: Double, tokens: Int)] = [:]
+        for offset in includedOffsets {
+            result[offset] = (
+                cost: doubleValue(row?["cost_\(offset)"]),
+                tokens: intValue(row?["tokens_\(offset)"])
+            )
+        }
+        return result
+    }
+
     static func usageTotals(from rows: [UsageAggregateRow]) -> UsageTotals { // pure-move: was private
         rows.reduce(into: UsageTotals.empty) { totals, row in
             totals.sessionCount += row.sessionCount

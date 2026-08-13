@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Instant graphics, GRDB, and quota mining
+- **Constellation / logo swarm fills** now batch every live draw path
+  (swarm, formed logo, color-driver) by `RGBA.bucketKey` instead of one
+  `ctx.fill` per particle. Sparkles stay a deferred overlay. Wallpaper
+  stays on the existing 30 Hz organic-motion cap.
+- **Dashboard snapshot** builds last-7-day cost/token series and the
+  rolling average from one overlapping-day SQL scan instead of 14
+  per-day round-trips. Window membership is unchanged (intersection
+  predicate), so long-running sessions still count on every overlapped
+  day.
+- **Idle usage persist** skips the `token_usage` upsert storm when a
+  refresh tick re-parses byte-identical session totals and nothing else
+  has written the table. New UUIDs/`createdAt` values do not bust the
+  skip gate.
+- **Grok Build quota/usage ticks** resume `updates.jsonl` from a
+  mtime+size disk cache (token breakdowns only) so unchanged
+  `~/.grok/sessions/` trees are not re-scanned. Codex and Claude already
+  had this shape.
+
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
   across the macOS/Windows/Linux migrators with deterministic backfill): `api`

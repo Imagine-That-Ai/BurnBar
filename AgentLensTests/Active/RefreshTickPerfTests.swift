@@ -465,3 +465,104 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
         )
     }
 }
+
+// MARK: - Idle persist skip
+
+final class UsagePersistSkipTests: XCTestCase {
+    func test_persistContentFingerprint_ignoresIdentityAndCreatedAt() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let a = TokenUsage(
+            id: UUID(),
+            provider: .factory,
+            sessionId: "session-1",
+            projectName: "p",
+            model: "m",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1.25,
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            createdAt: start
+        )
+        let b = TokenUsage(
+            id: UUID(),
+            provider: .factory,
+            sessionId: "session-1",
+            projectName: "p",
+            model: "m",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1.25,
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            createdAt: start.addingTimeInterval(9)
+        )
+        XCTAssertNotEqual(a.id, b.id)
+        XCTAssertEqual(
+            UsageStore.persistContentFingerprint([a]),
+            UsageStore.persistContentFingerprint([b])
+        )
+        XCTAssertEqual(
+            UsageStore.persistContentFingerprint([a, b]),
+            UsageStore.persistContentFingerprint([b, a])
+        )
+    }
+
+    func test_insertChunked_skipsUnchangedIdleBatch() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        let rows = makeRealisticUsageHistory()
+
+        try await usageStore.insertChunked(rows, chunkSize: 50)
+        XCTAssertTrue(usageStore.shouldSkipUnchangedPersist(rows))
+
+        tracer.resetLog()
+        try await usageStore.insertChunked(rows, chunkSize: 50)
+        let inserts = tracer.queryLog.filter {
+            $0.sql.uppercased().contains("INSERT INTO TOKEN_USAGE")
+        }
+        XCTAssertEqual(inserts.count, 0, "Idle tick must not re-issue upserts when content is unchanged")
+    }
+
+    func test_insertChunked_writesAgainWhenContentChanges() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let original = TokenUsage(
+            provider: .factory,
+            sessionId: "session-1",
+            projectName: "p",
+            model: "m",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1.0,
+            startTime: start,
+            endTime: start.addingTimeInterval(60)
+        )
+        try await usageStore.insertChunked([original], chunkSize: 50)
+
+        let corrected = TokenUsage(
+            provider: .factory,
+            sessionId: "session-1",
+            projectName: "p",
+            model: "m",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 2.0,
+            startTime: start,
+            endTime: start.addingTimeInterval(60)
+        )
+        XCTAssertFalse(usageStore.shouldSkipUnchangedPersist([corrected]))
+
+        tracer.resetLog()
+        try await usageStore.insertChunked([corrected], chunkSize: 50)
+        let inserts = tracer.queryLog.filter {
+            $0.sql.uppercased().contains("INSERT INTO TOKEN_USAGE")
+        }
+        XCTAssertGreaterThan(inserts.count, 0)
+    }
+}
