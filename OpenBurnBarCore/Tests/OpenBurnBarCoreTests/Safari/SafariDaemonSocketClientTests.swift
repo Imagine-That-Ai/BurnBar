@@ -6,6 +6,46 @@ import Foundation
 import XCTest
 
 final class SafariDaemonSocketClientTests: XCTestCase {
+    func test_liveRuntimePathsUseInjectedCanonicalLoginHome() {
+        let paths = BurnBarSafariDaemonRuntimePaths.live(
+            homeDirectoryURL: URL(fileURLWithPath: "/Users/tester", isDirectory: true)
+        )
+
+        XCTAssertEqual(
+            paths.socketURL.path,
+            "/Users/tester/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock"
+        )
+        XCTAssertEqual(
+            paths.socketAuthTokenFileURL.path,
+            "/Users/tester/Library/Application Support/OpenBurnBar/daemon-socket-auth-token"
+        )
+    }
+
+    func test_liveSocketClientPreservesCanonicalHomeInjection() {
+        let client = BurnBarSafariDaemonSocketClient.live(
+            homeDirectoryURL: URL(fileURLWithPath: "/Users/tester", isDirectory: true)
+        )
+
+        XCTAssertEqual(
+            client.socketURL.path,
+            "/Users/tester/Library/Application Support/OpenBurnBar/openburnbar-daemon.sock"
+        )
+        XCTAssertEqual(
+            client.tokenResolver.tokenFileURL.path,
+            "/Users/tester/Library/Application Support/OpenBurnBar/daemon-socket-auth-token"
+        )
+    }
+
+    #if canImport(Darwin)
+    func test_liveRuntimeSocketPathFitsDarwinUnixSocketLimit() {
+        let paths = BurnBarSafariDaemonRuntimePaths.live()
+        XCTAssertLessThan(
+            paths.socketURL.path.utf8.count,
+            MemoryLayout.size(ofValue: sockaddr_un().sun_path)
+        )
+    }
+    #endif
+
     func test_tokenResolverPrefersFileThenFallsBackOnlyWhenUnavailable() throws {
         let fileFirst = BurnBarSafariDaemonTokenResolver(
             tokenFileURL: URL(fileURLWithPath: "/unused"),
@@ -71,6 +111,25 @@ final class SafariDaemonSocketClientTests: XCTestCase {
             )
         ) { error in
             XCTAssertEqual(error as? BurnBarSafariDaemonSocketError, .requestTooLarge)
+        }
+    }
+
+    func test_overlongInjectedSocketPathFailsBeforeConnect() {
+        let client = BurnBarSafariDaemonSocketClient(
+            socketURL: URL(
+                fileURLWithPath: "/tmp/\(String(repeating: "x", count: 256)).sock"
+            ),
+            tokenResolver: fixedTokenResolver()
+        )
+
+        XCTAssertThrowsError(
+            try client.send(
+                method: .safariBootstrap,
+                id: "overlong-path",
+                params: .object([:])
+            )
+        ) { error in
+            XCTAssertEqual(error as? BurnBarSafariDaemonSocketError, .socketPathTooLong)
         }
     }
 

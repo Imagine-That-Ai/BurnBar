@@ -1430,7 +1430,12 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
                     code: "daemon_response_too_large",
                     message: "OpenBurnBar returned more Safari data than can be handled safely."
                 )
-            case .platformUnavailable, .socketPathTooLong, .malformedResponse,
+            case .socketPathTooLong:
+                return BurnBarSafariBridgeErrorPayload(
+                    code: "daemon_socket_path_too_long",
+                    message: "The OpenBurnBar daemon socket path exceeds the platform limit."
+                )
+            case .platformUnavailable, .malformedResponse,
                  .responseIdentifierMismatch, .protocolMismatch:
                 return BurnBarSafariBridgeErrorPayload(
                     code: "daemon_protocol_error",
