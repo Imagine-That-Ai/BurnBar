@@ -16,11 +16,12 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 import json
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any, Sequence
+from typing import Any
 
 
 EX_USAGE = 64
@@ -63,18 +64,12 @@ def _locked_revisions(lockfile: Path) -> dict[str, str]:
         state = pin.get("state")
         revision = state.get("revision") if isinstance(state, dict) else None
         if not isinstance(identity, str) or not identity:
-            raise InvalidLockfileError(
-                f"Package.resolved pin {index} has no non-empty identity"
-            )
+            raise InvalidLockfileError(f"Package.resolved pin {index} has no non-empty identity")
         if not isinstance(revision, str) or len(revision) != 40:
-            raise InvalidLockfileError(
-                f"Package.resolved pin {identity!r} has no 40-character revision"
-            )
+            raise InvalidLockfileError(f"Package.resolved pin {identity!r} has no 40-character revision")
         normalized_identity = identity.casefold()
         if normalized_identity in revisions:
-            raise InvalidLockfileError(
-                f"Package.resolved contains duplicate identity {identity!r}"
-            )
+            raise InvalidLockfileError(f"Package.resolved contains duplicate identity {identity!r}")
         revisions[normalized_identity] = revision
 
     if not revisions:
@@ -117,14 +112,8 @@ def _dependency_identity(dependency: dict[str, Any]) -> str | None:
 
 def _dependency_revision(dependency: dict[str, Any]) -> str | None:
     dependency_state = dependency.get("state")
-    checkout_state = (
-        dependency_state.get("checkoutState")
-        if isinstance(dependency_state, dict)
-        else None
-    )
-    revision = (
-        checkout_state.get("revision") if isinstance(checkout_state, dict) else None
-    )
+    checkout_state = dependency_state.get("checkoutState") if isinstance(dependency_state, dict) else None
+    revision = checkout_state.get("revision") if isinstance(checkout_state, dict) else None
     return revision if isinstance(revision, str) else None
 
 
@@ -182,9 +171,7 @@ def validate_cache(lockfile: Path, cache_dir: Path) -> list[str]:
     errors: list[str] = []
     for identity in sorted(duplicate_identities):
         if identity in locked_revisions:
-            errors.append(
-                f"workspace state contains duplicate entries for locked package {identity}"
-            )
+            errors.append(f"workspace state contains duplicate entries for locked package {identity}")
 
     checkouts_root = cache_dir / "checkouts"
     for identity, expected_revision in sorted(locked_revisions.items()):
@@ -220,32 +207,16 @@ def validate_cache(lockfile: Path, cache_dir: Path) -> list[str]:
 
     for artifact in artifacts:
         package_ref = artifact.get("packageRef")
-        identity = (
-            package_ref.get("identity")
-            if isinstance(package_ref, dict)
-            else None
-        )
-        artifact_identity = (
-            identity.casefold()
-            if isinstance(identity, str) and identity
-            else "unknown-package"
-        )
+        identity = package_ref.get("identity") if isinstance(package_ref, dict) else None
+        artifact_identity = identity.casefold() if isinstance(identity, str) and identity else "unknown-package"
         artifact_path = artifact.get("path")
         if not isinstance(artifact_path, str) or not artifact_path:
-            errors.append(
-                f"workspace state has no path for {artifact_identity} artifact"
-            )
+            errors.append(f"workspace state has no path for {artifact_identity} artifact")
             continue
         if not Path(artifact_path).exists():
             target_name = artifact.get("targetName")
-            suffix = (
-                f" target {target_name}"
-                if isinstance(target_name, str) and target_name
-                else ""
-            )
-            errors.append(
-                f"artifact is missing for {artifact_identity}{suffix}: {artifact_path}"
-            )
+            suffix = f" target {target_name}" if isinstance(target_name, str) and target_name else ""
+            errors.append(f"artifact is missing for {artifact_identity}{suffix}: {artifact_path}")
 
     return errors
 
@@ -276,10 +247,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"INCOMPLETE: {error}", file=sys.stderr)
         return EX_CONFIG
 
-    print(
-        f"READY: SwiftPM cache satisfies all {locked_count} Package.resolved pins "
-        "at their exact revisions."
-    )
+    print(f"READY: SwiftPM cache satisfies all {locked_count} Package.resolved pins at their exact revisions.")
     return 0
 
 

@@ -35,10 +35,7 @@ def main() -> None:
         else []
     )
     if len(values) != 1:
-        fail(
-            "system_profiler must return exactly one non-empty provisioning_UDID; "
-            f"found {len(values)}."
-        )
+        fail(f"system_profiler must return exactly one non-empty provisioning_UDID; found {len(values)}.")
 
     provisioning_udid = values[0]
     if PROVISIONING_UDID_PATTERN.fullmatch(provisioning_udid) is None:

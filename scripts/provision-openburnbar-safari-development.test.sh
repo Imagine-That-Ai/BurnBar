@@ -104,7 +104,11 @@ case "${1:-}" in
     esac
     ;;
   status)
-    if [[ -n "${OPENBURNBAR_FIXTURE_GIT_STATUS:-}" ]]; then
+    if [[ -f "${OPENBURNBAR_FIXTURE_SAFARI_CI_MARKER:-/dev/null}" &&
+      -n "${OPENBURNBAR_FIXTURE_POST_SAFARI_GIT_STATUS:-}" ]]
+    then
+      printf '%s\n' "$OPENBURNBAR_FIXTURE_POST_SAFARI_GIT_STATUS"
+    elif [[ -n "${OPENBURNBAR_FIXTURE_GIT_STATUS:-}" ]]; then
       printf '%s\n' "$OPENBURNBAR_FIXTURE_GIT_STATUS"
     fi
     ;;
@@ -276,6 +280,23 @@ fi
 : >"$OPENBURNBAR_FIXTURE_SIGNAL_FFI_MARKER"
 SH
 
+  cat >"$fixture_root/safari-ci.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+for name in GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; do
+  if [[ -n "${!name:-}" ]]; then
+    echo "candidate Git override leaked into Safari CI: $name" >&2
+    exit 2
+  fi
+done
+printf 'safari-ci\n' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
+: >"$OPENBURNBAR_FIXTURE_SAFARI_CI_MARKER"
+if [[ "${OPENBURNBAR_FIXTURE_SAFARI_CI_FAIL:-}" == "1" ]]; then
+  echo "fixture Safari CI failed" >&2
+  exit 29
+fi
+SH
+
   cat >"$fixture_root/compat.sh" <<'SH'
 #!/usr/bin/env bash
 openburnbar_prepare_google_sign_in_macos_compat() {
@@ -408,6 +429,7 @@ PY
     "$mock_bin/system_profiler" \
     "$fixture_root/prepare.sh" \
     "$fixture_root/prepare-signal-ffi.sh" \
+    "$fixture_root/safari-ci.sh" \
     "$fixture_root/verifier.sh" \
     "$fixture_root/repairer.sh" \
     "$fixture_root/receipt.py"
@@ -444,6 +466,7 @@ run_fixture_with_paths() {
     OPENBURNBAR_FIXTURE_IDENTITY_SHA1="$identity_sha1" \
     OPENBURNBAR_FIXTURE_SECOND_IDENTITY_SHA1="$second_identity_sha1" \
     OPENBURNBAR_FIXTURE_SIGNAL_FFI_MARKER="$fixture_root/signal-ffi-ready" \
+    OPENBURNBAR_FIXTURE_SAFARI_CI_MARKER="$fixture_root/safari-ci-complete" \
     OPENBURNBAR_GIT_BIN="$fixture_root/mock-bin/git" \
     OPENBURNBAR_SECURITY_BIN="$fixture_root/mock-bin/security" \
     OPENBURNBAR_XCODEBUILD_BIN="$fixture_root/mock-bin/xcodebuild" \
@@ -453,6 +476,7 @@ run_fixture_with_paths() {
     OPENBURNBAR_SYSTEM_PROFILER_BIN="$fixture_root/mock-bin/system_profiler" \
     OPENBURNBAR_PREPARE_SWIFTPM_SCRIPT="$fixture_root/prepare.sh" \
     OPENBURNBAR_PREPARE_SIGNAL_FFI_SCRIPT="$fixture_root/prepare-signal-ffi.sh" \
+    OPENBURNBAR_SAFARI_CI_SCRIPT="$fixture_root/safari-ci.sh" \
     OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT="$fixture_root/compat.sh" \
     OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT="$fixture_root/compat.sh" \
     OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER="$fixture_root/verifier.sh" \
@@ -498,14 +522,19 @@ test_success_constructs_exact_scheme_scoped_provisioning() {
   if [[ "$(grep -c '^xcodebuild ' "$log")" != "1" ]]; then
     fail_test "expected exactly one scheme-scoped xcodebuild call"
   fi
+  assert_file_contains "$log" "safari-ci"
   assert_file_contains "$log" \
     "prepare-signal-ffi profile=<release> targets=<aarch64-apple-darwin> build-root=<$fixture_root/derived-data/SignalFFI> cargo-root=<$fixture_root/derived-data/SignalFFICargo>"
-  local signal_ffi_line swiftpm_line xcode_line
+  local safari_ci_line signal_ffi_line swiftpm_line xcode_line
+  safari_ci_line="$(grep -n '^safari-ci$' "$log" | cut -d: -f1)"
   signal_ffi_line="$(grep -n '^prepare-signal-ffi ' "$log" | cut -d: -f1)"
   swiftpm_line="$(grep -n '^prepare ' "$log" | cut -d: -f1)"
   xcode_line="$(grep -n '^xcodebuild ' "$log" | cut -d: -f1)"
   if ((signal_ffi_line >= swiftpm_line || signal_ffi_line >= xcode_line)); then
     fail_test "Signal FFI must be materialized before SwiftPM resolution and Xcode build"
+  fi
+  if ((safari_ci_line >= signal_ffi_line)); then
+    fail_test "Safari CI must complete before native build preparation"
   fi
 
   for exact_argument in \
@@ -674,6 +703,28 @@ test_signal_ffi_preparation_fails_closed_before_resolution() {
   assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
 }
 
+test_safari_ci_fails_closed_and_rejects_generated_drift() {
+  local fixture_root="$work_root/safari-ci-failure"
+  run_fixture "$fixture_root" OPENBURNBAR_FIXTURE_SAFARI_CI_FAIL=1
+  assert_status 29 "$fixture_status" "$fixture_root/stderr.log"
+  assert_file_contains "$fixture_root/stderr.log" "fixture Safari CI failed"
+  assert_file_not_contains "$fixture_root/commands.log" "security "
+  assert_file_not_contains "$fixture_root/commands.log" "prepare-signal-ffi "
+  assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
+
+  fixture_root="$work_root/safari-ci-drift"
+  run_fixture \
+    "$fixture_root" \
+    OPENBURNBAR_FIXTURE_POST_SAFARI_GIT_STATUS=" M extensions/safari/dist/popup.js"
+  [[ "$fixture_status" != "0" ]] ||
+    fail_test "Safari CI candidate drift unexpectedly succeeded"
+  assert_file_contains "$fixture_root/stderr.log" "requires a clean candidate checkout"
+  assert_file_contains "$fixture_root/stderr.log" "extensions/safari/dist/popup.js"
+  assert_file_not_contains "$fixture_root/commands.log" "security "
+  assert_file_not_contains "$fixture_root/commands.log" "prepare-signal-ffi "
+  assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
+}
+
 test_rejects_candidate_mismatch_before_provisioning() {
   local fixture_root="$work_root/missing-commit"
   run_fixture "$fixture_root" OPENBURNBAR_FIXTURE_GIT_MISSING=commit
@@ -722,6 +773,7 @@ test_rejects_dirty_candidate_before_provisioning() {
   assert_file_contains "$fixture_root/stderr.log" "requires a clean candidate checkout"
   assert_file_not_contains "$fixture_root/commands.log" "security "
   assert_file_not_contains "$fixture_root/commands.log" "xcodebuild "
+  assert_file_contains "$fixture_root/commands.log" "<--untracked-files=all>"
 }
 
 test_rejects_missing_and_ambiguous_identity() {
@@ -790,6 +842,7 @@ test_exact_safari_profile_repairs_after_copy_before_verification
 test_safari_profile_repair_failure_blocks_verification_and_receipt
 test_rejects_invalid_safari_profile_path_before_build
 test_signal_ffi_preparation_fails_closed_before_resolution
+test_safari_ci_fails_closed_and_rejects_generated_drift
 test_rejects_candidate_mismatch_before_provisioning
 test_rejects_dirty_candidate_before_provisioning
 test_rejects_missing_and_ambiguous_identity

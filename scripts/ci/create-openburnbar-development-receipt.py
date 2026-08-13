@@ -11,7 +11,7 @@ import re
 import stat
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,7 @@ from exclusive_json import write_exclusive_json
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 TEAM_ID = re.compile(r"^[A-Z0-9]{10}$")
 CERTIFICATE_SHA1 = re.compile(r"^[0-9A-Fa-f]{40}$")
+UTC = timezone(timedelta(0))
 
 
 def parse_args() -> argparse.Namespace:
@@ -86,13 +87,8 @@ def sha256_tree(root: Path) -> tuple[str, int, int]:
                     resolved_target = (path.parent / target).resolve(strict=True)
                     resolved_target.relative_to(root_real)
                 except (FileNotFoundError, RuntimeError, ValueError):
-                    fail(
-                        "development app contains a broken or escaping symlink: "
-                        f"{path} -> {target}"
-                    )
-                rows.append(
-                    (relative, f"link\t{relative}\t{target}\n".encode())
-                )
+                    fail(f"development app contains a broken or escaping symlink: {path} -> {target}")
+                rows.append((relative, f"link\t{relative}\t{target}\n".encode()))
                 symlink_count += 1
             elif stat.S_ISDIR(metadata.st_mode):
                 rows.append((relative, f"dir\t{relative}\n".encode()))
@@ -100,16 +96,12 @@ def sha256_tree(root: Path) -> tuple[str, int, int]:
                 rows.append(
                     (
                         relative,
-                        f"file\t{relative}\t{metadata.st_size}\t"
-                        f"{sha256_file(path)}\n".encode(),
+                        f"file\t{relative}\t{metadata.st_size}\t{sha256_file(path)}\n".encode(),
                     )
                 )
                 regular_file_count += 1
             else:
-                fail(
-                    "development app contains an unsupported filesystem entry: "
-                    f"{path}"
-                )
+                fail(f"development app contains an unsupported filesystem entry: {path}")
     digest = hashlib.sha256()
     for _, row in sorted(rows, key=lambda item: item[0]):
         digest.update(row)
@@ -177,10 +169,7 @@ def profile_summary(
     if not isinstance(entitlements, dict):
         fail(f"{label} profile is missing entitlements.")
     expected_application_identifier = f"{team_id}.{bundle_identifier}"
-    if (
-        entitlements.get("com.apple.application-identifier")
-        != expected_application_identifier
-    ):
+    if entitlements.get("com.apple.application-identifier") != expected_application_identifier:
         fail(f"{label} profile application identifier does not match.")
     # macOS App Groups are unrestricted entitlements. Profiles may carry a
     # team wildcard; exact App Group scope is verified on the signed bundles.
@@ -199,8 +188,8 @@ def profile_summary(
     if not isinstance(expiration, datetime):
         fail(f"{label} profile is missing ExpirationDate.")
     if expiration.tzinfo is None:
-        expiration = expiration.replace(tzinfo=timezone.utc)
-    if expiration <= datetime.now(timezone.utc):
+        expiration = expiration.replace(tzinfo=UTC)
+    if expiration <= datetime.now(UTC):
         fail(f"{label} profile expired at {expiration.isoformat()}.")
 
     certificates = profile.get("DeveloperCertificates")
@@ -219,10 +208,7 @@ def profile_summary(
         "name": require_profile_string(profile, "Name", label),
         "bundleIdentifier": bundle_identifier,
         "sha256": sha256_file(path),
-        "expirationDate": expiration.astimezone(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z"),
+        "expirationDate": expiration.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "provisionedDeviceCount": len(set(devices)),
         "currentMacAuthorized": True,
         "signingCertificateMember": True,
@@ -327,10 +313,7 @@ def main() -> int:
             "host": host_profile,
             "safari": safari_profile,
         },
-        "createdAt": datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z"),
+        "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     write_exclusive_json(args.output, receipt)

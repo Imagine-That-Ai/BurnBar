@@ -24,6 +24,7 @@ import argparse
 import json
 import math
 import os
+from collections.abc import Sequence
 from pathlib import Path
 import re
 import signal
@@ -32,7 +33,7 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Any, Sequence
+from typing import Any
 
 EXECUTION_TIMEOUT_MARKER = "exceeded execution time allowance"
 RESTART_MARKER = "Restarting after unexpected exit, crash, or test timeout"
@@ -135,8 +136,7 @@ class XcodebuildSupervisor:
                 )
                 self._persist_receipt()
             print(
-                ">>> Supervised xcodebuild did not exit after SIGTERM; sent "
-                f"SIGKILL to exact PID {self.process.pid}.",
+                f">>> Supervised xcodebuild did not exit after SIGTERM; sent SIGKILL to exact PID {self.process.pid}.",
                 flush=True,
             )
 
@@ -327,9 +327,7 @@ class XcodebuildSupervisor:
 
 
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Run xcodebuild with XCTest execution-timeout containment."
-    )
+    parser = argparse.ArgumentParser(description="Run xcodebuild with XCTest execution-timeout containment.")
     parser.add_argument("--log", required=True, type=Path)
     parser.add_argument("--receipt", required=True, type=Path)
     parser.add_argument(

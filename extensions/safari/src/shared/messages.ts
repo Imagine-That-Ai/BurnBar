@@ -1,14 +1,17 @@
-import type {
-  BridgeAgentOption,
-  BridgeRuntimeState,
-  ContentAction,
-  ContentActionResult,
-  ContentPageState,
-  ExtractedPageContext,
-  PageContext,
-  PageState,
-  SafariMode,
-  ScreenshotResult
+import {
+  isRecord,
+  isStringLiteral,
+  parseBridgeRuntimeState,
+  type BridgeAgentOption,
+  type BridgeRuntimeState,
+  type ContentAction,
+  type ContentActionResult,
+  type ContentPageState,
+  type ExtractedPageContext,
+  type PageContext,
+  type PageState,
+  type SafariMode,
+  type ScreenshotResult
 } from './protocol';
 import type { SerializedError } from './errors';
 import type { SafariPerformanceDiagnostics, SafariPerformanceOutcome } from './performance';
@@ -111,17 +114,13 @@ export type PopupRequest =
 
 const MAX_LEARNING_CORRECTION_BYTES = 4 * 1024;
 const MIN_LEARNING_CORRECTION_BYTES = 8;
-const TRUST_PATCH_KEYS = new Set<keyof TrustSettings>([
+const TRUST_PATCH_KEYS: readonly (keyof TrustSettings)[] = [
   'globalKillSwitch',
   'onlyCurrentTab',
   'siteAllowed',
   'sensitiveSiteOverride',
   'cloudScreenshotAcknowledged'
-]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+];
 
 function hasExactKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
   const actualKeys = Object.keys(record);
@@ -165,8 +164,7 @@ function isTrustPatch(value: unknown): value is Partial<TrustSettings> {
   }
   const keys = Object.keys(value);
   return (
-    keys.length > 0 &&
-    keys.every((key) => TRUST_PATCH_KEYS.has(key as keyof TrustSettings) && typeof value[key] === 'boolean')
+    keys.length > 0 && keys.every((key) => isStringLiteral(key, TRUST_PATCH_KEYS) && typeof value[key] === 'boolean')
   );
 }
 
@@ -233,6 +231,162 @@ export type PopupResponse =
   | { ok: false; error: SerializedError; snapshot?: PopupSnapshot };
 
 export type BackgroundPush = { type: 'background.snapshot'; snapshot: PopupSnapshot };
+
+function isSerializedError(value: unknown): value is SerializedError {
+  return (
+    isRecord(value) &&
+    typeof value.code === 'string' &&
+    typeof value.message === 'string' &&
+    typeof value.retryable === 'boolean'
+  );
+}
+
+function isBridgeRuntimeState(value: unknown): value is BridgeRuntimeState {
+  try {
+    parseBridgeRuntimeState(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isPageSnapshot(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      typeof value.tabId === 'number' &&
+      typeof value.url === 'string' &&
+      typeof value.title === 'string' &&
+      typeof value.navigationEpoch === 'number' &&
+      typeof value.isActive === 'boolean' &&
+      typeof value.isTopFrame === 'boolean' &&
+      typeof value.capturedAt === 'string' &&
+      typeof value.sensitive === 'boolean' &&
+      isStringLiteral(value.permission, ['granted', 'prompt', 'denied', 'unsupported']))
+  );
+}
+
+function isTrustSettings(value: unknown): value is TrustSettings {
+  return (
+    isRecord(value) &&
+    typeof value.globalKillSwitch === 'boolean' &&
+    typeof value.onlyCurrentTab === 'boolean' &&
+    typeof value.siteAllowed === 'boolean' &&
+    typeof value.sensitiveSiteOverride === 'boolean' &&
+    typeof value.cloudScreenshotAcknowledged === 'boolean'
+  );
+}
+
+function isLearningItem(value: unknown): value is LearningItem {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.version === 'number' &&
+    typeof value.title === 'string' &&
+    isStringLiteral(value.kind, ['memory', 'skill', 'site-rule']) &&
+    isStringLiteral(value.status, ['proposed', 'accepted', 'stale', 'archived']) &&
+    typeof value.summary === 'string' &&
+    typeof value.createdAt === 'string'
+  );
+}
+
+function isLearningState(value: unknown): value is LearningState {
+  return (
+    isRecord(value) &&
+    typeof value.eligible === 'boolean' &&
+    typeof value.optedIn === 'boolean' &&
+    typeof value.consentSeen === 'boolean' &&
+    Array.isArray(value.items) &&
+    value.items.every(isLearningItem)
+  );
+}
+
+function isTranscriptEntry(value: unknown): value is TranscriptEntry {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    isStringLiteral(value.role, ['user', 'assistant', 'system', 'activity']) &&
+    typeof value.text === 'string' &&
+    typeof value.createdAt === 'string' &&
+    (value.streaming === undefined || typeof value.streaming === 'boolean') &&
+    (value.error === undefined || typeof value.error === 'boolean')
+  );
+}
+
+function isApprovalPreview(value: unknown): value is ApprovalPreview {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.runId === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.summary === 'string' &&
+    typeof value.url === 'string' &&
+    isStringLiteral(value.risk, ['read', 'write', 'sensitive', 'destructive']) &&
+    typeof value.requestedAt === 'string'
+  );
+}
+
+function isActivityEvent(value: unknown): value is ActivityEvent {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    (value.runId === undefined || typeof value.runId === 'string') &&
+    typeof value.text === 'string' &&
+    isStringLiteral(value.tone, ['muted', 'active', 'success', 'warning', 'error']) &&
+    typeof value.createdAt === 'string'
+  );
+}
+
+function isPerformanceDiagnostics(value: unknown): value is SafariPerformanceDiagnostics {
+  return (
+    value === undefined ||
+    (isRecord(value) &&
+      value.schemaVersion === 1 &&
+      typeof value.retentionLimit === 'number' &&
+      typeof value.totalRecorded === 'number' &&
+      typeof value.droppedCount === 'number' &&
+      isStringLiteral(value.persistence, ['ready', 'memory_only']) &&
+      Array.isArray(value.samples) &&
+      Array.isArray(value.summaries))
+  );
+}
+
+function isPopupSnapshot(value: unknown): value is PopupSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.stateVersion === 'number' &&
+    isBridgeRuntimeState(value.bridge) &&
+    isStringLiteral(value.mode, ['ask', 'agentic', 'watch', 'handoff']) &&
+    (value.selectedAgentId === undefined || typeof value.selectedAgentId === 'string') &&
+    isPageSnapshot(value.page) &&
+    isTrustSettings(value.trust) &&
+    isLearningState(value.learning) &&
+    Array.isArray(value.transcript) &&
+    value.transcript.every(isTranscriptEntry) &&
+    Array.isArray(value.approvals) &&
+    value.approvals.every(isApprovalPreview) &&
+    Array.isArray(value.activity) &&
+    value.activity.every(isActivityEvent) &&
+    isPerformanceDiagnostics(value.performance) &&
+    typeof value.running === 'boolean' &&
+    typeof value.busy === 'boolean' &&
+    (value.lastError === undefined || isSerializedError(value.lastError))
+  );
+}
+
+export function isPopupResponse(value: unknown): value is PopupResponse {
+  if (!isRecord(value) || typeof value.ok !== 'boolean') {
+    return false;
+  }
+  if (value.ok) {
+    return isPopupSnapshot(value.snapshot);
+  }
+  return isSerializedError(value.error) && (value.snapshot === undefined || isPopupSnapshot(value.snapshot));
+}
+
+export function isBackgroundPush(value: unknown): value is BackgroundPush {
+  return isRecord(value) && value.type === 'background.snapshot' && isPopupSnapshot(value.snapshot);
+}
 
 export type ContentRequest =
   | { type: 'content.ping' }
@@ -416,7 +570,7 @@ export type ContentResponse =
   | { ok: false; error: SerializedError; pageState: ContentPageState };
 
 export interface PopupActionPayloads {
-  ask: {
+  ask: Record<string, unknown> & {
     prompt: string;
     agentId: string;
     pageContext: PageContext;
@@ -424,7 +578,7 @@ export interface PopupActionPayloads {
     cloudScreenshotAcknowledged: boolean;
     learningOptedIn: boolean;
   };
-  agentic: {
+  agentic: Record<string, unknown> & {
     prompt: string;
     agentId: string;
     pageContext: PageContext;
@@ -433,35 +587,35 @@ export interface PopupActionPayloads {
     url: string;
     learningOptedIn: boolean;
   };
-  handoff: {
+  handoff: Record<string, unknown> & {
     prompt: string;
     agentId: string;
     pageContext: PageContext;
     screenshot: ScreenshotResult;
     tabId: number;
   };
-  approval: {
+  approval: Record<string, unknown> & {
     approvalId: string;
     decision: 'allow_once' | 'allow_session' | 'block';
   };
-  abort: {
+  abort: Record<string, unknown> & {
     activeRunId?: string;
     reason: 'user_stop';
   };
-  trust: {
+  trust: Record<string, unknown> & {
     origin: string;
     settings: TrustSettings;
   };
-  learning: {
+  learning: Record<string, unknown> & {
     operation: 'opt_in' | 'opt_out' | 'approve' | 'reject' | 'forget';
     itemId?: string;
     expectedVersion?: number;
   };
-  'learning.recall': {
+  'learning.recall': Record<string, unknown> & {
     query: string;
     limit: number;
   };
-  'learning.propose': {
+  'learning.propose': Record<string, unknown> & {
     correctionId: string;
     correction: string;
     tabId: number;

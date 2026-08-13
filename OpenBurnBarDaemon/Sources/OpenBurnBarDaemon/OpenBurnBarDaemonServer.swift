@@ -706,41 +706,9 @@ public actor BurnBarDaemonServer {
         // configStore.snapshot(), we rely on the fact that connectorPlaneSnapshot() validates
         // both runtime availability AND provider credentials (since connectors are backed by
         // the same credential system).
-        let resolvedToolingProxy = self.toolingProxy
-        let executionReadinessGate: BurnBarExecutionReadinessGate = { @Sendable _, _ in
-            // Check 1: Verify connector plane runtime is accessible
-            // This also implicitly validates that provider credentials are accessible since
-            // the connector plane is backed by the same secret store.
-            do {
-                let connectorPlane = try await resolvedToolingProxy.connectorPlaneSnapshot()
-                // If connector plane has no enabled/healthy connectors, runtime is unavailable
-                let hasEnabledConnector = connectorPlane.connectors.contains { $0.isEnabled }
-                if !hasEnabledConnector {
-                    return BurnBarExecutionReadiness(
-                        code: .runtimeUnavailable,
-                        detail: "No connector plane runtime is configured. Configure at least one provider in OpenBurnBar Settings before dispatching missions."
-                    )
-                }
-                // Also check that at least one connector has a valid secret (credentials configured)
-                let hasConnectorWithCredentials = connectorPlane.connectors.contains { connector in
-                    connector.isEnabled && connector.secretConfigured
-                }
-                if !hasConnectorWithCredentials {
-                    return BurnBarExecutionReadiness(
-                        code: .missingCredential,
-                        detail: "No AI provider credentials are configured. Add provider credentials in OpenBurnBar Settings before dispatching missions."
-                    )
-                }
-            } catch {
-                return BurnBarExecutionReadiness(
-                    code: .runtimeUnavailable,
-                    detail: "Connector plane runtime is unavailable: \(error.localizedDescription)"
-                )
-            }
-
-            // All checks passed - mission is ready to dispatch
-            return nil
-        }
+        let executionReadinessGate = Self.executionReadinessGate(
+            toolingProxy: toolingProxy
+        )
 
         self.missionControlService = missionControlService ?? BurnBarMissionControlService(
             store: BurnBarMissionControlStore(
@@ -900,6 +868,45 @@ public actor BurnBarDaemonServer {
             )
         } else {
             self.gatewayServer = nil
+        }
+    }
+
+    private static func executionReadinessGate(
+        toolingProxy: BurnBarToolingProxyService
+    ) -> BurnBarExecutionReadinessGate {
+        { @Sendable _, _ in
+            // Check 1: Verify connector plane runtime is accessible
+            // This also implicitly validates that provider credentials are accessible since
+            // the connector plane is backed by the same secret store.
+            do {
+                let connectorPlane = try await toolingProxy.connectorPlaneSnapshot()
+                // If connector plane has no enabled/healthy connectors, runtime is unavailable
+                let hasEnabledConnector = connectorPlane.connectors.contains { $0.isEnabled }
+                if !hasEnabledConnector {
+                    return BurnBarExecutionReadiness(
+                        code: .runtimeUnavailable,
+                        detail: "No connector plane runtime is configured. Configure at least one provider in OpenBurnBar Settings before dispatching missions."
+                    )
+                }
+                // Also check that at least one connector has a valid secret (credentials configured)
+                let hasConnectorWithCredentials = connectorPlane.connectors.contains { connector in
+                    connector.isEnabled && connector.secretConfigured
+                }
+                if !hasConnectorWithCredentials {
+                    return BurnBarExecutionReadiness(
+                        code: .missingCredential,
+                        detail: "No AI provider credentials are configured. Add provider credentials in OpenBurnBar Settings before dispatching missions."
+                    )
+                }
+            } catch {
+                return BurnBarExecutionReadiness(
+                    code: .runtimeUnavailable,
+                    detail: "Connector plane runtime is unavailable: \(error.localizedDescription)"
+                )
+            }
+
+            // All checks passed - mission is ready to dispatch
+            return nil
         }
     }
 

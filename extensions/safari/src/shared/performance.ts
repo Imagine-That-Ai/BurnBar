@@ -1,4 +1,4 @@
-import type { SafariActionKind } from './protocol';
+import { isSafariActionKind, isStringLiteral, type SafariActionKind } from './protocol';
 
 export const SAFARI_PERFORMANCE_SCHEMA_VERSION = 1;
 export const SAFARI_PERFORMANCE_RETENTION_LIMIT = 240;
@@ -73,50 +73,6 @@ export interface StoredSafariPerformanceState {
 }
 
 const METRIC_SET = new Set<string>(SAFARI_PERFORMANCE_METRICS);
-const OUTCOME_SET = new Set<SafariPerformanceOutcome>(['success', 'error', 'aborted']);
-const ROUTE_SET = new Set<NonNullable<SafariPerformanceContext['route']>>(['local', 'cloud']);
-const CAPTURE_SET = new Set<NonNullable<SafariPerformanceContext['capture']>>(['viewport', 'full_page_segment']);
-const IMAGE_PATH_SET = new Set<NonNullable<SafariPerformanceContext['imagePath']>>([
-  'offscreen',
-  'content_fallback',
-  'full_page_stitch'
-]);
-const TRIGGER_SET = new Set<NonNullable<SafariPerformanceContext['trigger']>>([
-  'stop_button',
-  'popup_shortcut',
-  'daemon_abort'
-]);
-const LEARNING_OPERATION_SET = new Set<NonNullable<SafariPerformanceContext['learningOperation']>>([
-  'load',
-  'opt_in',
-  'opt_out',
-  'propose',
-  'approve',
-  'reject',
-  'forget'
-]);
-const COMMAND_SET = new Set<NonNullable<SafariPerformanceContext['command']>>(['empty', 'issued']);
-const ACTION_SET = new Set<SafariActionKind>([
-  'page_context',
-  'screenshot',
-  'full_page_screenshot',
-  'click',
-  'type',
-  'press_key',
-  'scroll',
-  'hover',
-  'focus',
-  'select_option',
-  'wait_for',
-  'navigate',
-  'open_tab',
-  'close_tab',
-  'list_tabs',
-  'run_javascript',
-  'extract',
-  'abort'
-]);
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -144,7 +100,7 @@ function isSafariPerformanceMetricName(value: unknown): value is SafariPerforman
 }
 
 function isSafariPerformanceOutcome(value: unknown): value is SafariPerformanceOutcome {
-  return typeof value === 'string' && OUTCOME_SET.has(value as SafariPerformanceOutcome);
+  return isStringLiteral(value, ['success', 'error', 'aborted']);
 }
 
 export function sanitizeSafariPerformanceContext(value: unknown): SafariPerformanceContext | undefined {
@@ -152,32 +108,28 @@ export function sanitizeSafariPerformanceContext(value: unknown): SafariPerforma
     return undefined;
   }
   const context: SafariPerformanceContext = {};
-  if (typeof value.route === 'string' && ROUTE_SET.has(value.route as NonNullable<typeof context.route>)) {
-    context.route = value.route as NonNullable<typeof context.route>;
+  if (isStringLiteral(value.route, ['local', 'cloud'])) {
+    context.route = value.route;
   }
-  if (typeof value.capture === 'string' && CAPTURE_SET.has(value.capture as NonNullable<typeof context.capture>)) {
-    context.capture = value.capture as NonNullable<typeof context.capture>;
+  if (isStringLiteral(value.capture, ['viewport', 'full_page_segment'])) {
+    context.capture = value.capture;
   }
-  if (
-    typeof value.imagePath === 'string' &&
-    IMAGE_PATH_SET.has(value.imagePath as NonNullable<typeof context.imagePath>)
-  ) {
-    context.imagePath = value.imagePath as NonNullable<typeof context.imagePath>;
+  if (isStringLiteral(value.imagePath, ['offscreen', 'content_fallback', 'full_page_stitch'])) {
+    context.imagePath = value.imagePath;
   }
-  if (typeof value.action === 'string' && ACTION_SET.has(value.action as SafariActionKind)) {
-    context.action = value.action as SafariActionKind;
+  if (isSafariActionKind(value.action)) {
+    context.action = value.action;
   }
-  if (typeof value.trigger === 'string' && TRIGGER_SET.has(value.trigger as NonNullable<typeof context.trigger>)) {
-    context.trigger = value.trigger as NonNullable<typeof context.trigger>;
+  if (isStringLiteral(value.trigger, ['stop_button', 'popup_shortcut', 'daemon_abort'])) {
+    context.trigger = value.trigger;
   }
   if (
-    typeof value.learningOperation === 'string' &&
-    LEARNING_OPERATION_SET.has(value.learningOperation as NonNullable<typeof context.learningOperation>)
+    isStringLiteral(value.learningOperation, ['load', 'opt_in', 'opt_out', 'propose', 'approve', 'reject', 'forget'])
   ) {
-    context.learningOperation = value.learningOperation as NonNullable<typeof context.learningOperation>;
+    context.learningOperation = value.learningOperation;
   }
-  if (typeof value.command === 'string' && COMMAND_SET.has(value.command as NonNullable<typeof context.command>)) {
-    context.command = value.command as NonNullable<typeof context.command>;
+  if (isStringLiteral(value.command, ['empty', 'issued'])) {
+    context.command = value.command;
   }
   return Object.keys(context).length > 0 ? context : undefined;
 }

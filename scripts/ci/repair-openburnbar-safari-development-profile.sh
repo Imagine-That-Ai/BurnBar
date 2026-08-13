@@ -398,7 +398,7 @@ sign_helper() {
     --sign "$signing_identity"
     --timestamp=none
     --generate-entitlement-der
-    --options runtime,library
+    --options "runtime,library"
     --identifier "$identifier"
   )
   if [[ -n "$entitlement_path" ]]; then

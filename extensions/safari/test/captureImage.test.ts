@@ -114,17 +114,23 @@ describe('capture and image processing', () => {
     const toDataURL = vi.fn(() => 'data:image/jpeg;base64,anBlZw==');
     vi.stubGlobal('Image', FakeImage);
     const createElement = document.createElement.bind(document);
-    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string, options?: ElementCreationOptions) => {
       if (tagName === 'canvas') {
-        return {
-          width: 0,
-          height: 0,
-          getContext: () => ({ drawImage }),
-          toDataURL
-        } as unknown as HTMLCanvasElement;
+        const canvas = createElement('canvas');
+        Object.defineProperties(canvas, {
+          getContext: {
+            configurable: true,
+            value: vi.fn(() => ({ drawImage }))
+          },
+          toDataURL: {
+            configurable: true,
+            value: toDataURL
+          }
+        });
+        return canvas;
       }
-      return createElement(tagName);
-    }) as typeof document.createElement);
+      return createElement(tagName, options);
+    });
 
     const result = await resizeImageInDocument('data:image/jpeg;base64,c291cmNl', 1568, 82);
     expect(result).toMatchObject({ width: 1568, height: 784, byteLength: 4 });

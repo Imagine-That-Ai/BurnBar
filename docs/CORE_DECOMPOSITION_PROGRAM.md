@@ -606,6 +606,18 @@ duplicate parser/provider boundaries. Planned ceilings move narrowly to 47,250 a
 (~221/185 LOC of bounded headroom); file-count ceilings and the main-target shim baseline stay
 unchanged.
 
+**Safari external-certification bridge ceiling adjustment (2026-08-13):** the exact
+OpenBurnBar Safari candidate adds five cross-platform Kernel-owned wire/authority files
+(`SafariAppGroupPayloadStore`, `SafariBridgeChunkStore`, `SafariDaemonSocketClient`,
+`SafariNativeBridgeController`, and `SafariNativeBridgeProtocol`) plus the Safari contract
+surface. These types are consumed by the native appex, daemon, and Core tests through
+`OpenBurnBarKernel`; moving them into a dependency-only leaf would duplicate the bridge
+boundary or invert the package dependency graph. The candidate measures 52,101 Kernel LOC
+across 160 files, so the planned Kernel ceiling moves narrowly from 47,250 to 52,250 LOC
+(149 LOC of bounded headroom). The file ceiling remains 185 and the deny-gate remains in
+force for any further Kernel growth; future bridge expansion requires decomposition or a
+separate reviewed ceiling change.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated

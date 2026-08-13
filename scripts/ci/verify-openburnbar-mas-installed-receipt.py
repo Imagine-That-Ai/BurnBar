@@ -37,9 +37,7 @@ def write_owner_only_json(path: Path, value: dict[str, object]) -> None:
 def require_exact_keys(value: dict[str, object], keys: set[str], label: str) -> None:
     actual = set(value)
     if actual != keys:
-        raise ValueError(
-            f"{label} fields must be exactly {sorted(keys)!r}; found {sorted(actual)!r}"
-        )
+        raise ValueError(f"{label} fields must be exactly {sorted(keys)!r}; found {sorted(actual)!r}")
 
 
 def load_processing_receipt(path: Path) -> dict[str, object]:
@@ -71,12 +69,7 @@ def load_processing_receipt(path: Path) -> dict[str, object]:
     build = value.get("build")
     if not isinstance(app_apple_id, str) or not app_apple_id.isdigit():
         raise ValueError("App Store Connect receipt app Apple ID is invalid")
-    if (
-        not isinstance(delivery_id, str)
-        or not delivery_id
-        or "\n" in delivery_id
-        or "\r" in delivery_id
-    ):
+    if not isinstance(delivery_id, str) or not delivery_id or "\n" in delivery_id or "\r" in delivery_id:
         raise ValueError("App Store Connect receipt delivery ID is invalid")
     for label, candidate in (("version", version), ("build", build)):
         if not isinstance(candidate, str) or not SAFE_VERSION.fullmatch(candidate):

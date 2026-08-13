@@ -211,10 +211,12 @@ describe('Safari performance evidence', () => {
     monotonicNow = 112.345;
     recorder.recordElapsed('native_attach', firstStartedAt, 'success');
     recorder.recordDuration('command_poll', 4.5, 'success', { command: 'empty' });
-    recorder.recordDuration('stop_panic', SAFARI_PERFORMANCE_MAX_DURATION_MS + 50_000, 'aborted', {
-      trigger: 'popup_shortcut',
-      route: 'not-valid' as never
-    });
+    Reflect.apply(recorder.recordDuration, recorder, [
+      'stop_panic',
+      SAFARI_PERFORMANCE_MAX_DURATION_MS + 50_000,
+      'aborted',
+      { trigger: 'popup_shortcut', route: 'not-valid' }
+    ]);
     await recorder.flush();
 
     expect(recorder.snapshot()).toMatchObject({

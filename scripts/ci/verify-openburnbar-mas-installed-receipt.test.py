@@ -167,9 +167,7 @@ class VerifyInstalledMASReceiptTests(unittest.TestCase):
         result = json.loads(output.read_text())
         self.assertEqual(result["candidateCommit"], self.commit)
         self.assertEqual(
-            result["appStoreConnectProcessingEvidence"][
-                "processingReceiptSha256"
-            ],
+            result["appStoreConnectProcessingEvidence"]["processingReceiptSha256"],
             MODULE.sha256(processing),
         )
 

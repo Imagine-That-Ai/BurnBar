@@ -140,23 +140,31 @@ source_archive_path="$release_dir/$source_archive_name"
 candidate_commit="${OPENBURNBAR_CANDIDATE_COMMIT:-}"
 candidate_tree="${OPENBURNBAR_CANDIDATE_TREE:-}"
 
-if [[ ! "$candidate_commit" =~ ^[0-9a-f]{40}$ || ! "$candidate_tree" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "ERROR: Direct-release builds require full lowercase OPENBURNBAR_CANDIDATE_COMMIT and OPENBURNBAR_CANDIDATE_TREE values." >&2
-  exit 1
-fi
-actual_candidate_commit="$(openburnbar_candidate_git rev-parse HEAD)"
-if [[ "$actual_candidate_commit" != "$candidate_commit" ]]; then
-  echo "ERROR: Direct-release candidate commit $candidate_commit does not match checked-out HEAD $actual_candidate_commit." >&2
-  exit 1
-fi
-if [[ "$(openburnbar_candidate_git rev-parse "$candidate_commit^{tree}")" != "$candidate_tree" ]]; then
-  echo "ERROR: Direct-release candidate tree $candidate_tree does not belong to commit $candidate_commit." >&2
-  exit 1
-fi
-if [[ -n "$(openburnbar_candidate_git status --porcelain=v1 --untracked-files=all)" ]]; then
-  echo "ERROR: Direct-release builds require a clean exact-candidate checkout; commit or remove candidate drift before signing." >&2
-  exit 1
-fi
+verify_exact_candidate_state() {
+  if [[ ! "$candidate_commit" =~ ^[0-9a-f]{40}$ || ! "$candidate_tree" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "ERROR: Direct-release builds require full lowercase OPENBURNBAR_CANDIDATE_COMMIT and OPENBURNBAR_CANDIDATE_TREE values." >&2
+    exit 1
+  fi
+  local actual_candidate_commit actual_candidate_tree commit_candidate_tree
+  actual_candidate_commit="$(openburnbar_candidate_git rev-parse 'HEAD^{commit}')"
+  actual_candidate_tree="$(openburnbar_candidate_git rev-parse 'HEAD^{tree}')"
+  commit_candidate_tree="$(openburnbar_candidate_git rev-parse "$candidate_commit^{tree}")"
+  if [[ "$actual_candidate_commit" != "$candidate_commit" \
+    || "$actual_candidate_tree" != "$candidate_tree" \
+    || "$commit_candidate_tree" != "$candidate_tree" ]]; then
+    echo "ERROR: Direct-release candidate binding does not match the exact checked-out commit/tree." >&2
+    echo "  supplied: $candidate_commit $candidate_tree" >&2
+    echo "  actual:   $actual_candidate_commit $actual_candidate_tree" >&2
+    echo "  commit:   $commit_candidate_tree" >&2
+    exit 1
+  fi
+  if [[ -n "$(openburnbar_candidate_git status --porcelain=v1 --untracked-files=all)" ]]; then
+    echo "ERROR: Direct-release builds require a clean exact-candidate checkout; commit or remove candidate drift before signing." >&2
+    exit 1
+  fi
+}
+
+verify_exact_candidate_state
 
 if [[ ! -f "$entitlements" ]]; then
   echo "ERROR: Missing release entitlements at $entitlements" >&2
@@ -190,6 +198,7 @@ fi
 identity="${OPENBURNBAR_SIGNING_IDENTITY:-}"
 openburnbar_without_candidate_git_environment \
   bash scripts/test-openburnbar-safari-extension.sh
+verify_exact_candidate_state
 openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
 openburnbar_verify_xcode_project_sync "$repo_root"

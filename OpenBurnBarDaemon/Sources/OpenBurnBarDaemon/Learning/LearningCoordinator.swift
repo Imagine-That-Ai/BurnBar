@@ -1981,8 +1981,7 @@ public actor LearningCoordinator {
         for receipt in envelope.observationReceipts {
             guard Self.isStoredIdentifier(receipt.observationID),
                   receipt.recordedAt <= current,
-                  receipt.proposalID == nil
-                    || proposalIDs.contains(receipt.proposalID!) else {
+                  receipt.proposalID.map(proposalIDs.contains) ?? true else {
                 throw SafariLearningCoordinatorError.malformedStore
             }
         }

@@ -210,9 +210,9 @@ final class SafariLearningCoordinatorTests: XCTestCase {
 
         let recalled = try await coordinator.recallForPrompt(query: "compact totals")
         XCTAssertNotNil(recalled)
-        XCTAssertTrue(recalled?.contains(LLMSafeContent.untrustedOpenMarker) == true)
-        XCTAssertTrue(recalled?.contains(LLMSafeContent.criticalRule) == true)
-        XCTAssertTrue(recalled?.contains("forget_id=") == true)
+        XCTAssertEqual(recalled?.contains(LLMSafeContent.untrustedOpenMarker), true)
+        XCTAssertEqual(recalled?.contains(LLMSafeContent.criticalRule), true)
+        XCTAssertEqual(recalled?.contains("forget_id="), true)
     }
 
     func testForgetAndOptOutWipeLocalAndIntegratedLearnedState() async throws {
@@ -554,10 +554,10 @@ final class SafariLearningCoordinatorTests: XCTestCase {
         _ = try await coordinator.optIn(BurnBarSafariLearningOptInRequest())
 
         let block = try await coordinator.recallForPrompt(query: "summaries")
-        XCTAssertTrue(block?.contains("approved compact summaries") == true)
-        XCTAssertFalse(block?.contains("Quarantined memory") == true)
-        XCTAssertFalse(block?.contains("Project memory") == true)
-        XCTAssertTrue(block?.contains(LLMSafeContent.untrustedOpenMarker) == true)
+        XCTAssertEqual(block?.contains("approved compact summaries"), true)
+        XCTAssertNotEqual(block?.contains("Quarantined memory"), true)
+        XCTAssertNotEqual(block?.contains("Project memory"), true)
+        XCTAssertEqual(block?.contains(LLMSafeContent.untrustedOpenMarker), true)
     }
 
     func testRecallReturnsNoMemoryAfterConcurrentOptOut() async throws {
@@ -686,7 +686,7 @@ final class SafariLearningCoordinatorTests: XCTestCase {
             ]
         )
         XCTAssertNotNil(block)
-        XCTAssertTrue(block?.contains("UNTRUSTED\u{2011}CONTENT") == true)
+        XCTAssertEqual(block?.contains("UNTRUSTED\u{2011}CONTENT"), true)
         XCTAssertEqual(
             block?.components(separatedBy: LLMSafeContent.untrustedOpenMarker).count,
             2
@@ -715,9 +715,9 @@ final class SafariLearningCoordinatorTests: XCTestCase {
                 )
             ]
         )
-        XCTAssertTrue(block?.contains("safe-memory") == true)
-        XCTAssertFalse(block?.contains("unsafe]") == true)
-        XCTAssertFalse(block?.contains("empty-after-trim") == true)
+        XCTAssertEqual(block?.contains("safe-memory"), true)
+        XCTAssertNotEqual(block?.contains("unsafe]"), true)
+        XCTAssertNotEqual(block?.contains("empty-after-trim"), true)
     }
 
     func testProposedLearningEditIsSanitizedVersionedAndRemainsStaged()

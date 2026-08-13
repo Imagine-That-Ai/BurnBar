@@ -1,5 +1,11 @@
 import { getBrowserAPI } from '../shared/browser';
-import type { BackgroundPush, PopupRequest, PopupResponse, TrustSettings } from '../shared/messages';
+import {
+  isBackgroundPush,
+  isPopupResponse,
+  type PopupRequest,
+  type PopupResponse,
+  type TrustSettings
+} from '../shared/messages';
 import type { SafariPerformanceOutcome } from '../shared/performance';
 import { buildSafariPerformanceExport, safariPerformanceExportFilename } from './diagnostics';
 import { renderPopup } from './render';
@@ -29,7 +35,10 @@ async function send(
 ): Promise<PopupResponse> {
   dispatch({ type: 'submitting', value: true });
   try {
-    const response = (await browserAPI.runtime.sendMessage(request)) as PopupResponse;
+    const response = await browserAPI.runtime.sendMessage(request);
+    if (!isPopupResponse(response)) {
+      throw new Error('OpenBurnBar returned an invalid popup response.');
+    }
     if (response.snapshot) {
       dispatch({ type: 'snapshot', snapshot: response.snapshot });
     }
@@ -54,9 +63,12 @@ function performanceExportJSON(snapshot: PopupResponse['snapshot'], exportedAt: 
 }
 
 async function refreshPerformanceSnapshot(): Promise<NonNullable<PopupResponse['snapshot']>> {
-  const response = (await browserAPI.runtime.sendMessage({
+  const response = await browserAPI.runtime.sendMessage({
     type: 'popup.performanceSnapshot'
-  } satisfies PopupRequest)) as PopupResponse;
+  } satisfies PopupRequest);
+  if (!isPopupResponse(response)) {
+    throw new Error('OpenBurnBar returned an invalid performance response.');
+  }
   if (!response.ok || !response.snapshot?.performance) {
     throw new Error('Performance evidence is not ready.');
   }
@@ -139,9 +151,12 @@ async function clearPerformanceDiagnostics(): Promise<void> {
     return;
   }
   try {
-    const response = (await browserAPI.runtime.sendMessage({
+    const response = await browserAPI.runtime.sendMessage({
       type: 'popup.clearPerformance'
-    } satisfies PopupRequest)) as PopupResponse;
+    } satisfies PopupRequest);
+    if (!isPopupResponse(response)) {
+      throw new Error('OpenBurnBar returned an invalid performance response.');
+    }
     if (!response.ok || !response.snapshot?.performance) {
       throw new Error('Performance evidence could not be cleared.');
     }
@@ -168,12 +183,15 @@ async function clearPerformanceDiagnostics(): Promise<void> {
 
 async function recordPopupBootstrap(outcome: SafariPerformanceOutcome): Promise<void> {
   try {
-    const response = (await browserAPI.runtime.sendMessage({
+    const response = await browserAPI.runtime.sendMessage({
       type: 'popup.recordPerformance',
       metric: 'popup_bootstrap',
       durationMs: Math.max(0, performance.now() - popupOpenedAt),
       outcome
-    } satisfies PopupRequest)) as PopupResponse;
+    } satisfies PopupRequest);
+    if (!isPopupResponse(response)) {
+      return;
+    }
     if (response.snapshot) {
       dispatch({ type: 'snapshot', snapshot: response.snapshot });
     }
@@ -349,9 +367,8 @@ appRoot.addEventListener('keydown', (event) => {
 });
 
 browserAPI.runtime.onMessage.addListener((message) => {
-  const push = message as Partial<BackgroundPush>;
-  if (push.type === 'background.snapshot' && push.snapshot) {
-    dispatch({ type: 'snapshot', snapshot: push.snapshot });
+  if (isBackgroundPush(message)) {
+    dispatch({ type: 'snapshot', snapshot: message.snapshot });
   }
   return undefined;
 });

@@ -1,9 +1,10 @@
 import { SafariCaptureService } from '../src/background/capture';
+import { ImagePipeline } from '../src/background/imagePipeline';
 import { SafariPageAdapter, nativePageState } from '../src/background/pageAdapter';
 import { permissionPatternForURL, SitePermissionController } from '../src/background/permissions';
 import { parsePreferences, SafariSessionStore } from '../src/background/sessionStore';
 import { TabOwnershipRegistry } from '../src/background/tabOwnership';
-import type { ContentResponse } from '../src/shared/messages';
+import { isContentRequest, type ContentResponse } from '../src/shared/messages';
 import type { ContentPageState } from '../src/shared/protocol';
 import { createMockBrowser } from './helpers/mockBrowser';
 
@@ -98,7 +99,10 @@ describe('background permission, storage, ownership, page, and capture adapters'
     const { browser, controls } = createMockBrowser();
     let ready = false;
     controls.setContentHandler((_tabId, message) => {
-      const request = message as { type: string };
+      if (!isContentRequest(message)) {
+        throw new Error('Unexpected malformed content request.');
+      }
+      const request = message;
       if (request.type === 'content.ping') {
         if (!ready) {
           throw new Error('not injected');
@@ -184,7 +188,10 @@ describe('background permission, storage, ownership, page, and capture adapters'
   it('captures viewport with page fallback and performs bounded full-page stitching', async () => {
     const { browser, controls } = createMockBrowser();
     controls.setContentHandler((_tabId, message) => {
-      const request = message as { type: string; token?: string; y?: number };
+      if (!isContentRequest(message)) {
+        throw new Error('Unexpected malformed content request.');
+      }
+      const request = message;
       if (request.type === 'content.ping') {
         return { ok: true, result: { ready: true }, pageState: contentPageState };
       }
@@ -229,21 +236,18 @@ describe('background permission, storage, ownership, page, and capture adapters'
       return { ok: true, result: { scrollX: 0, scrollY: 0 }, pageState: contentPageState };
     });
     const page = new SafariPageAdapter(browser);
-    const pipeline = {
-      resize: vi.fn(async () => {
-        throw new Error('worker canvas unavailable');
-      }),
-      stitch: vi.fn(async (_segments, _height, _dpr, _edge, _quality, truncated) => ({
-        dataUrl: 'data:image/jpeg;base64,anBlZw==',
-        mediaType: 'image/jpeg' as const,
-        width: 800,
-        height: 1094,
-        byteLength: 4,
-        source: 'full-page' as const,
-        truncated
-      }))
-    };
-    const capture = new SafariCaptureService(browser, page, pipeline as never);
+    const pipeline = new ImagePipeline();
+    vi.spyOn(pipeline, 'resize').mockRejectedValue(new Error('worker canvas unavailable'));
+    vi.spyOn(pipeline, 'stitch').mockImplementation(async (_segments, _height, _dpr, _edge, _quality, truncated) => ({
+      dataUrl: 'data:image/jpeg;base64,anBlZw==',
+      mediaType: 'image/jpeg' as const,
+      width: 800,
+      height: 1094,
+      byteLength: 4,
+      source: 'full-page' as const,
+      truncated
+    }));
+    const capture = new SafariCaptureService(browser, page, pipeline);
     const tab = await browser.tabs.get(1);
     expect((await capture.viewport(tab)).width).toBe(1200);
     await expect(capture.fullPage(tab, false)).rejects.toThrow(/explicit approval/u);

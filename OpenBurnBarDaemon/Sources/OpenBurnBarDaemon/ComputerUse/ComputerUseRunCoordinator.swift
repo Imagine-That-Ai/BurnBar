@@ -1424,7 +1424,7 @@ public actor ComputerUseRunCoordinator {
         let matcher = ComputerUseScopeMatcher()
         let liveOutcome = matcher.evaluate(rules: rules, context: context)
 
-        guard (action.kind == .navigate || action.kind == .openTab),
+        guard action.kind == .navigate || action.kind == .openTab,
               let targetURL = action.url else {
             return (context, liveOutcome)
         }

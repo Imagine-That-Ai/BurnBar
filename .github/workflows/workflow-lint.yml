@@ -370,7 +370,7 @@ jobs:
   macos-release-security-fixtures:
     name: macOS release/security source fixtures
     runs-on: macos-26
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository

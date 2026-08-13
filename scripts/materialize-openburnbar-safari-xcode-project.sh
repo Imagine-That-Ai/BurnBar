@@ -7,7 +7,7 @@ source "$repo_root/scripts/lib/pinned-xcodegen.sh"
 # shellcheck source=scripts/lib/exact-candidate-git.sh
 source "$repo_root/scripts/lib/exact-candidate-git.sh"
 
-readonly expected_original_pbx_sha256="84cfb5ee1607479837e75a4338eef39470f7ac7dc60aa077b7d2db6c66727e69"
+readonly expected_original_pbx_sha256="8cb6a230de34e118dbb38945a7033ed6960d736158f8598d76b86aab2ace1491"
 readonly project_relative="OpenBurnBar.xcodeproj"
 readonly transition_verifier_relative="scripts/ci/verify-openburnbar-safari-xcodegen-transition.py"
 readonly semantic_verifier_relative="scripts/ci/verify-xcodegen-pbxproj-drift.py"
@@ -19,10 +19,8 @@ readonly -a generated_info_paths=(
   "OpenBurnBarKeyboard/Info.plist"
 )
 readonly -a required_transition_sources=(
-  "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/GatewayRequestAttribution.swift"
-  "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/SafariHandoffProcessSupervisor.swift"
-  "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/Safari/SafariHandoffProcessSupervisorTests.swift"
-  "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/Safari/SafariHandoffProcessWatchdogTests.swift"
+  "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarHTTPGatewayServerTestSupport.swift"
+  "OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/OpenBurnBarMissionControlServiceTests+NextActions.swift"
 )
 
 candidate_git_dir="${OPENBURNBAR_CANDIDATE_GIT_DIR:-}"
@@ -46,7 +44,7 @@ usage:
     scripts/materialize-openburnbar-safari-xcode-project.sh
 
 This one-time certification transition accepts only the audited source change:
-OpenBurnBarDaemon Sources 230->232 and OpenBurnBarDaemonTests Sources 119->121.
+OpenBurnBarDaemon Sources remain 235 and OpenBurnBarDaemonTests Sources 128->130.
 It performs two independent pinned XcodeGen passes, compares their complete
 semantic project graphs, restores every generated Info.plist byte-for-byte,
 preserves every tracked project-bundle artifact except the audited
@@ -278,8 +276,8 @@ original_project_moved=0
 
 echo "PASS: materialized the exact two-pass Safari XcodeGen transition."
 echo "  Original project SHA-256: $expected_original_pbx_sha256"
-echo "  OpenBurnBarDaemon Sources: 230 -> 232"
-echo "  OpenBurnBarDaemonTests Sources: 119 -> 121"
+echo "  OpenBurnBarDaemon Sources: 235 -> 235"
+echo "  OpenBurnBarDaemonTests Sources: 128 -> 130"
 echo "  Preserved tracked project artifacts: ${#preserved_project_paths[@]}"
 echo "  Candidate checkpoint: $expected_commit"
 echo "  Candidate checkpoint tree: $expected_tree"

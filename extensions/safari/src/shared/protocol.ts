@@ -245,7 +245,7 @@ export interface NativeRequestEnvelope<TParams extends Record<string, unknown> =
   params: TParams;
 }
 
-export interface NativeResponseEnvelope<TResult = unknown> {
+interface NativeResponseEnvelope<TResult = unknown> {
   protocolVersion: typeof SAFARI_BRIDGE_PROTOCOL_VERSION;
   id: string;
   result?: TResult;
@@ -358,20 +358,32 @@ export interface SafariBootstrapResponse {
   tier: string;
 }
 
-const BRIDGE_METHODS = new Set<BridgeMethod>([
-  'bridge.hello',
-  'bridge.poll',
-  'bridge.complete',
-  'bridge.popupAction',
-  'bridge.chunk.begin',
-  'bridge.chunk.append',
-  'bridge.chunk.commit'
-]);
-
-const SAFARI_ACTION_KIND_SET = new Set<string>(SAFARI_ACTION_KINDS);
-
 export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  return Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null;
+}
+
+export function isStringLiteral<TValue extends string>(value: unknown, allowed: readonly TValue[]): value is TValue {
+  return typeof value === 'string' && allowed.some((candidate) => candidate === value);
+}
+
+export function isSafariActionKind(value: unknown): value is SafariActionKind {
+  return isStringLiteral(value, SAFARI_ACTION_KINDS);
+}
+
+function isBridgeMethod(value: unknown): value is BridgeMethod {
+  return (
+    typeof value === 'string' &&
+    (value === 'bridge.hello' ||
+      value === 'bridge.poll' ||
+      value === 'bridge.complete' ||
+      value === 'bridge.popupAction' ||
+      value === 'bridge.chunk.begin' ||
+      value === 'bridge.chunk.append' ||
+      value === 'bridge.chunk.commit')
+  );
 }
 
 function assertExactKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>, label: string): void {
@@ -457,13 +469,13 @@ export function validateNativeRequest(value: unknown): asserts value is NativeRe
   }
   requireString(value, 'id', 'request');
   const method = requireString(value, 'method', 'request');
-  if (!BRIDGE_METHODS.has(method as BridgeMethod)) {
+  if (!isBridgeMethod(method)) {
     throw new SafariExtensionError('invalid_bridge_method', `Unsupported Safari bridge method "${method}".`);
   }
   if (!isRecord(value.params)) {
     throw new SafariExtensionError('invalid_bridge_schema', 'request.params must be an object.');
   }
-  validateMethodParams(method as BridgeMethod, value.params);
+  validateMethodParams(method, value.params);
 }
 
 function validateMethodParams(method: BridgeMethod, params: Record<string, unknown>): void {
@@ -625,7 +637,7 @@ function validateChunkBeginParams(params: Record<string, unknown>): void {
   );
   requireString(params, 'transferId', 'bridge.chunk.begin.params');
   const originalMethod = requireString(params, 'originalMethod', 'bridge.chunk.begin.params');
-  if (!BRIDGE_METHODS.has(originalMethod as BridgeMethod) || originalMethod.startsWith('bridge.chunk.')) {
+  if (!isBridgeMethod(originalMethod) || originalMethod.startsWith('bridge.chunk.')) {
     throw new SafariExtensionError('invalid_bridge_schema', 'bridge.chunk.begin originalMethod is invalid.');
   }
   requireSafeInteger(params, 'byteLength', 'bridge.chunk.begin.params');
@@ -672,8 +684,17 @@ export function parseNativeResponse(value: unknown, expectedId: string): NativeR
   }
   if (hasError) {
     validateSerializedError(value.error);
+    return {
+      protocolVersion: SAFARI_BRIDGE_PROTOCOL_VERSION,
+      id: expectedId,
+      error: value.error
+    };
   }
-  return value as unknown as NativeResponseEnvelope;
+  return {
+    protocolVersion: SAFARI_BRIDGE_PROTOCOL_VERSION,
+    id: expectedId,
+    result: value.result
+  };
 }
 
 export function parseBridgeHelloResult(value: unknown): BridgeHelloResult {
@@ -751,7 +772,7 @@ export function parseBridgeRuntimeState(value: unknown): BridgeRuntimeState {
     ]),
     'bridge.state'
   );
-  if (!['connected', 'degraded', 'disconnected'].includes(String(value.connection))) {
+  if (!isStringLiteral(value.connection, ['connected', 'degraded', 'disconnected'])) {
     throw new SafariExtensionError('invalid_bridge_schema', 'bridge.state.connection is invalid.');
   }
   if (typeof value.gatewayReady !== 'boolean' || typeof value.killSwitchEnabled !== 'boolean') {
@@ -764,13 +785,13 @@ export function parseBridgeRuntimeState(value: unknown): BridgeRuntimeState {
   const activeRunId = optionalString(value, 'activeRunId', 'bridge.state');
   let membership: BridgeRuntimeState['membership'];
   if (value.membership !== undefined) {
-    if (!['free', 'pro', 'pro_max', 'ultra'].includes(String(value.membership))) {
+    if (!isStringLiteral(value.membership, ['free', 'pro', 'pro_max', 'ultra'])) {
       throw new SafariExtensionError('invalid_bridge_schema', 'bridge.state.membership is invalid.');
     }
-    membership = value.membership as BridgeRuntimeState['membership'];
+    membership = value.membership;
   }
   return {
-    connection: value.connection as BridgeRuntimeState['connection'],
+    connection: value.connection,
     gatewayReady: value.gatewayReady,
     killSwitchEnabled: value.killSwitchEnabled,
     agents: value.agents.map((agent) => parseAgentOption(agent)),
@@ -870,7 +891,7 @@ function parseNativeCommand(value: unknown): NativeCommand {
     'bridge.command'
   );
   const action = requireString(value, 'action', 'bridge.command');
-  if (!SAFARI_ACTION_KIND_SET.has(action)) {
+  if (!isSafariActionKind(action)) {
     throw new SafariExtensionError('invalid_bridge_schema', `Unsupported Safari command action "${action}".`);
   }
   if (!isRecord(value.arguments)) {
@@ -881,7 +902,7 @@ function parseNativeCommand(value: unknown): NativeCommand {
   return {
     commandId: requireString(value, 'commandId', 'bridge.command'),
     sessionId: requireString(value, 'sessionId', 'bridge.command'),
-    action: action as SafariActionKind,
+    action,
     arguments: value.arguments,
     issuedAt: requireISODate(value, 'issuedAt', 'bridge.command'),
     expiresAt: requireISODate(value, 'expiresAt', 'bridge.command'),
@@ -902,12 +923,12 @@ function validateSerializedError(value: unknown): asserts value is SerializedErr
   }
 }
 
-export function unwrapNativeResponse<TResult>(response: NativeResponseEnvelope<TResult>): TResult {
+export function unwrapNativeResponse(response: NativeResponseEnvelope): unknown {
   if (response.error) {
     throw new SafariExtensionError(response.error.code, response.error.message, {
       retryable: response.error.retryable,
       ...(response.error.details === undefined ? {} : { details: response.error.details })
     });
   }
-  return response.result as TResult;
+  return response.result;
 }

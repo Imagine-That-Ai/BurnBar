@@ -16,7 +16,7 @@ class WebsiteReleasePolicyTests(unittest.TestCase):
 
     def test_notary_key_is_ephemeral_and_not_written_to_release_output(self) -> None:
         self.assertIn('local key_file="$notary_work_dir/AuthKey.p8"', self.source)
-        self.assertNotIn('$release_dir/AuthKey.p8', self.source)
+        self.assertNotIn("$release_dir/AuthKey.p8", self.source)
         self.assertIn('chmod 700 "$notary_work_dir"', self.source)
         self.assertIn('rm -rf "$notary_work_dir" || notary_cleanup_status=$?', self.source)
         self.assertIn("Ephemeral notarization credentials must be stored outside", self.source)
@@ -36,8 +36,7 @@ class WebsiteReleasePolicyTests(unittest.TestCase):
 
     def test_sbom_and_mounted_dmg_smoke_are_mandatory(self) -> None:
         sbom_command = (
-            'python3 scripts/generate-sbom.py --version "$version" '
-            '--repo-root "$repo_root" --output "$sbom_path"'
+            'python3 scripts/generate-sbom.py --version "$version" --repo-root "$repo_root" --output "$sbom_path"'
         )
         self.assertIn(sbom_command, self.source)
         self.assertNotIn(f"{sbom_command} || true", self.source)
@@ -56,22 +55,21 @@ class WebsiteReleasePolicyTests(unittest.TestCase):
             self.source,
         )
         self.assertIn(
-            "require full lowercase OPENBURNBAR_CANDIDATE_COMMIT and "
-            "OPENBURNBAR_CANDIDATE_TREE values",
+            "require full lowercase OPENBURNBAR_CANDIDATE_COMMIT and OPENBURNBAR_CANDIDATE_TREE values",
             self.source,
         )
         self.assertNotIn(
-            'OPENBURNBAR_CANDIDATE_COMMIT:-$(openburnbar_candidate_git rev-parse HEAD)',
+            "OPENBURNBAR_CANDIDATE_COMMIT:-$(openburnbar_candidate_git rev-parse HEAD)",
             self.source,
         )
         self.assertNotIn(
             "OPENBURNBAR_CANDIDATE_TREE:-$(openburnbar_candidate_git rev-parse 'HEAD^{tree}')",
             self.source,
         )
-        self.assertIn('git status --porcelain=v1 --untracked-files=all', self.source)
+        self.assertIn("git status --porcelain=v1 --untracked-files=all", self.source)
         self.assertIn('git rev-parse "$candidate_commit^{tree}"', self.source)
         self.assertNotIn(
-            "identity=\"$(security find-identity",
+            'identity="$(security find-identity',
             self.source,
         )
         self.assertIn(
@@ -80,6 +78,21 @@ class WebsiteReleasePolicyTests(unittest.TestCase):
         )
         self.assertNotIn("OPENBURNBAR_SKIP_XCODE_BUILD", self.source)
         self.assertNotIn("reusing existing app", self.source)
+        safari_ci = (
+            "openburnbar_without_candidate_git_environment \\\n  bash scripts/test-openburnbar-safari-extension.sh"
+        )
+        self.assertEqual(self.source.count("verify_exact_candidate_state"), 3)
+        self.assertLess(
+            self.source.index("verify_exact_candidate_state\n"),
+            self.source.index(safari_ci),
+        )
+        self.assertLess(
+            self.source.index(safari_ci),
+            self.source.index(
+                "verify_exact_candidate_state",
+                self.source.index(safari_ci),
+            ),
+        )
 
     def test_corresponding_source_is_built_from_detached_exact_candidate(self) -> None:
         self.assertIn(
@@ -111,10 +124,8 @@ class WebsiteReleasePolicyTests(unittest.TestCase):
         expected_commands = (
             "bash scripts/test-openburnbar-safari-extension.sh",
             "bash scripts/prepare-openburnbar-app-swiftpm.sh",
-            "swift build --package-path OpenBurnBarDaemon "
-            "-c release --product OpenBurnBarDaemon",
-            "swift build --package-path OpenBurnBarDaemon "
-            "-c release --product OpenBurnBarCLI",
+            "swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarDaemon",
+            "swift build --package-path OpenBurnBarDaemon -c release --product OpenBurnBarCLI",
             "xcodebuild build",
         )
         for command in expected_commands:
@@ -123,9 +134,7 @@ class WebsiteReleasePolicyTests(unittest.TestCase):
                 self.source,
             )
 
-        swiftpm = (
-            SCRIPT.parent / "prepare-openburnbar-app-swiftpm.sh"
-        ).read_text(encoding="utf-8")
+        swiftpm = (SCRIPT.parent / "prepare-openburnbar-app-swiftpm.sh").read_text(encoding="utf-8")
         self.assertIn("unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE", swiftpm)
 
 

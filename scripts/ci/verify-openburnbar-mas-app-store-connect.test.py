@@ -56,13 +56,9 @@ class VerifyOpenBurnBarMASAppStoreConnectTests(unittest.TestCase):
                     "artifacts": {
                         "archiveTreeSha256": MODULE.sha256_tree(archive),
                         "archiveHostAppTreeSha256": MODULE.sha256_tree(app),
-                        "archiveSafariExtensionTreeSha256": MODULE.sha256_tree(
-                            appex
-                        ),
+                        "archiveSafariExtensionTreeSha256": MODULE.sha256_tree(appex),
                         "exportedHostAppTreeSha256": MODULE.sha256_tree(app),
-                        "exportedSafariExtensionTreeSha256": MODULE.sha256_tree(
-                            appex
-                        ),
+                        "exportedSafariExtensionTreeSha256": MODULE.sha256_tree(appex),
                         "packageSha256": MODULE.sha256_file(pkg),
                         "packageSize": pkg.stat().st_size,
                     },
@@ -184,23 +180,13 @@ class VerifyOpenBurnBarMASAppStoreConnectTests(unittest.TestCase):
         root = self.root()
         archive = root / "OpenBurnBar.xcarchive"
         archive_app = archive / "Products" / "Applications" / "OpenBurnBar.app"
-        archive_appex = (
-            archive_app
-            / "Contents"
-            / "PlugIns"
-            / "OpenBurnBarSafariExtension.appex"
-        )
+        archive_appex = archive_app / "Contents" / "PlugIns" / "OpenBurnBarSafariExtension.appex"
         archive_appex.mkdir(parents=True)
         (archive_app / "archive-binary").write_bytes(b"archive")
         (archive_appex / "extension-binary").write_bytes(b"archive-appex")
 
         exported_app = root / "export" / "OpenBurnBar.app"
-        exported_appex = (
-            exported_app
-            / "Contents"
-            / "PlugIns"
-            / "OpenBurnBarSafariExtension.appex"
-        )
+        exported_appex = exported_app / "Contents" / "PlugIns" / "OpenBurnBarSafariExtension.appex"
         exported_appex.mkdir(parents=True)
         (exported_app / "exported-binary").write_bytes(b"exported")
         (exported_appex / "extension-binary").write_bytes(b"exported-appex")
@@ -324,9 +310,7 @@ class VerifyOpenBurnBarMASAppStoreConnectTests(unittest.TestCase):
     def test_readback_rejects_missing_or_ambiguous_identity(self) -> None:
         root = self.root()
         args = self.receipt_args(root)
-        args.build_readback.write_text(
-            json.dumps({"data": {"processingState": "VALID"}}) + "\n"
-        )
+        args.build_readback.write_text(json.dumps({"data": {"processingState": "VALID"}}) + "\n")
         with self.assertRaisesRegex(ValueError, "no app Apple ID"):
             MODULE.create_receipt(args)
 

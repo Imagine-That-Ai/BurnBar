@@ -87,14 +87,30 @@ function cloneSerializable(value: unknown): unknown {
   if (serialized === undefined) {
     return null;
   }
-  return JSON.parse(serialized) as unknown;
+  return JSON.parse(serialized);
+}
+
+function isAsyncExecutor(value: unknown): value is () => Promise<unknown> {
+  return typeof value === 'function';
 }
 
 async function runIsolatedJavaScript(source: string): Promise<unknown> {
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (
-    source: string
-  ) => () => Promise<unknown>;
-  const execute = new AsyncFunction(`"use strict";\n${source}\n//# sourceURL=openburnbar-safari-isolated-action.js`);
+  const asyncFunctionPrototype: unknown = Object.getPrototypeOf(async function () {});
+  if (
+    typeof asyncFunctionPrototype !== 'object' ||
+    asyncFunctionPrototype === null ||
+    !('constructor' in asyncFunctionPrototype) ||
+    typeof asyncFunctionPrototype.constructor !== 'function'
+  ) {
+    throw new SafariExtensionError('javascript_unavailable', 'Safari could not create an isolated JavaScript runner.');
+  }
+  const candidate: unknown = Reflect.construct(asyncFunctionPrototype.constructor, [
+    `"use strict";\n${source}\n//# sourceURL=openburnbar-safari-isolated-action.js`
+  ]);
+  if (!isAsyncExecutor(candidate)) {
+    throw new SafariExtensionError('javascript_unavailable', 'Safari could not create an isolated JavaScript runner.');
+  }
+  const execute = candidate;
   return cloneSerializable(await execute());
 }
 

@@ -1,28 +1,17 @@
 import { ContentActionExecutor } from '../src/content/act';
 import { setFrameworkAwareValue } from '../src/content/reactInput';
 import { snapshotRegistry } from '../src/content/snapshot';
+import { requireElement, testDOMRect } from './helpers/assertions';
 
 function mockVisible(element: Element): void {
-  vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
-    x: 10,
-    y: 10,
-    left: 10,
-    top: 10,
-    width: 120,
-    height: 30,
-    right: 130,
-    bottom: 40,
-    toJSON: () => ({})
-  } as DOMRect);
+  vi.spyOn(element, 'getBoundingClientRect').mockReturnValue(testDOMRect(10, 10, 120, 30));
 }
 
 describe('framework-aware page actions', () => {
   it('uses the native value setter, resets React tracking, and emits input/change', () => {
-    const input = document.createElement('input') as HTMLInputElement & {
-      _valueTracker?: { setValue(value: string): void; getValue(): string };
-    };
     const tracker = { setValue: vi.fn(), getValue: () => 'old' };
-    input._valueTracker = tracker;
+    const input = document.createElement('input');
+    Reflect.set(input, '_valueTracker', tracker);
     input.value = 'old';
     const events: string[] = [];
     input.addEventListener('input', () => events.push('input'));
@@ -44,9 +33,9 @@ describe('framework-aware page actions', () => {
     for (const candidate of Array.from(document.body.children)) {
       mockVisible(candidate);
     }
-    const buy = document.getElementById('buy')!;
-    const search = document.getElementById('search') as HTMLInputElement;
-    const select = document.getElementById('size') as HTMLSelectElement;
+    const buy = requireElement(document.getElementById('buy'), 'buy button');
+    const search = requireElement(document.querySelector<HTMLInputElement>('#search'), 'search input');
+    const select = requireElement(document.querySelector<HTMLSelectElement>('#size'), 'size select');
     const clicked = vi.fn();
     buy.addEventListener('click', clicked);
     const executor = new ContentActionExecutor();
@@ -94,7 +83,7 @@ describe('framework-aware page actions', () => {
     expect(selectResult.ok).toBe(true);
     expect(select.value).toBe('l');
 
-    const svgTarget = document.getElementById('svg-target')!;
+    const svgTarget = requireElement(document.getElementById('svg-target'), 'SVG target');
     mockVisible(svgTarget);
     const svgClicked = vi.fn();
     svgTarget.addEventListener('click', svgClicked);

@@ -1,4 +1,5 @@
 import { SafariExtensionError } from '../shared/errors';
+import { isRecord } from '../shared/protocol';
 
 const CHANNEL = 'openburnbar-safari-page-world-v1';
 let runnerPromise: Promise<void> | undefined;
@@ -56,10 +57,10 @@ export async function runInPageWorld(
     }
 
     function onMessage(event: MessageEvent): void {
-      if (event.source !== window || !event.data || typeof event.data !== 'object') {
+      if (event.source !== window || !isRecord(event.data)) {
         return;
       }
-      const data = event.data as Record<string, unknown>;
+      const data = event.data;
       if (data.channel !== CHANNEL || data.direction !== 'response' || data.id !== id) {
         return;
       }

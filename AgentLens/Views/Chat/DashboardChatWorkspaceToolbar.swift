@@ -541,8 +541,16 @@ final class AgentDeckSwitcher {
     }
 
     private static func hermesGatewayBaseURL(_ settingsManager: SettingsManager) -> URL {
-        URL(string: settingsManager.hermesGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8642")!
+        if let configuredURL = URL(
+            string: settingsManager.hermesGatewayBaseURL
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        ) {
+            return configuredURL
+        }
+        guard let fallbackURL = URL(string: "http://127.0.0.1:8642") else {
+            preconditionFailure("The built-in Hermes gateway URL must be valid.")
+        }
+        return fallbackURL
     }
 
     private static func hermesBearerToken(_ settingsManager: SettingsManager) -> String? {
@@ -551,8 +559,16 @@ final class AgentDeckSwitcher {
     }
 
     private static func piAgentGatewayBaseURL(_ settingsManager: SettingsManager) -> URL {
-        URL(string: settingsManager.piAgentGatewayBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-            ?? URL(string: "http://127.0.0.1:8765")!
+        if let configuredURL = URL(
+            string: settingsManager.piAgentGatewayBaseURL
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        ) {
+            return configuredURL
+        }
+        guard let fallbackURL = URL(string: "http://127.0.0.1:8765") else {
+            preconditionFailure("The built-in Pi Agent gateway URL must be valid.")
+        }
+        return fallbackURL
     }
 
     private static func piAgentBearerToken(_ settingsManager: SettingsManager) -> String? {

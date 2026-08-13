@@ -1,5 +1,7 @@
-import CoreFoundation
 import Foundation
+#if canImport(CoreFoundation)
+import CoreFoundation
+#endif
 
 /// Wire-level limits for the Safari WebExtension → native appex bridge.
 ///
@@ -557,7 +559,7 @@ public enum BurnBarSafariNativeBridgeCodec {
                 try validateJSONTree(child, depth: depth + 1)
             }
         case let number as NSNumber:
-            if CFGetTypeID(number) != CFBooleanGetTypeID() {
+            if !isBoolean(number) {
                 guard number.doubleValue.isFinite else {
                     throw failure("invalid_bridge_schema", "Safari bridge number must be finite.")
                 }
@@ -586,7 +588,7 @@ public enum BurnBarSafariNativeBridgeCodec {
             return .null
         }
         if let number = value as? NSNumber {
-            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+            if isBoolean(number) {
                 return .bool(number.boolValue)
             }
             guard number.doubleValue.isFinite else {
@@ -651,7 +653,7 @@ public enum BurnBarSafariNativeBridgeCodec {
 
     private static func integer(_ value: Any?) -> Int? {
         guard let number = value as? NSNumber,
-              CFGetTypeID(number) != CFBooleanGetTypeID(),
+              !isBoolean(number),
               number.doubleValue.isFinite,
               number.doubleValue.rounded(.towardZero) == number.doubleValue,
               number.doubleValue >= Double(Int.min),
@@ -659,6 +661,15 @@ public enum BurnBarSafariNativeBridgeCodec {
             return nil
         }
         return number.intValue
+    }
+
+    private static func isBoolean(_ number: NSNumber) -> Bool {
+        #if canImport(CoreFoundation)
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
+        #else
+        // swift-corelibs-foundation has no standalone CoreFoundation module.
+        return String(cString: number.objCType) == "c"
+        #endif
     }
 
     private static func failure(_ code: String, _ message: String) -> BurnBarSafariBridgeFailure {

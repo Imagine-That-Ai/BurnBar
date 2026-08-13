@@ -62,9 +62,7 @@ class ReleaseFixture:
         self.names = {
             "dmg": f"OpenBurnBar-{VERSION}-macOS.dmg",
             "zip": f"OpenBurnBar-{VERSION}-macOS.zip",
-            "correspondingSource": (
-                f"OpenBurnBar-{VERSION}-corresponding-source.tar.gz"
-            ),
+            "correspondingSource": (f"OpenBurnBar-{VERSION}-corresponding-source.tar.gz"),
             "sbom": f"sbom-v{VERSION}.spdx.json",
             "latestMetadata": "latest-macos.json",
             "appcast": "appcast.xml",
@@ -120,8 +118,8 @@ class ReleaseFixture:
       <sparkle:shortVersionString>{VERSION}</sparkle:shortVersionString>
       <sparkle:version>{BUILD}</sparkle:version>
       <enclosure
-        url="{BASE_URL}/{self.names['dmg']}"
-        length="{dmg['sizeBytes']}"
+        url="{BASE_URL}/{self.names["dmg"]}"
+        length="{dmg["sizeBytes"]}"
         sparkle:edSignature="fixture-signature"
       />
     </item>
@@ -283,9 +281,7 @@ class ReleaseFixture:
 
 class R2PublicationTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.tempdir = tempfile.TemporaryDirectory(
-            prefix="openburnbar-r2-publication-"
-        )
+        self.tempdir = tempfile.TemporaryDirectory(prefix="openburnbar-r2-publication-")
         self.root = Path(self.tempdir.name)
         self.fixture = ReleaseFixture(self.root)
 
@@ -296,9 +292,7 @@ class R2PublicationTests(unittest.TestCase):
         preflight = self.fixture.build_preflight()
         artifacts = preflight["artifacts"]
         self.assertEqual(len(artifacts), 9)
-        receipt_artifact = next(
-            item for item in artifacts if item["kind"] == "releaseReceipt"
-        )
+        receipt_artifact = next(item for item in artifacts if item["kind"] == "releaseReceipt")
         self.assertEqual(
             receipt_artifact,
             {
@@ -306,9 +300,7 @@ class R2PublicationTests(unittest.TestCase):
                 "fileName": self.fixture.release_receipt.name,
                 "sha256": digest(self.fixture.release_receipt.read_bytes()),
                 "sizeBytes": self.fixture.release_receipt.stat().st_size,
-                "publicUrl": (
-                    f"{BASE_URL}/{self.fixture.release_receipt.name}"
-                ),
+                "publicUrl": (f"{BASE_URL}/{self.fixture.release_receipt.name}"),
                 "contentType": "application/json; charset=utf-8",
                 "cacheControl": "public, max-age=300",
                 "publicationPhase": "supporting-metadata",
@@ -330,11 +322,7 @@ class R2PublicationTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [
-                item["kind"]
-                for item in artifacts
-                if item["discoveryCommitSetMember"]
-            ],
+            [item["kind"] for item in artifacts if item["discoveryCommitSetMember"]],
             ["appcast", "latestMetadata"],
         )
         self.assertEqual(
@@ -364,15 +352,8 @@ class R2PublicationTests(unittest.TestCase):
             receipt["verification"]["discoveryCommitSet"],
             ["appcast", "latestMetadata"],
         )
-        self.assertTrue(
-            all(
-                artifact["observedResponse"]["statusCode"] == 200
-                for artifact in receipt["artifacts"]
-            )
-        )
-        self.assertFalse(
-            receipt["verification"]["publicDmgAppleTrustVerified"]
-        )
+        self.assertTrue(all(artifact["observedResponse"]["statusCode"] == 200 for artifact in receipt["artifacts"]))
+        self.assertFalse(receipt["verification"]["publicDmgAppleTrustVerified"])
 
     def test_rejects_candidate_and_local_artifact_mismatch(self) -> None:
         with self.assertRaisesRegex(ValueError, "candidate commit"):
@@ -384,9 +365,7 @@ class R2PublicationTests(unittest.TestCase):
                 bucket="openburnbar-downloads",
                 public_base_url=BASE_URL,
             )
-        (self.fixture.downloads / self.fixture.names["dmg"]).write_bytes(
-            b"tampered dmg"
-        )
+        (self.fixture.downloads / self.fixture.names["dmg"]).write_bytes(b"tampered dmg")
         with self.assertRaisesRegex(ValueError, "does not match"):
             self.fixture.build_preflight()
 
@@ -394,9 +373,7 @@ class R2PublicationTests(unittest.TestCase):
         preflight = self.fixture.write_preflight()
         self.fixture.copy_public_objects(preflight)
         self.fixture.write_discovery_snapshot(preflight)
-        (self.fixture.public / self.fixture.names["zip"]).write_bytes(
-            b"tampered public zip"
-        )
+        (self.fixture.public / self.fixture.names["zip"]).write_bytes(b"tampered public zip")
         with self.assertRaisesRegex(ValueError, "exact local release bytes"):
             r2.build_publication_receipt(
                 preflight_path=self.fixture.preflight,
@@ -528,9 +505,7 @@ class R2UploaderIntegrationTests(unittest.TestCase):
     WRANGLER_VERSION = "3.114.0"
 
     def setUp(self) -> None:
-        self.tempdir = tempfile.TemporaryDirectory(
-            prefix="openburnbar-r2-uploader-"
-        )
+        self.tempdir = tempfile.TemporaryDirectory(prefix="openburnbar-r2-uploader-")
         self.root = Path(self.tempdir.name)
         self.repo = self.root / "repo"
         self.repo.mkdir()
@@ -583,9 +558,7 @@ class R2UploaderIntegrationTests(unittest.TestCase):
         ).strip()
 
         self.fixture = ReleaseFixture(self.root / "release")
-        receipt = json.loads(
-            self.fixture.release_receipt.read_text(encoding="utf-8")
-        )
+        receipt = json.loads(self.fixture.release_receipt.read_text(encoding="utf-8"))
         receipt["candidate"] = {"commit": self.commit, "tree": self.tree}
         for metadata_name in ("releaseMetadata",):
             path = self.fixture.downloads / self.fixture.names[metadata_name]
@@ -598,9 +571,7 @@ class R2UploaderIntegrationTests(unittest.TestCase):
                 "sha256": digest(path.read_bytes()),
                 "sizeBytes": path.stat().st_size,
             }
-        latest_path = (
-            self.fixture.downloads / self.fixture.names["latestMetadata"]
-        )
+        latest_path = self.fixture.downloads / self.fixture.names["latestMetadata"]
         latest = json.loads(latest_path.read_text(encoding="utf-8"))
         latest["commit"] = self.commit
         latest_path.write_text(json.dumps(latest, sort_keys=True) + "\n")
@@ -609,12 +580,9 @@ class R2UploaderIntegrationTests(unittest.TestCase):
             "sha256": digest(latest_path.read_bytes()),
             "sizeBytes": latest_path.stat().st_size,
         }
-        checksums_path = (
-            self.fixture.downloads / self.fixture.names["checksums"]
-        )
+        checksums_path = self.fixture.downloads / self.fixture.names["checksums"]
         checksums = "".join(
-            f"{self.fixture.artifacts[kind]['sha256']}  "
-            f"{self.fixture.names[kind]}\n"
+            f"{self.fixture.artifacts[kind]['sha256']}  {self.fixture.names[kind]}\n"
             for kind in (
                 "appcast",
                 "correspondingSource",
@@ -770,10 +738,7 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
             bucket="openburnbar-downloads",
             public_base_url=BASE_URL,
         )
-        self.artifacts_by_kind = {
-            artifact["kind"]: artifact
-            for artifact in self.preflight["artifacts"]
-        }
+        self.artifacts_by_kind = {artifact["kind"]: artifact for artifact in self.preflight["artifacts"]}
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -796,20 +761,14 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
                 "OPENBURNBAR_CANDIDATE_COMMIT": self.commit,
                 "OPENBURNBAR_CANDIDATE_TREE": self.tree,
                 "OPENBURNBAR_DOWNLOADS_DIR": str(self.fixture.downloads),
-                "OPENBURNBAR_DIRECT_RELEASE_RECEIPT": str(
-                    self.fixture.release_receipt
-                ),
-                "OPENBURNBAR_R2_PUBLICATION_RECEIPT": str(
-                    publication_receipt
-                ),
+                "OPENBURNBAR_DIRECT_RELEASE_RECEIPT": str(self.fixture.release_receipt),
+                "OPENBURNBAR_R2_PUBLICATION_RECEIPT": str(publication_receipt),
                 "OPENBURNBAR_R2_PUBLIC_BASE_URL": BASE_URL,
                 "WRANGLER_BIN": str(self.wrangler),
                 "OPENBURNBAR_WRANGLER_VERSION": self.WRANGLER_VERSION,
                 "OPENBURNBAR_WRANGLER_SHA256": self.wrangler_sha256,
                 "OPENBURNBAR_R2_CURL_BIN": str(self.mock_bin / "curl"),
-                "OPENBURNBAR_R2_PUBLIC_TRUST_VERIFIER": str(
-                    self.mock_bin / "trust"
-                ),
+                "OPENBURNBAR_R2_PUBLIC_TRUST_VERIFIER": str(self.mock_bin / "trust"),
                 "OPENBURNBAR_R2_ALLOW_TEST_TRUST_VERIFIER": "1",
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "TEST_COMMAND_LOG": str(self.command_log),
@@ -851,18 +810,10 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         return self.command_log.read_text(encoding="utf-8").splitlines()
 
     def _put_names(self) -> list[str]:
-        return [
-            line.split()[3].split("/", 1)[1]
-            for line in self._commands()
-            if line.startswith("r2 object put ")
-        ]
+        return [line.split()[3].split("/", 1)[1] for line in self._commands() if line.startswith("r2 object put ")]
 
     def _delete_names(self) -> list[str]:
-        return [
-            line.split()[3].split("/", 1)[1]
-            for line in self._commands()
-            if line.startswith("r2 object delete ")
-        ]
+        return [line.split()[3].split("/", 1)[1] for line in self._commands() if line.startswith("r2 object delete ")]
 
     def _seed_remote(
         self,
@@ -887,12 +838,8 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         file_name = self.artifacts_by_kind[kind]["fileName"]
         return (
             (self.remote_objects / file_name).read_bytes(),
-            (
-                self.remote_headers / f"{file_name}.content-type"
-            ).read_text(encoding="utf-8"),
-            (
-                self.remote_headers / f"{file_name}.cache-control"
-            ).read_text(encoding="utf-8"),
+            (self.remote_headers / f"{file_name}.content-type").read_text(encoding="utf-8"),
+            (self.remote_headers / f"{file_name}.cache-control").read_text(encoding="utf-8"),
         )
 
     def _seed_existing_discovery(self) -> dict[str, tuple[bytes, str, str]]:
@@ -924,10 +871,7 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         self.assertEqual(len(put_names), 9)
         self.assertEqual(
             put_names,
-            [
-                self.artifacts_by_kind[kind]["fileName"]
-                for kind, _ in r2.PUBLICATION_PLAN
-            ],
+            [self.artifacts_by_kind[kind]["fileName"] for kind, _ in r2.PUBLICATION_PLAN],
         )
         self.assertEqual(
             put_names[-2:],
@@ -955,29 +899,18 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
             receipt["verification"]["discoveryCommitSet"],
             ["appcast", "latestMetadata"],
         )
-        self.assertTrue(
-            receipt["verification"]["discoveryCommitSetVerified"]
-        )
+        self.assertTrue(receipt["verification"]["discoveryCommitSetVerified"])
         self.assertEqual(
             [item["state"] for item in receipt["prePublicationDiscovery"]],
             ["absent", "absent"],
         )
-        self.assertTrue(
-            all(
-                item["observedResponse"]["statusCode"] == 200
-                for item in receipt["artifacts"]
-            )
-        )
-        self.assertFalse(
-            receipt["verification"]["publicDmgAppleTrustVerified"]
-        )
+        self.assertTrue(all(item["observedResponse"]["statusCode"] == 200 for item in receipt["artifacts"]))
+        self.assertFalse(receipt["verification"]["publicDmgAppleTrustVerified"])
         self.assertEqual(
             stat.S_IMODE(publication_receipt.stat().st_mode),
             0o600,
         )
-        uploader_source = (
-            self.repo / "scripts/upload-macos-downloads-r2.sh"
-        ).read_text(encoding="utf-8")
+        uploader_source = (self.repo / "scripts/upload-macos-downloads-r2.sh").read_text(encoding="utf-8")
         self.assertNotIn("wrangler@latest", uploader_source)
         self.assertNotIn("npm exec", uploader_source)
 
@@ -985,9 +918,7 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         old_states = self._seed_existing_discovery()
 
         result, publication_receipt = self._run_uploader(
-            overrides={
-                "TEST_FAIL_PUT_FILE": self.artifacts_by_kind["dmg"]["fileName"]
-            }
+            overrides={"TEST_FAIL_PUT_FILE": self.artifacts_by_kind["dmg"]["fileName"]}
         )
 
         self.assertNotEqual(result.returncode, 0)
@@ -1007,11 +938,7 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         old_states = self._seed_existing_discovery()
 
         result, publication_receipt = self._run_uploader(
-            overrides={
-                "TEST_FAIL_PUT_FILE": self.artifacts_by_kind[
-                    "latestMetadata"
-                ]["fileName"]
-            }
+            overrides={"TEST_FAIL_PUT_FILE": self.artifacts_by_kind["latestMetadata"]["fileName"]}
         )
 
         self.assertNotEqual(result.returncode, 0)
@@ -1029,11 +956,7 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
 
     def test_partial_discovery_failure_restores_first_release_absence(self) -> None:
         result, publication_receipt = self._run_uploader(
-            overrides={
-                "TEST_FAIL_PUT_FILE": self.artifacts_by_kind[
-                    "latestMetadata"
-                ]["fileName"]
-            }
+            overrides={"TEST_FAIL_PUT_FILE": self.artifacts_by_kind["latestMetadata"]["fileName"]}
         )
 
         self.assertNotEqual(result.returncode, 0)
@@ -1045,12 +968,8 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         self.assertEqual(self._delete_names(), expected_deletes)
         for file_name in expected_deletes:
             self.assertFalse((self.remote_objects / file_name).exists())
-            self.assertFalse(
-                (self.remote_headers / f"{file_name}.content-type").exists()
-            )
-            self.assertFalse(
-                (self.remote_headers / f"{file_name}.cache-control").exists()
-            )
+            self.assertFalse((self.remote_headers / f"{file_name}.content-type").exists())
+            self.assertFalse((self.remote_headers / f"{file_name}.cache-control").exists())
 
     def test_public_header_mismatch_fails_before_discovery(self) -> None:
         file_name = self.artifacts_by_kind["dmg"]["fileName"]
@@ -1073,15 +992,11 @@ grep -Fq '"macDownloadBaseUrl": "https://downloads.example.test/releases"' "$1"
         for label, overrides, expected_error in cases:
             with self.subTest(header=label):
                 self.command_log.unlink(missing_ok=True)
-                result, publication_receipt = self._run_uploader(
-                    overrides=overrides
-                )
+                result, publication_receipt = self._run_uploader(overrides=overrides)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(publication_receipt.exists())
                 self.assertIn(expected_error, result.stderr)
-                self.assertTrue(
-                    discovery_names.isdisjoint(self._put_names())
-                )
+                self.assertTrue(discovery_names.isdisjoint(self._put_names()))
 
     def test_wrangler_pin_is_required_and_verified_before_upload(self) -> None:
         cases = (

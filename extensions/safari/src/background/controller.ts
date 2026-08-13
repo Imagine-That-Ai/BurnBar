@@ -99,15 +99,18 @@ function originForURL(url: string | undefined): string | undefined {
 }
 
 function stringField(record: Record<string, unknown>, key: string): string | undefined {
-  return typeof record[key] === 'string' ? (record[key] as string) : undefined;
+  const value = record[key];
+  return typeof value === 'string' ? value : undefined;
 }
 
 function booleanField(record: Record<string, unknown>, key: string): boolean | undefined {
-  return typeof record[key] === 'boolean' ? (record[key] as boolean) : undefined;
+  const value = record[key];
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 function numberField(record: Record<string, unknown>, key: string): number | undefined {
-  return typeof record[key] === 'number' && Number.isFinite(record[key]) ? (record[key] as number) : undefined;
+  const value = record[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function utf8ByteLength(value: string): number {
@@ -222,7 +225,17 @@ function performanceOutcome(error: unknown): SafariPerformanceOutcome {
 }
 
 function measuresActionVerification(action: SafariActionKind): boolean {
-  return !['page_context', 'screenshot', 'full_page_screenshot', 'list_tabs', 'extract', 'abort'].includes(action);
+  switch (action) {
+    case 'page_context':
+    case 'screenshot':
+    case 'full_page_screenshot':
+    case 'list_tabs':
+    case 'extract':
+    case 'abort':
+      return false;
+    default:
+      return true;
+  }
 }
 
 export class SafariBackgroundController {
@@ -930,9 +943,9 @@ export class SafariBackgroundController {
         );
         return;
       }
-      const payload =
+      const response =
         mode === 'agentic'
-          ? {
+          ? await this.popupAction('agentic', {
               prompt: normalizedPrompt,
               agentId: prepared.agent.id,
               pageContext: prepared.context,
@@ -940,15 +953,14 @@ export class SafariBackgroundController {
               tabId: prepared.context.pageState.tabId,
               url: prepared.context.pageState.url,
               learningOptedIn: this.snapshot.learning.optedIn
-            }
-          : {
+            })
+          : await this.popupAction('handoff', {
               prompt: normalizedPrompt,
               agentId: prepared.agent.id,
               pageContext: prepared.context,
               screenshot: prepared.screenshot,
               tabId: prepared.context.pageState.tabId
-            };
-      const response = await this.popupAction(mode, payload as PopupActionPayloads[typeof mode]);
+            });
       this.assertLocalWorkCurrent(workGeneration);
       if (mode === 'agentic' && response.accepted) {
         this.locallyHaltedSession = undefined;
@@ -1035,7 +1047,7 @@ export class SafariBackgroundController {
     };
     const scheduleFlush = (): void => {
       if (flushTimer === undefined) {
-        flushTimer = setTimeout(flush, 40) as unknown as number;
+        flushTimer = window.setTimeout(flush, 40);
       }
     };
 
@@ -1199,7 +1211,7 @@ export class SafariBackgroundController {
     action: TName,
     payload: PopupActionPayloads[TName]
   ): ReturnType<NativeBridge['popupAction']> {
-    return this.bridge.popupAction(action, payload as unknown as Record<string, unknown>);
+    return this.bridge.popupAction(action, payload);
   }
 
   private async respondToApproval(
@@ -2061,14 +2073,14 @@ function normalizeTranscriptEntry(value: unknown): TranscriptEntry | undefined {
   }
   const text = stringField(value, 'text');
   const role = stringField(value, 'role');
-  if (!text || !role || !['user', 'assistant', 'system', 'activity'].includes(role)) {
+  if (!text || (role !== 'user' && role !== 'assistant' && role !== 'system' && role !== 'activity')) {
     return undefined;
   }
   const streaming = booleanField(value, 'streaming');
   const error = booleanField(value, 'error');
   return {
     id: stringField(value, 'id') ?? crypto.randomUUID(),
-    role: role as TranscriptEntry['role'],
+    role,
     text,
     createdAt: stringField(value, 'createdAt') ?? nowISO(),
     ...(streaming === undefined ? {} : { streaming }),

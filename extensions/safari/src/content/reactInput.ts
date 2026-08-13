@@ -1,11 +1,3 @@
-interface ReactTrackedInput extends HTMLInputElement {
-  _valueTracker?: {
-    getValue(): string;
-    setValue(value: string): void;
-    stopTracking?(): void;
-  };
-}
-
 type ValueElement = HTMLInputElement | HTMLTextAreaElement;
 
 function nativeValueSetter(element: ValueElement): ((value: string) => void) | undefined {
@@ -15,7 +7,6 @@ function nativeValueSetter(element: ValueElement): ((value: string) => void) | u
 }
 
 export function setFrameworkAwareValue(element: ValueElement, value: string): void {
-  const tracked = element as ReactTrackedInput;
   const previous = element.value;
   const setter = nativeValueSetter(element);
   if (setter) {
@@ -24,8 +15,14 @@ export function setFrameworkAwareValue(element: ValueElement, value: string): vo
     element.value = value;
   }
 
-  if (tracked._valueTracker) {
-    tracked._valueTracker.setValue(previous);
+  const tracker: unknown = Reflect.get(element, '_valueTracker');
+  if (
+    typeof tracker === 'object' &&
+    tracker !== null &&
+    'setValue' in tracker &&
+    typeof tracker.setValue === 'function'
+  ) {
+    tracker.setValue(previous);
   }
 
   element.dispatchEvent(

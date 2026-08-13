@@ -23,13 +23,13 @@ required_fragments=(
   'restore_preserved_project_artifacts'
   'unexpected repository delta'
   'expected_worktree_state=" M $project_relative/project.pbxproj"'
-  '84cfb5ee1607479837e75a4338eef39470f7ac7dc60aa077b7d2db6c66727e69'
+  '8cb6a230de34e118dbb38945a7033ed6960d736158f8598d76b86aab2ace1491'
   'verify-openburnbar-safari-xcodegen-transition.py'
   'verify-xcodegen-pbxproj-drift.py'
-  'GatewayRequestAttribution.swift'
-  'SafariHandoffProcessSupervisor.swift'
-  'SafariHandoffProcessSupervisorTests.swift'
-  'SafariHandoffProcessWatchdogTests.swift'
+  'OpenBurnBarDaemon Sources remain 235'
+  'OpenBurnBarDaemonTests Sources 128->130'
+  'OpenBurnBarHTTPGatewayServerTestSupport.swift'
+  'OpenBurnBarMissionControlServiceTests+NextActions.swift'
   'cmp -s'
   'original_project_moved=0'
   'original_project_moved=1'
@@ -37,6 +37,17 @@ required_fragments=(
 for fragment in "${required_fragments[@]}"; do
   if ! grep -Fq -- "$fragment" "$script_under_test"; then
     echo "ERROR: materialization script is missing required contract fragment: $fragment" >&2
+    exit 1
+  fi
+done
+
+for stale_fragment in \
+  'GatewayRequestAttribution.swift' \
+  'SafariHandoffProcessSupervisor.swift' \
+  'SafariHandoffProcessSupervisorTests.swift' \
+  'SafariHandoffProcessWatchdogTests.swift'; do
+  if grep -Fq -- "$stale_fragment" "$script_under_test"; then
+    echo "ERROR: materialization script still permits stale transition source: $stale_fragment" >&2
     exit 1
   fi
 done

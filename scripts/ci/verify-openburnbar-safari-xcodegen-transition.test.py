@@ -9,9 +9,7 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).with_name(
-    "verify-openburnbar-safari-xcodegen-transition.py"
-)
+SCRIPT = Path(__file__).with_name("verify-openburnbar-safari-xcodegen-transition.py")
 SPEC = importlib.util.spec_from_file_location("safari_xcodegen_transition", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -23,6 +21,7 @@ class ProjectBuilder:
     def __init__(self, *, compact_objects: bool = False) -> None:
         self.next_identifier = 1
         self.objects: list[str] = []
+        self.targets: list[tuple[str, str]] = []
         self.compact_objects = compact_objects
 
     def identifier(self) -> str:
@@ -32,19 +31,10 @@ class ProjectBuilder:
 
     def add(self, identifier: str, comment: str, body: str) -> None:
         if self.compact_objects:
-            compact_body = " ".join(
-                line.strip() for line in body.splitlines() if line.strip()
-            )
-            self.objects.append(
-                f"\t\t{identifier} /* {comment} */ = "
-                f"{{ {compact_body} }};\n"
-            )
+            compact_body = " ".join(line.strip() for line in body.splitlines() if line.strip())
+            self.objects.append(f"\t\t{identifier} /* {comment} */ = {{ {compact_body} }};\n")
             return
-        self.objects.append(
-            f"\t\t{identifier} /* {comment} */ = {{\n"
-            f"{body}"
-            "\t\t};\n"
-        )
+        self.objects.append(f"\t\t{identifier} /* {comment} */ = {{\n{body}\t\t}};\n")
 
     def target(
         self,
@@ -61,44 +51,29 @@ class ProjectBuilder:
             self.add(
                 file_reference_id,
                 source,
-                "\t\t\tisa = PBXFileReference;\n"
-                f"\t\t\tpath = {source};\n"
-                "\t\t\tsourceTree = \"<group>\";\n",
+                f'\t\t\tisa = PBXFileReference;\n\t\t\tpath = {source};\n\t\t\tsourceTree = "<group>";\n',
             )
             self.add(
                 build_file_id,
                 f"{source} in Sources",
-                "\t\t\tisa = PBXBuildFile;\n"
-                f"\t\t\tfileRef = {file_reference_id} /* {source} */;\n",
+                f"\t\t\tisa = PBXBuildFile;\n\t\t\tfileRef = {file_reference_id} /* {source} */;\n",
             )
             file_reference_ids.append(file_reference_id)
             build_file_ids.append(build_file_id)
 
         group_id = self.identifier()
-        group_files = "".join(
-            f"\t\t\t\t{identifier} /* source */,\n"
-            for identifier in file_reference_ids
-        )
+        group_files = "".join(f"\t\t\t\t{identifier} /* source */,\n" for identifier in file_reference_ids)
         self.add(
             group_id,
             f"{name} Sources",
-            "\t\t\tisa = PBXGroup;\n"
-            "\t\t\tchildren = (\n"
-            f"{group_files}"
-            "\t\t\t);\n",
+            f"\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n{group_files}\t\t\t);\n",
         )
         phase_id = self.identifier()
-        phase_files = "".join(
-            f"\t\t\t\t{identifier} /* source in Sources */,\n"
-            for identifier in build_file_ids
-        )
+        phase_files = "".join(f"\t\t\t\t{identifier} /* source in Sources */,\n" for identifier in build_file_ids)
         self.add(
             phase_id,
             "Sources",
-            "\t\t\tisa = PBXSourcesBuildPhase;\n"
-            "\t\t\tfiles = (\n"
-            f"{phase_files}"
-            "\t\t\t);\n",
+            f"\t\t\tisa = PBXSourcesBuildPhase;\n\t\t\tfiles = (\n{phase_files}\t\t\t);\n",
         )
         target_id = self.identifier()
         self.add(
@@ -108,24 +83,20 @@ class ProjectBuilder:
             "\t\t\tbuildPhases = (\n"
             f"\t\t\t\t{phase_id} /* Sources */,\n"
             "\t\t\t);\n"
-            f"\t\t\tname = {name};\n"
-            + (
-                f"\t\t\tproductName = {product_name};\n"
-                if product_name is not None
-                else ""
-            ),
+            f"\t\t\tname = {name};\n" + (f"\t\t\tproductName = {product_name};\n" if product_name is not None else ""),
         )
+        self.targets.append((name, target_id))
 
-    def text(self) -> str:
-        return (
-            "// !$*UTF8*$!\n"
-            "{\n"
-            "\tarchiveVersion = 1;\n"
-            "\tobjects = {\n"
-            f"{''.join(self.objects)}"
-            "\t};\n"
-            "}\n"
+    def text(self, *, reverse_target_order: bool = False) -> str:
+        targets = reversed(self.targets) if reverse_target_order else self.targets
+        target_references = "".join(f"\t\t\t\t{identifier} /* {name} */,\n" for name, identifier in targets)
+        project_id = self.identifier()
+        self.add(
+            project_id,
+            "Project object",
+            f"\t\t\tisa = PBXProject;\n\t\t\ttargets = (\n{target_references}\t\t\t);\n",
         )
+        return f"// !$*UTF8*$!\n{{\n\tarchiveVersion = 1;\n\tobjects = {{\n{''.join(self.objects)}\t}};\n}}\n"
 
 
 def sources(prefix: str, count: int) -> list[str]:
@@ -139,6 +110,7 @@ def project(
     other: list[str] | None = None,
     daemon_product_name: str | None = None,
     compact_objects: bool = False,
+    reverse_target_order: bool = False,
 ) -> str:
     builder = ProjectBuilder(compact_objects=compact_objects)
     builder.target(
@@ -148,15 +120,15 @@ def project(
     )
     builder.target("OpenBurnBarDaemonTests", daemon_tests)
     builder.target("UnrelatedTarget", other or ["Unrelated.swift"])
-    return builder.text()
+    return builder.text(reverse_target_order=reverse_target_order)
 
 
 class SafariXcodeGenTransitionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
-        self.daemon = sources("Daemon", 230)
-        self.daemon_tests = sources("DaemonTest", 119)
+        self.daemon = sources("Daemon", 235)
+        self.daemon_tests = sources("DaemonTest", 128)
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -176,34 +148,25 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
         return self.write(
             "after.pbxproj",
             project(
-                daemon=self.daemon
-                + [
-                    "GatewayRequestAttribution.swift",
-                    "SafariHandoffProcessSupervisor.swift",
-                ],
+                daemon=self.daemon,
                 daemon_tests=self.daemon_tests
                 + [
-                    "SafariHandoffProcessSupervisorTests.swift",
-                    "SafariHandoffProcessWatchdogTests.swift",
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarMissionControlServiceTests+NextActions.swift",
                 ],
             ),
         )
 
     def test_parses_actual_compact_one_line_build_file_shape(self) -> None:
-        body = (
-            "isa = PBXBuildFile; "
-            "fileRef = B74D48D00D5D2E4FCAA9FCFE "
-            "/* AIInboxControlPlaneStoreTests.swift */; "
-        )
+        body = "isa = PBXBuildFile; fileRef = B74D48D00D5D2E4FCAA9FCFE /* AIInboxControlPlaneStoreTests.swift */; "
         self.assertEqual(
             MODULE.scalar(body, "fileRef"),
-            "B74D48D00D5D2E4FCAA9FCFE "
-            "/* AIInboxControlPlaneStoreTests.swift */",
+            "B74D48D00D5D2E4FCAA9FCFE /* AIInboxControlPlaneStoreTests.swift */",
         )
 
     def test_ignores_scalar_decoys_inside_quoted_values(self) -> None:
         body = (
-            'isa = PBXShellScriptBuildPhase; '
+            "isa = PBXShellScriptBuildPhase; "
             'shellScript = "echo \\"; fileRef = DECOY;\\""; '
             "fileRef = B74D48D00D5D2E4FCAA9FCFE /* Real.swift */; "
         )
@@ -215,12 +178,11 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
     def test_rejects_duplicate_top_level_scalar_assignments(self) -> None:
         with self.assertRaisesRegex(ValueError, "duplicate fileRef assignments"):
             MODULE.scalar(
-                "fileRef = 000000000000000000000001; "
-                "fileRef = 000000000000000000000002;",
+                "fileRef = 000000000000000000000001; fileRef = 000000000000000000000002;",
                 "fileRef",
             )
 
-    def test_accepts_only_the_four_audited_additions(self) -> None:
+    def test_accepts_only_the_two_audited_daemon_test_additions(self) -> None:
         MODULE.verify_transition(self.before(), self.valid_after())
 
     def test_accepts_compact_one_line_pbx_object_bodies(self) -> None:
@@ -235,15 +197,11 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
         after = self.write(
             "compact-after.pbxproj",
             project(
-                daemon=self.daemon
-                + [
-                    "GatewayRequestAttribution.swift",
-                    "SafariHandoffProcessSupervisor.swift",
-                ],
+                daemon=self.daemon,
                 daemon_tests=self.daemon_tests
                 + [
-                    "SafariHandoffProcessSupervisorTests.swift",
-                    "SafariHandoffProcessWatchdogTests.swift",
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarMissionControlServiceTests+NextActions.swift",
                 ],
                 compact_objects=True,
             ),
@@ -254,15 +212,11 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
         after = self.write(
             "after.pbxproj",
             project(
-                daemon=self.daemon
-                + [
-                    "GatewayRequestAttribution.swift",
-                    "SafariHandoffProcessSupervisor.swift",
-                ],
+                daemon=self.daemon,
                 daemon_tests=self.daemon_tests
                 + [
-                    "SafariHandoffProcessSupervisorTests.swift",
-                    "SafariHandoffProcessWatchdogTests.swift",
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarMissionControlServiceTests+NextActions.swift",
                 ],
                 other=["Unrelated.swift", "Surprise.swift"],
             ),
@@ -270,18 +224,16 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "UnrelatedTarget source additions"):
             MODULE.verify_transition(self.before(), after)
 
-    def test_rejects_allowed_source_in_the_wrong_target(self) -> None:
+    def test_rejects_a_daemon_production_addition(self) -> None:
         after = self.write(
             "after.pbxproj",
             project(
-                daemon=self.daemon
-                + [
-                    "GatewayRequestAttribution.swift",
-                    "SafariHandoffProcessSupervisor.swift",
-                    "SafariHandoffProcessWatchdogTests.swift",
-                ],
+                daemon=self.daemon + ["OpenBurnBarHTTPGatewayServerTestSupport.swift"],
                 daemon_tests=self.daemon_tests
-                + ["SafariHandoffProcessSupervisorTests.swift"],
+                + [
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarMissionControlServiceTests+NextActions.swift",
+                ],
             ),
         )
         with self.assertRaisesRegex(ValueError, "OpenBurnBarDaemon source additions"):
@@ -291,15 +243,11 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
         after = self.write(
             "after.pbxproj",
             project(
-                daemon=self.daemon[:-1]
-                + [
-                    "GatewayRequestAttribution.swift",
-                    "SafariHandoffProcessSupervisor.swift",
-                ],
+                daemon=self.daemon[:-1],
                 daemon_tests=self.daemon_tests
                 + [
-                    "SafariHandoffProcessSupervisorTests.swift",
-                    "SafariHandoffProcessWatchdogTests.swift",
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarMissionControlServiceTests+NextActions.swift",
                 ],
             ),
         )
@@ -311,19 +259,15 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
             "before.pbxproj",
             project(daemon=self.daemon[:-1], daemon_tests=self.daemon_tests),
         )
-        with self.assertRaisesRegex(ValueError, "Sources count must be 230"):
+        with self.assertRaisesRegex(ValueError, "Sources count must be 235"):
             MODULE.verify_transition(before, self.valid_after())
 
     def test_rejects_a_missing_expected_addition(self) -> None:
         after = self.write(
             "after.pbxproj",
             project(
-                daemon=self.daemon + ["GatewayRequestAttribution.swift"],
-                daemon_tests=self.daemon_tests
-                + [
-                    "SafariHandoffProcessSupervisorTests.swift",
-                    "SafariHandoffProcessWatchdogTests.swift",
-                ],
+                daemon=self.daemon,
+                daemon_tests=self.daemon_tests + ["OpenBurnBarHTTPGatewayServerTestSupport.swift"],
             ),
         )
         with self.assertRaisesRegex(ValueError, "source additions must be exactly"):
@@ -333,16 +277,12 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
         after = self.write(
             "after.pbxproj",
             project(
-                daemon=self.daemon
-                + [
-                    "GatewayRequestAttribution.swift",
-                    "GatewayRequestAttribution.swift",
-                    "SafariHandoffProcessSupervisor.swift",
-                ],
+                daemon=self.daemon,
                 daemon_tests=self.daemon_tests
                 + [
-                    "SafariHandoffProcessSupervisorTests.swift",
-                    "SafariHandoffProcessWatchdogTests.swift",
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarMissionControlServiceTests+NextActions.swift",
                 ],
             ),
         )
@@ -353,21 +293,32 @@ class SafariXcodeGenTransitionTests(unittest.TestCase):
         after = self.write(
             "after.pbxproj",
             project(
-                daemon=self.daemon
-                + [
-                    "GatewayRequestAttribution.swift",
-                    "SafariHandoffProcessSupervisor.swift",
-                ],
+                daemon=self.daemon,
                 daemon_tests=self.daemon_tests
                 + [
-                    "SafariHandoffProcessSupervisorTests.swift",
-                    "SafariHandoffProcessWatchdogTests.swift",
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarMissionControlServiceTests+NextActions.swift",
                 ],
                 daemon_product_name="MutatedDaemonProduct",
             ),
         )
         with self.assertRaisesRegex(ValueError, "semantic drift outside"):
             MODULE.verify_transition(self.before(), after)
+
+    def test_tolerates_only_top_level_target_list_order(self) -> None:
+        reordered_after = self.write(
+            "reordered-after.pbxproj",
+            project(
+                daemon=self.daemon,
+                daemon_tests=self.daemon_tests
+                + [
+                    "OpenBurnBarHTTPGatewayServerTestSupport.swift",
+                    "OpenBurnBarMissionControlServiceTests+NextActions.swift",
+                ],
+                reverse_target_order=True,
+            ),
+        )
+        MODULE.verify_transition(self.before(), reordered_after)
 
 
 if __name__ == "__main__":

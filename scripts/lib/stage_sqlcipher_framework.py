@@ -36,27 +36,22 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 
 EXPECTED_PACKAGE_IDENTITY = "sqlcipher.swift"
 EXPECTED_PACKAGE_LOCATION = "https://github.com/sqlcipher/SQLCipher.swift.git"
 EXPECTED_PACKAGE_VERSION = "4.16.0"
 EXPECTED_PACKAGE_REVISION = "07bf6bc2191a063d6f1e7c3b5f276a3fadfe36b7"
-EXPECTED_PACKAGE_MANIFEST_SHA256 = (
-    "84a837b9cc4f2894bf7eed6f558338553127d7c5230d07e721fe6414a24a97d8"
-)
-EXPECTED_ARCHIVE_CHECKSUM = (
-    "510fd00fa51fb017909a159bb1cc233b012e8ce18dc9c2f09014fe47f557c1a6"
-)
+EXPECTED_PACKAGE_MANIFEST_SHA256 = "84a837b9cc4f2894bf7eed6f558338553127d7c5230d07e721fe6414a24a97d8"
+EXPECTED_ARCHIVE_CHECKSUM = "510fd00fa51fb017909a159bb1cc233b012e8ce18dc9c2f09014fe47f557c1a6"
 EXPECTED_FRAMEWORK_IDENTIFIER = "net.zetetic.SQLCipher"
 EXPECTED_FRAMEWORK_TEAM_ID = "PD7G6HRMGV"
 EXPECTED_FRAMEWORK_AUTHORITY = "Developer ID Application: Zetetic LLC (PD7G6HRMGV)"
-EXPECTED_FRAMEWORK_EXECUTABLE_SHA256 = (
-    "ad0441e7c7b83ef506c94149bd3dab520a40846259824895a1b981d4fac491a3"
-)
+EXPECTED_FRAMEWORK_EXECUTABLE_SHA256 = "ad0441e7c7b83ef506c94149bd3dab520a40846259824895a1b981d4fac491a3"
 EXPECTED_FRAMEWORK_ARCHITECTURES = frozenset({"arm64", "x86_64"})
 
 
@@ -127,18 +122,14 @@ def _matching_resolved_pins(document: Any) -> list[dict[str, Any]]:
     return [
         pin
         for pin in pins
-        if isinstance(pin, dict)
-        and str(pin.get("identity", "")).casefold() == EXPECTED_PACKAGE_IDENTITY
+        if isinstance(pin, dict) and str(pin.get("identity", "")).casefold() == EXPECTED_PACKAGE_IDENTITY
     ]
 
 
 def validate_resolved_pin(path: Path) -> PackageIdentity:
     matches = _matching_resolved_pins(load_json(path))
     if len(matches) != 1:
-        raise StageError(
-            f"{path} must contain exactly one {EXPECTED_PACKAGE_IDENTITY} pin; "
-            f"found {len(matches)}"
-        )
+        raise StageError(f"{path} must contain exactly one {EXPECTED_PACKAGE_IDENTITY} pin; found {len(matches)}")
 
     pin = matches[0]
     state = pin.get("state")
@@ -178,8 +169,7 @@ def validate_workspace_dependency(path: Path) -> PackageIdentity:
 
     if len(matches) != 1:
         raise StageError(
-            f"{path} must contain exactly one {EXPECTED_PACKAGE_IDENTITY} dependency; "
-            f"found {len(matches)}"
+            f"{path} must contain exactly one {EXPECTED_PACKAGE_IDENTITY} dependency; found {len(matches)}"
         )
 
     dependency = matches[0]
@@ -223,9 +213,7 @@ def validate_sqlcipher_manifest(path: Path) -> None:
     checksum_match = re.search(r'checksum:\s*"([0-9a-f]{64})"', contents)
     if not checksum_match or checksum_match.group(1) != EXPECTED_ARCHIVE_CHECKSUM:
         actual = checksum_match.group(1) if checksum_match else "<missing>"
-        raise StageError(
-            f"SQLCipher binary archive checksum mismatch in {path}: {actual}"
-        )
+        raise StageError(f"SQLCipher binary archive checksum mismatch in {path}: {actual}")
 
 
 def validate_package_identity(package_path: Path, scratch_path: Path) -> PackageIdentity:
@@ -251,12 +239,7 @@ def validate_package_identity(package_path: Path, scratch_path: Path) -> Package
     ):
         raise StageError("Package.resolved and workspace-state.json disagree on SQLCipher")
 
-    checkout_manifest = (
-        scratch_path
-        / "checkouts"
-        / str(workspace_identity.checkout_subpath)
-        / "Package.swift"
-    )
+    checkout_manifest = scratch_path / "checkouts" / str(workspace_identity.checkout_subpath) / "Package.swift"
     validate_sqlcipher_manifest(checkout_manifest)
     return workspace_identity
 
@@ -267,11 +250,9 @@ def discover_framework(scratch_path: Path) -> Path:
         {
             candidate.resolve(strict=True)
             for candidate in artifacts_root.glob(
-                "**/SQLCipher/SQLCipher.xcframework/"
-                "macos-arm64_x86_64/SQLCipher.framework"
+                "**/SQLCipher/SQLCipher.xcframework/macos-arm64_x86_64/SQLCipher.framework"
             )
-            if candidate.is_dir()
-            and candidate.parts[-5].casefold() == EXPECTED_PACKAGE_IDENTITY
+            if candidate.is_dir() and candidate.parts[-5].casefold() == EXPECTED_PACKAGE_IDENTITY
         }
     )
     if len(candidates) != 1:
@@ -289,8 +270,7 @@ def _run_checked(command: Iterable[str]) -> subprocess.CompletedProcess[str]:
             list(command),
             check=True,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
     except (OSError, subprocess.CalledProcessError) as error:
         stderr = getattr(error, "stderr", "") or ""
@@ -337,9 +317,7 @@ def validate_framework(framework: Path) -> FrameworkIdentity:
 
     bundle_identifier = str(info.get("CFBundleIdentifier", ""))
     if bundle_identifier != EXPECTED_FRAMEWORK_IDENTIFIER:
-        raise StageError(
-            f"unexpected SQLCipher framework identifier: {bundle_identifier or '<missing>'}"
-        )
+        raise StageError(f"unexpected SQLCipher framework identifier: {bundle_identifier or '<missing>'}")
 
     executable = _executable_path(framework)
     executable_hash = sha256_file(executable)
@@ -357,29 +335,21 @@ def validate_framework(framework: Path) -> FrameworkIdentity:
             f"expected {sorted(EXPECTED_FRAMEWORK_ARCHITECTURES)}, got {list(architectures)}"
         )
 
-    _run_checked(
-        ["/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=4", str(framework)]
-    )
-    detail_process = _run_checked(
-        ["/usr/bin/codesign", "-dv", "--verbose=4", str(framework)]
-    )
+    _run_checked(["/usr/bin/codesign", "--verify", "--deep", "--strict", "--verbose=4", str(framework)])
+    detail_process = _run_checked(["/usr/bin/codesign", "-dv", "--verbose=4", str(framework)])
     details = detail_process.stdout + detail_process.stderr
     signed_identifier = _detail_value(details, "Identifier")
     team_identifier = _detail_value(details, "TeamIdentifier")
     cdhash = _detail_value(details, "CDHash")
     authorities = [
-        line.removeprefix("Authority=").strip()
-        for line in details.splitlines()
-        if line.startswith("Authority=")
+        line.removeprefix("Authority=").strip() for line in details.splitlines() if line.startswith("Authority=")
     ]
     if signed_identifier != EXPECTED_FRAMEWORK_IDENTIFIER:
         raise StageError(f"unexpected signed SQLCipher identifier: {signed_identifier}")
     if team_identifier != EXPECTED_FRAMEWORK_TEAM_ID:
         raise StageError(f"unexpected SQLCipher signing team: {team_identifier}")
     if EXPECTED_FRAMEWORK_AUTHORITY not in authorities:
-        raise StageError(
-            "SQLCipher framework is not signed by the expected Developer ID authority"
-        )
+        raise StageError("SQLCipher framework is not signed by the expected Developer ID authority")
 
     return FrameworkIdentity(
         bundle_identifier=bundle_identifier,
@@ -394,17 +364,13 @@ def validate_framework(framework: Path) -> FrameworkIdentity:
 
 def ensure_destination_within_scratch(destination: Path, scratch_path: Path) -> Path:
     if destination.name != "SQLCipher.framework":
-        raise StageError(
-            f"SQLCipher destination must end in SQLCipher.framework: {destination}"
-        )
+        raise StageError(f"SQLCipher destination must end in SQLCipher.framework: {destination}")
     scratch = scratch_path.resolve(strict=True)
     resolved = destination.resolve(strict=False)
     try:
         resolved.relative_to(scratch)
     except ValueError as error:
-        raise StageError(
-            f"SQLCipher destination escapes SwiftPM scratch path {scratch}: {resolved}"
-        ) from error
+        raise StageError(f"SQLCipher destination escapes SwiftPM scratch path {scratch}: {resolved}") from error
     if destination.is_symlink():
         raise StageError(f"SQLCipher destination must not be a symlink: {destination}")
     return resolved
@@ -426,9 +392,7 @@ def atomic_replace_tree(
     """Copy a tree beside its destination and replace with rollback semantics."""
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    staging_root = Path(
-        tempfile.mkdtemp(prefix=".sqlcipher-stage-", dir=destination.parent)
-    )
+    staging_root = Path(tempfile.mkdtemp(prefix=".sqlcipher-stage-", dir=destination.parent))
     staged = staging_root / destination.name
     backup: Path | None = None
     destination_moved = False
@@ -440,12 +404,8 @@ def atomic_replace_tree(
 
         if destination.exists():
             if destination.is_symlink():
-                raise StageError(
-                    f"refusing to replace symlinked SQLCipher destination: {destination}"
-                )
-            backup = destination.parent / (
-                f".sqlcipher-previous-{uuid.uuid4().hex}-{destination.name}"
-            )
+                raise StageError(f"refusing to replace symlinked SQLCipher destination: {destination}")
+            backup = destination.parent / (f".sqlcipher-previous-{uuid.uuid4().hex}-{destination.name}")
             os.replace(destination, backup)
             destination_moved = True
 
@@ -467,12 +427,7 @@ def atomic_replace_tree(
             shutil.rmtree(staged)
         if staging_root.exists():
             shutil.rmtree(staging_root)
-        if (
-            destination_moved
-            and backup is not None
-            and backup.exists()
-            and not destination.exists()
-        ):
+        if destination_moved and backup is not None and backup.exists() and not destination.exists():
             os.replace(backup, destination)
             _fsync_directory(destination.parent)
 
@@ -556,9 +511,7 @@ def main() -> int:
         try:
             bin_path.relative_to(scratch_path)
         except ValueError as error:
-            raise StageError(
-                f"SwiftPM bin path escapes scratch path {scratch_path}: {bin_path}"
-            ) from error
+            raise StageError(f"SwiftPM bin path escapes scratch path {scratch_path}: {bin_path}") from error
         destination = bin_path / "PackageFrameworks" / "SQLCipher.framework"
 
     destination = ensure_destination_within_scratch(destination, scratch_path)

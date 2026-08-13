@@ -28,9 +28,9 @@ import plistlib
 import shutil
 import sys
 import tempfile
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping
 
 
 class SnapshotPromotionError(RuntimeError):
@@ -84,11 +84,7 @@ def _unique_by_basename(
     for path in paths:
         grouped.setdefault(path.name, []).append(path)
 
-    duplicates = {
-        basename: matches
-        for basename, matches in grouped.items()
-        if len(matches) != 1
-    }
+    duplicates = {basename: matches for basename, matches in grouped.items() if len(matches) != 1}
     if duplicates:
         detail = "; ".join(
             f"{basename}: {', '.join(str(path) for path in matches)}"
@@ -131,8 +127,7 @@ def validate_test_bundle_record_mode(
 ) -> None:
     if expected_record_mode not in SUPPORTED_SNAPSHOT_RECORD_MODES:
         raise SnapshotPromotionError(
-            "expected snapshot record mode must be one of: "
-            + ", ".join(sorted(SUPPORTED_SNAPSHOT_RECORD_MODES))
+            "expected snapshot record mode must be one of: " + ", ".join(sorted(SUPPORTED_SNAPSHOT_RECORD_MODES))
         )
 
     info_plist = test_bundle_info_plist(test_bundle)
@@ -140,16 +135,11 @@ def validate_test_bundle_record_mode(
         with info_plist.open("rb") as handle:
             bundle_info = plistlib.load(handle)
     except (OSError, plistlib.InvalidFileException) as error:
-        raise SnapshotPromotionError(
-            f"could not parse test bundle Info.plist: {info_plist}: {error}"
-        ) from error
+        raise SnapshotPromotionError(f"could not parse test bundle Info.plist: {info_plist}: {error}") from error
 
     actual_record_mode = bundle_info.get(SNAPSHOT_RECORD_MODE_INFO_KEY)
     if not isinstance(actual_record_mode, str):
-        raise SnapshotPromotionError(
-            "test bundle Info.plist is missing string key "
-            f"{SNAPSHOT_RECORD_MODE_INFO_KEY}"
-        )
+        raise SnapshotPromotionError(f"test bundle Info.plist is missing string key {SNAPSHOT_RECORD_MODE_INFO_KEY}")
     actual_record_mode = actual_record_mode.strip()
     if actual_record_mode != expected_record_mode:
         raise SnapshotPromotionError(
@@ -178,11 +168,7 @@ def bundled_snapshot_references(
     expected_basenames: Iterable[str],
 ) -> dict[str, Path]:
     expected = frozenset(expected_basenames)
-    candidates = [
-        path
-        for path in resources.rglob("*.png")
-        if path.is_file() and path.name in expected
-    ]
+    candidates = [path for path in resources.rglob("*.png") if path.is_file() and path.name in expected]
     for path in candidates:
         if path.is_symlink():
             raise SnapshotPromotionError(f"bundled snapshot must not be a symlink: {path}")
@@ -190,10 +176,7 @@ def bundled_snapshot_references(
     bundled = _unique_by_basename(candidates, label="bundled snapshot")
     missing = sorted(expected.difference(bundled))
     if missing:
-        raise SnapshotPromotionError(
-            "test bundle is missing allowlisted snapshot references: "
-            + ", ".join(missing)
-        )
+        raise SnapshotPromotionError("test bundle is missing allowlisted snapshot references: " + ", ".join(missing))
     return bundled
 
 
@@ -243,9 +226,7 @@ def _transactionally_replace(
             _copy_and_sync(bundled_path, staged_path)
             _copy_and_sync(source_path, backup_path)
             if sha256_file(staged_path) != sha256_file(bundled_path):
-                raise SnapshotPromotionError(
-                    f"staged snapshot hash mismatch before promotion: {source_path}"
-                )
+                raise SnapshotPromotionError(f"staged snapshot hash mismatch before promotion: {source_path}")
             prepared.append((source_path, staged_path, backup_path))
 
         for source_path, staged_path, backup_path in prepared:
@@ -287,12 +268,9 @@ def promote_snapshot_recordings(
     bundled = bundled_snapshot_references(resources, source.keys())
     changes = changed_snapshot_references(source, bundled)
     if expected_record_mode == "never" and changes:
-        changed_basenames = ", ".join(
-            basename for basename, _source, _bundled in changes
-        )
+        changed_basenames = ", ".join(basename for basename, _source, _bundled in changes)
         raise SnapshotPromotionError(
-            "test bundle changed snapshot references while record mode is "
-            f"'never': {changed_basenames}"
+            f"test bundle changed snapshot references while record mode is 'never': {changed_basenames}"
         )
     _transactionally_replace(source_directory, changes)
 

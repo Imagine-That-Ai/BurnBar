@@ -25,10 +25,12 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
 from urllib.parse import quote
+
+UTC = timezone(timedelta(0))
 
 
 class CommandError(RuntimeError):
@@ -47,9 +49,7 @@ def run(cmd: list[str], cwd: str | None = None) -> str:
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic"
-        raise CommandError(
-            f"Command failed with exit {result.returncode}: {' '.join(cmd)}\n{detail}"
-        )
+        raise CommandError(f"Command failed with exit {result.returncode}: {' '.join(cmd)}\n{detail}")
     return result.stdout.strip()
 
 
@@ -57,9 +57,7 @@ def validate_git_authority(repo_root: Path) -> str:
     """Require Git to resolve exactly the requested candidate work tree."""
     observed_root = Path(run(["git", "rev-parse", "--show-toplevel"], cwd=str(repo_root))).resolve()
     if observed_root != repo_root:
-        raise CommandError(
-            f"Git authority resolved work tree {observed_root} instead of requested {repo_root}"
-        )
+        raise CommandError(f"Git authority resolved work tree {observed_root} instead of requested {repo_root}")
     return run(["git", "rev-parse", "HEAD"], cwd=str(repo_root))
 
 

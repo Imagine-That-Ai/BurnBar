@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Async, injectable app-side boundary for the daemon-owned Safari learning
 /// profile. The native app never reads or edits the learning store directly;

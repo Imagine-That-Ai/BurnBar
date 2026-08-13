@@ -19,10 +19,7 @@ def _remove_created_file(
         metadata = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
     except FileNotFoundError:
         return
-    if (
-        stat.S_ISREG(metadata.st_mode)
-        and (metadata.st_dev, metadata.st_ino) == identity
-    ):
+    if stat.S_ISREG(metadata.st_mode) and (metadata.st_dev, metadata.st_ino) == identity:
         os.unlink(name, dir_fd=parent_descriptor)
         os.fsync(parent_descriptor)
 
@@ -38,9 +35,7 @@ def write_exclusive_json(path: Path, value: dict[str, Any]) -> None:
     if not path.name or path.name in {".", ".."}:
         raise ValueError(f"evidence output must name a file: {path}")
     if path.parent.is_symlink() or not path.parent.is_dir():
-        raise ValueError(
-            f"evidence output parent must be a real existing directory: {path.parent}"
-        )
+        raise ValueError(f"evidence output parent must be a real existing directory: {path.parent}")
 
     parent_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     parent_flags |= getattr(os, "O_NOFOLLOW", 0)

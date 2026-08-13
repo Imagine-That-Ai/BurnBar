@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -49,7 +49,7 @@ def write_profile(
                 "TeamIdentifier": [TEAM],
                 "Platform": ["OSX"],
                 "ProvisionedDevices": devices or [CURRENT_MAC_UDID],
-                "ExpirationDate": datetime.now(timezone.utc) + timedelta(days=30),
+                "ExpirationDate": datetime.now(UTC) + timedelta(days=30),
                 "DeveloperCertificates": [certificate],
                 "Entitlements": entitlements,
             },
@@ -84,12 +84,7 @@ class DevelopmentReceiptTests(unittest.TestCase):
         )
         embedded_host_profile = app / "Contents" / "embedded.provisionprofile"
         embedded_safari_profile = (
-            app
-            / "Contents"
-            / "PlugIns"
-            / "OpenBurnBarSafariExtension.appex"
-            / "Contents"
-            / "embedded.provisionprofile"
+            app / "Contents" / "PlugIns" / "OpenBurnBarSafariExtension.appex" / "Contents" / "embedded.provisionprofile"
         )
         embedded_safari_profile.parent.mkdir(parents=True)
         embedded_host_profile.write_bytes(host_profile.read_bytes())
@@ -275,9 +270,7 @@ class DevelopmentReceiptTests(unittest.TestCase):
                 bundle_identifier="com.openburnbar.app.safari-extension",
                 uuid="SAFARI-PROFILE-UUID",
             )
-            (app / "Contents" / "embedded.provisionprofile").write_bytes(
-                (root / "host.provisionprofile").read_bytes()
-            )
+            (app / "Contents" / "embedded.provisionprofile").write_bytes((root / "host.provisionprofile").read_bytes())
             embedded_safari_profile = (
                 app
                 / "Contents"
@@ -287,9 +280,7 @@ class DevelopmentReceiptTests(unittest.TestCase):
                 / "embedded.provisionprofile"
             )
             embedded_safari_profile.parent.mkdir(parents=True)
-            embedded_safari_profile.write_bytes(
-                (root / "safari.provisionprofile").read_bytes()
-            )
+            embedded_safari_profile.write_bytes((root / "safari.provisionprofile").read_bytes())
             result = subprocess.run(
                 [
                     sys.executable,
@@ -342,9 +333,7 @@ class DevelopmentReceiptTests(unittest.TestCase):
                 bundle_identifier="com.openburnbar.app.safari-extension",
                 uuid="SAFARI-PROFILE-UUID",
             )
-            (app / "Contents" / "embedded.provisionprofile").write_bytes(
-                (root / "host.provisionprofile").read_bytes()
-            )
+            (app / "Contents" / "embedded.provisionprofile").write_bytes((root / "host.provisionprofile").read_bytes())
             embedded_safari_profile = (
                 app
                 / "Contents"
@@ -354,9 +343,7 @@ class DevelopmentReceiptTests(unittest.TestCase):
                 / "embedded.provisionprofile"
             )
             embedded_safari_profile.parent.mkdir(parents=True)
-            embedded_safari_profile.write_bytes(
-                (root / "safari.provisionprofile").read_bytes()
-            )
+            embedded_safari_profile.write_bytes((root / "safari.provisionprofile").read_bytes())
             result = subprocess.run(
                 [
                     sys.executable,

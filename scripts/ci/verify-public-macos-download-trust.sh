@@ -277,6 +277,7 @@ security cms -D -i "$embedded_profile" > "$embedded_profile_plist"
 profile_all_devices="$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$embedded_profile_plist" 2>/dev/null || true)"
 profile_app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.application-identifier' "$embedded_profile_plist" 2>/dev/null || true)"
 profile_keychain_groups="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:keychain-access-groups' "$embedded_profile_plist" 2>/dev/null || true)"
+profile_app_groups="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$embedded_profile_plist" 2>/dev/null || true)"
 if [[ "$profile_all_devices" != "true" || "$profile_app_identifier" != "$expected_app_identifier" ]]; then
   echo "::error::Embedded profile must be all-devices and authorize $expected_app_identifier; found allDevices='${profile_all_devices:-missing}' app='${profile_app_identifier:-missing}'." >&2
   exit 1
@@ -284,6 +285,11 @@ fi
 if ! grep -q "${expected_team_id}\\.\\*\\|${expected_app_identifier}" <<<"$profile_keychain_groups"; then
   echo "::error::Embedded profile does not authorize the $expected_app_identifier Keychain group." >&2
   printf '%s\n' "$profile_keychain_groups" >&2
+  exit 1
+fi
+if ! grep -Fq "$expected_app_group" <<<"$profile_app_groups"; then
+  echo "::error::Embedded profile does not authorize the shared Safari App Group $expected_app_group." >&2
+  printf '%s\n' "$profile_app_groups" >&2
   exit 1
 fi
 bash "$repo_root/scripts/ci/verify-signing-profile-certificate.sh" \

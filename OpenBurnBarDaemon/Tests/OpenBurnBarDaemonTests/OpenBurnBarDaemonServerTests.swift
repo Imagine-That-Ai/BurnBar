@@ -1745,14 +1745,17 @@ final class BurnBarDaemonServerTests: XCTestCase {
 }
 
 private actor ShutdownTrackingSafariHandoffSupervisor:
-    SafariHandoffProcessSupervising
-{
+    SafariHandoffProcessSupervising {
+    private static func unexpectedCall(_ message: String) -> Never {
+        preconditionFailure(message)
+    }
+
     private var shutdownCalls = 0
 
     func launch(
         _ specification: SafariHandoffProcessSupervisor.LaunchSpecification
     ) async throws -> SafariHandoffProcessSupervisor.Observation {
-        preconditionFailure("This test fake does not launch hand-offs.")
+        Self.unexpectedCall("This test fake does not launch hand-offs.")
     }
 
     func observation(
@@ -1775,7 +1778,7 @@ private actor ShutdownTrackingSafariHandoffSupervisor:
             SafariHandoffProcessSupervisor.FilesystemIdentity?,
         launchedAt: Date
     ) async -> SafariHandoffProcessSupervisor.Observation {
-        preconditionFailure("This test fake does not restore hand-offs.")
+        Self.unexpectedCall("This test fake does not restore hand-offs.")
     }
 
     func cleanupEligiblePackages(now: Date) async {}

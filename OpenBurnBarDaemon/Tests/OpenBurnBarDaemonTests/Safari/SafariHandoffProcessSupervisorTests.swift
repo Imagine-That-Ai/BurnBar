@@ -19,8 +19,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
         let factory = SafariHandoffTestSessionFactory(
             configuration: .init(
                 startTerminals: [
-                    .init(waitStatus: waitStatus(exitCode: 0), failure: nil),
-                    .init(waitStatus: waitStatus(exitCode: 42), failure: nil),
+                    .init(waitStatus: waitStatus(exitCode: 0), failure: nil)
                 ]
             )
         )
@@ -55,6 +54,9 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
             ["start", "ready", "finish-draining", "close-liveness"]
         )
 
+        session.emitTerminal(
+            .init(waitStatus: waitStatus(exitCode: 42), failure: nil)
+        )
         try await Task.sleep(nanoseconds: 150_000_000)
         let stable = await supervisor.observation(for: runID)
         XCTAssertEqual(stable, terminal)
@@ -204,8 +206,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testWatchdogFailureForcesContainmentAndFailsInterrupted()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "watchdog-failure")
         let package = try workspace.makePackage(runID: runID)
@@ -242,14 +243,13 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
                 "ready",
                 "force-containment",
                 "finish-draining",
-                "close-liveness",
+                "close-liveness"
             ]
         )
     }
 
     func testWatchdogMonitorFailureNeverFabricatesSuccessfulExit()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "watchdog-monitor-failure")
         let package = try workspace.makePackage(runID: runID)
@@ -421,8 +421,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testTerminalizationDrainsOutputBeforeTakingDurableSnapshots()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "drain-before-snapshot")
         let package = try workspace.makePackage(runID: runID)
@@ -486,8 +485,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testTerminalObservationAndReceiptWaitForDeterministicSessionReap()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "terminal-after-reap")
         let package = try workspace.makePackage(runID: runID)
@@ -558,8 +556,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testChildEnvironmentIsAllowlistedSanitizedAndNoninteractive()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "environment")
         let package = try workspace.makePackage(runID: runID)
@@ -596,7 +593,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
             "ANTIGRAVITY_HOME": "/attacker/antigravity",
             "GEMINI_HOME": "/attacker/gemini",
             "CURSOR_AGENT_HOME": "/attacker/cursor",
-            "CURSOR_AGENT_CONFIG_PATH": "/attacker/cursor.json",
+            "CURSOR_AGENT_CONFIG_PATH": "/attacker/cursor.json"
         ]
         let supervisor = makeSupervisor(
             rootURL: workspace.rootURL,
@@ -655,7 +652,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
             "ANTIGRAVITY_HOME",
             "GEMINI_HOME",
             "CURSOR_AGENT_HOME",
-            "CURSOR_AGENT_CONFIG_PATH",
+            "CURSOR_AGENT_CONFIG_PATH"
         ] {
             XCTAssertNil(
                 environment[secretKey],
@@ -665,8 +662,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testWrongRootNestedPackageAndIdentityMismatchFailClosed()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let factory = SafariHandoffTestSessionFactory()
         let supervisor = makeSupervisor(
@@ -722,8 +718,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testHarnessIdentifierAndFileURLAuthorityFailClosed()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let factory = SafariHandoffTestSessionFactory()
         let supervisor = makeSupervisor(
@@ -743,7 +738,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
             "",
             "Codex",
             "codex\nforged",
-            String(repeating: "a", count: 129),
+            String(repeating: "a", count: 129)
         ] {
             await assertLaunchFailure(
                 supervisor,
@@ -873,8 +868,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testPreexistingOutputFileFailsBeforeStartingTheWatchdog()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "preexisting-output")
         let package = try workspace.makePackage(runID: runID)
@@ -976,15 +970,14 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testExecutableValidatorRejectsSymlinkDirectoryNonExecutableAndWritable()
-        throws
-    {
+        throws {
         let workspace = try SafariHandoffTestWorkspace(
             requiresTrustedParentDirectories: true
         )
         let executable = try workspace.makeExecutable(named: "trusted-agent")
         let environment = [
             "HOME": NSHomeDirectory(),
-            "PATH": "/usr/bin:/bin",
+            "PATH": "/usr/bin:/bin"
         ]
 
         _ = try SafariHandoffProcessSupervisor.ExecutableValidator.validate(
@@ -1044,15 +1037,14 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testExecutableIdentityChangesWhenTheValidatedFileIsReplaced()
-        throws
-    {
+        throws {
         let workspace = try SafariHandoffTestWorkspace(
             requiresTrustedParentDirectories: true
         )
         let executable = try workspace.makeExecutable(named: "replaceable")
         let environment = [
             "HOME": NSHomeDirectory(),
-            "PATH": "/usr/bin:/bin",
+            "PATH": "/usr/bin:/bin"
         ]
         let original =
             try SafariHandoffProcessSupervisor.ExecutableValidator.validate(
@@ -1075,8 +1067,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testExecutableValidatorPinsEnvInterpreterIdentityAndLaunchVector()
-        throws
-    {
+        throws {
         let workspace = try SafariHandoffTestWorkspace(
             requiresTrustedParentDirectories: true
         )
@@ -1086,7 +1077,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
         )
         let environment = [
             "HOME": NSHomeDirectory(),
-            "PATH": "/usr/bin:/bin",
+            "PATH": "/usr/bin:/bin"
         ]
 
         let validated =
@@ -1103,7 +1094,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
             [
                 executable.path,
                 "/usr/bin/env",
-                "/usr/bin/true",
+                "/usr/bin/true"
             ]
         )
         XCTAssertNotEqual(
@@ -1116,9 +1107,38 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
         )
     }
 
+    func testDeterministicPathOmitsUnsafeOptionalCandidates() throws {
+        let workspace = try SafariHandoffTestWorkspace(
+            requiresTrustedParentDirectories: true
+        )
+        let unsafeHome = workspace.containerURL.appendingPathComponent(
+            "unsafe-home",
+            isDirectory: true
+        )
+        let unsafeBin = unsafeHome.appendingPathComponent(
+            ".local/bin",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: unsafeBin,
+            withIntermediateDirectories: true
+        )
+        try setPermissions(0o777, on: unsafeHome)
+
+        let path = try SafariHandoffProcessSupervisor.ExecutableValidator
+            .deterministicPath(
+                executableURL: URL(fileURLWithPath: "/usr/bin/true"),
+                environment: ["HOME": unsafeHome.path]
+            )
+            .split(separator: ":")
+            .map(String.init)
+
+        XCTAssertTrue(path.contains("/usr/bin"))
+        XCTAssertFalse(path.contains(unsafeBin.path))
+    }
+
     func testExecutableLaunchAssessmentReportsTrustedInterpreterChainAndHardLinkRejection()
-        throws
-    {
+        throws {
         let fixtureRoot = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(
                 ".openburnbar-safari-executable-trust-\(UUID().uuidString)",
@@ -1138,7 +1158,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
         try setPermissions(0o755, on: trusted)
         let environment = [
             "HOME": NSHomeDirectory(),
-            "PATH": "/usr/bin:/bin",
+            "PATH": "/usr/bin:/bin"
         ]
 
         XCTAssertEqual(
@@ -1164,8 +1184,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testMissingMalformedInvalidAndValidReceiptsRestoreFailClosed()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let clock = SafariHandoffTestClock(
             Date(timeIntervalSinceReferenceDate: 20_000)
@@ -1271,8 +1290,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testReceiptRejectsLegacySchemaAndIncoherentOutputEvidence()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let observedAt = Date(timeIntervalSinceReferenceDate: 25_000)
         let launchedAt = Date(timeIntervalSinceReferenceDate: 24_000)
@@ -1325,7 +1343,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
                 retained: 1 * 1024 * 1024 + 1,
                 observed: 1 * 1024 * 1024 + 1,
                 truncated: false
-            ),
+            )
         ]
 
         for receiptCase in cases {
@@ -1366,8 +1384,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testAuthenticatedReceiptRejectsFieldOutputAndKeyForgery()
-        async throws
-    {
+        async throws {
         let observedAt = Date(timeIntervalSinceReferenceDate: 40_000)
         let launchedAt = observedAt.addingTimeInterval(-60)
         let signingKey = Data(repeating: 0xA5, count: 32)
@@ -1457,8 +1474,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testUnavailableReceiptAuthenticatorNeverRestoresCompletion()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let observedAt = Date(timeIntervalSinceReferenceDate: 42_000)
         let launchedAt = observedAt.addingTimeInterval(-30)
@@ -1505,8 +1521,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testReceiptRejectsHardLinkedOutputAndMissingExpectedIdentity()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let clock = SafariHandoffTestClock(
             Date(timeIntervalSinceReferenceDate: 30_000)
@@ -1560,8 +1575,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testSynchronizationFailuresFailClosedAtPreparationOutputAndReceipt()
-        async throws
-    {
+        async throws {
         let preparationWorkspace = try SafariHandoffTestWorkspace()
         let preparationRun = BurnBarRunID(rawValue: "prepare-fsync-failure")
         let preparationPackage = try preparationWorkspace.makePackage(
@@ -1737,8 +1751,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testSilentCancellationAndTimeoutContainExactGenerationAfterTwoSeconds()
-        async throws
-    {
+        async throws {
         for reason in ["cancel", "timeout"] {
             let workspace = try SafariHandoffTestWorkspace()
             let runID = BurnBarRunID(
@@ -1826,8 +1839,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testCommandWriteFailureClosesLivenessThenEscalatesContainment()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "command-write-failure")
         let package = try workspace.makePackage(runID: runID)
@@ -1905,8 +1917,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testCleanupHonorsRetentionBoundaryAndKeepsReplacementDirectory()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let completedAt = Date(timeIntervalSinceReferenceDate: 40_000)
         let clock = SafariHandoffTestClock(completedAt)
@@ -1995,8 +2006,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testRootDirectorySynchronizationFailureRetainsTerminalBookkeeping()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let completedAt = Date(timeIntervalSinceReferenceDate: 50_000)
         let runID = BurnBarRunID(rawValue: "root-fsync-failure")
@@ -2108,15 +2118,19 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testShutdownDeadlineForceContainsOnlyTheLiveGenerationAndResumesWaiters()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let factory = SafariHandoffTestSessionFactory()
         let clock = SafariHandoffShutdownClock()
+        let terminationSleep = SafariHandoffSleepGate()
         let supervisor = makeSupervisor(
             rootURL: workspace.rootURL,
             factory: factory,
             sleep: { nanoseconds in
+                if nanoseconds == 2_000_000_000 {
+                    await terminationSleep.sleep(nanoseconds)
+                    return
+                }
                 clock.advance(by: nanoseconds)
                 await Task.yield()
             },
@@ -2141,8 +2155,10 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
         try await waitUntil {
             session.requestTerminationCount == 1
         }
+        try await terminationSleep.waitUntilRequested()
 
         await supervisor.shutdownAll()
+        terminationSleep.resume()
 
         let awaitedCancellation = await cancellation.value
         let cancellationObservation = try XCTUnwrap(awaitedCancellation)
@@ -2221,14 +2237,13 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
                 "start",
                 "force-containment",
                 "close-liveness",
-                "finish-draining",
+                "finish-draining"
             ]
         )
     }
 
     func testDuplicateRunIsRejectedWithoutReplacingTheLiveGeneration()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "duplicate-run")
         let package = try workspace.makePackage(runID: runID)
@@ -2256,8 +2271,7 @@ final class SafariHandoffProcessSupervisorTests: XCTestCase {
     }
 
     func testStaleTerminalCallbackCannotCompleteAReplacementGeneration()
-        async throws
-    {
+        async throws {
         let workspace = try SafariHandoffTestWorkspace()
         let runID = BurnBarRunID(rawValue: "replacement-generation")
         let firstPackage = try workspace.makePackage(runID: runID)
@@ -2331,10 +2345,9 @@ extension SafariHandoffProcessSupervisorTests {
             "HOME": NSHomeDirectory(),
             "USER": NSUserName(),
             "SHELL": "/bin/zsh",
-            "LANG": "C",
+            "LANG": "C"
         ],
-        sleep: @escaping @Sendable (UInt64) async -> Void = {
-            nanoseconds in
+        sleep: @escaping @Sendable (UInt64) async -> Void = { nanoseconds in
             try? await Task.sleep(nanoseconds: nanoseconds)
         },
         uptimeNanoseconds: @escaping @Sendable () -> UInt64 = {
@@ -2446,8 +2459,7 @@ extension SafariHandoffProcessSupervisorTests {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let observation = await supervisor.observation(for: runID),
-                observation.isTerminal
-            {
+                observation.isTerminal {
                 return observation
             }
             try await Task.sleep(nanoseconds: 10_000_000)
@@ -2640,9 +2652,9 @@ private final class SafariHandoffTestSessionFactory: @unchecked Sendable {
             observedBytes: 0,
             truncated: false
         )
-        var stdoutAfterFinishDraining: SafariHandoffProcessSupervisor.OutputSnapshot? = nil
-        var stderrAfterFinishDraining: SafariHandoffProcessSupervisor.OutputSnapshot? = nil
-        var finishDrainingGate: SafariHandoffFinishDrainGate? = nil
+        var stdoutAfterFinishDraining: SafariHandoffProcessSupervisor.OutputSnapshot?
+        var stderrAfterFinishDraining: SafariHandoffProcessSupervisor.OutputSnapshot?
+        var finishDrainingGate: SafariHandoffFinishDrainGate?
     }
 
     private let lock = NSLock()
@@ -2675,8 +2687,7 @@ private final class SafariHandoffTestSessionFactory: @unchecked Sendable {
     }
 
     func contextsSnapshot()
-        -> [SafariHandoffProcessSupervisor.SessionLaunchContext]
-    {
+        -> [SafariHandoffProcessSupervisor.SessionLaunchContext] {
         lock.lock()
         defer { lock.unlock() }
         return contexts
@@ -2685,8 +2696,7 @@ private final class SafariHandoffTestSessionFactory: @unchecked Sendable {
 
 private final class SafariHandoffTestSession:
     SafariHandoffProcessSupervisor.WatchdogSession,
-    @unchecked Sendable
-{
+    @unchecked Sendable {
     private let lock = NSLock()
     private let context: SafariHandoffProcessSupervisor.SessionLaunchContext
     private let configuration: SafariHandoffTestSessionFactory.Configuration
@@ -2777,12 +2787,10 @@ private final class SafariHandoffTestSession:
     }
 
     func stdoutSnapshot()
-        -> SafariHandoffProcessSupervisor.OutputSnapshot
-    {
+        -> SafariHandoffProcessSupervisor.OutputSnapshot {
         locked {
             if _finishDrainingCount > 0,
-                let drained = configuration.stdoutAfterFinishDraining
-            {
+                let drained = configuration.stdoutAfterFinishDraining {
                 return drained
             }
             return configuration.stdout
@@ -2790,12 +2798,10 @@ private final class SafariHandoffTestSession:
     }
 
     func stderrSnapshot()
-        -> SafariHandoffProcessSupervisor.OutputSnapshot
-    {
+        -> SafariHandoffProcessSupervisor.OutputSnapshot {
         locked {
             if _finishDrainingCount > 0,
-                let drained = configuration.stderrAfterFinishDraining
-            {
+                let drained = configuration.stderrAfterFinishDraining {
                 return drained
             }
             return configuration.stderr

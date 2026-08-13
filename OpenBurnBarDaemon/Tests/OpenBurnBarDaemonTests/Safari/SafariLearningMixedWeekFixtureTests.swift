@@ -205,7 +205,7 @@ final class SafariLearningMixedWeekFixtureTests: XCTestCase {
             "alberto@example.com",
             rejectedSecret
         ] {
-            XCTAssertFalse(serializedTimeline?.contains(rawSensitiveValue) == true)
+            XCTAssertNotEqual(serializedTimeline?.contains(rawSensitiveValue), true)
             XCTAssertFalse(persistedState.contains(rawSensitiveValue))
         }
 

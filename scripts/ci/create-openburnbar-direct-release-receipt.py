@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +17,8 @@ from exclusive_json import write_exclusive_json
 
 
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-NOTARY_ID = re.compile(
-    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-)
+NOTARY_ID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+UTC = timezone(timedelta(0))
 
 
 def parse_args() -> argparse.Namespace:
@@ -151,7 +150,7 @@ def sanitized_component(
         parsed_expiration = datetime.fromisoformat(profile_expiration.replace("Z", "+00:00"))
     except ValueError as error:
         fail(f"{label} profile expiration is invalid: {error}")
-    if parsed_expiration <= datetime.now(timezone.utc):
+    if parsed_expiration <= datetime.now(UTC):
         fail(f"{label} profile expiration is not in the future.")
     return {
         "bundleIdentifier": expected_bundle_id,
@@ -257,10 +256,7 @@ def main() -> int:
             "build": args.build,
             "channel": "direct-download",
             "teamId": args.team_id,
-            "createdAt": datetime.now(timezone.utc)
-            .replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         },
         "artifacts": artifacts,
         "signing": signing_receipt,

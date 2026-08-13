@@ -604,8 +604,7 @@ final class BurnBarResumeServiceTests: XCTestCase {
     }
 
     func testSafariInstalledAgentProjectionOmitsLaunchRejectedExecutablesAndLogsSafeReason()
-        throws
-    {
+        throws {
         let root = try Self.makeTrustedExecutableFixtureDirectory(
             prefix: "burnbar-safari-rejected-installed-agent"
         )
@@ -1266,8 +1265,7 @@ final class BurnBarResumeServiceTests: XCTestCase {
 
 private final class ResumeServiceCapturingLogger:
     BurnBarDaemonLogging,
-    @unchecked Sendable
-{
+    @unchecked Sendable {
     struct Entry: Sendable {
         let level: String
         let event: String
@@ -1309,8 +1307,8 @@ private final class ResumeServiceCapturingLogger:
         record(
             level: "warning",
             event: operation,
-            metadata: context.merging(["error": String(describing: error)]) {
-                _, new in new
+            metadata: context.merging(["error": String(describing: error)]) { _, new in
+                new
             }
         )
     }

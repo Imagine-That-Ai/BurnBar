@@ -82,6 +82,9 @@ public enum BurnBarSafariChunkStoreError: Error, LocalizedError, Equatable, Send
     }
 }
 
+// AUDIT: Every mutable transfer map and filesystem mutation is serialized by
+// the store's NSLock; values crossing the boundary are immutable snapshots.
+// sendable-allowlist: internal-lock-snapshot-store
 /// Disk-backed App Group chunk assembler for Safari native messages.
 ///
 /// The store is intentionally file-backed instead of retaining multi-megabyte

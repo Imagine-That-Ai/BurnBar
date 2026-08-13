@@ -94,11 +94,12 @@ final class SafariDaemonSocketClientTests: XCTestCase {
         )
         guard case .object(let object) = result,
               case .string(let received)? = object["payload"] else {
-            return XCTFail("expected large payload response")
+            XCTFail("expected large payload response")
+            return
         }
         XCTAssertEqual(received, large)
         try server.waitForCompletion()
-        XCTAssertTrue(server.receivedRequest?.hasSuffix("\n") == true)
+        XCTAssertEqual(server.receivedRequest?.hasSuffix("\n"), true)
     }
 
     func test_socketClientRejectsTruncatedResponse() throws {
