@@ -21,6 +21,12 @@ expected_bundle_id="com.openburnbar.app.safari-extension"
 appex_path="$app_path/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 host_profile="$app_path/Contents/embedded.provisionprofile"
 embedded_safari_profile="$appex_path/Contents/embedded.provisionprofile"
+helpers_dir="$app_path/Contents/Helpers"
+daemon_path="$helpers_dir/OpenBurnBarDaemon"
+execution_path="$helpers_dir/OpenBurnBarPrivilegedInputExecution"
+virtual_hid_path="$helpers_dir/OpenBurnBarVirtualHIDBridge"
+watchdog_path="$helpers_dir/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
+execution_entitlements="$repo_root/OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
 
 codesign_bin="${OPENBURNBAR_CODESIGN_BIN:-codesign}"
 security_bin="${OPENBURNBAR_SECURITY_BIN:-security}"
@@ -116,6 +122,13 @@ host_profile="$(canonical_real_file "$host_profile" "Embedded host development p
 embedded_safari_profile="$appex_path/Contents/embedded.provisionprofile"
 embedded_safari_profile="$(
   canonical_real_file "$embedded_safari_profile" "Embedded Safari development profile"
+)"
+daemon_path="$(canonical_real_file "$daemon_path" "Embedded OpenBurnBar daemon")"
+execution_path="$(canonical_real_file "$execution_path" "Embedded privileged input execution helper")"
+virtual_hid_path="$(canonical_real_file "$virtual_hid_path" "Embedded virtual HID bridge")"
+watchdog_path="$(canonical_real_file "$watchdog_path" "Embedded kill-switch watchdog")"
+execution_entitlements="$(
+  canonical_real_file "$execution_entitlements" "Privileged input execution entitlements"
 )"
 
 identity_matches=()
@@ -271,6 +284,15 @@ fi
 if ! "$codesign_bin" --verify --strict --verbose=4 "$appex_path"; then
   fail "OpenBurnBar Safari appex signature is invalid before profile repair."
 fi
+for helper_path in \
+  "$daemon_path" \
+  "$execution_path" \
+  "$virtual_hid_path" \
+  "$watchdog_path"; do
+  if ! "$codesign_bin" --verify --strict --verbose=4 "$helper_path"; then
+    fail "Embedded OpenBurnBar helper signature is invalid before profile repair: $helper_path"
+  fi
+done
 host_entitlement_mode="$(
   capture_entitlements "$app_path" "$host_entitlements" "host"
 )"
@@ -367,6 +389,35 @@ sign_with_entitlements() {
   "$codesign_bin" --verify --strict --verbose=4 "$target_path"
 }
 
+sign_helper() {
+  local target_path="$1"
+  local identifier="$2"
+  local entitlement_path="${3:-}"
+  local sign_args=(
+    --force
+    --sign "$signing_identity"
+    --timestamp=none
+    --generate-entitlement-der
+    --options runtime,library
+    --identifier "$identifier"
+  )
+  if [[ -n "$entitlement_path" ]]; then
+    sign_args+=(--entitlements "$entitlement_path")
+  fi
+  "$codesign_bin" "${sign_args[@]}" "$target_path"
+  "$codesign_bin" --verify --strict --verbose=4 "$target_path"
+}
+
+sign_helper "$daemon_path" "com.openburnbar.app"
+sign_helper \
+  "$execution_path" \
+  "com.openburnbar.privileged-input-execution" \
+  "$execution_entitlements"
+sign_helper "$virtual_hid_path" "com.openburnbar.virtual-hid-bridge"
+sign_helper \
+  "$watchdog_path" \
+  "com.openburnbar.privileged-input-killswitch-watchdog"
+
 for ((index = 0; index < ${#nested_paths[@]}; index++)); do
   nested_sign_args=(--force)
   nested_sign_args+=(--sign "$signing_identity")
@@ -417,4 +468,4 @@ PY
 verify_entitlements_preserved "$appex_path" "$appex_entitlements" "Safari appex"
 verify_entitlements_preserved "$app_path" "$host_entitlements" "host"
 
-echo "PASS: exact Safari development profile embedded; nested code, appex, and host re-signed in containment order without changing the host profile or effective entitlements."
+echo "PASS: exact Safari development profile embedded; daemon and privileged-input helper signatures normalized; nested code, appex, and host re-signed in containment order without changing the host profile or effective entitlements."
