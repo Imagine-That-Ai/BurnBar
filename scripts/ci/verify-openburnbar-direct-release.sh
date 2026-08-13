@@ -6,8 +6,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 safari_verifier="${OPENBURNBAR_SAFARI_EXTENSION_VERIFIER:-$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh}"
 profile_certificate_verifier="${OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER:-$repo_root/scripts/ci/verify-signing-profile-certificate.sh}"
 
-if [[ $# -lt 4 || $# -gt 5 ]]; then
-  echo "usage: $0 APP_PATH EXPECTED_TEAM_ID HOST_PROFILE SAFARI_PROFILE [RECEIPT_JSON]" >&2
+if [[ $# -ne 6 && $# -ne 7 ]]; then
+  echo "usage: $0 APP_PATH EXPECTED_TEAM_ID HOST_PROFILE SAFARI_PROFILE EXPECTED_DEVELOPER_ID_IDENTITY EXPECTED_SIGNING_CERTIFICATE_SHA1 [RECEIPT_JSON]" >&2
   exit 64
 fi
 
@@ -15,7 +15,9 @@ app_path="$1"
 expected_team_id="$2"
 host_profile="$3"
 safari_profile="$4"
-receipt_path="${5:-}"
+expected_signing_identity="$5"
+expected_signing_certificate_sha1="$6"
+receipt_path="${7:-}"
 expected_host_bundle_id="com.openburnbar.app"
 expected_safari_bundle_id="com.openburnbar.app.safari-extension"
 expected_app_group="group.com.openburnbar.app"
@@ -28,13 +30,29 @@ if [[ ! "$expected_team_id" =~ ^[A-Z0-9]{10}$ ]]; then
   echo "ERROR: Expected Apple team ID must be exactly 10 uppercase letters/digits; found '${expected_team_id:-missing}'." >&2
   exit 64
 fi
+if [[ "$expected_signing_identity" == *$'\n'* || "$expected_signing_identity" == *$'\r'* ]]; then
+  echo "ERROR: Expected Developer ID Application identity must be exactly one line." >&2
+  exit 64
+fi
+if [[ "$expected_signing_identity" != "Developer ID Application:"* \
+  || "$expected_signing_identity" != *"($expected_team_id)" ]]; then
+  echo "ERROR: Expected signing identity must be an exact Developer ID Application identity for team $expected_team_id." >&2
+  exit 64
+fi
+if [[ ! "$expected_signing_certificate_sha1" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+  echo "ERROR: Expected Developer ID certificate SHA-1 must be exactly 40 hexadecimal characters." >&2
+  exit 64
+fi
+expected_signing_certificate_sha1="$(
+  printf '%s' "$expected_signing_certificate_sha1" | tr '[:lower:]' '[:upper:]'
+)"
 for required_file in "$host_profile" "$safari_profile"; do
-  if [[ ! -f "$required_file" || -L "$required_file" ]]; then
+  if [[ "$required_file" != /* || ! -f "$required_file" || -L "$required_file" ]]; then
     echo "ERROR: Direct-release provisioning profile is missing or symlinked: $required_file" >&2
     exit 66
   fi
 done
-if [[ ! -d "$app_path" || -L "$app_path" ]]; then
+if [[ "$app_path" != /* || ! -d "$app_path" || -L "$app_path" ]]; then
   echo "ERROR: Direct-release app bundle is missing or symlinked: $app_path" >&2
   exit 66
 fi
@@ -49,6 +67,24 @@ fi
 if [[ ! -f "$embedded_safari_profile" || -L "$embedded_safari_profile" ]]; then
   echo "ERROR: Direct-release Safari extension is missing a real embedded provisioning profile." >&2
   exit 66
+fi
+require_real_bundle_directory() {
+  local path="$1"
+  local label="$2"
+  if [[ ! -d "$path" || -L "$path" ]]; then
+    echo "ERROR: Direct-release $label must be a real, non-symlinked directory: $path" >&2
+    exit 66
+  fi
+}
+
+require_real_bundle_directory "$app_path/Contents" "host Contents"
+require_real_bundle_directory "$app_path/Contents/Helpers" "host Helpers"
+require_real_bundle_directory "$app_path/Contents/PlugIns" "host PlugIns"
+require_real_bundle_directory "$appex_path/Contents" "Safari extension Contents"
+if [[ -e "$app_path/Contents/Frameworks" || -L "$app_path/Contents/Frameworks" ]]; then
+  require_real_bundle_directory \
+    "$app_path/Contents/Frameworks" \
+    "host Frameworks"
 fi
 if ! cmp -s "$host_profile" "$embedded_host_profile"; then
   echo "ERROR: Embedded host profile differs from the candidate profile supplied to the verifier." >&2
@@ -105,6 +141,11 @@ fi
 if ! grep -Fq "Authority=Developer ID Application:" <<<"$host_signature"; then
   echo "ERROR: Direct-release host must use a Developer ID Application certificate." >&2
   printf '%s\n' "$host_signature" >&2
+  exit 1
+fi
+host_leaf_authority="$(sed -n 's/^Authority=//p' <<<"$host_signature" | head -n 1)"
+if [[ "$host_leaf_authority" != "$expected_signing_identity" ]]; then
+  echo "ERROR: Direct-release host leaf signing identity must exactly match '$expected_signing_identity'; found '${host_leaf_authority:-missing}'." >&2
   exit 1
 fi
 if ! grep -Fq "Timestamp=" <<<"$host_signature"; then
@@ -244,6 +285,145 @@ bash "$safari_verifier" \
   "$safari_profile"
 bash "$profile_certificate_verifier" "$app_path" "$embedded_host_profile"
 
+certificate_sha1_for_code() {
+  local bundle_path="$1"
+  local label="$2"
+  local slug="$3"
+  local extraction_dir="$work_dir/$slug-certificate"
+
+  mkdir -m 700 "$extraction_dir"
+  (
+    cd "$extraction_dir"
+    codesign -d --extract-certificates "$bundle_path" >/dev/null 2>&1
+  )
+  if [[ ! -f "$extraction_dir/codesign0" || -L "$extraction_dir/codesign0" ]]; then
+    echo "ERROR: Could not extract the $label leaf signing certificate." >&2
+    exit 1
+  fi
+  shasum -a 1 "$extraction_dir/codesign0" | awk '{print toupper($1)}'
+}
+
+declare -a exact_signer_paths=(
+  "$app_path"
+  "$appex_path"
+  "$app_path/Contents/Helpers/OpenBurnBarDaemon"
+  "$app_path/Contents/Helpers/OpenBurnBarCLI"
+  "$app_path/Contents/Helpers/OpenBurnBarPrivilegedInputExecution"
+  "$app_path/Contents/Helpers/OpenBurnBarPrivilegedInputExecution.app"
+  "$app_path/Contents/Helpers/OpenBurnBarVirtualHIDBridge"
+  "$app_path/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
+)
+declare -a exact_signer_labels=(
+  "host"
+  "Safari extension"
+  "daemon"
+  "bundled CLI"
+  "privileged-input execution helper"
+  "privileged-input execution app"
+  "virtual HID bridge"
+  "kill-switch watchdog"
+)
+declare -a exact_signer_kinds=(
+  "directory"
+  "directory"
+  "file"
+  "file"
+  "file"
+  "directory"
+  "file"
+  "file"
+)
+
+for ((index = 0; index < ${#exact_signer_paths[@]}; index++)); do
+  signer_path="${exact_signer_paths[$index]}"
+  label="${exact_signer_labels[$index]}"
+  kind="${exact_signer_kinds[$index]}"
+  if [[ "$kind" == "directory" ]]; then
+    signer_exists="$([[ -d "$signer_path" && ! -L "$signer_path" ]] && echo true || echo false)"
+  else
+    signer_exists="$([[ -f "$signer_path" && ! -L "$signer_path" ]] && echo true || echo false)"
+  fi
+  if [[ "$signer_exists" != "true" ]]; then
+    echo "ERROR: Direct-release $label is missing or symlinked: $signer_path" >&2
+    exit 66
+  fi
+  actual_sha1="$(
+    certificate_sha1_for_code "$signer_path" "$label" "required-$index"
+  )"
+  if [[ "$actual_sha1" != "$expected_signing_certificate_sha1" ]]; then
+    echo "ERROR: $label leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${actual_sha1:-missing}'." >&2
+    exit 1
+  fi
+done
+
+nested_signer_roots=(
+  "$app_path/Contents/Helpers"
+  "$app_path/Contents/PlugIns"
+)
+if [[ -d "$app_path/Contents/Frameworks" ]]; then
+  nested_signer_roots+=("$app_path/Contents/Frameworks")
+fi
+if [[ -d "$app_path/Contents/XPCServices" ]]; then
+  require_real_bundle_directory \
+    "$app_path/Contents/XPCServices" \
+    "host XPCServices"
+  nested_signer_roots+=("$app_path/Contents/XPCServices")
+fi
+
+dynamic_signer_index=0
+while IFS= read -r -d '' signer_path; do
+  echo "ERROR: Nested signable code must not be symlinked: $signer_path" >&2
+  exit 66
+done < <(
+  find \
+    "${nested_signer_roots[@]}" \
+    -mindepth 1 \
+    -type l \
+    \( \
+      -name "*.app" \
+      -o -name "*.appex" \
+      -o -name "*.bundle" \
+      -o -name "*.dylib" \
+      -o -name "*.framework" \
+      -o -name "*.xpc" \
+    \) \
+    -print0 2>/dev/null
+)
+while IFS= read -r -d '' signer_path; do
+  already_verified=false
+  for required_path in "${exact_signer_paths[@]}"; do
+    if [[ "$signer_path" == "$required_path" ]]; then
+      already_verified=true
+      break
+    fi
+  done
+  if [[ "$already_verified" == "true" ]]; then
+    continue
+  fi
+  label="nested code $signer_path"
+  actual_sha1="$(
+    certificate_sha1_for_code \
+      "$signer_path" \
+      "$label" \
+      "nested-$dynamic_signer_index"
+  )"
+  if [[ "$actual_sha1" != "$expected_signing_certificate_sha1" ]]; then
+    echo "ERROR: $label leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${actual_sha1:-missing}'." >&2
+    exit 1
+  fi
+  dynamic_signer_index=$((dynamic_signer_index + 1))
+done < <(
+  find \
+    "${nested_signer_roots[@]}" \
+    -mindepth 1 \
+    ! -type l \
+    \( \
+      -type d \( -name "*.app" -o -name "*.appex" -o -name "*.bundle" -o -name "*.framework" -o -name "*.xpc" \) \
+      -o -type f -name "*.dylib" \
+    \) \
+    -print0 2>/dev/null
+)
+
 if [[ -n "$receipt_path" ]]; then
   mkdir -p "$(dirname "$receipt_path")"
   python3 - \
@@ -257,7 +437,9 @@ if [[ -n "$receipt_path" ]]; then
     "$expected_host_bundle_id" \
     "$expected_safari_bundle_id" \
     "$expected_app_group" \
-    "$expected_keychain_suffix" <<'PY'
+    "$expected_keychain_suffix" \
+    "$expected_signing_identity" \
+    "$expected_signing_certificate_sha1" <<'PY'
 import hashlib
 import plistlib
 import sys
@@ -276,6 +458,8 @@ from pathlib import Path
     safari_bundle_id,
     app_group,
     keychain_suffix,
+    signing_identity,
+    signing_certificate_sha1,
 ) = sys.argv[1:]
 sys.path.insert(0, library_path)
 from exclusive_json import write_exclusive_json
@@ -304,6 +488,8 @@ receipt = {
     "teamId": team_id,
     "appGroup": app_group,
     "keychainGroup": f"{team_id}.{keychain_suffix}",
+    "signingIdentity": signing_identity,
+    "signingCertificateSha1": signing_certificate_sha1,
     "host": {
         "bundleIdentifier": host_bundle_id,
         "profileExpiration": iso8601(host["ExpirationDate"]),
@@ -328,6 +514,7 @@ receipt = {
     "verification": {
         "embeddedProfilesByteEqual": True,
         "profileCertificateMembership": True,
+        "signingCertificateSha1Matched": True,
         "strictDeepNestedSignatures": True,
         "getTaskAllow": False,
         "platform": "OSX",
@@ -337,4 +524,4 @@ write_exclusive_json(Path(output_path), receipt)
 PY
 fi
 
-echo "PASS: Developer ID host and Safari appex are exact-profile-bound, OSX-scoped, future-dated, entitlement-exact, certificate-authorized, and strict/deep hardened."
+echo "PASS: Developer ID host and Safari appex are exact-profile-bound, OSX-scoped, future-dated, entitlement-exact, certificate-authorized, exact-fingerprint-bound, and strict/deep hardened."

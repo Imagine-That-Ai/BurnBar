@@ -21,6 +21,11 @@ const REPOSITORY = "Imagine-That-Ai/BurnBar";
 const VERSION = "1.2.3";
 const TAG = `v${VERSION}`;
 const COMMIT = "a".repeat(40);
+const APPLE_TEAM_ID = "4Y367DF25B";
+const APPLE_SIGNING_AUTHORITY =
+  "Developer ID Application: Imagine That AI Limited Liability Company (4Y367DF25B)";
+const APPLE_SIGNING_CERTIFICATE_SHA1 =
+  "2FAA2102B33D02ED5F1A3D34EF51B210A4398ECA";
 const PUBLIC_PROFILE = "public-production";
 const ROLLBACK_PROFILE = "public-production-rollback";
 
@@ -57,6 +62,47 @@ function fixture(domainCoreProfile = PUBLIC_PROFILE) {
   put(`sbom-v${VERSION}.spdx.json`, "{}\n");
   put(`openburnbar-v${VERSION}.vex.json`, "{}\n");
   put(`NOTICES-v${VERSION}.txt`, "notices\n");
+  put(
+    "developer-id-signing-receipt.json",
+    `${JSON.stringify({
+      schemaVersion: 1,
+      distribution: "developer-id",
+      teamId: APPLE_TEAM_ID,
+      appGroup: "group.com.openburnbar.app",
+      keychainGroup: `${APPLE_TEAM_ID}.com.openburnbar.app`,
+      signingIdentity: APPLE_SIGNING_AUTHORITY,
+      signingCertificateSha1: APPLE_SIGNING_CERTIFICATE_SHA1,
+      host: {
+        bundleIdentifier: "com.openburnbar.app",
+        profileExpiration: "2099-08-13T00:00:00Z",
+        profileSha256: "a".repeat(64),
+        signature: {
+          authority: "Developer ID Application",
+          hardenedRuntime: true,
+          libraryValidation: true,
+          secureTimestamp: true,
+        },
+      },
+      safariExtension: {
+        bundleIdentifier: "com.openburnbar.app.safari-extension",
+        profileExpiration: "2099-08-13T00:00:00Z",
+        profileSha256: "b".repeat(64),
+        signature: {
+          authority: "Developer ID Application",
+          hardenedRuntime: true,
+          libraryValidation: true,
+        },
+      },
+      verification: {
+        embeddedProfilesByteEqual: true,
+        getTaskAllow: false,
+        platform: "OSX",
+        profileCertificateMembership: true,
+        signingCertificateSha1Matched: true,
+        strictDeepNestedSignatures: true,
+      },
+    })}\n`,
+  );
 
   const sparkle = "sparkle-signature";
   put(
@@ -90,6 +136,7 @@ function fixture(domainCoreProfile = PUBLIC_PROFILE) {
       correspondingSource: source,
       appcast: "appcast.xml",
       latestMetadata: "latest-macos.json",
+      developerIdSigningReceipt: "developer-id-signing-receipt.json",
       sparkleEdSignaturePresent: true,
     })}\n`,
   );
@@ -109,7 +156,15 @@ function fixture(domainCoreProfile = PUBLIC_PROFILE) {
     `${hash("sha256", assets.get(source))}  /tmp/${source}\n`,
   );
 
-  const checksummed = [dmg, zip, source, "appcast.xml", "latest-macos.json", rollback];
+  const checksummed = [
+    dmg,
+    zip,
+    source,
+    "appcast.xml",
+    "latest-macos.json",
+    rollback,
+    "developer-id-signing-receipt.json",
+  ];
   put(
     `checksums-v${VERSION}.txt`,
     `${checksummed
@@ -297,6 +352,36 @@ test("domain-core verification failure prevents the promotion receipt", () => {
           throw new Error("invalid native attestation");
         }),
       /invalid native attestation/u,
+    );
+    assert.equal(mutations(client).length, 0);
+  });
+});
+
+test("a substituted Developer ID signing receipt fails before promotion", () => {
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    const receiptName = "developer-id-signing-receipt.json";
+    const receipt = JSON.parse(client.assets.get(receiptName).toString("utf8"));
+    receipt.signingCertificateSha1 = "0".repeat(40);
+    const receiptBytes = Buffer.from(`${JSON.stringify(receipt)}\n`);
+    client.assets.set(receiptName, receiptBytes);
+    const checksumsName = `checksums-v${VERSION}.txt`;
+    const checksums = client.assets
+      .get(checksumsName)
+      .toString("utf8")
+      .split("\n")
+      .map((line) => {
+        if (!line.endsWith(`/tmp/${receiptName}`)) return line;
+        const algorithm = line.slice(0, line.indexOf(" ")).length === 64
+          ? "sha256"
+          : "sha512";
+        return `${hash(algorithm, receiptBytes)}  /tmp/${receiptName}`;
+      })
+      .join("\n");
+    client.assets.set(checksumsName, Buffer.from(checksums));
+    assert.throws(
+      () => audit(files, client),
+      /does not bind the protected Developer ID signer/u,
     );
     assert.equal(mutations(client).length, 0);
   });

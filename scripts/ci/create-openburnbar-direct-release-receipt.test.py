@@ -15,6 +15,8 @@ SCRIPT = Path(__file__).with_name("create-openburnbar-direct-release-receipt.py"
 COMMIT = "a" * 40
 TREE = "b" * 40
 TEAM = "4Y367DF25B"
+SIGNING_IDENTITY = f"Developer ID Application: OpenBurnBar Test ({TEAM})"
+SIGNING_CERTIFICATE_SHA1 = "A" * 40
 APP_NOTARY_ID = "11111111-2222-3333-4444-555555555555"
 DMG_NOTARY_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
@@ -39,6 +41,8 @@ class ReceiptWriterTests(unittest.TestCase):
                     "teamId": TEAM,
                     "appGroup": "group.com.openburnbar.app",
                     "keychainGroup": f"{TEAM}.com.openburnbar.app",
+                    "signingIdentity": SIGNING_IDENTITY,
+                    "signingCertificateSha1": SIGNING_CERTIFICATE_SHA1,
                     "host": {
                         "bundleIdentifier": "com.openburnbar.app",
                         "profileExpiration": "2099-08-12T00:00:00Z",
@@ -63,6 +67,7 @@ class ReceiptWriterTests(unittest.TestCase):
                     "verification": {
                         "embeddedProfilesByteEqual": True,
                         "profileCertificateMembership": True,
+                        "signingCertificateSha1Matched": True,
                         "strictDeepNestedSignatures": True,
                         "getTaskAllow": False,
                         "platform": "OSX",
@@ -165,6 +170,14 @@ class ReceiptWriterTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         receipt = json.loads(self.output.read_text(encoding="utf-8"))
         self.assertEqual(receipt["candidate"], {"commit": COMMIT, "tree": TREE})
+        self.assertEqual(receipt["signing"]["signingIdentity"], SIGNING_IDENTITY)
+        self.assertEqual(
+            receipt["signing"]["signingCertificateSha1"],
+            SIGNING_CERTIFICATE_SHA1,
+        )
+        self.assertTrue(
+            receipt["signing"]["verification"]["signingCertificateSha1Matched"]
+        )
         self.assertEqual(receipt["artifacts"]["dmg"]["sha256"], hashlib.sha256(self.dmg.read_bytes()).hexdigest())
         self.assertEqual(
             receipt["notarization"]["app"]["submittedArtifact"]["sha256"],
@@ -219,6 +232,35 @@ class ReceiptWriterTests(unittest.TestCase):
         result = self.run_writer()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("signing receipt team ID does not match", result.stderr)
+
+    def test_rejects_invalid_signing_identity(self) -> None:
+        signing = json.loads(self.signing_receipt.read_text(encoding="utf-8"))
+        signing["signingIdentity"] = (
+            f"Apple Development: OpenBurnBar Test ({TEAM})"
+        )
+        self.signing_receipt.write_text(json.dumps(signing), encoding="utf-8")
+        result = self.run_writer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Developer ID identity is invalid", result.stderr)
+
+    def test_rejects_invalid_signing_certificate_sha1(self) -> None:
+        signing = json.loads(self.signing_receipt.read_text(encoding="utf-8"))
+        signing["signingCertificateSha1"] = "a" * 40
+        self.signing_receipt.write_text(json.dumps(signing), encoding="utf-8")
+        result = self.run_writer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Developer ID certificate SHA-1 is invalid", result.stderr)
+
+    def test_rejects_unverified_signing_certificate_sha1(self) -> None:
+        signing = json.loads(self.signing_receipt.read_text(encoding="utf-8"))
+        signing["verification"]["signingCertificateSha1Matched"] = False
+        self.signing_receipt.write_text(json.dumps(signing), encoding="utf-8")
+        result = self.run_writer()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "signing receipt verification claims are incomplete or invalid",
+            result.stderr,
+        )
 
     def test_rejects_duplicate_artifact_kind(self) -> None:
         command = self.command() + ["--artifact", "dmg", str(self.zip)]

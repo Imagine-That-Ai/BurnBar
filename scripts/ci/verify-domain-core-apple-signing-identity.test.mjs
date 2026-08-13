@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   mkdtempSync,
   readFileSync,
@@ -19,10 +20,16 @@ import {
 
 const TEAM = "A1B2C3D4E5";
 const AUTHORITY = `Developer ID Application: Imagine That LLC (${TEAM})`;
+const CERTIFICATE = Buffer.from("authorized Developer ID leaf certificate");
+const CERTIFICATE_SHA1 = createHash("sha1")
+  .update(CERTIFICATE)
+  .digest("hex")
+  .toUpperCase();
 const POLICY = JSON.stringify({
-  schemaVersion: 1,
+  schemaVersion: 2,
   teamIdentifier: TEAM,
   authority: AUTHORITY,
+  certificateSha1: CERTIFICATE_SHA1,
 });
 const CODESIGN_OUTPUT = [
   "Executable=/Volumes/OpenBurnBar/OpenBurnBar.app/Contents/MacOS/OpenBurnBar",
@@ -35,10 +42,14 @@ const CODESIGN_OUTPUT = [
 ].join("\n");
 
 test("accepts the exact protected TeamIdentifier and leaf Authority", () => {
-  assert.deepEqual(verifyAppleCodeSigningIdentity(POLICY, CODESIGN_OUTPUT), {
-    authority: AUTHORITY,
-    teamIdentifier: TEAM,
-  });
+  assert.deepEqual(
+    verifyAppleCodeSigningIdentity(POLICY, CODESIGN_OUTPUT, CERTIFICATE),
+    {
+      authority: AUTHORITY,
+      certificateSha1: CERTIFICATE_SHA1,
+      teamIdentifier: TEAM,
+    },
+  );
 });
 
 test("committed policy pins the production TeamIdentifier and leaf Authority", () => {
@@ -52,9 +63,11 @@ test("committed policy pins the production TeamIdentifier and leaf Authority", (
     ),
   );
   assert.deepEqual(policy, {
-    schemaVersion: 1,
+    schemaVersion: 2,
     teamIdentifier: "4Y367DF25B",
-    authority: "Developer ID Application: Imagine That AI LLC (4Y367DF25B)",
+    authority:
+      "Developer ID Application: Imagine That AI Limited Liability Company (4Y367DF25B)",
+    certificateSha1: "2FAA2102B33D02ED5F1A3D34EF51B210A4398ECA",
   });
 });
 
@@ -63,6 +76,7 @@ test("release signing secrets must exactly match committed pins", () => {
     verifyAppleSigningEnvironment(POLICY, {
       APPLE_TEAM_ID: TEAM,
       APPLE_SIGNING_IDENTITY: AUTHORITY,
+      APPLE_SIGNING_CERTIFICATE_SHA1: CERTIFICATE_SHA1,
     }),
     parseAppleSigningPolicy(POLICY),
   );
@@ -71,6 +85,7 @@ test("release signing secrets must exactly match committed pins", () => {
       verifyAppleSigningEnvironment(POLICY, {
         APPLE_TEAM_ID: "Z9Y8X7W6V5",
         APPLE_SIGNING_IDENTITY: AUTHORITY,
+        APPLE_SIGNING_CERTIFICATE_SHA1: CERTIFICATE_SHA1,
       }),
     /APPLE_TEAM_ID/,
   );
@@ -79,8 +94,18 @@ test("release signing secrets must exactly match committed pins", () => {
       verifyAppleSigningEnvironment(POLICY, {
         APPLE_TEAM_ID: TEAM,
         APPLE_SIGNING_IDENTITY: `Developer ID Application: Attacker LLC (${TEAM})`,
+        APPLE_SIGNING_CERTIFICATE_SHA1: CERTIFICATE_SHA1,
       }),
     /APPLE_SIGNING_IDENTITY/,
+  );
+  assert.throws(
+    () =>
+      verifyAppleSigningEnvironment(POLICY, {
+        APPLE_TEAM_ID: TEAM,
+        APPLE_SIGNING_IDENTITY: AUTHORITY,
+        APPLE_SIGNING_CERTIFICATE_SHA1: "0".repeat(40),
+      }),
+    /APPLE_SIGNING_CERTIFICATE_SHA1/,
   );
 });
 
@@ -93,6 +118,7 @@ test("rejects substituted TeamIdentifier and leaf Authority values", () => {
           `TeamIdentifier=${TEAM}`,
           "TeamIdentifier=Z9Y8X7W6V5",
         ),
+        CERTIFICATE,
       ),
     /TeamIdentifier mismatch/,
   );
@@ -104,8 +130,18 @@ test("rejects substituted TeamIdentifier and leaf Authority values", () => {
           `Authority=${AUTHORITY}`,
           `Authority=Developer ID Application: Attacker LLC (${TEAM})`,
         ),
+        CERTIFICATE,
       ),
     /leaf Authority mismatch/,
+  );
+  assert.throws(
+    () =>
+      verifyAppleCodeSigningIdentity(
+        POLICY,
+        CODESIGN_OUTPUT,
+        Buffer.from("substituted certificate"),
+      ),
+    /leaf certificate SHA-1 mismatch/,
   );
 });
 
@@ -118,10 +154,14 @@ test("rejects a substituted outer DMG signer", () => {
     "Authority=Apple Root CA",
     `TeamIdentifier=${TEAM}`,
   ].join("\n");
-  assert.deepEqual(verifyAppleCodeSigningIdentity(POLICY, dmgSignature), {
-    authority: AUTHORITY,
-    teamIdentifier: TEAM,
-  });
+  assert.deepEqual(
+    verifyAppleCodeSigningIdentity(POLICY, dmgSignature, CERTIFICATE),
+    {
+      authority: AUTHORITY,
+      certificateSha1: CERTIFICATE_SHA1,
+      teamIdentifier: TEAM,
+    },
+  );
   assert.throws(
     () =>
       verifyAppleCodeSigningIdentity(
@@ -130,6 +170,7 @@ test("rejects a substituted outer DMG signer", () => {
           `Authority=${AUTHORITY}`,
           `Authority=Developer ID Application: Substituted LLC (${TEAM})`,
         ),
+        CERTIFICATE,
       ),
     /leaf Authority mismatch/,
   );
@@ -141,20 +182,22 @@ test("rejects malformed, extra, and duplicate protected policy fields", () => {
     () =>
       parseAppleSigningPolicy(
         JSON.stringify({
-          schemaVersion: 2,
+          schemaVersion: 1,
           teamIdentifier: TEAM,
           authority: AUTHORITY,
+          certificateSha1: CERTIFICATE_SHA1,
         }),
       ),
-    /schemaVersion must be 1/,
+    /schemaVersion must be 2/,
   );
   assert.throws(
     () =>
       parseAppleSigningPolicy(
         JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: 2,
           teamIdentifier: TEAM,
           authority: AUTHORITY,
+          certificateSha1: CERTIFICATE_SHA1,
           fallbackAuthority: AUTHORITY,
         }),
       ),
@@ -163,7 +206,7 @@ test("rejects malformed, extra, and duplicate protected policy fields", () => {
   assert.throws(
     () =>
       parseAppleSigningPolicy(
-        `{"schemaVersion":1,"teamIdentifier":"${TEAM}","teamIdentifier":"${TEAM}","authority":${JSON.stringify(AUTHORITY)}}`,
+        `{"schemaVersion":2,"teamIdentifier":"${TEAM}","teamIdentifier":"${TEAM}","authority":${JSON.stringify(AUTHORITY)},"certificateSha1":"${CERTIFICATE_SHA1}"}`,
       ),
     /each protected field exactly once/,
   );
@@ -171,9 +214,10 @@ test("rejects malformed, extra, and duplicate protected policy fields", () => {
     () =>
       parseAppleSigningPolicy(
         JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: 2,
           teamIdentifier: TEAM,
           authority: "Apple Development: Imagine That LLC (A1B2C3D4E5)",
+          certificateSha1: CERTIFICATE_SHA1,
         }),
       ),
     /Developer ID Application identity/,
@@ -182,12 +226,25 @@ test("rejects malformed, extra, and duplicate protected policy fields", () => {
     () =>
       parseAppleSigningPolicy(
         JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: 2,
           teamIdentifier: TEAM,
           authority: "Developer ID Application: Imagine That LLC (Z9Y8X7W6V5)",
+          certificateSha1: CERTIFICATE_SHA1,
         }),
       ),
     /exact teamIdentifier/,
+  );
+  assert.throws(
+    () =>
+      parseAppleSigningPolicy(
+        JSON.stringify({
+          schemaVersion: 2,
+          teamIdentifier: TEAM,
+          authority: AUTHORITY,
+          certificateSha1: "a".repeat(40),
+        }),
+      ),
+    /40 uppercase hexadecimal/,
   );
 });
 
@@ -197,6 +254,7 @@ test("rejects missing, malformed, and duplicate codesign identity lines", () => 
       verifyAppleCodeSigningIdentity(
         POLICY,
         CODESIGN_OUTPUT.replace(`TeamIdentifier=${TEAM}`, ""),
+        CERTIFICATE,
       ),
     /missing TeamIdentifier/,
   );
@@ -205,6 +263,7 @@ test("rejects missing, malformed, and duplicate codesign identity lines", () => 
       verifyAppleCodeSigningIdentity(
         POLICY,
         `${CODESIGN_OUTPUT}\nTeamIdentifier=${TEAM}`,
+        CERTIFICATE,
       ),
     /duplicate TeamIdentifier/,
   );
@@ -213,6 +272,7 @@ test("rejects missing, malformed, and duplicate codesign identity lines", () => 
       verifyAppleCodeSigningIdentity(
         POLICY,
         `${CODESIGN_OUTPUT}\nAuthority=${AUTHORITY}`,
+        CERTIFICATE,
       ),
     /duplicate Authority/,
   );
@@ -224,6 +284,7 @@ test("rejects missing, malformed, and duplicate codesign identity lines", () => 
           `TeamIdentifier=${TEAM}`,
           `TeamIdentifier =${TEAM}`,
         ),
+        CERTIFICATE,
       ),
     /TeamIdentifier is malformed/,
   );
@@ -236,17 +297,49 @@ test("CLI rejects symlinked protected policy and codesign evidence", () => {
     const policyLink = join(workspace, "policy-link.json");
     const output = join(workspace, "codesign.txt");
     const outputLink = join(workspace, "codesign-link.txt");
+    const certificate = join(workspace, "codesign0");
+    const certificateLink = join(workspace, "codesign0-link");
     writeFileSync(policy, POLICY);
     writeFileSync(output, CODESIGN_OUTPUT);
+    writeFileSync(certificate, CERTIFICATE);
     symlinkSync(policy, policyLink);
     symlinkSync(output, outputLink);
+    symlinkSync(certificate, certificateLink);
 
     assert.throws(
-      () => run(["--policy", policyLink, "--signature", output]),
+      () =>
+        run([
+          "--policy",
+          policyLink,
+          "--signature",
+          output,
+          "--certificate",
+          certificate,
+        ]),
       /nonempty regular file, not a symlink/,
     );
     assert.throws(
-      () => run(["--policy", policy, "--signature", outputLink]),
+      () =>
+        run([
+          "--policy",
+          policy,
+          "--signature",
+          outputLink,
+          "--certificate",
+          certificate,
+        ]),
+      /nonempty regular file, not a symlink/,
+    );
+    assert.throws(
+      () =>
+        run([
+          "--policy",
+          policy,
+          "--signature",
+          output,
+          "--certificate",
+          certificateLink,
+        ]),
       /nonempty regular file, not a symlink/,
     );
   } finally {
@@ -263,6 +356,7 @@ test("release signing environment rejects missing protected values", () => {
     () =>
       verifyAppleSigningEnvironment(POLICY, {
         APPLE_TEAM_ID: TEAM,
+        APPLE_SIGNING_CERTIFICATE_SHA1: CERTIFICATE_SHA1,
       }),
     /APPLE_SIGNING_IDENTITY/,
   );

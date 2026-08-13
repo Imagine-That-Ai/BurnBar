@@ -94,6 +94,61 @@ class WebsiteReleasePolicyTests(unittest.TestCase):
             ),
         )
 
+    def test_profiles_and_signing_certificate_are_explicit_and_immutable(self) -> None:
+        for assignment in (
+            'app_profile="${OPENBURNBAR_APP_PROFILE:-}"',
+            'safari_extension_profile="${OPENBURNBAR_SAFARI_EXTENSION_PROFILE:-}"',
+            'privileged_input_profile="${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE:-}"',
+        ):
+            self.assertIn(assignment, self.source)
+
+        for forbidden_default in (
+            "build/app-direct-profile/OpenBurnBar-MAC_APP_DIRECT.provisionprofile",
+            "build/app-direct-profile/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile",
+            "build/hid-managed-profile/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile",
+        ):
+            self.assertNotIn(forbidden_default, self.source)
+
+        self.assertIn('if [[ "$profile_path" != /* ]]; then', self.source)
+        self.assertIn(
+            'if [[ ! -f "$profile_path" || -L "$profile_path" ]]; then',
+            self.source,
+        )
+        for variable in (
+            "OPENBURNBAR_APP_PROFILE",
+            "OPENBURNBAR_SAFARI_EXTENSION_PROFILE",
+            "OPENBURNBAR_PRIVILEGED_INPUT_PROFILE",
+        ):
+            self.assertIn(f'  "{variable}" \\', self.source)
+
+        self.assertIn(
+            'expected_signing_certificate_sha1="${OPENBURNBAR_SIGNING_CERTIFICATE_SHA1:-}"',
+            self.source,
+        )
+        self.assertIn(
+            "OPENBURNBAR_SIGNING_CERTIFICATE_SHA1 must be the exact 40-character SHA-1 fingerprint",
+            self.source,
+        )
+        self.assertIn(
+            'signing_selector="$expected_signing_certificate_sha1"',
+            self.source,
+        )
+        self.assertIn(
+            "verify-domain-core-apple-signing-identity.mjs",
+            self.source,
+        )
+        self.assertIn(
+            'APPLE_SIGNING_CERTIFICATE_SHA1="$expected_signing_certificate_sha1"',
+            self.source,
+        )
+        self.assertNotIn('--sign "$identity"', self.source)
+        self.assertGreaterEqual(self.source.count('--sign "$signing_selector"'), 5)
+        self.assertIn(
+            '  "$signing_selector" \\\n'
+            '  "$safari_extension_profile"',
+            self.source,
+        )
+
     def test_corresponding_source_is_built_from_detached_exact_candidate(self) -> None:
         self.assertIn(
             "bash scripts/ci/build-corresponding-source-archive.sh \\",

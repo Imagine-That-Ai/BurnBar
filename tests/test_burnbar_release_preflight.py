@@ -786,6 +786,8 @@ def test_safari_host_entitlements_share_exact_app_group_and_keychain_across_chan
         '  "$app_profile_team_id" \\\n'
         '  "$app_profile" \\\n'
         '  "$safari_extension_profile" \\\n'
+        '  "$identity" \\\n'
+        '  "$expected_signing_certificate_sha1" \\\n'
         '  "$signing_receipt_path"'
     ) in website_release
     assert 'codesign -d --entitlements :- "$app_path"' in direct_release_verifier

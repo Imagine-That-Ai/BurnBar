@@ -112,6 +112,22 @@ test("Apple and Android signing consumes the exact protected gate first", () => 
     build,
     /--policy config\/apple-release-signing-policy\.json --environment/u,
   );
+  assert.match(
+    build,
+    /SIGNING_CERTIFICATE_SHA1="\$\([\s\S]*apple-release-signing-policy\.json[\s\S]*--sign "\$SIGNING_SELECTOR"/u,
+  );
+  assert.match(
+    build,
+    /verify-openburnbar-direct-release\.sh[\s\S]*"\$SIGNING_CERTIFICATE_SHA1"/u,
+  );
+  assert.match(
+    build,
+    /developer-id-signing-receipt\.json[\s\S]*sha256sum "\$SIGNING_RECEIPT_PATH"[\s\S]*attest_release_blob[\s\S]*"\$SIGNING_RECEIPT_PATH"/u,
+  );
+  assert.match(
+    build,
+    /developerIdSigningReceipt[\s\S]*Upload Developer ID signing receipt artifact/u,
+  );
   assert.match(build, /--binary "\$packaged_library"/u);
   assert.match(build, /verify-domain-core-android-universal-artifact\.mjs/u);
   assert.match(build, /run-domain-core-android-native-load\.sh/u);

@@ -17,6 +17,7 @@ from exclusive_json import write_exclusive_json
 
 
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+CERTIFICATE_SHA1 = re.compile(r"^[0-9A-F]{40}$")
 NOTARY_ID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 UTC = timezone(timedelta(0))
 
@@ -175,10 +176,25 @@ def sanitized_signing_receipt(value: dict[str, Any], team_id: str) -> dict[str, 
         fail("signing receipt App Group is invalid.")
     if value.get("keychainGroup") != f"{team_id}.com.openburnbar.app":
         fail("signing receipt Keychain group is invalid.")
+    signing_identity = value.get("signingIdentity")
+    if (
+        not isinstance(signing_identity, str)
+        or not signing_identity.startswith("Developer ID Application:")
+        or not signing_identity.endswith(f"({team_id})")
+        or "\n" in signing_identity
+        or "\r" in signing_identity
+    ):
+        fail("signing receipt Developer ID identity is invalid.")
+    signing_certificate_sha1 = value.get("signingCertificateSha1")
+    if not isinstance(signing_certificate_sha1, str) or not CERTIFICATE_SHA1.fullmatch(
+        signing_certificate_sha1
+    ):
+        fail("signing receipt Developer ID certificate SHA-1 is invalid.")
     verification = require_dict(value.get("verification"), "signing receipt verification")
     expected_verification = {
         "embeddedProfilesByteEqual": True,
         "profileCertificateMembership": True,
+        "signingCertificateSha1Matched": True,
         "strictDeepNestedSignatures": True,
         "getTaskAllow": False,
         "platform": "OSX",
@@ -191,6 +207,8 @@ def sanitized_signing_receipt(value: dict[str, Any], team_id: str) -> dict[str, 
         "teamId": team_id,
         "appGroup": "group.com.openburnbar.app",
         "keychainGroup": f"{team_id}.com.openburnbar.app",
+        "signingIdentity": signing_identity,
+        "signingCertificateSha1": signing_certificate_sha1,
         "host": sanitized_component(
             value.get("host"),
             "signing receipt host",

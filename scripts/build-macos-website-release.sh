@@ -62,10 +62,10 @@ scheme="${OPENBURNBAR_SCHEME:-OpenBurnBar}"
 project="${OPENBURNBAR_PROJECT:-OpenBurnBar.xcodeproj}"
 destination="${OPENBURNBAR_DESTINATION:-platform=macOS,arch=arm64}"
 entitlements="AgentLens/Resources/OpenBurnBarRelease.entitlements"
-app_profile="${OPENBURNBAR_APP_PROFILE:-build/app-direct-profile/OpenBurnBar-MAC_APP_DIRECT.provisionprofile}"
-safari_extension_profile="${OPENBURNBAR_SAFARI_EXTENSION_PROFILE:-build/app-direct-profile/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile}"
+app_profile="${OPENBURNBAR_APP_PROFILE:-}"
+safari_extension_profile="${OPENBURNBAR_SAFARI_EXTENSION_PROFILE:-}"
 privileged_input_entitlements="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
-privileged_input_profile="${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE:-build/hid-managed-profile/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile}"
+privileged_input_profile="${OPENBURNBAR_PRIVILEGED_INPUT_PROFILE:-}"
 expected_host_bundle_id="com.openburnbar.app"
 expected_app_group="group.com.openburnbar.app"
 expected_source_keychain_group='$(AppIdentifierPrefix)com.openburnbar.app'
@@ -178,24 +178,44 @@ require_entitlement_value \
   "$entitlements" \
   "keychain-access-groups" \
   "$expected_source_keychain_group"
-if [[ ! -f "$app_profile" ]]; then
-  echo "ERROR: Missing app Developer ID provisioning profile at $app_profile. Set OPENBURNBAR_APP_PROFILE to the MAC_APP_DIRECT profile for com.openburnbar.app." >&2
-  exit 1
-fi
-if [[ ! -f "$safari_extension_profile" ]]; then
-  echo "ERROR: Missing Safari extension Developer ID provisioning profile at $safari_extension_profile. Set OPENBURNBAR_SAFARI_EXTENSION_PROFILE to the dedicated MAC_APP_DIRECT profile for com.openburnbar.app.safari-extension." >&2
-  exit 1
-fi
+require_explicit_profile() {
+  local variable_name="$1"
+  local profile_path="$2"
+  local label="$3"
+
+  if [[ -z "$profile_path" ]]; then
+    echo "ERROR: $variable_name must explicitly name the audited $label MAC_APP_DIRECT profile; implicit repository defaults are forbidden." >&2
+    exit 1
+  fi
+  if [[ "$profile_path" != /* ]]; then
+    echo "ERROR: $variable_name must be an absolute path to the audited $label MAC_APP_DIRECT profile; found '$profile_path'." >&2
+    exit 1
+  fi
+  if [[ ! -f "$profile_path" || -L "$profile_path" ]]; then
+    echo "ERROR: $variable_name must reference a real, non-symlinked $label MAC_APP_DIRECT profile; found '$profile_path'." >&2
+    exit 1
+  fi
+}
+
+require_explicit_profile \
+  "OPENBURNBAR_APP_PROFILE" \
+  "$app_profile" \
+  "host app"
+require_explicit_profile \
+  "OPENBURNBAR_SAFARI_EXTENSION_PROFILE" \
+  "$safari_extension_profile" \
+  "Safari extension"
 if [[ ! -f "$privileged_input_entitlements" ]]; then
   echo "ERROR: Missing privileged input entitlements at $privileged_input_entitlements" >&2
   exit 1
 fi
-if [[ ! -f "$privileged_input_profile" ]]; then
-  echo "ERROR: Missing privileged input provisioning profile at $privileged_input_profile. Set OPENBURNBAR_PRIVILEGED_INPUT_PROFILE to the managed-capability profile." >&2
-  exit 1
-fi
+require_explicit_profile \
+  "OPENBURNBAR_PRIVILEGED_INPUT_PROFILE" \
+  "$privileged_input_profile" \
+  "privileged-input helper"
 
 identity="${OPENBURNBAR_SIGNING_IDENTITY:-}"
+expected_signing_certificate_sha1="${OPENBURNBAR_SIGNING_CERTIFICATE_SHA1:-}"
 openburnbar_without_candidate_git_environment \
   bash scripts/test-openburnbar-safari-extension.sh
 verify_exact_candidate_state
@@ -241,16 +261,39 @@ if [[ "$identity" != "Developer ID Application:"* || "$identity" != *"($app_prof
   echo "ERROR: OPENBURNBAR_SIGNING_IDENTITY must be a Developer ID Application identity for exact team $app_profile_team_id; found '$identity'." >&2
   exit 1
 fi
-identity_matches=0
-while IFS= read -r available_identity; do
-  if [[ "$available_identity" == "$identity" ]]; then
-    identity_matches=$((identity_matches + 1))
-  fi
-done < <(security find-identity -v -p codesigning | sed -n 's/.*"\([^"]*\)".*/\1/p')
-if [[ "$identity_matches" -ne 1 ]]; then
-  echo "ERROR: Expected exactly one installed codesigning identity named '$identity'; found $identity_matches." >&2
+if [[ ! "$expected_signing_certificate_sha1" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+  echo "ERROR: OPENBURNBAR_SIGNING_CERTIFICATE_SHA1 must be the exact 40-character SHA-1 fingerprint of the authorized Developer ID Application certificate." >&2
   exit 1
 fi
+expected_signing_certificate_sha1="$(
+  printf '%s' "$expected_signing_certificate_sha1" | tr '[:lower:]' '[:upper:]'
+)"
+APPLE_TEAM_ID="$app_profile_team_id" \
+APPLE_SIGNING_IDENTITY="$identity" \
+APPLE_SIGNING_CERTIFICATE_SHA1="$expected_signing_certificate_sha1" \
+  node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
+    --policy config/apple-release-signing-policy.json \
+    --environment
+identity_matches=()
+while IFS= read -r identity_line; do
+  if [[ "$identity_line" == *"\"$identity\""* && "$identity_line" =~ ([0-9A-Fa-f]{40}) ]]; then
+    identity_matches+=("$(
+      printf '%s' "${BASH_REMATCH[1]}" | tr '[:lower:]' '[:upper:]'
+    )")
+  fi
+done < <(security find-identity -v -p codesigning)
+if [[ "${#identity_matches[@]}" -ne 1 ]]; then
+  echo "ERROR: Expected exactly one usable codesigning identity named '$identity'; found ${#identity_matches[@]}." >&2
+  exit 1
+fi
+if [[ "${identity_matches[0]}" != "$expected_signing_certificate_sha1" ]]; then
+  echo "ERROR: Developer ID identity '$identity' resolves to certificate SHA-1 ${identity_matches[0]}; expected $expected_signing_certificate_sha1." >&2
+  exit 1
+fi
+# Use the immutable fingerprint for every codesign operation. The display name
+# remains a separate human-readable policy assertion, but cannot select a
+# different same-name certificate if the keychain changes later.
+signing_selector="$expected_signing_certificate_sha1"
 security cms -D -i "$privileged_input_profile" > "$privileged_input_profile_plist"
 /usr/libexec/PlistBuddy -x -c "Print :Entitlements" \
   "$privileged_input_profile_plist" > "$privileged_input_signing_entitlements"
@@ -427,7 +470,7 @@ sign_one() {
   local options="${2:-runtime}"
   local identifier="${3:-}"
   [[ -e "$path" ]] || return 0
-  local args=(--force --timestamp --options "$options" --sign "$identity")
+  local args=(--force --timestamp --options "$options" --sign "$signing_selector")
   if [[ -n "$identifier" ]]; then
     args+=(--identifier "$identifier")
   fi
@@ -440,7 +483,7 @@ sign_one_with_entitlements() {
   local options="${3:-runtime}"
   local identifier="${4:-}"
   [[ -e "$path" ]] || return 0
-  local args=(--force --timestamp --options "$options" --entitlements "$entitlements_path" --sign "$identity")
+  local args=(--force --timestamp --options "$options" --entitlements "$entitlements_path" --sign "$signing_selector")
   if [[ -n "$identifier" ]]; then
     args+=(--identifier "$identifier")
   fi
@@ -506,7 +549,7 @@ wrap_privileged_input_execution_helper() {
 PLIST
   codesign --force --timestamp --options runtime,library \
     --entitlements "$privileged_input_signing_entitlements" \
-    --sign "$identity" \
+    --sign "$signing_selector" \
     "$helper_app"
   bash scripts/ci/verify-signing-profile-certificate.sh \
     "$helper_app" \
@@ -550,14 +593,14 @@ wrap_privileged_input_execution_helper \
 
 bash scripts/ci/sign-openburnbar-safari-extension.sh \
   "$app_path" \
-  "$identity" \
+  "$signing_selector" \
   "$safari_extension_profile" \
   "$app_profile_team_id"
 
 cp "$app_profile" "$app_path/Contents/embedded.provisionprofile"
 codesign --force --timestamp --options runtime,library \
   --entitlements "$app_signing_entitlements" \
-  --sign "$identity" \
+  --sign "$signing_selector" \
   "$app_path"
 assert_peer_signature "$app_path" "com.openburnbar.app"
 assert_peer_signature "$helpers_dir/OpenBurnBarDaemon" "com.openburnbar.app"
@@ -572,6 +615,8 @@ bash scripts/ci/verify-openburnbar-direct-release.sh \
   "$app_profile_team_id" \
   "$app_profile" \
   "$safari_extension_profile" \
+  "$identity" \
+  "$expected_signing_certificate_sha1" \
   "$signing_receipt_path"
 
 bash scripts/ci/verify-daemon-release-signing.sh "$app_path" "$app_profile_team_id"
@@ -745,7 +790,7 @@ hdiutil create -volname "OpenBurnBar" \
   -srcfolder "$staging" \
   -ov -format UDZO \
   "$dmg_path"
-codesign --force --timestamp --sign "$identity" "$dmg_path"
+codesign --force --timestamp --sign "$signing_selector" "$dmg_path"
 codesign --verify --verbose=2 "$dmg_path"
 
 if [[ "${OPENBURNBAR_SKIP_NOTARY:-0}" != "1" ]]; then

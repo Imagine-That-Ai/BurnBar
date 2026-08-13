@@ -1175,6 +1175,10 @@ jobs:
             echo "::error::Missing required release secrets: ${missing[*]}"
             exit 1
           fi
+          APPLE_SIGNING_CERTIFICATE_SHA1="$(
+            jq -er '.certificateSha1' config/apple-release-signing-policy.json
+          )"
+          export APPLE_SIGNING_CERTIFICATE_SHA1
           node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
             --policy config/apple-release-signing-policy.json --environment
 
@@ -1824,6 +1828,28 @@ jobs:
           EXPECTED_APP_GROUP="group.com.openburnbar.app"
           PRIVILEGED_INPUT_ENTITLEMENTS="OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements"
           VIRTUAL_HID_BRIDGE_ENTITLEMENTS="OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements"
+          SIGNING_CERTIFICATE_SHA1="$(
+            jq -er '.certificateSha1' config/apple-release-signing-policy.json
+          )"
+          if [[ ! "$SIGNING_CERTIFICATE_SHA1" =~ ^[0-9A-F]{40}$ ]]; then
+            echo "::error::SIGNING_CERTIFICATE_SHA1 must be exactly 40 uppercase hexadecimal characters."
+            exit 1
+          fi
+          identity_matches=()
+          while IFS= read -r identity_line; do
+            if [[ "$identity_line" == *"\"$SIGNING_IDENTITY\""* \
+              && "$identity_line" =~ ([0-9A-Fa-f]{40}) ]]; then
+              identity_matches+=("$(
+                printf '%s' "${BASH_REMATCH[1]}" | tr '[:lower:]' '[:upper:]'
+              )")
+            fi
+          done < <(security find-identity -v -p codesigning)
+          if [[ "${#identity_matches[@]}" -ne 1 \
+            || "${identity_matches[0]}" != "$SIGNING_CERTIFICATE_SHA1" ]]; then
+            echo "::error::The exact Developer ID identity must resolve uniquely to certificate SHA-1 $SIGNING_CERTIFICATE_SHA1."
+            exit 1
+          fi
+          SIGNING_SELECTOR="$SIGNING_CERTIFICATE_SHA1"
           export APP_PROFILE SAFARI_EXTENSION_PROFILE PRIVILEGED_INPUT_PROFILE
 
           if [[ ! -d "$APP_PATH" ]]; then
@@ -2020,7 +2046,7 @@ jobs:
             local options="${2:-runtime}"
             local identifier="${3:-}"
             [[ -e "$path" ]] || return 0
-            local args=(--force --timestamp --options "$options" --sign "$SIGNING_IDENTITY")
+            local args=(--force --timestamp --options "$options" --sign "$SIGNING_SELECTOR")
             if [[ -n "$identifier" ]]; then
               args+=(--identifier "$identifier")
             fi
@@ -2033,7 +2059,7 @@ jobs:
             local options="${3:-runtime}"
             local identifier="${4:-}"
             [[ -e "$path" ]] || return 0
-            local args=(--force --timestamp --options "$options" --entitlements "$entitlements_path" --sign "$SIGNING_IDENTITY")
+            local args=(--force --timestamp --options "$options" --entitlements "$entitlements_path" --sign "$SIGNING_SELECTOR")
             if [[ -n "$identifier" ]]; then
               args+=(--identifier "$identifier")
             fi
@@ -2106,7 +2132,7 @@ jobs:
           PLIST
             codesign --force --timestamp --options runtime,library \
               --entitlements "$PRIVILEGED_INPUT_SIGNING_ENTITLEMENTS" \
-              --sign "$SIGNING_IDENTITY" \
+              --sign "$SIGNING_SELECTOR" \
               "$helper_app"
             bash scripts/ci/verify-signing-profile-certificate.sh \
               "$helper_app" \
@@ -2156,18 +2182,25 @@ jobs:
 
           bash scripts/ci/sign-openburnbar-safari-extension.sh \
             "$APP_PATH" \
-            "$SIGNING_IDENTITY" \
+            "$SIGNING_SELECTOR" \
             "$SAFARI_EXTENSION_PROFILE" \
             "$APP_PROFILE_TEAM_ID"
 
           cp "$APP_PROFILE" "$APP_PATH/Contents/embedded.provisionprofile"
           codesign --force --timestamp --options runtime,library \
             --entitlements "$APP_SIGNING_ENTITLEMENTS" \
-            --sign "$SIGNING_IDENTITY" \
+            --sign "$SIGNING_SELECTOR" \
             "$APP_PATH"
 
-          bash scripts/ci/verify-signing-profile-certificate.sh "$APP_PATH" "$APP_PROFILE"
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          bash scripts/ci/verify-openburnbar-direct-release.sh \
+            "$APP_PATH" \
+            "$APP_PROFILE_TEAM_ID" \
+            "$APP_PROFILE" \
+            "$SAFARI_EXTENSION_PROFILE" \
+            "$SIGNING_IDENTITY" \
+            "$SIGNING_CERTIFICATE_SHA1" \
+            "$RUNNER_TEMP/developer-id-signing-receipt.json"
+          test -s "$RUNNER_TEMP/developer-id-signing-receipt.json"
           assert_peer_signature "$APP_PATH" "com.openburnbar.app"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarDaemon" "com.openburnbar.app"
           assert_peer_signature "$HELPERS_DIR/OpenBurnBarCLI" "com.openburnbar.cli"
@@ -2228,11 +2261,25 @@ jobs:
 
       - name: Codesign DMG
         env:
-          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           DMG_PATH: ${{ steps.dmg.outputs.dmg_path }}
         run: |
-          codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG_PATH"
+          SIGNING_CERTIFICATE_SHA1="$(
+            jq -er '.certificateSha1' config/apple-release-signing-policy.json
+          )"
+          codesign --force --timestamp --sign "$SIGNING_CERTIFICATE_SHA1" "$DMG_PATH"
           codesign --verify --verbose=2 "$DMG_PATH"
+          DMG_SIGNATURE="$RUNNER_TEMP/OpenBurnBar-dmg-signature.txt"
+          DMG_CERTIFICATE_DIR="$RUNNER_TEMP/OpenBurnBar-dmg-certificate"
+          mkdir "$DMG_CERTIFICATE_DIR"
+          codesign -d --verbose=4 "$DMG_PATH" > "$DMG_SIGNATURE" 2>&1
+          (
+            cd "$DMG_CERTIFICATE_DIR"
+            codesign -d --extract-certificates "$DMG_PATH" >/dev/null 2>&1
+          )
+          node scripts/ci/verify-domain-core-apple-signing-identity.mjs \
+            --policy config/apple-release-signing-policy.json \
+            --signature "$DMG_SIGNATURE" \
+            --certificate "$DMG_CERTIFICATE_DIR/codesign0"
 
       - name: Notarize and staple DMG
         env:
@@ -2460,6 +2507,7 @@ jobs:
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
           ROLLBACK_PATH: ${{ steps.domain-core-rollback.outputs.rollback_path }}
+          SIGNING_RECEIPT_PATH: ${{ runner.temp }}/developer-id-signing-receipt.json
           VERSION: ${{ needs.release-preflight.outputs.version }}
         run: |
           CHECKSUMS_FILE="$RUNNER_TEMP/checksums-v${VERSION}.txt"
@@ -2482,6 +2530,8 @@ jobs:
             sha512sum "$LATEST_PATH"
             sha256sum "$ROLLBACK_PATH"
             sha512sum "$ROLLBACK_PATH"
+            sha256sum "$SIGNING_RECEIPT_PATH"
+            sha512sum "$SIGNING_RECEIPT_PATH"
           } > "$CHECKSUMS_FILE"
 
           cat "$CHECKSUMS_FILE"
@@ -2578,6 +2628,7 @@ jobs:
           APPCAST_PATH: ${{ steps.update-feeds.outputs.appcast_path }}
           LATEST_PATH: ${{ steps.update-feeds.outputs.latest_path }}
           ROLLBACK_PATH: ${{ steps.domain-core-rollback.outputs.rollback_path }}
+          SIGNING_RECEIPT_PATH: ${{ runner.temp }}/developer-id-signing-receipt.json
           VERSION: ${{ needs.release-preflight.outputs.version }}
           RELEASE_TAG: ${{ needs.release-preflight.outputs.tag_name }}
           RELEASE_REF: ${{ needs.release-preflight.outputs.tag_ref }}
@@ -2666,6 +2717,9 @@ jobs:
           attest_release_blob "$SOURCE_PATH" "${SOURCE_PATH##*/}"
           attest_release_blob "$APPCAST_PATH" "${APPCAST_PATH##*/}"
           attest_release_blob "$LATEST_PATH" "${LATEST_PATH##*/}"
+          attest_release_blob \
+            "$SIGNING_RECEIPT_PATH" \
+            "${SIGNING_RECEIPT_PATH##*/}"
 
           rollback_predicate="$PROVENANCE_DIR/${ROLLBACK_PATH##*/}.predicate.json"
           rollback_bundle="$PROVENANCE_DIR/${ROLLBACK_PATH##*/}.sigstore.json"
@@ -2764,6 +2818,7 @@ jobs:
           UPDATE_BASE_URL: ${{ steps.update-feeds.outputs.update_base_url }}
           APPCAST_FILE: appcast.xml
           LATEST_FILE: latest-macos.json
+          SIGNING_RECEIPT_FILE: developer-id-signing-receipt.json
         run: |
           METADATA_FILE="$RUNNER_TEMP/release-metadata.json"
 
@@ -2781,6 +2836,7 @@ jobs:
               "updateBaseUrl": os.environ["UPDATE_BASE_URL"],
               "appcast": os.environ["APPCAST_FILE"],
               "latestMetadata": os.environ["LATEST_FILE"],
+              "developerIdSigningReceipt": os.environ["SIGNING_RECEIPT_FILE"],
               "sparkleEdSignaturePresent": True,
               "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "build_timestamp": datetime.datetime.now(datetime.timezone.utc)
@@ -2897,6 +2953,13 @@ jobs:
         with:
           name: release-metadata-v${{ needs.release-preflight.outputs.version }}
           path: ${{ steps.metadata.outputs.metadata_path }}
+          if-no-files-found: error
+
+      - name: Upload Developer ID signing receipt artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: developer-id-signing-receipt-v${{ needs.release-preflight.outputs.version }}
+          path: ${{ runner.temp }}/developer-id-signing-receipt.json
           if-no-files-found: error
 
       - name: Clean up Firebase config
@@ -3075,6 +3138,7 @@ jobs:
           SOURCE_SHA256_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-corresponding-source.tar.gz.sha256" -print -quit 2>/dev/null)
           SIG_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "*.asc" -print -quit 2>/dev/null)
           ROLLBACK_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "OpenBurnBar-${VERSION}-legacy-rollback.zip" -print -quit 2>/dev/null)
+          SIGNING_RECEIPT_PATH=$(find "$RUNNER_TEMP" -maxdepth 1 -type f -name "developer-id-signing-receipt.json" -print -quit 2>/dev/null)
           PROVENANCE_PATHS=()
           while IFS= read -r provenance_path; do
             [[ -n "$provenance_path" ]] && PROVENANCE_PATHS+=("$provenance_path")
@@ -3094,7 +3158,7 @@ jobs:
             cp CHANGELOG.md "$NOTES_FILE"
           fi
 
-          for asset in "$DMG_PATH" "$ZIP_PATH" "$ROLLBACK_PATH"; do
+          for asset in "$DMG_PATH" "$ZIP_PATH" "$ROLLBACK_PATH" "$SIGNING_RECEIPT_PATH"; do
             if [[ ! -f "$asset" ]]; then
               echo "::error::Release asset missing after artifact download: $asset"
               exit 1
@@ -3109,6 +3173,7 @@ jobs:
           [[ -n "$VEX_PATH" && -f "$VEX_PATH" ]] && ASSETS+=("$VEX_PATH")
           [[ -n "$NOTICES_PATH" && -f "$NOTICES_PATH" ]] && ASSETS+=("$NOTICES_PATH")
           [[ -n "$METADATA_PATH" && -f "$METADATA_PATH" ]] && ASSETS+=("$METADATA_PATH")
+          ASSETS+=("$SIGNING_RECEIPT_PATH")
           [[ -n "$SOURCE_PATH" && -f "$SOURCE_PATH" ]] && ASSETS+=("$SOURCE_PATH")
           [[ -n "$SOURCE_SHA256_PATH" && -f "$SOURCE_SHA256_PATH" ]] && ASSETS+=("$SOURCE_SHA256_PATH")
           [[ -n "$SIG_PATH" && -f "$SIG_PATH" ]] && ASSETS+=("$SIG_PATH")

@@ -144,6 +144,12 @@ new_release_fixture() {
   write_asset_with_sidecars "$release_dir" "$tag" "OpenBurnBar-${tag#v}-macOS.dmg" "$sidecar_runner_environment" "$signed_runner_environment"
   write_asset_with_sidecars "$release_dir" "$tag" "OpenBurnBar-${tag#v}-macOS.zip" "$sidecar_runner_environment" "$signed_runner_environment"
   write_asset_with_sidecars "$release_dir" "$tag" "checksums-${tag}.txt" "$sidecar_runner_environment" "$signed_runner_environment"
+  write_asset_with_sidecars "$release_dir" "$tag" "sbom-${tag}.spdx.json" "$sidecar_runner_environment" "$signed_runner_environment"
+  write_asset_with_sidecars "$release_dir" "$tag" "openburnbar-${tag}.vex.json" "$sidecar_runner_environment" "$signed_runner_environment"
+  write_asset_with_sidecars "$release_dir" "$tag" "OpenBurnBar-${tag#v}-corresponding-source.tar.gz" "$sidecar_runner_environment" "$signed_runner_environment"
+  write_asset_with_sidecars "$release_dir" "$tag" "appcast.xml" "$sidecar_runner_environment" "$signed_runner_environment"
+  write_asset_with_sidecars "$release_dir" "$tag" "latest-macos.json" "$sidecar_runner_environment" "$signed_runner_environment"
+  write_asset_with_sidecars "$release_dir" "$tag" "developer-id-signing-receipt.json" "$sidecar_runner_environment" "$signed_runner_environment"
   printf '%s' "$release_dir"
 }
 
@@ -172,6 +178,9 @@ bin_dir="$tmp_root/bin"
 write_stubs "$bin_dir"
 tag="v9.9.9"
 new_release_fixture "$tag" >/dev/null
+
+run_case 0 default-required-patterns-present \
+  env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$tag"
 
 run_case 0 all-required-patterns-present \
   env PATH="$bin_dir:/usr/bin:/bin" FIXTURE_RELEASE_DIR="$tmp_root/releases" "$verifier" "$tag" "*macOS.dmg" "*macOS.zip" "checksums-${tag}.txt"

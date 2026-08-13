@@ -70,6 +70,7 @@ if [[ "$consumer" == "android" ]]; then
 fi
 apple_mount_point=""
 bundletool_directory=""
+apple_identity_work_dir=""
 cleanup_apple_mount() {
   if [[ -n "$apple_mount_point" ]]; then
     hdiutil detach "$apple_mount_point" -quiet >/dev/null 2>&1 || true
@@ -80,6 +81,9 @@ cleanup() {
   cleanup_apple_mount
   if [[ -n "$bundletool_directory" ]]; then
     rm -rf "$bundletool_directory"
+  fi
+  if [[ -n "$apple_identity_work_dir" ]]; then
+    rm -rf "$apple_identity_work_dir"
   fi
 }
 trap cleanup EXIT
@@ -121,16 +125,36 @@ verify_apple() {
   fi
   codesign --verify --deep --strict --verbose=2 "$app"
   spctl --assess --type execute -vv "$app"
-  local dmg_signature app_signature
-  dmg_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-dmg-signature.XXXXXX")"
-  app_signature="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-app-signature.XXXXXX")"
+  apple_identity_work_dir="$(
+    mktemp -d \
+      "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/domain-core-apple-signing-identity.XXXXXX"
+  )"
+  chmod 700 "$apple_identity_work_dir"
+  local dmg_signature="$apple_identity_work_dir/dmg-signature.txt"
+  local app_signature="$apple_identity_work_dir/app-signature.txt"
+  local dmg_certificate_dir="$apple_identity_work_dir/dmg-certificate"
+  local app_certificate_dir="$apple_identity_work_dir/app-certificate"
+  mkdir "$dmg_certificate_dir" "$app_certificate_dir"
   codesign -d --verbose=4 "$artifact" > "$dmg_signature" 2>&1
   codesign -d --verbose=4 "$app" > "$app_signature" 2>&1
+  (
+    cd "$dmg_certificate_dir"
+    codesign -d --extract-certificates "$artifact" >/dev/null 2>&1
+  )
+  (
+    cd "$app_certificate_dir"
+    codesign -d --extract-certificates "$app" >/dev/null 2>&1
+  )
   node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
-    --policy "$apple_signing_policy" --signature "$dmg_signature"
+    --policy "$apple_signing_policy" \
+    --signature "$dmg_signature" \
+    --certificate "$dmg_certificate_dir/codesign0"
   node "$repo_root/scripts/ci/verify-domain-core-apple-signing-identity.mjs" \
-    --policy "$apple_signing_policy" --signature "$app_signature"
-  rm -f "$dmg_signature" "$app_signature"
+    --policy "$apple_signing_policy" \
+    --signature "$app_signature" \
+    --certificate "$app_certificate_dir/codesign0"
+  rm -rf "$apple_identity_work_dir"
+  apple_identity_work_dir=""
   node "$repo_root/scripts/ci/verify-domain-core-build-profile-artifact.mjs" \
     --profile "$profile_name" \
     --expected-candidate-commit "$candidate_commit" \

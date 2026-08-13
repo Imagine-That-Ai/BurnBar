@@ -154,8 +154,15 @@ OPENBURNBAR_SAFARI_EXTENSION_PROFILE=\
 OPENBURNBAR_PRIVILEGED_INPUT_PROFILE=\
 /absolute/OpenBurnBarPrivilegedInputExecution-MAC_APP_DIRECT.provisionprofile \
 OPENBURNBAR_SIGNING_IDENTITY="Developer ID Application: <exact identity>" \
+OPENBURNBAR_SIGNING_CERTIFICATE_SHA1="<exact uppercase SHA-1 fingerprint>" \
 scripts/build-macos-website-release.sh
 ```
+
+The identity label is a human-readable policy check. Every actual `codesign`
+operation uses `OPENBURNBAR_SIGNING_CERTIFICATE_SHA1`, and the final verifier
+extracts the host, Safari extension, helper, CLI, framework, and DMG leaf
+certificates to prove they match that immutable fingerprint. This prevents a
+same-name Developer ID certificate from being selected if the keychain changes.
 
 The successful output must include the signed app, notarized and stapled DMG,
 ZIP, corresponding source, SBOM, checksums/update metadata, a sanitized signing

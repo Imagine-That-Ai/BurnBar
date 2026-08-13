@@ -64,6 +64,7 @@ if [[ "${#patterns[@]}" -eq 0 ]]; then
     "OpenBurnBar-${version}-corresponding-source.tar.gz"
     "appcast.xml"
     "latest-macos.json"
+    "developer-id-signing-receipt.json"
   )
 fi
 

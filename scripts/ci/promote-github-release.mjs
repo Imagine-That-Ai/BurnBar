@@ -23,6 +23,7 @@ import {
   DOMAIN_CORE_PUBLIC_PROFILE,
   DOMAIN_CORE_ROLLBACK_PROFILE,
 } from "../lib/domain-core-native-release.mjs";
+import { parseAppleSigningPolicy } from "./verify-domain-core-apple-signing-identity.mjs";
 import { validateManifest } from "./publish-domain-core-release-evidence.mjs";
 
 const COMMIT = /^[0-9a-f]{40}$/u;
@@ -31,6 +32,12 @@ const STABLE_TAG =
 const SHA256 = /^[0-9a-f]{64}$/u;
 const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const RECEIPT_SCHEMA_VERSION = 1;
+const APPLE_SIGNING_POLICY = parseAppleSigningPolicy(
+  readFileSync(
+    new URL("../../config/apple-release-signing-policy.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 function parseJson(text, label) {
   try {
@@ -187,6 +194,7 @@ function generalProvenanceSubjects(version) {
     "appcast.xml",
     "latest-macos.json",
     `checksums-v${version}.txt`,
+    "developer-id-signing-receipt.json",
     `sbom-v${version}.spdx.json`,
     `openburnbar-v${version}.vex.json`,
   ];
@@ -222,6 +230,7 @@ export function expectedReleaseAssets(version, domainCoreProfile) {
     "appcast.xml",
     "latest-macos.json",
     `checksums-v${version}.txt`,
+    "developer-id-signing-receipt.json",
     `sbom-v${version}.spdx.json`,
     `openburnbar-v${version}.vex.json`,
     `NOTICES-v${version}.txt`,
@@ -333,6 +342,7 @@ function verifyChecksums(version, downloads) {
     "appcast.xml",
     "latest-macos.json",
     `OpenBurnBar-${version}-legacy-rollback.zip`,
+    "developer-id-signing-receipt.json",
   ];
   const lines = readFileSync(
     requiredPath(downloads, `checksums-v${version}.txt`),
@@ -419,6 +429,7 @@ function verifyUpdateMetadata(expected, downloads) {
     ),
     "release-metadata.json",
   );
+  const signingReceiptName = "developer-id-signing-receipt.json";
   if (
     metadata.version !== expected.version ||
     metadata.tag !== expected.tag ||
@@ -428,9 +439,113 @@ function verifyUpdateMetadata(expected, downloads) {
       `OpenBurnBar-${expected.version}-corresponding-source.tar.gz` ||
     metadata.appcast !== "appcast.xml" ||
     metadata.latestMetadata !== "latest-macos.json" ||
+    metadata.developerIdSigningReceipt !== signingReceiptName ||
     metadata.sparkleEdSignaturePresent !== true
   ) {
     throw new Error("release-metadata.json does not bind the exact release");
+  }
+
+  const signingReceipt = objectValue(
+    parseJson(
+      readFileSync(requiredPath(downloads, signingReceiptName), "utf8"),
+      signingReceiptName,
+    ),
+    signingReceiptName,
+  );
+  exactObject(
+    signingReceipt,
+    [
+      "appGroup",
+      "distribution",
+      "host",
+      "keychainGroup",
+      "safariExtension",
+      "schemaVersion",
+      "signingCertificateSha1",
+      "signingIdentity",
+      "teamId",
+      "verification",
+    ],
+    signingReceiptName,
+  );
+  const hostSigning = exactObject(
+    signingReceipt.host,
+    ["bundleIdentifier", "profileExpiration", "profileSha256", "signature"],
+    `${signingReceiptName} host`,
+  );
+  const safariSigning = exactObject(
+    signingReceipt.safariExtension,
+    ["bundleIdentifier", "profileExpiration", "profileSha256", "signature"],
+    `${signingReceiptName} Safari extension`,
+  );
+  const hostSignature = exactObject(
+    hostSigning.signature,
+    [
+      "authority",
+      "hardenedRuntime",
+      "libraryValidation",
+      "secureTimestamp",
+    ],
+    `${signingReceiptName} host signature`,
+  );
+  const safariSignature = exactObject(
+    safariSigning.signature,
+    ["authority", "hardenedRuntime", "libraryValidation"],
+    `${signingReceiptName} Safari extension signature`,
+  );
+  const signingVerification = exactObject(
+    signingReceipt.verification,
+    [
+      "embeddedProfilesByteEqual",
+      "getTaskAllow",
+      "platform",
+      "profileCertificateMembership",
+      "signingCertificateSha1Matched",
+      "strictDeepNestedSignatures",
+    ],
+    `${signingReceiptName} verification`,
+  );
+  const expectedSigningVerification = {
+    embeddedProfilesByteEqual: true,
+    getTaskAllow: false,
+    platform: "OSX",
+    profileCertificateMembership: true,
+    signingCertificateSha1Matched: true,
+    strictDeepNestedSignatures: true,
+  };
+  if (
+    signingReceipt.schemaVersion !== 1 ||
+    signingReceipt.distribution !== "developer-id" ||
+    signingReceipt.teamId !== APPLE_SIGNING_POLICY.teamIdentifier ||
+    signingReceipt.signingIdentity !== APPLE_SIGNING_POLICY.authority ||
+    signingReceipt.signingCertificateSha1 !==
+      APPLE_SIGNING_POLICY.certificateSha1 ||
+    signingReceipt.appGroup !== "group.com.openburnbar.app" ||
+    signingReceipt.keychainGroup !==
+      `${APPLE_SIGNING_POLICY.teamIdentifier}.com.openburnbar.app` ||
+    hostSigning.bundleIdentifier !== "com.openburnbar.app" ||
+    safariSigning.bundleIdentifier !==
+      "com.openburnbar.app.safari-extension" ||
+    !/^[0-9a-f]{64}$/u.test(hostSigning.profileSha256) ||
+    !/^[0-9a-f]{64}$/u.test(safariSigning.profileSha256) ||
+    typeof hostSigning.profileExpiration !== "string" ||
+    !hostSigning.profileExpiration.endsWith("Z") ||
+    typeof safariSigning.profileExpiration !== "string" ||
+    !safariSigning.profileExpiration.endsWith("Z") ||
+    hostSignature.authority !== "Developer ID Application" ||
+    hostSignature.hardenedRuntime !== true ||
+    hostSignature.libraryValidation !== true ||
+    hostSignature.secureTimestamp !== true ||
+    safariSignature.authority !== "Developer ID Application" ||
+    safariSignature.hardenedRuntime !== true ||
+    safariSignature.libraryValidation !== true ||
+    Object.entries(expectedSigningVerification).some(
+      ([key, value]) => signingVerification[key] !== value,
+    )
+  ) {
+    throw new Error(
+      "developer-id-signing-receipt.json does not bind the protected Developer ID signer",
+    );
   }
 
   const iosReceiptName = `OpenBurnBar-${expected.version}-iOS-app-store-connect-receipt.json`;

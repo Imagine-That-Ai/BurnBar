@@ -1,5 +1,6 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "teamIdentifier": "4Y367DF25B",
-  "authority": "Developer ID Application: Imagine That AI LLC (4Y367DF25B)"
+  "authority": "Developer ID Application: Imagine That AI Limited Liability Company (4Y367DF25B)",
+  "certificateSha1": "2FAA2102B33D02ED5F1A3D34EF51B210A4398ECA"
 }

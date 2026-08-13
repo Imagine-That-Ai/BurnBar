@@ -13,6 +13,7 @@ shell_fixtures=(
   scripts/ci/verify-openburnbar-mas-artifact.test.sh
   scripts/ci/verify-openburnbar-mas-installed-candidate.test.sh
   scripts/ci/verify-openburnbar-safari-extension.test.sh
+  scripts/lib/apple-static-archive.test.sh
   scripts/lib/exact-candidate-git.test.sh
   scripts/lib/googlesignin-macos-compat.test.sh
   scripts/lib/libsignal-swift-compat.test.sh
