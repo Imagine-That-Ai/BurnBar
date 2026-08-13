@@ -249,18 +249,112 @@ rejected item, and rolled-back item.
 
 ## Performance and durability
 
-Capture measurements for cold and warm runs:
+### Candidate-bound performance evidence
 
-- popup time to usable controls
-- page extraction time and payload bytes
-- screenshot capture/resize time and output dimensions/bytes
-- native-message round-trip latency for small and chunked payloads
-- action proposal-to-execution latency excluding user approval time
-- panic/cancel-to-no-more-actions latency
-- memory after 1, 10, and 100 capture/action cycles
+Performance JSON is useful only when it is bound to the exact installed
+candidate. Before collecting measurements:
+
+1. Complete the **Result header** and record the source commit and tree.
+2. Hash the installed host and nested appex as distributed artifacts; do not
+   substitute a source-tree hash for installed bytes.
+3. Record the extension and daemon versions shown in the exported JSON.
+4. Preserve any prior export, then use the drawer's two-step **Clear samples**
+   control. Export once and confirm `totalRecorded`, `droppedCount`, and
+   `samples.length` are all zero before exercising the candidate.
+5. Start from a known extension lifecycle boundary. For a cold sample, quit
+   Safari and OpenBurnBar, relaunch both, and open the popup once. For a warm
+   sample, leave both processes running and repeat the controlled operation.
+6. Use only controlled fixtures, record the fixture class separately, and
+   never put fixture URLs, page content, prompts, account names, or provider
+   identifiers into the performance JSON.
+7. Split the work into bounded scenario batches and export each batch before
+   clearing it. The 240-sample window spans all metrics, so one monolithic run
+   can legitimately expire early samples before the full matrix is complete.
+
+The popup's **Performance evidence** drawer records:
+
+| JSON metric | Required exercise |
+|---|---|
+| `popup_bootstrap` | At least 5 cold and 20 warm popup openings |
+| `native_attach` | At least 5 cold and 20 warm daemon attachments |
+| `command_poll` | Idle polls and polls that issue controlled commands |
+| `command_completion` | Successful, rejected/failed, and aborted command acknowledgements |
+| `viewport_capture` | Normal viewport plus zoomed/offset and full-page-segment captures |
+| `image_resize` | Offscreen path, content fallback when available, and full-page stitching |
+| `ask_first_token` | Local and cloud Ask routes, including one intentional abort |
+| `action_verification` | Click, type, scroll, navigation, tab, and failure/stale-target cases |
+| `stop_panic` | Popup Stop, popup-local shortcut, and daemon-issued abort; correlate the separate native global-panic proof |
+| `learning_load` | Cold and warm learning projection loads |
+| `learning_mutation` | Opt-in/out, correction proposal, approve, reject, and forget |
+
+The metric boundary is part of the evidence:
+
+- `ask_first_token` begins when the user submits Ask, before page
+  preparation/capture/recall, and ends at the first streamed assistant delta;
+- `viewport_capture` and `image_resize` are separate so Safari capture cost is
+  not confused with image processing;
+- `action_verification` includes the fresh post-action page-state read but not
+  the daemon completion acknowledgement;
+- `command_completion` measures that acknowledgement separately;
+- `stop_panic` is a forward-cancellation latency, not proof that already
+  completed page effects were rolled back. A `popup_shortcut` or
+  `daemon_abort` sample is not, by itself, evidence that the macOS system-wide
+  panic hotkey fired. Preserve the native panic audit/recording and correlate
+  its timestamp with cessation of Safari work.
+
+After each cold and warm matrix:
+
+1. Open **Performance evidence** and confirm the drawer remains keyboard
+   reachable, VoiceOver-readable, and responsive while samples exist.
+2. Use **Download JSON**. Use **Copy JSON** as an additional clipboard-path
+   check; both actions must flush and request the current background snapshot,
+   and a clipboard failure must leave Download available.
+3. Hash the JSON and preserve it beside the candidate identity record. Record
+   whether `performance.persistence` is `ready` or `memory_only`; a
+   `memory_only` export is valid only for that live process and must be
+   preserved before exit.
+4. Verify `retentionLimit` is 240, retained samples never exceed it,
+   `totalRecorded >= samples.length`, and `droppedCount` increases after
+   retention is exceeded.
+5. Recalculate a representative metric's minimum, median, p95, maximum,
+   latest, and outcome counts from `samples`; they must match `summaries`.
+
+Privacy inspection is mandatory. Search the exported bytes for all controlled
+fixture URLs/domains, page titles, prompts, unique page text, test account
+names, provider/model IDs, tokens, tab IDs, and command IDs. The result must
+contain none of them. The `privacy.localOnly` declaration must be `true`, and
+the exclusion list must name URLs, page titles, prompts, page text,
+screenshots, model/provider identifiers, tokens/credentials, and tab/command
+identifiers. Treat any content leak as **FAIL**, remove the evidence from
+normal sharing locations, and remediate the serializer before continuing.
+
+Record separately because the bounded JSON intentionally does not contain
+them:
+
+- page extraction time and bounded payload bytes;
+- screenshot output dimensions and bytes;
+- native-message round-trip latency for small and chunked payloads;
+- approval wait time versus action execution time;
+- memory and App Group disk usage after 1, 10, and 100 capture/action cycles;
+- fixture name, provider route identity, and screenshot-disclosure evidence.
 
 Acceptance:
 
+- [ ] Cold and warm exports are bound to the installed host/appex hashes,
+      source commit/tree, extension version, daemon version, tester, and time.
+- [ ] All eleven metrics have representative successful samples; applicable
+      error and aborted paths are also represented.
+- [ ] Retention, dropped-count, percentile, latest-value, and outcome summaries
+      reconcile with the exported samples.
+- [ ] Export inspection finds no URL, title, prompt, page text, screenshot,
+      provider/model ID, credential/token, tab ID, or command ID.
+- [ ] `ready` persistence survives popup reopen and extension lifecycle
+      behavior as documented; `memory_only` is clearly disclosed and exported
+      before process exit.
+- [ ] Copy and download actions are keyboard reachable, VoiceOver-readable,
+      and expose clear success/failure recovery.
+- [ ] Clear samples requires explicit two-step confirmation, produces a
+      verifiably empty export, and does not contact the daemon or a provider.
 - [ ] UI input, scrolling, and Stop remain responsive while capture/model work
       is active.
 - [ ] Repeated capture/action cycles do not show unbounded memory or App Group

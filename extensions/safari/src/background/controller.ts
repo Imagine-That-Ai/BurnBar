@@ -2,6 +2,7 @@ import { SafariCaptureService } from './capture';
 import { SafariGatewayClient } from './gatewayClient';
 import type { NativeBridge } from './nativeBridge';
 import { SafariPageAdapter } from './pageAdapter';
+import { SafariPerformanceRecorder } from './performance';
 import { SitePermissionController, type SitePermissionStatus } from './permissions';
 import { SafariSessionStore, type SafariPreferences } from './sessionStore';
 import { TabOwnershipRegistry } from './tabOwnership';
@@ -37,6 +38,11 @@ import {
   type SafariTabSnapshot,
   type ScreenshotResult
 } from '../shared/protocol';
+import type {
+  SafariPerformanceContext,
+  SafariPerformanceMetricName,
+  SafariPerformanceOutcome
+} from '../shared/performance';
 
 const MAX_TRANSCRIPT_ENTRIES = 80;
 const MAX_ACTIVITY_ENTRIES = 80;
@@ -58,6 +64,13 @@ const INITIAL_BRIDGE_STATE: BridgeRuntimeState = {
 
 interface SafariBackgroundControllerOptions {
   startPolling?: boolean;
+  performanceRecorder?: SafariPerformanceRecorder;
+}
+
+interface AskTiming {
+  startedAt: number;
+  recorded: boolean;
+  route: NonNullable<SafariPerformanceContext['route']>;
 }
 
 function nowISO(): string {
@@ -197,11 +210,26 @@ function incompatibleAgentError(mode: 'ask' | 'agentic' | 'handoff'): SafariExte
   return new SafariExtensionError('model_required', 'Agentic mode requires an available model.');
 }
 
+function performanceOutcome(error: unknown): SafariPerformanceOutcome {
+  if (
+    (error instanceof SafariExtensionError && error.code === 'gateway_aborted') ||
+    (error instanceof Error && error.name === 'AbortError')
+  ) {
+    return 'aborted';
+  }
+  return 'error';
+}
+
+function measuresActionVerification(action: SafariActionKind): boolean {
+  return !['page_context', 'screenshot', 'full_page_screenshot', 'list_tabs', 'extract', 'abort'].includes(action);
+}
+
 export class SafariBackgroundController {
   private readonly pageAdapter: SafariPageAdapter;
   private readonly captureService: SafariCaptureService;
   private readonly permissionController: SitePermissionController;
   private readonly store: SafariSessionStore;
+  private readonly performanceRecorder: SafariPerformanceRecorder;
   private readonly ownership = new TabOwnershipRegistry();
   private preferences: SafariPreferences = {
     mode: 'ask',
@@ -247,8 +275,9 @@ export class SafariBackgroundController {
     private readonly gatewayClient = new SafariGatewayClient(),
     private readonly options: SafariBackgroundControllerOptions = {}
   ) {
+    this.performanceRecorder = options.performanceRecorder ?? new SafariPerformanceRecorder(browserAPI);
     this.pageAdapter = new SafariPageAdapter(browserAPI);
-    this.captureService = new SafariCaptureService(browserAPI, this.pageAdapter);
+    this.captureService = new SafariCaptureService(browserAPI, this.pageAdapter, undefined, this.performanceRecorder);
     this.permissionController = new SitePermissionController(browserAPI);
     this.store = new SafariSessionStore(browserAPI);
     this.browserAPI.tabs.onRemoved?.addListener((tabId) => {
@@ -280,6 +309,22 @@ export class SafariBackgroundController {
   }
 
   async handlePopupRequest(request: PopupRequest): Promise<PopupResponse> {
+    if (
+      request.type === 'popup.performanceSnapshot' ||
+      request.type === 'popup.clearPerformance' ||
+      request.type === 'popup.recordPerformance'
+    ) {
+      await this.performanceRecorder.load();
+      if (request.type === 'popup.clearPerformance') {
+        await this.performanceRecorder.clear();
+      } else {
+        if (request.type === 'popup.recordPerformance') {
+          this.performanceRecorder.recordDuration(request.metric, request.durationMs, request.outcome);
+        }
+        await this.performanceRecorder.flush();
+      }
+      return { ok: true, snapshot: this.copySnapshot() };
+    }
     const errorAtStart = this.snapshot.lastError;
     try {
       await this.initialize(request.type === 'popup.refresh');
@@ -311,7 +356,7 @@ export class SafariBackgroundController {
           await this.respondToApproval(request.approvalId, request.decision);
           break;
         case 'popup.abort':
-          await this.abortRun();
+          await this.measurePerformance('stop_panic', { trigger: request.trigger }, () => this.abortRun());
           break;
         case 'popup.setTrust':
           await this.setTrust(request.patch);
@@ -320,13 +365,21 @@ export class SafariBackgroundController {
           await this.requestSitePermission();
           break;
         case 'popup.setLearning':
-          await this.setLearning(request.optedIn);
+          await this.measurePerformance(
+            'learning_mutation',
+            { learningOperation: request.optedIn ? 'opt_in' : 'opt_out' },
+            () => this.setLearning(request.optedIn)
+          );
           break;
         case 'popup.teachCorrection':
-          await this.teachCorrection(request.correction);
+          await this.measurePerformance('learning_mutation', { learningOperation: 'propose' }, () =>
+            this.teachCorrection(request.correction)
+          );
           break;
         case 'popup.learningReview':
-          await this.reviewLearning(request.itemId, request.decision);
+          await this.measurePerformance('learning_mutation', { learningOperation: request.decision }, () =>
+            this.reviewLearning(request.itemId, request.decision)
+          );
           break;
       }
       this.clearError(errorAtStart);
@@ -346,7 +399,8 @@ export class SafariBackgroundController {
   }
 
   private async performInitialization(): Promise<void> {
-    this.preferences = await this.store.load();
+    const [preferences] = await Promise.all([this.store.load(), this.performanceRecorder.load()]);
+    this.preferences = preferences;
     this.mutate((state) => {
       state.mode = this.preferences.mode;
       if (this.preferences.selectedAgentId) {
@@ -367,13 +421,16 @@ export class SafariBackgroundController {
 
     try {
       const previousSessionId = this.bridge.sessionId;
-      const attached = await this.bridge.hello(activePage, capabilities);
-      if (attached.protocolVersion !== 1) {
-        throw new SafariExtensionError(
-          'protocol_mismatch',
-          `OpenBurnBar negotiated unsupported Safari protocol ${attached.protocolVersion}.`
-        );
-      }
+      const attached = await this.measurePerformance('native_attach', undefined, async () => {
+        const response = await this.bridge.hello(activePage, capabilities);
+        if (response.protocolVersion !== 1) {
+          throw new SafariExtensionError(
+            'protocol_mismatch',
+            `OpenBurnBar negotiated unsupported Safari protocol ${response.protocolVersion}.`
+          );
+        }
+        return response;
+      });
       if (previousSessionId !== attached.sessionId) {
         if (previousSessionId) {
           this.ownership.releaseSession(previousSessionId);
@@ -522,9 +579,19 @@ export class SafariBackgroundController {
     if (!this.bridge.sessionId) {
       throw new SafariExtensionError('safari_session_detached', 'The Safari extension is not attached to OpenBurnBar.');
     }
-    const knownTabs = await this.knownTabs();
-    const activePage = await this.activeNativePage();
-    const poll = await this.bridge.poll(activePage, knownTabs);
+    const startedAt = this.performanceRecorder.start();
+    let poll: Awaited<ReturnType<NativeBridge['poll']>>;
+    try {
+      const knownTabs = await this.knownTabs();
+      const activePage = await this.activeNativePage();
+      poll = await this.bridge.poll(activePage, knownTabs);
+      this.performanceRecorder.recordElapsed('command_poll', startedAt, 'success', {
+        command: poll.command ? 'issued' : 'empty'
+      });
+    } catch (error) {
+      this.performanceRecorder.recordElapsed('command_poll', startedAt, performanceOutcome(error));
+      throw error;
+    }
     if (poll.command) {
       await this.executeAndComplete(poll.command);
     }
@@ -536,6 +603,9 @@ export class SafariBackgroundController {
     let ok = false;
     let errorMessage: string | undefined;
     let pageState: PageState;
+    const actionStartedAt = measuresActionVerification(command.action) ? this.performanceRecorder.start() : undefined;
+    const stopStartedAt = command.action === 'abort' ? this.performanceRecorder.start() : undefined;
+    let actionOutcome: SafariPerformanceOutcome = 'success';
     try {
       if (command.sessionId !== this.bridge.sessionId) {
         throw new SafariExtensionError(
@@ -556,16 +626,29 @@ export class SafariBackgroundController {
       ok = true;
       pageState = (await this.activeNativePage()) ?? this.fallbackPageState(command.targetTabId);
     } catch (error) {
+      actionOutcome = performanceOutcome(error);
       errorMessage = serializeError(error, 'safari_command_failed').message;
       pageState = (await this.activeNativePage()) ?? this.fallbackPageState(command.targetTabId);
     }
-    await this.bridge.complete({
-      commandId: command.commandId,
-      ok,
-      ...(ok ? { result } : {}),
-      ...(errorMessage === undefined ? {} : { error: errorMessage }),
-      pageState,
-      tabs: await this.knownTabs()
+    if (actionStartedAt !== undefined) {
+      this.performanceRecorder.recordElapsed('action_verification', actionStartedAt, actionOutcome, {
+        action: command.action
+      });
+    }
+    if (stopStartedAt !== undefined) {
+      this.performanceRecorder.recordElapsed('stop_panic', stopStartedAt, actionOutcome, {
+        trigger: 'daemon_abort'
+      });
+    }
+    await this.measurePerformance('command_completion', { action: command.action }, async () => {
+      await this.bridge.complete({
+        commandId: command.commandId,
+        ok,
+        ...(ok ? { result } : {}),
+        ...(errorMessage === undefined ? {} : { error: errorMessage }),
+        pageState,
+        tabs: await this.knownTabs()
+      });
     });
   }
 
@@ -784,11 +867,21 @@ export class SafariBackgroundController {
       throw new SafariExtensionError('request_in_progress', 'OpenBurnBar is already handling another request.');
     }
     const workGeneration = this.localWorkGeneration;
+    const turnStartedAt = this.performanceRecorder.start();
     const normalizedPrompt = prompt.trim();
     if (!normalizedPrompt) {
       throw new SafariExtensionError('prompt_empty', 'Tell OpenBurnBar what you want to know or do.');
     }
-    this.requireSelectedAgent(mode);
+    const selectedAgent = this.requireSelectedAgent(mode);
+    const askTiming: AskTiming | undefined =
+      mode === 'ask'
+        ? {
+            startedAt: turnStartedAt,
+            recorded: false,
+            route: selectedAgent.cloud ? 'cloud' : 'local'
+          }
+        : undefined;
+    let turnOutcome: SafariPerformanceOutcome = 'success';
     this.mutate((state) => {
       state.busy = true;
       state.mode = mode;
@@ -798,7 +891,14 @@ export class SafariBackgroundController {
       const prepared = await this.prepareTurn(mode);
       this.assertLocalWorkCurrent(workGeneration);
       if (mode === 'ask') {
-        await this.submitAsk(normalizedPrompt, prepared.agent, prepared.context, prepared.screenshot, workGeneration);
+        await this.submitAsk(
+          normalizedPrompt,
+          prepared.agent,
+          prepared.context,
+          prepared.screenshot,
+          workGeneration,
+          askTiming
+        );
         return;
       }
       const payload =
@@ -840,6 +940,7 @@ export class SafariBackgroundController {
         );
       });
     } catch (error) {
+      turnOutcome = performanceOutcome(error);
       if (this.localWorkWasStopped(workGeneration, error)) {
         this.mutate((state) => {
           state.busy = false;
@@ -851,6 +952,15 @@ export class SafariBackgroundController {
         return;
       }
       throw error;
+    } finally {
+      if (askTiming && !askTiming.recorded) {
+        const outcome =
+          workGeneration !== this.localWorkGeneration ? 'aborted' : turnOutcome === 'success' ? 'error' : turnOutcome;
+        this.performanceRecorder.recordElapsed('ask_first_token', askTiming.startedAt, outcome, {
+          route: askTiming.route
+        });
+        askTiming.recorded = true;
+      }
     }
   }
 
@@ -859,7 +969,8 @@ export class SafariBackgroundController {
     agent: BridgeAgentOption,
     context: PageContext,
     screenshot: ScreenshotResult,
-    workGeneration: number
+    workGeneration: number,
+    timing: AskTiming | undefined
   ): Promise<void> {
     const transcriptId = crypto.randomUUID();
     this.mutate((state) => {
@@ -912,6 +1023,12 @@ export class SafariBackgroundController {
         (delta) => {
           if (workGeneration !== this.localWorkGeneration) {
             return;
+          }
+          if (timing && !timing.recorded) {
+            this.performanceRecorder.recordElapsed('ask_first_token', timing.startedAt, 'success', {
+              route: timing.route
+            });
+            timing.recorded = true;
           }
           answer += delta;
           scheduleFlush();
@@ -1347,20 +1464,32 @@ export class SafariBackgroundController {
   }
 
   private async refreshNativeProjection(): Promise<void> {
+    const startedAt = this.performanceRecorder.start();
     try {
       const response = await this.bridge.popupAction('ui.snapshot', {});
-      this.applyPopupActionOutput(response.output);
-    } catch {
+      const learningProjectionApplied = response.accepted && this.applyPopupActionOutput(response.output);
+      this.performanceRecorder.recordElapsed(
+        'learning_load',
+        startedAt,
+        learningProjectionApplied ? 'success' : 'error',
+        {
+          learningOperation: 'load'
+        }
+      );
+    } catch (error) {
+      this.performanceRecorder.recordElapsed('learning_load', startedAt, performanceOutcome(error), {
+        learningOperation: 'load'
+      });
       // Older native handlers may only expose bootstrap/catalog. Core bridge state remains valid.
     }
   }
 
-  private applyPopupActionOutput(output: unknown): void {
+  private applyPopupActionOutput(output: unknown): boolean {
     if (!isRecord(output)) {
       if (typeof output === 'string' && output.trim()) {
         this.appendTranscript('assistant', output.trim());
       }
-      return;
+      return false;
     }
     const embeddedBootstrap = isRecord(output.bootstrap) ? parseSafariBootstrapResponse(output.bootstrap) : undefined;
     if (embeddedBootstrap) {
@@ -1445,6 +1574,7 @@ export class SafariBackgroundController {
         state.learning.items = learningItems;
       }
     });
+    return learningItems !== undefined;
   }
 
   private async knownTabs(): Promise<SafariTabSnapshot[]> {
@@ -1559,6 +1689,22 @@ export class SafariBackgroundController {
     });
   }
 
+  private async measurePerformance<TResult>(
+    metric: SafariPerformanceMetricName,
+    context: SafariPerformanceContext | undefined,
+    operation: () => Promise<TResult>
+  ): Promise<TResult> {
+    const startedAt = this.performanceRecorder.start();
+    try {
+      const result = await operation();
+      this.performanceRecorder.recordElapsed(metric, startedAt, 'success', context);
+      return result;
+    } catch (error) {
+      this.performanceRecorder.recordElapsed(metric, startedAt, performanceOutcome(error), context);
+      throw error;
+    }
+  }
+
   private mutate(update: (state: PopupSnapshot) => void): void {
     update(this.snapshot);
     this.snapshot.stateVersion += 1;
@@ -1576,6 +1722,7 @@ export class SafariBackgroundController {
   }
 
   private copySnapshot(): PopupSnapshot {
+    this.snapshot.performance = this.performanceRecorder.snapshot();
     return structuredClone(this.snapshot);
   }
 }

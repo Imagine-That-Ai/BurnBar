@@ -11,6 +11,7 @@ import type {
   ScreenshotResult
 } from './protocol';
 import type { SerializedError } from './errors';
+import type { SafariPerformanceDiagnostics, SafariPerformanceOutcome } from './performance';
 
 export interface TrustSettings {
   globalKillSwitch: boolean;
@@ -78,6 +79,7 @@ export interface PopupSnapshot {
   transcript: TranscriptEntry[];
   approvals: ApprovalPreview[];
   activity: ActivityEvent[];
+  performance?: SafariPerformanceDiagnostics;
   running: boolean;
   busy: boolean;
   lastError?: SerializedError;
@@ -92,7 +94,15 @@ export type PopupRequest =
   | { type: 'popup.startAgentic'; prompt: string }
   | { type: 'popup.handoff'; prompt: string }
   | { type: 'popup.approval'; approvalId: string; decision: 'allow_once' | 'allow_session' | 'block' }
-  | { type: 'popup.abort' }
+  | { type: 'popup.abort'; trigger: 'stop_button' | 'popup_shortcut' }
+  | { type: 'popup.performanceSnapshot' }
+  | { type: 'popup.clearPerformance' }
+  | {
+      type: 'popup.recordPerformance';
+      metric: 'popup_bootstrap';
+      durationMs: number;
+      outcome: SafariPerformanceOutcome;
+    }
   | { type: 'popup.setTrust'; patch: Partial<TrustSettings> }
   | { type: 'popup.requestSitePermission' }
   | { type: 'popup.setLearning'; optedIn: boolean }
@@ -167,9 +177,23 @@ export function isPopupRequest(value: unknown): value is PopupRequest {
   switch (value.type) {
     case 'popup.bootstrap':
     case 'popup.refresh':
-    case 'popup.abort':
+    case 'popup.performanceSnapshot':
+    case 'popup.clearPerformance':
     case 'popup.requestSitePermission':
       return hasExactKeys(value, ['type']);
+    case 'popup.abort':
+      return (
+        hasExactKeys(value, ['type', 'trigger']) &&
+        (value.trigger === 'stop_button' || value.trigger === 'popup_shortcut')
+      );
+    case 'popup.recordPerformance':
+      return (
+        hasExactKeys(value, ['type', 'metric', 'durationMs', 'outcome']) &&
+        value.metric === 'popup_bootstrap' &&
+        isFiniteNumber(value.durationMs) &&
+        value.durationMs >= 0 &&
+        (value.outcome === 'success' || value.outcome === 'error' || value.outcome === 'aborted')
+      );
     case 'popup.setMode':
       return (
         hasExactKeys(value, ['type', 'mode']) &&

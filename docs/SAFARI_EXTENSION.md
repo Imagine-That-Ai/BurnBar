@@ -185,6 +185,58 @@ or injected instructions.
 | Chunk integrity/expiry failure | Payload is discarded; no partial parse | Retry capture; inspect daemon/app logs if repeated |
 | Panic halt | Run, pending actions, and bridge waits stop; late completions are ignored. JavaScript and page effects already executed are not undone. | Start a new run only after reviewing the cause and resulting page state |
 
+## Performance evidence
+
+The popup's **Performance evidence** drawer keeps a bounded, local timing
+record for candidate-bound QA. It is evidence collection, not telemetry:
+OpenBurnBar does not upload it, associate it with an account, or send it to a
+provider.
+
+The drawer records these boundaries:
+
+| Metric | Measured boundary |
+|---|---|
+| Popup bootstrap | Popup module start through the initial background snapshot response |
+| Native attach | Native `hello` request through the accepted daemon attachment |
+| Command poll | Current tab projection plus one daemon command poll |
+| Command completion | Completed action/page-state projection through daemon acknowledgement |
+| Viewport capture | One Safari visible-viewport capture, or one segment of an approved full-page capture |
+| Image resize | Offscreen resize, content-script fallback resize, or approved full-page stitching |
+| Ask first token | Ask submission through the first streamed assistant delta, including page preparation and capture |
+| Action verification | Daemon-issued action execution through the fresh post-action page-state read |
+| Stop / abort | Popup Stop, popup-local keyboard shortcut, or daemon-issued abort through the forward-cancellation boundary |
+| Learning load | Accepted native UI snapshot containing a learning array through application to popup state; rejected, legacy, or malformed snapshots without that projection are retained as non-fatal errors |
+| Learning mutation | Opt-in/out, correction proposal, approval, rejection, or forget request through daemon acknowledgement |
+
+The drawer highlights retained count, median, p95, and non-success outcomes.
+The JSON summary also includes minimum, maximum, latest, and complete
+success/error/aborted counts. At most 240 samples are retained across all
+metrics; older samples are dropped and counted. Durations are clamped to ten
+minutes so corrupted state cannot produce unbounded values. Persistence is
+debounced in `browser.storage.local`. If Safari storage is unavailable, the
+drawer changes to **Memory only** and the samples remain exportable only until
+that extension process exits.
+
+Context is categorical and allow-listed: local/cloud route, viewport/full-page
+segment, resize path, action kind, Stop/abort trigger, learning operation, and
+whether a poll was empty or issued a command. The recorder and parser discard
+unknown fields. The stored and exported evidence excludes URLs, page titles,
+prompts, page text, screenshots, model/provider identifiers, tokens,
+credentials, tab IDs, and command IDs. The popup-local shortcut and a generic
+daemon abort are not system-wide panic proof. The macOS panic source must be
+correlated with native audit and recording evidence because the current Safari
+command protocol does not expose an authenticated panic-source field.
+
+Use **Copy JSON** or **Download JSON** in the drawer to export a freshly flushed
+snapshot. The export includes the extension and reported daemon versions, an
+explicit privacy declaration, retained samples, aggregate summaries, total
+recorded count, dropped count, and persistence status. **Clear samples** uses
+a two-step confirmation so a new installed candidate can begin with an empty
+local window without silently mixing older measurements. Exporting and clearing
+are local user actions. An export does not become candidate-bound by itself:
+the QA record must also contain the installed app/appex identity and hashes
+described in [Safari Extension QA](qa/SAFARI_EXTENSION_QA.md).
+
 ## Developer workflow
 
 The web package lives at `extensions/safari`. The native appex lives at

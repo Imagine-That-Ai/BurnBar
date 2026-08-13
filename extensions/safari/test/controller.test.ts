@@ -1,6 +1,7 @@
 import { SafariBackgroundController } from '../src/background/controller';
 import { SafariGatewayClient } from '../src/background/gatewayClient';
 import { BrowserNativeMessagingAdapter, NativeBridge } from '../src/background/nativeBridge';
+import { SAFARI_PERFORMANCE_STORAGE_KEY } from '../src/background/performance';
 import type { ContentResponse, PopupResponse } from '../src/shared/messages';
 import type {
   BridgePopupActionResult,
@@ -31,6 +32,7 @@ interface ControllerHarness {
   setPopupActionError(action: string, error: Error | undefined): void;
   setPopupActionResult(action: string, result: BridgePopupActionResult): void;
   setGatewayHandler(handler: GatewayHandler): void;
+  setHelloProtocolVersion(protocolVersion: number): void;
   setUISnapshot(value: Record<string, unknown>): void;
 }
 
@@ -149,6 +151,7 @@ function createControllerHarness(): ControllerHarness {
   const contentActions: ContentAction[] = [];
   const popupActionErrors = new Map<string, Error>();
   const popupActionResults = new Map<string, BridgePopupActionResult>();
+  let helloProtocolVersion = 1;
   let uiSnapshot = defaultUISnapshot();
 
   controls.setContentHandler((tabId, message) => {
@@ -242,7 +245,7 @@ function createControllerHarness(): ControllerHarness {
       case 'bridge.hello':
         return nativeSuccess(request, {
           sessionId: 'safari-session-1',
-          protocolVersion: 1,
+          protocolVersion: helloProtocolVersion,
           leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
           pollAfterMillis: 200
         });
@@ -362,6 +365,9 @@ function createControllerHarness(): ControllerHarness {
     setGatewayHandler(handler) {
       gatewayHandler = handler;
     },
+    setHelloProtocolVersion(protocolVersion) {
+      helloProtocolVersion = protocolVersion;
+    },
     setUISnapshot(value) {
       uiSnapshot = value;
     }
@@ -444,6 +450,106 @@ describe('Safari background controller integration', () => {
     expect(JSON.stringify(gatewayBody)).not.toContain('controller-loopback-bearer');
     expect(harness.popupCalls.some((call) => call.action === 'ask')).toBe(false);
     expect(harness.popupCalls.some((call) => call.action === 'learning.recall')).toBe(false);
+    expect(answer.snapshot.performance?.samples).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ metric: 'native_attach', outcome: 'success' }),
+        expect.objectContaining({
+          metric: 'viewport_capture',
+          outcome: 'success',
+          context: { capture: 'viewport' }
+        }),
+        expect.objectContaining({
+          metric: 'image_resize',
+          outcome: 'success',
+          context: { imagePath: 'content_fallback' }
+        }),
+        expect.objectContaining({
+          metric: 'ask_first_token',
+          outcome: 'success',
+          context: { route: 'cloud' }
+        })
+      ])
+    );
+  });
+
+  it('records native attach as failed when the daemon negotiates an unsupported protocol', async () => {
+    const harness = createControllerHarness();
+    harness.setHelloProtocolVersion(2);
+
+    await harness.controller.initialize();
+
+    expect(harness.controller.currentSnapshot()).toMatchObject({
+      bridge: {
+        connection: 'disconnected'
+      },
+      lastError: {
+        code: 'protocol_mismatch'
+      }
+    });
+    expect(harness.controller.currentSnapshot().performance?.samples).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          metric: 'native_attach',
+          outcome: 'error'
+        })
+      ])
+    );
+  });
+
+  it('accepts the popup bootstrap measurement without reattaching native state and persists it locally', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    const nativeMessageCount = harness.controls.nativeMessages.length;
+    const recorded = await harness.controller.handlePopupRequest({
+      type: 'popup.recordPerformance',
+      metric: 'popup_bootstrap',
+      durationMs: 31.25,
+      outcome: 'success'
+    });
+    expectSuccess(recorded);
+    expect(harness.controls.nativeMessages).toHaveLength(nativeMessageCount);
+    expect(recorded.snapshot.performance?.samples.at(-1)).toMatchObject({
+      metric: 'popup_bootstrap',
+      durationMs: 31.25,
+      outcome: 'success'
+    });
+    expect(harness.controls.storage.get(SAFARI_PERFORMANCE_STORAGE_KEY)).toMatchObject({
+      totalRecorded: expect.any(Number),
+      samples: expect.arrayContaining([
+        expect.objectContaining({
+          metric: 'popup_bootstrap',
+          durationMs: 31.25
+        })
+      ])
+    });
+
+    const refreshed = await harness.controller.handlePopupRequest({
+      type: 'popup.performanceSnapshot'
+    });
+    expectSuccess(refreshed);
+    expect(refreshed.snapshot.performance?.samples.at(-1)).toMatchObject({
+      metric: 'popup_bootstrap',
+      durationMs: 31.25
+    });
+    expect(harness.controls.nativeMessages).toHaveLength(nativeMessageCount);
+
+    const cleared = await harness.controller.handlePopupRequest({
+      type: 'popup.clearPerformance'
+    });
+    expectSuccess(cleared);
+    expect(cleared.snapshot.performance).toMatchObject({
+      totalRecorded: 0,
+      droppedCount: 0,
+      samples: [],
+      summaries: []
+    });
+    expect(harness.controls.storage.get(SAFARI_PERFORMANCE_STORAGE_KEY)).toMatchObject({
+      totalRecorded: 0,
+      droppedCount: 0,
+      nextSequence: 1,
+      samples: []
+    });
+    expect(harness.controls.nativeMessages).toHaveLength(nativeMessageCount);
   });
 
   it('stops Ask streaming immediately, preserves partial text, and keeps Stop intentional', async () => {
@@ -494,7 +600,10 @@ describe('Safari background controller integration', () => {
       expect(harness.controller.currentSnapshot().busy).toBe(true);
     });
 
-    const stopped = await harness.controller.handlePopupRequest({ type: 'popup.abort' });
+    const stopped = await harness.controller.handlePopupRequest({
+      type: 'popup.abort',
+      trigger: 'popup_shortcut'
+    });
     expectSuccess(stopped);
     const answer = await asking;
     expectSuccess(answer);
@@ -515,6 +624,20 @@ describe('Safari background controller integration', () => {
       )
     ).toBe(true);
     expect(harness.popupCalls.filter((call) => call.action === 'abort')).toHaveLength(1);
+    expect(stopped.snapshot.performance?.samples).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          metric: 'stop_panic',
+          outcome: 'success',
+          context: { trigger: 'popup_shortcut' }
+        }),
+        expect.objectContaining({
+          metric: 'ask_first_token',
+          outcome: 'success',
+          context: { route: 'cloud' }
+        })
+      ])
+    );
   });
 
   it('recalls only after opt-in and injects bounded learning as supplemental untrusted user context', async () => {
@@ -780,7 +903,10 @@ describe('Safari background controller integration', () => {
     expect(agentic.snapshot.running).toBe(true);
     expect(agentic.snapshot.bridge.activeRunId).toBe('run-agentic');
 
-    const stopped = await harness.controller.handlePopupRequest({ type: 'popup.abort' });
+    const stopped = await harness.controller.handlePopupRequest({
+      type: 'popup.abort',
+      trigger: 'stop_button'
+    });
     expectSuccess(stopped);
     expect(stopped.snapshot.running).toBe(false);
     expect(
@@ -922,6 +1048,86 @@ describe('Safari background controller integration', () => {
       deleteLearnedProfile: true
     });
     expect(harness.popupCalls.filter((call) => call.action === 'abort')).toHaveLength(1);
+    const learningMetrics = harness.controller
+      .currentSnapshot()
+      .performance?.samples.filter((sample) => sample.metric === 'learning_mutation');
+    expect(learningMetrics?.map((sample) => sample.context?.learningOperation)).toEqual(
+      expect.arrayContaining(['opt_in', 'approve', 'forget', 'opt_out'])
+    );
+    expect(learningMetrics?.every((sample) => sample.outcome === 'success')).toBe(true);
+    expect(
+      harness.controller
+        .currentSnapshot()
+        .performance?.samples.some(
+          (sample) =>
+            sample.metric === 'learning_load' &&
+            sample.outcome === 'success' &&
+            sample.context?.learningOperation === 'load'
+        )
+    ).toBe(true);
+  });
+
+  it('does not count a compatible snapshot without a learning projection as a successful learning load', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    const snapshotWithoutLearning = defaultUISnapshot();
+    delete snapshotWithoutLearning.learning;
+    harness.setUISnapshot(snapshotWithoutLearning);
+
+    const refreshed = await harness.controller.handlePopupRequest({ type: 'popup.refresh' });
+    expectSuccess(refreshed);
+    expect(refreshed.snapshot.bridge).toMatchObject({
+      connection: 'connected',
+      membership: 'pro'
+    });
+    expect(
+      refreshed.snapshot.performance?.samples.filter((sample) => sample.metric === 'learning_load').at(-1)
+    ).toMatchObject({
+      outcome: 'error',
+      context: {
+        learningOperation: 'load'
+      }
+    });
+  });
+
+  it('does not apply or count a rejected native snapshot as a successful learning load', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    harness.setPopupActionResult('ui.snapshot', {
+      accepted: false,
+      output: {
+        ...defaultUISnapshot(),
+        killSwitchEnabled: true,
+        learning: {
+          enabled: true,
+          tier: 'burnbar_pro',
+          proposals: [
+            {
+              proposalId: 'rejected-proposal',
+              version: 1,
+              kind: 'skill',
+              title: 'Rejected projection',
+              content: 'This rejected state must not reach the popup.',
+              reviewStatus: 'proposed',
+              createdAt: '2026-08-12T12:00:00Z'
+            }
+          ]
+        }
+      }
+    });
+
+    const refreshed = await harness.controller.handlePopupRequest({ type: 'popup.refresh' });
+    expectSuccess(refreshed);
+    expect(refreshed.snapshot.trust.globalKillSwitch).toBe(false);
+    expect(refreshed.snapshot.learning.items).toEqual([]);
+    expect(
+      refreshed.snapshot.performance?.samples.filter((sample) => sample.metric === 'learning_load').at(-1)
+    ).toMatchObject({
+      outcome: 'error',
+      context: {
+        learningOperation: 'load'
+      }
+    });
   });
 
   it('retains a fail-closed local halt when native Stop confirmation fails until a new Agentic run succeeds', async () => {
@@ -973,7 +1179,10 @@ describe('Safari background controller integration', () => {
     expect(projected.snapshot.approvals).toHaveLength(1);
 
     harness.setPopupActionError('abort', new Error('The daemon connection dropped.'));
-    const stopped = await harness.controller.handlePopupRequest({ type: 'popup.abort' });
+    const stopped = await harness.controller.handlePopupRequest({
+      type: 'popup.abort',
+      trigger: 'stop_button'
+    });
     expect(stopped).toMatchObject({
       ok: false,
       snapshot: {
@@ -1367,6 +1576,20 @@ describe('Safari background controller integration', () => {
           completion.sessionId === 'safari-session-1' &&
           Array.isArray(completion.tabs) &&
           typeof completion.pageState === 'object'
+      )
+    ).toBe(true);
+    const performance = harness.controller.currentSnapshot().performance;
+    expect(performance?.samples.some((sample) => sample.metric === 'command_poll')).toBe(true);
+    expect(performance?.samples.some((sample) => sample.metric === 'command_completion')).toBe(true);
+    expect(
+      performance?.samples.some(
+        (sample) => sample.metric === 'action_verification' && sample.context?.action === 'click'
+      )
+    ).toBe(true);
+    expect(
+      performance?.samples.some(
+        (sample) =>
+          sample.metric === 'stop_panic' && sample.context?.trigger === 'daemon_abort' && sample.outcome === 'success'
       )
     ).toBe(true);
   });

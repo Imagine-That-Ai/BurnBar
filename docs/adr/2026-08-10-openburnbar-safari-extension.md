@@ -164,6 +164,49 @@ signed product:
 - Native fast detection includes the web payload because the built resource
   becomes part of the Xcode appex.
 
+### 8. Keep performance evidence local, bounded, and content-free
+
+Real-Safari certification needs user-visible latency evidence, but normal
+product operation must not create a second analytics system or a covert page
+history. The extension therefore keeps a local diagnostic recorder with these
+constraints:
+
+- it records only named elapsed-time boundaries and success/error/aborted
+  outcomes;
+- it may attach only allow-listed categorical context such as local/cloud
+  route, capture/resize path, action kind, Stop/abort trigger, learning
+  operation, and empty/issued command state;
+- it never records URLs, titles, prompts, page text, screenshots,
+  provider/model identifiers, credentials, tokens, tab IDs, or command IDs;
+- it retains at most 240 samples across all metrics, counts dropped samples,
+  and clamps individual durations to ten minutes;
+- it persists with a debounce to `browser.storage.local` and remains usable in
+  an explicitly disclosed memory-only mode when storage fails;
+- it exposes minimum, median, p95, maximum, latest, and outcome counts in the
+  popup, with an explicit local Copy/Download JSON action;
+- export first flushes and fetches the current background snapshot, and a
+  two-step local clear action lets candidate-bound QA begin from an empty
+  retained window without attaching to the daemon;
+- its JSON export includes extension/daemon versions and a machine-readable
+  privacy declaration, but no implicit upload path.
+
+The recorder separates boundaries that would otherwise hide regressions:
+Safari viewport capture from image resize/stitching, action execution plus
+post-action verification from daemon completion acknowledgement, and Ask
+submission through first token from provider-only latency. Popup Stop, the
+popup-local keyboard shortcut, and daemon-issued abort share one metric but
+retain their categorical trigger. The recorder deliberately does not call the
+popup-local shortcut or a generic daemon abort “global panic”: the current
+Safari command protocol does not expose an authenticated native panic source,
+so system-wide panic proof must correlate this timing with native audit and
+recording evidence.
+
+The export is not self-certifying. Candidate-bound QA must preserve it beside
+the source commit/tree and installed host/appex hashes, inspect the bytes for
+privacy leaks, and record provider identity, fixture identity, screenshot
+disclosure, payload size, memory, and disk growth in separate controlled
+evidence. Those fields are intentionally absent from the recorder.
+
 ## Alternatives considered
 
 ### Safari WebDriver or Safari MCP as the primary runtime
@@ -200,6 +243,8 @@ a caller is first-party code. Admission remains identity-bound and fail closed.
   stay coherent across OpenBurnBar surfaces.
 - Both direct and Mac App Store channels can ship the core content-script path.
 - CI and release verification bind the nested artifact to the exact candidate.
+- Candidate-bound QA can collect comparable latency distributions without
+  uploading telemetry or retaining browsing content.
 
 ### Costs and tradeoffs
 
@@ -216,6 +261,11 @@ a caller is first-party code. Admission remains identity-bound and fail closed.
   cleanup rather than being trusted by path alone.
 - Real-Safari acceptance and physical user-session behavior cannot be certified
   by Chromium mocks or unit tests. Manual candidate-bound QA remains required.
+- The 240-sample window favors recent diagnostic evidence over longitudinal
+  history. Cold/warm labels, fixture identity, payload sizes, provider identity,
+  memory, disk growth, and artifact hashes must remain in the external QA
+  record because retaining them in extension storage would weaken the privacy
+  boundary.
 
 ## Verification
 

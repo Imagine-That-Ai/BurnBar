@@ -1,4 +1,5 @@
 import type { PopupRequest, PopupResponse, PopupSnapshot } from '../src/shared/messages';
+import { buildSafariPerformanceDiagnostics } from '../src/shared/performance';
 import { createMockBrowser } from './helpers/mockBrowser';
 
 function popupSnapshot(overrides: Partial<PopupSnapshot> = {}): PopupSnapshot {
@@ -82,6 +83,25 @@ function popupSnapshot(overrides: Partial<PopupSnapshot> = {}): PopupSnapshot {
       }
     ],
     activity: [],
+    performance: buildSafariPerformanceDiagnostics(
+      {
+        schemaVersion: 1,
+        retentionLimit: 240,
+        totalRecorded: 1,
+        droppedCount: 0,
+        nextSequence: 2,
+        samples: [
+          {
+            sequence: 1,
+            metric: 'native_attach',
+            durationMs: 18.5,
+            outcome: 'success',
+            recordedAt: '2026-08-12T12:00:00Z'
+          }
+        ]
+      },
+      'ready'
+    ),
     running: true,
     busy: false,
     ...overrides
@@ -285,6 +305,20 @@ describe('WebExtension runtime entrypoints', () => {
     vi.useFakeTimers();
     const { browser, controls } = createMockBrowser();
     const requests: PopupRequest[] = [];
+    const clipboardWrite = vi.fn(async (_text: string) => undefined);
+    const createObjectURL = vi.fn(() => 'blob:openburnbar-performance');
+    const revokeObjectURL = vi.fn();
+    class TestURL extends URL {
+      static createObjectURL = createObjectURL;
+      static revokeObjectURL = revokeObjectURL;
+    }
+    vi.stubGlobal('URL', TestURL);
+    vi.stubGlobal('navigator', {
+      clipboard: {
+        writeText: clipboardWrite
+      }
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     let currentSnapshot = popupSnapshot();
     browser.runtime.sendMessage = vi.fn(async (message: unknown) => {
       const request = message as PopupRequest;
@@ -311,6 +345,22 @@ describe('WebExtension runtime entrypoints', () => {
             learning: { ...currentSnapshot.learning, optedIn: request.optedIn }
           };
           break;
+        case 'popup.clearPerformance':
+          currentSnapshot = {
+            ...currentSnapshot,
+            performance: buildSafariPerformanceDiagnostics(
+              {
+                schemaVersion: 1,
+                retentionLimit: 240,
+                totalRecorded: 0,
+                droppedCount: 0,
+                nextSequence: 1,
+                samples: []
+              },
+              'ready'
+            )
+          };
+          break;
       }
       return { ok: true, snapshot: currentSnapshot } satisfies PopupResponse;
     });
@@ -321,7 +371,39 @@ describe('WebExtension runtime entrypoints', () => {
     await flushTasks();
     const root = document.getElementById('app')!;
     expect(requests[0]).toEqual({ type: 'popup.bootstrap' });
+    expect(requests).toContainEqual({
+      type: 'popup.recordPerformance',
+      metric: 'popup_bootstrap',
+      durationMs: expect.any(Number),
+      outcome: 'success'
+    });
     expect(root.querySelector('.composer')).not.toBeNull();
+
+    root.querySelector<HTMLButtonElement>('[data-action="diagnostics-copy"]')!.click();
+    await flushTasks();
+    expect(clipboardWrite).toHaveBeenCalledOnce();
+    const copiedJSON = String(clipboardWrite.mock.calls[0]?.[0]);
+    expect(copiedJSON).toContain('"localOnly": true');
+    expect(copiedJSON).not.toContain('https://example.com/');
+
+    root.querySelector<HTMLButtonElement>('[data-action="diagnostics-download"]')!.click();
+    await flushTasks();
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(0);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:openburnbar-performance');
+
+    root.querySelector<HTMLButtonElement>('[data-action="diagnostics-clear"]')!.click();
+    expect(root.querySelector<HTMLButtonElement>('[data-action="diagnostics-clear"]')?.textContent).toContain(
+      'Confirm clear'
+    );
+    root.querySelector<HTMLButtonElement>('[data-action="diagnostics-clear"]')!.click();
+    await flushTasks();
+    expect(currentSnapshot.performance).toMatchObject({
+      totalRecorded: 0,
+      droppedCount: 0,
+      samples: [],
+      summaries: []
+    });
 
     const draft = root.querySelector<HTMLTextAreaElement>('[data-input="draft"]')!;
     draft.value = 'What color is the CTA?';
@@ -472,7 +554,10 @@ describe('WebExtension runtime entrypoints', () => {
         { type: 'popup.learningReview', itemId: 'proposal-1', decision: 'approve' },
         { type: 'popup.setLearning', optedIn: false },
         { type: 'popup.requestSitePermission' },
-        { type: 'popup.abort' }
+        { type: 'popup.performanceSnapshot' },
+        { type: 'popup.clearPerformance' },
+        { type: 'popup.abort', trigger: 'stop_button' },
+        { type: 'popup.abort', trigger: 'popup_shortcut' }
       ])
     );
   });
