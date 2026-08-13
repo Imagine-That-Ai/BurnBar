@@ -17,9 +17,11 @@
 //
 // The old shape was 21 copy-pasted "Install protobuf for libsignal Swift FFI"
 // blocks that installed protoc and nothing else. This check exists because a
-// 22nd variant -- codeql-pr.yml's "Install protobuf for Swift Signal FFI",
-// differently named and collapsed to one line -- escaped that sweep entirely and
-// was only found by auditing every `brew install` in the tree. Anyone adding a
+// 22nd variant -- historically codeql-pr.yml's "Install protobuf for Swift
+// Signal FFI", differently named and collapsed to one line -- escaped that
+// sweep entirely and was only found by auditing every `brew install` in the
+// tree. (Swift CodeQL now lives only on nightly codeql.yml; the one-liner
+// shape remains a regression fixture in the companion test.) Anyone adding a
 // macOS Swift job by copying a neighbour would reintroduce the same gap, and it
 // would surface only as a confusing cargo panic on one half of the fleet. So:
 //
@@ -37,7 +39,7 @@ const ACTION = "ensure-libsignal-toolchain";
 // Entry points that end up building the Signal FFI (directly, or via a script
 // that prepares it before running Swift tests).
 //
-// prepare-signal-ffi-xcframework.sh is on this list deliberately: codeql-pr.yml
+// prepare-signal-ffi-xcframework.sh is on this list deliberately: codeql.yml
 // and app-pr-gate.yml drive the FFI build through the `prepare` wrapper rather
 // than build-signal-ffi-xcframework.sh, so leaving it out let those jobs drop
 // the preflight without this gate noticing.
