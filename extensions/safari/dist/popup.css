@@ -10,7 +10,12 @@
 :root {
   color-scheme: light dark;
   --popup-width: 420px;
-  --popup-height: 680px;
+  /*
+   * Safari sizes the popover from the document box, not the visible composer.
+   * Keep the expanded chat tall enough for a useful transcript while ending
+   * the physical glass sheet directly beneath the composer.
+   */
+  --popup-height: 540px;
 
   /* The host surface beneath the popup is the canvas. */
   --canvas: transparent;
@@ -532,6 +537,8 @@ select:disabled {
 }
 
 .mode-track {
+  --mode-thumb-size: 50px;
+
   position: relative;
   height: 26px;
   overflow: visible;
@@ -555,23 +562,34 @@ select:disabled {
   pointer-events: none;
 }
 
-.mode-knob {
+.mode-knob,
+.mode-knob-fallback {
   position: absolute;
   z-index: 3;
   top: 50%;
-  left: calc(25px + (100% - 50px) * var(--mode-fraction));
-  width: 50px;
-  height: 50px;
+  left: calc(var(--mode-thumb-size) / 2 + (100% - var(--mode-thumb-size)) * var(--mode-fraction));
+  width: var(--mode-thumb-size);
+  height: var(--mode-thumb-size);
   transform: translate(-50%, -50%);
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.58)) drop-shadow(0 0 10px rgba(255, 255, 255, 0.14));
   pointer-events: none;
+}
+
+.mode-knob {
+  opacity: 0;
+}
+
+.mode-knob[data-rendered='true'] {
+  opacity: 1;
 }
 
 .mode-tick {
   position: absolute;
   z-index: 1;
   top: 50%;
-  left: calc(11px + (100% - 24px) * var(--mode-index) / var(--mode-denominator));
+  left: calc(
+    var(--mode-thumb-size) / 2 + (100% - var(--mode-thumb-size)) * var(--mode-index) / var(--mode-denominator)
+  );
   width: 2px;
   height: 2px;
   margin-left: -1px;
@@ -583,8 +601,8 @@ select:disabled {
 }
 
 .mode-range::-webkit-slider-thumb {
-  width: 50px;
-  height: 50px;
+  width: var(--mode-thumb-size);
+  height: var(--mode-thumb-size);
   appearance: none;
   -webkit-appearance: none;
   border: 0;
