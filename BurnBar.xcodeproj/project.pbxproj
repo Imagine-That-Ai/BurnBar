@@ -98,6 +98,7 @@
 		76065972945E97BB1063C2A0 /* ProviderUsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232E2624301EF9DBC44485B3 /* ProviderUsageAPIService.swift */; };
 		77DB561CDAC21883591329EE /* BurnBarRunJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC3214CAC813B7058703E86 /* BurnBarRunJournal.swift */; };
 		78A1D969DCECEF0C6CE17101 /* DatabaseWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26990789CDF44C02B70659D5 /* DatabaseWorkspaceView.swift */; };
+		78B0E0BDC018DB9FC2FF525B /* PiParserStrictnessRound2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DA6D83FE35E5470F6F595E6 /* PiParserStrictnessRound2Tests.swift */; };
 		7A5A11E9D5289F2B240F20F8 /* BurnBarFleetSnapshotBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 510115F44A19580B00773F09 /* BurnBarFleetSnapshotBuilder.swift */; };
 		7A70951F155AC491EBDA90B7 /* BurnBarSearchIntegrationHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0350E75CD849BD279A595941 /* BurnBarSearchIntegrationHarness.swift */; };
 		7BFCF541FE7B96D321B314FC /* BurnBarFleetProbeJSONStrictnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F8585BBD285F1D8C07EA87 /* BurnBarFleetProbeJSONStrictnessTests.swift */; };
@@ -115,6 +116,7 @@
 		8D8FB67B13FDEA50063C1207 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 13242102B8AB16D7BF4F0829 /* FirebaseAuth */; };
 		8DA7D0CAC74A67E5990FD226 /* BurnBarFleetRPCTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1FEB09843037917ABF13A2 /* BurnBarFleetRPCTestSupport.swift */; };
 		8EE95876BDA93F0778AE9185 /* GrokBotParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EA62BBCFB2B2FF063D600A /* GrokBotParser.swift */; };
+		91212FEBE80E01CF35B02AA5 /* GrokCLIParserStrictnessRound2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F630B724939E45EFCB2EB6 /* GrokCLIParserStrictnessRound2Tests.swift */; };
 		919C9DB35478E7E2BC98E194 /* BurnBarDaemonMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10B81A290BB2FA13F52EF43 /* BurnBarDaemonMain.swift */; };
 		91ED5CB77ABAD2C4CD0B78C5 /* BurnBarFleetClaudeCodeProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFE45C9E06D80CF72CD049B8 /* BurnBarFleetClaudeCodeProbe.swift */; };
 		929BDE647DC342239714D7A2 /* GitHubCopilotUsageAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CD840845253AE47D3AD546 /* GitHubCopilotUsageAPI.swift */; };
@@ -326,6 +328,7 @@
 		6C13962E8AE055B767D428DD /* ProviderZeroDataSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderZeroDataSurfaceTests.swift; sourceTree = "<group>"; };
 		6C575F84B51ADF5E3C1FF5C6 /* DatabaseWorkspaceSnapshotBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatabaseWorkspaceSnapshotBuilder.swift; sourceTree = "<group>"; };
 		6CD006CD9B9241D1364DE204 /* CloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncService.swift; sourceTree = "<group>"; };
+		6DA6D83FE35E5470F6F595E6 /* PiParserStrictnessRound2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiParserStrictnessRound2Tests.swift; sourceTree = "<group>"; };
 		6F184F68A50C9B47BADF2CDE /* BurnBarFleetUnsupportedProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetUnsupportedProbeTests.swift; sourceTree = "<group>"; };
 		72FB611C7CD42A40B8527536 /* retrieval-lexical-win.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "retrieval-lexical-win.json"; sourceTree = "<group>"; };
 		7356C2B877EAD026DC34C39C /* CursorConnectorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorConnectorModels.swift; sourceTree = "<group>"; };
@@ -439,6 +442,7 @@
 		F663373EF66E467DEF4A6561 /* GeminiCLIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiCLIParser.swift; sourceTree = "<group>"; };
 		F729FDFE6D34B6F03B5DDCA9 /* CLIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridge.swift; sourceTree = "<group>"; };
 		F78AAB24FFCF6E834BEF9F57 /* ConversationIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationIndexer.swift; sourceTree = "<group>"; };
+		F7F630B724939E45EFCB2EB6 /* GrokCLIParserStrictnessRound2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCLIParserStrictnessRound2Tests.swift; sourceTree = "<group>"; };
 		FA53CDBBD782834EC9FA51B8 /* MiniSparkline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniSparkline.swift; sourceTree = "<group>"; };
 		FB2B6C595EE40639297CBC2A /* BurnBarMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarMigrationTests.swift; sourceTree = "<group>"; };
 		FC1FEB09843037917ABF13A2 /* BurnBarFleetRPCTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetRPCTestSupport.swift; sourceTree = "<group>"; };
@@ -736,7 +740,9 @@
 				65A09A8DD647C8765C28A970 /* ConversationParsingTests.swift */,
 				7804F13D717D2F98E7183BC3 /* CrossEncoderRerankerTests.swift */,
 				DD03FDBE76B81491FE3AD390 /* CursorConnectorTests.swift */,
+				F7F630B724939E45EFCB2EB6 /* GrokCLIParserStrictnessRound2Tests.swift */,
 				1E90F5A0BACA60739A69595D /* GrokCLIParserTests.swift */,
+				6DA6D83FE35E5470F6F595E6 /* PiParserStrictnessRound2Tests.swift */,
 				EA99E287B4A0688C19EBE06B /* PiParserTests.swift */,
 				5C7B9095083BF1AF6D2EDAC7 /* ProviderQuotaServiceTests.swift */,
 				6C13962E8AE055B767D428DD /* ProviderZeroDataSurfaceTests.swift */,
@@ -1301,7 +1307,9 @@
 				FDCF746FB0D1A9FFA4775177 /* ConversationParsingTests.swift in Sources */,
 				BD88BFC5BFFF32DFFBE9374F /* CrossEncoderRerankerTests.swift in Sources */,
 				98E18FD279ED3571BCE5686D /* CursorConnectorTests.swift in Sources */,
+				91212FEBE80E01CF35B02AA5 /* GrokCLIParserStrictnessRound2Tests.swift in Sources */,
 				2A112E3A93001D7ACBCFC13A /* GrokCLIParserTests.swift in Sources */,
+				78B0E0BDC018DB9FC2FF525B /* PiParserStrictnessRound2Tests.swift in Sources */,
 				434FA8ECC9541C17158F8047 /* PiParserTests.swift in Sources */,
 				6E7324835087667843154F8C /* ProviderQuotaServiceTests.swift in Sources */,
 				5F49E9EAE93B594F13ABA561 /* ProviderZeroDataSurfaceTests.swift in Sources */,

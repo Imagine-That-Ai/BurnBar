@@ -665,8 +665,9 @@ generic injection seam (all defaults preserve the real-root behavior):
 
 ### Pi transcripts (`~/.pi/agent/sessions/<project-dir>/*.jsonl`)
 
-- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`. The first nonblank session record is the header: it alone determines session identity (`id`), project path (`cwd`), and start time. Later session records never replace it; a transcript whose first line is not a well-formed session record (or whose header is malformed) is skipped honestly and degrades parse health.
-- **Usage lines:** `{"type":"message",…,"message":{"role":"assistant","content":[…],"usage":{"input":N,"output":N,"cacheRead":N,"cacheWrite":N,"reasoning":N,"totalTokens":N,"cost":{…}}}}`. Usage primitives are validated strictly: a present-but-malformed usage field (boolean, fractional, out-of-range, non-numeric) degrades parse health instead of being silently coerced to zero; valid rows survive.
+- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`. The first nonblank session record is the header: it alone determines session identity (`id`), project path (`cwd`), and start time. Later session records never replace it; a transcript whose first line is not a well-formed session record (or whose header is malformed) is skipped honestly and degrades parse health. A later session header is NEVER accepted as the line-1 authority after a wrong-shaped first record (round-2 scrutiny, issue 5).
+- **Usage lines:** `{"type":"message",…,"message":{"role":"assistant","content":[…],"usage":{"input":N,"output":N,"cacheRead":N,"cacheWrite":N,"reasoning":N,"totalTokens":N,"cost":{…}}}}`. Usage primitives are validated strictly: a present-but-malformed usage field (boolean, fractional, out-of-range, non-numeric) degrades parse health instead of being silently coerced to zero; valid rows survive. A PRESENT `usage` value that is not an object (string, array, number, boolean) is wrong-typed and degrades parse health; absent and null usage remain acceptable (round-2 scrutiny, issue 1).
+- **Tolerated record kinds (explicit allowlist):** `session`, `model_change`, `thinking_level_change`, `message`. Any other top-level record kind (e.g. `{"type":"bogus"}`) is unknown input and degrades the typed parse health — it is never silently accepted. New record kinds must be added to the allowlist deliberately (round-2 scrutiny, issue 2).
 - **Model:** `message.model` on assistant lines, falling back to `model_change.modelId` events.
 - **Project name (REAL ENCODING, verified 2026-08-12):** session dirs are
   `--` + `-`-joined path components + `--` (e.g.
@@ -694,6 +695,17 @@ generic injection seam (all defaults preserve the real-root behavior):
   malformed usage fields degrade parse health; a `turn_completed`/`turn_ended`
   frame without a usage object is a legitimate variant (cancelled/error
   turns carry no usage) and is not malformed.
+- **Events allowlist (explicit):** `events.jsonl` non-usage event kinds are
+  `mcp_config_resolved`, `turn_started`, `loop_started`, `first_token`
+  (verified 2026-08-12). Any other event kind (e.g. `{"type":"bogus"}`) is
+  unknown input and degrades the typed parse health — never silently
+  accepted. A known event kind carrying a present-but-wrong-typed `usage`
+  value is also malformed (round-2 scrutiny, issue 3).
+- **Chat content strictness:** a `chat_history.jsonl` line with a PRESENT
+  wrong-typed `content` value (number, boolean, object, non-part array) is
+  malformed and degrades parse health — never silently skipped. Absent and
+  null content remain legitimate (tool results, reasoning) and are not
+  malformed (round-2 scrutiny, issue 4).
 - **Numeric update timestamps** (`updates.jsonl` `timestamp`, epoch seconds)
   are validated for positivity and finiteness; a present-but-invalid
   numeric timestamp (zero, negative, boolean, non-numeric) degrades the

@@ -319,6 +319,15 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
         return found ? usage : nil
     }
 
+    /// Known non-usage event kinds in `events.jsonl` (real sessions verified
+    /// 2026-08-12): `mcp_config_resolved`, `turn_started`, `loop_started`,
+    /// `first_token`. Any other event kind is unknown input and degrades the
+    /// typed parse health instead of being silently accepted (round-2
+    /// scrutiny, issue 3). New event kinds must be added here deliberately.
+    private static let knownNonUsageEventTypes: Set<String> = [
+        "mcp_config_resolved", "turn_started", "loop_started", "first_token"
+    ]
+
     /// Reads `events.jsonl` `turn_ended` frames carrying a `usage` object.
     private func readUsage(fromEvents file: URL, health: inout TranscriptParseHealth) -> GrokUsage? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
@@ -334,11 +343,10 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                 health.malformedLines += 1
                 continue
             }
-            // Wrong-shape lines (valid JSON without the expected
-            // type/usage shape) are typed malformed, never silent skips
-            // (VAL-PROV-007). A `turn_ended` frame without a usage object
-            // is a legitimate variant (real sessions carry usage only in
-            // updates.jsonl).
+            // Wrong-shape lines (valid JSON without a string `type`) are
+            // typed malformed, never silent skips (VAL-PROV-007). A
+            // `turn_ended` frame without a usage object is a legitimate
+            // variant (real sessions carry usage only in updates.jsonl).
             guard let type = json["type"] as? String else {
                 health.malformedLines += 1
                 continue
@@ -362,6 +370,16 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                     // A present-but-wrong-typed usage object is malformed.
                     health.malformedLines += 1
                 }
+            } else if Self.knownNonUsageEventTypes.contains(type) {
+                // Known benign event kind. A present-but-wrong-typed usage
+                // field on a known event is still wrong-shaped input.
+                if let present = json["usage"], !(present is NSNull) {
+                    health.malformedLines += 1
+                }
+            } else {
+                // Unknown event kind: typed malformed, never a silent skip
+                // (round-2 scrutiny, issue 3).
+                health.malformedLines += 1
             }
             if let timestamp = json["ts"] as? String,
                let date = Self.parseTimestamp(timestamp) {
@@ -455,7 +473,15 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                 health.malformedLines += 1
                 continue
             }
-            let content = Self.extractContent(from: json)
+            let extracted = Self.extractContent(from: json)
+            if extracted.malformed {
+                // A PRESENT wrong-typed content value (number, boolean,
+                // object, non-part array) is malformed input, never a
+                // silent skip (round-2 scrutiny, issue 4).
+                health.malformedLines += 1
+                continue
+            }
+            let content = extracted.text
             guard !content.isEmpty else { continue }
 
             if type == "user" {
@@ -611,17 +637,32 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
         return overflow ? Int.max : sum
     }
 
-    private static func extractContent(from json: [String: Any]) -> String {
-        if let content = json["content"] as? String {
-            return content
+    /// Strict chat-content extraction. Returns the extracted text plus a
+    /// `malformed` flag that is set when `content` is PRESENT but not a
+    /// supported shape (string, or an array of `{"type":"text","text":…}`
+    /// parts). Absent and null content are legitimate (tool results,
+    /// reasoning) and are not malformed; a present wrong-typed value
+    /// (number, boolean, object, non-part array) degrades the typed parse
+    /// health instead of being silently skipped (round-2 scrutiny,
+    /// issue 4).
+    private static func extractContent(from json: [String: Any]) -> (text: String, malformed: Bool) {
+        guard let content = json["content"], !(content is NSNull) else {
+            return ("", false)
         }
-        if let parts = json["content"] as? [[String: Any]] {
-            return parts.compactMap { part -> String? in
-                if let text = part["text"] as? String { return text }
-                return nil
-            }.joined(separator: "\n")
+        if let text = content as? String {
+            return (text, false)
         }
-        return ""
+        if let parts = content as? [[String: Any]] {
+            var text = ""
+            for part in parts {
+                if let partText = part["text"] as? String {
+                    if !text.isEmpty { text += "\n" }
+                    text += partText
+                }
+            }
+            return (text, false)
+        }
+        return ("", true)
     }
 
     private static func wordCount(_ string: String) -> Int {

@@ -165,27 +165,24 @@ final class PiParser: LogParser, @unchecked Sendable {
                 continue
             }
             if !headerCaptured {
-                // Line-1 authority (VAL-PROV-011/016): the first nonblank
-                // session record is the authoritative header. Valid JSON
-                // before it is a wrong-shape line; a malformed header or a
-                // transcript with no session record at all is skipped
-                // honestly — later records never replace session identity
-                // or start time.
-                if json["type"] as? String == "session" {
-                    guard Self.isValidSessionRecord(json) else {
-                        health.malformedLines += 1
-                        return nil
-                    }
-                    headerCaptured = true
-                    sessionID = (json["id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                    cwd = (json["cwd"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                    if let timestamp = json["timestamp"] as? String,
-                       let date = Self.parseTimestamp(timestamp) {
-                        accumulator.startTime = date
-                        accumulator.endTime = date
-                    }
-                } else {
+                // Line-1 authority (VAL-PROV-011/016): the FIRST nonblank
+                // record must be a well-formed session record. Any other
+                // first record (unknown type, wrong shape, malformed
+                // session) invalidates the transcript: it is skipped
+                // honestly and a later session record is never accepted as
+                // the line-1 authority (round-2 scrutiny, issue 5).
+                guard json["type"] as? String == "session",
+                      Self.isValidSessionRecord(json) else {
                     health.malformedLines += 1
+                    return nil
+                }
+                headerCaptured = true
+                sessionID = (json["id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                cwd = (json["cwd"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                if let timestamp = json["timestamp"] as? String,
+                   let date = Self.parseTimestamp(timestamp) {
+                    accumulator.startTime = date
+                    accumulator.endTime = date
                 }
                 continue
             }
@@ -285,8 +282,13 @@ final class PiParser: LogParser, @unchecked Sendable {
             if !Self.isValidSessionRecord(json) {
                 health.malformedLines += 1
             }
-        case "model_change":
-            if let model = json["modelId"] as? String, !model.isEmpty {
+        case "model_change", "thinking_level_change":
+            // Tolerated non-usage record kinds (documented in
+            // docs/fleet/BURNBAR_FLEET_SIGNALS.md §7): model_change carries
+            // the model fallback, thinking_level_change is a benign
+            // transcript event.
+            if type == "model_change",
+               let model = json["modelId"] as? String, !model.isEmpty {
                 accumulator.model = TokenExtractionUtility.normalizeModelName(model)
             }
         case "message":
@@ -344,12 +346,21 @@ final class PiParser: LogParser, @unchecked Sendable {
                     accumulator.cacheReadTokens = Self.addingChecked(accumulator.cacheReadTokens, cacheRead)
                     accumulator.cacheCreationTokens = Self.addingChecked(accumulator.cacheCreationTokens, cacheWrite)
                 }
+            } else if let present = message["usage"], !(present is NSNull) {
+                // A PRESENT usage value that is not an object (string,
+                // array, number, boolean) is wrong-typed: typed malformed,
+                // never a silent skip (round-2 scrutiny, issue 1). Absent
+                // and null usage remain acceptable.
+                health.malformedLines += 1
             }
         default:
-            // Unknown record types are ignored: the real transcript format
-            // evolves (thinking_level_change, future event kinds) and an
-            // unknown type is not a malformed line.
-            break
+            // Unknown record kinds are NOT silently accepted: an arbitrary
+            // top-level type (e.g. {"type":"bogus"}) is wrong-shaped input
+            // and degrades the typed parse health (round-2 scrutiny,
+            // issue 2). The tolerated kinds are the explicit allowlist
+            // above; the real transcript format's future event kinds must
+            // be added there deliberately.
+            health.malformedLines += 1
         }
     }
 
