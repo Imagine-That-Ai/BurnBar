@@ -22,6 +22,9 @@ embedded_profile="$app_path/Contents/embedded.provisionprofile"
 appex_path="$app_path/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 embedded_safari_profile="$appex_path/Contents/embedded.provisionprofile"
 daemon_path="$app_path/Contents/Helpers/OpenBurnBarDaemon"
+execution_path="$app_path/Contents/Helpers/OpenBurnBarPrivilegedInputExecution"
+virtual_hid_path="$app_path/Contents/Helpers/OpenBurnBarVirtualHIDBridge"
+watchdog_path="$app_path/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
 
 if [[ ! "$expected_team_id" =~ ^[A-Z0-9]{10}$ ]]; then
   echo "ERROR: Expected Apple team ID must be exactly 10 uppercase letters/digits; found '${expected_team_id:-missing}'." >&2
@@ -169,18 +172,37 @@ if [[ -n "$expected_signing_identity" ]]; then
   host_certificate_sha1="$(certificate_sha1_for_bundle "$app_path" "host")"
   safari_certificate_sha1="$(certificate_sha1_for_bundle "$appex_path" "safari")"
   daemon_certificate_sha1="$(certificate_sha1_for_bundle "$daemon_path" "daemon")"
-  if [[ "$host_certificate_sha1" != "$expected_signing_certificate_sha1" ]]; then
-    echo "ERROR: Development app leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${host_certificate_sha1:-missing}'." >&2
-    exit 1
-  fi
-  if [[ "$safari_certificate_sha1" != "$expected_signing_certificate_sha1" ]]; then
-    echo "ERROR: Safari extension leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${safari_certificate_sha1:-missing}'." >&2
-    exit 1
-  fi
-  if [[ "$daemon_certificate_sha1" != "$expected_signing_certificate_sha1" ]]; then
-    echo "ERROR: Embedded daemon leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${daemon_certificate_sha1:-missing}'." >&2
-    exit 1
-  fi
+  execution_certificate_sha1="$(
+    certificate_sha1_for_bundle "$execution_path" "privileged-input-execution"
+  )"
+  virtual_hid_certificate_sha1="$(
+    certificate_sha1_for_bundle "$virtual_hid_path" "virtual-hid"
+  )"
+  watchdog_certificate_sha1="$(
+    certificate_sha1_for_bundle "$watchdog_path" "kill-switch-watchdog"
+  )"
+  declare -a certificate_labels=(
+    "Development app"
+    "Safari extension"
+    "Embedded daemon"
+    "Privileged input execution helper"
+    "Virtual HID bridge"
+    "Kill-switch watchdog"
+  )
+  declare -a certificate_sha1s=(
+    "$host_certificate_sha1"
+    "$safari_certificate_sha1"
+    "$daemon_certificate_sha1"
+    "$execution_certificate_sha1"
+    "$virtual_hid_certificate_sha1"
+    "$watchdog_certificate_sha1"
+  )
+  for ((index = 0; index < ${#certificate_labels[@]}; index++)); do
+    if [[ "${certificate_sha1s[$index]}" != "$expected_signing_certificate_sha1" ]]; then
+      echo "ERROR: ${certificate_labels[$index]} leaf certificate SHA-1 must match '$expected_signing_certificate_sha1'; found '${certificate_sha1s[$index]:-missing}'." >&2
+      exit 1
+    fi
+  done
 fi
 
 python3 - \

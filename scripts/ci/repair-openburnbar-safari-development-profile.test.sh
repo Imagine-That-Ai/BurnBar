@@ -84,15 +84,22 @@ write_fixture() {
 
   local app="$fixture_root/OpenBurnBar.app"
   local appex="$app/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
+  local helpers="$app/Contents/Helpers"
   local parent_framework="$appex/Contents/Frameworks/Parent.framework"
   local nested_framework="$parent_framework/Versions/A/Frameworks/Nested.framework"
   mkdir -p \
     "$app/Contents" \
+    "$helpers" \
     "$appex/Contents" \
     "$parent_framework/Versions/A/Frameworks" \
     "$nested_framework"
   printf 'host-profile-original\n' >"$app/Contents/embedded.provisionprofile"
   printf 'safari-profile-wildcard\n' >"$appex/Contents/embedded.provisionprofile"
+  printf 'daemon\n' >"$helpers/OpenBurnBarDaemon"
+  printf 'execution\n' >"$helpers/OpenBurnBarPrivilegedInputExecution"
+  printf 'virtual-hid\n' >"$helpers/OpenBurnBarVirtualHIDBridge"
+  printf 'watchdog\n' >"$helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
+  chmod +x "$helpers"/*
 
   write_plist \
     "$fixture_root/host-entitlements.plist" \
@@ -271,11 +278,19 @@ test_success_preserves_host_and_signs_in_containment_order() {
   assert_file_contains "$log" \
     "certificate-verifier <$fixture_root/OpenBurnBar.app/Contents/PlugIns/OpenBurnBarSafariExtension.appex> <$fixture_root/exact-safari.provisionprofile>"
   local deepest parent appex host
+  local daemon execution virtual_hid watchdog
+  daemon="$(grep -n '^codesign .*--force.*OpenBurnBarDaemon>$' "$log" | cut -d: -f1)"
+  execution="$(grep -n '^codesign .*--force.*OpenBurnBarPrivilegedInputExecution>$' "$log" | cut -d: -f1)"
+  virtual_hid="$(grep -n '^codesign .*--force.*OpenBurnBarVirtualHIDBridge>$' "$log" | cut -d: -f1)"
+  watchdog="$(grep -n '^codesign .*--force.*OpenBurnBarPrivilegedInputKillSwitchWatchdog>$' "$log" | cut -d: -f1)"
   deepest="$(grep -n '^codesign .*--force.*Nested.framework>$' "$log" | cut -d: -f1)"
   parent="$(grep -n '^codesign .*--force.*Parent.framework>$' "$log" | cut -d: -f1)"
   appex="$(grep -n '^codesign .*--force.*OpenBurnBarSafariExtension.appex>$' "$log" | cut -d: -f1)"
   host="$(grep -n '^codesign .*--force.*OpenBurnBar.app>$' "$log" | cut -d: -f1)"
-  if [[ -z "$deepest" || -z "$parent" || -z "$appex" || -z "$host" ||
+  if [[ -z "$daemon" || -z "$execution" || -z "$virtual_hid" || -z "$watchdog" ||
+    -z "$deepest" || -z "$parent" || -z "$appex" || -z "$host" ||
+    "$daemon" -ge "$host" || "$execution" -ge "$host" ||
+    "$virtual_hid" -ge "$host" || "$watchdog" -ge "$host" ||
     "$deepest" -ge "$parent" || "$parent" -ge "$appex" || "$appex" -ge "$host" ]]
   then
     fail_test "nested code, appex, and host were not signed deepest-first"
@@ -289,11 +304,21 @@ test_success_preserves_host_and_signs_in_containment_order() {
       fail_test "signing command did not disable timestamping"
     [[ "$sign_line" == *"<--options> <runtime,library>"* ]] ||
       fail_test "signing command omitted hardened runtime or library validation"
-    [[ "$sign_line" == *"<--preserve-metadata=identifier,requirements>"* ]] ||
-      fail_test "signing command did not preserve designated requirements"
+    if [[ "$sign_line" != *"/Contents/Helpers/"* ]]; then
+      [[ "$sign_line" == *"<--preserve-metadata=identifier,requirements>"* ]] ||
+        fail_test "contained-code signing command did not preserve designated requirements"
+    fi
   done < <(grep '^codesign .*--force' "$log")
   assert_file_contains "$log" \
     "<--entitlements> </"
+  assert_file_contains "$log" \
+    "<--identifier> <com.openburnbar.app> <$fixture_root/OpenBurnBar.app/Contents/Helpers/OpenBurnBarDaemon>"
+  assert_file_contains "$log" \
+    "<--identifier> <com.openburnbar.privileged-input-execution> <--entitlements> </"
+  assert_file_contains "$log" \
+    "<--identifier> <com.openburnbar.virtual-hid-bridge> <$fixture_root/OpenBurnBar.app/Contents/Helpers/OpenBurnBarVirtualHIDBridge>"
+  assert_file_contains "$log" \
+    "<--identifier> <com.openburnbar.privileged-input-killswitch-watchdog> <$fixture_root/OpenBurnBar.app/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog>"
 }
 
 test_rejects_invalid_profiles_before_mutation() {

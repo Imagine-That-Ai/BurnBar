@@ -4,12 +4,32 @@ set -euo pipefail
 app_path="${1:?Usage: verify-daemon-release-signing.sh <OpenBurnBar.app> [expected-team-id]}"
 expected_team_id="${2:-}"
 daemon_path="$app_path/Contents/Helpers/OpenBurnBarDaemon"
+execution_path="$app_path/Contents/Helpers/OpenBurnBarPrivilegedInputExecution"
+virtual_hid_path="$app_path/Contents/Helpers/OpenBurnBarVirtualHIDBridge"
 watchdog_path="$app_path/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
 
-if [[ ! -d "$app_path" || ! -x "$daemon_path" || ! -x "$watchdog_path" ]]; then
-  echo "ERROR: OpenBurnBar app, daemon, or kill-switch watchdog is missing: $app_path" >&2
+if [[ ! -d "$app_path" ]]; then
+  echo "ERROR: OpenBurnBar app is missing: $app_path" >&2
   exit 1
 fi
+declare -a helper_paths=(
+  "$daemon_path"
+  "$execution_path"
+  "$virtual_hid_path"
+  "$watchdog_path"
+)
+declare -a helper_labels=(
+  "daemon"
+  "privileged input execution helper"
+  "virtual HID bridge"
+  "kill-switch watchdog"
+)
+for ((index = 0; index < ${#helper_paths[@]}; index++)); do
+  if [[ ! -x "${helper_paths[$index]}" || -L "${helper_paths[$index]}" ]]; then
+    echo "ERROR: OpenBurnBar ${helper_labels[$index]} is missing or symlinked: ${helper_paths[$index]}" >&2
+    exit 1
+  fi
+done
 
 signature_field() {
   local path="$1"
@@ -28,7 +48,9 @@ authority_chain() {
 }
 
 codesign --verify --strict --verbose=2 "$app_path"
-codesign --verify --strict --verbose=2 "$daemon_path"
+for helper_path in "${helper_paths[@]}"; do
+  codesign --verify --strict --verbose=2 "$helper_path"
+done
 
 app_identifier="$(signature_field "$app_path" Identifier)"
 daemon_identifier="$(signature_field "$daemon_path" Identifier)"
@@ -36,6 +58,8 @@ app_team_id="$(signature_field "$app_path" TeamIdentifier)"
 daemon_team_id="$(signature_field "$daemon_path" TeamIdentifier)"
 app_signature="$(codesign -d --verbose=4 "$app_path" 2>&1)"
 daemon_signature="$(codesign -d --verbose=4 "$daemon_path" 2>&1)"
+execution_signature="$(codesign -d --verbose=4 "$execution_path" 2>&1)"
+virtual_hid_signature="$(codesign -d --verbose=4 "$virtual_hid_path" 2>&1)"
 watchdog_signature="$(codesign -d --verbose=4 "$watchdog_path" 2>&1)"
 app_authority_chain="$(authority_chain <<<"$app_signature")"
 daemon_authority_chain="$(authority_chain <<<"$daemon_signature")"
@@ -83,50 +107,163 @@ if [[ -n "$app_authority_chain" || -n "$daemon_authority_chain" ]]; then
     exit 1
   fi
 fi
-if ! grep -q 'flags=.*runtime' <<<"$app_signature" || ! grep -q 'flags=.*library-validation' <<<"$app_signature"; then
-  echo "ERROR: App must use hardened runtime and library validation so the daemon can authenticate its RPC peer." >&2
-  printf '%s\n' "$app_signature" >&2
-  exit 1
-fi
-if ! grep -q 'flags=.*runtime' <<<"$daemon_signature" || ! grep -q 'flags=.*library-validation' <<<"$daemon_signature"; then
-  echo "ERROR: Daemon must use hardened runtime and library validation." >&2
-  printf '%s\n' "$daemon_signature" >&2
-  exit 1
-fi
+declare -a signed_peer_paths=(
+  "$app_path"
+  "$daemon_path"
+  "$execution_path"
+  "$virtual_hid_path"
+  "$watchdog_path"
+)
+declare -a signed_peer_labels=(
+  "App"
+  "Daemon"
+  "Privileged input execution helper"
+  "Virtual HID bridge"
+  "Kill-switch watchdog"
+)
+declare -a signed_peer_identifiers=(
+  "com.openburnbar.app"
+  "$daemon_identifier"
+  "com.openburnbar.privileged-input-execution"
+  "com.openburnbar.virtual-hid-bridge"
+  "com.openburnbar.privileged-input-killswitch-watchdog"
+)
+declare -a signed_peer_signatures=(
+  "$app_signature"
+  "$daemon_signature"
+  "$execution_signature"
+  "$virtual_hid_signature"
+  "$watchdog_signature"
+)
 
-watchdog_identifier="$(signature_field "$watchdog_path" Identifier)"
-watchdog_team_id="$(signature_field "$watchdog_path" TeamIdentifier)"
-if [[ "$watchdog_identifier" != "com.openburnbar.privileged-input-killswitch-watchdog" ]]; then
-  echo "ERROR: Kill-switch watchdog has the wrong signing identifier: '$watchdog_identifier'." >&2
-  exit 1
-fi
-if [[ "$watchdog_team_id" != "$app_team_id" ]]; then
-  echo "ERROR: App and kill-switch watchdog are signed by different teams; app='${app_team_id:-missing}' watchdog='${watchdog_team_id:-missing}'." >&2
-  exit 1
-fi
-if ! grep -q 'flags=.*runtime' <<<"$watchdog_signature" || ! grep -q 'flags=.*library-validation' <<<"$watchdog_signature"; then
-  echo "ERROR: Kill-switch watchdog must use hardened runtime and library validation." >&2
-  printf '%s\n' "$watchdog_signature" >&2
-  exit 1
-fi
-if grep -q '^Authority=Developer ID Application:' <<<"$(codesign -d --verbose=4 "$app_path" 2>&1)"; then
-  if ! grep -q '^Authority=Developer ID Application:' <<<"$watchdog_signature" \
-    || ! grep -q '^Timestamp=' <<<"$watchdog_signature"; then
-    echo "ERROR: Release kill-switch watchdog must have a timestamped Developer ID signature." >&2
-    printf '%s\n' "$watchdog_signature" >&2
+for ((index = 0; index < ${#signed_peer_paths[@]}; index++)); do
+  peer_path="${signed_peer_paths[$index]}"
+  peer_label="${signed_peer_labels[$index]}"
+  expected_identifier="${signed_peer_identifiers[$index]}"
+  peer_signature="${signed_peer_signatures[$index]}"
+  peer_identifier="$(signature_field "$peer_path" Identifier)"
+  peer_team_id="$(signature_field "$peer_path" TeamIdentifier)"
+
+  if [[ "$peer_identifier" != "$expected_identifier" ]]; then
+    echo "ERROR: $peer_label has the wrong signing identifier: '$peer_identifier'; expected '$expected_identifier'." >&2
     exit 1
   fi
-fi
-codesign --verify --strict --verbose=2 "$watchdog_path"
+  if [[ "$peer_team_id" != "$app_team_id" ]]; then
+    echo "ERROR: App and $peer_label are signed by different teams; app='${app_team_id:-missing}' peer='${peer_team_id:-missing}'." >&2
+    exit 1
+  fi
+  peer_authority_chain="$(authority_chain <<<"$peer_signature")"
+  if [[ -n "$app_authority_chain" || -n "$peer_authority_chain" ]]; then
+    if [[ -z "$app_authority_chain" || -z "$peer_authority_chain" \
+      || "$peer_authority_chain" != "$app_authority_chain" ]]; then
+      echo "ERROR: App and $peer_label must have the same ordered signing-certificate authority chain." >&2
+      echo "app authorities: ${app_authority_chain:-missing}" >&2
+      echo "peer authorities: ${peer_authority_chain:-missing}" >&2
+      exit 1
+    fi
+  fi
+  if ! grep -q 'flags=.*runtime' <<<"$peer_signature" \
+    || ! grep -q 'flags=.*library-validation' <<<"$peer_signature"; then
+    echo "ERROR: $peer_label must use hardened runtime and library validation." >&2
+    printf '%s\n' "$peer_signature" >&2
+    exit 1
+  fi
+done
 
-daemon_entitlements="$(mktemp -t openburnbar-daemon-entitlements.XXXXXX)"
-trap 'rm -f "$daemon_entitlements"' EXIT
-codesign -d --entitlements :- "$daemon_path" > "$daemon_entitlements" 2>/dev/null
-if grep -Eq '<key>(keychain-access-groups|com\.apple\.application-identifier|com\.apple\.developer\.team-identifier)</key>' "$daemon_entitlements"; then
-  echo "ERROR: Bare daemon helper has restricted identity/Keychain entitlements; macOS will kill it before main()." >&2
-  cat "$daemon_entitlements" >&2
-  exit 1
+if grep -q '^Authority=Developer ID Application:' <<<"$app_signature"; then
+  for ((index = 1; index < ${#signed_peer_paths[@]}; index++)); do
+    peer_label="${signed_peer_labels[$index]}"
+    peer_signature="${signed_peer_signatures[$index]}"
+    if ! grep -q '^Authority=Developer ID Application:' <<<"$peer_signature" \
+      || ! grep -q '^Timestamp=' <<<"$peer_signature"; then
+      echo "ERROR: Release $peer_label must have a timestamped Developer ID signature." >&2
+      printf '%s\n' "$peer_signature" >&2
+      exit 1
+    fi
+  done
 fi
+
+entitlement_dir="$(mktemp -d -t openburnbar-helper-entitlements.XXXXXX)"
+trap 'rm -rf "$entitlement_dir"' EXIT
+daemon_entitlements="$entitlement_dir/daemon.plist"
+execution_entitlements="$entitlement_dir/execution.plist"
+virtual_hid_entitlements="$entitlement_dir/virtual-hid.plist"
+watchdog_entitlements="$entitlement_dir/watchdog.plist"
+
+capture_helper_entitlements() {
+  local helper_path="$1"
+  local destination="$2"
+  if ! codesign -d --entitlements :- "$helper_path" >"$destination" 2>/dev/null; then
+    echo "ERROR: Could not capture effective helper entitlements: $helper_path" >&2
+    exit 1
+  fi
+  if [[ ! -s "$destination" ]]; then
+    printf '%s\n' \
+      '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>' \
+      >"$destination"
+  fi
+}
+
+capture_helper_entitlements "$daemon_path" "$daemon_entitlements"
+capture_helper_entitlements "$execution_path" "$execution_entitlements"
+capture_helper_entitlements "$virtual_hid_path" "$virtual_hid_entitlements"
+capture_helper_entitlements "$watchdog_path" "$watchdog_entitlements"
+python3 - \
+  "$daemon_entitlements" \
+  "$execution_entitlements" \
+  "$virtual_hid_entitlements" \
+  "$watchdog_entitlements" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+daemon_path, execution_path, virtual_hid_path, watchdog_path = map(Path, sys.argv[1:])
+
+
+def load(path: Path, label: str) -> dict:
+    try:
+        with path.open("rb") as file:
+            value = plistlib.load(file)
+    except Exception as error:
+        raise SystemExit(f"ERROR: {label} effective entitlements are invalid: {error}")
+    if not isinstance(value, dict):
+        raise SystemExit(f"ERROR: {label} effective entitlements must be a dictionary.")
+    return value
+
+
+daemon = load(daemon_path, "Bare daemon helper")
+execution = load(execution_path, "Privileged input execution helper")
+virtual_hid = load(virtual_hid_path, "Virtual HID bridge")
+watchdog = load(watchdog_path, "Kill-switch watchdog")
+
+restricted_daemon_keys = {
+    "keychain-access-groups",
+    "com.apple.application-identifier",
+    "com.apple.developer.team-identifier",
+}
+present_restricted_keys = sorted(restricted_daemon_keys.intersection(daemon))
+if present_restricted_keys:
+    raise SystemExit(
+        "ERROR: Bare daemon helper has restricted identity/Keychain entitlements; "
+        "macOS will kill it before main(): "
+        + ", ".join(present_restricted_keys)
+    )
+
+expected_execution = {"com.apple.developer.hid.virtual.device": True}
+if execution != expected_execution:
+    raise SystemExit(
+        "ERROR: Privileged input execution helper entitlements must contain only "
+        f"{expected_execution!r}; found {execution!r}."
+    )
+if virtual_hid:
+    raise SystemExit(
+        f"ERROR: Virtual HID bridge must not carry entitlements; found {virtual_hid!r}."
+    )
+if watchdog:
+    raise SystemExit(
+        f"ERROR: Kill-switch watchdog must not carry entitlements; found {watchdog!r}."
+    )
+PY
 
 if [[ "$app_team_id" != "not set" ]]; then
   app_requirement="$(designated_requirement "$app_path")"
@@ -168,4 +305,4 @@ if result.returncode != 0 or "Usage: OpenBurnBarDaemon" not in output:
     )
 PY
 
-echo "PASS: signed daemon launches, shares the app designated requirement, and release watchdog trust is valid"
+echo "PASS: signed daemon launches, shares the app designated requirement, and privileged-input helper trust is valid"

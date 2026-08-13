@@ -689,6 +689,7 @@ targets:
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarDaemon/Resources/PrivilegedInputExecution/OpenBurnBarPrivilegedInputExecution.entitlements
         ENABLE_HARDENED_RUNTIME: YES
+        OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.privileged-input-execution --options runtime,library
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
@@ -706,6 +707,7 @@ targets:
         DEVELOPMENT_TEAM: 4Y367DF25B
         CODE_SIGN_ENTITLEMENTS: OpenBurnBarDaemon/Resources/VirtualHIDBridge/OpenBurnBarVirtualHIDBridgeSocketAdapter.entitlements
         ENABLE_HARDENED_RUNTIME: YES
+        OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.virtual-hid-bridge --options runtime,library
         SKIP_INSTALL: true
     dependencies:
       - target: OpenBurnBarRemoteAccessAgentCore
@@ -723,6 +725,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.privileged-input-killswitch-watchdog
         DEVELOPMENT_TEAM: 4Y367DF25B
         ENABLE_HARDENED_RUNTIME: YES
+        OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.privileged-input-killswitch-watchdog --options runtime,library
         SKIP_INSTALL: true
     dependencies:
       - package: OpenBurnBarCore

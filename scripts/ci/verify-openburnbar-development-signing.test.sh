@@ -22,6 +22,8 @@ appex_contents="$appex_path/Contents"
 resources_path="$appex_contents/Resources"
 helpers_path="$app_contents/Helpers"
 daemon_path="$helpers_path/OpenBurnBarDaemon"
+execution_path="$helpers_path/OpenBurnBarPrivilegedInputExecution"
+virtual_hid_path="$helpers_path/OpenBurnBarVirtualHIDBridge"
 watchdog_path="$helpers_path/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
 app_profile="$app_contents/embedded.provisionprofile"
 appex_profile="$appex_contents/embedded.provisionprofile"
@@ -43,11 +45,15 @@ mkdir -p \
 printf '#!/usr/bin/env bash\nexit 0\n' > "$app_contents/MacOS/OpenBurnBar"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$appex_contents/MacOS/OpenBurnBarSafariExtension"
 printf '#!/usr/bin/env bash\nif [[ "${1:-}" == "--help" ]]; then echo "Usage: OpenBurnBarDaemon [OPTIONS]"; exit 0; fi\nexit 2\n' > "$daemon_path"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$execution_path"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$virtual_hid_path"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$watchdog_path"
 chmod +x \
   "$app_contents/MacOS/OpenBurnBar" \
   "$appex_contents/MacOS/OpenBurnBarSafariExtension" \
   "$daemon_path" \
+  "$execution_path" \
+  "$virtual_hid_path" \
   "$watchdog_path"
 
 python3 - "$project_manifest" <<'PY'
@@ -61,6 +67,10 @@ required = (
     "- $(BUILT_PRODUCTS_DIR)/OpenBurnBarDaemon",
     "- $(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/OpenBurnBarDaemon",
     "- target: OpenBurnBarDaemonExecutable",
+    "OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.app --options runtime,library",
+    "OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.privileged-input-execution --options runtime,library",
+    "OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.virtual-hid-bridge --options runtime,library",
+    "OTHER_CODE_SIGN_FLAGS: --identifier com.openburnbar.privileged-input-killswitch-watchdog --options runtime,library",
 )
 missing = [entry for entry in required if entry not in source]
 if missing:
@@ -253,6 +263,10 @@ if [[ "$1" == "-d" && " $* " == *" --entitlements :- "* ]]; then
     cat "$MOCK_APPEX_ENTITLEMENTS"
   elif [[ "$target" == "$MOCK_DAEMON" ]]; then
     printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>'
+  elif [[ "$target" == "$MOCK_EXECUTION" ]]; then
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.developer.hid.virtual.device</key><true/></dict></plist>'
+  elif [[ "$target" == "$MOCK_VIRTUAL_HID" || "$target" == "$MOCK_WATCHDOG" ]]; then
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>'
   else
     cat "$MOCK_APP_ENTITLEMENTS"
   fi
@@ -272,10 +286,18 @@ if [[ "$1" == "-dv" || "$1" == "-d" ]]; then
     identifier="${MOCK_DAEMON_IDENTIFIER:-com.openburnbar.app}"
     authority="${MOCK_DAEMON_AUTHORITY:-Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)}"
     flags="${MOCK_DAEMON_FLAGS:-flags=0x12000(runtime,library-validation)}"
-  elif [[ "$target" == "$MOCK_WATCHDOG" ]]; then
-    identifier="com.openburnbar.privileged-input-killswitch-watchdog"
+  elif [[ "$target" == "$MOCK_EXECUTION" ]]; then
+    identifier="${MOCK_EXECUTION_IDENTIFIER:-com.openburnbar.privileged-input-execution}"
     authority="Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)"
-    flags="flags=0x12000(runtime,library-validation)"
+    flags="${MOCK_EXECUTION_FLAGS:-flags=0x12000(runtime,library-validation)}"
+  elif [[ "$target" == "$MOCK_VIRTUAL_HID" ]]; then
+    identifier="${MOCK_VIRTUAL_HID_IDENTIFIER:-com.openburnbar.virtual-hid-bridge}"
+    authority="Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)"
+    flags="${MOCK_VIRTUAL_HID_FLAGS:-flags=0x12000(runtime,library-validation)}"
+  elif [[ "$target" == "$MOCK_WATCHDOG" ]]; then
+    identifier="${MOCK_WATCHDOG_IDENTIFIER:-com.openburnbar.privileged-input-killswitch-watchdog}"
+    authority="Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)"
+    flags="${MOCK_WATCHDOG_FLAGS:-flags=0x12000(runtime,library-validation)}"
   else
     identifier="${MOCK_APP_IDENTIFIER:-com.openburnbar.app}"
     authority="${MOCK_APP_AUTHORITY:-Apple Development: OpenBurnBar Test ($MOCK_TEAM_ID)}"
@@ -301,6 +323,8 @@ chmod +x \
 export PATH="$mock_bin:$PATH"
 export MOCK_APPEX="$appex_path"
 export MOCK_DAEMON="$daemon_path"
+export MOCK_EXECUTION="$execution_path"
+export MOCK_VIRTUAL_HID="$virtual_hid_path"
 export MOCK_WATCHDOG="$watchdog_path"
 export MOCK_APP_ENTITLEMENTS="$app_entitlements"
 export MOCK_APPEX_ENTITLEMENTS="$appex_entitlements"
@@ -343,8 +367,8 @@ OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER=/usr/bin/false \
   "$expected_identity" \
   "$expected_certificate_sha1"
 
-if [[ "$(grep -c -- "--extract-certificates" "$codesign_log")" != "7" ]]; then
-  echo "FAIL: host, Safari, and daemon signer/profile certificate membership were not verified in both compatibility and audited-profile modes." >&2
+if [[ "$(grep -c -- "--extract-certificates" "$codesign_log")" != "10" ]]; then
+  echo "FAIL: host, Safari, daemon, and privileged-input helper signer/profile certificate membership were not verified in both compatibility and audited-profile modes." >&2
   cat "$codesign_log" >&2
   exit 1
 fi
@@ -369,6 +393,27 @@ assert_fails_with \
   bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
   "$app_path" "$team_id"
 unset MOCK_DAEMON_FLAGS
+
+export MOCK_EXECUTION_IDENTIFIER="OpenBurnBarPrivilegedInputExecution"
+assert_fails_with \
+  "Privileged input execution helper has the wrong signing identifier" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+unset MOCK_EXECUTION_IDENTIFIER
+
+export MOCK_VIRTUAL_HID_FLAGS="flags=0x10000(runtime)"
+assert_fails_with \
+  "Virtual HID bridge must use hardened runtime and library validation" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+unset MOCK_VIRTUAL_HID_FLAGS
+
+export MOCK_WATCHDOG_IDENTIFIER="OpenBurnBarPrivilegedInputKillSwitchWatchdog"
+assert_fails_with \
+  "Kill-switch watchdog has the wrong signing identifier" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+unset MOCK_WATCHDOG_IDENTIFIER
 
 audited_host_profile="$work_dir/audited-host-mismatch.provisionprofile"
 cp "$good_app_profile" "$audited_host_profile"

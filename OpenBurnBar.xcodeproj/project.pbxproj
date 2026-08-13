@@ -13586,6 +13586,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.privileged-input-killswitch-watchdog --options runtime,library";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.openburnbar.privileged-input-killswitch-watchdog";
 				PRODUCT_MODULE_NAME = OpenBurnBarPrivilegedInputKillSwitchWatchdog;
 				PRODUCT_NAME = OpenBurnBarPrivilegedInputKillSwitchWatchdog;
@@ -13769,6 +13770,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.virtual-hid-bridge --options runtime,library";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -13851,6 +13853,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.virtual-hid-bridge --options runtime,library";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -13990,6 +13993,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.privileged-input-killswitch-watchdog --options runtime,library";
 				PRODUCT_BUNDLE_IDENTIFIER = "com.openburnbar.privileged-input-killswitch-watchdog";
 				PRODUCT_MODULE_NAME = OpenBurnBarPrivilegedInputKillSwitchWatchdog;
 				PRODUCT_NAME = OpenBurnBarPrivilegedInputKillSwitchWatchdog;
@@ -14036,6 +14040,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.privileged-input-execution --options runtime,library";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -14084,6 +14089,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_CODE_SIGN_FLAGS = "--identifier com.openburnbar.privileged-input-execution --options runtime,library";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

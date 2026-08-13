@@ -9,6 +9,8 @@ trap 'rm -rf "$tmpdir"' EXIT
 app="$tmpdir/OpenBurnBar.app"
 app_executable="$app/Contents/MacOS/OpenBurnBar"
 daemon="$app/Contents/Helpers/OpenBurnBarDaemon"
+execution="$app/Contents/Helpers/OpenBurnBarPrivilegedInputExecution"
+virtual_hid="$app/Contents/Helpers/OpenBurnBarVirtualHIDBridge"
 watchdog="$app/Contents/Helpers/OpenBurnBarPrivilegedInputKillSwitchWatchdog"
 mkdir -p "$(dirname "$app_executable")" "$(dirname "$daemon")"
 
@@ -50,9 +52,18 @@ cat > "$tmpdir/restricted.plist" <<'PLIST'
   <key>keychain-access-groups</key><array><string>TEST.com.openburnbar.app</string></array>
 </dict></plist>
 PLIST
+cat > "$tmpdir/execution.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>com.apple.developer.hid.virtual.device</key><true/>
+</dict></plist>
+PLIST
 
 clang "$tmpdir/app.c" -o "$app_executable"
 clang "$tmpdir/daemon.c" -o "$daemon"
+clang "$tmpdir/app.c" -o "$execution"
+clang "$tmpdir/app.c" -o "$virtual_hid"
 clang "$tmpdir/app.c" -o "$watchdog"
 
 sign_pair() {
@@ -63,6 +74,19 @@ sign_pair() {
     args+=(--entitlements "$entitlements")
   fi
   codesign "${args[@]}" "$daemon" >/dev/null
+  codesign \
+    --force \
+    --sign - \
+    --options runtime,library \
+    --identifier com.openburnbar.privileged-input-execution \
+    --entitlements "$tmpdir/execution.plist" \
+    "$execution" >/dev/null
+  codesign \
+    --force \
+    --sign - \
+    --options runtime,library \
+    --identifier com.openburnbar.virtual-hid-bridge \
+    "$virtual_hid" >/dev/null
   codesign \
     --force \
     --sign - \
@@ -99,7 +123,11 @@ if [[ "$*" == *"--verify"* ]]; then
   exit 0
 fi
 if [[ "$*" == *"--entitlements"* ]]; then
-  printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>'
+  if [[ "$name" == "OpenBurnBarPrivilegedInputExecution" ]]; then
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.developer.hid.virtual.device</key><true/></dict></plist>'
+  else
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict/></plist>'
+  fi
   exit 0
 fi
 if [[ "$*" == *"-dr"* ]]; then
@@ -119,6 +147,14 @@ case "$name" in
   OpenBurnBarDaemon)
     identifier="com.openburnbar.app"
     team="$([[ "$scenario" == "mismatched_team" ]] && printf TEAMDAEM01 || printf TEAMAPP001)"
+    ;;
+  OpenBurnBarPrivilegedInputExecution)
+    identifier="com.openburnbar.privileged-input-execution"
+    team="$([[ "$scenario" == "mismatched_execution_team" ]] && printf TEAMEXEC01 || printf TEAMAPP001)"
+    ;;
+  OpenBurnBarVirtualHIDBridge)
+    identifier="com.openburnbar.virtual-hid-bridge"
+    team="TEAMAPP001"
     ;;
   OpenBurnBarPrivilegedInputKillSwitchWatchdog)
     identifier="com.openburnbar.privileged-input-killswitch-watchdog"
@@ -198,7 +234,62 @@ expect_failure "a restricted Keychain entitlement on a bare daemon"
 sign_pair com.openburnbar.app
 codesign --force --sign - --identifier wrong.watchdog.identifier "$watchdog" >/dev/null
 codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
-expect_failure "an ad-hoc or incorrectly identified kill-switch watchdog"
+expect_failure \
+  "an ad-hoc or incorrectly identified kill-switch watchdog" \
+  "ERROR: Kill-switch watchdog has the wrong signing identifier"
+
+sign_pair com.openburnbar.app
+codesign --force --sign - --options runtime,library --identifier wrong.execution.identifier "$execution" >/dev/null
+codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure \
+  "an incorrectly identified privileged input execution helper" \
+  "ERROR: Privileged input execution helper has the wrong signing identifier"
+
+sign_pair com.openburnbar.app
+codesign --force --sign - --identifier com.openburnbar.virtual-hid-bridge "$virtual_hid" >/dev/null
+codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure \
+  "a virtual HID bridge without library validation" \
+  "ERROR: Virtual HID bridge must use hardened runtime and library validation"
+
+sign_pair com.openburnbar.app
+codesign \
+  --force \
+  --sign - \
+  --options runtime,library \
+  --identifier com.openburnbar.privileged-input-execution \
+  "$execution" >/dev/null
+codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure \
+  "a privileged input execution helper missing its HID entitlement" \
+  "ERROR: Privileged input execution helper entitlements must contain only"
+
+sign_pair com.openburnbar.app
+codesign \
+  --force \
+  --sign - \
+  --options runtime,library \
+  --identifier com.openburnbar.virtual-hid-bridge \
+  --entitlements "$tmpdir/restricted.plist" \
+  "$virtual_hid" >/dev/null
+codesign --force --sign - --options runtime,library --identifier com.openburnbar.app "$app" >/dev/null
+expect_failure \
+  "a virtual HID bridge carrying restricted entitlements" \
+  "ERROR: Virtual HID bridge must not carry entitlements"
+
+sign_pair com.openburnbar.app
+mv "$execution" "$execution.missing"
+expect_failure \
+  "a missing privileged input execution helper" \
+  "ERROR: OpenBurnBar privileged input execution helper is missing or symlinked"
+mv "$execution.missing" "$execution"
+
+sign_pair com.openburnbar.app
+mv "$virtual_hid" "$virtual_hid.missing"
+expect_failure \
+  "a missing virtual HID bridge" \
+  "ERROR: OpenBurnBar virtual HID bridge is missing or symlinked"
+mv "$virtual_hid.missing" "$virtual_hid"
 
 sign_pair com.openburnbar.app
 expect_mocked_failure \
@@ -209,6 +300,10 @@ expect_mocked_failure \
   missing_team \
   "ERROR: App and daemon are signed by different teams; app='missing' daemon='missing'." \
   "missing app and daemon Team IDs"
+expect_mocked_failure \
+  mismatched_execution_team \
+  "ERROR: App and Privileged input execution helper are signed by different teams; app='TEAMAPP001' peer='TEAMEXEC01'." \
+  "different app and privileged input execution Team IDs"
 expect_mocked_failure \
   mismatched_authority \
   "ERROR: App and daemon must have the same ordered signing-certificate authority chain." \
