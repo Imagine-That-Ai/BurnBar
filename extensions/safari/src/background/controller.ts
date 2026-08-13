@@ -1422,14 +1422,17 @@ export class SafariBackgroundController {
       );
     }
 
-    const status =
-      (await this.permissionController.status(initialTab.url)) === 'granted'
-        ? 'granted'
-        : await this.permissionController.requestAllWebsites();
-    if (status !== 'granted') {
+    if (!request.websiteAccessGranted) {
       throw new SafariExtensionError(
         'site_permission_denied',
         'Safari did not grant website access. Choose Allow in Safari, then try again.'
+      );
+    }
+    const status = await this.permissionController.status(initialTab.url);
+    if (status !== 'granted') {
+      throw new SafariExtensionError(
+        'authorization_verification_failed',
+        'Safari reported website access, but OpenBurnBar could not verify it. Try again.'
       );
     }
 

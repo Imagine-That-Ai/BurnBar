@@ -314,6 +314,7 @@ describe('WebExtension runtime entrypoints', () => {
     vi.useFakeTimers();
     const { browser, controls } = createMockBrowser();
     const requests: PopupRequest[] = [];
+    const permissionRequest = vi.spyOn(browser.permissions, 'request');
     const clipboardWrite = vi.fn(async (_text: string) => undefined);
     const createObjectURL = vi.fn(() => 'blob:openburnbar-performance');
     const revokeObjectURL = vi.fn();
@@ -596,8 +597,22 @@ describe('WebExtension runtime entrypoints', () => {
       expectedStateVersion: currentSnapshot.stateVersion,
       expectedTabId: 1,
       expectedOrigin: 'https://example.com',
-      acknowledgeCloudScreenshots: true
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
     });
+    expect(permissionRequest).toHaveBeenCalledWith({
+      origins: ['http://*/*', 'https://*/*']
+    });
+    const authorizationMessageOrder = vi
+      .mocked(browser.runtime.sendMessage)
+      .mock.invocationCallOrder.find(
+        (_, index) =>
+          (vi.mocked(browser.runtime.sendMessage).mock.calls[index]?.[0] as PopupRequest | undefined)?.type ===
+          'popup.authorizePage'
+      );
+    expect(permissionRequest.mock.invocationCallOrder[0]).toBeLessThan(
+      requireValue(authorizationMessageOrder, 'authorization message invocation order')
+    );
 
     for (const [inputName, patchKey] of [
       ['trust-site', 'siteAllowed'],
@@ -699,7 +714,8 @@ describe('WebExtension runtime entrypoints', () => {
           expectedStateVersion: 2,
           expectedTabId: 1,
           expectedOrigin: 'https://example.com',
-          acknowledgeCloudScreenshots: true
+          acknowledgeCloudScreenshots: true,
+          websiteAccessGranted: true
         },
         { type: 'popup.performanceSnapshot' },
         { type: 'popup.clearPerformance' },

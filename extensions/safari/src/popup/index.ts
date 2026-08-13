@@ -13,6 +13,7 @@ import { createInitialPopupState, reducePopupState, type PopupLocalAction, type 
 import { buildPopupViewModel } from './viewModel';
 
 const browserAPI = getBrowserAPI();
+const ALL_WEBSITE_ORIGINS = ['http://*/*', 'https://*/*'] as const;
 const popupOpenedAt = performance.now();
 const root = document.getElementById('app');
 if (!root) {
@@ -219,6 +220,43 @@ function trustPatch(key: keyof TrustSettings, value: boolean): PopupRequest {
   };
 }
 
+async function completePermissionSetup(): Promise<void> {
+  const snapshot = state.snapshot;
+  const page = snapshot?.page;
+  if (!snapshot || !page) {
+    return;
+  }
+  let expectedOrigin: string;
+  try {
+    expectedOrigin = new URL(page.url).origin;
+  } catch {
+    return;
+  }
+
+  // Safari requires permissions.request to begin synchronously inside the
+  // user's click. Moving this call behind runtime.sendMessage loses the user
+  // gesture and Safari rejects the request without presenting its sheet.
+  let websiteAccessGranted = false;
+  try {
+    websiteAccessGranted = await browserAPI.permissions.request({
+      origins: [...ALL_WEBSITE_ORIGINS]
+    });
+  } catch {
+    websiteAccessGranted = false;
+  }
+
+  await send({
+    type: 'popup.authorizePage',
+    expectedStateVersion: snapshot.stateVersion,
+    expectedTabId: page.tabId,
+    expectedOrigin,
+    acknowledgeCloudScreenshots: Boolean(
+      buildPopupViewModel(state).selectedAgent?.cloud && !snapshot.trust.cloudScreenshotAcknowledged
+    ),
+    websiteAccessGranted
+  });
+}
+
 appRoot.addEventListener('click', (event) => {
   const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-action]') : null;
   if (!target || target instanceof HTMLButtonElement === false) {
@@ -269,26 +307,7 @@ appRoot.addEventListener('click', (event) => {
     return;
   }
   if (action === 'complete-permission-setup') {
-    const snapshot = state.snapshot;
-    const page = snapshot?.page;
-    if (!snapshot || !page) {
-      return;
-    }
-    let expectedOrigin: string;
-    try {
-      expectedOrigin = new URL(page.url).origin;
-    } catch {
-      return;
-    }
-    void send({
-      type: 'popup.authorizePage',
-      expectedStateVersion: snapshot.stateVersion,
-      expectedTabId: page.tabId,
-      expectedOrigin,
-      acknowledgeCloudScreenshots: Boolean(
-        buildPopupViewModel(state).selectedAgent?.cloud && !snapshot.trust.cloudScreenshotAcknowledged
-      )
-    });
+    void completePermissionSetup();
     return;
   }
   if (action.startsWith('approval:')) {

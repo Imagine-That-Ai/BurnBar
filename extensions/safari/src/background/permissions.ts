@@ -44,14 +44,6 @@ export class SitePermissionController {
     }
   }
 
-  async requestAllWebsites(): Promise<SitePermissionStatus> {
-    try {
-      return (await this.browserAPI.permissions.request({ origins: [...ALL_WEBSITE_ORIGINS] })) ? 'granted' : 'denied';
-    } catch {
-      return 'denied';
-    }
-  }
-
   async revoke(url: string): Promise<boolean> {
     const pattern = permissionPatternForURL(url);
     return this.browserAPI.permissions.remove({ origins: [pattern] });
