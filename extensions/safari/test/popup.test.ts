@@ -413,7 +413,10 @@ describe('popup rendering', () => {
     expect(root.querySelector('[role="group"][aria-label="OpenBurnBar mode"]')?.id).toBe('mode-popover');
     expect(root.querySelector('[data-input="mode-range"]')?.getAttribute('aria-describedby')).toBe('mode-description');
     expect(root.querySelector('[data-input="mode-range"]')?.getAttribute('aria-valuetext')).toBe('Ask');
+    expect(root.querySelector('.mode-fire')?.tagName).toBe('CANVAS');
+    expect(root.querySelector('.mode-knob')?.tagName).toBe('CANVAS');
     expect(root.querySelector('.mode-knob')?.getAttribute('aria-hidden')).toBe('true');
+    expect(root.querySelector<HTMLElement>('.mode-knob')?.style.getPropertyValue('--mode-fraction')).toBe('0');
     expect(root.querySelectorAll('.mode-tick[aria-hidden="true"]')).toHaveLength(4);
     expect(root.querySelectorAll('.mode-button')).toHaveLength(4);
     expect(root.querySelectorAll('.mode-button[aria-pressed="true"]')).toHaveLength(1);
@@ -424,10 +427,39 @@ describe('popup rendering', () => {
     expect(root.querySelector('.stop-button')?.getAttribute('aria-keyshortcuts')).toBe('Control+Alt+Meta+.');
     expect(root.querySelector('.approval-card')?.textContent).toContain('Allow once');
     expect(root.querySelector<HTMLTextAreaElement>('.composer-input')?.value).toBe('Find the least expensive option');
+    expect(root.querySelector('.popup-tools')).toBeNull();
+    expect(root.querySelector('.trust-drawer')).toBeNull();
+    expect(root.querySelector('.learning-drawer')).toBeNull();
+    expect(root.querySelector('.performance-drawer')).toBeNull();
+    expect(root.querySelector('[data-action="toggle-tools"]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(root.querySelector('[data-action="toggle-popup-shape"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(root.querySelector('.content-scroll .activity-strip')).toBeNull();
+    expect(root.querySelector('.content-scroll .agent-drawer')).toBeNull();
+    expect(root.querySelector<HTMLSelectElement>('.composer-agent')?.value).toBe('vision-model');
+    expect(root.querySelector('[data-action="toggle-tools"]')?.hasAttribute('aria-controls')).toBe(false);
+    expect(root.querySelector('.logo')?.getAttribute('alt')).toBe('');
+    expect(root.querySelector('.composer-input')?.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter');
+    expect(root.querySelector('.composer-submit')?.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter');
+    expect(root.querySelector<HTMLButtonElement>('.mode-trigger')?.getAttribute('aria-controls')).toBe('mode-popover');
+    expect(root.querySelector<HTMLButtonElement>('.mode-trigger')?.getAttribute('aria-expanded')).toBe('false');
+    expect(root.querySelector('.composer-submit .icon')?.getAttribute('aria-hidden')).toBe('true');
+    expect(root.querySelector('.error-banner')?.getAttribute('role')).toBe('alert');
+    expect(root.querySelector('img[src="x"]')).toBeNull();
+    expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(root.querySelector('[data-action="approval:approval-1:allow_session"]')).not.toBeNull();
+    expect(
+      root.querySelector('[data-action="approval:approval-1:allow_session"]')?.getAttribute('aria-label')
+    ).toContain('Click “Buy”');
+
+    root.dataset.toolsOpen = 'true';
+    renderPopup(root, buildPopupViewModel(local));
+    expect(root.querySelector('.popup-tools')?.getAttribute('aria-label')).toBe('OpenBurnBar controls');
+    expect(root.querySelector('[data-action="toggle-tools"]')?.getAttribute('aria-controls')).toBe('popup-tools');
     expect(root.querySelector('.trust-drawer')?.textContent).toContain('Screenshots stay on this Mac');
     expect(root.querySelector('.learning-drawer')?.textContent).toContain('Extract store prices');
     expect(root.querySelector('.performance-drawer')?.textContent).toContain('Ask first token');
     expect(root.querySelector('.performance-drawer')?.textContent).toContain('Local timing only');
+    expect(root.querySelector('[data-action="toggle-tools"]')?.getAttribute('aria-expanded')).toBe('true');
     expect(root.querySelector('[data-action="diagnostics-copy"]')?.getAttribute('aria-label')).toContain(
       'privacy-safe'
     );
@@ -446,21 +478,7 @@ describe('popup rendering', () => {
       'learning-correction-note'
     );
     expect(root.querySelector<HTMLButtonElement>('.learning-correction-submit')?.disabled).toBe(false);
-    expect(root.querySelector('.composer-input')?.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter');
-    expect(root.querySelector('.composer-submit')?.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter');
-    expect(root.querySelector<HTMLButtonElement>('.composer-context')?.textContent).toContain('Page');
-    expect(root.querySelector<HTMLButtonElement>('.composer-context')?.disabled).toBe(true);
-    expect(root.querySelector<HTMLButtonElement>('.mode-trigger')?.getAttribute('aria-controls')).toBe('mode-popover');
-    expect(root.querySelector<HTMLButtonElement>('.mode-trigger')?.getAttribute('aria-expanded')).toBe('false');
-    expect(root.querySelector('.composer-submit .icon')?.getAttribute('aria-hidden')).toBe('true');
-    expect(root.querySelector('.error-banner')?.getAttribute('role')).toBe('alert');
-    expect(root.querySelector('img[src="x"]')).toBeNull();
-    expect(root.textContent).toContain('<img src=x onerror=alert(1)>');
-    expect(root.querySelector('[data-action="approval:approval-1:allow_session"]')).not.toBeNull();
     expect(root.querySelector('[data-action="learning:skill-1:approve"]')).not.toBeNull();
-    expect(
-      root.querySelector('[data-action="approval:approval-1:allow_session"]')?.getAttribute('aria-label')
-    ).toContain('Click “Buy”');
     expect(root.querySelector('[data-action="learning:skill-1:approve"]')?.getAttribute('aria-label')).toContain(
       'Extract store prices'
     );
@@ -481,6 +499,7 @@ describe('popup rendering', () => {
       snapshot: snapshot()
     };
     const model = buildPopupViewModel(local);
+    root.dataset.toolsOpen = 'true';
     renderPopup(root, model);
 
     const trust = root.querySelector<HTMLDetailsElement>('.trust-drawer');
@@ -609,13 +628,15 @@ describe('popup rendering', () => {
       initialized: true,
       snapshot: offlineSnapshot
     });
+    root.dataset.toolsOpen = 'true';
     renderPopup(root, model);
     expect(root.getAttribute('aria-busy')).toBe('false');
     expect(root.textContent).toContain('Offline');
     expect(root.textContent).toContain('No compatible agents found');
     expect(root.querySelector('.composer')).toBeNull();
-    expect(root.textContent).toContain('No run activity yet.');
+    expect(root.querySelector('.popup-tools')?.textContent).toContain('No run activity yet.');
 
+    root.dataset.toolsOpen = 'true';
     renderPopup(
       root,
       buildPopupViewModel({
