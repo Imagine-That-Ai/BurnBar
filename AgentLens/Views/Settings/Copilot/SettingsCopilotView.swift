@@ -151,7 +151,8 @@ struct SettingsCopilotResultsView: View {
                         iconTint: item.tab.accentColor,
                         title: item.title,
                         subtitle: item.subtitle,
-                        logoProviders: item.logoProviders
+                        logoProviders: item.logoProviders,
+                        customIcon: item.logoProviders.isEmpty ? item.tab.customIcon : nil
                     )
                 }
                 .buttonStyle(.plain)

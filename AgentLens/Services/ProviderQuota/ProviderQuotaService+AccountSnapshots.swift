@@ -92,14 +92,19 @@ enum ProviderQuotaAccountDisplay {
 
 extension ProviderQuotaService {
     internal func upsertSnapshot(_ snapshot: ProviderQuotaSnapshot, for provider: AgentProvider? = nil) {  // pure-move: was private
+        let previous: ProviderQuotaSnapshot?
         if Self.normalizedSnapshotIdentifier(snapshot.accountID) == nil {
             // Filter out snapshots whose provider string doesn't map to a known
             // AgentProvider — drop rather than crash or mislabel as .claudeCode
             // (which would corrupt the real Claude Code entry in the dict).
             guard let resolvedProvider = provider ?? snapshot.quotaProvider ?? AgentProvider(rawValue: snapshot.provider) else { return }
+            previous = snapshotsByProvider[resolvedProvider]
             snapshotsByProvider[resolvedProvider] = snapshot
+        } else {
+            previous = snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)]
         }
         snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
+        evaluateReset(previous: previous, current: snapshot)
     }
 
     private func upsertAccountSnapshots(_ snapshots: [String: ProviderQuotaSnapshot]) {
@@ -123,6 +128,9 @@ extension ProviderQuotaService {
             return replacementKeys.contains(key)
         }
 
+        for (key, snapshot) in snapshots {
+            evaluateReset(previous: snapshotsByAccountID[key], current: snapshot)
+        }
         upsertAccountSnapshots(snapshots)
     }
 

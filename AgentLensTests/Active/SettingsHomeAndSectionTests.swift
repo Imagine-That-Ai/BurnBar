@@ -73,6 +73,20 @@ final class SettingsHomeAndSectionTests: XCTestCase {
                           "Model Proxy must have a distinct icon from Agents")
     }
 
+    func test_everyTabHasAUniqueBurnBarToken() {
+        var names: [String: SettingsTab] = [:]
+        for tab in SettingsTab.allCases {
+            let name = tab.customIcon
+            XCTAssertTrue(name.hasPrefix("SettingsToken"),
+                          "SettingsTab.\(tab.rawValue) token \(name) should use the SettingsToken family")
+            if let existing = names[name] {
+                XCTFail("Token \(name) is shared by \(existing.rawValue) and \(tab.rawValue)")
+            }
+            names[name] = tab
+        }
+        XCTAssertEqual(names.count, SettingsTab.allCases.count)
+    }
+
     func test_modelProxyTabHasLogoProviders() {
         XCTAssertFalse(SettingsTab.modelProxy.logoProviders.isEmpty,
                        "Model Proxy should carry provider logos for visual identity")

@@ -207,9 +207,10 @@ struct RoutingClientAdvertisedModel: Sendable, Equatable {
     let formatFamily: String
     let servedEndpoints: [String]
     let capabilities: [String]
+    let routeEligible: Bool
+    /// Advertised context window from the daemon (nil = legacy daemon).
     let contextWindowTokens: Int?
     let inputModalities: [String]
-    let routeEligible: Bool
 
     init(
         id: String,
@@ -219,9 +220,9 @@ struct RoutingClientAdvertisedModel: Sendable, Equatable {
         formatFamily: String = "openai_compat",
         servedEndpoints: [String] = [],
         capabilities: [String] = [],
+        routeEligible: Bool,
         contextWindowTokens: Int? = nil,
-        inputModalities: [String] = ["text"],
-        routeEligible: Bool
+        inputModalities: [String] = ["text"]
     ) {
         self.id = id
         self.displayName = displayName
@@ -230,9 +231,41 @@ struct RoutingClientAdvertisedModel: Sendable, Equatable {
         self.formatFamily = formatFamily
         self.servedEndpoints = servedEndpoints
         self.capabilities = capabilities
+        self.routeEligible = routeEligible
         self.contextWindowTokens = contextWindowTokens.flatMap { $0 > 0 ? $0 : nil }
         self.inputModalities = inputModalities.isEmpty ? ["text"] : inputModalities
-        self.routeEligible = routeEligible
+    }
+
+    /// Resolved context window used when writing the Codex sidecar catalog.
+    var resolvedContextWindow: Int {
+        if let v = contextWindowTokens, v > 0 { return v }
+        return Self.inferredContextWindow(providerID: providerID, modelID: id)
+    }
+
+    static func inferredContextWindow(providerID: String, modelID: String) -> Int {
+        let pid = providerID.lowercased()
+        let mid = modelID.lowercased()
+        if pid == "anthropic" {
+            if mid.contains("1m") || mid.contains("[1m]") { return 1_000_000 }
+            return 200_000
+        }
+        if pid == "openai" || pid == "codex" {
+            if mid.contains("gpt-5") || mid.contains("gpt-4") { return 400_000 }
+            if mid.contains("o3") || mid.contains("o4") { return 200_000 }
+            return 128_000
+        }
+        if pid == "google" || pid == "gemini" || mid.contains("gemini") { return 1_000_000 }
+        if mid.contains("gemini") { return 1_000_000 }
+        if pid == "zai" || mid.contains("glm") { return 256_000 }
+        if pid == "minimax" || mid.contains("minimax") { return 320_000 }
+        if pid == "kimi" || pid == "moonshot" || mid.contains("kimi") { return 262_144 }
+        if pid == "deepseek" || mid.contains("deepseek") { return 128_000 }
+        if pid == "xai" || mid.contains("grok") { return 131_072 }
+        if pid == "mistral" || mid.contains("mistral") { return 128_000 }
+        if pid == "alibaba" || mid.contains("qwen") { return 131_072 }
+        if pid == "mimo" || mid.contains("mimo") { return 262_144 }
+        if pid == "ollama" || pid == "ollama-local" || pid == "mlx" { return 131_072 }
+        return 65_536
     }
 
     var isGatewayServedModelCandidate: Bool {

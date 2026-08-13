@@ -12,6 +12,36 @@ import OpenBurnBarMedia
 // Extracted from ComputerUseSessionCoordinator.swift (god-type decomposition) — same module, same isolation, verbatim.
 
 extension ComputerUseSessionCoordinator {
+    struct QuotaReservationPolicy: Equatable {
+        let actionClass: ComputerUseLocalQuotaLedger.ActionClass
+        let exemptsMeteredCap: Bool
+    }
+
+    static func quotaReservationPolicy(
+        for action: ComputerUseAction,
+        originatedFromPhone: Bool
+    ) -> QuotaReservationPolicy {
+        let actionClass: ComputerUseLocalQuotaLedger.ActionClass
+        switch action {
+        case .browser, .safari:
+            actionClass = .browser
+        case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
+            actionClass = .system
+        }
+
+        let exemptsMeteredCap = originatedFromPhone && {
+            switch action {
+            case .macInput, .phoneIntent, .remoteClipboard:
+                return true
+            case .browser, .safari, .macInspect:
+                return false
+            }
+        }()
+        return QuotaReservationPolicy(
+            actionClass: actionClass,
+            exemptsMeteredCap: exemptsMeteredCap
+        )
+    }
 
     public func endSession(reason: ComputerUseEndReason = .completed) async {
         endSessionNow(reason: reason)
@@ -523,26 +553,17 @@ extension ComputerUseSessionCoordinator {
                 return response
             }
 
-            let actionClass: ComputerUseLocalQuotaLedger.ActionClass
-            switch action {
-            case .browser:
-                actionClass = .browser
-            case .macInput, .macInspect, .phoneIntent, .remoteClipboard:
-                actionClass = .system
-            }
-            let exemptsMeteredCap = originatedFromPhone && {
-                switch action {
-                case .macInput, .phoneIntent, .remoteClipboard: return true
-                case .browser, .macInspect: return false
-                }
-            }()
+            let quotaPolicy = Self.quotaReservationPolicy(
+                for: action,
+                originatedFromPhone: originatedFromPhone
+            )
             var quotaReservationInserted = false
             do {
                 let quotaReservation = try quotaLedger.reserveAction(
                     idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
-                    actionClass: actionClass,
+                    actionClass: quotaPolicy.actionClass,
                     originatedFromPhone: originatedFromPhone,
-                    exemptFromMeteredCap: exemptsMeteredCap,
+                    exemptFromMeteredCap: quotaPolicy.exemptsMeteredCap,
                     authoritativeUsage: effectiveUsage,
                     maximumMeteredActions: configuration.budgetEnvelope.activeActionsPerDay
                 )
@@ -645,8 +666,8 @@ extension ComputerUseSessionCoordinator {
                     do {
                         try quotaLedger.rollbackAction(
                             idempotencyKey: "\(sessionId.rawValue)|\(invocation.callID)",
-                            actionClass: actionClass,
-                            exemptFromMeteredCap: exemptsMeteredCap
+                            actionClass: quotaPolicy.actionClass,
+                            exemptFromMeteredCap: quotaPolicy.exemptsMeteredCap
                         )
                     } catch let rollbackError {
                         Self.log.error(
@@ -803,6 +824,13 @@ extension ComputerUseSessionCoordinator {
         case .browser(let browser):
             guard let browserDispatcher else { throw CoordinatorError.missingBrowserDispatcher }
             output = try await browserDispatcher(browser)
+        case .safari:
+            // Safari actions are owned by the daemon coordinator, which can
+            // bind them to the extension session, live tab state, and command
+            // broker. Never reinterpret one as a browser or Mac action here.
+            throw CoordinatorError.unsupportedExecutionSurface(
+                ComputerUseExecutionSurface.safariExtension.rawValue
+            )
         case .macInput(let input):
             if shouldUseVirtualHIDForLockedInput() {
                 Self.log.info("mac_phone_action_virtual_hid_dispatch kind=\(input.kind.rawValue, privacy: .public)")

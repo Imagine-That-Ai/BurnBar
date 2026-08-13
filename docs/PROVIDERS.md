@@ -2,6 +2,8 @@
 
 > Do not regress: every provider must report real data or explicitly state "Not available."
 > Canonical mappings match the macOS and iOS `AgentProvider` schema definitions end-to-end.
+>
+> Reset ceremonies (scheduled / surprise / banked) are documented in [QUOTA_RESETS.md](QUOTA_RESETS.md).
 
 ## Provider Status Table
 

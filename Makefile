@@ -256,6 +256,7 @@ test-full: lint ## Full CI parity (core + Functions + extension evals + supply c
 	@./scripts/test-openburnbar-retrieval-evals.sh
 	@./scripts/test-openburnbar-replay-evals.sh
 	@./scripts/test-openburnbar-extension-host.sh
+	@./scripts/test-openburnbar-safari-extension.sh
 	@./scripts/test-openburnbar-ts.sh
 	@npm --prefix functions run test:firestore-rules
 	@bash scripts/ci/test-storage-rules.sh

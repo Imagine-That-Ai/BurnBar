@@ -197,6 +197,53 @@ final class QuotaSettings {
         }
     }
 
+    var celebrateQuotaResets: Bool = true {
+        didSet {
+            persistence.set(celebrateQuotaResets, forKey: "celebrateQuotaResets")
+            markUpdated()
+        }
+    }
+
+    var celebrateScheduledQuotaResets: Bool = true {
+        didSet {
+            persistence.set(celebrateScheduledQuotaResets, forKey: "celebrateScheduledQuotaResets")
+            markUpdated()
+        }
+    }
+
+    var celebrateSurpriseQuotaResets: Bool = true {
+        didSet {
+            persistence.set(celebrateSurpriseQuotaResets, forKey: "celebrateSurpriseQuotaResets")
+            markUpdated()
+        }
+    }
+
+    var celebrateBankedQuotaResets: Bool = true {
+        didSet {
+            persistence.set(celebrateBankedQuotaResets, forKey: "celebrateBankedQuotaResets")
+            markUpdated()
+        }
+    }
+
+    var quotaResetCelebrationSoundEnabled: Bool = false {
+        didSet {
+            persistence.set(quotaResetCelebrationSoundEnabled, forKey: "quotaResetCelebrationSoundEnabled")
+            markUpdated()
+        }
+    }
+
+    func allowsCelebration(of kind: QuotaResetKind) -> Bool {
+        guard celebrateQuotaResets else { return false }
+        switch kind {
+        case .scheduled:
+            return celebrateScheduledQuotaResets
+        case .surprise:
+            return celebrateSurpriseQuotaResets
+        case .bankedGrant, .bankedRedeem:
+            return celebrateBankedQuotaResets
+        }
+    }
+
     var smartHubQuotaDisplayEnabled: Bool = false {
         didSet { persistence.set(smartHubQuotaDisplayEnabled, forKey: "smartHubQuotaDisplayEnabled") }
     }
@@ -331,6 +378,21 @@ final class QuotaSettings {
         } else {
             self.cumulativeAcrossAccounts = false
         }
+        self.celebrateQuotaResets = persistence.objectExists(forKey: "celebrateQuotaResets")
+            ? persistence.bool(forKey: "celebrateQuotaResets")
+            : true
+        self.celebrateScheduledQuotaResets = persistence.objectExists(forKey: "celebrateScheduledQuotaResets")
+            ? persistence.bool(forKey: "celebrateScheduledQuotaResets")
+            : true
+        self.celebrateSurpriseQuotaResets = persistence.objectExists(forKey: "celebrateSurpriseQuotaResets")
+            ? persistence.bool(forKey: "celebrateSurpriseQuotaResets")
+            : true
+        self.celebrateBankedQuotaResets = persistence.objectExists(forKey: "celebrateBankedQuotaResets")
+            ? persistence.bool(forKey: "celebrateBankedQuotaResets")
+            : true
+        self.quotaResetCelebrationSoundEnabled = persistence.objectExists(forKey: "quotaResetCelebrationSoundEnabled")
+            ? persistence.bool(forKey: "quotaResetCelebrationSoundEnabled")
+            : false
         self.providerOrderCSV = persistence.string(
             forKey: "providerOrderCSV",
             defaultValue: Self.defaultProviderOrderCSV

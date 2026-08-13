@@ -93,8 +93,9 @@ final class FirestoreIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding
 
     /// Clear the host-key pin so a deliberate operator-initiated re-pair can adopt a
     /// new Mac host key. The only sanctioned rotation path.
-    func clearHostKeyPin(uid: String) {
+    func clearHostKeyPin(uid: String) async {
         pinStore.clearPin(uid: uid, roleId: roleId)
+        await cache.remove(for: uid)
     }
 }
 
@@ -127,10 +128,25 @@ enum FirestoreIrohPairingPublicKeyError: Error, Equatable, LocalizedError {
     }
 }
 
+enum MercuryHostIdentityRecovery {
+    static func isPinMismatch(_ error: Error) -> Bool {
+        (error as? FirestoreIrohPairingPublicKeyError) == .hostKeyPinMismatch
+    }
+
+    static func isPinMismatchMessage(_ message: String?) -> Bool {
+        message == FirestoreIrohPairingPublicKeyError.hostKeyPinMismatch.errorDescription
+    }
+
+    static func actionTitle(needsRePair: Bool) -> String {
+        needsRePair ? "Re-pair Mac" : "Reconnect"
+    }
+}
+
 actor PublicKeyCache {
     private var cache: [String: Data] = [:]
 
     func value(for uid: String) -> Data? { cache[uid] }
     func set(_ data: Data, for uid: String) { cache[uid] = data }
+    func remove(for uid: String) { cache.removeValue(forKey: uid) }
     func clear() { cache.removeAll() }
 }

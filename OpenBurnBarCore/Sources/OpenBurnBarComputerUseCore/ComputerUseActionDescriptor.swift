@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 /// Typed action descriptors for every Computer Use tool. The Mac
 /// dispatcher converts a `BurnBarToolInvocation`'s loosely-typed
@@ -9,6 +10,7 @@ import Foundation
 /// it can live in this cross-platform-safe core target.
 public enum ComputerUseAction: Codable, Hashable, Sendable {
     case browser(BrowserAction)
+    case safari(SafariActionDescriptor)
     case macInput(MacInputAction)
     case macInspect(MacInspectAction)
     case phoneIntent(PhoneControlIntent)
@@ -22,6 +24,8 @@ public extension ComputerUseAction {
     func executableSummary(forApproval context: ComputerUseScopeContext? = nil) -> String {
         switch self {
         case .browser(let action):
+            return action.executableSummary(forApproval: context)
+        case .safari(let action):
             return action.executableSummary(forApproval: context)
         case .macInput(let action):
             return action.executableSummary(forApproval: context)
@@ -39,6 +43,7 @@ public extension ComputerUseAction {
     var auditKind: String {
         switch self {
         case .browser(let a): return "browser.\(a.kind.rawValue)"
+        case .safari(let a): return "safari.\(a.kind.rawValue)"
         case .macInput(let a): return "mac.input.\(a.kind.rawValue)"
         case .macInspect(let a): return "mac.inspect.\(a.kind.rawValue)"
         case .phoneIntent(let i): return "phone.\(i.kind.rawValue)"
@@ -116,6 +121,125 @@ public struct BrowserAction: Codable, Hashable, Sendable {
             return "Screenshot the page on \(host)"
         case .extract:
             return "Extract content of \(quoted(selector ?? "<root>")) from \(host)"
+        }
+    }
+}
+
+// MARK: - Safari Web Extension actions (real-session Path B)
+
+public struct SafariActionDescriptor: Codable, Hashable, Sendable {
+    public let kind: BurnBarSafariActionKind
+    public let safariSessionId: String
+    public let tabId: Int?
+    public let expectedNavigationEpoch: Int?
+    public let selector: String?
+    public let text: String?
+    public let url: String?
+    public let navigationOperation: BurnBarSafariNavigationOperation?
+    public let key: String?
+    public let value: String?
+    public let positionX: Double?
+    public let positionY: Double?
+    public let deltaX: Double?
+    public let deltaY: Double?
+    public let script: String?
+    public let timeoutMillis: Int
+
+    public init(
+        kind: BurnBarSafariActionKind,
+        safariSessionId: String,
+        tabId: Int? = nil,
+        expectedNavigationEpoch: Int? = nil,
+        selector: String? = nil,
+        text: String? = nil,
+        url: String? = nil,
+        navigationOperation: BurnBarSafariNavigationOperation? = nil,
+        key: String? = nil,
+        value: String? = nil,
+        positionX: Double? = nil,
+        positionY: Double? = nil,
+        deltaX: Double? = nil,
+        deltaY: Double? = nil,
+        script: String? = nil,
+        timeoutMillis: Int = BurnBarSafariProtocol.defaultCommandTimeoutMillis
+    ) {
+        self.kind = kind
+        self.safariSessionId = safariSessionId
+        self.tabId = tabId
+        self.expectedNavigationEpoch = expectedNavigationEpoch
+        self.selector = selector
+        self.text = text
+        self.url = url
+        self.navigationOperation = navigationOperation
+        self.key = key
+        self.value = value
+        self.positionX = positionX
+        self.positionY = positionY
+        self.deltaX = deltaX
+        self.deltaY = deltaY
+        self.script = script
+        self.timeoutMillis = timeoutMillis
+    }
+
+    public var isReadOnly: Bool { kind.isReadOnly }
+
+    public func executableSummary(forApproval context: ComputerUseScopeContext? = nil) -> String {
+        let host = context?.url.flatMap(extractHost)
+            ?? url.flatMap(extractHost)
+            ?? "this Safari tab"
+        switch kind {
+        case .pageContext:
+            return "Read page context from \(host)"
+        case .screenshot:
+            return "Capture the visible Safari viewport on \(host)"
+        case .fullPageScreenshot:
+            return "Capture the full Safari page on \(host)"
+        case .click:
+            if let selector { return "Click \(quoted(selector)) on \(host)" }
+            if let positionX, let positionY {
+                return "Click at (\(formatCoordinate(positionX)), \(formatCoordinate(positionY))) on \(host)"
+            }
+            return "Click on \(host)"
+        case .type:
+            let target = selector.map(quoted) ?? "the focused field"
+            return "Type \(redactedTextSummary(text)) into \(target) on \(host)"
+        case .pressKey:
+            return "Press \(key ?? "?") on \(host)"
+        case .scroll:
+            return "Scroll \(scrollSummary(deltaX: deltaX, deltaY: deltaY)) on \(host)"
+        case .hover:
+            return "Hover \(selector.map(quoted) ?? "the target") on \(host)"
+        case .focus:
+            return "Focus \(selector.map(quoted) ?? "the target") on \(host)"
+        case .selectOption:
+            return "Select \(quoted(value ?? "<value>")) in \(quoted(selector ?? "<field>")) on \(host)"
+        case .navigate:
+            switch navigationOperation {
+            case .url:
+                return "Navigate Safari to \(url ?? "?")"
+            case .back:
+                return "Navigate Safari back on \(host)"
+            case .forward:
+                return "Navigate Safari forward on \(host)"
+            case .reload:
+                return "Reload \(host) in Safari"
+            case nil:
+                return "Navigate Safari on \(host)"
+            }
+        case .openTab:
+            return "Open a Safari tab for \(url ?? "the requested page")"
+        case .closeTab:
+            return "Close the owned Safari tab \(tabId.map(String.init) ?? "")".trimmingCharacters(in: .whitespaces)
+        case .listTabs:
+            return "List Safari tabs visible to this extension session"
+        case .waitFor:
+            return "Wait for \(selector.map(quoted) ?? "the requested page state") on \(host)"
+        case .runJavaScript:
+            return "Run approved JavaScript (\(script?.utf8.count ?? 0) bytes) on \(host)"
+        case .extract:
+            return "Extract \(selector.map(quoted) ?? "page content") from \(host)"
+        case .abort:
+            return "Stop the Safari agent session"
         }
     }
 }
@@ -351,4 +475,19 @@ private func extractHost(_ url: String) -> String? {
 private func formatNormalized(_ value: Double?) -> String {
     guard let value else { return "?" }
     return String(format: "%.2f", value)
+}
+
+private func formatCoordinate(_ value: Double) -> String {
+    String(format: "%.1f", value)
+}
+
+private func redactedTextSummary(_ text: String?) -> String {
+    guard let text, !text.isEmpty else { return "text" }
+    return "\(text.count) character\(text.count == 1 ? "" : "s")"
+}
+
+private func scrollSummary(deltaX: Double?, deltaY: Double?) -> String {
+    let x = deltaX.map(formatCoordinate) ?? "0"
+    let y = deltaY.map(formatCoordinate) ?? "0"
+    return "by (\(x), \(y))"
 }

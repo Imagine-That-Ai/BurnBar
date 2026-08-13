@@ -8,7 +8,7 @@ import SwiftUI
 // rail (for the #Preview) or as discrete toolbar sections (live in the macOS
 // toolbar via DashboardToolbarContent.swift — the Command Deck bar).
 //
-//   [ back · 🔥 OpenBurnBar · Agents·Models ]   [ 🔍 omnibar (⌘K) ]   [ range · unit · BURN hero · actions ]
+//   [ back · forward · 🔥 OpenBurnBar · Agents·Models ]   [ 🔍 omnibar (⌘K) ]   [ range · unit · BURN hero · actions ]
 //
 // Modernization themes for this iteration:
 //
@@ -98,10 +98,12 @@ struct BurnBarTopRail: View {
 
     let rangeLabel: String
     let canGoBack: Bool
+    var canGoForward: Bool = false
     let isScanning: Bool
     let telemetry: BurnRailTelemetry
 
     var onBack: () -> Void = {}
+    var onForward: () -> Void = {}
     var onRangeTap: () -> Void = {}
     var onSearchSubmit: (String) -> Void = { _ in }
     var onImport: () -> Void = {}
@@ -115,7 +117,9 @@ struct BurnBarTopRail: View {
             BurnRailIdentitySection(
                 viewMode: $viewMode,
                 canGoBack: canGoBack,
-                onBack: onBack
+                canGoForward: canGoForward,
+                onBack: onBack,
+                onForward: onForward
             )
 
             Spacer(minLength: 12)
@@ -175,25 +179,49 @@ struct BurnBarTopRail: View {
     }
 }
 
-// MARK: - Section: Identity (back + flame + view mode)
+// MARK: - Section: Identity (back · forward + flame + view mode)
 
 struct BurnRailIdentitySection: View {
     @Binding var viewMode: BurnRailViewMode
     var canGoBack: Bool = false
+    var canGoForward: Bool = false
     var onBack: () -> Void = {}
+    var onForward: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 10) {
-            if canGoBack {
+            HStack(spacing: 2) {
                 Button(action: onBack) {
                     Image(systemName: "chevron.backward")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .foregroundStyle(
+                            canGoBack
+                                ? DesignSystem.Colors.textSecondary
+                                : DesignSystem.Colors.textMuted.opacity(0.55)
+                        )
                         .frame(width: 22, height: 22)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(!canGoBack)
                 .help("Back")
+                .accessibilityLabel("Back")
+
+                Button(action: onForward) {
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(
+                            canGoForward
+                                ? DesignSystem.Colors.textSecondary
+                                : DesignSystem.Colors.textMuted.opacity(0.55)
+                        )
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canGoForward)
+                .help("Forward")
+                .accessibilityLabel("Forward")
             }
 
             BurnRailBrandMark()
@@ -1467,6 +1495,7 @@ private struct BurnBarTopRailPreviewHost: View {
                 searchText: $search,
                 rangeLabel: range,
                 canGoBack: true,
+                canGoForward: true,
                 isScanning: scanning,
                 telemetry: BurnRailTelemetry(
                     headlineValue: "\(headline)B",
@@ -1476,6 +1505,7 @@ private struct BurnBarTopRailPreviewHost: View {
                     isLive: true
                 ),
                 onBack: {},
+                onForward: {},
                 onRangeTap: { range = (range == "Today") ? "Last 7d" : "Today" },
                 onSearchSubmit: { _ in },
                 onImport: { scanning.toggle() },

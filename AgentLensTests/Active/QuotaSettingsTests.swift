@@ -21,6 +21,19 @@ final class QuotaSettingsTests: XCTestCase {
 
     // MARK: - Cumulative across accounts
 
+    func test_celebrationFlags_defaultOnExceptSound() {
+        let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
+        let settings = QuotaSettings(persistence: coordinator)
+        XCTAssertTrue(settings.celebrateQuotaResets)
+        XCTAssertTrue(settings.celebrateScheduledQuotaResets)
+        XCTAssertTrue(settings.celebrateSurpriseQuotaResets)
+        XCTAssertTrue(settings.celebrateBankedQuotaResets)
+        XCTAssertFalse(settings.quotaResetCelebrationSoundEnabled)
+        XCTAssertTrue(settings.allowsCelebration(of: .surprise))
+        settings.celebrateQuotaResets = false
+        XCTAssertFalse(settings.allowsCelebration(of: .surprise))
+    }
+
     func test_cumulativeAcrossAccounts_defaultsToFalse() {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults)
         let settings = QuotaSettings(persistence: coordinator)

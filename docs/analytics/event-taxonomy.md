@@ -273,6 +273,7 @@ who emits what.
 | `quota.refresh.failed`         | error          | `provider_name`, `duration_ms_bucket`, `error_code`                   |
 | `quota.setup.saved`            | primary_action | `provider_name`, `setup_type`                                        |
 | `quota.workspace.filter_changed` | primary_action | `filter_type`, `new_value`                                          |
+| `quota.reset.celebrated`       | primary_action | `provider_name`, `kind`, `choreography`                               |
 
 ### Budget (`surface: budget`)
 

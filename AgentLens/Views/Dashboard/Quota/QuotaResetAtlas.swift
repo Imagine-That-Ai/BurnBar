@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarCore
 
 // MARK: - QuotaResetAtlas
 //
@@ -10,6 +11,7 @@ import SwiftUI
 struct QuotaResetAtlas: View {
 
     let entries: [SubscriptionEntry]
+    var recentEvents: [QuotaResetEvent] = []
 
     private static let daysForward = 7
 
@@ -82,15 +84,51 @@ struct QuotaResetAtlas: View {
         }
         .padding(DesignSystem.Spacing.lg)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Quota reset atlas, next 7 days")
+        .accessibilityLabel(headerTitle)
+    }
+
+    private var freshestRecentEvent: QuotaResetEvent? {
+        let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
+        return recentEvents
+            .filter { $0.observedAt >= cutoff && $0.presentation == .perform }
+            .max(by: { $0.observedAt < $1.observedAt })
+    }
+
+    private var headerTitle: String {
+        guard let event = freshestRecentEvent else {
+            return "RESET ATLAS · NEXT 7 DAYS"
+        }
+        if event.kind == .surprise, event.mentionsTibo {
+            return "TIBO RESET · \(event.observedAt.formatted(.relative(presentation: .named)).uppercased())"
+        }
+        switch event.kind {
+        case .scheduled:
+            return "WINDOW ROLLED · \(event.providerToken.uppercased())"
+        case .surprise:
+            return "SURPRISE RESET · \(event.providerToken.uppercased())"
+        case .bankedGrant:
+            return "RESET CARD LANDED"
+        case .bankedRedeem:
+            return "RESET CARD CASHED"
+        }
+    }
+
+    private var headerTint: Color {
+        guard let event = freshestRecentEvent else {
+            return DesignSystem.Colors.textMuted
+        }
+        let provider = AgentProvider.fromPersistedToken(event.providerToken)
+            ?? AgentProvider.fromProviderID(event.providerID)
+            ?? .codex
+        return QuotaResetPalette.resolved(for: provider, kind: event.kind, colorScheme: .dark).metal
     }
 
     private var header: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
-            Text("RESET ATLAS · NEXT 7 DAYS")
+            Text(headerTitle)
                 .font(DesignSystem.Typography.monoTiny)
                 .tracking(1.0)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(headerTint)
 
             Spacer()
 
@@ -195,8 +233,19 @@ struct QuotaResetAtlas: View {
                         )
                     )
                 Circle()
-                    .stroke(theme.primaryColor.opacity(0.34), lineWidth: 0.75)
+                    .stroke(
+                        recentKind(for: entry) == nil
+                            ? theme.primaryColor.opacity(0.34)
+                            : theme.primaryColor.opacity(0.85),
+                        lineWidth: recentKind(for: entry) == nil ? 0.75 : 1.4
+                    )
                 ProviderLogoView(provider: entry.provider, size: 14, useFallbackColor: false)
+                if let kind = recentKind(for: entry) {
+                    Image(systemName: kindGlyph(kind))
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(theme.primaryColor)
+                        .offset(x: 8, y: 8)
+                }
             }
             .frame(width: 24, height: 24)
             .shadow(color: theme.primaryColor.opacity(0.22), radius: 2.5, y: 0)
@@ -255,6 +304,23 @@ struct QuotaResetAtlas: View {
         let f = DateFormatter()
         f.dateFormat = "EEE d"
         return f.string(from: bucket.dayStart).uppercased()
+    }
+
+    private func recentKind(for entry: SubscriptionEntry) -> QuotaResetKind? {
+        let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
+        return recentEvents.first {
+            $0.providerID == entry.providerID
+                && $0.observedAt >= cutoff
+                && $0.presentation == .perform
+        }?.kind
+    }
+
+    private func kindGlyph(_ kind: QuotaResetKind) -> String {
+        switch kind {
+        case .scheduled: return "clock.fill"
+        case .surprise: return "hand.point.down.fill"
+        case .bankedGrant, .bankedRedeem: return "creditcard.fill"
+        }
     }
 
     private func timeLabel(for entry: SubscriptionEntry) -> String {

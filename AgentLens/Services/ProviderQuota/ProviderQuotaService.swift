@@ -69,6 +69,7 @@ struct DaemonCredentialSlotAccountProjection {
 final class ProviderQuotaAutomaticRefreshLifecycle: Sendable {
     private struct State {
         var refreshTask: Task<Void, Never>?
+        var resetWakeTask: Task<Void, Never>?
         var apiKeyObserver: NSObjectProtocol?
     }
 
@@ -87,6 +88,24 @@ final class ProviderQuotaAutomaticRefreshLifecycle: Sendable {
         let task = state.withLockUnchecked { state -> Task<Void, Never>? in
             let task = state.refreshTask
             state.refreshTask = nil
+            return task
+        }
+        task?.cancel()
+    }
+
+    func replaceResetWakeTask(_ task: Task<Void, Never>) {
+        let previous = state.withLockUnchecked { state -> Task<Void, Never>? in
+            let previous = state.resetWakeTask
+            state.resetWakeTask = task
+            return previous
+        }
+        previous?.cancel()
+    }
+
+    func cancelResetWakeTask() {
+        let task = state.withLockUnchecked { state -> Task<Void, Never>? in
+            let task = state.resetWakeTask
+            state.resetWakeTask = nil
             return task
         }
         task?.cancel()
@@ -115,6 +134,7 @@ final class ProviderQuotaAutomaticRefreshLifecycle: Sendable {
 
     func cancelAll() {
         cancelRefreshTask()
+        cancelResetWakeTask()
         removeAPIKeyObserver()
     }
 }
@@ -230,6 +250,7 @@ final class ProviderQuotaService {
     internal var routingEventsDirty = false  // pure-move: was private
     internal let automaticRefreshLifecycle = ProviderQuotaAutomaticRefreshLifecycle()  // pure-move: was private
     internal var claudeStatuslineWatcher: ClaudeStatuslineWatcher?  // pure-move: was private
+    internal let celebrationStore: QuotaResetCelebrationStore
 
     init(
         settingsManager: SettingsManager = .shared,
@@ -284,6 +305,7 @@ final class ProviderQuotaService {
 
         let store = ProviderQuotaSnapshotStore(appPaths: appPaths, fileManager: fileManager)
         self.snapshotStore = store
+        self.celebrationStore = QuotaResetCelebrationStore(appPaths: appPaths, fileManager: fileManager)
         self.bridgeManager = ClaudeQuotaBridgeManager(
             appPaths: appPaths,
             homeDirectoryURL: homeDirectoryURL,
@@ -324,6 +346,7 @@ final class ProviderQuotaService {
         loadPersistedRoutingEvents()
         loadPersistedCodexRolloutScanCache()
         refreshClaudeBridgeStatus()
+        evaluateClockCrossResets()
     }
 
     deinit {

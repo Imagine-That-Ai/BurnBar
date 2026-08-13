@@ -246,6 +246,7 @@ struct MercuryLiveSheet: View {
                             canRequestMirror: canRequestMirror,
                             canPlaceCall: canPlaceCall,
                             canSendFile: canSendFiles,
+                            lastFailureReason: controlStreamCoordinator.lastFailureReason,
                             onReconnect: {
                                 Task {
                                     await controlStreamCoordinator.stop()

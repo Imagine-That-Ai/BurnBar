@@ -237,7 +237,7 @@ enum CodexOAuthQuotaFetcher {
         environment: [String: String],
         quotaLogger: any QuotaLogger
     ) throws -> ProviderQuotaSnapshot {
-        try CodexQuotaDomainCoreAdapter.snapshot(
+        let snapshot = try CodexQuotaDomainCoreAdapter.snapshot(
             payload: data,
             now: now,
             environment: environment,
@@ -245,6 +245,8 @@ enum CodexOAuthQuotaFetcher {
         ) {
             try CodexQuotaLegacy.usageSnapshot(data, now: now)
         }
+        let credits = QuotaResetCreditParser.parse(payload: data, now: now)
+        return credits.isEmpty ? snapshot : snapshot.withResetCredits(credits)
     }
 
     private static func loadAuth(from url: URL) throws -> CodexAuth {

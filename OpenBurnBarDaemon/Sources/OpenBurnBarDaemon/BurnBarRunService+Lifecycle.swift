@@ -21,6 +21,9 @@ extension BurnBarRunService {
             throw BurnBarRunServiceError.routeFailed(error.localizedDescription)
         }
         let plannedRun = try plannerService.plan(for: request)
+        let runMetadata = await metadataIncludingSafariLearningContext(
+            for: request
+        )
 
         let runID = BurnBarRunID()
         let plan = BurnBarRunExecutionPlan(request: request)
@@ -28,7 +31,7 @@ extension BurnBarRunService {
             runID: runID,
             originalPrompt: request.prompt,
             modelID: request.modelID,
-            metadata: request.metadata,
+            metadata: runMetadata,
             intent: plannedRun.intent,
             planOutline: plannedRun.outline,
             attempt: 1,
@@ -76,6 +79,53 @@ extension BurnBarRunService {
         )
 
         return BurnBarRunCreateResponse(runID: runID, phase: run.snapshot.phase)
+    }
+
+    func metadataIncludingSafariLearningContext(
+        for request: BurnBarRunCreateRequest
+    ) async -> BurnBarRunCreateMetadata {
+        var metadata = request.metadata
+        guard request.metadata.stringValue(forKey: .surface)
+                == "safari_extension",
+              request.metadata.boolValue(forKey: .learningOptedIn) == true,
+              let safariLearningRecallProvider else {
+            return metadata
+        }
+
+        do {
+            guard let rawContext = try await safariLearningRecallProvider(
+                request.prompt,
+                8
+            ) else {
+                return metadata
+            }
+            let context = rawContext.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            guard context.isEmpty == false,
+                  context.utf8.count <= 16 * 1024 else {
+                logger.warning(
+                    "safari_learning_recall_discarded",
+                    metadata: [
+                        "client_id": request.clientID.rawValue,
+                        "reason": "empty_or_oversized"
+                    ]
+                )
+                return metadata
+            }
+            metadata[.safariLearnedContext] = .string(context)
+        } catch {
+            // Personalization is supplemental. A recall outage, tier change,
+            // or concurrent opt-out must never prevent the user's Safari task.
+            logger.warning(
+                "safari_learning_recall_unavailable",
+                metadata: [
+                    "client_id": request.clientID.rawValue,
+                    "error": error.localizedDescription
+                ]
+            )
+        }
+        return metadata
     }
 
     func transition(
@@ -174,13 +224,11 @@ extension BurnBarRunService {
                 lastRecoveryDecision: checkpoint.lastRecoveryDecision,
                 loopState: checkpoint.loopState
             )
-            let interruptedGeneration = try normalizeInterruptedBrowserComputerUse(&restoredRun)
+            let interruptedNormalization = try normalizeInterruptedBrowserComputerUse(&restoredRun)
             runs[checkpoint.runID] = restoredRun
-            if let interruptedGeneration {
+            if let interruptedNormalization {
                 pendingInterruptedComputerUseNormalizations[checkpoint.runID] =
-                    BurnBarInterruptedComputerUseNormalization(
-                        interruptedGeneration: interruptedGeneration
-                    )
+                    interruptedNormalization
             }
             runOrder.append(checkpoint.runID)
 
@@ -223,7 +271,10 @@ extension BurnBarRunService {
         }
 
         if pending.revocationCompleted == false {
-            if let computerUseRunRevoker {
+            if let requirement = pending.revocationRequirement {
+                await revokeComputerUseBinding(requirement)
+            } else if pending.interruptedTool.isSafariComputerUse == false,
+                      let computerUseRunRevoker {
                 await computerUseRunRevoker(runID, pending.interruptedGeneration)
             }
             pending.revocationCompleted = true

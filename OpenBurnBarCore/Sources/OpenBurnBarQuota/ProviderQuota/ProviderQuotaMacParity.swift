@@ -18,7 +18,8 @@ public extension ProviderQuotaSnapshot {
         managementURL: String?,
         statusMessage: String,
         buckets: [ProviderQuotaBucket],
-        schemaVersion: Int = 2
+        schemaVersion: Int = 2,
+        resetCredits: [QuotaResetCredit] = []
     ) {
         let pid = providerID ?? provider.providerID
         let sid = sourceId ?? accountID ?? "default"
@@ -38,7 +39,8 @@ public extension ProviderQuotaSnapshot {
             statusMessage: statusMessage,
             buckets: buckets,
             schemaVersion: schemaVersion,
-            updatedAt: fetchedAt
+            updatedAt: fetchedAt,
+            resetCredits: resetCredits
         )
     }
 
@@ -70,7 +72,8 @@ public extension ProviderQuotaSnapshot {
             statusMessage: statusMessage,
             buckets: buckets,
             schemaVersion: schemaVersion,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            resetCredits: resetCredits
         )
     }
 }

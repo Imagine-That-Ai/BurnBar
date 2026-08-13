@@ -541,6 +541,19 @@ enum SettingsManifest {
             logoProviders: [.claudeCode, .openAI, .hermes]
         ),
         SettingsItem(
+            id: "general.quotaResetCelebrations",
+            tab: .general,
+            pageRoute: .generalRoot,
+            anchorID: SettingsAnchor.generalQuotaWatch,
+            title: "Quota Reset Celebrations",
+            subtitle: "Scheduled, surprise, and banked reset ceremonies",
+            keywords: [
+                "quota", "reset", "celebration", "tibo", "banked", "card",
+                "weekly", "surprise", "confetti", "jewel"
+            ],
+            logoProviders: [.codex, .claudeCode, .cursor, .xAI]
+        ),
+        SettingsItem(
             id: "agents.quotaDisplay",
             tab: .agents,
             pageRoute: .agentsAdvanced,
@@ -550,7 +563,8 @@ enum SettingsManifest {
             keywords: [
                 "agent", "agents", "quota", "quotas", "popover", "drop down", "dropdown",
                 "menu bar", "menubar", "visible", "hide", "show", "provider", "providers",
-                "codex", "claude", "opencode", "factory", "cursor", "grok"
+                "codex", "claude", "opencode", "factory", "cursor", "grok",
+                "reset", "celebration", "tibo", "banked", "confetti"
             ],
             logoProviders: [.codex, .claudeCode, .openCode, .factory]
         ),
@@ -864,6 +878,7 @@ enum SettingsManifest {
         SettingsAnchor.modelProxyEndpoint,
         SettingsAnchor.modelProxyRouting,
         SettingsAnchor.operatorWizard,
+        SettingsAnchor.generalQuotaWatch,
         SettingsAnchor.appearanceTheme,
         SettingsAnchor.appearanceSkin,
         SettingsAnchor.appearanceGlassTransparency,

@@ -2,6 +2,10 @@ import Foundation
 import os
 import OpenBurnBarCore
 
+#if canImport(AppKit)
+import AppKit
+#endif
+
 extension ProviderQuotaService {
     func isRefreshing(_ provider: AgentProvider) -> Bool {
         activeProviders.contains(provider)
@@ -30,6 +34,7 @@ extension ProviderQuotaService {
         })
 
         startClaudeStatuslineWatcher(dataStore: dataStore)
+        scheduleResetBoundaryWake(dataStore: dataStore)
 
         guard !automaticRefreshLifecycle.hasAPIKeyObserver else { return }
         let providerUserInfoKey = ProviderAPIKeyStore.providerUserInfoKey
@@ -51,12 +56,41 @@ extension ProviderQuotaService {
             }
         }
         automaticRefreshLifecycle.setAPIKeyObserver(observer)
+        #if canImport(AppKit)
+        NotificationCenter.default.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self, weak dataStore] _ in
+            Task { @MainActor in
+                guard let self, let dataStore else { return }
+                self.evaluateClockCrossResets()
+                await self.refreshIfNeeded(dataStore: dataStore, maxAge: 60)
+            }
+        }
+        #endif
     }
 
     func stopAutomaticRefresh() {
         automaticRefreshLifecycle.cancelRefreshTask()
         stopClaudeStatuslineWatcher()
+        automaticRefreshLifecycle.cancelResetWakeTask()
         automaticRefreshLifecycle.removeAPIKeyObserver()
+    }
+
+    func scheduleResetBoundaryWake(dataStore: DataStore) {
+        guard let resetAt = earliestPerformableResetDate() else {
+            automaticRefreshLifecycle.cancelResetWakeTask()
+            return
+        }
+        let delay = max(15, resetAt.timeIntervalSinceNow + Double.random(in: 15...30))
+        automaticRefreshLifecycle.replaceResetWakeTask(Task(priority: .utility) { [weak self, weak dataStore] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self, let dataStore else { return }
+            await self.refreshIfNeeded(dataStore: dataStore, maxAge: 0)
+            self.evaluateClockCrossResets()
+            self.scheduleResetBoundaryWake(dataStore: dataStore)
+        })
     }
 
     /// Arms an FS-event watcher on Claude Code's statusline snapshot file.
@@ -110,6 +144,8 @@ extension ProviderQuotaService {
 
         lastFetch = Date()
         persistSnapshots()
+        scheduleResetBoundaryWake(dataStore: dataStore)
+        evaluateClockCrossResets()
     }
 
     func refresh(provider: AgentProvider, dataStore: DataStore) async {

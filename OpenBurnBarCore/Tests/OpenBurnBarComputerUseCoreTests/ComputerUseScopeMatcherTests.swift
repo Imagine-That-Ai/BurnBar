@@ -223,6 +223,72 @@ final class ComputerUseScopeMatcherTests: XCTestCase {
         }
     }
 
+    func testBuiltInPathDeniesMatchURLInsteadOfWindowTitle() {
+        let cases: [(String, ComputerUseScopeRuleID)] = [
+            (
+                "https://example.com/admin/users",
+                ComputerUseScopeRuleID("builtin.admin_paths")
+            ),
+            (
+                "https://example.com/account/billing?tab=invoices",
+                ComputerUseScopeRuleID("builtin.billing_paths")
+            ),
+            (
+                "https://example.com/?next=%2Fadmin",
+                ComputerUseScopeRuleID("builtin.admin_paths")
+            )
+        ]
+
+        for (url, expectedRule) in cases {
+            XCTAssertEqual(
+                matcher.evaluate(
+                    rules: ComputerUseDenyRegistry.builtInRules,
+                    context: ComputerUseScopeContext(
+                        url: url,
+                        windowTitle: "A title with no path"
+                    )
+                ),
+                .denied(rule: expectedRule),
+                url
+            )
+        }
+    }
+
+    func testBuiltInPathDeniesDoNotMatchLookalikeWords() {
+        for url in [
+            "https://example.com/administrator",
+            "https://example.com/billings",
+            "https://example.com/docs/admin-guide"
+        ] {
+            XCTAssertEqual(
+                matcher.evaluate(
+                    rules: ComputerUseDenyRegistry.builtInRules,
+                    context: ComputerUseScopeContext(url: url)
+                ),
+                .notMatched,
+                url
+            )
+        }
+    }
+
+    func testInvalidURLRegexFailsClosedWithoutCrashing() {
+        let invalid = ComputerUseScopeRule(
+            id: ComputerUseScopeRuleID("deny.invalid-url-regex"),
+            effect: .deny,
+            origin: .user,
+            label: "Invalid URL regex",
+            urlRegex: "[unterminated"
+        )
+
+        XCTAssertEqual(
+            matcher.evaluate(
+                rules: [invalid],
+                context: ComputerUseScopeContext(url: "https://example.com/admin")
+            ),
+            .notMatched
+        )
+    }
+
     func testUserAllowCannotUnmaskBuiltInBrowserTargetDeny() {
         let broadAllow = ComputerUseScopeRule(
             id: ComputerUseScopeRuleID("user.allow.local-testing"),

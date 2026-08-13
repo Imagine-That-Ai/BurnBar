@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="cloud-plate" x1="18" y1="6" x2="112" y2="122" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFBF4" offset="0"/>
+      <stop stop-color="#F6E2C8" offset="1"/>
+    </linearGradient>
+    <linearGradient id="cloud-flame" x1="64" y1="18" x2="64" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE27A" offset="0"/>
+      <stop stop-color="#FEA41C" offset=".46"/>
+      <stop stop-color="#E31B24" offset="1"/>
+    </linearGradient>
+    <linearGradient id="cloud-gold" x1="36" y1="16" x2="100" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE9A0" offset="0"/>
+      <stop stop-color="#F4831F" offset="1"/>
+    </linearGradient>
+    <linearGradient id="cloud-ember" x1="28" y1="20" x2="104" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F67A28" offset="0"/>
+      <stop stop-color="#C41422" offset="1"/>
+    </linearGradient>
+    <linearGradient id="cloud-deep" x1="30" y1="24" x2="102" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E74C16" offset="0"/>
+      <stop stop-color="#9E1020" offset="1"/>
+    </linearGradient>
+    <radialGradient id="cloud-glow" cx="64" cy="40" r="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity=".55" offset="0"/>
+      <stop stop-color="#FFFFFF" stop-opacity="0" offset="1"/>
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#cloud-plate)"/>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#cloud-glow)"/>
+  <path fill="url(#cloud-gold)" d="M86.0,18.0 C97.8,29.5 99.4,40.3 86.0,54.0 C72.6,40.3 74.2,29.5 86.0,18.0Z"/>
+  <path fill="url(#cloud-ember)" d="M38 84c-12 0-18-10-16-20 2-8 10-12 18-10 3-14 20-22 32-14 8-8 24-6 28 6 12-2 22 8 20 18-2 12-12 18-24 16H38Z"/>
+  <path fill="#FFF6E4" d="M42 78c-8 0-12-6-11-12 1-5 7-8 12-6 2-9 14-14 22-9 5-5 16-4 19 4 8-1 15 5 14 11-1 8-8 12-16 11H42Z"/>
+</svg>

@@ -341,6 +341,11 @@ packageTargets.append(contentsOf: [
             "OpenBurnBarDaemon",
             .product(name: "OpenBurnBarInsights", package: "OpenBurnBarCore")
         ],
+        resources: [
+            .copy(
+                "Fixtures/Safari/safari-learning-mixed-week.json"
+            )
+        ],
         // Harness-only test target stays Swift 5 (region-isolation checker gaps).
         swiftSettings: [.swiftLanguageMode(.v5)]
     ),

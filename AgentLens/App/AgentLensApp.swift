@@ -203,6 +203,7 @@ private struct BackgroundSceneWindowDismisser: NSViewRepresentable {
         let view = NSView(frame: .zero)
         DispatchQueue.main.async {
             view.window?.close()
+            (NSApp.delegate as? AppDelegate)?.applyMenuBarActivationPolicy()
         }
         return view
     }
@@ -210,6 +211,7 @@ private struct BackgroundSceneWindowDismisser: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         DispatchQueue.main.async {
             nsView.window?.close()
+            (NSApp.delegate as? AppDelegate)?.applyMenuBarActivationPolicy()
         }
     }
 }
@@ -500,6 +502,12 @@ struct OpenBurnBarApp: App {
                         AppCommandRouter.shared.openSettings?()
                     }
                     .keyboardShortcut(",", modifiers: .command)
+                }
+                CommandMenu("Learning") {
+                    Button("What BurnBar Learned About You…") {
+                        AppCommandRouter.shared.openSafariLearning?()
+                    }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
                 }
                 #if DEBUG
                 CommandMenu("Debug") {

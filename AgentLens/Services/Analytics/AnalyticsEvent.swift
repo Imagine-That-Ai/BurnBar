@@ -70,6 +70,7 @@ enum AnalyticsEvent: String, CaseIterable, Sendable {
     case quotaRefreshFailed = "quota.refresh.failed"
     case quotaSetupSaved = "quota.setup.saved"
     case quotaWorkspaceFilterChanged = "quota.workspace.filter_changed"
+    case quotaResetCelebrated = "quota.reset.celebrated"
     case budgetRuleChanged = "budget.rule.changed"
     case budgetThresholdWarning = "budget.threshold.warning"
     case budgetThresholdBlocked = "budget.threshold.blocked"

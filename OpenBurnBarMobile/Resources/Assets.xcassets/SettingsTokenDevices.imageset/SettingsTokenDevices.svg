@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="devices-plate" x1="18" y1="6" x2="112" y2="122" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFBF4" offset="0"/>
+      <stop stop-color="#F6E2C8" offset="1"/>
+    </linearGradient>
+    <linearGradient id="devices-flame" x1="64" y1="18" x2="64" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE27A" offset="0"/>
+      <stop stop-color="#FEA41C" offset=".46"/>
+      <stop stop-color="#E31B24" offset="1"/>
+    </linearGradient>
+    <linearGradient id="devices-gold" x1="36" y1="16" x2="100" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE9A0" offset="0"/>
+      <stop stop-color="#F4831F" offset="1"/>
+    </linearGradient>
+    <linearGradient id="devices-ember" x1="28" y1="20" x2="104" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F67A28" offset="0"/>
+      <stop stop-color="#C41422" offset="1"/>
+    </linearGradient>
+    <linearGradient id="devices-deep" x1="30" y1="24" x2="102" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E74C16" offset="0"/>
+      <stop stop-color="#9E1020" offset="1"/>
+    </linearGradient>
+    <radialGradient id="devices-glow" cx="64" cy="40" r="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity=".55" offset="0"/>
+      <stop stop-color="#FFFFFF" stop-opacity="0" offset="1"/>
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#devices-plate)"/>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#devices-glow)"/>
+  <rect x="20" y="36" width="64" height="46" rx="6" fill="url(#devices-flame)"/>
+  <rect x="26" y="42" width="52" height="32" rx="3" fill="#FFF6E4"/>
+  <path fill="url(#devices-deep)" d="M16 86h72c4 0 6 4 4 7H14c-2-3 0-7 2-7Z"/>
+  <rect x="84" y="52" width="28" height="44" rx="6" fill="url(#devices-ember)"/>
+  <rect x="89" y="58" width="18" height="28" rx="2" fill="#FFF6E4"/>
+  <rect x="95" y="89" width="6" height="3" rx="1.5" fill="#FFE27A"/>
+  <path fill="none" stroke="url(#devices-gold)" stroke-width="5" stroke-linecap="round" d="M78 28c12 2 22 10 26 22"/>
+</svg>

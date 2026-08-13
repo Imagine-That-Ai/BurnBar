@@ -141,6 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
         installStatusItem()
+        applyMenuBarActivationPolicy()
         installPopoverPrewarming()
         guard OpenBurnBarRuntime.shouldStartBackgroundApplicationServices(
             isPerformanceGateLaunch: OpenBurnBarRuntime.isPerformanceGateLaunch
@@ -165,6 +166,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         _ sender: NSApplication
     ) -> Bool {
         false
+    }
+
+    /// LSUIElement is the Info.plist contract, but Xcode's Debug dylib stub
+    /// and SwiftUI's auto-opened background `Window` can flip the process to
+    /// `.regular` (Dock icon, no visible window, no obvious tray). Force the
+    /// menu-bar extra policy after the status item exists.
+    @MainActor
+    func applyMenuBarActivationPolicy() {
+        guard !OpenBurnBarRuntime.shouldUseTestStubScene else { return }
+        if NSApp.activationPolicy() != .accessory {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
+    nonisolated func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        MainActor.assumeIsolated {
+            applyMenuBarActivationPolicy()
+            if let button = statusItem?.button {
+                showPopover(button)
+            }
+        }
+        return false
     }
     private func installPerformanceGateVisibilityControlIfNeeded() {
         guard OpenBurnBarRuntime.isPerformanceGateLaunch,

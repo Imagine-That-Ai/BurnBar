@@ -1,6 +1,8 @@
 # OpenBurnBar Threat Model and Permission Model
 
-This document describes the security boundaries, permissions, and trust model for the daemon, extension, and app surfaces.
+This document describes the security boundaries, permissions, and trust model
+for the daemon, native app, Cursor/VS Code extension, Safari Web Extension, CLI,
+and optional cloud surfaces.
 
 ## System Components and Trust Boundaries
 
@@ -33,6 +35,14 @@ This document describes the security boundaries, permissions, and trust model fo
 │  │  VS Code/Cursor  │◄── daemon RPC ──────────────────────┘                  │
 │  │  Extension        │                                                       │
 │  └─────────────────┘                                                         │
+│                                                                              │
+│  ┌─────────────────┐ native messaging ┌──────────────────────┐              │
+│  │ Safari real tab  │────────────────►│ sandboxed Safari     │              │
+│  │ + MV3 extension  │◄────────────────│ appex handler        │── daemon RPC  │
+│  └─────────────────┘                  └──────────┬───────────┘              │
+│      per-site grant; page data untrusted        │ bounded App Group chunks  │
+│                                                 ▼                            │
+│                                      group.com.openburnbar.app               │
 │                                                                              │
 │  ┌─────────────────┐    opt-in, short-lived                                  │
 │  │  Cloudflare      │◄── HTTPS tunnel for Cursor BYOK connector              │
@@ -107,6 +117,88 @@ When the extension is active (trusted workspace only), it still gates destructiv
 |---|---|---|
 | Extension displays stale/misleading daemon state | Refresh and reconnect actions are explicit. Health view shows daemon version and protocol mismatch. | A compromised daemon could send false state. |
 | Workspace trust bypass | Extension refuses to load in untrusted workspaces (`untrustedWorkspaces.supported: false`). Tool gating in `capabilities.ts` applies only after trust is established. | If VS Code itself is compromised, trust decisions are unreliable. |
+
+## Safari Web Extension
+
+### What it is
+
+The Safari surface is a Manifest V3 WebExtension embedded in the macOS app as:
+
+```text
+OpenBurnBar.app/Contents/PlugIns/OpenBurnBarSafariExtension.appex
+```
+
+Content scripts run in Safari's isolated JavaScript world after the user grants
+site access. They relay messages to the MV3 background service worker. Only the
+background/extension context invokes native messaging, which enters
+`SafariWebExtensionHandler` in the sandboxed appex. The native handler then
+uses authenticated local OpenBurnBar channels; content scripts do not contact
+the daemon or Keychain directly.
+
+### Permissions and authority
+
+The WebExtension requests active-tab, scripting, storage, tabs, alarms, and
+native-messaging capabilities. Persistent host permissions contain only the
+three loopback gateway forms (`127.0.0.1`, `localhost`, and `[::1]`). Broad
+HTTP/HTTPS page access is optional and remains subject to Safari's per-site
+user grant.
+
+The appex identity is `com.openburnbar.app.safari-extension`. It is sandboxed
+and receives:
+
+- outbound network client
+- App Group `group.com.openburnbar.app`
+- the OpenBurnBar host Keychain access group used for local token resolution
+
+It does not receive the host app's unsandboxed filesystem authority or provider
+API keys.
+
+### Data classification
+
+All page-derived material is untrusted:
+
+- DOM text and attributes
+- accessibility names/roles/state
+- screenshots and image-derived descriptions
+- page URLs and titles
+- extracted data
+- page-authored tool instructions
+- recalled Safari memories and proposed page skills
+
+This material is provenance-tagged and wrapped as data in prompts. It cannot
+change trust mode, tool grants, deny rules, provider choice, approval policy,
+tab ownership, or panic state.
+
+### Threat surface
+
+| Threat | Mitigation | Residual risk |
+|---|---|---|
+| Prompt injection in page text/images | Page context and learned material are explicitly wrapped/labeled as untrusted. The daemon owns system policy and tool grants. Action requests still enter the typed Computer Use gate. | A selected model may reason poorly about adversarial content; policy enforcement must not depend on the model following prose. |
+| Extension obtains excessive site access | Persistent host permissions are restricted to the three exact loopback gateway forms. Broad HTTP/HTTPS page access is optional, Safari presents per-site grants, and OpenBurnBar also checks the live URL against scope and deny rules. | A user can deliberately grant broad Safari access; compromised extension code could observe those granted pages. |
+| Action affects the wrong tab | Runs bind to the user-handed tab plus tabs opened by that run. The handler rechecks live tab identity/URL and page state before each action. | Safari or page races may invalidate a target between check and action; post-action verification and stale-target rejection limit but cannot eliminate UI races. |
+| Dangerous page action | Built-in denies preempt allows; capability/budget/kill-switch/concurrency gates run before execution; trust mode requests approval; every result is audit chained. | A user can knowingly approve a harmful action. Clear previews and protected-domain defaults remain essential. |
+| Stale coordinate/selector after scroll or layout change | Actions scroll into view, wait, re-read bounds, then verify the resulting state before the next step. | Highly dynamic pages can still change between the final read and event dispatch; the action must fail/recover rather than guess. |
+| Content script messages native code directly | Safari native messaging is confined to extension/background pages; content scripts relay through the background message schema. Every envelope is validated and size-bounded. | A compromised background script is inside the extension trust boundary and can issue permitted native messages. |
+| App Group chunk substitution, truncation, or replay | Chunk sets are bound to request/run owner, count, byte ceiling, digest, creation/expiry, and single-consumer cleanup. Missing, duplicate, stale, oversized, or digest-mismatched chunks fail closed. | Another process running as the same user with access to the shared container may race file replacement. Integrity/ownership checks reduce but cannot remove same-user compromise risk. |
+| Provider or screenshot disclosure confusion | The extension has no provider keys. The daemon routes the chosen model and the popup discloses when page imagery/context will leave the Mac. | The chosen provider receives the disclosed data and remains an external processor. |
+| Learned memory/skill poisoning | Learning is opt-in/tier-gated, rejects secrets and denied-domain content, stages proposals for review, records provenance/audit, wraps recall as untrusted, and supports forget/rollback. | Users may approve a low-quality proposal; review UI must preserve evidence and make reversal easy. |
+| Forged same-user daemon peer | Socket token plus fail-closed signed-peer admission requires the exact first-party appex identity, or the message relays through the admitted host app. The daemon gate is never broadened to arbitrary same-user callers. | Compromise of the correctly signed app/appex or theft of its runtime token remains in scope for local compromise response. |
+| Distribution entitlement/profile confusion | Direct and MAS channels independently verify bundle ID, extension point, manifest/resources, Team ID, sandbox, network client, App Group, Keychain group, profile type/expiry/certificate, and nested signing order. MAS host entitlements are target-specific rather than global. | Apple signing/service outages can block release; they must not be bypassed with ad-hoc signing. |
+
+### Panic and audit
+
+Popup Stop and the global Computer Use panic halt terminate the same daemon-owned
+run. Pending Safari work and App Group transport objects are invalidated.
+Allowed, rejected, failed, and aborted actions retain `safari.*` audit entries
+without storing provider keys or raw screenshots in the audit chain.
+
+### Distribution split
+
+The content-script path is App Store safe. AppleScript/Accessibility trusted
+input fallbacks are direct-download-only and remain compiled out or disabled in
+the MAS build. The Mac App Store archive and the expanded exported package both
+verify the nested appex; the public direct-download verifier and mounted-DMG
+smoke do the same for Developer ID artifacts.
 
 ## macOS App
 
@@ -186,18 +278,25 @@ The app makes outbound network requests in the following categories:
 | Connector APIs | GitHub, Slack, Linear, PostHog, Sentry, Gmail | When individual connectors are configured and tested | Connector-specific auth tokens |
 | Telegram | `api.telegram.org` | When Telegram bot is configured | Bot token, notification payloads |
 | Cursor tunnel | Cloudflare | When Cursor connector tunnel is active | Routed model requests (provider keys stay in Keychain) |
+| Safari page assistance | Selected local or cloud provider through the loopback daemon gateway | When the user asks/acts on a granted page | Bounded page excerpt/accessibility structure and, after visible disclosure, viewport imagery needed for the selected request |
 | Local services | `localhost:8642`, `localhost:18789`, etc. | When Hermes/OpenClaw backends are available | Chat messages, retrieval context |
 
 All network requests except provider logos are opt-in and require explicit user configuration. The app is fully functional offline with only local SQLite as the data source.
 
 ## Summary of Trust Assumptions
 
-1. The user's Mac is a single-user trusted environment.
-2. Processes running as the same user are equally trusted (UNIX socket model).
+1. The user's Mac is a single-user operating environment, but arbitrary
+   same-user processes are not automatically trusted as OpenBurnBar peers.
+2. Local IPC requires an auth token; privileged daemon peers additionally
+   require the accepted first-party code identity.
 3. macOS Keychain protects secrets at rest.
 4. Cloud features are opt-in and do not replace local state.
 5. The extension requires a trusted workspace before activation; destructive tools remain gated by VS Code workspace trust when active.
-6. External API calls use provider-specific auth (API keys, bearer tokens, OAuth) — OpenBurnBar does not proxy credentials through its own servers.
+6. Safari page access requires the user's site grant; page actions also require
+   live tab/URL scope, Computer Use policy, and approval as configured.
+7. External API calls use provider-specific auth (API keys, bearer tokens,
+   OAuth) held by the daemon/app — neither editor nor Safari extensions embed
+   provider credentials.
 
 ## Operator plane (`ops/*`)
 

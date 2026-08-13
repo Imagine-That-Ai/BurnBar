@@ -1119,9 +1119,9 @@ extension RoutingClientAdvertisedModel {
             formatFamily: proxyModel.formatFamily,
             servedEndpoints: proxyModel.servedEndpoints,
             capabilities: proxyModel.capabilities,
+            routeEligible: proxyModel.routeEligible,
             contextWindowTokens: proxyModel.contextWindowTokens,
-            inputModalities: proxyModel.inputModalities,
-            routeEligible: proxyModel.routeEligible
+            inputModalities: proxyModel.inputModalities
         )
     }
 }

@@ -18,9 +18,11 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 | [014-shared-rust-domain-core.md](014-shared-rust-domain-core.md) | Pure duplicated business logic shared through Rust adapters |
 | [015-adaptive-backdrop-foreground.md](015-adaptive-backdrop-foreground.md) | Rendered-frame contrast sampling and semantic foregrounds for macOS and Linux |
 | [015-windows-tpm-app-check.md](015-windows-tpm-app-check.md) | Windows lower-trust TPM custom App Check and verifier boundary |
+| [016-safari-extension-trust-boundary.md](016-safari-extension-trust-boundary.md) | Signed, attenuated Safari appex identity, App Group transport, and daemon admission |
 
 Related operational docs:
 
+- [Usage ingest](../USAGE_INGESTION.md) — live vs catch-up lanes, persist mutex, parser budgets
 - [Observability contract](../OBSERVABILITY.md) — trace fields and structured logging
 - [SLO runbook](../runbooks/slos.md) — latency, availability, error budgets, alert paths
 - [Tech debt strategy](../TECH_DEBT_STRATEGY.md) — phased remediation roadmap

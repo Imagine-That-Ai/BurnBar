@@ -53,8 +53,7 @@ extension DashboardView {
                 .accessibilityIdentifier(OBBAccessibilityID.dashboardViewModeSwitcher)
                 .onChange(of: viewMode) { _, _ in
                     withAnimation(DesignSystem.Animation.standard) {
-                        routeHistory.removeAll()
-                        mainRoute = .overview
+                        resetNavigation(to: .overview)
                     }
                 }
 
@@ -67,8 +66,7 @@ extension DashboardView {
                         sessionCount: dashboardUsageWindow.sessionCount
                     ) {
                         withAnimation(DesignSystem.Animation.standard) {
-                            routeHistory.removeAll()
-                            mainRoute = .overview
+                            resetNavigation(to: .overview)
                         }
                     }
 
@@ -288,8 +286,8 @@ private struct DashboardSidebarMaterial: View {
 
 /// SwiftUI's sidebar-removal placement is occasionally reapplied after this
 /// manually hosted dashboard window mounts. Keep the window chrome clean by
-/// removing only the system toggle item; the in-sidebar button remains the
-/// single visible control for this action.
+/// removing only the system toggle item; BurnBar owns back / forward / sidebar
+/// in `dashboardTitlebarNavigationChrome`.
 struct DashboardSidebarToolbarItemRemover: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         DashboardSidebarToolbarScrubberView(frame: .zero)

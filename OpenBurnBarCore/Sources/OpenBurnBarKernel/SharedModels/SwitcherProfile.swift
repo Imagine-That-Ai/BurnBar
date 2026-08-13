@@ -118,6 +118,20 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// Executable basenames accepted for this CLI.
+    ///
+    /// The canonical name stays first so existing installs and wire identities
+    /// remain stable. Cursor's current installer exposes the binary as `agent`,
+    /// while older installs use `cursor-agent`.
+    public var executableNames: [String] {
+        switch self {
+        case .cursorAgent:
+            return [executableName, "agent"]
+        default:
+            return [executableName]
+        }
+    }
+
     /// Trusted executable paths for this CLI.
     public var trustedExecutablePaths: [String] {
         switch self {
@@ -175,7 +189,8 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
             return [
                 "/usr/local/bin/cursor-agent",
                 "/opt/homebrew/bin/cursor-agent",
-                "$HOME/.cursor-agent/bin/cursor-agent"
+                "$HOME/.cursor-agent/bin/cursor-agent",
+                "$HOME/.local/bin/agent"
             ]
         case .omp:
             return [
@@ -196,6 +211,7 @@ public enum SwitcherCLIProfileType: String, Codable, CaseIterable, Sendable {
             return [
                 "/usr/local/bin/kimi",
                 "/opt/homebrew/bin/kimi",
+                "$HOME/.kimi-code/bin/kimi",
                 "$HOME/.kimi/bin/kimi",
                 "$HOME/.local/bin/kimi"
             ]

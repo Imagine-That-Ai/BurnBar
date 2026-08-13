@@ -134,9 +134,9 @@ extension RoutingClientWiring {
                     formatFamily: (row["format_family"] as? String) ?? "openai_compat",
                     servedEndpoints: (row["served_endpoints"] as? [String]) ?? [],
                     capabilities: (row["capabilities"] as? [String]) ?? [],
+                    routeEligible: (row["route_eligible"] as? Bool) ?? true,
                     contextWindowTokens: modelCapabilities?["contextWindowTokens"] as? Int,
-                    inputModalities: (modelCapabilities?["inputModalities"] as? [String]) ?? ["text"],
-                    routeEligible: (row["route_eligible"] as? Bool) ?? true
+                    inputModalities: (modelCapabilities?["inputModalities"] as? [String]) ?? ["text"]
                 )
             }
             return Self.logicalProviderModelCatalog(models)
@@ -182,9 +182,9 @@ extension RoutingClientWiring {
                     formatFamily: row.formatFamily,
                     servedEndpoints: row.servedEndpoints,
                     capabilities: row.capabilities,
+                    routeEligible: row.routeEligible,
                     contextWindowTokens: row.contextWindowTokens,
-                    inputModalities: row.inputModalities,
-                    routeEligible: row.routeEligible
+                    inputModalities: row.inputModalities
                 )
             )
         }
@@ -211,9 +211,9 @@ extension RoutingClientWiring {
             formatFamily: model.formatFamily,
             servedEndpoints: model.servedEndpoints,
             capabilities: model.capabilities,
+            routeEligible: model.routeEligible,
             contextWindowTokens: model.contextWindowTokens,
-            inputModalities: model.inputModalities,
-            routeEligible: model.routeEligible
+            inputModalities: model.inputModalities
         )
     }
 

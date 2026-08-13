@@ -93,6 +93,7 @@ struct SubscriptionCard: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             headerRow
             mainRow
+            resetMemoryRow
             footerRow
 
             if expanded {
@@ -290,6 +291,41 @@ struct SubscriptionCard: View {
     }
 
     // MARK: Footer
+
+    private var resetMemoryRow: some View {
+        let store = ProviderQuotaService.shared.celebrationStore
+        let event = store.latestEvent(for: entry.snapshot)
+        let credits = entry.snapshot.resetCredits
+        return Group {
+            if event != nil || !credits.isEmpty {
+                HStack(spacing: 8) {
+                    if let event {
+                        Button {
+                            store.replay(event)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: event.kind == .surprise ? "hand.point.down.fill" : "clock.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text(event.captionHeadline)
+                                    .font(DesignSystem.Typography.tiny)
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(theme.primaryColor)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Replay this reset")
+                    }
+                    Spacer(minLength: 8)
+                    ForEach(credits.prefix(2)) { credit in
+                        QuotaMicroBadge(
+                            text: credit.expiresAt.map { "Card · \($0.formatted(.relative(presentation: .named)))" } ?? "Reset card",
+                            tint: Color(hex: "E4C37A")
+                        )
+                    }
+                }
+            }
+        }
+    }
 
     private var footerRow: some View {
         HStack(spacing: DesignSystem.Spacing.md) {

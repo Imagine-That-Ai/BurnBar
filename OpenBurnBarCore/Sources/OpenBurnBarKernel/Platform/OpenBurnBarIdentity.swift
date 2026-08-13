@@ -111,6 +111,10 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("provider_quotas.json")
     }
 
+    public var providerQuotaResetLedgerURL: URL {
+        supportDirectory.appendingPathComponent("provider_quota_reset_ledger.json")
+    }
+
     public var providerRoutingEventsURL: URL {
         supportDirectory.appendingPathComponent("provider_routing_events.json")
     }
@@ -135,6 +139,10 @@ public struct OpenBurnBarAppPaths: Sendable {
 
     public var factoryDroidParserCacheURL: URL {
         supportDirectory.appendingPathComponent("factory_droid_parser_cache.json")
+    }
+
+    public var grokParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("grok_parser_cache.json")
     }
 
     public var junieParserCacheURL: URL {

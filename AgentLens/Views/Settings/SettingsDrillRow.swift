@@ -155,7 +155,7 @@ struct SettingsIconTile: View {
                 Image(customIcon)
                     .resizable()
                     .interpolation(.high)
-                    .scaledToFill()
+                    .scaledToFit()
                     .frame(width: size, height: size)
             } else {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)

@@ -10,7 +10,10 @@ final class ProviderPathSettings {
     var logPaths: [AgentProvider: String] = [:] {
         didSet {
             for (provider, path) in logPaths {
-                persistence.set(path, forKey: ProviderPathSettings.defaultsKey(for: provider))
+                persistence.set(
+                    Self.sanitizedLogPath(path),
+                    forKey: ProviderPathSettings.defaultsKey(for: provider)
+                )
             }
         }
     }
@@ -33,7 +36,10 @@ final class ProviderPathSettings {
         for provider in AgentProvider.allCases {
             let customPath = persistence.optionalString(forKey: ProviderPathSettings.defaultsKey(for: provider))
                 ?? persistence.optionalString(forKey: ProviderPathSettings.legacyDefaultsKey(for: provider))
-            loadedLogPaths[provider] = customPath ?? provider.logDirectory
+            loadedLogPaths[provider] = Self.resolvedPersistedLogPath(
+                customPath,
+                provider: provider
+            )
         }
         self.logPaths = loadedLogPaths
     }
@@ -77,8 +83,39 @@ final class ProviderPathSettings {
         return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
     }
 
+    /// First non-empty line of a persisted path. The settings text field has
+    /// historically concatenated the same path twice with blank lines, which
+    /// makes `fileExists` fail closed for Factory and anyone else that used
+    /// that control.
+    static func sanitizedLogPath(_ raw: String) -> String {
+        let firstLine = raw.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first(where: { !$0.isEmpty })
+        if let firstLine {
+            return String(firstLine)
+        }
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Drop persisted values that are not session-log roots. xAI's SuperGrok
+    /// quota sidecar lives under Application Support and was previously
+    /// written into `logPath_xai`, hiding `~/.grok/sessions`.
+    static func resolvedPersistedLogPath(_ raw: String?, provider: AgentProvider) -> String {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return provider.logDirectory
+        }
+        let sanitized = sanitizedLogPath(raw)
+        if provider == .xAI {
+            let expanded = (sanitized as NSString).expandingTildeInPath
+            if expanded.contains("/OpenBurnBar/xai") {
+                return provider.logDirectory
+            }
+        }
+        return sanitized.isEmpty ? provider.logDirectory : sanitized
+    }
+
     private func candidatePaths(for provider: AgentProvider, configuredPath: String) -> [String] {
-        let expandedConfigured = (configuredPath as NSString).expandingTildeInPath
+        let expandedConfigured = (Self.sanitizedLogPath(configuredPath) as NSString).expandingTildeInPath
         var candidates: [String] = []
 
         switch provider {

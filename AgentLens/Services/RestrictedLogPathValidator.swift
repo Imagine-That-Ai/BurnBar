@@ -16,6 +16,7 @@ enum KnownLogRoots {
         "~/.copilot/",
         "~/.aider/",
         "~/.cursor/",
+        "~/.cursor-agent/",
         "~/.codex/",
         "~/.kimi/",
         "~/.windsurf/",
@@ -25,6 +26,16 @@ enum KnownLogRoots {
         "~/.cline/",
         "~/.roo/",
         "~/.forge/",
+        "~/.grok/",
+        "~/.hermes/",
+        "~/.junie/",
+        "~/.pi/",
+        "~/.prime/",
+        "~/.omp/",
+        "~/.openclaude/",
+        "~/.openclaw/",
+        "~/.local/share/opencode/",
+        "~/.local/share/muse/",
         "~/Library/Application Support/OpenBurnBar/"
     ]
 

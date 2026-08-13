@@ -129,7 +129,10 @@ struct QuotaWorkspaceView: View {
                     activeEntriesSection
 
                     if !displayedEntries.isEmpty {
-                        QuotaResetAtlas(entries: displayedEntries)
+                        QuotaResetAtlas(
+                            entries: displayedEntries,
+                            recentEvents: quotaService.celebrationStore.ledger.events
+                        )
                     }
 
                     if showInactiveStorage, !viewModel.setupSlots.isEmpty, selectedProvider == nil {
@@ -163,6 +166,14 @@ struct QuotaWorkspaceView: View {
                 )
             }
             .ignoresSafeArea()
+        }
+        .overlay {
+            if let event = quotaService.celebrationStore.activeEvent,
+               displayedEntries.contains(where: { $0.provider.providerID == event.providerID }) {
+                QuotaResetSealView(event: event)
+                    .padding(DesignSystem.Spacing.xl)
+                    .allowsHitTesting(false)
+            }
         }
         .onAppear {
             Analytics.shared.track(.screenViewed, ["surface": "quota"])

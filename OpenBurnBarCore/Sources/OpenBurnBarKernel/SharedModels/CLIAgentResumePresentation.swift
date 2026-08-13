@@ -87,8 +87,12 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
     case grok
     case cursorAgent = "cursor_agent"
     case opencode
+    case omp
     case gemini
+    case kimi
+    case pi
     case junie
+    case primeAgent = "prime-agent"
 
     public var id: String { rawValue }
 
@@ -107,8 +111,12 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
         case .grok:        return "Grok"
         case .cursorAgent: return "Cursor Agent"
         case .opencode:    return "OpenCode"
+        case .omp:         return "OMP"
         case .gemini:      return "Gemini CLI"
+        case .kimi:        return "Kimi"
+        case .pi:          return "Pi"
         case .junie:       return "Junie"
+        case .primeAgent:  return "Prime Agent"
         }
     }
 
@@ -131,8 +139,12 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
         case .grok:        return .xAI
         case .cursorAgent: return .cursorAgent
         case .opencode:    return .openCode
+        case .omp:         return .omp
         case .gemini:      return .geminiCLI
+        case .kimi:        return .kimi
+        case .pi:          return .piAgent
         case .junie:       return .junie
+        case .primeAgent:  return .primeAgent
         }
     }
 
@@ -148,8 +160,9 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
         case .antigravity: return .antigravity
         case .grok:        return .grok
         case .cursorAgent: return .cursorAgent
+        case .omp:         return .omp
         case .junie:       return .junie
-        case .opencode, .gemini: return nil
+        case .opencode, .gemini, .kimi, .pi, .primeAgent: return nil
         }
     }
 
@@ -166,8 +179,12 @@ public enum CLIAgentResumeTarget: String, CaseIterable, Hashable, Sendable, Iden
         case .grok:        return "71767B"
         case .cursorAgent: return "00B8D4"
         case .opencode:    return "0EA5E9"
+        case .omp:         return "EC4899"
         case .gemini:      return "4285F4"
+        case .kimi:        return "6366F1"
+        case .pi:          return "7C3AED"
         case .junie:       return "48E054"
+        case .primeAgent:  return "582CFF"
         }
     }
 

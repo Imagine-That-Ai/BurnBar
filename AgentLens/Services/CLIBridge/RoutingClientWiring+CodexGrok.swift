@@ -257,7 +257,7 @@ extension RoutingClientWiring {
                 displayName: model.displayName.isEmpty ? model.id : model.displayName,
                 providerName: "\(model.providerName) via OpenBurnBar",
                 priority: 10_000,
-                contextWindow: model.contextWindowTokens ?? 65_536,
+                contextWindow: model.resolvedContextWindow,
                 inputModalities: model.inputModalities
             )
         }
@@ -304,7 +304,7 @@ extension RoutingClientWiring {
         gateway: RoutingClientGateway
     ) -> String {
         let rowSignatures = gatewayServedModels(advertisedModels, target: .codex).map { model -> String in
-            let contextWindow = max(1, model.contextWindowTokens ?? 65_536)
+            let contextWindow = max(1, model.resolvedContextWindow)
             let modalities = Self.codexInputModalities(model.inputModalities).joined(separator: ",")
             return "\(codexProxyModelID(for: model))|\(contextWindow)|\(modalities)"
         }
@@ -432,11 +432,11 @@ extension RoutingClientWiring {
             "default_verbosity": NSNull(),
             "apply_patch_tool_type": NSNull(),
             "web_search_tool_type": "text",
-            "truncation_policy": ["mode": "tokens", "limit": 65_536],
+            "truncation_policy": ["mode": "tokens", "limit": 400_000],
             "supports_parallel_tool_calls": false,
             "supports_image_detail_original": false,
-            "context_window": 65_536,
-            "max_context_window": 65_536,
+            "context_window": 400_000,
+            "max_context_window": 400_000,
             "auto_compact_token_limit": NSNull(),
             "effective_context_window_percent": 95,
             "experimental_supported_tools": [],

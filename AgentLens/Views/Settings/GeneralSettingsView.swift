@@ -483,6 +483,36 @@ struct QuotaCustomizationSettingsDetailView: View {
 
     var body: some View {
         List {
+            Section {
+                Toggle("Celebrate quota resets", isOn: $quotas.celebrateQuotaResets)
+                Toggle("Scheduled weekly / monthly", isOn: $quotas.celebrateScheduledQuotaResets)
+                    .disabled(!quotas.celebrateQuotaResets)
+                Toggle("Surprise / Tibo resets", isOn: $quotas.celebrateSurpriseQuotaResets)
+                    .disabled(!quotas.celebrateQuotaResets)
+                Toggle("Banked reset cards", isOn: $quotas.celebrateBankedQuotaResets)
+                    .disabled(!quotas.celebrateQuotaResets)
+                Toggle("Play a sound", isOn: $quotas.quotaResetCelebrationSoundEnabled)
+                    .disabled(!quotas.celebrateQuotaResets)
+                HStack {
+                    Button("Play a sample") {
+                        quotaService.celebrationStore.playSample(kind: .surprise, provider: .codex)
+                    }
+                    Button("Scheduled") {
+                        quotaService.celebrationStore.playSample(kind: .scheduled, provider: .claudeCode)
+                    }
+                    Button("Banked") {
+                        quotaService.celebrationStore.playSample(kind: .bankedGrant, provider: .codex)
+                    }
+                }
+                .disabled(!quotas.celebrateQuotaResets)
+            } header: {
+                Text("Reset celebrations")
+            } footer: {
+                Text("Scheduled windows are ceremonial. Surprise resets (including Codex “Tibo” folklore) and banked cards are the loud ones. Reduce Motion always wins.")
+                    .font(DesignSystem.Typography.tiny)
+            }
+            .id(SettingsAnchor.generalQuotaWatch)
+
             // MARK: - Section 1: Display Mode
             Section {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {

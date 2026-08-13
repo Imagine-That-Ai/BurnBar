@@ -8,6 +8,8 @@ derived_data="${OPENBURNBAR_MAS_DERIVED_DATA:-build/macos-app-store-readiness-de
 log_path="${OPENBURNBAR_MAS_LOG_PATH:-/tmp/openburnbar-macos-app-store-readiness.log}"
 entitlements="AgentLens/Resources/OpenBurnBarMAS.entitlements"
 direct_entitlements="AgentLens/Resources/OpenBurnBarRelease.entitlements"
+expected_app_group="group.com.openburnbar.app"
+expected_source_keychain_group='$(AppIdentifierPrefix)com.openburnbar.app'
 
 require_entitlement_bool() {
   local file="$1"
@@ -43,6 +45,14 @@ fi
 require_entitlement_bool "$entitlements" "com.apple.security.app-sandbox" "true"
 require_entitlement_bool "$entitlements" "com.apple.security.network.client" "true"
 require_entitlement_value "$entitlements" "com.apple.developer.applesignin" "Default"
+require_entitlement_value \
+  "$entitlements" \
+  "com.apple.security.application-groups" \
+  "$expected_app_group"
+require_entitlement_value \
+  "$entitlements" \
+  "keychain-access-groups" \
+  "$expected_source_keychain_group"
 if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" "$entitlements" >/dev/null 2>&1; then
   echo "MAS entitlements must not include com.apple.security.network.server unless the app exposes reviewer-visible server functionality." >&2
   exit 1
@@ -50,12 +60,22 @@ fi
 
 if [[ -f "$direct_entitlements" ]]; then
   require_entitlement_bool "$direct_entitlements" "com.apple.security.app-sandbox" "false"
+  require_entitlement_value \
+    "$direct_entitlements" \
+    "com.apple.security.application-groups" \
+    "$expected_app_group"
+  require_entitlement_value \
+    "$direct_entitlements" \
+    "keychain-access-groups" \
+    "$expected_source_keychain_group"
 fi
 
 if [[ "${OPENBURNBAR_MAS_CLEAN:-1}" == "1" ]]; then
   rm -rf "$derived_data"
 fi
 mkdir -p "$(dirname "$log_path")"
+
+bash scripts/test-openburnbar-safari-extension.sh
 
 set -o pipefail
 xcodebuild build \
@@ -67,10 +87,13 @@ xcodebuild build \
   ARCHS=arm64 \
   ONLY_ACTIVE_ARCH=YES \
   CODE_SIGNING_ALLOWED=NO \
-  CODE_SIGN_ENTITLEMENTS="$entitlements" \
+  OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS="$entitlements" \
   GCC_PREPROCESSOR_DEFINITIONS='$(inherited) DISTRIBUTION_MAS=1' \
   OTHER_SWIFT_FLAGS='$(inherited) -D DISTRIBUTION_MAS' \
   2>&1 | tee "$log_path" | tail -120
+
+python3 scripts/ci/verify-openburnbar-safari-extension-layout.py \
+  "$derived_data/Build/Products/Release/OpenBurnBar.app/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 
 echo "Mac App Store readiness build passed."
 echo "Log: $log_path"

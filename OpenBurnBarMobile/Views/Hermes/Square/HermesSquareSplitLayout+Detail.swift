@@ -19,6 +19,7 @@ struct MercuryLiveDetailView: View {
 
     @State private var coordinator: MediaControlStreamCoordinator?
     @State private var showCloudStore = false
+    @State private var showRePairConfirm = false
 
     @Environment(\.cloudSubscriptionStore) private var cloudStore
 
@@ -99,18 +100,45 @@ struct MercuryLiveDetailView: View {
                         .controlSize(.regular)
                 } else {
                     Button {
-                        Task { await bootMercuryIfNeeded(force: true) }
+                        if needsRePair {
+                            showRePairConfirm = true
+                        } else {
+                            Task { await bootMercuryIfNeeded(force: true) }
+                        }
                     } label: {
-                        Label("Reconnect", systemImage: "arrow.clockwise")
+                        Label(
+                            MercuryHostIdentityRecovery.actionTitle(needsRePair: needsRePair),
+                            systemImage: needsRePair ? "link.badge.plus" : "arrow.clockwise"
+                        )
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("mercury.boot.primaryAction")
                 }
             }
             .padding(24)
         }
+        .confirmationDialog(
+            "Re-pair this Mac?",
+            isPresented: $showRePairConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Re-pair Mac") {
+                Task { await bootMercuryIfNeeded(force: true, rePair: true) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Only continue if you just reinstalled or signed OpenBurnBar back in on this Mac. This iPhone will trust the Mac’s new Mercury identity.")
+        }
     }
 
-    private func bootMercuryIfNeeded(force: Bool = false) async {
+    private var needsRePair: Bool {
+        MercuryHostIdentityRecovery.isPinMismatchMessage(bootError)
+    }
+
+    private func bootMercuryIfNeeded(force: Bool = false, rePair: Bool = false) async {
+        if rePair, let uid = Auth.auth().currentUser?.uid {
+            await FirestoreIrohPairingPublicKeyProvider.shared.clearHostKeyPin(uid: uid)
+        }
         refreshCoordinator()
         if coordinator == nil || force {
             await ensureMercuryLive(connectionID)

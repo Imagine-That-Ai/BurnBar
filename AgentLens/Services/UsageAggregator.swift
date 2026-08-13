@@ -32,6 +32,7 @@ final class UsageAggregator {
     let summaryEngine: AutoSummaryEngine
 
     private(set) var isRefreshing = false
+    private(set) var isCatchingUp = false
     private(set) var lastRefresh: Date?
     private(set) var errors: [AgentProvider: String] = [:]
     private(set) var parserImportError: String?
@@ -45,6 +46,7 @@ final class UsageAggregator {
     private(set) var apiUsages: [ProviderUsageRecord] = []
     private var projectionWorkerTask: Task<Void, Never>?
     private var conversationIndexingTask: Task<Void, Never>?
+    private var catchUpIngestTask: Task<Void, Never>?
     private var projectionSweepRequested = false
     private var lastProjectionInsightRefreshAt: Date?
     /// Set by `MemoryFootprintWatchdog` when the process footprint crosses
@@ -91,7 +93,10 @@ final class UsageAggregator {
         self.artifactDiscoveryService = artifactDiscoveryService
             ?? ArtifactDiscoveryService(dataStore: dataStore, settingsProvider: settingsManager)
         self.projectionPipelineServiceOverride = projectionPipelineService
-        self.parsers = parserOverrides ?? ParserRegistry.defaultParsers()
+        self.parsers = parserOverrides ?? ParserRegistry.defaultParsers(
+            factorySessionsDirectory: settingsManager.resolvedPath(for: .factory),
+            grokSessionsDirectory: settingsManager.resolvedPath(for: .xAI)?.path
+        )
         self.refreshOrchestrator = RefreshOrchestrator(
             dataStore: dataStore,
             settingsManager: settingsManager,
@@ -144,6 +149,12 @@ final class UsageAggregator {
     }
 
     func refreshAll() async {
+        await refreshAll(lane: .live)
+    }
+
+    /// Live ticks publish recent burn immediately. Catch-up drains historical
+    /// unread bytes in the background and cannot pin the refresh spinner.
+    func refreshAll(lane: UsageIngestionLane) async {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
@@ -177,12 +188,22 @@ final class UsageAggregator {
         // from this `@MainActor` method runs it off the main actor (SE-0338).
         let result: FullRefreshResult
         do {
-            result = try await RefreshBackgroundWork.runFullRefresh(
-                parsers: parsers,
-                dataStore: dataStore,
-                orchestrator: orchestrator,
-                settings: settings
-            )
+            switch lane {
+            case .live:
+                result = try await RefreshBackgroundWork.runLiveRefresh(
+                    parsers: parsers,
+                    dataStore: dataStore,
+                    orchestrator: orchestrator,
+                    settings: settings
+                )
+            case .catchUp:
+                result = try await RefreshBackgroundWork.runFullRefresh(
+                    parsers: parsers,
+                    dataStore: dataStore,
+                    orchestrator: orchestrator,
+                    settings: settings
+                )
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -249,9 +270,78 @@ final class UsageAggregator {
                 // No silent caps: how much new log content this pass read and
                 // how many files the byte budget pushed to the next tick.
                 "parse_new_content_mb": String(result.parseConsumedByteCount / (1024 * 1024)),
-                "parse_deferred_files": String(result.parseDeferredFileCount)
+                "parse_deferred_files": String(result.parseDeferredFileCount),
+                "ingestion_lane": lane == .live ? "live" : "catchup"
             ]
         )
+
+        if lane == .live, !memoryPressureSheddingActive {
+            scheduleCatchUpIngest(
+                parsers: parsers,
+                dataStore: dataStore,
+                orchestrator: orchestrator,
+                settings: settings
+            )
+        }
+    }
+
+    private func scheduleCatchUpIngest(
+        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        dataStore: DataStore,
+        orchestrator: RefreshOrchestrator,
+        settings: RefreshSettingsSnapshot
+    ) {
+        guard catchUpIngestTask == nil else { return }
+        catchUpIngestTask = Task(priority: .utility) { [weak self] in
+            await MainActor.run { self?.isCatchingUp = true }
+            defer {
+                Task { @MainActor in
+                    self?.isCatchingUp = false
+                    self?.catchUpIngestTask = nil
+                }
+            }
+            var remainingSlices = UsageIngestionPolicy.maxCatchUpSlicesPerKick
+            while remainingSlices > 0, !Task.isCancelled {
+                remainingSlices -= 1
+                try? await Task.sleep(
+                    nanoseconds: UsageIngestionPolicy.catchUpSliceDelayNanoseconds
+                )
+                guard !Task.isCancelled else { break }
+                let slice: FullRefreshResult
+                do {
+                    slice = try await RefreshBackgroundWork.runCatchUpRefresh(
+                        parsers: parsers,
+                        dataStore: dataStore,
+                        orchestrator: orchestrator,
+                        settings: settings
+                    )
+                } catch {
+                    break
+                }
+                guard let self else { break }
+                await MainActor.run {
+                    self.mergeCatchUpResult(slice)
+                }
+                if slice.parseDeferredFileCount == 0 {
+                    break
+                }
+                if await MainActor.run(body: { self.memoryPressureSheddingActive }) {
+                    break
+                }
+            }
+        }
+    }
+
+    private func mergeCatchUpResult(_ result: FullRefreshResult) {
+        for (provider, health) in result.parserHealth {
+            parserHealth[provider] = health
+        }
+        for (provider, error) in result.errors {
+            errors[provider] = error
+        }
+        if result.persistenceErrorMessage == nil {
+            Task { await dataStore.reloadUsagesIfChanged() }
+        }
     }
 
     /// Memory-watchdog escape hatch: cancels the heavy optional background
@@ -261,6 +351,9 @@ final class UsageAggregator {
         memoryPressureSheddingActive = true
         conversationIndexingTask?.cancel()
         conversationIndexingTask = nil
+        catchUpIngestTask?.cancel()
+        catchUpIngestTask = nil
+        isCatchingUp = false
         if parserImportError == nil {
             parserImportError = "Background parsing paused: memory footprint reached \(footprintMB)MB. It resumes automatically once memory recovers."
         }
@@ -327,7 +420,7 @@ final class UsageAggregator {
             }
         }
         let recountStartedAt = Date()
-        await refreshAll()
+        await refreshAll(lane: .catchUp)
         // Tell the usage sync domain to reconcile now-orphaned cloud docs on
         // its next pass — a durable state (not a notification) because the
         // sync service is constructed fresh per upload and would miss an

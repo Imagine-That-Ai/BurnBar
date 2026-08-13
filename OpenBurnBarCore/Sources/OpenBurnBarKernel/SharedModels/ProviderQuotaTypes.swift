@@ -639,6 +639,7 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
     public let buckets: [ProviderQuotaBucket]
     public let schemaVersion: Int
     public let updatedAt: Date
+    public let resetCredits: [QuotaResetCredit]
 
     public var sourceID: String { sourceId }
 
@@ -658,7 +659,8 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         statusMessage: String? = nil,
         buckets: [ProviderQuotaBucket],
         schemaVersion: Int = 2,
-        updatedAt: Date
+        updatedAt: Date,
+        resetCredits: [QuotaResetCredit] = []
     ) {
         self.id = id
         self.provider = provider
@@ -676,12 +678,14 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         self.buckets = buckets
         self.schemaVersion = schemaVersion
         self.updatedAt = updatedAt
+        self.resetCredits = resetCredits
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, provider, providerID, accountID, accountLabel, accountStorageScope
         case sourceKind, sourceId, sourceID, fetchedAt, source, confidence
         case managementURL, statusMessage, buckets, schemaVersion, updatedAt
+        case resetCredits
     }
 
     public init(from decoder: Decoder) throws {
@@ -704,6 +708,7 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         buckets = try c.decode([ProviderQuotaBucket].self, forKey: .buckets)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
         updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        resetCredits = try c.decodeIfPresent([QuotaResetCredit].self, forKey: .resetCredits) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -725,6 +730,9 @@ public struct ProviderQuotaSnapshot: Codable, Identifiable, Hashable, Sendable {
         try c.encode(buckets, forKey: .buckets)
         try c.encode(schemaVersion, forKey: .schemaVersion)
         try c.encode(updatedAt, forKey: .updatedAt)
+        if !resetCredits.isEmpty {
+            try c.encode(resetCredits, forKey: .resetCredits)
+        }
     }
 }
 
@@ -786,12 +794,35 @@ public extension ProviderQuotaSnapshot {
             statusMessage: statusMessage,
             buckets: filteredBuckets,
             schemaVersion: schemaVersion,
-            updatedAt: updatedAt
+            updatedAt: updatedAt,
+            resetCredits: resetCredits
         )
     }
 
     var providerToken: String {
         quotaProvider?.persistedToken ?? provider.lowercased()
+    }
+
+    func withResetCredits(_ credits: [QuotaResetCredit]) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            id: id,
+            provider: provider,
+            providerID: providerID,
+            accountID: accountID,
+            accountLabel: accountLabel,
+            accountStorageScope: accountStorageScope,
+            sourceKind: sourceKind,
+            sourceId: sourceId,
+            fetchedAt: fetchedAt,
+            source: source,
+            confidence: confidence,
+            managementURL: managementURL,
+            statusMessage: statusMessage,
+            buckets: buckets,
+            schemaVersion: schemaVersion,
+            updatedAt: updatedAt,
+            resetCredits: credits
+        )
     }
 
     func customizedBuckets(

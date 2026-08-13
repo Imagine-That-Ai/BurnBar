@@ -615,7 +615,27 @@ extension BurnBarHTTPGatewayServer {
             if let contextWindowTokens = model.modelCapabilities?.contextWindowTokens {
                 return contextWindowTokens
             }
+            let pid = model.providerID.lowercased()
             let id = model.id.lowercased()
+            if pid == "anthropic" {
+                if id.contains("1m") || id.contains("[1m]") { return 1_000_000 }
+                return 200_000
+            }
+            if pid == "openai" || pid == "codex" {
+                if id.contains("gpt-5") || id.contains("gpt-4") { return 400_000 }
+                if id.contains("o3") || id.contains("o4") { return 200_000 }
+                return 128_000
+            }
+            if pid == "google" || pid == "gemini" || id.contains("gemini") { return 1_000_000 }
+            if pid == "zai" || id.contains("glm") { return 256_000 }
+            if pid == "minimax" || id.contains("minimax") { return 320_000 }
+            if pid == "kimi" || pid == "moonshot" || id.contains("kimi") { return 262_144 }
+            if pid == "deepseek" || id.contains("deepseek") { return 128_000 }
+            if pid == "xai" || id.contains("grok") { return 131_072 }
+            if pid == "mistral" || id.contains("mistral") { return 128_000 }
+            if pid == "alibaba" || id.contains("qwen") { return 131_072 }
+            if pid == "mimo" || id.contains("mimo") { return 262_144 }
+            if pid == "ollama" || pid == "ollama-local" || pid == "mlx" { return 131_072 }
             if model.formatFamily == BurnBarProviderFormatFamily.anthropic.rawValue,
                id.contains("opus") {
                 return 1_000_000

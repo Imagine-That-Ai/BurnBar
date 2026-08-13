@@ -71,6 +71,7 @@ public struct ParserConversationCacheScrubber {
             appPaths.claudeCodeParserCacheURL,
             appPaths.supportDirectory.appendingPathComponent("openclaude_parser_cache.json"),
             appPaths.factoryDroidParserCacheURL,
+            appPaths.grokParserCacheURL,
             appPaths.junieParserCacheURL
         ]
 

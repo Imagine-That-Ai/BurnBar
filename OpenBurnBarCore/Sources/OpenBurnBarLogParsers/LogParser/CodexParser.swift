@@ -109,13 +109,16 @@ public final class CodexParser: LogParser, Sendable {
                 "SELECT id FROM threads WHERE thread_source = 'subagent'"
             ).compactMap { $0.string("id") })
         } else if hasRolloutPath {
+            // Path heuristic only. Opening every rollout to sniff session_meta
+            // used to stall usage refresh on large ~/.codex trees (hundreds of
+            // GB of tmp/clones/sessions) and starve every later parser.
             subagentSessionIDs = Set(try reader.query(
                 "SELECT id, rollout_path FROM threads"
             ).compactMap { row -> String? in
                 guard let threadID = row.string("id"),
                       let rolloutPath = row.string("rollout_path") else { return nil }
                 let expandedPath = (rolloutPath as NSString).expandingTildeInPath
-                return isCodexSubagentRollout(expandedPath) ? threadID : nil
+                return Self.rolloutPathLooksLikeSubagent(expandedPath) ? threadID : nil
             })
         } else {
             subagentSessionIDs = []
@@ -208,23 +211,10 @@ public final class CodexParser: LogParser, Sendable {
         return (parsed.usages, parsed.conversations, invalidations.sorted())
     }
 
-    private func isCodexSubagentRollout(_ path: String) -> Bool {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
-        defer { try? handle.close() } // try?-ok(read-only teardown)
-
-        guard let prefix = try? handle.read(upToCount: 256 * 1024),
-              !prefix.isEmpty else { return false }
-
-        let text = String(decoding: prefix, as: UTF8.self)
-        for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
-            guard let data = String(line).data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  json["type"] as? String == "session_meta",
-                  let payload = json["payload"] as? [String: Any],
-                  let source = payload["source"] as? [String: Any] else { continue }
-            return source["subagent"] != nil
-        }
-        return false
+    public static func rolloutPathLooksLikeSubagent(_ path: String) -> Bool {
+        let standardized = (path as NSString).standardizingPath.lowercased()
+        let markers = ["/subagents/", "/subagent/", "-subagent-", "_subagent_"]
+        return markers.contains { standardized.contains($0) }
     }
 
 }

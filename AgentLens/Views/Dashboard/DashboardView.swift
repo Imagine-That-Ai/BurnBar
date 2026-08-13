@@ -39,8 +39,7 @@ struct DashboardView: View {
     var iCloudSessionMirrorService: ICloudSessionMirrorService?
     var runtimeContext: OpenBurnBarRuntimeContext?
     @State var consentCoordinator: DashboardConsentCoordinator?
-    @State var mainRoute: DashboardMainRoute = .overview
-    @State var routeHistory: [DashboardMainRoute] = []
+    @State var routeNavigator = DashboardRouteNavigator()
     @State var selectedTimeRange: TimeRange = .today
     @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
     @AppStorage("dashboardViewMode") var storedViewMode: DashboardViewMode = .agents
@@ -237,22 +236,32 @@ struct DashboardView: View {
         }
     }
 
+    var mainRoute: DashboardMainRoute {
+        routeNavigator.current
+    }
+
     var canGoBack: Bool {
-        !routeHistory.isEmpty || mainRoute != .overview
+        routeNavigator.canGoBack
+    }
+
+    var canGoForward: Bool {
+        routeNavigator.canGoForward
     }
 
     func navigate(to route: DashboardMainRoute) {
-        guard route != mainRoute else { return }
-        routeHistory.append(mainRoute)
-        mainRoute = route
+        routeNavigator.navigate(to: route)
+    }
+
+    func resetNavigation(to route: DashboardMainRoute) {
+        routeNavigator.reset(to: route)
     }
 
     func goBack() {
-        if let previous = routeHistory.popLast() {
-            mainRoute = previous
-        } else if mainRoute != .overview {
-            mainRoute = .overview
-        }
+        routeNavigator.goBack()
+    }
+
+    func goForward() {
+        routeNavigator.goForward()
     }
 
     /// Applies an externally requested route (deep links like
@@ -280,28 +289,11 @@ struct DashboardView: View {
     }
 
     var backButtonHelpText: String {
-        if let previous = routeHistory.last {
-            return "Back to \(routeTitle(previous))"
-        }
-        return "Back to Overview"
+        routeNavigator.backHelpText
     }
 
-    func routeTitle(_ route: DashboardMainRoute) -> String {
-        switch route {
-        case .overview: return "Overview"
-        case .insights: return "Insights"
-        case .charts: return "Charts"
-        case .database: return "Database"
-        case .projects: return "Projects"
-        case .missions: return "Missions"
-        case .sessionLogs: return "Session Logs"
-        case .memoryReview: return "Memory"
-        case .inbox: return "Inbox"
-        case .chat: return "Chat"
-        case .quota: return "Quota"
-        case .provider(let provider): return provider.displayName
-        case .model(let modelName): return modelName
-        }
+    var forwardButtonHelpText: String {
+        routeNavigator.forwardHelpText
     }
 
     func openBurnBarCursorExtension() {
@@ -322,6 +314,10 @@ struct DashboardView: View {
 
     func testTriggerGoBack() {
         goBack()
+    }
+
+    func testTriggerGoForward() {
+        goForward()
     }
 
     func testTriggerScan() {
@@ -359,6 +355,9 @@ struct DashboardView: View {
                 detailView
             }
             .navigationSplitViewStyle(.balanced)
+            .toolbar {
+                dashboardTitlebarNavigationChrome
+            }
             .toolbar(removing: .sidebarToggle)
             .clipShape(
                 UnevenRoundedRectangle(

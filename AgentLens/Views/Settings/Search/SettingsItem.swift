@@ -187,6 +187,9 @@ enum SettingsAnchor {
     static let desktopWallpaperProviderGlyphs = "general.appearance.desktopWallpaperProviderGlyphs"
     static let desktopWallpaperClickCycle = "general.appearance.desktopWallpaperClickCycle"
 
+    // General → Quota
+    static let generalQuotaWatch = "general.quota.watch"
+
     // General → Defaults
     static let defaultsTimeRange = "general.defaults.timeRange"
     static let defaultsUsageMode = "general.defaults.usageDisplayMode"

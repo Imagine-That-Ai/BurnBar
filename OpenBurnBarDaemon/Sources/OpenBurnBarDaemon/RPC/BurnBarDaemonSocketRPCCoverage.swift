@@ -111,6 +111,51 @@ enum BurnBarDaemonSocketRPCCoverage {
         .phoneControlPinProvision
     ]
 
+    static let safari: Set<BurnBarRPCMethod> = [
+        .safariBootstrap,
+        .safariUISnapshot,
+        .safariHandoff,
+        .safariApprovalRespond,
+        .safariTrustUpdate,
+        .safariSessionAttach,
+        .safariSessionDetach,
+        .safariSessionStatus,
+        .safariCommandPoll,
+        .safariCommandComplete,
+        .safariPageContext,
+        .safariScreenshot,
+        .safariFullPageScreenshot,
+        .safariClick,
+        .safariType,
+        .safariPressKey,
+        .safariScroll,
+        .safariHover,
+        .safariFocus,
+        .safariSelectOption,
+        .safariNavigate,
+        .safariOpenTab,
+        .safariCloseTab,
+        .safariListTabs,
+        .safariWaitFor,
+        .safariRunJavaScript,
+        .safariExtract,
+        .safariAbort
+    ]
+
+    static let learning: Set<BurnBarRPCMethod> = [
+        .learningPropose,
+        .learningRecall,
+        .learningList,
+        .learningOptIn,
+        .learningUpdate,
+        .learningApprove,
+        .learningReject,
+        .learningForget,
+        .learningRollback,
+        .learningTimeline,
+        .learningOptOut
+    ]
+
     static let media: Set<BurnBarRPCMethod> = [
         .daemonMediaSessionState,
         .daemonMediaCallAccept,
@@ -237,6 +282,8 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(membership)
             .union(tooling)
             .union(computerUse)
+            .union(safari)
+            .union(learning)
             .union(media)
             .union(missionControl)
             .union(client)
@@ -258,6 +305,8 @@ enum BurnBarDaemonSocketRPCCoverage {
         if membership.contains(method) { return "membership" }
         if tooling.contains(method) { return "tooling" }
         if computerUse.contains(method) { return "computer_use" }
+        if safari.contains(method) { return "safari" }
+        if learning.contains(method) { return "learning" }
         if media.contains(method) { return "media" }
         if missionControl.contains(method) { return "mission_control" }
         if client.contains(method) { return "client" }

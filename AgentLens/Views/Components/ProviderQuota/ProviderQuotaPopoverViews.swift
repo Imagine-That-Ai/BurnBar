@@ -208,6 +208,14 @@ struct QuotaPopoverBar: View {
                 .fill(colorScheme == .dark ? Color.white.opacity(0.022) : Color.black.opacity(0.014))
                 .padding(.horizontal, DesignSystem.Spacing.xs)
         )
+        .overlay {
+            if let event = quotaService.celebrationStore.activeEvent,
+               availableProviders.contains(where: { $0.providerID == event.providerID }) {
+                QuotaResetSealView(event: event, compact: true)
+                    .padding(.vertical, 8)
+                    .allowsHitTesting(false)
+            }
+        }
         .task {
             await refreshProviderState()
             guard autoRefreshOnAppear else { return }

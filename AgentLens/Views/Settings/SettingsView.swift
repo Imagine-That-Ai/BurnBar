@@ -207,17 +207,12 @@ struct SettingsView: View {
 
     private func sidebarRow(for tab: SettingsTab) -> some View {
         HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-            if !tab.logoProviders.isEmpty {
-                SettingsProviderLogoStack(providers: tab.logoProviders, size: 26, maxVisible: 5)
-                    .accessibilityHidden(true)
-            } else {
-                SettingsIconTile(
-                    icon: tab.icon,
-                    iconTint: tab.accentColor,
-                    customIcon: tab.customIcon,
-                    symbolSize: 13
-                )
-            }
+            SettingsIconTile(
+                icon: tab.icon,
+                iconTint: tab.accentColor,
+                customIcon: tab.customIcon,
+                symbolSize: 13
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(tab.title)

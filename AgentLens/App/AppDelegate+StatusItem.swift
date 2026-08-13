@@ -30,6 +30,43 @@ extension AppDelegate {
         installStatusItemMouseFallback()
         observeMenuBarIconStyle()
         observeUpdateBadge()
+        QuotaResetJewelPresenter.shared.statusItemButton = item.button
+    }
+
+    func configureQuotaResetCelebrations(quotaService: ProviderQuotaService) {
+        let store = quotaService.celebrationStore
+        store.settingsProvider = { [weak self] in self?.settingsManager?.quotas }
+        store.trayVisibleProvider = { [weak self] in
+            self?.glassPopoverPanel?.isVisible == true || self?.popover?.isShown == true
+        }
+        store.vaultVisibleProvider = {
+            NSApp.windows.contains { window in
+                window.isVisible && window.title.localizedCaseInsensitiveContains("quota")
+            }
+        }
+        store.presentJewel = { performance in
+            QuotaResetJewelPresenter.shared.show(performance)
+        }
+        store.dismissJewel = {
+            QuotaResetJewelPresenter.shared.hide()
+        }
+        store.announce = { text in
+            if let window = NSApp.keyWindow ?? NSApp.windows.first {
+                NSAccessibility.post(
+                    element: window,
+                    notification: .announcementRequested,
+                    userInfo: [.announcement: text]
+                )
+            }
+        }
+        store.notify = { event in
+            QuotaResetCelebrationNotifier.post(event)
+        }
+        QuotaResetJewelPresenter.shared.statusItemButton = statusItem?.button
+        QuotaResetJewelPresenter.shared.onOpen = { [weak self] in
+            guard let button = self?.statusItem?.button else { return }
+            self?.showPopover(button)
+        }
     }
 
     /// Watches `colorfulMenuBarIcon` and swaps the status item image live.
@@ -145,7 +182,7 @@ extension AppDelegate {
         }
     }
 
-    private func showPopover(_ sender: NSStatusBarButton) {
+    func showPopover(_ sender: NSStatusBarButton) {
         let popover = ensurePopover()
 
         // Fallback only: the prewarmer rebuilds content off the click path
@@ -337,6 +374,12 @@ extension AppDelegate {
     private func showSecondaryMenu(_ sender: NSStatusBarButton) {
         let menu = NSMenu()
         let dashboard = menu.addItem(withTitle: "Open Dashboard", action: #selector(openDashboardAction(_:)), keyEquivalent: "d"); dashboard.target = self
+        let learning = menu.addItem(
+            withTitle: "What BurnBar Learned…",
+            action: #selector(openSafariLearningAction(_:)),
+            keyEquivalent: ""
+        )
+        learning.target = self
         let settings = menu.addItem(withTitle: "Settings...", action: #selector(openSettingsAction(_:)), keyEquivalent: ","); settings.target = self
 #if !DISTRIBUTION_MAS
         // cov:ignore on the next line -- status-menu wiring; behavior is
@@ -356,6 +399,10 @@ extension AppDelegate {
 
     @objc private func openSettingsAction(_ sender: Any?) {
         AppCommandRouter.shared.openSettings?()
+    }
+
+    @objc private func openSafariLearningAction(_ sender: Any?) {
+        AppCommandRouter.shared.openSafariLearning?()
     }
 
 #if !DISTRIBUTION_MAS

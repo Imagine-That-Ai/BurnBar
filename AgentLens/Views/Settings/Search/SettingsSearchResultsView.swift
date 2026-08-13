@@ -45,7 +45,8 @@ struct SettingsSearchResultsView: View {
                             title: item.title,
                             subtitle: item.subtitle,
                             value: breadcrumb(for: item),
-                            logoProviders: item.logoProviders
+                            logoProviders: item.logoProviders,
+                            customIcon: item.logoProviders.isEmpty ? item.tab.customIcon : nil
                         )
                     }
                     .buttonStyle(.plain)

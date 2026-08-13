@@ -20,13 +20,19 @@ public struct BurnBarPolicyEngine {
 
     public func risk(for tool: BurnBarToolKind?) -> BurnBarToolRisk {
         switch tool {
-        case .readFile, .searchWorkspace, .none:
+        case .readFile, .searchWorkspace,
+             .safariPageContext, .safariScreenshot, .safariListTabs,
+             .safariWaitFor, .safariExtract, .safariAbort, .none:
             return .low
         case .applyPatch:
             return .medium
         case .runTerminal,
              .browserClick, .browserFill, .browserGoto, .browserKey,
              .browserSelect, .browserScreenshot, .browserExtract,
+             .safariFullPageScreenshot, .safariClick, .safariType,
+             .safariPressKey, .safariScroll, .safariHover, .safariFocus,
+             .safariSelectOption, .safariNavigate, .safariOpenTab,
+             .safariCloseTab, .safariRunJavaScript,
              .macInputClick, .macInputType, .macInputKey,
              .macInputShortcut, .macInputDragDrop, .macInputScroll,
              .macInputPointerMove, .macInspectAccessibility:
@@ -74,6 +80,11 @@ public struct BurnBarPolicyEngine {
         case .applyPatch, .runTerminal,
              .browserClick, .browserFill, .browserGoto, .browserKey,
              .browserSelect, .browserScreenshot, .browserExtract,
+             .safariPageContext, .safariScreenshot, .safariFullPageScreenshot,
+             .safariClick, .safariType, .safariPressKey, .safariScroll,
+             .safariHover, .safariFocus, .safariSelectOption, .safariNavigate,
+             .safariOpenTab, .safariCloseTab, .safariListTabs, .safariWaitFor,
+             .safariRunJavaScript, .safariExtract, .safariAbort,
              .macInputClick, .macInputType, .macInputKey,
              .macInputShortcut, .macInputDragDrop, .macInputScroll,
              .macInputPointerMove, .macInspectAccessibility:
@@ -98,6 +109,14 @@ public struct BurnBarPolicyEngine {
         case .browserClick, .browserFill, .browserGoto, .browserKey,
              .browserSelect, .browserScreenshot, .browserExtract:
             return "OpenBurnBar needs approval before controlling a browser for \(intent.summary.lowercased())."
+        case .safariPageContext, .safariScreenshot, .safariListTabs,
+             .safariWaitFor, .safariExtract, .safariAbort:
+            return "OpenBurnBar needs approval before reading the current Safari session for \(intent.summary.lowercased())."
+        case .safariFullPageScreenshot, .safariClick, .safariType,
+             .safariPressKey, .safariScroll, .safariHover, .safariFocus,
+             .safariSelectOption, .safariNavigate, .safariOpenTab,
+             .safariCloseTab, .safariRunJavaScript:
+            return "OpenBurnBar needs approval before controlling your current Safari tab for \(intent.summary.lowercased())."
         case .macInputClick, .macInputType, .macInputKey,
              .macInputShortcut, .macInputDragDrop, .macInputScroll,
              .macInputPointerMove, .macInspectAccessibility:

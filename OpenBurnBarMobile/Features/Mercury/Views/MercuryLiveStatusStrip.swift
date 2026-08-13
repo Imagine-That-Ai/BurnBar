@@ -22,6 +22,7 @@ struct MercuryLiveStatusStrip: View {
     let canRequestMirror: Bool
     let canPlaceCall: Bool
     let canSendFile: Bool
+    var lastFailureReason: String? = nil
     let onReconnect: () -> Void
     let onMirror: () -> Void
     let onCall: () -> Void
@@ -47,6 +48,9 @@ struct MercuryLiveStatusStrip: View {
             wallpaperChip
             if let moodName {
                 moodChip(name: moodName)
+            }
+            if let lastFailureReason, shouldShowFailureReason {
+                failureChip(reason: lastFailureReason)
             }
         }
         .onAppear {
@@ -83,6 +87,30 @@ struct MercuryLiveStatusStrip: View {
         }
         .buttonStyle(ChipButtonStyle(tint: descriptor.color))
         .accessibilityLabel(descriptor.accessibility)
+    }
+
+    private var shouldShowFailureReason: Bool {
+        switch phase {
+        case .reconnecting, .failed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func failureChip(reason: String) -> some View {
+        Text(reason)
+            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .foregroundStyle(.white.opacity(0.92))
+            .lineLimit(2)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Capsule().stroke(Color(red: 0.85, green: 0.4, blue: 0.4).opacity(0.85), lineWidth: 0.75))
+            )
+            .accessibilityLabel("Mercury failure: \(reason)")
     }
 
     private struct PhaseDescriptor {

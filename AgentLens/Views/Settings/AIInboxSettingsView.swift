@@ -55,8 +55,11 @@ struct AIInboxSettingsView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             HStack(spacing: DesignSystem.Spacing.sm) {
-                Image(systemName: "tray.full")
-                    .foregroundStyle(DesignSystem.Colors.ember)
+                SettingsIconTile(
+                    icon: "tray.full",
+                    iconTint: DesignSystem.Colors.ember,
+                    customIcon: "SettingsTokenAIInbox"
+                )
                 Text("AI Inbox")
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="text-plate" x1="18" y1="6" x2="112" y2="122" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFBF4" offset="0"/>
+      <stop stop-color="#F6E2C8" offset="1"/>
+    </linearGradient>
+    <linearGradient id="text-flame" x1="64" y1="18" x2="64" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE27A" offset="0"/>
+      <stop stop-color="#FEA41C" offset=".46"/>
+      <stop stop-color="#E31B24" offset="1"/>
+    </linearGradient>
+    <linearGradient id="text-gold" x1="36" y1="16" x2="100" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE9A0" offset="0"/>
+      <stop stop-color="#F4831F" offset="1"/>
+    </linearGradient>
+    <linearGradient id="text-ember" x1="28" y1="20" x2="104" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F67A28" offset="0"/>
+      <stop stop-color="#C41422" offset="1"/>
+    </linearGradient>
+    <linearGradient id="text-deep" x1="30" y1="24" x2="102" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E74C16" offset="0"/>
+      <stop stop-color="#9E1020" offset="1"/>
+    </linearGradient>
+    <radialGradient id="text-glow" cx="64" cy="40" r="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity=".55" offset="0"/>
+      <stop stop-color="#FFFFFF" stop-opacity="0" offset="1"/>
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#text-plate)"/>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#text-glow)"/>
+  <rect x="20" y="32" width="58" height="64" rx="12" fill="url(#text-flame)"/>
+  <rect x="30" y="46" width="38" height="8" rx="4" fill="#FFF6E4"/>
+  <rect x="30" y="60" width="30" height="8" rx="4" fill="#FFF6E4"/>
+  <rect x="30" y="74" width="20" height="8" rx="4" fill="#FFF6E4"/>
+  <path fill="url(#text-gold)" d="M98.0,42.0 C106.4,51.0 107.6,59.4 98.0,70.0 C88.4,59.4 89.6,51.0 98.0,42.0Z"/>
+  <path fill="none" stroke="url(#text-gold)" stroke-width="6" stroke-linecap="round" d="M86 40l12-12"/>
+  <path fill="none" stroke="url(#text-gold)" stroke-width="6" stroke-linecap="round" d="M102 66h14"/>
+  <path fill="none" stroke="url(#text-gold)" stroke-width="6" stroke-linecap="round" d="M86 90l12 12"/>
+</svg>

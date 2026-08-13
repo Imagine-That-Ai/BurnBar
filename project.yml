@@ -16,6 +16,10 @@ settings:
     MARKETING_VERSION: "1.0.34"
     CURRENT_PROJECT_VERSION: 76
     CODE_SIGN_STYLE: Automatic
+    # Release scripts override only this host-specific variable. Keeping the
+    # extension's CODE_SIGN_ENTITLEMENTS target-local prevents Mac App Store
+    # re-signing from accidentally stripping its App Group and Keychain grants.
+    OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
     GENERATE_INFOPLIST_FILE: YES
@@ -224,7 +228,7 @@ targets:
         PRODUCT_NAME: OpenBurnBar
         PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app
         DEVELOPMENT_TEAM: 4Y367DF25B
-        CODE_SIGN_ENTITLEMENTS: AgentLens/Resources/OpenBurnBar.entitlements
+        CODE_SIGN_ENTITLEMENTS: "$(OPENBURNBAR_HOST_CODE_SIGN_ENTITLEMENTS)"
         INFOPLIST_KEY_CFBundleDisplayName: OpenBurnBar
         INFOPLIST_KEY_CFBundleName: OpenBurnBar
         INFOPLIST_KEY_NSSupportsAutomaticTermination: NO
@@ -250,13 +254,16 @@ targets:
         # injection has provided it, then patch URL schemes from that plist.
         script: |
           set -euo pipefail
-          SOURCE_PLIST="${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist"
+          SOURCE_PLIST="$(
+            bash "${PROJECT_DIR}/scripts/ci/resolve-google-service-info-plist.sh" \
+              "${PROJECT_DIR}/AgentLens/Resources/GoogleService-Info.plist" || true
+          )"
           BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
           INFO_PLIST="${TARGET_BUILD_DIR}/${INFOPLIST_PATH}"
 
-          if [[ ! -f "${SOURCE_PLIST}" ]]; then
+          if [[ -z "${SOURCE_PLIST}" ]]; then
             rm -f "${BUILT_GOOGLE_PLIST}"
-            echo "warning: GoogleService-Info.plist not found; Google, Apple, and email auth remain disabled."
+            echo "warning: GoogleService-Info.plist not found in the checkout, OPENBURNBAR_GOOGLE_SERVICE_INFO_PLIST, or ~/.openburnbar; Google, Apple, and email auth remain disabled."
             exit 0
           fi
 
@@ -284,6 +291,7 @@ targets:
           fi
         inputFiles:
           - $(PROJECT_DIR)/AgentLens/Resources/GoogleService-Info.plist
+          - $(PROJECT_DIR)/scripts/ci/resolve-google-service-info-plist.sh
           - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
       - name: Block Mac App Check Debug Token In Release
         script: |
@@ -405,6 +413,8 @@ targets:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/ProjectCodeMemory/secret-pattern-corpus.json
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/tools/openburnbar-mcp/select_wand_models.py
     dependencies:
+      - target: OpenBurnBarSafariExtension
+        codeSign: true
       - target: OpenBurnBarDaemonExecutable
         link: false
         embed: false
@@ -546,6 +556,68 @@ targets:
       - package: SQLCipher
         product: SQLCipher
       - sdk: UserNotifications.framework
+
+  OpenBurnBarSafariExtension:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: OpenBurnBarSafariExtension
+        excludes:
+          - Info.plist
+          - Resources
+          - Resources/**
+    info:
+      path: OpenBurnBarSafariExtension/Info.plist
+      properties:
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.Safari.web-extension
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).SafariWebExtensionHandler"
+    settings:
+      base:
+        PRODUCT_NAME: OpenBurnBarSafariExtension
+        PRODUCT_MODULE_NAME: OpenBurnBarSafariExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.openburnbar.app.safari-extension
+        DEVELOPMENT_TEAM: 4Y367DF25B
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
+    postBuildScripts:
+      - name: Embed Safari WebExtension Resources
+        script: |
+          set -euo pipefail
+
+          DIST_DIR="${PROJECT_DIR}/extensions/safari/dist"
+          MANIFEST="${DIST_DIR}/manifest.json"
+          RESOURCES_DIR="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+
+          if [[ ! -f "${MANIFEST}" ]]; then
+            echo "error: Safari WebExtension build is missing ${MANIFEST}. Run the Safari extension build before compiling the appex." >&2
+            exit 1
+          fi
+
+          mkdir -p "${RESOURCES_DIR}"
+          /usr/bin/rsync -a --delete "${DIST_DIR}/" "${RESOURCES_DIR}/"
+
+          if [[ ! -f "${RESOURCES_DIR}/manifest.json" ]]; then
+            echo "error: Safari appex resource copy did not produce Contents/Resources/manifest.json." >&2
+            exit 1
+          fi
+        inputFiles:
+          - $(PROJECT_DIR)/extensions/safari/dist/manifest.json
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/manifest.json
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - sdk: SafariServices.framework
+      - package: OpenBurnBarCore
+        product: OpenBurnBarKernel
 
   OpenBurnBarDaemonExecutable:
     type: tool
@@ -782,6 +854,10 @@ targets:
     platform: macOS
     sources:
       - path: OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests
+        excludes:
+          - "Fixtures/Safari/safari-learning-mixed-week.json"
+      - path: OpenBurnBarDaemon/Tests/OpenBurnBarDaemonTests/Fixtures/Safari/safari-learning-mixed-week.json
+        buildPhase: resources
       - path: tools/project-code-memory/secret-pattern-corpus.json
         buildPhase: resources
     settings:
@@ -904,12 +980,15 @@ targets:
           }
           trap finish EXIT
 
-          SOURCE_PLIST="${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist"
+          SOURCE_PLIST="$(
+            bash "${PROJECT_DIR}/scripts/ci/resolve-google-service-info-plist.sh" \
+              "${PROJECT_DIR}/OpenBurnBarMobile/Resources/GoogleService-Info.plist" || true
+          )"
           BUILT_GOOGLE_PLIST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/GoogleService-Info.plist"
 
-          if [[ ! -f "${SOURCE_PLIST}" ]]; then
+          if [[ -z "${SOURCE_PLIST}" ]]; then
             rm -f "${BUILT_GOOGLE_PLIST}"
-            echo "warning: GoogleService-Info.plist not found; Firebase auth remains disabled."
+            echo "warning: GoogleService-Info.plist not found in the checkout, OPENBURNBAR_GOOGLE_SERVICE_INFO_PLIST, or ~/.openburnbar; Firebase auth remains disabled."
             exit 0
           fi
 
@@ -929,6 +1008,7 @@ targets:
           fi
         inputFiles:
           - $(PROJECT_DIR)/OpenBurnBarMobile/Resources/GoogleService-Info.plist
+          - $(PROJECT_DIR)/scripts/ci/resolve-google-service-info-plist.sh
         outputFiles:
           - $(DERIVED_FILE_DIR)/CopyFirebaseConfigIfPresent.stamp
       - name: Block App Check Debug Token In Release

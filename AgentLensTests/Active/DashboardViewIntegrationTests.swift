@@ -6,11 +6,11 @@ import GRDB
 
 // MARK: - DashboardViewIntegrationTests
 //
-// After the Command Deck cleanup (Step 6), DashboardView stores navigation
-// state in @State properties. @State writes are managed by SwiftUI's view-graph
-// storage and do not persist outside of a mounted view, so these tests verify
-// initial/default state and pure-logic methods rather than simulating
-// mutations on an unmounted view instance.
+// DashboardView keeps navigation state in a pure route navigator wrapped by
+// @State. @State writes are managed by SwiftUI's view-graph storage and do not
+// persist outside of a mounted view, so these tests verify initial/default
+// state and pure-logic methods rather than simulating mutations on an
+// unmounted view instance.
 
 @MainActor
 final class DashboardViewIntegrationTests: XCTestCase {
@@ -45,7 +45,13 @@ final class DashboardViewIntegrationTests: XCTestCase {
 
     func test_initialRouteHistoryIsEmpty() throws {
         let view = try makeDashboardView()
-        XCTAssertEqual(view.routeHistory, [])
+        XCTAssertEqual(view.routeNavigator.backStack, [])
+    }
+
+    func test_initialForwardHistoryIsEmpty() throws {
+        let view = try makeDashboardView()
+        XCTAssertEqual(view.routeNavigator.forwardStack, [])
+        XCTAssertFalse(view.canGoForward)
     }
 
     func test_canGoBackIsFalseOnOverview() throws {
@@ -56,6 +62,11 @@ final class DashboardViewIntegrationTests: XCTestCase {
     func test_backButtonHelpTextOnOverview() throws {
         let view = try makeDashboardView()
         XCTAssertEqual(view.backButtonHelpText, "Back to Overview")
+    }
+
+    func test_forwardButtonHelpTextWhenEmpty() throws {
+        let view = try makeDashboardView()
+        XCTAssertEqual(view.forwardButtonHelpText, "Forward")
     }
 
     func test_settingsSheetStartsClosed() throws {
@@ -77,13 +88,12 @@ final class DashboardViewIntegrationTests: XCTestCase {
         XCTAssertFalse(view.showingSettings)
     }
 
-    func test_routeTitleMapping() throws {
-        let view = try makeDashboardView()
-        XCTAssertEqual(view.routeTitle(.overview), "Overview")
-        XCTAssertEqual(view.routeTitle(.chat), "Chat")
-        XCTAssertEqual(view.routeTitle(.database), "Database")
-        XCTAssertEqual(view.routeTitle(.projects), "Projects")
-        XCTAssertEqual(view.routeTitle(.quota), "Quota")
+    func test_routeTitleMapping() {
+        XCTAssertEqual(DashboardMainRoute.overview.title(), "Overview")
+        XCTAssertEqual(DashboardMainRoute.chat.title(), "Chat")
+        XCTAssertEqual(DashboardMainRoute.database.title(), "Database")
+        XCTAssertEqual(DashboardMainRoute.projects.title(), "Projects")
+        XCTAssertEqual(DashboardMainRoute.quota.title(), "Quota")
     }
 
     func test_commandPaletteStartsClosed() throws {

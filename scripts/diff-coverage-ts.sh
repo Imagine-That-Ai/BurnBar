@@ -15,6 +15,7 @@ threshold="${COVERAGE_THRESHOLD:-80}"
 changed="$(git diff --name-only "$base_ref" HEAD -- \
     'functions/src/*.ts' 'functions/src/**/*.ts' \
     'extensions/openburnbar/src/*.ts' 'extensions/openburnbar/src/**/*.ts' \
+    'extensions/safari/src/*.ts' 'extensions/safari/src/**/*.ts' \
     2>/dev/null || true)"
 if [[ -z "$changed" ]]; then
     echo '{"diffCoverage":{"percent":100.0,"passed":true,"surface":"typescript","method":"no_ts_changes"}}'
@@ -35,6 +36,13 @@ if echo "$changed" | grep -q '^extensions/openburnbar/'; then
     rm -rf "$repo_root/extensions/openburnbar/coverage"
     if ! npm --prefix "$repo_root/extensions/openburnbar" run test:unit -- --coverage 2>/dev/null; then
         echo "::warning::Extension coverage command exited non-zero; requiring fresh coverage evidence." >&2
+    fi
+fi
+if echo "$changed" | grep -q '^extensions/safari/'; then
+    [[ -d "$repo_root/extensions/safari/node_modules" ]] || npm ci --prefix "$repo_root/extensions/safari"
+    rm -rf "$repo_root/extensions/safari/coverage"
+    if ! npm --prefix "$repo_root/extensions/safari" run test:coverage 2>/dev/null; then
+        echo "::warning::Safari extension coverage command exited non-zero; requiring fresh coverage evidence." >&2
     fi
 fi
 if echo "$changed" | grep -q '^functions/'; then
@@ -76,6 +84,8 @@ patterns = [
     "functions/src/**/*.ts",
     "extensions/openburnbar/src/*.ts",
     "extensions/openburnbar/src/**/*.ts",
+    "extensions/safari/src/*.ts",
+    "extensions/safari/src/**/*.ts",
 ]
 changed = []
 for pattern in patterns:
@@ -97,6 +107,7 @@ if not changed:
 coverage_paths = [
     os.path.join(repo_root, "functions", "coverage", "coverage-final.json"),
     os.path.join(repo_root, "extensions", "openburnbar", "coverage", "coverage-final.json"),
+    os.path.join(repo_root, "extensions", "safari", "coverage", "coverage-final.json"),
 ]
 line_cov = {}
 for cov_path in coverage_paths:

@@ -7,6 +7,96 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - BurnBar settings tokens
+
+- Every Settings sidebar row now uses a cream-plate BurnBar token instead of a
+  mixed bag of SF Symbols, provider-logo stacks, and leftover illustrated tiles.
+- The family is one silhouette per destination — house, agents, proxy hub,
+  gear, person, cloud, devices, bell, message, engine, download, shield, snippet,
+  play window, cursor, paw — in the ember-to-gold flame palette, drawn to stay
+  readable at the 28pt tile size.
+- Search and copilot rows inherit the same token when they are not already
+  carrying a provider logo.
+
+### Fixed - Mercury reconnect loop on an iroh-less Mac build
+
+- A development install that lacked `Vendor/OpenBurnBarIroh.xcframework`
+  still published Hermes as online. The iPhone then dialed a Mac that
+  could never accept iroh, so Mercury sat on Reconnecting and never
+  advertised mirror or calls. Isolated worktree builds now get the
+  xcframework linked, and the Live sheet surfaces the last failure
+  reason instead of a silent reconnect badge.
+
+### Fixed - Mercury re-pair after a Mac identity change
+
+- Tapping a paired Mac after OpenBurnBar was reinstalled or signed back in
+  could stall on "This Mac's secure Mercury identity changed" because
+  Reconnect retried the refused host-key pin. The connecting screen now
+  offers **Re-pair Mac**, which is the sanctioned TOFU rotation: it clears
+  the old pin and trusts the Mac's newly published identity.
+
+### Fixed - Mac phone pairing after a worktree install
+
+- Isolated worktree / development installs that lacked the gitignored
+  `GoogleService-Info.plist` shipped with cloud auth disabled. The Mac then
+  stayed anonymous, never published a Hermes relay or iroh pairing record,
+  and the iPhone could not show the MacBook or deliver Hermes messages.
+- Local Apple copy phases now resolve the plist from the checkout, an
+  explicit `OPENBURNBAR_GOOGLE_SERVICE_INFO_PLIST`, or
+  `~/.openburnbar/GoogleService-Info.plist` (never on CI).
+
+### Added - Quota reset celebrations
+
+- OpenBurnBar now notices when a quota window actually resets and performs
+  it: a ceremonial clock for scheduled weekly/monthly rolls, a plunger seal
+  for mid-window surprise refills (Codex copy may mention Tibo as community
+  folklore, never a likeness or partnership), and a foil card for banked
+  grants and redemptions.
+- Detection lives in Core and refuses the easy lies: 5-hour windows stay
+  quiet, estimated SuperGrok pacing never celebrates, a doubled Cursor cap
+  is not a reset, and a late refresh after sleep is scheduled, not Tibo.
+- If the tray and Subscription Vault are closed, a nonactivating jewel
+  hangs from the menu bar. If they are open, the quota row, atlas, and arc
+  dial are the stage. Banked cards and the last reset stay on the card.
+- Settings → Quota Watch & Order can mute scheduled, surprise, or banked
+  ceremonies independently. Sound is off by default.
+
+### Fixed - Usage refresh no longer captures only Claude Code burn
+
+- Split ingest into a parallel **live** lane (files touched in the last 12h)
+  and an isolated **catch-up** lane for historical unread bytes. The menu-bar
+  refresh waits only for live; a 3GB Claude tail can no longer delay Grok or
+  Factory measurement.
+- Give each provider its own byte budget and run providers concurrently on
+  the live tick so one parser cannot pin the others.
+- Stop opening every Codex rollout file during thread fetch just to classify
+  subagents; use `thread_source` or a path heuristic instead.
+- Grok live ticks skip idle session directories after two cheap mtimes
+  instead of opening every `updates.jsonl`.
+- Treat `~/.grok/` (and other current CLI homes) as known log roots, strip
+  duplicated newline log paths, ignore the SuperGrok quota sidecar when it
+  was persisted as xAI's session-log directory, and point Factory/Grok
+  parsers at those sanitized settings paths.
+- Serialize live, catch-up, and single-provider usage persists with a
+  non-reentrant mutex so two lanes cannot delete/insert the same session.
+- Cache unchanged Grok leaf sessions so catch-up drains a multi-GB tree
+  instead of rereading the same prefix every slice.
+
+### Added - OpenBurnBar Safari extension
+
+- Added OpenBurnBar as a Safari Web Extension surface with MV3 page context,
+  visible-viewport vision, real-session DOM actions, in-browser approvals,
+  daemon-routed agents/models, tab ownership, Computer Use scope/deny/audit
+  rails, panic halt, and opt-in Pro+ memory/skill learning.
+- Added deterministic Safari package CI, macOS/web path classification,
+  fail-closed TypeScript diff coverage, manual real-Safari/accessibility QA,
+  architecture and threat-model documentation, and release operator guidance.
+- Embedded `OpenBurnBarSafariExtension.appex` as a distinct sandboxed product
+  with App Group `group.com.openburnbar.app`; direct releases use a dedicated
+  `MAC_APP_DIRECT` profile and sign/verify the appex before the host app, while
+  Mac App Store archive and exported-package verification preserve the
+  extension's target-specific entitlements.
+
 ## [1.0.34] - 2026-08-09
 
 ### Fixed - Domain-core protected signer path vs GitHub Actions API

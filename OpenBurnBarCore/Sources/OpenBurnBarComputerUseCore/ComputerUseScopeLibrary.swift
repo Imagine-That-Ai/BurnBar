@@ -53,6 +53,7 @@ public struct ComputerUseScopeBundle: Codable, Hashable, Sendable, Identifiable 
                 origin: .imported,
                 label: rule.label,
                 urlPrefix: rule.urlPrefix,
+                urlRegex: rule.urlRegex,
                 bundleId: rule.bundleId,
                 windowTitleRegex: rule.windowTitleRegex,
                 actionBudget: rule.actionBudget ?? defaultActionBudget,

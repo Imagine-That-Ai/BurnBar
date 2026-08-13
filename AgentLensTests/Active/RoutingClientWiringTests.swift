@@ -258,9 +258,9 @@ final class RoutingClientWiringTests: XCTestCase {
                     providerID: "codex",
                     providerName: "Codex",
                     servedEndpoints: ["/v1/responses"],
+                    routeEligible: true,
                     contextWindowTokens: 272_000,
-                    inputModalities: ["text", "image"],
-                    routeEligible: true
+                    inputModalities: ["text", "image"]
                 ),
                 RoutingClientAdvertisedModel(
                     id: "claude-opus-4-8",
@@ -354,8 +354,8 @@ final class RoutingClientWiringTests: XCTestCase {
                     providerID: "openai",
                     providerName: "OpenAI",
                     servedEndpoints: ["/v1/responses"],
-                    inputModalities: ["text", "audio", "image", "video"],
-                    routeEligible: true
+                    routeEligible: true,
+                    inputModalities: ["text", "audio", "image", "video"]
                 ),
                 RoutingClientAdvertisedModel(
                     id: "audio-only-model",
@@ -363,8 +363,8 @@ final class RoutingClientWiringTests: XCTestCase {
                     providerID: "openai",
                     providerName: "OpenAI",
                     servedEndpoints: ["/v1/responses"],
-                    inputModalities: ["audio"],
-                    routeEligible: true
+                    routeEligible: true,
+                    inputModalities: ["audio"]
                 )
             ]
         )
@@ -390,9 +390,9 @@ final class RoutingClientWiringTests: XCTestCase {
                 providerID: "zai",
                 providerName: "Z.AI",
                 servedEndpoints: ["/v1/responses"],
+                routeEligible: true,
                 contextWindowTokens: contextWindow,
-                inputModalities: modalities,
-                routeEligible: true
+                inputModalities: modalities
             )
         }
         _ = try wiring.wire(

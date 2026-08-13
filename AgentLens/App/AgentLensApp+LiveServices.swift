@@ -16,6 +16,7 @@ extension OpenBurnBarApp {
             router.openConversationSearch = { openStartupRecoveryWindow() }
             router.openChatPanel = { openStartupRecoveryWindow() }
             router.openSettings = { openStartupRecoveryWindow() }
+            router.openSafariLearning = { openStartupRecoveryWindow() }
             router.makeMenuBarPopoverContent = { _ in
                 AnyView(EmptyView())
             }
@@ -45,6 +46,11 @@ extension OpenBurnBarApp {
                 iCloudSessionMirrorService: context.iCloudSessionMirrorService,
                 dataStore: context.dataStore,
                 runtimeContext: context
+            )
+        }
+        router.openSafariLearning = {
+            windowManager.openSafariLearning(
+                socketURL: context.daemonManager.paths.socketURL
             )
         }
         router.makeMenuBarPopoverContent = { onDismiss in
@@ -134,6 +140,7 @@ extension OpenBurnBarApp {
             appDelegate.settingsManager = context.settingsManager
             appDelegate.dataStore = context.dataStore
             appDelegate.daemonManager = context.daemonManager
+            appDelegate.configureQuotaResetCelebrations(quotaService: context.quotaService)
             AppCommandRouter.shared.linkCliUserIDProvider = { [weak accountManager = context.accountManager] in
                 accountManager?.userID
             }

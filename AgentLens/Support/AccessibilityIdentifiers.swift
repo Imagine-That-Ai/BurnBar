@@ -11,6 +11,9 @@ enum OBBAccessibilityID {
     static let dashboardOverflowButton = "dashboard.overflowButton"
     static let dashboardSettingsButton = "dashboard.settingsButton"
     static let dashboardRefreshButton = "dashboard.refreshButton"
+    static let dashboardBackButton = "dashboard.backButton"
+    static let dashboardForwardButton = "dashboard.forwardButton"
+    static let dashboardSidebarToggleButton = "dashboard.sidebarToggleButton"
     static let settingsRoot = "settings.root"
     static let settingsSidebar = "settings.sidebar"
     static let settingsCommandBar = "settings.commandBar"
@@ -20,6 +23,15 @@ enum OBBAccessibilityID {
     static let chartsPage = "charts.page"
     static let chartsAIToggle = "charts.aiToggle"
     static let dashboardDeckChartButton = "dashboard.deckChartButton"
+    static let safariLearningRoot = "safariLearning.root"
+    static let safariLearningProfileToggle = "safariLearning.profileToggle"
+    static let safariLearningDeleteProfile = "safariLearning.deleteProfile"
+    static let safariLearningSearch = "safariLearning.search"
+    static let safariLearningRefresh = "safariLearning.refresh"
+    static let safariLearningEditor = "safariLearning.editor"
+    static let safariLearningEditorTitle = "safariLearning.editor.title"
+    static let safariLearningEditorContent = "safariLearning.editor.content"
+    static let safariLearningEditorSave = "safariLearning.editor.save"
 
     static let inboxRoot = "inbox.root"
     static let inboxDetail = "inbox.detail"
@@ -31,6 +43,14 @@ enum OBBAccessibilityID {
 
     static func inboxRow(_ itemID: String) -> String {
         "inbox.row.\(normalized(itemID))"
+    }
+
+    static func safariLearningFilter(_ filter: String) -> String {
+        "safariLearning.filter.\(normalized(filter))"
+    }
+
+    static func safariLearningRow(_ proposalID: String) -> String {
+        "safariLearning.row.\(normalized(proposalID))"
     }
 
     static func settingsRow(_ section: String) -> String {

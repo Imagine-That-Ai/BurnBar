@@ -107,3 +107,66 @@ enum DashboardMainRoute: Hashable {
         }
     }
 }
+
+// MARK: - Route navigator
+//
+// Pure back/forward history for the dashboard titlebar chrome. Kept free of
+// SwiftUI `@State` so unit tests can exercise browser-style navigation without
+// mounting `DashboardView`.
+
+struct DashboardRouteNavigator: Equatable {
+    var current: DashboardMainRoute = .overview
+    private(set) var backStack: [DashboardMainRoute] = []
+    private(set) var forwardStack: [DashboardMainRoute] = []
+
+    var canGoBack: Bool {
+        !backStack.isEmpty || current != .overview
+    }
+
+    var canGoForward: Bool {
+        !forwardStack.isEmpty
+    }
+
+    var backHelpText: String {
+        if let previous = backStack.last {
+            return "Back to \(previous.title())"
+        }
+        return "Back to Overview"
+    }
+
+    var forwardHelpText: String {
+        if let next = forwardStack.last {
+            return "Forward to \(next.title())"
+        }
+        return "Forward"
+    }
+
+    mutating func navigate(to route: DashboardMainRoute) {
+        guard route != current else { return }
+        backStack.append(current)
+        forwardStack.removeAll()
+        current = route
+    }
+
+    mutating func reset(to route: DashboardMainRoute) {
+        backStack.removeAll()
+        forwardStack.removeAll()
+        current = route
+    }
+
+    mutating func goBack() {
+        if let previous = backStack.popLast() {
+            forwardStack.append(current)
+            current = previous
+        } else if current != .overview {
+            forwardStack.append(current)
+            current = .overview
+        }
+    }
+
+    mutating func goForward() {
+        guard let next = forwardStack.popLast() else { return }
+        backStack.append(current)
+        current = next
+    }
+}

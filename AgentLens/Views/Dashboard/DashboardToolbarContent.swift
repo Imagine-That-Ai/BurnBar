@@ -7,27 +7,76 @@ import SwiftUI
 //
 // A single ~52pt bar replacing the old toolbar + tab-card strip.
 //
-//   [navigation]    back · 🔥 OpenBurnBar · section switcher · ⌘K hint
-//   [principal]     (empty — the section menu already names the route)
-//   [primaryAction] BURN hero (range + unit in popover) · refresh · settings · ⋯
+//   [titlebar]      ← · → · sidebar
+//   [navigation]    🔥 OpenBurnBar · section switcher · ⌘K hint
+//   [principal]     BURN hero
+//   [primaryAction] refresh · settings · ⋯
 
 extension DashboardView {
+
+    /// Titlebar chrome between the traffic lights and the rest of the deck:
+    /// back, forward, then the sidepanel toggle.
+    @ToolbarContentBuilder
+    var dashboardTitlebarNavigationChrome: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button(action: goBack) {
+                Image(systemName: "chevron.backward")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(
+                        canGoBack
+                            ? DesignSystem.Colors.textSecondary
+                            : DesignSystem.Colors.textMuted.opacity(0.55)
+                    )
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoBack)
+            .help(backButtonHelpText)
+            .keyboardShortcut("[", modifiers: .command)
+            .accessibilityLabel("Back")
+            .accessibilityHint(backButtonHelpText)
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardBackButton)
+
+            Button(action: goForward) {
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(
+                        canGoForward
+                            ? DesignSystem.Colors.textSecondary
+                            : DesignSystem.Colors.textMuted.opacity(0.55)
+                    )
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoForward)
+            .help(forwardButtonHelpText)
+            .keyboardShortcut("]", modifiers: .command)
+            .accessibilityLabel("Forward")
+            .accessibilityHint(forwardButtonHelpText)
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardForwardButton)
+
+            Button(action: toggleDashboardSidebar) {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .frame(width: 26, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isDashboardSidebarVisible ? "Hide sidebar" : "Show sidebar")
+            .accessibilityLabel(isDashboardSidebarVisible ? "Hide sidebar" : "Show sidebar")
+            .accessibilityIdentifier(OBBAccessibilityID.dashboardSidebarToggleButton)
+        }
+    }
 
     @ToolbarContentBuilder
     var toolbarContent: some ToolbarContent {
 
-        // MARK: Navigation — back · brand · section switcher · ⌘K hint
+        // MARK: Navigation — brand · section switcher · ⌘K hint
 
         ToolbarItemGroup(placement: .navigation) {
-            if canGoBack {
-                Button(action: goBack) {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
-                .help(backButtonHelpText)
-            }
-
             BurnRailBrandMark()
 
             DashboardSectionSwitcher(

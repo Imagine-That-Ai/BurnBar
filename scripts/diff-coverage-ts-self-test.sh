@@ -20,7 +20,7 @@ for ((i = 0; i < ${#args[@]}; i += 1)); do
   fi
 done
 
-if [[ "$*" == *" test:unit:coverage"* || "$*" == *" test:unit "* ]]; then
+if [[ "$*" == *" test:unit:coverage"* || "$*" == *" test:unit "* || "$*" == *" test:coverage"* ]]; then
   echo "fake npm coverage log line"
   if [[ "${FAKE_NPM_MODE:-success}" == "fail-no-coverage" ]]; then
     exit 42
@@ -42,8 +42,24 @@ SH
 }
 
 init_case_repo() {
-  local repo="$work_root/repo"
-  mkdir -p "$repo/scripts" "$repo/functions/src" "$repo/functions/node_modules"
+  local surface="$1"
+  local repo="$work_root/repo-$surface"
+  local source_dir
+
+  case "$surface" in
+    functions)
+      source_dir="$repo/functions"
+      ;;
+    safari)
+      source_dir="$repo/extensions/safari"
+      ;;
+    *)
+      echo "unsupported self-test surface: $surface" >&2
+      exit 64
+      ;;
+  esac
+
+  mkdir -p "$repo/scripts" "$source_dir/src" "$source_dir/node_modules"
   cp "$repo_root/scripts/diff-coverage-ts.sh" "$repo/scripts/diff-coverage-ts.sh"
   cat > "$repo/scripts/build-signal-envelope-contracts.sh" <<'SH'
 #!/usr/bin/env bash
@@ -60,11 +76,11 @@ SH
     git init -q
     git config user.email "ts-coverage-test@example.invalid"
     git config user.name "TS Coverage Test"
-    printf 'export function answer() { return 1; }\n' > functions/src/example.ts
+    printf 'export function answer() { return 1; }\n' > "${source_dir#$repo/}/src/example.ts"
     git add .
     git commit -q -m "base"
-    printf 'export function answer() { return 2; }\n' > functions/src/example.ts
-    git add functions/src/example.ts
+    printf 'export function answer() { return 2; }\n' > "${source_dir#$repo/}/src/example.ts"
+    git add "${source_dir#$repo/}/src/example.ts"
     git commit -q -m "runtime change"
   )
   printf '%s\n' "$repo"
@@ -105,11 +121,29 @@ print(f"PASS: {label} is JSON-only")
 PY
 }
 
-repo="$(init_case_repo)"
-mkdir -p "$repo/functions/coverage"
-cat > "$repo/functions/coverage/coverage-final.json" <<'JSON'
+run_surface_case() {
+  local surface="$1"
+  local source_prefix
+  local label
+  local repo
+  local output
+
+  case "$surface" in
+    functions)
+      source_prefix="functions"
+      label="Functions"
+      ;;
+    safari)
+      source_prefix="extensions/safari"
+      label="Safari extension"
+      ;;
+  esac
+
+  repo="$(init_case_repo "$surface")"
+  mkdir -p "$repo/$source_prefix/coverage"
+  cat > "$repo/$source_prefix/coverage/coverage-final.json" <<JSON
 {
-  "functions/src/example.ts": {
+  "$source_prefix/src/example.ts": {
     "statementMap": {
       "0": { "start": { "line": 1 }, "end": { "line": 1 } }
     },
@@ -118,16 +152,20 @@ cat > "$repo/functions/coverage/coverage-final.json" <<'JSON'
 }
 JSON
 
-if output="$(run_gate "$repo" fail-no-coverage 2>&1)"; then
-  printf 'FAIL: stale TypeScript coverage evidence was accepted\n%s\n' "$output" >&2
-  exit 1
-fi
-assert_contains "$output" "istanbul_evidence_missing" "stale coverage rejection"
-assert_json_artifact "$repo/ts-diff-coverage.json" "failure diff coverage artifact"
+  if output="$(run_gate "$repo" fail-no-coverage 2>&1)"; then
+    printf 'FAIL: stale %s TypeScript coverage evidence was accepted\n%s\n' "$label" "$output" >&2
+    exit 1
+  fi
+  assert_contains "$output" "istanbul_evidence_missing" "$label stale coverage rejection"
+  assert_json_artifact "$repo/ts-diff-coverage.json" "$label failure diff coverage artifact"
 
-output="$(run_gate "$repo" success 2>&1)"
-assert_contains "$output" '"passed": true' "fresh coverage acceptance"
-assert_contains "$output" '"method": "istanbul_line_intersection"' "fresh coverage acceptance"
-assert_json_artifact "$repo/ts-diff-coverage.json" "success diff coverage artifact"
+  output="$(run_gate "$repo" success 2>&1)"
+  assert_contains "$output" '"passed": true' "$label fresh coverage acceptance"
+  assert_contains "$output" '"method": "istanbul_line_intersection"' "$label fresh coverage acceptance"
+  assert_json_artifact "$repo/ts-diff-coverage.json" "$label success diff coverage artifact"
+}
 
-echo "PASS: TypeScript diff coverage rejects stale evidence"
+run_surface_case functions
+run_surface_case safari
+
+echo "PASS: TypeScript diff coverage rejects stale Functions and Safari extension evidence"

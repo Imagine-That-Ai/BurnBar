@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="alerts-plate" x1="18" y1="6" x2="112" y2="122" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFBF4" offset="0"/>
+      <stop stop-color="#F6E2C8" offset="1"/>
+    </linearGradient>
+    <linearGradient id="alerts-flame" x1="64" y1="18" x2="64" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE27A" offset="0"/>
+      <stop stop-color="#FEA41C" offset=".46"/>
+      <stop stop-color="#E31B24" offset="1"/>
+    </linearGradient>
+    <linearGradient id="alerts-gold" x1="36" y1="16" x2="100" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE9A0" offset="0"/>
+      <stop stop-color="#F4831F" offset="1"/>
+    </linearGradient>
+    <linearGradient id="alerts-ember" x1="28" y1="20" x2="104" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F67A28" offset="0"/>
+      <stop stop-color="#C41422" offset="1"/>
+    </linearGradient>
+    <linearGradient id="alerts-deep" x1="30" y1="24" x2="102" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E74C16" offset="0"/>
+      <stop stop-color="#9E1020" offset="1"/>
+    </linearGradient>
+    <radialGradient id="alerts-glow" cx="64" cy="40" r="70" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity=".55" offset="0"/>
+      <stop stop-color="#FFFFFF" stop-opacity="0" offset="1"/>
+    </radialGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#alerts-plate)"/>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#alerts-glow)"/>
+  <path fill="url(#alerts-flame)" d="M40 60c0-16 10-30 24-30s24 14 24 30c0 14 8 22 8 22H32s8-8 8-22Z"/>
+  <path fill="url(#alerts-deep)" d="M36 84h56c-4 8-16 14-28 14S40 92 36 84Z"/>
+  <rect x="60" y="26" width="8" height="10" rx="4" fill="url(#alerts-gold)"/>
+  <path fill="url(#alerts-gold)" d="M64.0,92.0 C69.9,97.1 70.7,101.9 64.0,108.0 C57.3,101.9 58.1,97.1 64.0,92.0Z"/>
+</svg>
