@@ -124,6 +124,9 @@ export function createMockBrowser(
         if (query.currentWindow === true) {
           values = values.filter((tab) => tab.currentWindow !== false);
         }
+        if (query.lastFocusedWindow === true) {
+          values = values.filter((tab) => tab.currentWindow !== false);
+        }
         return values.map((tab) => ({ ...tab }));
       },
       get: async (tabId) => {
