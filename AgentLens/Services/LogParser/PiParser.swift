@@ -157,7 +157,15 @@ final class PiParser: LogParser, @unchecked Sendable {
         var headerCaptured = false
 
         for line in handle.readAllUTF8LinesLossy() {
-            guard !line.isEmpty else { continue }
+            // Blank-line detection trims whitespace AND newlines: a
+            // whitespace-only physical line is a blank line, not a
+            // malformed record (round-4 scrutiny, issue 3). The documented
+            // rule is "first NONBLANK record" — whitespace-only preamble
+            // lines before a valid session header must not invalidate the
+            // transcript. Non-whitespace content (including lossy-decoded
+            // garbage) still reaches the malformed-first-bytes path below.
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
             sawAnyLine = true
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

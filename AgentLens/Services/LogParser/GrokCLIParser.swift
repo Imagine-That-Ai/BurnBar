@@ -681,11 +681,13 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
     /// issue 4).
     ///
     /// Every DICTIONARY part must match the documented text-part shape
-    /// (`{"type":"text","text":…}`): a part that is not a dictionary, or a
+    /// (`{"type":"text","text":…}`): a part that is not a dictionary, a
     /// dictionary without a string `text` field (e.g. image-only parts,
-    /// arbitrary-key dictionaries), is malformed input and degrades the
+    /// arbitrary-key dictionaries), or a dictionary whose `type`
+    /// discriminator is missing or not exactly `"text"` (e.g.
+    /// `{"type":"image","text":"…"}`) is malformed input and degrades the
     /// typed parse health — it is never silently dropped (round-3
-    /// scrutiny, issue 4).
+    /// scrutiny, issue 4; round-4 scrutiny, issue 2).
     private static func extractContent(from json: [String: Any]) -> (text: String, malformed: Bool) {
         guard let content = json["content"], !(content is NSNull) else {
             return ("", false)
@@ -697,7 +699,12 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
             var text = ""
             var malformed = false
             for part in parts {
-                guard let partText = part["text"] as? String else {
+                // The documented text-part shape is exactly
+                // {"type":"text","text":…}: a String `text` field alone is
+                // NOT sufficient — the `type` discriminator must be present
+                // and exactly "text" (round-4 scrutiny, issue 2).
+                guard part["type"] as? String == "text",
+                      let partText = part["text"] as? String else {
                     malformed = true
                     continue
                 }

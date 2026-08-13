@@ -34,10 +34,13 @@ enum GrokCLIParserEventShapes {
     /// - `loop_started`: integer `loop_index`.
     /// - `first_token`: no required fields.
     ///
-    /// Integer fields reject JSON booleans and fractional/non-integral
-    /// values (strict primitive validation, mirroring the daemon's
-    /// NSNumber-boolean rejection). Absent optional fields are acceptable;
-    /// a PRESENT field with the wrong type is malformed.
+    /// Every listed field is REQUIRED: an absent or NSNull value is
+    /// malformed exactly like a wrong primitive type (round-4 scrutiny,
+    /// issue 1). There are no documented optional keys in the current
+    /// shapes; optional-field semantics apply only to keys explicitly
+    /// documented as optional. Integer fields reject JSON booleans and
+    /// fractional/non-integral values (strict primitive validation,
+    /// mirroring the daemon's NSNumber-boolean rejection).
     static func isValidAllowlistedEventShape(_ json: [String: Any]) -> Bool {
         guard let type = json["type"] as? String else { return false }
         switch type {
@@ -61,10 +64,13 @@ enum GrokCLIParserEventShapes {
         return true
     }
 
-    /// True when the value is absent/null or a strict non-negative integer
-    /// (booleans, fractional values, and non-numeric values are rejected).
+    /// True when the value is a strict non-negative integer. Absent and
+    /// NSNull values are REJECTED: every field validated through this
+    /// helper is a required field of its event shape (round-4 scrutiny,
+    /// issue 1). Booleans, fractional values, and non-numeric values are
+    /// rejected.
     static func isStrictIntField(_ value: Any?) -> Bool {
-        guard let value, !(value is NSNull) else { return true }
+        guard let value, !(value is NSNull) else { return false }
         guard let number = value as? NSNumber,
               CFGetTypeID(number) != CFBooleanGetTypeID(),
               let int64 = exactInt64(number),
@@ -72,18 +78,22 @@ enum GrokCLIParserEventShapes {
         return true
     }
 
-    /// True when the value is absent/null or a JSON boolean (numbers and
-    /// strings are rejected).
+    /// True when the value is a JSON boolean. Absent and NSNull values are
+    /// REJECTED: every field validated through this helper is a required
+    /// field of its event shape (round-4 scrutiny, issue 1). Numbers and
+    /// strings are rejected.
     static func isStrictBoolField(_ value: Any?) -> Bool {
-        guard let value, !(value is NSNull) else { return true }
+        guard let value, !(value is NSNull) else { return false }
         guard let number = value as? NSNumber else { return false }
         return CFGetTypeID(number) == CFBooleanGetTypeID()
     }
 
     /// `schema_version` is a string or an integer in real sessions
-    /// (verified 2026-08-12: both `"1.0"` and `1` occur).
+    /// (verified 2026-08-12: both `"1.0"` and `1` occur). Absent and NSNull
+    /// values are REJECTED: the field is required (round-4 scrutiny,
+    /// issue 1).
     static func isSchemaVersionField(_ value: Any?) -> Bool {
-        guard let value, !(value is NSNull) else { return true }
+        guard let value, !(value is NSNull) else { return false }
         if value is String { return true }
         guard let number = value as? NSNumber,
               CFGetTypeID(number) != CFBooleanGetTypeID(),

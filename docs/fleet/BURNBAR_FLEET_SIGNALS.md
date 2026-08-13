@@ -681,7 +681,7 @@ generic injection seam (all defaults preserve the real-root behavior):
 
 ### Pi transcripts (`~/.pi/agent/sessions/<project-dir>/*.jsonl`)
 
-- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`. The first nonblank session record is the header: it alone determines session identity (`id`), project path (`cwd`), and start time. Later session records never replace it; a transcript whose first line is not a well-formed session record (or whose header is malformed) is skipped honestly and degrades parse health. A later session header is NEVER accepted as the line-1 authority after a wrong-shaped first record (round-2 scrutiny, issue 5). The rule extends to malformed FIRST PHYSICAL BYTES: lossy-decode garbage or truncated JSON at the head of the file invalidates the transcript exactly like a wrong-shaped first record — a later well-formed session header is never accepted (round-3 scrutiny, issue 1). Only malformed lines AFTER a valid header continue.
+- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`. The first nonblank session record is the header: it alone determines session identity (`id`), project path (`cwd`), and start time. Later session records never replace it; a transcript whose first line is not a well-formed session record (or whose header is malformed) is skipped honestly and degrades parse health. A later session header is NEVER accepted as the line-1 authority after a wrong-shaped first record (round-2 scrutiny, issue 5). The rule extends to malformed FIRST PHYSICAL BYTES: lossy-decode garbage or truncated JSON at the head of the file invalidates the transcript exactly like a wrong-shaped first record — a later well-formed session header is never accepted (round-3 scrutiny, issue 1). Only malformed lines AFTER a valid header continue. Blank-line detection TRIMS whitespace and newlines: whitespace-only physical lines (spaces, tabs, CRLF) before a valid session header are blank lines, not malformed first bytes, and are skipped — the documented rule is "first NONBLANK record" (round-4 scrutiny, issue 3). Non-whitespace content (including lossy-decoded garbage) still reaches the malformed-first-bytes invalidation path.
 - **Usage lines:** `{"type":"message",…,"message":{"role":"assistant","content":[…],"usage":{"input":N,"output":N,"cacheRead":N,"cacheWrite":N,"reasoning":N,"totalTokens":N,"cost":{…}}}}`. Usage primitives are validated strictly: a present-but-malformed usage field (boolean, fractional, out-of-range, non-numeric) degrades parse health instead of being silently coerced to zero; valid rows survive. A PRESENT `usage` value that is not an object (string, array, number, boolean) is wrong-typed and degrades parse health; absent and null usage remain acceptable (round-2 scrutiny, issue 1).
 - **Tolerated record kinds (explicit allowlist):** `session`, `model_change`, `thinking_level_change`, `message`. Any other top-level record kind (e.g. `{"type":"bogus"}`) is unknown input and degrades the typed parse health — it is never silently accepted. New record kinds must be added to the allowlist deliberately (round-2 scrutiny, issue 2).
 - **Model:** `message.model` on assistant lines, falling back to `model_change.modelId` events.
@@ -731,7 +731,11 @@ generic injection seam (all defaults preserve the real-root behavior):
   has no required fields. An allowlisted NAME with a malformed payload
   (missing required fields, wrong primitive types, JSON booleans in
   integer fields) degrades the typed parse health (round-3 scrutiny,
-  issue 2).
+  issue 2). Every listed field is REQUIRED: an absent or NSNull value is
+  malformed exactly like a wrong primitive type — there are no documented
+  optional keys in the current shapes, and optional-field semantics apply
+  only to keys explicitly documented as optional (round-4 scrutiny,
+  issue 1).
 - **Secondary-stream health:** when `updates.jsonl` supplies usage,
   `events.jsonl` is STILL scanned for malformed-shape health WITHOUT
   double-counting its usage frames — malformed secondary events are never
@@ -745,7 +749,10 @@ generic injection seam (all defaults preserve the real-root behavior):
   the documented text-part shape (`{"type":"text","text":…}`): a part
   without a string `text` field (image-only parts, arbitrary-key
   dictionaries) is malformed and degrades parse health — never silently
-  dropped (round-3 scrutiny, issue 4).
+  dropped (round-3 scrutiny, issue 4). A String `text` field alone is NOT
+  sufficient: the `type` discriminator must be present and exactly
+  `"text"` — `{"type":"image","text":"…"}` or `{"text":"…"}` is malformed
+  and never contributes conversation text (round-4 scrutiny, issue 2).
 - **Numeric update timestamps** (`updates.jsonl` `timestamp`, epoch seconds)
   are validated for positivity and finiteness; a present-but-invalid
   numeric timestamp (zero, negative, boolean, non-numeric) degrades the
