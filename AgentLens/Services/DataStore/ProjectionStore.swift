@@ -110,6 +110,26 @@ final class ProjectionStore: Sendable {
         }
     }
 
+    func countProjectionJobsByStatus() async throws -> [ProjectionJobStatus: Int] {
+        try await dbQueue.read { db in
+            var counts: [ProjectionJobStatus: Int] = [:]
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT status, COUNT(*) AS count
+                FROM projection_jobs
+                GROUP BY status
+                """
+            )
+            for row in rows {
+                guard let raw = row["status"] as? String,
+                      let status = ProjectionJobStatus(rawValue: raw) else { continue }
+                counts[status] = UsageStore.intValue(row["count"])
+            }
+            return counts
+        }
+    }
+
     func hasProjectionJobs(
         statuses: [ProjectionJobStatus],
         jobTypes: [ProjectionJobType]

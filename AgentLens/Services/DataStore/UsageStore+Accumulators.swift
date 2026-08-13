@@ -43,7 +43,7 @@ struct UsageTotals: Equatable, Sendable { // pure-move: was private
     )
 }
 
-struct UsageAggregateRow { // pure-move: was private
+struct UsageAggregateRow: Equatable { // pure-move: was private
     let provider: AgentProvider
     let model: String
     let executionSourceID: String
@@ -85,6 +85,42 @@ struct UsageAggregateRow { // pure-move: was private
         reasoningTokens = UsageStore.intValue(row["reasoningTokens"])
         totalTokens = UsageStore.intValue(row["totalTokens"])
         cost = UsageStore.doubleValue(row["cost"])
+    }
+
+    init(
+        provider: AgentProvider,
+        model: String,
+        executionSourceID: String,
+        executionSourceName: String,
+        executionSourceKind: UsageExecutionSourceKind,
+        executionSourceConfidence: UsageProvenanceConfidence,
+        provenanceConfidence: UsageProvenanceConfidence,
+        provenanceMethod: UsageProvenanceMethod,
+        sessionCount: Int,
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheCreationTokens: Int,
+        cacheReadTokens: Int,
+        reasoningTokens: Int,
+        totalTokens: Int,
+        cost: Double
+    ) {
+        self.provider = provider
+        self.model = model
+        self.executionSourceID = executionSourceID
+        self.executionSourceName = executionSourceName
+        self.executionSourceKind = executionSourceKind
+        self.executionSourceConfidence = executionSourceConfidence
+        self.provenanceConfidence = provenanceConfidence
+        self.provenanceMethod = provenanceMethod
+        self.sessionCount = sessionCount
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheCreationTokens = cacheCreationTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.reasoningTokens = reasoningTokens
+        self.totalTokens = totalTokens
+        self.cost = cost
     }
 }
 

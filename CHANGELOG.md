@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rolling average from one overlapping-day SQL scan instead of 14
   per-day round-trips. Window membership is unchanged (intersection
   predicate), so long-running sessions still count on every overlapped
-  day.
+  day. Today / 7d / 30d / month / all-time aggregates are one `GROUP BY`
+  with per-window membership flags. Workspace artifact and projection
+  counts are one `GROUP BY status` each.
 - **Idle usage persist** skips the `token_usage` upsert storm when a
   refresh tick re-parses byte-identical session totals and nothing else
   has written the table. New UUIDs/`createdAt` values do not bust the
@@ -25,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mtime+size disk cache (token breakdowns only) so unchanged
   `~/.grok/sessions/` trees are not re-scanned. Codex and Claude already
   had this shape.
+- **Chart Studio / Burn / Trend Atlas** memoize digest-derived gallery
+  facts and insights so Hermes streaming and Compose recomposition do
+  not rebuild them per token. Editorial backdrop is capped at 30 fps;
+  substrate radius uses an in-place upper median; quota dial shadows
+  flatten through a compositing group.
+- **Quota refresh** follows `QuotaRefreshPolicy` on Mac and Linux
+  (30m / 10m / 3m by remaining fraction). SuperGrok pacing tail-reads
+  the 2h window; Claude JSONL quota scans resume on append-only growth;
+  Codex rollout walks skip files older than the 7-day cutoff.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

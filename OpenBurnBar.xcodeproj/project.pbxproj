@@ -278,6 +278,7 @@
 		179A63146474BF866B2EF3B6 /* ChartKitLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02C4F4F843659678782F91C2 /* ChartKitLine.swift */; };
 		17D540F72BA8113777D6DB49 /* ProxyAddCustomModelSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1023CA01A35F2334BEC3E246 /* ProxyAddCustomModelSheet.swift */; };
 		17D65EDB1559A67106869749 /* TrendDataDigest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C37B34494C183F68A1E0FCF /* TrendDataDigest.swift */; };
+		17E76FEC2660B7821797A85A /* TrendDigestCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C4E9A12B8D046F1A3E55C90 /* TrendDigestCacheStore.swift */; };
 		180A5EAFC6279BBC558CDA19 /* OpenBurnBarSignalCore in Frameworks */ = {isa = PBXBuildFile; productRef = B689B8A0A588DAB2C86A344E /* OpenBurnBarSignalCore */; };
 		181DC50DE6933F008FF43C81 /* QuotaPulseCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F45CCAEDCFFF8D5DC0535A /* QuotaPulseCard.swift */; };
 		183B7CB26C04E5AA7D355E29 /* BurnBarLocalOllamaLiveCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAD75190817551C1EBF13C93 /* BurnBarLocalOllamaLiveCatalogTests.swift */; };
@@ -4064,6 +4065,7 @@
 		8BE0F0AA67F2F0282761F5AD /* HermesInventoryImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesInventoryImportService.swift; sourceTree = "<group>"; };
 		8C13CEEC34882CF4C1EA15C0 /* LinuxIrohHostIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinuxIrohHostIdentityStore.swift; sourceTree = "<group>"; };
 		8C37B34494C183F68A1E0FCF /* TrendDataDigest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendDataDigest.swift; sourceTree = "<group>"; };
+		8C4E9A12B8D046F1A3E55C90 /* TrendDigestCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendDigestCacheStore.swift; sourceTree = "<group>"; };
 		8C78E7F27C72A21B1A5C967B /* LiveCloudReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCloudReader.swift; sourceTree = "<group>"; };
 		8C906A54838E69381058F867 /* HermesGatewayRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesGatewayRepository.swift; sourceTree = "<group>"; };
 		8C974E44252F03DEF2ACBB35 /* PixelClockSettingsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelClockSettingsCard.swift; sourceTree = "<group>"; };
@@ -9360,6 +9362,7 @@
 				6D3B27B5F58F779AFDD9C6A8 /* ChartStudioPromptEngine.swift */,
 				B3E349ABE3F28F5893424F45 /* StandardGallery.swift */,
 				8C37B34494C183F68A1E0FCF /* TrendDataDigest.swift */,
+				8C4E9A12B8D046F1A3E55C90 /* TrendDigestCacheStore.swift */,
 				30FAFB5B828FF55B94393639 /* TrendInsightEngine.swift */,
 			);
 			path = ChartStudio;
@@ -11673,6 +11676,7 @@
 				DA9AA77F506B37BE7F0BE0DF /* TrackpadGlassSurface.swift in Sources */,
 				E12C583AC380EC6BAA3D9138 /* TrendAtlasCard.swift in Sources */,
 				17D65EDB1559A67106869749 /* TrendDataDigest.swift in Sources */,
+				17E76FEC2660B7821797A85A /* TrendDigestCacheStore.swift in Sources */,
 				F53A389585046AB4165F66DC /* TrendInsightEngine.swift in Sources */,
 				2AC548F413C62E53EAD74EB3 /* UIModePicker.swift in Sources */,
 				44AE05417602889478F61019 /* UserAvatarView.swift in Sources */,

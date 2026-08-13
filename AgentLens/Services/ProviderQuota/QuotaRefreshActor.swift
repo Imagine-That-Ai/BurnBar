@@ -121,17 +121,22 @@ actor QuotaRefreshActor {
     }
 
     func fetchAllSnapshots(
-        switcherProfileFetcher: ProviderQuotaSwitcherProfileFetcher
+        switcherProfileFetcher: ProviderQuotaSwitcherProfileFetcher,
+        providers: [AgentProvider]? = nil
     ) async -> ProviderQuotaRefreshBatch {
+        let targets = providers ?? refreshProviders
+        guard !targets.isEmpty else {
+            return ProviderQuotaRefreshBatch(providerSnapshots: [:], accountSnapshots: [:])
+        }
         let context = await makeContext()
-        let providerSnapshots = await fetchProviderSnapshots(for: refreshProviders, context: context)
+        let providerSnapshots = await fetchProviderSnapshots(for: targets, context: context)
         var accountSnapshots = await fetchAccountSnapshots(
             using: context,
-            providers: Set(refreshProviders)
+            providers: Set(targets)
         )
         let switcherSnapshots = await fetchSwitcherProfileSnapshots(
             using: context,
-            providers: Set(refreshProviders),
+            providers: Set(targets),
             switcherProfileFetcher: switcherProfileFetcher
         )
         accountSnapshots.merge(switcherSnapshots) { _, replacement in replacement }

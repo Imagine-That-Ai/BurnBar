@@ -344,7 +344,7 @@ final class DashboardUsageViewModelTests: XCTestCase {
             baseline,
             "Dashboard snapshot must run a constant number of data queries — growth with row count is an N+1 regression"
         )
-        tracer.assertMaxQueries(count: 24)
+        tracer.assertMaxQueries(count: 12)
     }
 
     func test_dashboardSnapshot_last7DaySeriesMatchesPerDayTotals() async throws {
@@ -393,6 +393,43 @@ final class DashboardUsageViewModelTests: XCTestCase {
             expectedRolling += try await usageStore.fetchUsageTotals(in: day...nextDay).cost
         }
         XCTAssertEqual(snapshot.rollingDailyAverage, expectedRolling / 7, accuracy: 0.0001)
+    }
+
+    func test_dashboardSnapshot_windowTotalsMatchPerWindowAggregateQueries() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "today",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 20,
+            costUSD: 2,
+            startTime: now,
+            endTime: now.addingTimeInterval(30)
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .claudeCode,
+            sessionId: "week-ago",
+            model: "sonnet",
+            inputTokens: 50,
+            outputTokens: 10,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-8 * 24 * 3600),
+            endTime: now.addingTimeInterval(-8 * 24 * 3600 + 30)
+        ))
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        for timeRange in TimeRange.allCases {
+            let expected = try await usageStore.fetchUsageTotals(in: timeRange.dateRange(now: now))
+            let summary = try XCTUnwrap(snapshot.windowSummaries[timeRange])
+            XCTAssertEqual(summary.totalCost, expected.cost, accuracy: 0.0001, timeRange.rawValue)
+            XCTAssertEqual(summary.totalTokens, expected.tokens, timeRange.rawValue)
+            XCTAssertEqual(summary.sessionCount, expected.sessionCount, timeRange.rawValue)
+        }
     }
 
     func test_sqliteDateStringFormatsCanonicalUTCForDashboardWindows() {

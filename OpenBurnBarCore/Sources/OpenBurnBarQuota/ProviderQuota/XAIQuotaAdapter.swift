@@ -107,6 +107,15 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
         let plan: String?
     }
 
+    struct SuperGrokLogScan: Equatable, Sendable {
+        var inWindowCount: Int
+        var earliestInWindowTimestamp: Double?
+        var sawAnyEvent: Bool
+        var bytesRead: Int
+    }
+
+    static let superGrokTailChunkBytes = 64 * 1024
+
     // MARK: - Fetch
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
@@ -378,22 +387,19 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        let events = readSuperGrokEvents(at: logURL, fileManager: context.fileManager)
-        let cutoff = now.addingTimeInterval(-Self.rollingWindowSeconds)
-        let inWindow = events.filter { event in
-            let date = Date(timeIntervalSince1970: event.timestamp / 1000.0)
-            return date >= cutoff && date <= now
-        }
-        let usedCount = Double(inWindow.count)
+        let scan = Self.scanSuperGrokLog(
+            at: logURL,
+            fileManager: context.fileManager,
+            now: now
+        )
+        let usedCount = Double(scan.inWindowCount)
         let remaining = max(0.0, cap - usedCount)
         let usedPercent = cap > 0 ? min(max((usedCount / cap) * 100.0, 0), 100) : nil
 
         // Resets-at is `(earliest in-window event) + 2h`. If there are no
         // events yet, the window has full headroom and no scheduled reset.
-        let resetsAt = inWindow
-            .map { Date(timeIntervalSince1970: $0.timestamp / 1000.0) }
-            .min()
-            .map { $0.addingTimeInterval(Self.rollingWindowSeconds) }
+        let resetsAt = scan.earliestInWindowTimestamp
+            .map { Date(timeIntervalSince1970: $0 / 1000.0).addingTimeInterval(Self.rollingWindowSeconds) }
 
         let bucket = ProviderQuotaBucket(
             key: "xai-supergrok-2h-rolling",
@@ -410,7 +416,7 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
 
         let confidence: ProviderQuotaConfidence
         let statusMessage: String
-        if events.isEmpty {
+        if !scan.sawAnyEvent {
             confidence = .estimated
             statusMessage = "\(plan.displayName): no SuperGrok prompts observed yet. Caps are community-estimated; run a Grok session via OpenBurnBar to populate the rolling window."
         } else {
@@ -440,17 +446,127 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
             .appendingPathComponent(superGrokLogRelativePath, isDirectory: false)
     }
 
-    private func readSuperGrokEvents(
+    /// Tail-reads an append-only SuperGrok JSONL from the end until timestamps
+    /// fall before the rolling window. Bit-identical to a full-file filter for
+    /// chronological logs; `sawAnyEvent` still reflects historical lines so the
+    /// empty-log status message does not flip when every event is older than 2h.
+    static func scanSuperGrokLog(
         at logURL: URL,
-        fileManager: FileManager
-    ) -> [SuperGrokEvent] {
-        guard fileManager.fileExists(atPath: logURL.path),
-              let data = try? Data(contentsOf: logURL), // try?-ok(sidecar read, skip)
-              let text = String(data: data, encoding: .utf8) else {
-            return []
+        fileManager: FileManager,
+        now: Date,
+        windowSeconds: TimeInterval = rollingWindowSeconds,
+        chunkBytes: Int = superGrokTailChunkBytes
+    ) -> SuperGrokLogScan {
+        guard fileManager.fileExists(atPath: logURL.path) else {
+            return SuperGrokLogScan(inWindowCount: 0, earliestInWindowTimestamp: nil, sawAnyEvent: false, bytesRead: 0)
         }
+
+        let cutoffMs = now.addingTimeInterval(-windowSeconds).timeIntervalSince1970 * 1000.0
+        let nowMs = now.timeIntervalSince1970 * 1000.0
         let decoder = JSONDecoder()
-        var events: [SuperGrokEvent] = []
+
+        do {
+            let handle = try FileHandle(forReadingFrom: logURL)
+            defer { try? handle.close() } // try?-ok(handle teardown)
+
+            let size = try handle.seekToEnd()
+            guard size > 0 else {
+                return SuperGrokLogScan(inWindowCount: 0, earliestInWindowTimestamp: nil, sawAnyEvent: false, bytesRead: 0)
+            }
+
+            var offset = size
+            var suffixCarry = Data()
+            var bytesRead = 0
+            var inWindowCount = 0
+            var earliestInWindowTimestamp: Double?
+            var sawAnyEvent = false
+            var reachedOlder = false
+
+            while offset > 0, !reachedOlder {
+                let chunkLen = min(UInt64(max(chunkBytes, 1)), offset)
+                offset -= chunkLen
+                try handle.seek(toOffset: offset)
+                var data = try handle.read(upToCount: Int(chunkLen)) ?? Data()
+                bytesRead += data.count
+                if !suffixCarry.isEmpty {
+                    data.append(suffixCarry)
+                }
+
+                let atStart = offset == 0
+                if !atStart {
+                    if let newline = data.firstIndex(of: 0x0A) {
+                        suffixCarry = Data(data[..<newline])
+                        data = Data(data[data.index(after: newline)...])
+                    } else {
+                        // Whole chunk is a mid-line fragment of an older line.
+                        suffixCarry = data
+                        continue
+                    }
+                } else {
+                    suffixCarry = Data()
+                }
+
+                guard let text = String(data: data, encoding: .utf8) else {
+                    return fallbackFullSuperGrokRead(
+                        at: logURL,
+                        cutoffMs: cutoffMs,
+                        nowMs: nowMs,
+                        decoder: decoder
+                    )
+                }
+
+                var newestInChunk: Double?
+                for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty,
+                          let lineData = trimmed.data(using: .utf8),
+                          let event = try? decoder.decode(SuperGrokEvent.self, from: lineData) else { // try?-ok(skip malformed line)
+                        continue
+                    }
+                    sawAnyEvent = true
+                    let timestamp = event.timestamp
+                    newestInChunk = max(newestInChunk ?? timestamp, timestamp)
+                    if timestamp >= cutoffMs && timestamp <= nowMs {
+                        inWindowCount += 1
+                        if earliestInWindowTimestamp == nil || timestamp < earliestInWindowTimestamp! {
+                            earliestInWindowTimestamp = timestamp
+                        }
+                    }
+                }
+                if let newestInChunk, newestInChunk < cutoffMs {
+                    reachedOlder = true
+                }
+            }
+
+            return SuperGrokLogScan(
+                inWindowCount: inWindowCount,
+                earliestInWindowTimestamp: earliestInWindowTimestamp,
+                sawAnyEvent: sawAnyEvent,
+                bytesRead: bytesRead
+            )
+        } catch {
+            return fallbackFullSuperGrokRead(
+                at: logURL,
+                cutoffMs: cutoffMs,
+                nowMs: nowMs,
+                decoder: decoder
+            )
+        }
+    }
+
+    private static func fallbackFullSuperGrokRead(
+        at logURL: URL,
+        cutoffMs: Double,
+        nowMs: Double,
+        decoder: JSONDecoder
+    ) -> SuperGrokLogScan {
+        guard let data = try? Data(contentsOf: logURL), // try?-ok(sidecar read, skip)
+              let text = String(data: data, encoding: .utf8) else {
+            return SuperGrokLogScan(inWindowCount: 0, earliestInWindowTimestamp: nil, sawAnyEvent: false, bytesRead: 0)
+        }
+        var inWindowCount = 0
+        var earliestInWindowTimestamp: Double?
+        var sawAnyEvent = false
         for line in text.split(separator: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
@@ -458,9 +574,20 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
                   let event = try? decoder.decode(SuperGrokEvent.self, from: lineData) else { // try?-ok(skip malformed line)
                 continue
             }
-            events.append(event)
+            sawAnyEvent = true
+            if event.timestamp >= cutoffMs && event.timestamp <= nowMs {
+                inWindowCount += 1
+                if earliestInWindowTimestamp == nil || event.timestamp < earliestInWindowTimestamp! {
+                    earliestInWindowTimestamp = event.timestamp
+                }
+            }
         }
-        return events
+        return SuperGrokLogScan(
+            inWindowCount: inWindowCount,
+            earliestInWindowTimestamp: earliestInWindowTimestamp,
+            sawAnyEvent: sawAnyEvent,
+            bytesRead: data.count
+        )
     }
 
     // MARK: - Helpers

@@ -261,7 +261,6 @@ public actor BurnBarLinuxQuotaRefreshService {
     private let cache: BurnBarLinuxQuotaSnapshotCache
     private let registry: ProviderQuotaAdapterRegistry
     private let logger: BurnBarDaemonLogger
-    private var lastRefreshAt: Date?
     private var refreshInFlight = false
 
     public init(
@@ -290,27 +289,55 @@ public actor BurnBarLinuxQuotaRefreshService {
         cache.snapshots()
     }
 
-    /// Refreshes at most once per five minutes unless explicitly forced. A
-    /// concurrent request receives the last durable cache rather than issuing
+    /// Refreshes providers whose adaptive TTL has elapsed, unless `force`.
+    /// A concurrent request receives the last durable cache rather than issuing
     /// duplicate provider calls or blocking the daemon indefinitely.
     public func refreshIfNeeded(
         now: Date = Date(),
         force: Bool = false
     ) async -> [ProviderQuotaSnapshot] {
-        if !force,
-           let lastRefreshAt,
-           now.timeIntervalSince(lastRefreshAt) < 5 * 60 {
-            return cache.snapshots()
+        if !force {
+            let cached = cache.snapshots()
+            var byProvider: [AgentProvider: ProviderQuotaSnapshot] = [:]
+            byProvider.reserveCapacity(cached.count)
+            for snapshot in cached {
+                guard let provider = snapshot.quotaProvider else { continue }
+                if let existing = byProvider[provider], existing.fetchedAt >= snapshot.fetchedAt {
+                    continue
+                }
+                byProvider[provider] = snapshot
+            }
+            let trackedProviders = AgentProvider.quotaSignalProviders.filter { registry.entry(for: $0) != nil }
+            let due = QuotaRefreshPolicy.providersDueForRefresh(
+                trackedProviders,
+                snapshots: byProvider,
+                now: now
+            )
+            if due.isEmpty {
+                return cached
+            }
+            guard !refreshInFlight else { return cached }
+            refreshInFlight = true
+            defer { refreshInFlight = false }
+            let refreshed = await refreshDue(Set(due), now: now, replaceAll: false)
+            return refreshed
         }
         guard !refreshInFlight else { return cache.snapshots() }
         refreshInFlight = true
         defer { refreshInFlight = false }
         let refreshed = await refreshAll(now: now)
-        lastRefreshAt = now
         return refreshed
     }
 
     private func refreshAll(now: Date) async -> [ProviderQuotaSnapshot] {
+        await refreshDue(nil, now: now, replaceAll: true)
+    }
+
+    private func refreshDue(
+        _ dueProviders: Set<AgentProvider>?,
+        now: Date,
+        replaceAll: Bool
+    ) async -> [ProviderQuotaSnapshot] {
         let configurations: [BurnBarResolvedProviderConfiguration]
         do {
             configurations = try await configStore.resolvedConfigurations()
@@ -320,8 +347,9 @@ public actor BurnBarLinuxQuotaRefreshService {
         }
 
         let context = makeContext(configurations: configurations)
-        let entries = AgentProvider.quotaSignalProviders.compactMap { provider in
-            registry.entry(for: provider).map { (provider, $0) }
+        let entries = AgentProvider.quotaSignalProviders.compactMap { provider -> (AgentProvider, ProviderQuotaAdapterRegistry.Entry)? in
+            if let dueProviders, !dueProviders.contains(provider) { return nil }
+            return registry.entry(for: provider).map { (provider, $0) }
         }
         let snapshots = await fetchSnapshots(
             entries: entries,
@@ -330,7 +358,17 @@ public actor BurnBarLinuxQuotaRefreshService {
             now: now
         )
 
-        cache.replace(snapshots)
+        if replaceAll {
+            cache.replace(snapshots)
+        } else {
+            var merged = Dictionary(
+                uniqueKeysWithValues: cache.snapshots().map { ($0.providerID.rawValue, $0) }
+            )
+            for snapshot in snapshots {
+                merged[snapshot.providerID.rawValue] = snapshot
+            }
+            cache.replace(Array(merged.values))
+        }
         return cache.snapshots()
     }
 

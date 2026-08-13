@@ -177,6 +177,27 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
         XCTAssertLessThan(throttled.drawnDotCount, full.drawnDotCount)
     }
 
+    func testUpperMedian_matchesSortedUpperMedian() {
+        let odd = [3.0, 1.0, 2.0]
+        XCTAssertEqual(SwarmSimulation.upperMedian(odd), odd.sorted()[odd.count / 2])
+        let even = [4.0, 1.0, 3.0, 2.0]
+        XCTAssertEqual(SwarmSimulation.upperMedian(even), even.sorted()[even.count / 2])
+        let duplicates = [1.5, 1.5, 1.5, 9.0]
+        XCTAssertEqual(SwarmSimulation.upperMedian(duplicates), duplicates.sorted()[duplicates.count / 2])
+    }
+
+    func testWebsiteBackgroundEditorial_capsFrameRateAt30() throws {
+        let mainBundlePath = Bundle.main.bundlePath
+        if mainBundlePath.contains("/openburnbar-app-tests/") {
+            throw XCTSkip("Skipping source code validation in sandboxed test runner.")
+        }
+        let source = try Self.loadSource("OpenBurnBarMobile/Views/Aurora/WebsiteBackgroundView.swift")
+        XCTAssertTrue(
+            source.contains("streamingThrottledFrameRate(30)"),
+            "Editorial dot-crest must request the 30 Hz cinematic cap instead of the 60 fps canvas default."
+        )
+    }
+
     func testBucketKey_separatesDifferentColors() {
         let red = RGBA(r: 1.0, g: 0.0, b: 0.0, a: 1.0)
         let green = RGBA(r: 0.0, g: 1.0, b: 0.0, a: 1.0)

@@ -88,12 +88,21 @@ extension UsageStore {
         let todayStart = calendar.startOfDay(for: now)
 
         return try await dbQueue.read { db in
+            let windows = TimeRange.allCases.map { ($0, $0.dateRange(now: now)) }
+            let aggregatesByRange = try Self.fetchUsageAggregateRowsByTimeRange(
+                db: db,
+                windows: windows
+            )
             var windowSummaries: [TimeRange: DashboardUsageWindowSummary] = [:]
-            for timeRange in TimeRange.allCases {
-                windowSummaries[timeRange] = try Self.fetchWindowSummary(
+            for (timeRange, dateRange) in windows {
+                let loadedUsages = try Self.fetchUsageRows(
                     db: db,
-                    dateRange: timeRange.dateRange(),
-                    loadedUsageLimit: loadedUsageLimit
+                    dateRange: dateRange,
+                    limit: loadedUsageLimit
+                )
+                windowSummaries[timeRange] = Self.makeWindowSummary(
+                    loadedUsages: loadedUsages,
+                    aggregateRows: aggregatesByRange[timeRange] ?? []
                 )
             }
 

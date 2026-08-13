@@ -679,7 +679,7 @@ over the same days). Those windows now come from one
 predicate, so overlapping long-runners stay bit-identical.
 `test_dashboardSnapshot_last7DaySeriesMatchesPerDayTotals` pins that
 equality; `test_dashboardSnapshotQueryCount_isIndependentOfRowCount`
-tightens the SELECT ceiling from 64 to 24.
+tightens the SELECT ceiling from 64 to 24 (ratcheted to 12 in §20).
 
 Idle usage ticks still issued `INSERT…ON CONFLICT` for every parsed row
 even when the value-diff WHERE gate changed nothing. `insertChunked`
@@ -705,4 +705,93 @@ Validation:
 - `OpenBurnBarTests/DashboardUsageViewModelTests`
 - `OpenBurnBarTests/RefreshTickPerfTests` (`UsagePersistSkipTests`)
 - `OpenBurnBarCoreTests/GrokParserTests`
+
+---
+
+## §20 — Remaining hot paths (August 2026, round 2)
+
+Round 1 closed constellation fills, overlapping-day scans, idle persist
+skip, and Grok resume. This round burns down the leftovers that were
+still on the 60s/appear path, without changing usage totals, quota
+remaining%, `resetsAt`, or `.exact|.estimated|.unavailable`.
+
+### Lane 1 — Graphics
+
+Chart Studio, Burn, and Trend Atlas were rebuilding gallery facts /
+insights on every Hermes token and every SwiftUI body. iOS now memoizes
+through `TrendDigestCacheStore` / `ChartStudioDerivedCache` keyed on
+digest equality. Android uses unconditional `remember(digest)` so
+Compose never calls `TrendInsightEngine` per recomposition.
+
+Substrate `sizePx` uses `upperMedian` (`selectNth`, same as
+`sorted()[count/2]`) instead of a per-frame sort. Editorial website
+backdrop requests `streamingThrottledFrameRate(30)` instead of the 60
+fps canvas default. Insight time-series domains are one `DomainLayout`
+pass computed once per body. Quota dials flatten the trimmed stroke
+with `.compositingGroup()` before the drop shadow so animated `Circle.trim`
+does not re-blur every frame.
+
+### Lane 2 — GRDB
+
+Dashboard window totals (today / 7d / 30d / month / all-time) come from
+one `GROUP BY` over membership flags (`CASE WHEN <intersection> THEN 1`)
+evaluated once per window per row, then `SUM(flag * column)`. Overlapping
+day cost/token series uses the same flag shape (one bind set per day).
+Row fetches per window stay: credential and project summaries need
+`LIMIT` rows, and all-time `LIMIT` cannot be reused for shorter windows.
+`test_dashboardSnapshot_windowTotalsMatchPerWindowAggregateQueries`
+pins totals against per-window `fetchUsageTotals`; the SELECT ceiling
+is 12.
+
+Database workspace snapshot counts are one `GROUP BY status` each for
+shared-artifact sync states and projection jobs.
+
+### Lane 3 — Quota
+
+`QuotaRefreshPolicy` now drives Mac `refreshIfNeeded` and Linux
+`BurnBarLinuxQuotaRefreshService`. High remaining (≥50%) refreshes every
+30m, 20–50% every 10m, <20% every 3m, unknown 15m, clamped to
+`resetsAt` / 60s / 4h. `maxAge <= 0` still force-refreshes everyone.
+Subset refreshes do not occupy the full `refreshAll` in-flight slot.
+
+SuperGrok pacing tail-reads JSONL from EOF in 64KB chunks until the
+newest timestamp in a chunk is older than the 2h window. Lines longer
+than a chunk are carried, not dropped. `sawAnyEvent` still reflects
+historical lines so the empty-log status message does not flip.
+
+Claude JSONL quota scans resume from the previous newline when a
+transcript only grew. A mid-line last parse fail-closes to a full
+re-read. Codex rollout enumeration skips `rollout-*.jsonl` whose mtime
+is older than the 7-day freshness cutoff and prunes those cache
+entries.
+
+### Named leftovers
+
+- `ChartsDataService.refresh` still materializes `fetchAllUsage()` for
+  all-time. `ChartsSnapshot.build` needs per-session rows (heatmap,
+  outliers, project entropy); a SQL rewrite is a different coherent unit.
+- `ConversationIndexer.index` still opens one write transaction per
+  *changed* conversation. Steady-state ticks already skip via the
+  batched identity map; first-index of thousands of new rows is the
+  remaining cost.
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Wall-clock
+  only; snapshots stay last-write-wins.
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+
+Validation:
+- `OpenBurnBarTests/SwarmCanvasFrameRateTests`
+- `OpenBurnBarTests/DashboardUsageViewModelTests`
+- `OpenBurnBarTests/ProviderQuotaServiceTests`
+- `OpenBurnBarTests/XAIQuotaAdapterTests`
+- `OpenBurnBarTests/ClaudeQuotaJSONLScannerTests`
+- `OpenBurnBarCoreTests/QuotaRefreshPolicyTests`
+- `OpenBurnBarCoreTests/CodexRolloutScannerTests`
+- `OpenBurnBarCoreTests/SuperGrokLogScanTests`
+- `OpenBurnBarCoreTests/ClaudeJSONLResumeTests`
+- `OpenBurnBarDaemonTests/BurnBarLinuxQuotaRefreshServiceTests` (Linux)
 

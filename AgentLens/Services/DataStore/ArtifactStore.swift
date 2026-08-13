@@ -484,6 +484,48 @@ final class ArtifactStore: Sendable {
         }
     }
 
+    func countSharedArtifactSyncStatesByStatus(
+        workspaceID: String? = nil,
+        teamID: String? = nil
+    ) async throws -> [SharedArtifactSyncStatus: Int] {
+        let normalizedWorkspaceID = workspaceID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTeamID = teamID?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var clauses: [String] = []
+        var args: [any DatabaseValueConvertible] = []
+
+        if let normalizedWorkspaceID, normalizedWorkspaceID.isEmpty == false {
+            clauses.append("workspaceID = ?")
+            args.append(normalizedWorkspaceID)
+        }
+
+        if let normalizedTeamID, normalizedTeamID.isEmpty == false {
+            clauses.append("teamID = ?")
+            args.append(normalizedTeamID)
+        }
+
+        let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        return try await dbQueue.read { db in
+            var counts: [SharedArtifactSyncStatus: Int] = [:]
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT syncStatus, COUNT(*) AS count
+                FROM shared_artifact_sync_state
+                \(whereSQL)
+                GROUP BY syncStatus
+                """,
+                arguments: StatementArguments(args)
+            )
+            for row in rows {
+                guard let raw = row["syncStatus"] as? String,
+                      let status = SharedArtifactSyncStatus(rawValue: raw) else { continue }
+                counts[status] = UsageStore.intValue(row["count"])
+            }
+            return counts
+        }
+    }
+
     // MARK: - Permissions
 
     func upsertSharedArtifactPermission(_ permission: SharedArtifactPermissionRecord) async throws -> SharedArtifactPermissionWriteDisposition {

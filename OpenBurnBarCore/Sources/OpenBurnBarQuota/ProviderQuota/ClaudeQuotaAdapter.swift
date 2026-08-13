@@ -62,12 +62,22 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         public let sevenDayTokens: Int
         public let latestTimestamp: Date?
         public let filesScanned: Int
+        /// Bytes actually read from transcript handles this scan. Exact cache
+        /// hits contribute 0; resume-on-growth reads only the appended tail.
+        public let bytesRead: Int
 
-        public init(fiveHourTokens: Int, sevenDayTokens: Int, latestTimestamp: Date?, filesScanned: Int) {
+        public init(
+            fiveHourTokens: Int,
+            sevenDayTokens: Int,
+            latestTimestamp: Date?,
+            filesScanned: Int,
+            bytesRead: Int = 0
+        ) {
             self.fiveHourTokens = fiveHourTokens
             self.sevenDayTokens = sevenDayTokens
             self.latestTimestamp = latestTimestamp
             self.filesScanned = filesScanned
+            self.bytesRead = bytesRead
         }
     }
 
@@ -127,6 +137,11 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         private struct Entry {
             let signature: JSONLFileSignature
             let contributions: [JSONLContribution]
+            let endedAtLineBoundary: Bool
+        }
+        struct ResumePrefix {
+            let contributions: [JSONLContribution]
+            let offset: UInt64
         }
         private let entries = Locked<[String: Entry]>([:])
 
@@ -137,8 +152,38 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             }
         }
 
-        func store(path: String, signature: JSONLFileSignature, contributions: [JSONLContribution]) {
-            entries.withLock { $0[path] = Entry(signature: signature, contributions: contributions) }
+        /// Append-only resume: previous parse ended on a newline and the file
+        /// only grew. Fail-closed to a full reparse when the last cached byte
+        /// was mid-line (a later append may complete that turn).
+        func resumePrefix(forPath path: String, newSignature: JSONLFileSignature) -> ResumePrefix? {
+            entries.withLock { entries in
+                guard let entry = entries[path],
+                      entry.endedAtLineBoundary,
+                      entry.signature.sizeBytes > 0,
+                      entry.signature.sizeBytes < newSignature.sizeBytes,
+                      entry.signature.modifiedAt <= newSignature.modifiedAt else {
+                    return nil
+                }
+                return ResumePrefix(
+                    contributions: entry.contributions,
+                    offset: UInt64(entry.signature.sizeBytes)
+                )
+            }
+        }
+
+        func store(
+            path: String,
+            signature: JSONLFileSignature,
+            contributions: [JSONLContribution],
+            endedAtLineBoundary: Bool
+        ) {
+            entries.withLock {
+                $0[path] = Entry(
+                    signature: signature,
+                    contributions: contributions,
+                    endedAtLineBoundary: endedAtLineBoundary
+                )
+            }
         }
 
         /// Drop entries for transcripts that fell out of the widest rolling
@@ -637,6 +682,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         var sevenDayTokens = 0
         var latestTimestamp: Date?
         var filesScanned = 0
+        var bytesRead = 0
 
         for (file, signature) in files {
             let path = file.standardizedFileURL.path
@@ -646,8 +692,20 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             } else {
                 guard let handle = try? FileHandle(forReadingFrom: file) else { continue } // try?-ok(skip unreadable file)
                 defer { try? handle.close() } // try?-ok(handle teardown)
-                contributions = parseFileContributions(from: handle, now: now)
-                scanCache.store(path: path, signature: signature, contributions: contributions)
+                let prefix = scanCache.resumePrefix(forPath: path, newSignature: signature)
+                let parsed = parseFileContributions(
+                    from: handle,
+                    now: now,
+                    startOffset: prefix?.offset ?? 0
+                )
+                bytesRead += parsed.bytesRead
+                contributions = (prefix?.contributions ?? []) + parsed.contributions
+                scanCache.store(
+                    path: path,
+                    signature: signature,
+                    contributions: contributions,
+                    endedAtLineBoundary: parsed.endedAtLineBoundary
+                )
             }
 
             filesScanned += 1
@@ -666,7 +724,8 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             fiveHourTokens: fiveHourTokens,
             sevenDayTokens: sevenDayTokens,
             latestTimestamp: latestTimestamp,
-            filesScanned: filesScanned
+            filesScanned: filesScanned,
+            bytesRead: bytesRead
         )
     }
 
@@ -1049,16 +1108,23 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
     /// `(timestamp, total)` contribution of every assistant turn. The result is
     /// what the per-file cache stores; rolling-window summation happens in
     /// `scanJSONLTokenWindows` so cached values survive window movement.
+    ///
+    /// `startOffset` must land on a line boundary (0 or a previous parse that
+    /// ended with a newline). Incomplete last lines are still flushed at EOF
+    /// so a one-shot scan stays bit-identical; those files are not resumed.
     private static func parseFileContributions(
         from handle: FileHandle,
-        now: Date
-    ) -> [JSONLContribution] {
-        try? handle.seek(toOffset: 0) // try?-ok(best-effort rewind)
+        now: Date,
+        startOffset: UInt64 = 0
+    ) -> JSONLParseResult {
+        try? handle.seek(toOffset: startOffset) // try?-ok(best-effort rewind)
 
         var contributions: [JSONLContribution] = []
         var currentLine = Data()
         currentLine.reserveCapacity(4 * 1024)
         var lineByteCount = 0
+        var bytesRead = 0
+        var endedAtLineBoundary = true
 
         func flushCurrentLine() {
             if lineByteCount > 0, lineByteCount <= ScannerPolicy.maxLineBytes,
@@ -1074,6 +1140,10 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
                 flushCurrentLine()
                 break
             }
+            bytesRead += chunk.count
+            if let last = chunk.last {
+                endedAtLineBoundary = last == 0x0A
+            }
 
             var segmentStart = chunk.startIndex
             while let nl = chunk[segmentStart...].firstIndex(of: 0x0A) {
@@ -1086,10 +1156,21 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
             if segmentStart < chunk.endIndex {
                 currentLine.append(chunk[segmentStart..<chunk.endIndex])
                 lineByteCount += chunk[segmentStart..<chunk.endIndex].count
+                endedAtLineBoundary = false
             }
         }
 
-        return contributions
+        return JSONLParseResult(
+            contributions: contributions,
+            bytesRead: bytesRead,
+            endedAtLineBoundary: endedAtLineBoundary
+        )
+    }
+
+    private struct JSONLParseResult {
+        let contributions: [JSONLContribution]
+        let bytesRead: Int
+        let endedAtLineBoundary: Bool
     }
 
     private static func parseLineContribution(

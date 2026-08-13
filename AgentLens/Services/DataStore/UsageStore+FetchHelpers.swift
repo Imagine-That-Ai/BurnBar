@@ -26,6 +26,13 @@ extension UsageStore {
     ) throws -> DashboardUsageWindowSummary {
         let loadedUsages = try fetchUsageRows(db: db, dateRange: dateRange, limit: loadedUsageLimit)
         let aggregateRows = try fetchUsageAggregateRows(db: db, dateRange: dateRange)
+        return makeWindowSummary(loadedUsages: loadedUsages, aggregateRows: aggregateRows)
+    }
+
+    static func makeWindowSummary(
+        loadedUsages: [TokenUsage],
+        aggregateRows: [UsageAggregateRow]
+    ) -> DashboardUsageWindowSummary {
         let totals = usageTotals(from: aggregateRows)
 
         return DashboardUsageWindowSummary(
@@ -76,9 +83,154 @@ extension UsageStore {
                          executionSourceKind, executionSourceConfidence,
                          provenanceConfidence, provenanceMethod
                 """,
-            arguments: predicate.arguments
-        )
+                arguments: predicate.arguments
+            )
         return rows.compactMap(UsageAggregateRow.init(row:))
+    }
+
+    /// One `GROUP BY` scan that fans each TimeRange window out with
+    /// membership flags so dashboard hydration does not re-read
+    /// `token_usage` once per window. Intersection is evaluated once per
+    /// window per row; metrics are `flag * column`. Window membership is
+    /// the same predicate as `fetchUsageAggregateRows`.
+    static func fetchUsageAggregateRowsByTimeRange(
+        db: Database,
+        windows: [(TimeRange, ClosedRange<Date>?)]
+    ) throws -> [TimeRange: [UsageAggregateRow]] {
+        let identityColumns = [
+            "provider",
+            "model",
+            "executionSourceID",
+            "executionSourceName",
+            "executionSourceKind",
+            "executionSourceConfidence",
+            "provenanceConfidence",
+            "provenanceMethod"
+        ]
+        let metricColumns: [(alias: String, expression: String)] = [
+            ("inputTokens", "inputTokens"),
+            ("outputTokens", "outputTokens"),
+            ("cacheCreationTokens", "cacheCreationTokens"),
+            ("cacheReadTokens", "cacheReadTokens"),
+            ("reasoningTokens", "reasoningTokens"),
+            ("totalTokens", "totalTokens"),
+            ("cost", "cost")
+        ]
+
+        var flagParts: [String] = []
+        var arguments = StatementArguments()
+        var windowFlags: [(range: TimeRange, flag: String)] = []
+        flagParts.reserveCapacity(windows.count)
+        windowFlags.reserveCapacity(windows.count)
+
+        for (range, dateRange) in windows {
+            let suffix = windowSQLAlias(range)
+            let flag = "in_\(suffix)"
+            if let dateRange {
+                flagParts.append("CASE WHEN \(intersectionSQL) THEN 1 ELSE 0 END AS \(flag)")
+                arguments += intersectionArguments(dateRange)
+            } else {
+                flagParts.append("1 AS \(flag)")
+            }
+            windowFlags.append((range, flag))
+        }
+
+        var selectParts = identityColumns
+        selectParts.reserveCapacity(identityColumns.count + windowFlags.count * (metricColumns.count + 1))
+        for (range, flag) in windowFlags {
+            let suffix = windowSQLAlias(range)
+            selectParts.append("COALESCE(SUM(\(flag)), 0) AS sessionCount_\(suffix)")
+            for metric in metricColumns {
+                selectParts.append(
+                    "COALESCE(SUM(\(flag) * \(metric.expression)), 0) AS \(metric.alias)_\(suffix)"
+                )
+            }
+        }
+
+        let innerSelect = (identityColumns + [
+            "inputTokens",
+            "outputTokens",
+            "cacheCreationTokens",
+            "cacheReadTokens",
+            "reasoningTokens",
+            "totalTokens",
+            "cost"
+        ] + flagParts).joined(separator: ",\n                       ")
+
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT \(selectParts.joined(separator: ",\n                       "))
+                FROM (
+                    SELECT \(innerSelect)
+                    FROM token_usage
+                ) AS windowed
+                GROUP BY provider, model, executionSourceID, executionSourceName,
+                         executionSourceKind, executionSourceConfidence,
+                         provenanceConfidence, provenanceMethod
+                """,
+            arguments: arguments
+        )
+
+        var result: [TimeRange: [UsageAggregateRow]] = [:]
+        result.reserveCapacity(windows.count)
+        for (range, _) in windows {
+            result[range] = []
+        }
+
+        for row in rows {
+            guard let providerRaw = row["provider"] as? String,
+                  let provider = AgentProvider(rawValue: providerRaw),
+                  let model = row["model"] as? String else { continue }
+            let executionSourceID = row["executionSourceID"] as? String ?? "unknown"
+            let executionSourceName = row["executionSourceName"] as? String ?? "Unknown"
+            let executionSourceKind = (row["executionSourceKind"] as? String)
+                .flatMap { UsageExecutionSourceKind(rawValue: $0) } ?? .unknown
+            let executionSourceConfidence = (row["executionSourceConfidence"] as? String)
+                .flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
+            let provenanceConfidence = (row["provenanceConfidence"] as? String)
+                .flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
+            let provenanceMethod = (row["provenanceMethod"] as? String)
+                .flatMap { UsageProvenanceMethod(rawValue: $0) } ?? .unknown
+
+            for (range, _) in windows {
+                let suffix = windowSQLAlias(range)
+                let sessionCount = intValue(row["sessionCount_\(suffix)"])
+                guard sessionCount > 0 else { continue }
+                result[range, default: []].append(
+                    UsageAggregateRow(
+                        provider: provider,
+                        model: model,
+                        executionSourceID: executionSourceID,
+                        executionSourceName: executionSourceName,
+                        executionSourceKind: executionSourceKind,
+                        executionSourceConfidence: executionSourceConfidence,
+                        provenanceConfidence: provenanceConfidence,
+                        provenanceMethod: provenanceMethod,
+                        sessionCount: sessionCount,
+                        inputTokens: intValue(row["inputTokens_\(suffix)"]),
+                        outputTokens: intValue(row["outputTokens_\(suffix)"]),
+                        cacheCreationTokens: intValue(row["cacheCreationTokens_\(suffix)"]),
+                        cacheReadTokens: intValue(row["cacheReadTokens_\(suffix)"]),
+                        reasoningTokens: intValue(row["reasoningTokens_\(suffix)"]),
+                        totalTokens: intValue(row["totalTokens_\(suffix)"]),
+                        cost: doubleValue(row["cost_\(suffix)"])
+                    )
+                )
+            }
+        }
+
+        return result
+    }
+
+    private static func windowSQLAlias(_ range: TimeRange) -> String {
+        switch range {
+        case .today: return "today"
+        case .last7Days: return "d7"
+        case .last30Days: return "d30"
+        case .thisMonth: return "month"
+        case .allTime: return "all"
+        }
     }
 
     static func fetchUsageTotals( // pure-move: was private
@@ -123,9 +275,11 @@ extension UsageStore {
         todayStart: Date,
         offsets: ClosedRange<Int>
     ) throws -> [Int: (cost: Double, tokens: Int)] {
+        var flagParts: [String] = []
         var selectParts: [String] = []
         var arguments = StatementArguments()
         var includedOffsets: [Int] = []
+        flagParts.reserveCapacity(offsets.count)
         selectParts.reserveCapacity(offsets.count * 2)
 
         for offset in offsets {
@@ -133,17 +287,11 @@ extension UsageStore {
                   let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
                 continue
             }
-            let predicate = dateRangePredicate(day...nextDay)
-            let condition = String(predicate.whereSQL.drop(while: { $0 != "(" }))
-            guard condition.hasPrefix("(") else { continue }
-            selectParts.append(
-                "COALESCE(SUM(CASE WHEN \(condition) THEN cost ELSE 0 END), 0) AS cost_\(offset)"
-            )
-            selectParts.append(
-                "COALESCE(SUM(CASE WHEN \(condition) THEN totalTokens ELSE 0 END), 0) AS tokens_\(offset)"
-            )
-            arguments += predicate.arguments
-            arguments += predicate.arguments
+            let flag = "in_\(offset)"
+            flagParts.append("CASE WHEN \(intersectionSQL) THEN 1 ELSE 0 END AS \(flag)")
+            arguments += intersectionArguments(day...nextDay)
+            selectParts.append("COALESCE(SUM(\(flag) * cost), 0) AS cost_\(offset)")
+            selectParts.append("COALESCE(SUM(\(flag) * totalTokens), 0) AS tokens_\(offset)")
             includedOffsets.append(offset)
         }
 
@@ -153,7 +301,11 @@ extension UsageStore {
             db,
             sql: """
                 SELECT \(selectParts.joined(separator: ",\n                       "))
-                FROM token_usage
+                FROM (
+                    SELECT cost, totalTokens,
+                           \(flagParts.joined(separator: ",\n                           "))
+                    FROM token_usage
+                ) AS windowed
                 """,
             arguments: arguments
         )
@@ -264,20 +416,26 @@ extension UsageStore {
             .sorted { $0.date > $1.date }
     }
 
+    static let intersectionSQL = "((startTime <= ? AND endTime >= ?) OR (endTime <= ? AND startTime >= ?))"
+
+    static func intersectionArguments(_ dateRange: ClosedRange<Date>) -> StatementArguments {
+        let lowerBound = OpenBurnBarDatabase.sqliteDateString(dateRange.lowerBound)
+        let upperBound = OpenBurnBarDatabase.sqliteDateString(dateRange.upperBound)
+        return StatementArguments([
+            upperBound,
+            lowerBound,
+            upperBound,
+            lowerBound
+        ])
+    }
+
     static func dateRangePredicate(_ dateRange: ClosedRange<Date>?) -> (whereSQL: String, arguments: StatementArguments) { // pure-move: was private
         guard let dateRange else {
             return ("", StatementArguments())
         }
-        let lowerBound = OpenBurnBarDatabase.sqliteDateString(dateRange.lowerBound)
-        let upperBound = OpenBurnBarDatabase.sqliteDateString(dateRange.upperBound)
         return (
-            " WHERE ((startTime <= ? AND endTime >= ?) OR (endTime <= ? AND startTime >= ?))",
-            StatementArguments([
-                upperBound,
-                lowerBound,
-                upperBound,
-                lowerBound
-            ])
+            " WHERE \(intersectionSQL)",
+            intersectionArguments(dateRange)
         )
     }
 

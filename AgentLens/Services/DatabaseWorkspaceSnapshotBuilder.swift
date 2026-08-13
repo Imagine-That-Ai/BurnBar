@@ -236,20 +236,14 @@ final class DatabaseWorkspaceSnapshotBuilder {
         })
 
         // Shared state
-        await captureAsync(metric: .sharedArtifacts, context: "shared_sync_count", assign: { snap.sharedArtifactCount = $0 }, work: {
-            try await dataStore.countSharedArtifactSyncStates()
-        })
-        await captureAsync(metric: .sharedArtifacts, context: "shared_sync_synced", assign: { snap.syncedArtifactCount = $0 }, work: {
-            try await dataStore.countSharedArtifactSyncStates(statuses: [.synced])
-        })
-        await captureAsync(metric: .sharedArtifacts, context: "shared_sync_pending", assign: { snap.pendingArtifactCount = $0 }, work: {
-            try await dataStore.countSharedArtifactSyncStates(statuses: [.pendingUpload, .pendingPull])
-        })
-        await captureAsync(metric: .sharedArtifacts, context: "shared_sync_conflicted", assign: { snap.conflictedArtifactCount = $0 }, work: {
-            try await dataStore.countSharedArtifactSyncStates(statuses: [.conflicted])
-        })
-        await captureAsync(metric: .sharedArtifacts, context: "shared_sync_failed", assign: { snap.failedArtifactCount = $0 }, work: {
-            try await dataStore.countSharedArtifactSyncStates(statuses: [.failed])
+        await captureAsync(metric: .sharedArtifacts, context: "shared_sync_counts", assign: { (counts: [SharedArtifactSyncStatus: Int]) in
+            snap.sharedArtifactCount = counts.values.reduce(0, +)
+            snap.syncedArtifactCount = counts[.synced] ?? 0
+            snap.pendingArtifactCount = (counts[.pendingUpload] ?? 0) + (counts[.pendingPull] ?? 0)
+            snap.conflictedArtifactCount = counts[.conflicted] ?? 0
+            snap.failedArtifactCount = counts[.failed] ?? 0
+        }, work: {
+            try await dataStore.countSharedArtifactSyncStatesByStatus()
         })
         await captureAsync(metric: .sharedArtifacts, context: "shared_sync_recent", assign: { snap.syncStates = $0 }, work: {
             try await dataStore.fetchSharedArtifactSyncStates(limit: 100)
@@ -274,17 +268,13 @@ final class DatabaseWorkspaceSnapshotBuilder {
                 limit: 100
             )
         })
-        await captureAsync(metric: .projectionJobs, context: "projection_total", assign: { snap.projectionJobCounts.total = $0 }, work: {
-            try await dataStore.countProjectionJobs()
-        })
-        await captureAsync(metric: .projectionJobs, context: "projection_active", assign: { snap.projectionJobCounts.active = $0 }, work: {
-            try await dataStore.countProjectionJobs(statuses: [.running, .leased])
-        })
-        await captureAsync(metric: .projectionJobs, context: "projection_queued", assign: { snap.projectionJobCounts.queued = $0 }, work: {
-            try await dataStore.countProjectionJobs(statuses: [.queued])
-        })
-        await captureAsync(metric: .projectionJobs, context: "projection_failed", assign: { snap.projectionJobCounts.failed = $0 }, work: {
-            try await dataStore.countProjectionJobs(statuses: [.failed])
+        await captureAsync(metric: .projectionJobs, context: "projection_counts", assign: { (counts: [ProjectionJobStatus: Int]) in
+            snap.projectionJobCounts.total = counts.values.reduce(0, +)
+            snap.projectionJobCounts.active = (counts[.running] ?? 0) + (counts[.leased] ?? 0)
+            snap.projectionJobCounts.queued = counts[.queued] ?? 0
+            snap.projectionJobCounts.failed = counts[.failed] ?? 0
+        }, work: {
+            try await dataStore.countProjectionJobsByStatus()
         })
 
         // System: retrieval health

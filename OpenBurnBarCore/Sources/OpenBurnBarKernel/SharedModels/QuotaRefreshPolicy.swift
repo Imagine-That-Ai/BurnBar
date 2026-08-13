@@ -106,4 +106,53 @@ public enum QuotaRefreshPolicy {
         )
         return snapshot.fetchedAt.addingTimeInterval(ttl)
     }
+
+    /// Hosted-sweep equivalent: min remaining/limit across buckets, first
+    /// non-custom window, earliest `resetsAt`. Empty buckets → unknown TTL.
+    public static func policySnapshot(from snapshot: ProviderQuotaSnapshot) -> QuotaRefreshPolicySnapshot {
+        var remainingFraction: Double?
+        var windowKind: ProviderQuotaWindowKind = .custom
+        var resetsAt: Date?
+
+        for bucket in snapshot.buckets {
+            if let limit = bucket.limitValue, limit > 0, limit.isFinite,
+               let remaining = bucket.remainingValue, remaining.isFinite {
+                let candidate = min(max(remaining / limit, 0), 1)
+                remainingFraction = remainingFraction.map { min($0, candidate) } ?? candidate
+            }
+            if resetsAt == nil {
+                resetsAt = bucket.resetsAt
+            }
+            if windowKind == .custom {
+                windowKind = bucket.windowKind
+            }
+        }
+
+        return QuotaRefreshPolicySnapshot(
+            fetchedAt: snapshot.fetchedAt,
+            remainingFraction: remainingFraction,
+            windowKind: windowKind,
+            resetsAt: resetsAt
+        )
+    }
+
+    public static func isFresh(
+        _ snapshot: ProviderQuotaSnapshot,
+        now: Date = Date()
+    ) -> Bool {
+        now < nextRefreshAfter(policySnapshot(from: snapshot), now: now)
+    }
+
+    /// Providers with no snapshot, or whose adaptive TTL has elapsed.
+    /// Order matches `providers`.
+    public static func providersDueForRefresh<S: Sequence>(
+        _ providers: S,
+        snapshots: [AgentProvider: ProviderQuotaSnapshot],
+        now: Date = Date()
+    ) -> [AgentProvider] where S.Element == AgentProvider {
+        providers.filter { provider in
+            guard let snapshot = snapshots[provider] else { return true }
+            return !isFresh(snapshot, now: now)
+        }
+    }
 }
