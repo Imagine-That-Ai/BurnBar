@@ -937,6 +937,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
     private let claudeCodeCredentialsURL: URL?
     private let claudeOAuthRefreshSession: URLSession
     private let linuxSecretCustodian: LinuxSecretCustodian
+    private var storedCredentialReplacementRevision: UInt64 = 0
 
     public init(
         service: String = BurnBarKeychainSecretStore.defaultService,
@@ -1045,6 +1046,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             if let refreshed = await refreshClaudeOAuthCredential(claudeCredential) {
                 claudeCredential = refreshed
                 try await setSecret(refreshed.encodedStorageSecret(), for: providerID)
+                storedCredentialReplacementRevision &+= 1
             } else {
                 // Refresh failed: return nil so callers can fall back to
                 // alternative credential sources (Claude Code credentials,
@@ -1265,6 +1267,10 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
 #endif
     }
 
+    public func credentialReplacementRevision() async -> UInt64 {
+        storedCredentialReplacementRevision
+    }
+
     private func hermesCredentialPoolSecret(for providerID: String) -> String? {
         guard let hermesCredentialPoolURL else { return nil }
         let normalizedProviderID = providerID
@@ -1444,6 +1450,7 @@ public actor BurnBarKeychainSecretStore: BurnBarProviderSecretStoring {
             if let refreshed = await refreshClaudeOAuthCredential(credential) {
                 do {
                     try await setSecret(refreshed.encodedStorageSecret(), for: slotKey)
+                    storedCredentialReplacementRevision &+= 1
                 } catch {
                     Self.logger.error("provider_oauth_proactive_refresh_store_failed", metadata: [
                         "provider": slotKey,

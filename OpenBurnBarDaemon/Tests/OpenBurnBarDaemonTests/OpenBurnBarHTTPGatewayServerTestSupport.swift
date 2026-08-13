@@ -145,6 +145,31 @@ extension GatewayHarness {
     }
 }
 
+final class CountingGatewayFactoryDroidRunner: FactoryDroidProcessRunning, @unchecked Sendable {
+    private let invocationCount = Locked(0)
+
+    var count: Int {
+        invocationCount.read()
+    }
+
+    func runDroid(
+        arguments: [String],
+        environment: [String: String],
+        timeout: TimeInterval
+    ) async throws -> FactoryDroidProcessResult {
+        invocationCount.withLock { $0 += 1 }
+        return FactoryDroidProcessResult(
+            exitCode: 0,
+            stdout: """
+            Available Models:
+              gpt-5.5                                                   GPT-5.5
+              glm-5.1                                                   Droid Core (GLM-5.1)
+            """,
+            stderr: ""
+        )
+    }
+}
+
 /// Test-only logger that captures all log emissions for assertion. Conforms to
 /// `BurnBarDaemonLogging` so it can be injected anywhere the gateway accepts a
 /// logger. Uses `OSAllocatedUnfairLock` for lock-free thread safety with native

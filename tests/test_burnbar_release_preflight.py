@@ -993,6 +993,8 @@ def test_iroh_builder_strips_fresh_staging_archives_instead_of_cargo_cache():
     assert 'if [[ -s "${strip_log}" ]]' in staging_helper
     assert "Unable to classify Apple static archive members" in archive_helper
     assert "has no symbols" in archive_helper
+    assert "libtool: warning:" in archive_helper
+    assert "libtool: file:" in archive_helper
     assert '-filelist "$object_list"' in archive_helper
     assert (
         "Refusing to normalize an archive with duplicate member names"
@@ -1055,6 +1057,65 @@ def test_iroh_builder_strips_fresh_staging_archives_instead_of_cargo_cache():
         '    "${SIM_X86_64_DIR}/libopenburnbar_iroh.a"'
         in builder
     )
+
+
+def test_apple_static_archive_parser_accepts_known_xcode_diagnostics_and_rejects_unknown(
+    tmp_path,
+):
+    helper = ROOT / "scripts/lib/apple-static-archive.sh"
+    diagnostic_log = tmp_path / "libtool.log"
+    parsed_members = tmp_path / "members.txt"
+
+    diagnostic_log.write_text(
+        "\n".join(
+            [
+                "libtool: warning: '/tmp/old-format.a(empty-old.o)' has no symbols",
+                "libtool: file: /tmp/new-format.a(empty-new.o) has no symbols",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    accepted = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; openburnbar_parse_apple_static_archive_diagnostics "$2" "$3" fixture.a',
+            "bash",
+            str(helper),
+            str(diagnostic_log),
+            str(parsed_members),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert accepted.returncode == 0, accepted.stderr
+    assert parsed_members.read_text(encoding="utf-8").splitlines() == [
+        "empty-old.o",
+        "empty-new.o",
+    ]
+
+    diagnostic_log.write_text(
+        "libtool: notice: /tmp/future-format.a(empty.o) has no symbols\n",
+        encoding="utf-8",
+    )
+    rejected = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; openburnbar_parse_apple_static_archive_diagnostics "$2" "$3" fixture.a',
+            "bash",
+            str(helper),
+            str(diagnostic_log),
+            str(parsed_members),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert rejected.returncode == 65
+    assert "unrecognized archive diagnostic" in rejected.stderr
 
 
 def test_local_app_signing_uses_same_privileged_peer_policy_as_release():

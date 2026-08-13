@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { open, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -164,18 +164,23 @@ async function renderFile(file, runtime) {
   if (!contentType) {
     throw new Error(`Unsupported fixture asset type: ${extension}`);
   }
-  const metadata = await stat(absolutePath);
-  if (!metadata.isFile()) {
-    throw new Error(`Fixture asset is not a regular file: ${file}`);
+  const handle = await open(absolutePath, 'r');
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) {
+      throw new Error(`Fixture asset is not a regular file: ${file}`);
+    }
+    const source = await handle.readFile();
+    if (extension === '.html' || extension === '.js' || extension === '.css' || extension === '.svg') {
+      return {
+        body: Buffer.from(replaceRuntimeTokens(source.toString('utf8'), runtime)),
+        contentType
+      };
+    }
+    return { body: source, contentType };
+  } finally {
+    await handle.close();
   }
-  const source = await readFile(absolutePath);
-  if (extension === '.html' || extension === '.js' || extension === '.css' || extension === '.svg') {
-    return {
-      body: Buffer.from(replaceRuntimeTokens(source.toString('utf8'), runtime)),
-      contentType
-    };
-  }
-  return { body: source, contentType };
 }
 
 async function serveDefinition(response, definition, runtime) {

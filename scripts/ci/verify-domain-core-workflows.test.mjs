@@ -766,6 +766,22 @@ test("swift-consumer-contracts gates libsignal out to prevent duplicate Rust run
   );
 });
 
+test("only swift-consumer-contracts recursively checks out the libsignal submodule", () => {
+  const swiftConsumer = workflowJob(core, "swift-consumer-contracts");
+  const pythonMCP = workflowJob(core, "python-mcp-cloudvault-contracts");
+
+  assert.match(
+    swiftConsumer,
+    /uses: actions\/checkout@[^\n]+\n\s+with:\n\s+persist-credentials: false\n\s+submodules: recursive/mu,
+    "swift-consumer-contracts must initialize the local libsignal Swift package dependency",
+  );
+  assert.doesNotMatch(
+    pythonMCP,
+    /submodules:\s*recursive/mu,
+    "python-mcp-cloudvault-contracts must not download unrelated recursive submodules",
+  );
+});
+
 // Extract a top-level trigger block under `on:` (e.g. `pull_request:`) from the
 // workflow source. Mirrors workflowJob: find the two-space-indented key, then cut
 // at the next sibling trigger key or the next top-level key (`concurrency:` etc.).

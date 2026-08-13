@@ -249,7 +249,7 @@ extension BurnBarHTTPGatewayServer {
 
     func rateLimitClientKey(for request: HTTPRequest) -> String {
         if let token = clientAuthToken(from: request) {
-            return "token:\(Self.stableDigest(token))"
+            return "token:\(keyedRateLimitDigest(token))"
         }
         return "anonymous"
     }
@@ -271,6 +271,14 @@ extension BurnBarHTTPGatewayServer {
         }
         await writeResponse(on: connection, status: 429, headers: rateLimitHeaders, body: errorBody("rate limit exceeded"))
         connection.cancel()
+    }
+
+    func keyedRateLimitDigest(_ value: String) -> String {
+        let digest = HMAC<SHA256>.authenticationCode(
+            for: Data(value.utf8),
+            using: rateLimitClientKeySecret
+        )
+        return digest.prefix(12).map { String(format: "%02x", $0) }.joined()
     }
 
     static func stableDigest(_ value: String) -> String {

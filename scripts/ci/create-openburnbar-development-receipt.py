@@ -21,7 +21,7 @@ from exclusive_json import write_exclusive_json
 
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 TEAM_ID = re.compile(r"^[A-Z0-9]{10}$")
-CERTIFICATE_SHA1 = re.compile(r"^[0-9A-Fa-f]{40}$")
+CERTIFICATE_SHA256 = re.compile(r"^[0-9A-Fa-f]{64}$")
 UTC = timezone(timedelta(0))
 
 
@@ -35,7 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--safari-profile", required=True, type=Path)
     parser.add_argument("--team-id", required=True)
     parser.add_argument("--signing-identity", required=True)
-    parser.add_argument("--signing-certificate-sha1", required=True)
+    parser.add_argument("--signing-certificate-sha256", required=True)
     parser.add_argument("--current-mac-provisioning-udid", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--build", required=True)
@@ -144,7 +144,7 @@ def profile_summary(
     label: str,
     bundle_identifier: str,
     team_id: str,
-    signing_certificate_sha1: str,
+    signing_certificate_sha256: str,
     current_mac_provisioning_udid: str,
 ) -> dict[str, Any]:
     profile = load_profile(path)
@@ -195,12 +195,12 @@ def profile_summary(
     certificates = profile.get("DeveloperCertificates")
     if not isinstance(certificates, list) or not certificates:
         fail(f"{label} profile contains no developer certificates.")
-    certificate_sha1s = {
-        hashlib.sha1(bytes(certificate)).hexdigest().upper()
+    certificate_sha256s = {
+        hashlib.sha256(bytes(certificate)).hexdigest().upper()
         for certificate in certificates
         if isinstance(certificate, (bytes, bytearray))
     }
-    if signing_certificate_sha1 not in certificate_sha1s:
+    if signing_certificate_sha256 not in certificate_sha256s:
         fail(f"{label} profile does not authorize the signing certificate.")
 
     return {
@@ -232,9 +232,9 @@ def main() -> int:
         or args.signing_identity == expected_prefix
     ):
         fail("signing identity must be one exact Apple Development identity.")
-    if not CERTIFICATE_SHA1.fullmatch(args.signing_certificate_sha1):
-        fail("signing certificate SHA-1 must be exactly 40 hexadecimal characters.")
-    signing_certificate_sha1 = args.signing_certificate_sha1.upper()
+    if not CERTIFICATE_SHA256.fullmatch(args.signing_certificate_sha256):
+        fail("signing certificate SHA-256 must be exactly 64 hexadecimal characters.")
+    signing_certificate_sha256 = args.signing_certificate_sha256.upper()
     if (
         not args.current_mac_provisioning_udid
         or "\n" in args.current_mac_provisioning_udid
@@ -267,7 +267,7 @@ def main() -> int:
         label="host",
         bundle_identifier="com.openburnbar.app",
         team_id=args.team_id,
-        signing_certificate_sha1=signing_certificate_sha1,
+        signing_certificate_sha256=signing_certificate_sha256,
         current_mac_provisioning_udid=args.current_mac_provisioning_udid,
     )
     safari_profile = profile_summary(
@@ -275,7 +275,7 @@ def main() -> int:
         label="Safari",
         bundle_identifier="com.openburnbar.app.safari-extension",
         team_id=args.team_id,
-        signing_certificate_sha1=signing_certificate_sha1,
+        signing_certificate_sha256=signing_certificate_sha256,
         current_mac_provisioning_udid=args.current_mac_provisioning_udid,
     )
     if host_profile["uuid"] == safari_profile["uuid"]:
@@ -298,7 +298,7 @@ def main() -> int:
             "distribution": "apple-development",
             "teamId": args.team_id,
             "identity": args.signing_identity,
-            "certificateSha1": signing_certificate_sha1,
+            "certificateSha256": signing_certificate_sha256,
             "hostProfileSha256": host_profile["sha256"],
             "safariProfileSha256": safari_profile["sha256"],
             "embeddedProfilesByteEqual": True,

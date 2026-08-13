@@ -63,6 +63,8 @@ Outputs:
 Environment overrides are intended only for deterministic fixture tests:
   OPENBURNBAR_GIT_BIN
   OPENBURNBAR_SECURITY_BIN
+  OPENBURNBAR_CODESIGN_BIN
+  OPENBURNBAR_SHASUM_BIN
   OPENBURNBAR_XCODEBUILD_BIN
   OPENBURNBAR_DITTO_BIN
   OPENBURNBAR_PYTHON_BIN
@@ -177,6 +179,8 @@ fi
 
 git_bin="${OPENBURNBAR_GIT_BIN:-git}"
 security_bin="${OPENBURNBAR_SECURITY_BIN:-security}"
+codesign_bin="${OPENBURNBAR_CODESIGN_BIN:-codesign}"
+shasum_bin="${OPENBURNBAR_SHASUM_BIN:-shasum}"
 xcodebuild_bin="${OPENBURNBAR_XCODEBUILD_BIN:-xcodebuild}"
 ditto_bin="${OPENBURNBAR_DITTO_BIN:-ditto}"
 python_bin="${OPENBURNBAR_PYTHON_BIN:-python3}"
@@ -202,6 +206,8 @@ require_command() {
 for required_command in \
   "$git_bin" \
   "$security_bin" \
+  "$codesign_bin" \
+  "$shasum_bin" \
   "$xcodebuild_bin" \
   "$ditto_bin" \
   "$python_bin" \
@@ -310,6 +316,7 @@ if ((${#identity_matches[@]} != 1)); then
   fail "The exact Apple Development identity is ambiguous (${#identity_matches[@]} valid matches): $signing_identity"
 fi
 signing_identity_sha1="${identity_matches[0]}"
+signing_certificate_sha256=""
 
 current_mac_provisioning_udid=""
 read_current_mac_provisioning_udid() {
@@ -597,6 +604,23 @@ bash "$development_verifier" \
   "$signing_identity" \
   "$signing_identity_sha1"
 
+certificate_dir="$output_dir/.signing-certificate"
+mkdir -m 700 "$certificate_dir"
+(
+  cd "$certificate_dir"
+  "$codesign_bin" -d --extract-certificates "$artifact_app" >/dev/null 2>&1
+)
+if [[ ! -f "$certificate_dir/codesign0" || -L "$certificate_dir/codesign0" ]]; then
+  fail "Could not extract the exact Apple Development leaf certificate from the artifact."
+fi
+signing_certificate_sha256="$(
+  "$shasum_bin" -a 256 "$certificate_dir/codesign0" | awk '{print toupper($1)}'
+)"
+rm -rf "$certificate_dir"
+if [[ ! "$signing_certificate_sha256" =~ ^[0-9A-F]{64}$ ]]; then
+  fail "Extracted Apple Development certificate SHA-256 is malformed."
+fi
+
 if [[ -z "$current_mac_provisioning_udid" ]]; then
   read_current_mac_provisioning_udid
 fi
@@ -624,7 +648,7 @@ receipt_path="$output_dir/development-receipt.json"
   --safari-profile "$safari_profile_export" \
   --team-id "$team_id" \
   --signing-identity "$signing_identity" \
-  --signing-certificate-sha1 "$signing_identity_sha1" \
+  --signing-certificate-sha256 "$signing_certificate_sha256" \
   --current-mac-provisioning-udid "$current_mac_provisioning_udid" \
   --version "$version" \
   --build "$build"

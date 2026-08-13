@@ -60,8 +60,8 @@ export GIT_WORK_TREE="$fixture_root"
 export GIT_INDEX_FILE="$parent_index"
 
 openburnbar_prepare_libsignal_swift_compat "$fixture_root"
-rg -qF "withExtendedLifetime(contents) {}" "$auth_path"
-rg -qF "<Promise: PromiseStruct & SendableMetatype>" "$tokio_path"
+grep -qF -- "withExtendedLifetime(contents) {}" "$auth_path"
+grep -qF -- "<Promise: PromiseStruct & SendableMetatype>" "$tokio_path"
 [[ -n "$(git -C "$libsignal_dir" status --porcelain --untracked-files=no)" ]]
 
 openburnbar_restore_libsignal_swift_compat
@@ -84,7 +84,7 @@ fi
 [[ "$OPENBURNBAR_LIBSIGNAL_COMPAT_REPO_ROOT" == "$fixture_root" ]]
 [[ "$OPENBURNBAR_LIBSIGNAL_COMPAT_LOCK_DIR" == "$active_lock" ]]
 [[ -d "$active_lock" ]]
-rg -qF "// unknown edit during active compatibility window" "$auth_path"
+grep -qF -- "// unknown edit during active compatibility window" "$auth_path"
 
 # Put back one of the two checksum-authorized states and prove the retained
 # lock can still restore both files and release itself cleanly.
@@ -120,7 +120,7 @@ if openburnbar_prepare_libsignal_swift_compat "$fixture_root" >/dev/null 2>&1; t
   echo "Expected dirty-submodule preparation to fail closed." >&2
   exit 1
 fi
-rg -qF "// local owner edit" "$auth_path"
+grep -qF -- "// local owner edit" "$auth_path"
 
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 echo "LibSignal Swift compatibility fixture passed."
