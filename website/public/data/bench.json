@@ -1,6 +1,6 @@
 {
  "schema_version": 1,
- "generated_at_utc": "2026-08-12T05:46:15.381969+00:00",
+ "generated_at_utc": "2026-08-13T18:19:32.316922+00:00",
  "source": {
   "trees": [
    "/Volumes/Samsung NVME/agent-harness-bench/results-glm-5-2-20260807",
@@ -8,11 +8,12 @@
    "/Volumes/Samsung NVME/agent-harness-bench/results-deepseek-v4-flash-0731-v2-20260806",
    "/Volumes/Samsung NVME/agent-harness-bench/results-gpt-5-6-luna-max-20260807",
    "/Volumes/Samsung NVME/agent-harness-bench/results-hard-band-20260809",
-   "/Volumes/Samsung NVME/agent-harness-bench/results-suite-gap-20260809"
+   "/Volumes/Samsung NVME/agent-harness-bench/results-suite-gap-20260809",
+   "/Volumes/Samsung NVME/agent-harness-bench/results-qwen3-7-flash-20260812"
   ],
-  "cells_measured": 4594,
-  "cells_excluded": 444,
-  "runs_sha256": "cc14ec584a385ee9f0134a91f797b8d80de6ac9ae68d3c5cdf52f4292c279d8b"
+  "cells_measured": 5311,
+  "cells_excluded": 495,
+  "runs_sha256": "b9099180fc0a7177020dcc57bfa39e3db0e4ccb2007f3027f12b80f53b10aa7b"
  },
  "models": [
   {
@@ -34,6 +35,11 @@
    "id": "muse-spark-1-2-contributor",
    "display": "Muse Spark 1.2 Contributor Edition",
    "provider": "meta"
+  },
+  {
+   "id": "qwen3-7-flash",
+   "display": "Qwen3.7 Flash",
+   "provider": "openrouter"
   }
  ],
  "harnesses": [
@@ -4083,6 +4089,1080 @@
    "score_source": "none"
   },
   {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": null
+   },
+   "n": 91,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.745693,
+    0.897486
+   ],
+   "cost_usd_median": 0.00315,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001958,
+   "cost_output_usd_median": 0.000898,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 118.786,
+   "tokens_median": 73021,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 93,
+   "score_mean": 71.898889,
+   "score_median": 88.89,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 1,
+    "gold": 4,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 243.0,
+     "checks": 105,
+     "passed": 89
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 126.0,
+     "checks": 24,
+     "passed": 15
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 94.0,
+     "checks": 18,
+     "passed": 12
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "agentic-ops",
+    "language": null,
+    "platform": null
+   },
+   "n": 15,
+   "strict_rate": 0.894066,
+   "solution_rate": 0.894066,
+   "ci95": [
+    0.701835,
+    0.988133
+   ],
+   "cost_usd_median": 0.001527,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001251,
+   "cost_output_usd_median": 0.00029,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 47.986,
+   "tokens_median": 43724,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "bugfix",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.75535,
+   "solution_rate": 0.75535,
+   "ci95": [
+    0.354202,
+    0.879416
+   ],
+   "cost_usd_median": 0.002637,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001957,
+   "cost_output_usd_median": 0.000519,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 91.958,
+   "tokens_median": 70476,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 9,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "feature",
+    "language": null,
+    "platform": null
+   },
+   "n": 30,
+   "strict_rate": 0.958791,
+   "solution_rate": 0.958791,
+   "ci95": [
+    0.886487,
+    1.0
+   ],
+   "cost_usd_median": 0.002114,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001146,
+   "cost_output_usd_median": 0.000877,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 102.279,
+   "tokens_median": 45656,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 30,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "parser",
+    "language": null,
+    "platform": null
+   },
+   "n": 6,
+   "strict_rate": 0.709478,
+   "solution_rate": 0.709478,
+   "ci95": [
+    0.187616,
+    0.812384
+   ],
+   "cost_usd_median": 0.017116,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003966,
+   "cost_output_usd_median": 0.006712,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 534.087,
+   "tokens_median": 237632,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.75,
+   "quality_n": 6,
+   "score_mean": 25.88,
+   "score_median": 17.11,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 102.0,
+     "earned": 53.0,
+     "checks": 36,
+     "passed": 21
+    },
+    "silver": {
+     "weight": 78.0,
+     "earned": 0.0,
+     "checks": 9,
+     "passed": 0
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 6.0,
+     "checks": 6,
+     "passed": 1
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "performance",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.873204,
+   "solution_rate": 0.873204,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.001063,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.000816,
+   "cost_output_usd_median": 0.000258,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 46.831,
+   "tokens_median": 29373,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "refactor",
+    "language": null,
+    "platform": null
+   },
+   "n": 19,
+   "strict_rate": 0.839712,
+   "solution_rate": 0.839712,
+   "ci95": [
+    0.624345,
+    0.944795
+   ],
+   "cost_usd_median": 0.003402,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.0025,
+   "cost_output_usd_median": 0.001153,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 118.786,
+   "tokens_median": 90267,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 21,
+   "score_mean": 100.0,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 3,
+    "none": 0
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 96.0,
+     "earned": 96.0,
+     "checks": 33,
+     "passed": 33
+    },
+    "silver": {
+     "weight": 66.0,
+     "earned": 66.0,
+     "checks": 9,
+     "passed": 9
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "sim-game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "systems",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.650087,
+   "solution_rate": 0.650087,
+   "ci95": [
+    0.188779,
+    0.733349
+   ],
+   "cost_usd_median": 0.022835,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.012258,
+   "cost_output_usd_median": 0.010422,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 956.767,
+   "tokens_median": 493937,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.0,
+   "quality_n": 9,
+   "score_mean": 89.816667,
+   "score_median": 88.89,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 1,
+    "gold": 1,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 108.0,
+     "earned": 94.0,
+     "checks": 36,
+     "passed": 35
+    },
+    "silver": {
+     "weight": 60.0,
+     "earned": 60.0,
+     "checks": 6,
+     "passed": 6
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 40.0,
+     "checks": 6,
+     "passed": 5
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "ui-build",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-3d",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-canvas",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-svg",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "html-css",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "javascript",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "mixed",
+    "platform": null
+   },
+   "n": 12,
+   "strict_rate": 0.925075,
+   "solution_rate": 0.925075,
+   "ci95": [
+    0.757506,
+    1.0
+   ],
+   "cost_usd_median": 0.000864,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.000706,
+   "cost_output_usd_median": 0.000248,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 44.597,
+   "tokens_median": 24740,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 12,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "python",
+    "platform": null
+   },
+   "n": 76,
+   "strict_rate": 0.802632,
+   "solution_rate": 0.802632,
+   "ci95": [
+    0.699562,
+    0.87658
+   ],
+   "cost_usd_median": 0.003405,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.0025,
+   "cost_output_usd_median": 0.001179,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 127.46,
+   "tokens_median": 94087,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 78,
+   "score_mean": 71.898889,
+   "score_median": 88.89,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 1,
+    "gold": 4,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 243.0,
+     "checks": 105,
+     "passed": 89
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 126.0,
+     "checks": 24,
+     "passed": 15
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 94.0,
+     "checks": 18,
+     "passed": 12
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "typescript",
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.873204,
+   "solution_rate": 0.873204,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.005589,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.004431,
+   "cost_output_usd_median": 0.001153,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 118.786,
+   "tokens_median": 154801,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "browser"
+   },
+   "n": 0,
+   "strict_rate": 0.835165,
+   "solution_rate": 0.835165,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "cli"
+   },
+   "n": 18,
+   "strict_rate": 0.905416,
+   "solution_rate": 0.905416,
+   "ci95": [
+    0.742427,
+    0.990125
+   ],
+   "cost_usd_median": 0.001527,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001251,
+   "cost_output_usd_median": 0.00029,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 47.986,
+   "tokens_median": 43724,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 18,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "library"
+   },
+   "n": 67,
+   "strict_rate": 0.791045,
+   "solution_rate": 0.791045,
+   "ci95": [
+    0.679282,
+    0.871243
+   ],
+   "cost_usd_median": 0.003405,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.0025,
+   "cost_output_usd_median": 0.001153,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 129.027,
+   "tokens_median": 94087,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.5,
+   "quality_n": 69,
+   "score_mean": 71.898889,
+   "score_median": 88.89,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 1,
+    "gold": 4,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 243.0,
+     "checks": 105,
+     "passed": 89
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 126.0,
+     "checks": 24,
+     "passed": 15
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 94.0,
+     "checks": 18,
+     "passed": 12
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "research"
+   },
+   "n": 3,
+   "strict_rate": 0.873204,
+   "solution_rate": 0.873204,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.000847,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.000599,
+   "cost_output_usd_median": 0.000248,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 44.597,
+   "tokens_median": 21886,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "claude",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "web-api"
+   },
+   "n": 3,
+   "strict_rate": 0.873204,
+   "solution_rate": 0.873204,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.000747,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.00062,
+   "cost_output_usd_median": 0.000127,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 28.876,
+   "tokens_median": 21642,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
    "harness": "codex",
    "model": "deepseek-v4-flash-0731",
    "config": "default",
@@ -8062,6 +9142,1080 @@
    "evidence": "inferred",
    "quality_mean": 5.0,
    "quality_n": 5,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": null
+   },
+   "n": 89,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.594629,
+    0.782358
+   ],
+   "cost_usd_median": 0.008015,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.007742,
+   "cost_output_usd_median": 0.000505,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 37.935,
+   "tokens_median": 260160,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 89,
+   "score_mean": 52.64375,
+   "score_median": 52.63,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 1,
+    "silver": 0,
+    "gold": 1,
+    "none": 6
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 270.0,
+     "earned": 148.0,
+     "checks": 93,
+     "passed": 74
+    },
+    "silver": {
+     "weight": 184.0,
+     "earned": 76.0,
+     "checks": 22,
+     "passed": 10
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 80.0,
+     "checks": 16,
+     "passed": 10
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "agentic-ops",
+    "language": null,
+    "platform": null
+   },
+   "n": 15,
+   "strict_rate": 0.878652,
+   "solution_rate": 0.878652,
+   "ci95": [
+    0.796117,
+    1.0
+   ],
+   "cost_usd_median": 0.004327,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.004138,
+   "cost_output_usd_median": 0.000179,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 24.732,
+   "tokens_median": 139378,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 15,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "bugfix",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.629805,
+   "solution_rate": 0.629805,
+   "ci95": [
+    0.266651,
+    0.811221
+   ],
+   "cost_usd_median": 0.002979,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.002792,
+   "cost_output_usd_median": 0.000187,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 27.638,
+   "tokens_median": 94504,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.0,
+   "quality_n": 9,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "feature",
+    "language": null,
+    "platform": null
+   },
+   "n": 30,
+   "strict_rate": 0.749157,
+   "solution_rate": 0.749157,
+   "ci95": [
+    0.590717,
+    0.882076
+   ],
+   "cost_usd_median": 0.005171,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.004934,
+   "cost_output_usd_median": 0.000262,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 31.548,
+   "tokens_median": 166300,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 30,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "parser",
+    "language": null,
+    "platform": null
+   },
+   "n": 6,
+   "strict_rate": 0.560393,
+   "solution_rate": 0.560393,
+   "ci95": [
+    0.096771,
+    0.700007
+   ],
+   "cost_usd_median": 0.017425,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.015743,
+   "cost_output_usd_median": 0.001682,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 96.144,
+   "tokens_median": 537692,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.25,
+   "quality_n": 6,
+   "score_mean": 41.226667,
+   "score_median": 52.63,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 102.0,
+     "earned": 46.0,
+     "checks": 36,
+     "passed": 31
+    },
+    "silver": {
+     "weight": 78.0,
+     "earned": 16.0,
+     "checks": 9,
+     "passed": 2
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 32.0,
+     "checks": 6,
+     "passed": 4
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "performance",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.766638,
+   "solution_rate": 0.766638,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.003321,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.00319,
+   "cost_output_usd_median": 0.000131,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 21.445,
+   "tokens_median": 107334,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "refactor",
+    "language": null,
+    "platform": null
+   },
+   "n": 18,
+   "strict_rate": 0.677368,
+   "solution_rate": 0.677368,
+   "ci95": [
+    0.437495,
+    0.837212
+   ],
+   "cost_usd_median": 0.009957,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.009295,
+   "cost_output_usd_median": 0.000516,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 38.475,
+   "tokens_median": 314935,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.0,
+   "quality_n": 18,
+   "score_mean": 69.526667,
+   "score_median": 54.29,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 1,
+    "none": 2
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 96.0,
+     "earned": 64.0,
+     "checks": 33,
+     "passed": 29
+    },
+    "silver": {
+     "weight": 66.0,
+     "earned": 50.0,
+     "checks": 9,
+     "passed": 7
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 32.0,
+     "checks": 6,
+     "passed": 4
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "sim-game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "systems",
+    "language": null,
+    "platform": null
+   },
+   "n": 8,
+   "strict_rate": 0.498127,
+   "solution_rate": 0.498127,
+   "ci95": [
+    0.071479,
+    0.590725
+   ],
+   "cost_usd_median": 0.014275,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.012889,
+   "cost_output_usd_median": 0.001387,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 38.4765,
+   "tokens_median": 440289,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.25,
+   "quality_n": 8,
+   "score_mean": 44.445,
+   "score_median": 44.445,
+   "score_n": 2,
+   "score_tiers": {
+    "bronze": 1,
+    "silver": 0,
+    "gold": 0,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 72.0,
+     "earned": 38.0,
+     "checks": 24,
+     "passed": 14
+    },
+    "silver": {
+     "weight": 40.0,
+     "earned": 10.0,
+     "checks": 4,
+     "passed": 1
+    },
+    "gold": {
+     "weight": 32.0,
+     "earned": 16.0,
+     "checks": 4,
+     "passed": 2
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "ui-build",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-3d",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-canvas",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-svg",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "html-css",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "javascript",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "mixed",
+    "platform": null
+   },
+   "n": 12,
+   "strict_rate": 0.862104,
+   "solution_rate": 0.862104,
+   "ci95": [
+    0.757506,
+    1.0
+   ],
+   "cost_usd_median": 0.003195,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003111,
+   "cost_output_usd_median": 0.000102,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 17.751,
+   "tokens_median": 104336,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 12,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "python",
+    "platform": null
+   },
+   "n": 74,
+   "strict_rate": 0.648649,
+   "solution_rate": 0.648649,
+   "ci95": [
+    0.535008,
+    0.747618
+   ],
+   "cost_usd_median": 0.008655,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.007847,
+   "cost_output_usd_median": 0.000507,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 38.475,
+   "tokens_median": 267771,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.5,
+   "quality_n": 74,
+   "score_mean": 52.64375,
+   "score_median": 52.63,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 1,
+    "silver": 0,
+    "gold": 1,
+    "none": 6
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 270.0,
+     "earned": 148.0,
+     "checks": 93,
+     "passed": 74
+    },
+    "silver": {
+     "weight": 184.0,
+     "earned": 76.0,
+     "checks": 22,
+     "passed": 10
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 80.0,
+     "checks": 16,
+     "passed": 10
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "typescript",
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.689715,
+   "solution_rate": 0.689715,
+   "ci95": [
+    0.20766,
+    0.938508
+   ],
+   "cost_usd_median": 0.013868,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.013351,
+   "cost_output_usd_median": 0.000516,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 66.271,
+   "tokens_median": 449015,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "browser"
+   },
+   "n": 0,
+   "strict_rate": 0.696629,
+   "solution_rate": 0.696629,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "cli"
+   },
+   "n": 18,
+   "strict_rate": 0.820225,
+   "solution_rate": 0.820225,
+   "ci95": [
+    0.672002,
+    0.96898
+   ],
+   "cost_usd_median": 0.004327,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.004138,
+   "cost_output_usd_median": 0.000179,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 24.732,
+   "tokens_median": 139378,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 18,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "library"
+   },
+   "n": 65,
+   "strict_rate": 0.630769,
+   "solution_rate": 0.630769,
+   "ci95": [
+    0.509238,
+    0.737706
+   ],
+   "cost_usd_median": 0.010102,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.009458,
+   "cost_output_usd_median": 0.000643,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 38.475,
+   "tokens_median": 320226,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.5,
+   "quality_n": 65,
+   "score_mean": 52.64375,
+   "score_median": 52.63,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 1,
+    "silver": 0,
+    "gold": 1,
+    "none": 6
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 270.0,
+     "earned": 148.0,
+     "checks": 93,
+     "passed": 74
+    },
+    "silver": {
+     "weight": 184.0,
+     "earned": 76.0,
+     "checks": 22,
+     "passed": 10
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 80.0,
+     "checks": 16,
+     "passed": 10
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "research"
+   },
+   "n": 3,
+   "strict_rate": 0.766638,
+   "solution_rate": 0.766638,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.001725,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001623,
+   "cost_output_usd_median": 0.000102,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 10.945,
+   "tokens_median": 54875,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "codex",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "web-api"
+   },
+   "n": 3,
+   "strict_rate": 0.689715,
+   "solution_rate": 0.689715,
+   "ci95": [
+    0.20766,
+    0.938508
+   ],
+   "cost_usd_median": 0.003156,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.002996,
+   "cost_output_usd_median": 0.00016,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 18.211,
+   "tokens_median": 101090,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 3,
    "score_mean": null,
    "score_median": null,
    "score_n": 0,
@@ -12067,6 +14221,1080 @@
    "score_source": "none"
   },
   {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": null
+   },
+   "n": 90,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.755672,
+    0.905017
+   ],
+   "cost_usd_median": 0.004061,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003443,
+   "cost_output_usd_median": 0.000921,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 97.495,
+   "tokens_median": 122982,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 4.25,
+   "quality_n": 90,
+   "score_mean": 84.097778,
+   "score_median": 100.0,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 5,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 270.0,
+     "checks": 105,
+     "passed": 99
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 152.0,
+     "checks": 24,
+     "passed": 18
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 124.0,
+     "checks": 18,
+     "passed": 16
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "agentic-ops",
+    "language": null,
+    "platform": null
+   },
+   "n": 15,
+   "strict_rate": 0.937778,
+   "solution_rate": 0.937778,
+   "ci95": [
+    0.796117,
+    1.0
+   ],
+   "cost_usd_median": 0.002174,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.00195,
+   "cost_output_usd_median": 0.000216,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 23.448,
+   "tokens_median": 66724,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 15,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "bugfix",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.760234,
+   "solution_rate": 0.760234,
+   "ci95": [
+    0.354202,
+    0.879416
+   ],
+   "cost_usd_median": 0.002366,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001969,
+   "cost_output_usd_median": 0.000398,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 54.679,
+   "tokens_median": 68678,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 9,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "feature",
+    "language": null,
+    "platform": null
+   },
+   "n": 30,
+   "strict_rate": 0.936111,
+   "solution_rate": 0.936111,
+   "ci95": [
+    0.833296,
+    0.994091
+   ],
+   "cost_usd_median": 0.004061,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003601,
+   "cost_output_usd_median": 0.001095,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 108.731,
+   "tokens_median": 123283,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 30,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "parser",
+    "language": null,
+    "platform": null
+   },
+   "n": 6,
+   "strict_rate": 0.715278,
+   "solution_rate": 0.715278,
+   "ci95": [
+    0.187616,
+    0.812384
+   ],
+   "cost_usd_median": 0.014155,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.004798,
+   "cost_output_usd_median": 0.00555,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 409.119,
+   "tokens_median": 294726,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.25,
+   "quality_n": 6,
+   "score_mean": 58.773333,
+   "score_median": 50.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 102.0,
+     "earned": 80.0,
+     "checks": 36,
+     "passed": 31
+    },
+    "silver": {
+     "weight": 78.0,
+     "earned": 26.0,
+     "checks": 9,
+     "passed": 3
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 28.0,
+     "checks": 6,
+     "passed": 4
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "performance",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.880342,
+   "solution_rate": 0.880342,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.002316,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.002073,
+   "cost_output_usd_median": 0.000406,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 43.459,
+   "tokens_median": 70966,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "refactor",
+    "language": null,
+    "platform": null
+   },
+   "n": 18,
+   "strict_rate": 0.837302,
+   "solution_rate": 0.837302,
+   "ci95": [
+    0.60778,
+    0.941634
+   ],
+   "cost_usd_median": 0.003904,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.002967,
+   "cost_output_usd_median": 0.000921,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 97.495,
+   "tokens_median": 105681,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 18,
+   "score_mean": 100.0,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 3,
+    "none": 0
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 96.0,
+     "earned": 96.0,
+     "checks": 33,
+     "passed": 33
+    },
+    "silver": {
+     "weight": 66.0,
+     "earned": 66.0,
+     "checks": 9,
+     "passed": 9
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "sim-game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "systems",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.707602,
+   "solution_rate": 0.707602,
+   "ci95": [
+    0.266651,
+    0.811221
+   ],
+   "cost_usd_median": 0.017768,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.008118,
+   "cost_output_usd_median": 0.009764,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 701.113,
+   "tokens_median": 344845,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 9,
+   "score_mean": 93.52,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 2,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 108.0,
+     "earned": 94.0,
+     "checks": 36,
+     "passed": 35
+    },
+    "silver": {
+     "weight": 60.0,
+     "earned": 60.0,
+     "checks": 6,
+     "passed": 6
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "ui-build",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-3d",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-canvas",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-svg",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "html-css",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "javascript",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "mixed",
+    "platform": null
+   },
+   "n": 12,
+   "strict_rate": 0.929293,
+   "solution_rate": 0.929293,
+   "ci95": [
+    0.757506,
+    1.0
+   ],
+   "cost_usd_median": 0.001663,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001522,
+   "cost_output_usd_median": 0.000152,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 20.65,
+   "tokens_median": 51809,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 12,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "python",
+    "platform": null
+   },
+   "n": 75,
+   "strict_rate": 0.813333,
+   "solution_rate": 0.813333,
+   "ci95": [
+    0.710714,
+    0.885419
+   ],
+   "cost_usd_median": 0.004511,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003623,
+   "cost_output_usd_median": 0.001095,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 108.731,
+   "tokens_median": 124137,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 75,
+   "score_mean": 84.097778,
+   "score_median": 100.0,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 5,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 270.0,
+     "checks": 105,
+     "passed": 99
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 152.0,
+     "checks": 24,
+     "passed": 18
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 124.0,
+     "checks": 18,
+     "passed": 16
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "typescript",
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.880342,
+   "solution_rate": 0.880342,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.004419,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003708,
+   "cost_output_usd_median": 0.000921,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 73.809,
+   "tokens_median": 129077,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "browser"
+   },
+   "n": 0,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.844444,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "cli"
+   },
+   "n": 18,
+   "strict_rate": 0.944444,
+   "solution_rate": 0.944444,
+   "ci95": [
+    0.824121,
+    1.0
+   ],
+   "cost_usd_median": 0.003179,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.002742,
+   "cost_output_usd_median": 0.000399,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 47.64,
+   "tokens_median": 93881,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 18,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "library"
+   },
+   "n": 66,
+   "strict_rate": 0.787879,
+   "solution_rate": 0.787879,
+   "ci95": [
+    0.674869,
+    0.86922
+   ],
+   "cost_usd_median": 0.004464,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003689,
+   "cost_output_usd_median": 0.001071,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 108.731,
+   "tokens_median": 129077,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 66,
+   "score_mean": 84.097778,
+   "score_median": 100.0,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 5,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 270.0,
+     "checks": 105,
+     "passed": 99
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 152.0,
+     "checks": 24,
+     "passed": 18
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 124.0,
+     "checks": 18,
+     "passed": 16
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "research"
+   },
+   "n": 3,
+   "strict_rate": 0.880342,
+   "solution_rate": 0.880342,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.001205,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001066,
+   "cost_output_usd_median": 0.000152,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 20.08,
+   "tokens_median": 36608,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "droid",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "web-api"
+   },
+   "n": 3,
+   "strict_rate": 0.880342,
+   "solution_rate": 0.880342,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.002668,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.002448,
+   "cost_output_usd_median": 0.000237,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 33.024,
+   "tokens_median": 83293,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
    "harness": "hermes",
    "model": "deepseek-v4-flash-0731",
    "config": "default",
@@ -15970,6 +19198,1080 @@
    "evidence": "inferred",
    "quality_mean": 4.5,
    "quality_n": 5,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": null
+   },
+   "n": 90,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.730561,
+    0.887503
+   ],
+   "cost_usd_median": 0.008876,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.007747,
+   "cost_output_usd_median": 0.001405,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 155.272,
+   "tokens_median": 266916,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 90,
+   "score_mean": 78.31375,
+   "score_median": 86.11,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 2,
+    "silver": 0,
+    "gold": 3,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 272.0,
+     "earned": 252.0,
+     "checks": 93,
+     "passed": 87
+    },
+    "silver": {
+     "weight": 178.0,
+     "earned": 98.0,
+     "checks": 21,
+     "passed": 12
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 100.0,
+     "checks": 16,
+     "passed": 13
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "agentic-ops",
+    "language": null,
+    "platform": null
+   },
+   "n": 15,
+   "strict_rate": 0.844444,
+   "solution_rate": 0.888889,
+   "ci95": [
+    0.701835,
+    0.988133
+   ],
+   "cost_usd_median": 0.0053,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.004778,
+   "cost_output_usd_median": 0.000523,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 62.081,
+   "tokens_median": 163276,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 15,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "bugfix",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.74269,
+   "solution_rate": 0.748538,
+   "ci95": [
+    0.354202,
+    0.879416
+   ],
+   "cost_usd_median": 0.006381,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.005563,
+   "cost_output_usd_median": 0.000749,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 127.357,
+   "tokens_median": 190978,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.75,
+   "quality_n": 9,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "feature",
+    "language": null,
+    "platform": null
+   },
+   "n": 30,
+   "strict_rate": 0.902778,
+   "solution_rate": 0.905556,
+   "ci95": [
+    0.786765,
+    0.981523
+   ],
+   "cost_usd_median": 0.007122,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.005511,
+   "cost_output_usd_median": 0.001509,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 150.354,
+   "tokens_median": 196093,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 30,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "parser",
+    "language": null,
+    "platform": null
+   },
+   "n": 6,
+   "strict_rate": 0.631944,
+   "solution_rate": 0.638889,
+   "ci95": [
+    0.096771,
+    0.700007
+   ],
+   "cost_usd_median": 0.063909,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.055543,
+   "cost_output_usd_median": 0.008366,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 613.735,
+   "tokens_median": 1915792,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.25,
+   "quality_n": 6,
+   "score_mean": 50.0,
+   "score_median": 50.0,
+   "score_n": 2,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 2
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 68.0,
+     "earned": 64.0,
+     "checks": 24,
+     "passed": 20
+    },
+    "silver": {
+     "weight": 52.0,
+     "earned": 0.0,
+     "checks": 6,
+     "passed": 0
+    },
+    "gold": {
+     "weight": 32.0,
+     "earned": 12.0,
+     "checks": 4,
+     "passed": 2
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "performance",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.854701,
+   "solution_rate": 0.863248,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.006415,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.005515,
+   "cost_output_usd_median": 0.0009,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 110.478,
+   "tokens_median": 190755,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "refactor",
+    "language": null,
+    "platform": null
+   },
+   "n": 18,
+   "strict_rate": 0.861111,
+   "solution_rate": 0.865079,
+   "ci95": [
+    0.672002,
+    0.96898
+   ],
+   "cost_usd_median": 0.010599,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.008449,
+   "cost_output_usd_median": 0.00144,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 155.272,
+   "tokens_median": 298734,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 18,
+   "score_mean": 84.763333,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 2,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 96.0,
+     "earned": 80.0,
+     "checks": 33,
+     "passed": 31
+    },
+    "silver": {
+     "weight": 66.0,
+     "earned": 58.0,
+     "checks": 9,
+     "passed": 8
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 40.0,
+     "checks": 6,
+     "passed": 5
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "sim-game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "systems",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.690058,
+   "solution_rate": 0.695906,
+   "ci95": [
+    0.266651,
+    0.811221
+   ],
+   "cost_usd_median": 0.018646,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.014237,
+   "cost_output_usd_median": 0.00702,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 949.472,
+   "tokens_median": 508472,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 9,
+   "score_mean": 90.74,
+   "score_median": 86.11,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 2,
+    "silver": 0,
+    "gold": 1,
+    "none": 0
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 108.0,
+     "earned": 108.0,
+     "checks": 36,
+     "passed": 36
+    },
+    "silver": {
+     "weight": 60.0,
+     "earned": 40.0,
+     "checks": 6,
+     "passed": 4
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "ui-build",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-3d",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-canvas",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-svg",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "html-css",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "javascript",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "mixed",
+    "platform": null
+   },
+   "n": 12,
+   "strict_rate": 0.823232,
+   "solution_rate": 0.873737,
+   "ci95": [
+    0.64612,
+    0.985135
+   ],
+   "cost_usd_median": 0.004387,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003919,
+   "cost_output_usd_median": 0.00046,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 53.091,
+   "tokens_median": 134228,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 12,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "python",
+    "platform": null
+   },
+   "n": 75,
+   "strict_rate": 0.8,
+   "solution_rate": 0.8,
+   "ci95": [
+    0.695887,
+    0.874879
+   ],
+   "cost_usd_median": 0.008876,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.007747,
+   "cost_output_usd_median": 0.00144,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 162.392,
+   "tokens_median": 266916,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 75,
+   "score_mean": 78.31375,
+   "score_median": 86.11,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 2,
+    "silver": 0,
+    "gold": 3,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 272.0,
+     "earned": 252.0,
+     "checks": 93,
+     "passed": 87
+    },
+    "silver": {
+     "weight": 178.0,
+     "earned": 98.0,
+     "checks": 21,
+     "passed": 12
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 100.0,
+     "checks": 16,
+     "passed": 13
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "typescript",
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.854701,
+   "solution_rate": 0.863248,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.011036,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.009885,
+   "cost_output_usd_median": 0.001476,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 160.122,
+   "tokens_median": 340135,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "browser"
+   },
+   "n": 0,
+   "strict_rate": 0.811111,
+   "solution_rate": 0.822222,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "cli"
+   },
+   "n": 18,
+   "strict_rate": 0.861111,
+   "solution_rate": 0.900794,
+   "ci95": [
+    0.742427,
+    0.990125
+   ],
+   "cost_usd_median": 0.004387,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003919,
+   "cost_output_usd_median": 0.00046,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 86.809,
+   "tokens_median": 134228,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 18,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "library"
+   },
+   "n": 66,
+   "strict_rate": 0.772727,
+   "solution_rate": 0.772727,
+   "ci95": [
+    0.658305,
+    0.857148
+   ],
+   "cost_usd_median": 0.009621,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.008341,
+   "cost_output_usd_median": 0.001509,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 162.392,
+   "tokens_median": 285779,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 66,
+   "score_mean": 78.31375,
+   "score_median": 86.11,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 2,
+    "silver": 0,
+    "gold": 3,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 272.0,
+     "earned": 252.0,
+     "checks": 93,
+     "passed": 87
+    },
+    "silver": {
+     "weight": 178.0,
+     "earned": 98.0,
+     "checks": 21,
+     "passed": 12
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 100.0,
+     "checks": 16,
+     "passed": 13
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "research"
+   },
+   "n": 3,
+   "strict_rate": 0.854701,
+   "solution_rate": 0.863248,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.0053,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.004778,
+   "cost_output_usd_median": 0.000523,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 53.091,
+   "tokens_median": 163276,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "hermes",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "web-api"
+   },
+   "n": 3,
+   "strict_rate": 0.854701,
+   "solution_rate": 0.863248,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.00376,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.003462,
+   "cost_output_usd_median": 0.000298,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 64.473,
+   "tokens_median": 117687,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 3,
    "score_mean": null,
    "score_median": null,
    "score_n": 0,
@@ -19899,6 +24201,1080 @@
    "score_source": "none"
   },
   {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": null
+   },
+   "n": 90,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.794263,
+    0.930364
+   ],
+   "cost_usd_median": 0.007281,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.006573,
+   "cost_output_usd_median": 0.000603,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 96.62,
+   "tokens_median": 221944,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 78,
+   "score_mean": 76.121111,
+   "score_median": 86.11,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 1,
+    "silver": 0,
+    "gold": 4,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 268.0,
+     "checks": 105,
+     "passed": 97
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 116.0,
+     "checks": 24,
+     "passed": 14
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 108.0,
+     "checks": 18,
+     "passed": 14
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "agentic-ops",
+    "language": null,
+    "platform": null
+   },
+   "n": 15,
+   "strict_rate": 0.951111,
+   "solution_rate": 0.951111,
+   "ci95": [
+    0.796117,
+    1.0
+   ],
+   "cost_usd_median": 0.006943,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.006573,
+   "cost_output_usd_median": 0.000274,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 38.649,
+   "tokens_median": 221944,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 14,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "bugfix",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.830409,
+   "solution_rate": 0.830409,
+   "ci95": [
+    0.452589,
+    0.936775
+   ],
+   "cost_usd_median": 0.009422,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.008577,
+   "cost_output_usd_median": 0.000557,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 77.273,
+   "tokens_median": 292409,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 9,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "feature",
+    "language": null,
+    "platform": null
+   },
+   "n": 30,
+   "strict_rate": 0.969444,
+   "solution_rate": 0.969444,
+   "ci95": [
+    0.886487,
+    1.0
+   ],
+   "cost_usd_median": 0.009334,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.008009,
+   "cost_output_usd_median": 0.000768,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 96.339,
+   "tokens_median": 277150,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 27,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "parser",
+    "language": null,
+    "platform": null
+   },
+   "n": 6,
+   "strict_rate": 0.673611,
+   "solution_rate": 0.673611,
+   "ci95": [
+    0.096771,
+    0.700007
+   ],
+   "cost_usd_median": 0.00253,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.000875,
+   "cost_output_usd_median": 3.8e-05,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 865.44,
+   "tokens_median": 78453,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 3,
+   "score_mean": 39.473333,
+   "score_median": 50.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 102.0,
+     "earned": 78.0,
+     "checks": 36,
+     "passed": 29
+    },
+    "silver": {
+     "weight": 78.0,
+     "earned": 0.0,
+     "checks": 9,
+     "passed": 0
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 12.0,
+     "checks": 6,
+     "passed": 2
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "performance",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.905983,
+   "solution_rate": 0.905983,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.00419,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.004067,
+   "cost_output_usd_median": 0.000129,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 17.676,
+   "tokens_median": 136506,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.75,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "refactor",
+    "language": null,
+    "platform": null
+   },
+   "n": 18,
+   "strict_rate": 0.956349,
+   "solution_rate": 0.956349,
+   "ci95": [
+    0.824121,
+    1.0
+   ],
+   "cost_usd_median": 0.016398,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.014533,
+   "cost_output_usd_median": 0.00088,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 125.19,
+   "tokens_median": 498776,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 16,
+   "score_mean": 100.0,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 3,
+    "none": 0
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 96.0,
+     "earned": 96.0,
+     "checks": 33,
+     "passed": 33
+    },
+    "silver": {
+     "weight": 66.0,
+     "earned": 66.0,
+     "checks": 9,
+     "passed": 9
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "sim-game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "systems",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.672515,
+   "solution_rate": 0.672515,
+   "ci95": [
+    0.188779,
+    0.733349
+   ],
+   "cost_usd_median": 0.005576,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.002078,
+   "cost_output_usd_median": 0.002425,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 353.318,
+   "tokens_median": 96175,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.125,
+   "quality_n": 6,
+   "score_mean": 88.89,
+   "score_median": 86.11,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 1,
+    "silver": 0,
+    "gold": 1,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 108.0,
+     "earned": 94.0,
+     "checks": 36,
+     "passed": 35
+    },
+    "silver": {
+     "weight": 60.0,
+     "earned": 50.0,
+     "checks": 6,
+     "passed": 5
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "ui-build",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-3d",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-canvas",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-svg",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "html-css",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "javascript",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "mixed",
+    "platform": null
+   },
+   "n": 12,
+   "strict_rate": 0.944444,
+   "solution_rate": 0.944444,
+   "ci95": [
+    0.757506,
+    1.0
+   ],
+   "cost_usd_median": 0.005003,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.004809,
+   "cost_output_usd_median": 0.000194,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 19.413,
+   "tokens_median": 161788,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 12,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "python",
+    "platform": null
+   },
+   "n": 75,
+   "strict_rate": 0.853333,
+   "solution_rate": 0.853333,
+   "ci95": [
+    0.756152,
+    0.916083
+   ],
+   "cost_usd_median": 0.007698,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.007326,
+   "cost_output_usd_median": 0.000813,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 114.3,
+   "tokens_median": 247053,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 63,
+   "score_mean": 76.121111,
+   "score_median": 86.11,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 1,
+    "silver": 0,
+    "gold": 4,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 268.0,
+     "checks": 105,
+     "passed": 97
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 116.0,
+     "checks": 24,
+     "passed": 14
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 108.0,
+     "checks": 18,
+     "passed": 14
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "typescript",
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.905983,
+   "solution_rate": 0.905983,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.017472,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.016592,
+   "cost_output_usd_median": 0.00088,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 168.091,
+   "tokens_median": 559831,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "browser"
+   },
+   "n": 0,
+   "strict_rate": 0.877778,
+   "solution_rate": 0.877778,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "cli"
+   },
+   "n": 18,
+   "strict_rate": 0.956349,
+   "solution_rate": 0.956349,
+   "ci95": [
+    0.824121,
+    1.0
+   ],
+   "cost_usd_median": 0.006943,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.006573,
+   "cost_output_usd_median": 0.000274,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 38.649,
+   "tokens_median": 221944,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 5.0,
+   "quality_n": 17,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "library"
+   },
+   "n": 66,
+   "strict_rate": 0.833333,
+   "solution_rate": 0.833333,
+   "ci95": [
+    0.725694,
+    0.904304
+   ],
+   "cost_usd_median": 0.007698,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.007326,
+   "cost_output_usd_median": 0.000813,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 114.3,
+   "tokens_median": 247053,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 55,
+   "score_mean": 76.121111,
+   "score_median": 86.11,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 1,
+    "silver": 0,
+    "gold": 4,
+    "none": 4
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 268.0,
+     "checks": 105,
+     "passed": 97
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 116.0,
+     "checks": 24,
+     "passed": 14
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 108.0,
+     "checks": 18,
+     "passed": 14
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "research"
+   },
+   "n": 3,
+   "strict_rate": 0.905983,
+   "solution_rate": 0.905983,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.005003,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.004809,
+   "cost_output_usd_median": 0.000194,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 18.687,
+   "tokens_median": 161788,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "omp",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "web-api"
+   },
+   "n": 3,
+   "strict_rate": 0.905983,
+   "solution_rate": 0.905983,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.004094,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.003957,
+   "cost_output_usd_median": 0.000133,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 17.716,
+   "tokens_median": 132960,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
    "harness": "opencode",
    "model": "deepseek-v4-flash-0731",
    "config": "default",
@@ -23802,6 +29178,1080 @@
    "evidence": "inferred",
    "quality_mean": 3.5,
    "quality_n": 5,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": null
+   },
+   "n": 91,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.241709,
+    0.43143
+   ],
+   "cost_usd_median": 0.002094,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001806,
+   "cost_output_usd_median": 0.000154,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 106.683,
+   "tokens_median": 63946,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 1.5,
+   "quality_n": 93,
+   "score_mean": 37.721111,
+   "score_median": 10.53,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 1,
+    "none": 8
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 136.0,
+     "checks": 105,
+     "passed": 59
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 62.0,
+     "checks": 24,
+     "passed": 8
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 46.0,
+     "checks": 18,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "agentic-ops",
+    "language": null,
+    "platform": null
+   },
+   "n": 15,
+   "strict_rate": 0.331868,
+   "solution_rate": 0.331868,
+   "ci95": [
+    0.151763,
+    0.582865
+   ],
+   "cost_usd_median": 0.002043,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001767,
+   "cost_output_usd_median": 0.000128,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 76.455,
+   "tokens_median": 61699,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 15,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "bugfix",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.436669,
+   "solution_rate": 0.436669,
+   "ci95": [
+    0.266651,
+    0.811221
+   ],
+   "cost_usd_median": 0.001962,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001797,
+   "cost_output_usd_median": 0.000165,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 106.683,
+   "tokens_median": 61168,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.75,
+   "quality_n": 9,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "feature",
+    "language": null,
+    "platform": null
+   },
+   "n": 30,
+   "strict_rate": 0.307418,
+   "solution_rate": 0.307418,
+   "ci95": [
+    0.166647,
+    0.478758
+   ],
+   "cost_usd_median": 0.001945,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001779,
+   "cost_output_usd_median": 8.9e-05,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 97.802,
+   "tokens_median": 60652,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 1.25,
+   "quality_n": 30,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "parser",
+    "language": null,
+    "platform": null
+   },
+   "n": 6,
+   "strict_rate": 0.206044,
+   "solution_rate": 0.206044,
+   "ci95": [
+    0.0,
+    0.390334
+   ],
+   "cost_usd_median": 0.003374,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.002178,
+   "cost_output_usd_median": 0.001196,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 146.364,
+   "tokens_median": 81813,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 1.25,
+   "quality_n": 6,
+   "score_mean": 23.686667,
+   "score_median": 10.53,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 102.0,
+     "earned": 48.0,
+     "checks": 36,
+     "passed": 16
+    },
+    "silver": {
+     "weight": 78.0,
+     "earned": 0.0,
+     "checks": 9,
+     "passed": 0
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 6.0,
+     "checks": 6,
+     "passed": 1
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "performance",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.484362,
+   "solution_rate": 0.484362,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.002094,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001866,
+   "cost_output_usd_median": 0.000148,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 107.325,
+   "tokens_median": 63946,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "refactor",
+    "language": null,
+    "platform": null
+   },
+   "n": 19,
+   "strict_rate": 0.355059,
+   "solution_rate": 0.355059,
+   "ci95": [
+    0.191495,
+    0.589605
+   ],
+   "cost_usd_median": 0.001938,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001783,
+   "cost_output_usd_median": 9.8e-05,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 91.516,
+   "tokens_median": 60631,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 1.75,
+   "quality_n": 21,
+   "score_mean": 54.29,
+   "score_median": 54.29,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 3
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 96.0,
+     "earned": 48.0,
+     "checks": 33,
+     "passed": 27
+    },
+    "silver": {
+     "weight": 66.0,
+     "earned": 42.0,
+     "checks": 9,
+     "passed": 6
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 24.0,
+     "checks": 6,
+     "passed": 3
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "sim-game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "systems",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.226142,
+   "solution_rate": 0.226142,
+   "ci95": [
+    0.019891,
+    0.435
+   ],
+   "cost_usd_median": 0.003527,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.002281,
+   "cost_output_usd_median": 0.001037,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 155.082,
+   "tokens_median": 85325,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 1.0,
+   "quality_n": 9,
+   "score_mean": 35.186667,
+   "score_median": 2.78,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 1,
+    "none": 2
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 108.0,
+     "earned": 40.0,
+     "checks": 36,
+     "passed": 16
+    },
+    "silver": {
+     "weight": 60.0,
+     "earned": 20.0,
+     "checks": 6,
+     "passed": 2
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 16.0,
+     "checks": 6,
+     "passed": 2
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "ui-build",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-3d",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-canvas",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-svg",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "html-css",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "javascript",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "mixed",
+    "platform": null
+   },
+   "n": 12,
+   "strict_rate": 0.377123,
+   "solution_rate": 0.377123,
+   "ci95": [
+    0.19326,
+    0.680489
+   ],
+   "cost_usd_median": 0.001823,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001767,
+   "cost_output_usd_median": 9.4e-05,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 60.84,
+   "tokens_median": 59322,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 2.5,
+   "quality_n": 12,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "python",
+    "platform": null
+   },
+   "n": 76,
+   "strict_rate": 0.328947,
+   "solution_rate": 0.328947,
+   "ci95": [
+    0.233793,
+    0.440562
+   ],
+   "cost_usd_median": 0.002141,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001806,
+   "cost_output_usd_median": 0.000208,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 106.683,
+   "tokens_median": 64033,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 1.25,
+   "quality_n": 78,
+   "score_mean": 37.721111,
+   "score_median": 10.53,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 1,
+    "none": 8
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 136.0,
+     "checks": 105,
+     "passed": 59
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 62.0,
+     "checks": 24,
+     "passed": 8
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 46.0,
+     "checks": 18,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "typescript",
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.253593,
+   "solution_rate": 0.253593,
+   "ci95": [
+    0.0,
+    0.561497
+   ],
+   "cost_usd_median": 0.002185,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.002113,
+   "cost_output_usd_median": 7.2e-05,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 84.988,
+   "tokens_median": 70987,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 1.5,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "browser"
+   },
+   "n": 0,
+   "strict_rate": 0.32967,
+   "solution_rate": 0.32967,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "cli"
+   },
+   "n": 18,
+   "strict_rate": 0.296311,
+   "solution_rate": 0.296311,
+   "ci95": [
+    0.124998,
+    0.508727
+   ],
+   "cost_usd_median": 0.001945,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001747,
+   "cost_output_usd_median": 9.4e-05,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 106.048,
+   "tokens_median": 59475,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 2.0,
+   "quality_n": 18,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "library"
+   },
+   "n": 67,
+   "strict_rate": 0.283582,
+   "solution_rate": 0.283582,
+   "ci95": [
+    0.189703,
+    0.400932
+   ],
+   "cost_usd_median": 0.002185,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001883,
+   "cost_output_usd_median": 0.000171,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 107.325,
+   "tokens_median": 67106,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 1.25,
+   "quality_n": 69,
+   "score_mean": 37.721111,
+   "score_median": 10.53,
+   "score_n": 9,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 1,
+    "none": 8
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 306.0,
+     "earned": 136.0,
+     "checks": 105,
+     "passed": 59
+    },
+    "silver": {
+     "weight": 204.0,
+     "earned": 62.0,
+     "checks": 24,
+     "passed": 8
+    },
+    "gold": {
+     "weight": 144.0,
+     "earned": 46.0,
+     "checks": 18,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "research"
+   },
+   "n": 3,
+   "strict_rate": 0.484362,
+   "solution_rate": 0.484362,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.001713,
+   "cost_source": "derived",
+   "cost_input_usd_median": 0.001585,
+   "cost_output_usd_median": 0.000128,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 55.875,
+   "tokens_median": 53829,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "opencode",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "web-api"
+   },
+   "n": 3,
+   "strict_rate": 0.484362,
+   "solution_rate": 0.484362,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.001755,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001679,
+   "cost_output_usd_median": 7.6e-05,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 97.802,
+   "tokens_median": 56557,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 3,
    "score_mean": null,
    "score_median": null,
    "score_n": 0,
@@ -27731,6 +34181,1061 @@
    "score_source": "none"
   },
   {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": null
+   },
+   "n": 87,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.857603,
+    0.968011
+   ],
+   "cost_usd_median": 0.002925,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.002512,
+   "cost_output_usd_median": 0.000467,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 51.792,
+   "tokens_median": 86923,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 75,
+   "score_mean": 96.76,
+   "score_median": 100.0,
+   "score_n": 6,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 5,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 204.0,
+     "earned": 190.0,
+     "checks": 69,
+     "passed": 68
+    },
+    "silver": {
+     "weight": 126.0,
+     "earned": 126.0,
+     "checks": 15,
+     "passed": 15
+    },
+    "gold": {
+     "weight": 96.0,
+     "earned": 96.0,
+     "checks": 12,
+     "passed": 12
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "agentic-ops",
+    "language": null,
+    "platform": null
+   },
+   "n": 15,
+   "strict_rate": 0.972414,
+   "solution_rate": 0.972414,
+   "ci95": [
+    0.796117,
+    1.0
+   ],
+   "cost_usd_median": 0.001365,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001106,
+   "cost_output_usd_median": 0.000224,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 25.159,
+   "tokens_median": 39045,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 15,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "bugfix",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.911071,
+   "solution_rate": 0.911071,
+   "ci95": [
+    0.565,
+    0.980109
+   ],
+   "cost_usd_median": 0.001706,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001346,
+   "cost_output_usd_median": 0.00036,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 94.862,
+   "tokens_median": 47628,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.75,
+   "quality_n": 9,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "feature",
+    "language": null,
+    "platform": null
+   },
+   "n": 30,
+   "strict_rate": 0.982759,
+   "solution_rate": 0.982759,
+   "ci95": [
+    0.886487,
+    1.0
+   ],
+   "cost_usd_median": 0.00261,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.002019,
+   "cost_output_usd_median": 0.000433,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 38.061,
+   "tokens_median": 71847,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 25,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "parser",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.94695,
+   "solution_rate": 0.94695,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.016796,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.013911,
+   "cost_output_usd_median": 0.003258,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 230.963,
+   "tokens_median": 485898,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 2,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "performance",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.94695,
+   "solution_rate": 0.94695,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.000945,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.00077,
+   "cost_output_usd_median": 0.000158,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 17.526,
+   "tokens_median": 27445,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "refactor",
+    "language": null,
+    "platform": null
+   },
+   "n": 18,
+   "strict_rate": 0.903941,
+   "solution_rate": 0.903941,
+   "ci95": [
+    0.672002,
+    0.96898
+   ],
+   "cost_usd_median": 0.003214,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.002652,
+   "cost_output_usd_median": 0.000562,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 55.657,
+   "tokens_median": 92711,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 18,
+   "score_mean": 100.0,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 3,
+    "none": 0
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 96.0,
+     "earned": 96.0,
+     "checks": 33,
+     "passed": 33
+    },
+    "silver": {
+     "weight": 66.0,
+     "earned": 66.0,
+     "checks": 9,
+     "passed": 9
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "sim-game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "systems",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.805808,
+   "solution_rate": 0.805808,
+   "ci95": [
+    0.354202,
+    0.879416
+   ],
+   "cost_usd_median": 0.006631,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.004523,
+   "cost_output_usd_median": 0.002108,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 166.709,
+   "tokens_median": 166976,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 3,
+   "score_mean": 93.52,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 2,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 108.0,
+     "earned": 94.0,
+     "checks": 36,
+     "passed": 35
+    },
+    "silver": {
+     "weight": 60.0,
+     "earned": 60.0,
+     "checks": 6,
+     "passed": 6
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "ui-build",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-3d",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-canvas",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-svg",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "html-css",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "javascript",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "mixed",
+    "platform": null
+   },
+   "n": 12,
+   "strict_rate": 0.968652,
+   "solution_rate": 0.968652,
+   "ci95": [
+    0.757506,
+    1.0
+   ],
+   "cost_usd_median": 0.000984,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.000804,
+   "cost_output_usd_median": 0.000224,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 18.712,
+   "tokens_median": 28179,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 12,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "python",
+    "platform": null
+   },
+   "n": 72,
+   "strict_rate": 0.916667,
+   "solution_rate": 0.916667,
+   "ci95": [
+    0.829876,
+    0.961248
+   ],
+   "cost_usd_median": 0.003034,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.002607,
+   "cost_output_usd_median": 0.000498,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 53.656,
+   "tokens_median": 90177,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 60,
+   "score_mean": 96.76,
+   "score_median": 100.0,
+   "score_n": 6,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 5,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 204.0,
+     "earned": 190.0,
+     "checks": 69,
+     "passed": 68
+    },
+    "silver": {
+     "weight": 126.0,
+     "earned": 126.0,
+     "checks": 15,
+     "passed": 15
+    },
+    "gold": {
+     "weight": 96.0,
+     "earned": 96.0,
+     "checks": 12,
+     "passed": 12
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "typescript",
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.94695,
+   "solution_rate": 0.94695,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.009715,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.008099,
+   "cost_output_usd_median": 0.000935,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 88.069,
+   "tokens_median": 282397,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "browser"
+   },
+   "n": 0,
+   "strict_rate": 0.931034,
+   "solution_rate": 0.931034,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "cli"
+   },
+   "n": 18,
+   "strict_rate": 0.975369,
+   "solution_rate": 0.975369,
+   "ci95": [
+    0.824121,
+    1.0
+   ],
+   "cost_usd_median": 0.001365,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001106,
+   "cost_output_usd_median": 0.000224,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 25.159,
+   "tokens_median": 39045,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 18,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "library"
+   },
+   "n": 63,
+   "strict_rate": 0.904762,
+   "solution_rate": 0.904762,
+   "ci95": [
+    0.807383,
+    0.955617
+   ],
+   "cost_usd_median": 0.003214,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.002652,
+   "cost_output_usd_median": 0.000562,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 55.657,
+   "tokens_median": 92711,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 51,
+   "score_mean": 96.76,
+   "score_median": 100.0,
+   "score_n": 6,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 5,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 204.0,
+     "earned": 190.0,
+     "checks": 69,
+     "passed": 68
+    },
+    "silver": {
+     "weight": 126.0,
+     "earned": 126.0,
+     "checks": 15,
+     "passed": 15
+    },
+    "gold": {
+     "weight": 96.0,
+     "earned": 96.0,
+     "checks": 12,
+     "passed": 12
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "research"
+   },
+   "n": 3,
+   "strict_rate": 0.94695,
+   "solution_rate": 0.94695,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.000984,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.00076,
+   "cost_output_usd_median": 0.000224,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 18.712,
+   "tokens_median": 27043,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "pi",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "web-api"
+   },
+   "n": 3,
+   "strict_rate": 0.94695,
+   "solution_rate": 0.94695,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.000817,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.000705,
+   "cost_output_usd_median": 0.000112,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 16.833,
+   "tokens_median": 24352,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
    "harness": "prime-agent",
    "model": "deepseek-v4-flash-0731",
    "config": "default",
@@ -31634,6 +39139,1080 @@
    "evidence": "inferred",
    "quality_mean": 4.5,
    "quality_n": 5,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": null
+   },
+   "n": 89,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.740374,
+    0.895117
+   ],
+   "cost_usd_median": 0.003551,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.00275,
+   "cost_output_usd_median": 0.000572,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 76.357,
+   "tokens_median": 98818,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 4.0,
+   "quality_n": 73,
+   "score_mean": 91.2825,
+   "score_median": 100.0,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 7,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 272.0,
+     "earned": 253.0,
+     "checks": 93,
+     "passed": 91
+    },
+    "silver": {
+     "weight": 178.0,
+     "earned": 160.0,
+     "checks": 21,
+     "passed": 19
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 112.0,
+     "checks": 16,
+     "passed": 14
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "agentic-ops",
+    "language": null,
+    "platform": null
+   },
+   "n": 15,
+   "strict_rate": 0.790112,
+   "solution_rate": 0.892584,
+   "ci95": [
+    0.701835,
+    0.988133
+   ],
+   "cost_usd_median": 0.001629,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001398,
+   "cost_output_usd_median": 0.000292,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 39.914,
+   "tokens_median": 48308,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 14,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "bugfix",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.6712,
+   "solution_rate": 0.700769,
+   "ci95": [
+    0.266651,
+    0.811221
+   ],
+   "cost_usd_median": 0.003551,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.003135,
+   "cost_output_usd_median": 0.000416,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 95.276,
+   "tokens_median": 107709,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.25,
+   "quality_n": 9,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "feature",
+    "language": null,
+    "platform": null
+   },
+   "n": 30,
+   "strict_rate": 0.86882,
+   "solution_rate": 0.907865,
+   "ci95": [
+    0.786765,
+    0.981523
+   ],
+   "cost_usd_median": 0.002995,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.002443,
+   "cost_output_usd_median": 0.000554,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 50.639,
+   "tokens_median": 85668,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.125,
+   "quality_n": 27,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "parser",
+    "language": null,
+    "platform": null
+   },
+   "n": 5,
+   "strict_rate": 0.716854,
+   "solution_rate": 0.754307,
+   "ci95": [
+    0.230724,
+    0.882379
+   ],
+   "cost_usd_median": 0.034236,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.030516,
+   "cost_output_usd_median": 0.00406,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 284.161,
+   "tokens_median": 1045805,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": 65.13,
+   "score_median": 65.13,
+   "score_n": 2,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 1,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 68.0,
+     "earned": 49.0,
+     "checks": 24,
+     "passed": 22
+    },
+    "silver": {
+     "weight": 52.0,
+     "earned": 34.0,
+     "checks": 6,
+     "passed": 4
+    },
+    "gold": {
+     "weight": 32.0,
+     "earned": 16.0,
+     "checks": 4,
+     "passed": 2
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "performance",
+    "language": null,
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.827139,
+   "solution_rate": 0.870354,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.001584,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001346,
+   "cost_output_usd_median": 0.000257,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 43.502,
+   "tokens_median": 46691,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.5,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "refactor",
+    "language": null,
+    "platform": null
+   },
+   "n": 18,
+   "strict_rate": 0.8126,
+   "solution_rate": 0.832665,
+   "ci95": [
+    0.60778,
+    0.941634
+   ],
+   "cost_usd_median": 0.004032,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.003393,
+   "cost_output_usd_median": 0.000633,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 57.163,
+   "tokens_median": 118020,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 16,
+   "score_mean": 100.0,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 3,
+    "none": 0
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 96.0,
+     "earned": 96.0,
+     "checks": 33,
+     "passed": 33
+    },
+    "silver": {
+     "weight": 66.0,
+     "earned": 66.0,
+     "checks": 9,
+     "passed": 9
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "sim-game",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "systems",
+    "language": null,
+    "platform": null
+   },
+   "n": 9,
+   "strict_rate": 0.618569,
+   "solution_rate": 0.7534,
+   "ci95": [
+    0.354202,
+    0.879416
+   ],
+   "cost_usd_median": 0.018662,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.014858,
+   "cost_output_usd_median": 0.002599,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 223.606,
+   "tokens_median": 524521,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.5,
+   "quality_n": 4,
+   "score_mean": 100.0,
+   "score_median": 100.0,
+   "score_n": 3,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 3,
+    "none": 0
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 108.0,
+     "earned": 108.0,
+     "checks": 36,
+     "passed": 36
+    },
+    "silver": {
+     "weight": 60.0,
+     "earned": 60.0,
+     "checks": 6,
+     "passed": 6
+    },
+    "gold": {
+     "weight": 48.0,
+     "earned": 48.0,
+     "checks": 6,
+     "passed": 6
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "ui-build",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-3d",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-canvas",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": "visual-svg",
+    "language": null,
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "html-css",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "javascript",
+    "platform": null
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "mixed",
+    "platform": null
+   },
+   "n": 12,
+   "strict_rate": 0.806946,
+   "solution_rate": 0.923391,
+   "ci95": [
+    0.757506,
+    1.0
+   ],
+   "cost_usd_median": 0.001621,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001335,
+   "cost_output_usd_median": 0.000223,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 30.235,
+   "tokens_median": 46768,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 12,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "python",
+    "platform": null
+   },
+   "n": 74,
+   "strict_rate": 0.756757,
+   "solution_rate": 0.797297,
+   "ci95": [
+    0.692122,
+    0.873129
+   ],
+   "cost_usd_median": 0.003729,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.003135,
+   "cost_output_usd_median": 0.000629,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 85.218,
+   "tokens_median": 107709,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 58,
+   "score_mean": 91.2825,
+   "score_median": 100.0,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 7,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 272.0,
+     "earned": 253.0,
+     "checks": 93,
+     "passed": 91
+    },
+    "silver": {
+     "weight": 178.0,
+     "earned": 160.0,
+     "checks": 21,
+     "passed": 19
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 112.0,
+     "checks": 16,
+     "passed": 14
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": "typescript",
+    "platform": null
+   },
+   "n": 3,
+   "strict_rate": 0.827139,
+   "solution_rate": 0.870354,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.010427,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.009084,
+   "cost_output_usd_median": 0.001344,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 125.833,
+   "tokens_median": 313130,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 3.75,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "browser"
+   },
+   "n": 0,
+   "strict_rate": 0.775281,
+   "solution_rate": 0.831461,
+   "ci95": [
+    0.0,
+    1.0
+   ],
+   "cost_usd_median": null,
+   "cost_source": "none",
+   "cost_input_usd_median": null,
+   "cost_output_usd_median": null,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": null,
+   "tokens_median": null,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": null,
+   "quality_n": 0,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "cli"
+   },
+   "n": 18,
+   "strict_rate": 0.8126,
+   "solution_rate": 0.904093,
+   "ci95": [
+    0.742427,
+    0.990125
+   ],
+   "cost_usd_median": 0.001621,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001398,
+   "cost_output_usd_median": 0.000223,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 39.914,
+   "tokens_median": 48308,
+   "arena_bt": null,
+   "confidence": "medium",
+   "evidence": "inferred",
+   "quality_mean": 4.25,
+   "quality_n": 17,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "library"
+   },
+   "n": 65,
+   "strict_rate": 0.738462,
+   "solution_rate": 0.784615,
+   "ci95": [
+    0.670334,
+    0.867132
+   ],
+   "cost_usd_median": 0.003729,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.003135,
+   "cost_output_usd_median": 0.000629,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 91.705,
+   "tokens_median": 107709,
+   "arena_bt": null,
+   "confidence": "high",
+   "evidence": "measured",
+   "quality_mean": 3.75,
+   "quality_n": 50,
+   "score_mean": 91.2825,
+   "score_median": 100.0,
+   "score_n": 8,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 7,
+    "none": 1
+   },
+   "score_by_tier": {
+    "bronze": {
+     "weight": 272.0,
+     "earned": 253.0,
+     "checks": 93,
+     "passed": 91
+    },
+    "silver": {
+     "weight": 178.0,
+     "earned": 160.0,
+     "checks": 21,
+     "passed": 19
+    },
+    "gold": {
+     "weight": 128.0,
+     "earned": 112.0,
+     "checks": 16,
+     "passed": 14
+    }
+   },
+   "score_source": "meta"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "research"
+   },
+   "n": 3,
+   "strict_rate": 0.827139,
+   "solution_rate": 0.870354,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.001629,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.001335,
+   "cost_output_usd_median": 0.000292,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 30.235,
+   "tokens_median": 46768,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 2.25,
+   "quality_n": 3,
+   "score_mean": null,
+   "score_median": null,
+   "score_n": 0,
+   "score_tiers": {
+    "bronze": 0,
+    "silver": 0,
+    "gold": 0,
+    "none": 0
+   },
+   "score_by_tier": {},
+   "score_source": "none"
+  },
+  {
+   "harness": "prime-agent",
+   "model": "qwen3-7-flash",
+   "config": "default",
+   "scope": {
+    "family": null,
+    "language": null,
+    "platform": "web-api"
+   },
+   "n": 3,
+   "strict_rate": 0.827139,
+   "solution_rate": 0.870354,
+   "ci95": [
+    0.438503,
+    1.0
+   ],
+   "cost_usd_median": 0.001528,
+   "cost_source": "measured",
+   "cost_input_usd_median": 0.00133,
+   "cost_output_usd_median": 0.000205,
+   "cost_standard_usd_median": null,
+   "wall_seconds_median": 24.354,
+   "tokens_median": 45863,
+   "arena_bt": null,
+   "confidence": "low",
+   "evidence": "inferred",
+   "quality_mean": 4.0,
+   "quality_n": 3,
    "score_mean": null,
    "score_median": null,
    "score_n": 0,
