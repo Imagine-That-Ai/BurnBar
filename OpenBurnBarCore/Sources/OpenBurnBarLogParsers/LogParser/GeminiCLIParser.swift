@@ -5,32 +5,69 @@ import OpenBurnBarKernel
 
 /// Parses Gemini CLI sessions from ~/.gemini/tmp/<project_hash>/chats/session-*.json (and .jsonl).
 /// Gemini CLI stores sessions with message_update records containing input_tokens, output_tokens, cached_tokens.
+///
+/// Idle usage ticks resume unchanged session files from a mtime+size disk cache
+/// (token totals, model, and window only — never conversation bodies). Usage-only
+/// ticks also skip transcript markdown assembly.
 public final class GeminiCLIParser: LogParser, Sendable {
     public let provider: AgentProvider = .geminiCLI
     private let logDirectoryOverride: String?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<GeminiUsageCacheEntry>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(logDirectoryOverride: String? = nil) {
+    public init(
+        logDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.logDirectoryOverride = logDirectoryOverride
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-gemini-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.geminiCLIParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "GeminiCLIParser"
+        )
     }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let basePath = logDirectoryOverride ?? ("~/.gemini/tmp" as NSString).expandingTildeInPath
 
-        guard fm.fileExists(atPath: basePath) else {
+        guard fileManager.fileExists(atPath: basePath) else {
             return ParseResult(usages: [], conversations: [])
         }
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         let baseURL = URL(fileURLWithPath: basePath)
-        let projectDirs = (try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
+        let projectDirs = (try? fileManager.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
             (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         } ?? []
 
@@ -38,17 +75,30 @@ public final class GeminiCLIParser: LogParser, Sendable {
             let projectName = projectDir.lastPathComponent
             let chatsDir = projectDir.appendingPathComponent("chats")
 
-            guard fm.fileExists(atPath: chatsDir.path) else { continue }
+            guard fileManager.fileExists(atPath: chatsDir.path) else { continue }
 
-            let chatFiles = (try? fm.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter {
+            let chatFiles = (try? fileManager.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter {
                 let name = $0.lastPathComponent
                 return name.hasPrefix("session-") && ($0.pathExtension == "json" || $0.pathExtension == "jsonl")
             } ?? []
 
             for chatFile in chatFiles {
+                let cacheKey = chatFile.standardizedFileURL.path
+                activePaths.insert(cacheKey)
                 guard try gate.shouldRead(chatFile) else { continue }
                 let sessionId = chatFile.deletingPathExtension().lastPathComponent
+                let signature = FileSignature(for: chatFile, using: fileManager)
 
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    usages.append(cached.makeUsage(sessionId: sessionId, projectName: projectName))
+                    continue
+                }
+
+                sessionScanCount.withLock { $0 += 1 }
                 let pair: (usage: TokenUsage?, conversation: ConversationRecord?)?
                 if chatFile.pathExtension == "jsonl" {
                     pair = try parseJsonlSession(
@@ -71,8 +121,20 @@ public final class GeminiCLIParser: LogParser, Sendable {
                     if options.includeConversationBodies, let conv = pair.conversation {
                         conversations.append(conv)
                     }
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = GeminiUsageCacheEntry(signature: signature, usage: usage)
+                        cacheMutated = true
+                    }
                 }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -97,7 +159,7 @@ public final class GeminiCLIParser: LogParser, Sendable {
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(optional JSON decode, skip line)
                 continue
             }
-            ingestLine(json, into: &acc)
+            ingestLine(json, into: &acc, includeConversationBodies: includeConversationBodies)
         }
 
         return try buildResult(
@@ -125,14 +187,14 @@ public final class GeminiCLIParser: LogParser, Sendable {
         // Try array of messages
         if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] { // try?-ok(optional JSON decode, fallback)
             for message in array {
-                ingestLine(message, into: &acc)
+                ingestLine(message, into: &acc, includeConversationBodies: includeConversationBodies)
             }
         }
         // Try single object with messages array
         else if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional JSON decode, fallback)
                 let messages = obj["messages"] as? [[String: Any]] {
             for message in messages {
-                ingestLine(message, into: &acc)
+                ingestLine(message, into: &acc, includeConversationBodies: includeConversationBodies)
             }
         }
 
@@ -147,7 +209,11 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
     // MARK: - Shared Ingestion
 
-    private func ingestLine(_ json: [String: Any], into acc: inout GeminiSessionAccumulator) {
+    private func ingestLine(
+        _ json: [String: Any],
+        into acc: inout GeminiSessionAccumulator,
+        includeConversationBodies: Bool
+    ) {
         // Timestamp
         if let ts = json["timestamp"] as? String {
             let date = ThreadSafeISO8601DateFormatter.parseBasic(ts)
@@ -184,23 +250,29 @@ public final class GeminiCLIParser: LogParser, Sendable {
         let content = extractContent(from: json)
 
         if !content.isEmpty {
-            if !acc.fullText.isEmpty { acc.fullText += "\n\n" }
             let isAssistant = role == "model" || role == "assistant"
             if role == "user" {
                 acc.userChars += content.count
                 acc.userWords += content.split { $0.isWhitespace || $0.isNewline }.count
-                if acc.firstUserText == nil {
-                    acc.firstUserText = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
-                }
                 acc.messageCount += 1
-                acc.fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: false, body: content)
+                if includeConversationBodies {
+                    if acc.firstUserText == nil {
+                        acc.firstUserText = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+                    }
+                    if !acc.fullText.isEmpty { acc.fullText += "\n\n" }
+                    acc.fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: false, body: content)
+                }
             } else if isAssistant {
                 acc.assistantChars += content.count
                 acc.assistantWords += content.split { $0.isWhitespace || $0.isNewline }.count
-                acc.lastAssistantText = content
                 acc.messageCount += 1
-                acc.fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: true, body: content)
-            } else {
+                if includeConversationBodies {
+                    acc.lastAssistantText = content
+                    if !acc.fullText.isEmpty { acc.fullText += "\n\n" }
+                    acc.fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: true, body: content)
+                }
+            } else if includeConversationBodies {
+                if !acc.fullText.isEmpty { acc.fullText += "\n\n" }
                 acc.fullText += content
             }
         }
@@ -333,7 +405,47 @@ public final class GeminiCLIParser: LogParser, Sendable {
     }
 
     private func modificationDate(of url: URL) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(optional mtime read)
+        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date // try?-ok(optional mtime read)
+    }
+}
+
+private struct GeminiUsageCacheEntry: Codable, Equatable, Sendable {
+    let signature: FileSignature
+    let inputTokens: Int
+    let outputTokens: Int
+    let cacheReadTokens: Int
+    let model: String
+    let startTime: Date
+    let endTime: Date
+    let costUSD: Double
+
+    init(signature: FileSignature, usage: TokenUsage) {
+        self.signature = signature
+        self.inputTokens = usage.inputTokens
+        self.outputTokens = usage.outputTokens
+        self.cacheReadTokens = usage.cacheReadTokens
+        self.model = usage.model
+        self.startTime = usage.startTime
+        self.endTime = usage.endTime
+        self.costUSD = usage.costUSD
+    }
+
+    func makeUsage(sessionId: String, projectName: String) -> TokenUsage {
+        TokenUsage(
+            provider: .geminiCLI,
+            sessionId: sessionId,
+            projectName: projectName,
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: 0,
+            cacheReadTokens: cacheReadTokens,
+            costUSD: costUSD,
+            startTime: startTime,
+            endTime: endTime,
+            provenanceMethod: .providerLog,
+            provenanceConfidence: .exact
+        )
     }
 }
 

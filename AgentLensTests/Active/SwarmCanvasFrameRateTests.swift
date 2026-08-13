@@ -217,6 +217,13 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
             egg.contains("minimumInterval: 1.0 / 30.0"),
             "iOS easter-egg canvas must match the macOS 30 fps cap."
         )
+        let formation = try Self.loadSource("OpenBurnBarCore/Sources/OpenBurnBarUI/Views/BurnBarLogoFormationView.swift")
+        XCTAssertTrue(
+            formation.contains("minimumInterval: 1.0 / 30.0"),
+            "Logo formation is decorative splash/onboarding; 30 fps matches the editorial cap."
+        )
+        XCTAssertTrue(formation.contains("dt = 1.0 / 30.0"), "Formation physics step must match the 30 fps timeline.")
+        XCTAssertFalse(formation.contains("1.0 / 45"))
     }
 
     func testBucketKey_separatesDifferentColors() {

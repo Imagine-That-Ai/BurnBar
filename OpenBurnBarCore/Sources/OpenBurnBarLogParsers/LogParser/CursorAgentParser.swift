@@ -73,7 +73,8 @@ public final class CursorAgentParser: LogParser, Sendable {
                 if let pair = try parseSession(
                     file: file,
                     sessionId: sessionId,
-                    summaryURL: sessionFiles.count == 2 ? summaryURL : nil
+                    summaryURL: sessionFiles.count == 2 ? summaryURL : nil,
+                    includeConversationBodies: options.includeConversationBodies
                 ) {
                     if let usage = pair.usage { usages.append(usage) }
                     if options.includeConversationBodies, let conv = pair.conversation { conversations.append(conv) }
@@ -81,7 +82,12 @@ public final class CursorAgentParser: LogParser, Sendable {
             } else if item.pathExtension == "jsonl" {
                 guard try gate.shouldRead(item) else { continue }
                 let sessionId = item.deletingPathExtension().lastPathComponent
-                if let pair = try parseSession(file: item, sessionId: sessionId, summaryURL: nil) {
+                if let pair = try parseSession(
+                    file: item,
+                    sessionId: sessionId,
+                    summaryURL: nil,
+                    includeConversationBodies: options.includeConversationBodies
+                ) {
                     if let usage = pair.usage { usages.append(usage) }
                     if options.includeConversationBodies, let conv = pair.conversation { conversations.append(conv) }
                 }
@@ -96,7 +102,8 @@ public final class CursorAgentParser: LogParser, Sendable {
     private func parseSession(
         file: URL,
         sessionId: String,
-        summaryURL: URL?
+        summaryURL: URL?,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open fail skip session)
         defer { try? handle.close() } // try?-ok(handle teardown)
@@ -142,11 +149,6 @@ public final class CursorAgentParser: LogParser, Sendable {
         var calculatedCacheCreationTokens = 0
         var calculatedOutputTokens = 0
 
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let fallbackDate = ISO8601DateFormatter()
-        fallbackDate.formatOptions = [.withInternetDateTime]
-
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skip)
@@ -161,7 +163,7 @@ public final class CursorAgentParser: LogParser, Sendable {
             let timestampStr = json["timestamp"] as? String ?? json["created_at"] as? String
 
             if let timestampStr,
-               let date = dateFormatter.date(from: timestampStr) ?? fallbackDate.date(from: timestampStr) {
+               let date = ThreadSafeISO8601DateFormatter.parse(timestampStr) {
                 if acc.startTime == nil { acc.startTime = date }
                 acc.endTime = date
             }
@@ -175,14 +177,16 @@ public final class CursorAgentParser: LogParser, Sendable {
                 acc.userMessageCount += 1
 
                 if !content.isEmpty {
-                    acc.userWords += wordCount(content)
-                    if acc.firstUserText == nil {
-                        let cleaned = stripMetadataTags(content)
-                        if !cleaned.isEmpty {
-                            acc.firstUserText = String(cleaned.prefix(120))
+                    if includeConversationBodies {
+                        acc.userWords += wordCount(content)
+                        if acc.firstUserText == nil {
+                            let cleaned = stripMetadataTags(content)
+                            if !cleaned.isEmpty {
+                                acc.firstUserText = String(cleaned.prefix(120))
+                            }
                         }
+                        appendText(&acc.fullText, content, isAssistant: false)
                     }
-                    appendText(&acc.fullText, content, isAssistant: false)
                 }
 
                 if acc.sessionModel == nil {
@@ -206,7 +210,9 @@ public final class CursorAgentParser: LogParser, Sendable {
                             turnToolCallArgChars += Self.stringLength(of: val)
                         }
                     }
-                    if let toolName = toolCall["name"] as? String, !toolName.isEmpty {
+                    if let toolName = toolCall["name"] as? String,
+                       includeConversationBodies,
+                       !toolName.isEmpty {
                         acc.toolNames.insert(toolName)
                     }
                 }
@@ -241,10 +247,12 @@ public final class CursorAgentParser: LogParser, Sendable {
                 currentAssistantMsgCount += 1
 
                 if !content.isEmpty {
-                    acc.lastAssistantText = content
-                    acc.assistantMessageCount += 1
-                    acc.assistantWords += wordCount(content)
-                    appendText(&acc.fullText, content, isAssistant: true)
+                    if includeConversationBodies {
+                        acc.lastAssistantText = content
+                        acc.assistantMessageCount += 1
+                        acc.assistantWords += wordCount(content)
+                        appendText(&acc.fullText, content, isAssistant: true)
+                    }
                 }
                 if !thinking.isEmpty {
                     acc.thinkingChars += thinking.count
@@ -256,7 +264,8 @@ public final class CursorAgentParser: LogParser, Sendable {
                 currentToolOutputChars += content.count
                 acc.toolOutputChars += content.count
 
-                if type == "VIEW_FILE" || content.contains("File Path: `file:///") {
+                if includeConversationBodies,
+                   type == "VIEW_FILE" || content.contains("File Path: `file:///") {
                     if let path = extractFilePath(from: content) {
                         acc.filePaths.insert(path)
                     }
@@ -329,6 +338,10 @@ public final class CursorAgentParser: LogParser, Sendable {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
+
+        guard includeConversationBodies else {
+            return (usage, nil)
+        }
 
         let sortedFiles = Array(acc.filePaths.sorted().prefix(20))
         let sortedTools = Array(acc.toolNames.sorted().prefix(20))

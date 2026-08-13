@@ -869,3 +869,76 @@ Validation:
 - `OpenBurnBarCoreTests/AntigravityJSONLTailTests`
 - plus the §20 quota / dashboard suites
 
+---
+
+## §22 — Remaining hot paths (August 2026, round 4)
+
+Round 3 closed the Charts covering scan, indexer write batching, and
+Factory / Antigravity quota tails. This round burns down the leftovers
+that were still whole-file on the quota tick or re-parsed on every
+usage tick.
+
+### Lane 1 — Graphics
+
+`BurnBarLogoFormationView` (splash / onboarding) was ticking `TimelineView`
+and the glyph `Timer` at 45 fps. Both now use `1.0 / 30` so wall-clock
+formation time stays the same at the editorial decorative cap.
+
+### Lane 2 — Quota
+
+Warp's local telemetry fallback still needed the newest credit bucket
+from unstructured `warp_network*.log` files. It now reads the last
+512 KB first (`CodexQuotaScanPolicy.tailReadBytes`). A UTF-8 split or
+a tail with no credit fail-closes to a full-file read so remaining% /
+`resetsAt` stay bit-identical. Factory session timestamps reuse
+`ThreadSafeISO8601DateFormatter.parse` instead of allocating a pair of
+formatters per `.settings.json`.
+
+### Lane 3 — Usage parsers
+
+Usage ticks do not share indexing `idx2:` / `fileDiscoveryTracker` /
+`minimumFileModificationDate`, so `ParserFileReadGate` admits every
+session file every 60s. Gemini CLI now keeps a mtime+size disk cache of
+token totals (never bodies) and skips transcript markdown on usage-only
+passes. Cache keys for files that still exist are kept even when a
+watermark or tracker skips the content read, so an indexing pass cannot
+evict a warm usage cache (Grok `updates.jsonl` got the same prune fix).
+
+Cursor Agent and Antigravity usage parsers parse timestamps through the
+shared formatter instead of two `ISO8601DateFormatter` instances per
+session. Cursor Agent also skips `fullText` / key-file / tool-name
+assembly when `includeConversationBodies` is false; token estimates
+still count characters.
+
+### Named leftovers
+
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Overlapping
+  the phases would race the Codex rollout cache (whole-cache last-write-wins).
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Kilo Code's `KiloCodeQuotaAdapter` still `Data(contentsOf:)` task JSON
+  arrays, but it is not on the quota refresh path (`quotaSignalProviders`
+  / the adapter registry omit it). Cline-family usage still goes through
+  `ClineFormatParser` + `ParserFileReadGate`.
+- Warp **usage** parsing still reads a changed `warp_network*.log` in
+  full because every Body object can contribute a usage row.
+- Goose / Antigravity **usage parsers** still scan from offset 0 because
+  token estimates accumulate conversation characters, not just windowed
+  quota counts.
+
+Validation:
+- `OpenBurnBarTests/SwarmCanvasFrameRateTests`
+- `OpenBurnBarTests/WarpQuotaAdapterMattersTests`
+- `OpenBurnBarCoreTests/WarpTelemetryTailTests`
+- `OpenBurnBarCoreTests/GeminiCLIParserCacheTests`
+- `OpenBurnBarCoreTests/GrokParserTests`
+- `OpenBurnBarCoreTests/LiftedParserBoundaryTests` (Cursor Agent usage-only)
+- plus the §21 Charts / indexer / quota suites
+
+

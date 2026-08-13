@@ -78,6 +78,36 @@ final class GrokParserTests: XCTestCase {
         XCTAssertEqual(third.usages.first?.totalTokens, 2_400)
     }
 
+    func test_parse_watermarkSkipDoesNotDropUpdatesCache() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-grok-watermark-\(UUID().uuidString)", isDirectory: true)
+        let session = root
+            .appendingPathComponent("%2Ftmp%2Fgrok-project", isDirectory: true)
+            .appendingPathComponent("grok-watermark-session", isDirectory: true)
+        try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try #"{"info":{"id":"grok-watermark-session","cwd":"/tmp/grok-project"},"current_model_id":"grok-4.5","created_at":"2026-07-13T01:00:00Z","updated_at":"2026-07-13T01:05:00Z"}"#
+            .write(to: session.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)
+        try #"{"method":"session/update","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"turn-1","usage":{"inputTokens":1000,"outputTokens":200,"totalTokens":1200,"cachedReadTokens":600,"reasoningTokens":50}}}}"#
+            .write(to: session.appendingPathComponent("updates.jsonl"), atomically: true, encoding: .utf8)
+
+        let parser = GrokParser(logDirectoryOverride: root.path)
+        let first = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(first.usages.first?.totalTokens, 1_800)
+
+        let deferred = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            minimumFileModificationDate: Date.distantFuture
+        ))
+        XCTAssertTrue(deferred.usages.isEmpty)
+
+        let second = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(parser.lastUpdatesScanCount, 0)
+        XCTAssertEqual(parser.lastUpdatesCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.totalTokens, 1_800)
+    }
+
     func test_parse_doesNotDoubleCountChildUsageAggregatedIntoParent() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("obb-grok-child-usage-\(UUID().uuidString)", isDirectory: true)

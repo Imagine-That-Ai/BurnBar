@@ -133,6 +133,10 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("grok_parser_cache.json")
     }
 
+    public var geminiCLIParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("gemini_cli_parser_cache.json")
+    }
+
     public var claudeCodeParserCacheURL: URL {
         supportDirectory.appendingPathComponent("claude_code_parser_cache.json")
     }

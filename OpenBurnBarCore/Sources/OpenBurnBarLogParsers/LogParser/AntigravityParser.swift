@@ -224,12 +224,6 @@ public final class AntigravityParser: LogParser, Sendable {
         var calculatedCacheCreationTokens = 0
         var calculatedOutputTokens = 0
 
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        let fallbackDateFormatter = ISO8601DateFormatter()
-        fallbackDateFormatter.formatOptions = [.withInternetDateTime]
-
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip malformed)
@@ -245,7 +239,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
             // Timestamps
             if let createdAtStr,
-               let date = dateFormatter.date(from: createdAtStr) ?? fallbackDateFormatter.date(from: createdAtStr) {
+               let date = ThreadSafeISO8601DateFormatter.parse(createdAtStr) {
                 if acc.startTime == nil { acc.startTime = date }
                 acc.endTime = date
             }

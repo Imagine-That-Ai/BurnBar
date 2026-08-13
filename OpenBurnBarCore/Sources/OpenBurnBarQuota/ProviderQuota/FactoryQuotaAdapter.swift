@@ -149,9 +149,7 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
             // Use providerLockTimestamp for accurate time-window bucketing
             let sessionDate: Date? = {
                 if let ts = json["providerLockTimestamp"] as? String {
-                    let fmt = ISO8601DateFormatter()
-                    fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                    return fmt.date(from: ts) ?? ISO8601DateFormatter().date(from: ts)
+                    return ThreadSafeISO8601DateFormatter.parse(ts)
                 }
                 return (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate // try?-ok(skip if no mtime)
             }()

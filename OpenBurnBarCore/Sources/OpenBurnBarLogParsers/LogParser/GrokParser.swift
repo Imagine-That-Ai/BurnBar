@@ -100,6 +100,11 @@ public final class GrokParser: LogParser, Sendable {
                         .filter { fileManager.fileExists(atPath: $0.path) })
                 }
 
+                let updatesURL = sessionDir.appendingPathComponent("updates.jsonl")
+                if fileManager.fileExists(atPath: updatesURL.path) {
+                    activePaths.insert(updatesURL.standardizedFileURL.path)
+                }
+
                 if try gate.shouldRead(contentFiles) {
                     sessions.append((sessionDir, projectName))
                 }

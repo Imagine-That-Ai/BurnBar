@@ -44,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   history.jsonl tail-reads the 5h window. Decorative loaders, the Cloud
   store orbit, and the iOS easter-egg canvas cap at 30 fps. Database
   workspace snapshot reads overlap instead of awaiting one-by-one.
+- **Warp quota fallback** tail-reads the last 512 KB of `warp_network*.log`
+  for the newest credit bucket and only rereads the whole file when the
+  tail has no credits or is not valid UTF-8. **Gemini CLI** usage ticks
+  resume unchanged `session-*.json(l)` files from a mtime+size cache
+  (token totals only) and skip transcript markdown on usage-only passes.
+  Cursor Agent and Antigravity usage parsers share the process-wide
+  ISO-8601 formatter; Cursor Agent skips conversation assembly on
+  usage-only ticks. Factory quota timestamps use the same formatter.
+  Logo formation (splash/onboarding) matches the 30 fps decorative cap.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
