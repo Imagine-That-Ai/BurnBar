@@ -146,6 +146,33 @@ class VerifyOpenBurnBarMASAppStoreConnectTests(unittest.TestCase):
             },
         )
 
+    def test_tree_hash_accepts_internal_framework_symlinks(self) -> None:
+        root = self.root()
+        framework = root / "Example.framework"
+        version = framework / "Versions" / "A"
+        version.mkdir(parents=True)
+        (version / "Example").write_bytes(b"framework")
+        (framework / "Versions" / "Current").symlink_to("A")
+        (framework / "Example").symlink_to("Versions/Current/Example")
+
+        self.assertRegex(MODULE.sha256_tree(framework), r"^[0-9a-f]{64}$")
+
+    def test_tree_hash_rejects_absolute_broken_and_escaping_symlinks(self) -> None:
+        for label, target, expected_error in (
+            ("absolute", "/tmp/outside", "absolute symlink"),
+            ("broken", "missing", "broken symlink"),
+            ("escaping", "../outside", "escapes the artifact root"),
+        ):
+            with self.subTest(label=label):
+                root = self.root()
+                tree = root / "tree"
+                tree.mkdir()
+                if label == "escaping":
+                    (root / "outside").write_bytes(b"outside")
+                (tree / "link").symlink_to(target)
+                with self.assertRaisesRegex(ValueError, expected_error):
+                    MODULE.sha256_tree(tree)
+
     def test_creates_verified_archive_export_receipt_without_upload(self) -> None:
         root = self.root()
         archive = root / "OpenBurnBar.xcarchive"

@@ -274,6 +274,7 @@ def sha256_file(path: Path) -> str:
 def sha256_tree(path: Path) -> str:
     if path.is_symlink() or not path.is_dir():
         raise ValueError(f"tree artifact must be a real directory: {path}")
+    root = path.resolve()
     digest = hashlib.sha256()
     for entry in sorted(path.rglob("*"), key=lambda candidate: candidate.relative_to(path).as_posix()):
         relative = entry.relative_to(path).as_posix().encode()
@@ -282,7 +283,24 @@ def sha256_tree(path: Path) -> str:
         digest.update(relative)
         digest.update(stat.S_IMODE(metadata.st_mode).to_bytes(4, "big"))
         if stat.S_ISLNK(metadata.st_mode):
-            target = os.readlink(entry).encode()
+            raw_target = os.readlink(entry)
+            target_path = Path(raw_target)
+            if target_path.is_absolute():
+                raise ValueError(
+                    f"tree artifact contains absolute symlink target: {entry} -> {raw_target}"
+                )
+            resolved_target = (entry.parent / target_path).resolve(strict=False)
+            try:
+                resolved_target.relative_to(root)
+            except ValueError as error:
+                raise ValueError(
+                    f"tree artifact symlink escapes the artifact root: {entry} -> {raw_target}"
+                ) from error
+            if not resolved_target.exists():
+                raise ValueError(
+                    f"tree artifact contains broken symlink: {entry} -> {raw_target}"
+                )
+            target = raw_target.encode()
             digest.update(b"L")
             digest.update(len(target).to_bytes(8, "big"))
             digest.update(target)

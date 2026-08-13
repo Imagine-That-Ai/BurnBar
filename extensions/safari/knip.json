@@ -5,6 +5,7 @@
     "src/content/index.ts",
     "src/content/pageWorldRunner.js",
     "src/popup/index.ts",
+    "scripts/*.mjs",
     "test/**/*.test.ts"
   ],
   "project": ["scripts/**/*.mjs", "src/**/*.{ts,js}", "test/**/*.ts"]
