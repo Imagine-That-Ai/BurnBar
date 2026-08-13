@@ -68,7 +68,8 @@ function icon(name: string): SVGSVGElement {
     expand: 'M8 3H3v5h2V5h3V3Zm8 0v2h3v3h2V3h-5ZM5 16H3v5h5v-2H5v-3Zm16 0h-2v3h-3v2h5v-5Z',
     more: 'M5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z',
     brain:
-      'M9.2 3.1A4 4 0 0 0 5 7v.2A4.5 4.5 0 0 0 4 16v.2A3.8 3.8 0 0 0 10 19v-5H8v-2h2V7.5A4.4 4.4 0 0 0 9.2 3.1ZM14.8 3.1A4 4 0 0 1 19 7v.2a4.5 4.5 0 0 1 1 8.8v.2A3.8 3.8 0 0 1 14 19v-5h2v-2h-2V7.5a4.4 4.4 0 0 1 .8-4.4Z'
+      'M9.2 3.1A4 4 0 0 0 5 7v.2A4.5 4.5 0 0 0 4 16v.2A3.8 3.8 0 0 0 10 19v-5H8v-2h2V7.5A4.4 4.4 0 0 0 9.2 3.1ZM14.8 3.1A4 4 0 0 1 19 7v.2a4.5 4.5 0 0 1 1 8.8v.2A3.8 3.8 0 0 1 14 19v-5h2v-2h-2V7.5a4.4 4.4 0 0 1 .8-4.4Z',
+    check: 'm5 12 4 4L19 6'
   };
   path.setAttribute('d', paths[name] ?? paths.spark ?? '');
   svg.append(path);
@@ -333,39 +334,126 @@ function renderAgentPicker(viewModel: PopupViewModel, open: boolean): HTMLElemen
   search.dataset.input = 'agent-filter';
   focusKey(search, 'input:agent-filter');
   search.setAttribute('aria-label', 'Filter agents and models');
-  const selectWrap = element('div', 'select-wrap');
-  const select = element('select', 'agent-select');
-  select.dataset.input = 'agent';
-  focusKey(select, 'input:agent');
-  select.setAttribute('aria-label', viewModel.selectedMode === 'handoff' ? 'Installed agent' : 'Agent or model');
+  const options = element('div', 'agent-picker-options');
+  options.setAttribute('role', 'listbox');
+  options.setAttribute('aria-label', viewModel.selectedMode === 'handoff' ? 'Installed agents' : 'Models');
   if (viewModel.noAgents) {
-    const empty = element('option', undefined, 'No compatible agents found');
-    empty.disabled = true;
-    empty.selected = true;
-    select.append(empty);
+    options.append(element('p', 'agent-picker-empty', 'No compatible agents found'));
   } else {
     for (const group of viewModel.agentGroups) {
-      const optgroup = document.createElement('optgroup');
-      optgroup.label = group.label;
+      options.append(element('div', 'model-picker-group-label', group.label));
       for (const agent of group.agents) {
-        optgroup.append(renderAgentOption(agent, viewModel.selectedAgent?.id));
+        options.append(renderModelOption(agent, viewModel.selectedAgent?.id, 'tools'));
       }
-      select.append(optgroup);
     }
   }
-  selectWrap.append(select, icon('chevron'));
-  controls.append(search, selectWrap);
+  controls.append(search, options);
   section.append(labelRow, controls);
   details.append(section);
   return details;
 }
 
-function renderAgentOption(agent: BridgeAgentOption, selectedAgentId?: string): HTMLOptionElement {
-  const option = document.createElement('option');
-  option.value = agent.id;
-  option.textContent = `${agent.displayName}${agent.kind === 'cli' ? ' — installed' : ''}`;
-  option.selected = agent.id === selectedAgentId;
+function providerLogoName(agent: BridgeAgentOption): string | undefined {
+  const provider = `${agent.providerName} ${agent.id}`.toLocaleLowerCase();
+  const matches: Array<[string, string]> = [
+    ['factory', 'factory.png'],
+    ['anthropic', 'anthropic.png'],
+    ['claude', 'anthropic.png'],
+    ['openai', 'openai.png'],
+    ['gpt', 'openai.png'],
+    ['qwen', 'qwen.svg'],
+    ['google', 'google.svg'],
+    ['gemini', 'google.svg'],
+    ['ollama', 'ollama.png'],
+    ['codex', 'codex.png'],
+    ['hermes', 'hermes.png']
+  ];
+  return matches.find(([needle]) => provider.includes(needle))?.[1];
+}
+
+function renderProviderMark(agent: BridgeAgentOption): HTMLElement {
+  const mark = element('span', 'provider-mark');
+  mark.setAttribute('aria-hidden', 'true');
+  const logoName = providerLogoName(agent);
+  if (logoName) {
+    const logo = element('img', 'provider-logo');
+    logo.src = `providers/${logoName}`;
+    logo.alt = '';
+    mark.append(logo);
+  } else {
+    mark.classList.add('provider-mark--fallback');
+    mark.textContent = (agent.providerName.trim()[0] ?? agent.displayName.trim()[0] ?? '•').toLocaleUpperCase();
+  }
+  return mark;
+}
+
+function renderModelOption(
+  agent: BridgeAgentOption,
+  selectedAgentId: string | undefined,
+  focusNamespace: 'composer' | 'tools'
+): HTMLButtonElement {
+  const option = button('', 'select-agent', 'model-picker-option');
+  option.dataset.agentId = agent.id;
+  focusKey(option, `agent:${focusNamespace}:${agent.id}`);
+  option.setAttribute('role', 'option');
+  option.setAttribute('aria-selected', String(agent.id === selectedAgentId));
+  option.setAttribute('aria-label', `${agent.displayName}, ${agent.providerName}, ${agent.cloud ? 'cloud' : 'local'}`);
+  option.append(renderProviderMark(agent));
+  const copy = element('span', 'model-picker-copy');
+  copy.append(
+    element('strong', undefined, agent.displayName),
+    element('span', undefined, `${agent.providerName} · ${agent.cloud ? 'Cloud' : 'Local'}`)
+  );
+  option.append(copy);
+  if (agent.id === selectedAgentId) {
+    option.append(icon('check'));
+  }
   return option;
+}
+
+function renderModelPicker(viewModel: PopupViewModel, open: boolean): HTMLElement {
+  const picker = element('div', 'model-picker');
+  const trigger = button('', 'toggle-model-picker', 'mini model-picker-trigger');
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', String(open));
+  trigger.setAttribute('aria-controls', 'model-picker-options');
+  trigger.setAttribute(
+    'aria-label',
+    viewModel.selectedAgent
+      ? `Model: ${viewModel.selectedAgent.displayName}, ${viewModel.selectedAgent.providerName}`
+      : 'Choose an agent or model'
+  );
+  if (viewModel.selectedAgent) {
+    trigger.append(
+      renderProviderMark(viewModel.selectedAgent),
+      element('span', 'model-picker-trigger-label', viewModel.selectedAgent.displayName),
+      icon('chevron')
+    );
+  } else {
+    trigger.append(
+      icon('brain'),
+      element('span', 'model-picker-trigger-label', viewModel.noAgents ? 'No models' : 'Choose model'),
+      icon('chevron')
+    );
+    trigger.disabled = viewModel.noAgents;
+  }
+  picker.append(trigger);
+
+  const options = element('div', 'model-picker-options');
+  options.id = 'model-picker-options';
+  options.setAttribute('role', 'listbox');
+  options.setAttribute('aria-label', viewModel.selectedMode === 'handoff' ? 'Installed agents' : 'Models');
+  options.hidden = !open;
+  for (const group of viewModel.agentGroups) {
+    const heading = element('div', 'model-picker-group-label', group.label);
+    heading.setAttribute('role', 'presentation');
+    options.append(heading);
+    for (const agent of group.agents) {
+      options.append(renderModelOption(agent, viewModel.selectedAgent?.id, 'composer'));
+    }
+  }
+  picker.append(options);
+  return picker;
 }
 
 function renderTranscript(entries: TranscriptEntry[]): HTMLElement {
@@ -450,7 +538,11 @@ function renderApprovals(approvals: ApprovalPreview[]): HTMLElement | undefined 
   return section;
 }
 
-function renderComposer(viewModel: PopupViewModel, modePopoverOpen: boolean): HTMLElement | undefined {
+function renderComposer(
+  viewModel: PopupViewModel,
+  modePopoverOpen: boolean,
+  modelPickerOpen: boolean
+): HTMLElement | undefined {
   if (!viewModel.composerVisible) {
     return undefined;
   }
@@ -466,30 +558,11 @@ function renderComposer(viewModel: PopupViewModel, modePopoverOpen: boolean): HT
   textarea.setAttribute('aria-label', viewModel.composerPlaceholder);
   textarea.setAttribute('aria-keyshortcuts', 'Meta+Enter');
   const footer = element('div', 'composer-footer');
-  const agent = element('select', 'mini mini--agent composer-agent');
-  agent.dataset.input = 'agent';
-  focusKey(agent, 'input:composer-agent');
-  agent.setAttribute('aria-label', viewModel.selectedMode === 'handoff' ? 'Installed agent' : 'Agent or model');
-  if (viewModel.noAgents) {
-    const empty = element('option', undefined, 'No agents');
-    empty.disabled = true;
-    empty.selected = true;
-    agent.append(empty);
-  } else {
-    for (const group of viewModel.agentGroups) {
-      const optgroup = document.createElement('optgroup');
-      optgroup.label = group.label;
-      for (const option of group.agents) {
-        optgroup.append(renderAgentOption(option, viewModel.selectedAgent?.id));
-      }
-      agent.append(optgroup);
-    }
-  }
-  const modeTrigger = button(
-    viewModel.modes.find((mode) => mode.id === viewModel.selectedMode)?.label ?? 'Ask',
-    'toggle-mode-popover',
-    'button btn btn--ember-outline mode-trigger'
-  );
+  const agent = renderModelPicker(viewModel, modelPickerOpen);
+  const selectedMode = viewModel.modes.find((mode) => mode.id === viewModel.selectedMode);
+  const modeTrigger = button('', 'toggle-mode-popover', 'button btn btn--ember-outline mode-trigger');
+  modeTrigger.append(icon('brain'), element('span', 'mode-trigger-label', selectedMode?.label ?? 'Ask'));
+  modeTrigger.setAttribute('aria-label', `Thinking level: ${selectedMode?.label ?? 'Ask'}`);
   modeTrigger.setAttribute('aria-haspopup', 'true');
   modeTrigger.setAttribute('aria-expanded', String(modePopoverOpen));
   modeTrigger.setAttribute('aria-controls', 'mode-popover');
@@ -901,6 +974,7 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
   const previousContentScroll = captureScroll(root.querySelector<HTMLElement>('.content-scroll'));
   const previousTranscriptScroll = captureTranscriptScroll(root.querySelector<HTMLElement>('.transcript'));
   const modePopoverWasOpen = root.dataset.modePopoverOpen === 'true';
+  const modelPickerWasOpen = root.dataset.modelPickerOpen === 'true';
   const agentDrawerWasOpen = root.querySelector<HTMLDetailsElement>('.agent-drawer')?.open ?? false;
   const toolsWereOpen = root.dataset.toolsOpen === 'true';
   const popupExpanded = root.dataset.popupShape !== 'compact';
@@ -933,7 +1007,7 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
     );
     shell.append(tools);
   }
-  const composer = renderComposer(viewModel, modePopoverWasOpen);
+  const composer = renderComposer(viewModel, modePopoverWasOpen, modelPickerWasOpen);
   if (composer) {
     shell.append(composer);
   }

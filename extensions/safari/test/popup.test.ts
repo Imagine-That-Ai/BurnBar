@@ -437,7 +437,11 @@ describe('popup rendering', () => {
     expect(root.querySelector('[data-action="toggle-popup-shape"]')?.getAttribute('aria-pressed')).toBe('true');
     expect(root.querySelector('.content-scroll .activity-strip')).toBeNull();
     expect(root.querySelector('.content-scroll .agent-drawer')).toBeNull();
-    expect(root.querySelector<HTMLSelectElement>('.composer-agent')?.value).toBe('vision-model');
+    expect(root.querySelector('.model-picker-trigger')?.textContent).toContain('Vision Model');
+    expect(root.querySelector('.model-picker-trigger')?.getAttribute('aria-label')).toContain('Cloud Provider');
+    expect(root.querySelector('.model-picker-trigger .provider-mark--fallback')?.textContent).toBe('C');
+    expect(root.querySelector('.mode-trigger .icon')?.getAttribute('aria-hidden')).toBe('true');
+    expect(root.querySelector('.mode-trigger')?.getAttribute('aria-label')).toBe('Thinking level: Ask');
     expect(root.querySelector('[data-action="toggle-tools"]')?.hasAttribute('aria-controls')).toBe(false);
     expect(root.querySelector('.logo')?.getAttribute('alt')).toBe('');
     expect(root.querySelector('.composer-input')?.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter');
@@ -462,6 +466,9 @@ describe('popup rendering', () => {
     expect(root.querySelector('.performance-drawer')?.textContent).toContain('Ask first token');
     expect(root.querySelector('.performance-drawer')?.textContent).toContain('Local timing only');
     expect(root.querySelector('[data-action="toggle-tools"]')?.getAttribute('aria-expanded')).toBe('true');
+    expect(root.querySelector('.agent-select')).toBeNull();
+    expect(root.querySelector('.agent-picker-options[role="listbox"]')).not.toBeNull();
+    expect(root.querySelector('.agent-picker-options .model-picker-option')?.textContent).toContain('Vision Model');
     expect(root.querySelector('[data-action="diagnostics-copy"]')?.getAttribute('aria-label')).toContain(
       'privacy-safe'
     );

@@ -20,6 +20,7 @@ const bundleDefaults = {
 
 await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(resolve(outputDirectory, 'icons'), { recursive: true });
+await mkdir(resolve(outputDirectory, 'providers'), { recursive: true });
 
 await Promise.all([
   build({
@@ -56,5 +57,6 @@ await Promise.all([
   cp(
     resolve(repositoryRoot, 'AgentLens/Resources/Assets.xcassets/AppLogo.imageset/AppLogo.svg'),
     resolve(outputDirectory, 'icons/app-logo.svg')
-  )
+  ),
+  cp(resolve(extensionRoot, 'src/popup/providers'), resolve(outputDirectory, 'providers'), { recursive: true })
 ]);
