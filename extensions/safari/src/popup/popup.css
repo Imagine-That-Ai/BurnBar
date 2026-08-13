@@ -1,19 +1,18 @@
 /* ─────────────────────────────────────────────────────────────
-   OpenBurnBar Safari popup — Liquid Glass, scheme-adaptive.
+   OpenBurnBar Safari popup — Liquid Glass, light-mode locked.
 
    The popup floats over the page it is reading, so every elevated
    layer is real glass: translucent, backdrop-blurred, lit by a
    single specular hairline along its top edge. Depth comes from
    stacking those layers, not from heavy shadows.
 
-   Light is the default here and dark is the override, so the
-   adaptive path is the one that gets read first. The brand ember
-   is deliberately scheme-invariant — it is the one colour the
-   product owns, and it should look identical in both.
+   The locked Safari certification design is intentionally light. This
+   prevents the host Mac's dark appearance from silently replacing the
+   approved prototype surface with a different product UI.
    ───────────────────────────────────────────────────────────── */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --popup-width: 420px;
   --popup-height: 680px;
 
@@ -69,42 +68,6 @@
   --shadow-sm: 0 1px 2px rgba(15, 18, 28, 0.05);
   --shadow: 0 4px 16px rgba(15, 18, 28, 0.07);
   --shadow-lg: 0 12px 32px rgba(15, 18, 28, 0.1);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --canvas: #0b0c10;
-    --canvas-tint: rgba(250, 107, 6, 0.11);
-    --canvas-tint-2: rgba(99, 102, 241, 0.08);
-
-    --glass-thin: rgba(255, 255, 255, 0.045);
-    --glass: rgba(255, 255, 255, 0.07);
-    --glass-thick: rgba(255, 255, 255, 0.1);
-    --glass-sunken: rgba(0, 0, 0, 0.22);
-    --surface-soft: var(--glass-sunken);
-
-    --specular: rgba(255, 255, 255, 0.14);
-    --stroke: rgba(255, 255, 255, 0.1);
-    --stroke-strong: rgba(255, 255, 255, 0.18);
-
-    --text: rgba(255, 255, 255, 0.87);
-    --text-bright: #fff;
-    --text-muted: rgba(255, 255, 255, 0.56);
-    --text-dim: rgba(255, 255, 255, 0.34);
-
-    --gold: var(--color-brass-bright, #fdc42c);
-
-    --danger: #ff6b6b;
-    --danger-soft: rgba(255, 107, 107, 0.13);
-    --success: var(--color-tier-end-to-end, #3cd6c0);
-    --success-soft: rgba(60, 214, 192, 0.13);
-    --warning: var(--color-tier-server-readable, #fdc42c);
-    --warning-soft: rgba(253, 196, 44, 0.13);
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
-  }
 }
 
 * {
