@@ -7,6 +7,11 @@ import GRDB
 /// Falls back to legacy JSONL files only when no SQLite database exists.
 final class GooseParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .goose
+    private let environment: [String: String]?
+
+    init(environment: [String: String]? = nil) {
+        self.environment = environment
+    }
 
     private static let iso8601Basic: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -279,9 +284,17 @@ final class GooseParser: LogParser, @unchecked Sendable {
             candidates.append(((env as NSString).appendingPathComponent("data/sessions") as NSString).expandingTildeInPath)
         }
 
-        candidates.append(("~/Library/Application Support/Block/goose/sessions" as NSString).expandingTildeInPath)
-        candidates.append(("~/.local/share/goose/sessions" as NSString).expandingTildeInPath)
-        candidates.append((provider.logDirectory as NSString).expandingTildeInPath)
+        candidates.append(ParserRootResolver.expand(
+            "~/Library/Application Support/Block/goose/sessions",
+            for: provider,
+            environment: environment
+        ))
+        candidates.append(ParserRootResolver.expand(
+            "~/.local/share/goose/sessions",
+            for: provider,
+            environment: environment
+        ))
+        candidates.append(ParserRootResolver.resolvedLogDirectory(for: provider, environment: environment))
 
         var seen: Set<String> = []
         return candidates.filter { seen.insert($0).inserted }

@@ -6,6 +6,7 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .claudeCode
     private let fileManager: FileManager
     private let appPaths: BurnBarAppPaths
+    private let environment: [String: String]?
     private let cacheURL: URL
 
     private static let iso8601Basic: ISO8601DateFormatter = {
@@ -22,16 +23,21 @@ final class ClaudeCodeParser: LogParser, @unchecked Sendable {
 
     init(
         fileManager: FileManager = .default,
-        appPaths: BurnBarAppPaths = .live()
+        appPaths: BurnBarAppPaths = .live(),
+        environment: [String: String]? = nil
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
+        self.environment = environment
         self.cacheURL = appPaths.claudeCodeParserCacheURL
         _ = try? BurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
     }
 
     func parse() async throws -> ParseResult {
-        let projectsPath = (provider.logDirectory as NSString).expandingTildeInPath
+        let projectsPath = ParserRootResolver.resolvedLogDirectory(
+            for: provider,
+            environment: environment
+        )
         let projectsURL = URL(fileURLWithPath: projectsPath)
 
         guard fileManager.fileExists(atPath: projectsPath) else {

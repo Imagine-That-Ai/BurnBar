@@ -6,6 +6,11 @@ import Foundation
 /// remains conservative until a real token-bearing sample is available.
 final class AugmentParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .augment
+    private let environment: [String: String]?
+
+    init(environment: [String: String]? = nil) {
+        self.environment = environment
+    }
 
     func parse() async throws -> ParseResult {
         let fm = FileManager.default
@@ -49,7 +54,7 @@ final class AugmentParser: LogParser, @unchecked Sendable {
 
         var seen: Set<String> = []
         return candidates.compactMap {
-            let expanded = ($0 as NSString).expandingTildeInPath
+            let expanded = ParserRootResolver.expand($0, for: provider, environment: environment)
             guard seen.insert(expanded).inserted else { return nil }
             return URL(fileURLWithPath: expanded, isDirectory: true)
         }

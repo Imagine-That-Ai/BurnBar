@@ -6,10 +6,18 @@ import Foundation
 /// Gemini CLI stores sessions with message_update records containing input_tokens, output_tokens, cached_tokens.
 final class GeminiCLIParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .geminiCLI
+    private let environment: [String: String]?
+
+    init(environment: [String: String]? = nil) {
+        self.environment = environment
+    }
 
     func parse() async throws -> ParseResult {
         let fm = FileManager.default
-        let basePath = ("~/.gemini/tmp" as NSString).expandingTildeInPath
+        let basePath = ParserRootResolver.resolvedLogDirectory(
+            for: provider,
+            environment: environment
+        )
 
         guard fm.fileExists(atPath: basePath) else {
             return ParseResult(usages: [], conversations: [])

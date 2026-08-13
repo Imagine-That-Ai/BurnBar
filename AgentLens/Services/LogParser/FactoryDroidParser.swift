@@ -8,20 +8,26 @@ final class FactoryDroidParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .factory
     private let fileManager: FileManager
     private let appPaths: BurnBarAppPaths
+    private let environment: [String: String]?
     private let cacheURL: URL
 
     init(
         fileManager: FileManager = .default,
-        appPaths: BurnBarAppPaths = .live()
+        appPaths: BurnBarAppPaths = .live(),
+        environment: [String: String]? = nil
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
+        self.environment = environment
         self.cacheURL = appPaths.factoryDroidParserCacheURL
         _ = try? BurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
     }
 
     func parse() async throws -> ParseResult {
-        let sessionsPath = NSString(string: provider.logDirectory).expandingTildeInPath
+        let sessionsPath = ParserRootResolver.resolvedLogDirectory(
+            for: provider,
+            environment: environment
+        )
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
 
         guard fileManager.fileExists(atPath: sessionsPath) else {

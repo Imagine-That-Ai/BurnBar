@@ -6,6 +6,11 @@ import GRDB
 /// Parses Hermes sessions from SQLite first, then gateway/CLI fallback files.
 final class HermesParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .hermes
+    private let environment: [String: String]?
+
+    init(environment: [String: String]? = nil) {
+        self.environment = environment
+    }
 
     private static let iso8601Basic: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -548,7 +553,12 @@ final class HermesParser: LogParser, @unchecked Sendable {
     // MARK: - Utilities
 
     private func resolvedHermesHome() -> URL {
-        let configuredPath = URL(fileURLWithPath: (provider.logDirectory as NSString).expandingTildeInPath)
+        let configuredPath = URL(
+            fileURLWithPath: ParserRootResolver.resolvedLogDirectory(
+                for: provider,
+                environment: environment
+            )
+        )
         if configuredPath.lastPathComponent == "sessions" {
             return configuredPath.deletingLastPathComponent()
         }

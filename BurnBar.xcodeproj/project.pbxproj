@@ -32,6 +32,7 @@
 		1EF1BE9D77D9BFB209A4C144 /* CursorConnectorManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34DC63AE4066BA4C15C2AD9B /* CursorConnectorManager.swift */; };
 		1F2A81EA2C8C07DC8590DEA9 /* PiParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B349E0D5EF26F9ABAC244670 /* PiParser.swift */; };
 		1FDC3D17CAA154F4B8C8F467 /* TokenExtractionUtility.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA269E3080C36499D19BB076 /* TokenExtractionUtility.swift */; };
+		20226898B29A1336722A8F74 /* ParserRootResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3F819CB6E1D0BE54BBEB22 /* ParserRootResolver.swift */; };
 		2160E0861FDA738ABA9FB7F2 /* ConversationIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F78AAB24FFCF6E834BEF9F57 /* ConversationIndexer.swift */; };
 		22ED69E3B33A04412FFF512E /* OpenRouterUsageAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECCDF707C013B9746C2C881C /* OpenRouterUsageAPI.swift */; };
 		24CC9553D5FCF5770DD2B335 /* BurnBarDaemonConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99AFB17D951FAEEA4824E20 /* BurnBarDaemonConfiguration.swift */; };
@@ -57,6 +58,7 @@
 		3D6B4FD7CA92481C4F948C12 /* BurnBarContextSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32B15D2EBFFCAC88F633101 /* BurnBarContextSelector.swift */; };
 		3E8D4A575AB9E29537153CE3 /* BurnBarProviderRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00797E78E3EB2460BC73F717 /* BurnBarProviderRouterTests.swift */; };
 		416A01A17B8084A11BE4CD21 /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB62777DDFCCE7756CE2583E /* MenuBarPopoverView.swift */; };
+		425DC79787460782306CA0BB /* UsageAggregatorRefreshAllTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E323BA50963AF1AEC3113EDC /* UsageAggregatorRefreshAllTests.swift */; };
 		42953BEAE38B676C6EBD6384 /* AccountManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 919C163E3845CED5CB2A8D6A /* AccountManager.swift */; };
 		434FA8ECC9541C17158F8047 /* PiParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA99E287B4A0688C19EBE06B /* PiParserTests.swift */; };
 		455572191C70897A5C7FD7F2 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 98EFB972DB3613884986BB7A /* GRDB */; };
@@ -386,6 +388,7 @@
 		C290E33A14E5BA65747111E4 /* ClineFormatParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClineFormatParser.swift; sourceTree = "<group>"; };
 		C31684E498ACB132FA113A52 /* BurnBarFleetPersister.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetPersister.swift; sourceTree = "<group>"; };
 		C69FDF05AEDF02722AE7B16B /* BurnBarFleetGrokBotProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetGrokBotProbeTests.swift; sourceTree = "<group>"; };
+		CA3F819CB6E1D0BE54BBEB22 /* ParserRootResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserRootResolver.swift; sourceTree = "<group>"; };
 		CAD34FCBC84A52FBE92473EF /* BurnBarFleetFileWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetFileWriter.swift; sourceTree = "<group>"; };
 		CBF56F0CE99D3BA162735D85 /* BurnBarFleetHermesProbeParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetHermesProbeParsing.swift; sourceTree = "<group>"; };
 		CFE45C9E06D80CF72CD049B8 /* BurnBarFleetClaudeCodeProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetClaudeCodeProbe.swift; sourceTree = "<group>"; };
@@ -406,6 +409,7 @@
 		DD8DDB67F7353521940AE65A /* ChatMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageView.swift; sourceTree = "<group>"; };
 		DF00DDB2DC457FA8BCF2FD41 /* BurnBarDaemonManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarDaemonManagerTests.swift; sourceTree = "<group>"; };
 		E08D80EB783DB0A4D056ABFE /* BurnBarFleetRPCErrorMatrixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetRPCErrorMatrixTests.swift; sourceTree = "<group>"; };
+		E323BA50963AF1AEC3113EDC /* UsageAggregatorRefreshAllTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregatorRefreshAllTests.swift; sourceTree = "<group>"; };
 		E3A173256F75384A53F77603 /* BurnBarFleetServerRPCTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetServerRPCTests.swift; sourceTree = "<group>"; };
 		E43E6640557CB14B9782F17F /* BurnBarProviderCatalogSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarProviderCatalogSupport.swift; sourceTree = "<group>"; };
 		E585C2B7DE464924EC3F5751 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -527,6 +531,7 @@
 				57FF1667F8EAA777B7E06A45 /* HermesParser.swift */,
 				021276DEE6679BDBF0E71042 /* KimiParser.swift */,
 				A092BBAFB87D0879CA16B36D /* LogParserProtocol.swift */,
+				CA3F819CB6E1D0BE54BBEB22 /* ParserRootResolver.swift */,
 				B349E0D5EF26F9ABAC244670 /* PiParser.swift */,
 				DA269E3080C36499D19BB076 /* TokenExtractionUtility.swift */,
 			);
@@ -733,6 +738,7 @@
 				EA99E287B4A0688C19EBE06B /* PiParserTests.swift */,
 				5C7B9095083BF1AF6D2EDAC7 /* ProviderQuotaServiceTests.swift */,
 				84ABE76E09AF7A0DD4BF765E /* UsageAggregatorParserRegistrationTests.swift */,
+				E323BA50963AF1AEC3113EDC /* UsageAggregatorRefreshAllTests.swift */,
 			);
 			path = AgentLensTests;
 			sourceTree = "<group>";
@@ -1204,6 +1210,7 @@
 				FCB2B100086EB32711D2677A /* OnboardingView.swift in Sources */,
 				125B9C990A5869F375EDAA2F /* OpenAIUsageAPI.swift in Sources */,
 				22ED69E3B33A04412FFF512E /* OpenRouterUsageAPI.swift in Sources */,
+				20226898B29A1336722A8F74 /* ParserRootResolver.swift in Sources */,
 				1F2A81EA2C8C07DC8590DEA9 /* PiParser.swift in Sources */,
 				896B87E45E85474A48AF74F2 /* ProjectionPipelineService.swift in Sources */,
 				A46C2B6F13102032252A1F21 /* ProjectsView.swift in Sources */,
@@ -1295,6 +1302,7 @@
 				434FA8ECC9541C17158F8047 /* PiParserTests.swift in Sources */,
 				6E7324835087667843154F8C /* ProviderQuotaServiceTests.swift in Sources */,
 				9D2679AC0933FBD9C789D8E0 /* UsageAggregatorParserRegistrationTests.swift in Sources */,
+				425DC79787460782306CA0BB /* UsageAggregatorRefreshAllTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

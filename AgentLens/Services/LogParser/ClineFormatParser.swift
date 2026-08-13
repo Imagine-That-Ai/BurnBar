@@ -7,10 +7,12 @@ import Foundation
 final class ClineFormatParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider
     private let storagePaths: [String]
+    private let environment: [String: String]?
 
-    init(provider: AgentProvider, storagePaths: [String]) {
+    init(provider: AgentProvider, storagePaths: [String], environment: [String: String]? = nil) {
         self.provider = provider
         self.storagePaths = storagePaths
+        self.environment = environment
     }
 
     func parse() async throws -> ParseResult {
@@ -20,7 +22,11 @@ final class ClineFormatParser: LogParser, @unchecked Sendable {
         var seenTaskIds = Set<String>()
 
         for storagePath in storagePaths {
-            let expanded = (storagePath as NSString).expandingTildeInPath
+            let expanded = ParserRootResolver.expand(
+                storagePath,
+                for: provider,
+                environment: environment
+            )
             guard fm.fileExists(atPath: expanded) else { continue }
 
             let tasksURL = URL(fileURLWithPath: expanded)

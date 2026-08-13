@@ -627,6 +627,42 @@ parser appends `agent/sessions` / `sessions`). They are registered in
 `UsageAggregator.parsers`; Grok Bot's usage parser is an honest empty no-op
 (live-signal-only provider, VAL-PROV-008).
 
+### Generic hermetic seam (M2 repair, aggregator-refreshall-proof)
+
+A full `UsageAggregator.refreshAll()` is hermetic when constructed with the
+generic injection seam (all defaults preserve the real-root behavior):
+
+- **`ParserRootResolver`** (`AgentLens/Services/LogParser/ParserRootResolver.swift`)
+  resolves EVERY registered parser's root through the same override seam the
+  daemon probes use: `BURNBAR_FLEET_ROOTS_DIR` maps each provider to
+  `<override>/<root-name>` (`claude`, `factory`, `copilot`, `aider`, `cursor`,
+  `codex`, `kimi`, `cline`, `kilocode`, `roocode`, `forge`, `augment`,
+  `hermes`, `grokbot`, `grok`, `pi`, `gemini`, `goose`; `zai`/`minimax` share
+  the `factory` root), and per-provider `BURNBAR_FLEET_ROOT_<PROVIDER>` wins
+  over the base. `~`-relative paths expand under the override root; a path
+  that merely shares a prefix with the root (e.g. `~/.forge.db`) is not
+  stripped. The live process environment is consulted via `getenv` at
+  resolution time; an explicitly passed `environment` dictionary wins.
+- **`UsageAggregator(appPaths:environment:)`** — `appPaths` redirects every
+  parser cache (claude/factory/codex/model-filter) and the quota snapshots
+  into the injected app-support dir; `environment` is passed to every
+  registered parser (GooseParser's `GOOSE_PATH_ROOT` override included).
+- **Quota hermeticity:** the quota service must be injected with a
+  `TestKeychainBackend` key store (the real keychain holds a minimax key),
+  an empty `environment` (the live env has `ZAI_API_KEY`), a failing URL
+  session, `.payAsYouGo` minimax mode, and a temp home (no real `~/.claude`
+  reads).
+- **Sweep gating:** the summary sweep is gated off
+  (`conversationIndexingEnabled`/`autoSessionSummariesEnabled` false) so no
+  Ollama/cloud summarization runs; `artifactDiscoveryEnabled` stays false;
+  the projection pipeline is injected with `DeterministicFakeEmbeddingProvider`
+  (no OpenAI key lookup).
+- **Proof:** `UsageAggregatorRefreshAllTests` runs a FULL `refreshAll()` twice
+  over synthetic fixture trees (1 session per provider, 19 rows total) with
+  per-provider exact row counts, zero duplicate sessionIds on the second
+  refresh, and no writes outside the injected temp app-support dir
+  (VAL-PROV-009/018).
+
 ### Pi transcripts (`~/.pi/agent/sessions/<project-dir>/*.jsonl`)
 
 - **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`. The first nonblank session record is the header: it alone determines session identity (`id`), project path (`cwd`), and start time. Later session records never replace it; a transcript whose first line is not a well-formed session record (or whose header is malformed) is skipped honestly and degrades parse health.

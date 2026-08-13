@@ -6,6 +6,11 @@ import GRDB
 /// Parses Forge sessions from local SQLite databases, with JSONL as a last resort.
 final class ForgeDevParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .forgeDev
+    private let environment: [String: String]?
+
+    init(environment: [String: String]? = nil) {
+        self.environment = environment
+    }
 
     private static let iso8601Basic: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -58,7 +63,7 @@ final class ForgeDevParser: LogParser, @unchecked Sendable {
             )
         }
 
-        let sessionsPath = (provider.logDirectory as NSString).expandingTildeInPath
+        let sessionsPath = ParserRootResolver.resolvedLogDirectory(for: provider, environment: environment)
         guard fm.fileExists(atPath: sessionsPath) else {
             return ParseResult(usages: [], conversations: [])
         }
@@ -450,11 +455,11 @@ final class ForgeDevParser: LogParser, @unchecked Sendable {
 
     private func discoverDatabasePaths() -> [String] {
         let fm = FileManager.default
-        let homeURL = fm.homeDirectoryForCurrentUser
+        let homeURL = ParserRootResolver.resolvedHomeDirectory(for: provider, environment: environment)
         var candidates: [String] = []
 
-        candidates.append(((provider.logDirectory as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"))
-        candidates.append((("~/.forge" as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"))
+        candidates.append(ParserRootResolver.resolvedLogDirectory(for: provider, environment: environment) + "/.forge.db")
+        candidates.append(ParserRootResolver.expand("~/.forge/.forge.db", for: provider, environment: environment))
         candidates.append((homeURL.path as NSString).appendingPathComponent(".forge.db"))
 
         if let children = try? fm.contentsOfDirectory(at: homeURL, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {

@@ -109,7 +109,9 @@ final class UsageAggregator {
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
         quotaService: ProviderQuotaService = .shared,
         artifactDiscoveryService: ArtifactDiscoveryService? = nil,
-        projectionPipelineService: ProjectionPipelineService? = nil
+        projectionPipelineService: ProjectionPipelineService? = nil,
+        appPaths: BurnBarAppPaths = .live(),
+        environment: [String: String]? = nil
     ) {
         self.dataStore = dataStore
         self.cloudSync = cloudSync
@@ -123,33 +125,33 @@ final class UsageAggregator {
         self.projectionPipelineServiceOverride = projectionPipelineService
         self.hasCompletedInitialSummarySweep = settingsManager.summaryInitialSweepCompleted
         self.parsers = [
-            .factory: FactoryDroidParser(),
-            .claudeCode: ClaudeCodeParser(),
-            .copilot: CopilotParser(),
-            .aider: AiderParser(),
-            .cursor: CursorParser(),
-            .codex: CodexParser(),
-            .zai: ModelFilterParser(modelPattern: "zai", provider: .zai),
-            .minimax: ModelFilterParser(modelPattern: "minimax", provider: .minimax),
-            .kimi: KimiParser(),
+            .factory: FactoryDroidParser(appPaths: appPaths, environment: environment),
+            .claudeCode: ClaudeCodeParser(appPaths: appPaths, environment: environment),
+            .copilot: CopilotParser(environment: environment),
+            .aider: AiderParser(environment: environment),
+            .cursor: CursorParser(environment: environment),
+            .codex: CodexParser(appPaths: appPaths, environment: environment),
+            .zai: ModelFilterParser(modelPattern: "zai", provider: .zai, appPaths: appPaths, environment: environment),
+            .minimax: ModelFilterParser(modelPattern: "minimax", provider: .minimax, appPaths: appPaths, environment: environment),
+            .kimi: KimiParser(environment: environment),
             .cline: ClineFormatParser(provider: .cline, storagePaths: [
                 "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/tasks",
-            ]),
+            ], environment: environment),
             .kiloCode: ClineFormatParser(provider: .kiloCode, storagePaths: [
                 "~/Library/Application Support/Code/User/globalStorage/kilocode.kilo-code/tasks",
-            ]),
+            ], environment: environment),
             .rooCode: ClineFormatParser(provider: .rooCode, storagePaths: [
                 "~/Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/tasks",
                 "~/Library/Application Support/Code/User/globalStorage/roo-inc.roo-code/tasks",
-            ]),
-            .forgeDev: ForgeDevParser(),
-            .augment: AugmentParser(),
-            .hermes: HermesParser(),
+            ], environment: environment),
+            .forgeDev: ForgeDevParser(environment: environment),
+            .augment: AugmentParser(environment: environment),
+            .hermes: HermesParser(environment: environment),
             .grokBot: GrokBotParser(),
-            .grokCLI: GrokCLIParser(),
-            .pi: PiParser(),
-            .geminiCLI: GeminiCLIParser(),
-            .goose: GooseParser(),
+            .grokCLI: GrokCLIParser(environment: environment),
+            .pi: PiParser(environment: environment),
+            .geminiCLI: GeminiCLIParser(environment: environment),
+            .goose: GooseParser(environment: environment),
         ]
     }
 
@@ -998,11 +1000,23 @@ private extension UsageAggregator {
 /// Falls back to CompactionProcessor log deltas for older CLI versions.
 final class CopilotParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .copilot
+    private let environment: [String: String]?
+
+    init(environment: [String: String]? = nil) {
+        self.environment = environment
+    }
 
     func parse() async throws -> ParseResult {
         let fm = FileManager.default
-        let sessionStatePath = ("~/.copilot/session-state" as NSString).expandingTildeInPath
-        let logsPath = ("~/.copilot/logs" as NSString).expandingTildeInPath
+        let sessionStatePath = ParserRootResolver.resolvedLogDirectory(
+            for: provider,
+            environment: environment
+        )
+        let logsPath = ParserRootResolver.expand(
+            "~/.copilot/logs",
+            for: provider,
+            environment: environment
+        )
 
         guard fm.fileExists(atPath: sessionStatePath) else {
             return ParseResult(usages: [], conversations: [])
@@ -1310,14 +1324,19 @@ private struct CopilotMetadataSummary {
 /// Requires user to configure: `analytics-log: ~/.aider/analytics.jsonl` in .aider.conf.yml
 final class AiderParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .aider
+    private let environment: [String: String]?
+
+    init(environment: [String: String]? = nil) {
+        self.environment = environment
+    }
 
     func parse() async throws -> ParseResult {
         let fm = FileManager.default
 
         // Check common analytics log locations
         let candidatePaths = [
-            ("~/.aider/analytics.jsonl" as NSString).expandingTildeInPath,
-            ("~/.aider/analytics.json" as NSString).expandingTildeInPath
+            ParserRootResolver.expand("~/.aider/analytics.jsonl", for: provider, environment: environment),
+            ParserRootResolver.expand("~/.aider/analytics.json", for: provider, environment: environment)
         ]
 
         // Also check for per-project .aider.analytics.jsonl in recent git repos
@@ -1479,9 +1498,18 @@ private struct AiderSession {
 /// Token-level tracking requires the CursorConnector BYOK proxy.
 final class CursorParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .cursor
+    private let environment: [String: String]?
+
+    init(environment: [String: String]? = nil) {
+        self.environment = environment
+    }
 
     func parse() async throws -> ParseResult {
-        let dbPath = ("~/.cursor/ai-tracking/ai-code-tracking.db" as NSString).expandingTildeInPath
+        let dbPath = ParserRootResolver.expand(
+            "~/.cursor/ai-tracking/ai-code-tracking.db",
+            for: provider,
+            environment: environment
+        )
 
         guard FileManager.default.fileExists(atPath: dbPath) else {
             return ParseResult(usages: [], conversations: [])
@@ -1566,20 +1594,26 @@ final class CodexParser: LogParser, @unchecked Sendable {
     let provider: AgentProvider = .codex
     private let fileManager: FileManager
     private let appPaths: BurnBarAppPaths
+    private let environment: [String: String]?
     private let cacheURL: URL
 
     init(
         fileManager: FileManager = .default,
-        appPaths: BurnBarAppPaths = .live()
+        appPaths: BurnBarAppPaths = .live(),
+        environment: [String: String]? = nil
     ) {
         self.fileManager = fileManager
         self.appPaths = appPaths
+        self.environment = environment
         self.cacheURL = appPaths.supportDirectory.appendingPathComponent("codex_parser_cache.json")
         _ = try? BurnBarMigration.prepareSupportDirectory(fileManager: fileManager, paths: appPaths)
     }
 
     func parse() async throws -> ParseResult {
-        let basePath = (provider.logDirectory as NSString).expandingTildeInPath
+        let basePath = ParserRootResolver.resolvedLogDirectory(
+            for: provider,
+            environment: environment
+        )
         let dbPath = (basePath as NSString).appendingPathComponent("state_5.sqlite")
 
         guard fileManager.fileExists(atPath: dbPath) else {
@@ -1849,18 +1883,21 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
     private let modelPattern: String
     private let fileManager: FileManager
     private let appPaths: BurnBarAppPaths
+    private let environment: [String: String]?
     private let cacheURL: URL
 
     init(
         modelPattern: String,
         provider: AgentProvider,
         fileManager: FileManager = .default,
-        appPaths: BurnBarAppPaths = .live()
+        appPaths: BurnBarAppPaths = .live(),
+        environment: [String: String]? = nil
     ) {
         self.modelPattern = modelPattern.lowercased()
         self.provider = provider
         self.fileManager = fileManager
         self.appPaths = appPaths
+        self.environment = environment
 
         let providerKey = provider.rawValue
             .lowercased()
@@ -1871,8 +1908,11 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
     }
 
     func parse() async throws -> ParseResult {
-        let sessionsPath = "~/.factory/sessions"
-        let sessionsURL = URL(fileURLWithPath: (sessionsPath as NSString).expandingTildeInPath)
+        let sessionsPath = ParserRootResolver.resolvedLogDirectory(
+            for: .factory,
+            environment: environment
+        )
+        let sessionsURL = URL(fileURLWithPath: sessionsPath)
 
         guard fileManager.fileExists(atPath: sessionsURL.path) else {
             return ParseResult(usages: [], conversations: [])
