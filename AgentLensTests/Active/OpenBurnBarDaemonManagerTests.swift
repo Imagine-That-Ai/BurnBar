@@ -632,6 +632,87 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
     }
 
     @MainActor
+    func test_rotateDaemonSocketAuthTokenUsesVersionedSharedAccountWithoutTouchingLegacyItem() throws {
+        let harness = try makeRuntimePathsHarness(name: "socket-token-versioned-account")
+        defer { harness.cleanup() }
+
+        XCTAssertEqual(OpenBurnBarIdentity.daemonSocketAuthTokenAccount, "daemon.socket.authToken.v2")
+        XCTAssertEqual(OpenBurnBarIdentity.legacyDaemonSocketAuthTokenAccounts, ["daemon.socket.authToken"])
+        XCTAssertFalse(
+            OpenBurnBarIdentity.legacyDaemonSocketAuthTokenAccounts.contains(
+                OpenBurnBarIdentity.daemonSocketAuthTokenAccount
+            )
+        )
+
+        let backend = RecordingAccountKeychainBackend()
+        let legacyAccount = try XCTUnwrap(OpenBurnBarIdentity.legacyDaemonSocketAuthTokenAccounts.first)
+        backend.storage["tests.daemon-runtime", default: [:]][legacyAccount] = Data("legacy-token".utf8)
+        let store = KeychainStore(
+            service: "tests.daemon-runtime",
+            legacyServices: [],
+            backend: backend
+        )
+        let manager = OpenBurnBarDaemonManager(
+            paths: harness.paths,
+            dependencies: daemonDependencies(resolveDaemonBinary: { nil }),
+            usageSyncService: OpenBurnBarDaemonUsageSyncService(paths: harness.paths, fileManager: .default),
+            daemonSocketAuthTokenStore: store
+        )
+
+        let token = try manager.rotateDaemonSocketAuthToken()
+
+        XCTAssertEqual(
+            try store.string(for: OpenBurnBarIdentity.daemonSocketAuthTokenAccount),
+            token
+        )
+        XCTAssertEqual(
+            String(data: try XCTUnwrap(backend.storage["tests.daemon-runtime"]?[legacyAccount]), encoding: .utf8),
+            "legacy-token"
+        )
+        XCTAssertEqual(backend.writtenAccounts, [OpenBurnBarIdentity.daemonSocketAuthTokenAccount])
+        XCTAssertFalse(backend.deletedAccounts.contains(legacyAccount))
+
+        let extensionResolver = makeSafariTokenResolver(
+            backend: backend,
+            service: "tests.daemon-runtime"
+        )
+        XCTAssertEqual(
+            try extensionResolver.resolve(),
+            BurnBarSafariDaemonAuthToken(value: token, source: .keychain)
+        )
+
+        // A newly constructed resolver models an appex relaunch. It must read
+        // the same v2 value rather than depending on process-local state.
+        let relaunchedExtensionResolver = makeSafariTokenResolver(
+            backend: backend,
+            service: "tests.daemon-runtime"
+        )
+        XCTAssertEqual(
+            try relaunchedExtensionResolver.resolve(),
+            BurnBarSafariDaemonAuthToken(value: token, source: .keychain)
+        )
+    }
+
+    func test_safariTokenResolverDoesNotFallBackToLegacySocketTokenAccount() throws {
+        let service = "tests.daemon-runtime"
+        let legacyAccount = try XCTUnwrap(OpenBurnBarIdentity.legacyDaemonSocketAuthTokenAccounts.first)
+        let backend = RecordingAccountKeychainBackend()
+        backend.storage[service, default: [:]][legacyAccount] = Data("legacy-token".utf8)
+
+        XCTAssertThrowsError(
+            try makeSafariTokenResolver(backend: backend, service: service).resolve()
+        ) { error in
+            XCTAssertEqual(error as? BurnBarSafariDaemonTokenError, .unavailable)
+        }
+        XCTAssertEqual(
+            String(data: try XCTUnwrap(backend.storage[service]?[legacyAccount]), encoding: .utf8),
+            "legacy-token"
+        )
+        XCTAssertTrue(backend.writtenAccounts.isEmpty)
+        XCTAssertTrue(backend.deletedAccounts.isEmpty)
+    }
+
+    @MainActor
     func test_rotateDaemonSocketAuthTokenFallsBackToPrivateTokenFileWhenKeychainUnavailable() throws {
         let harness = try makeRuntimePathsHarness(name: "socket-token-file-fallback")
         defer { harness.cleanup() }
@@ -1621,12 +1702,30 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
         XCTAssertEqual(
             paths.socketURL.deletingLastPathComponent().standardizedFileURL,
-            expectedSharedRoot?.standardizedFileURL
+            expectedSharedRoot.standardizedFileURL
         )
         XCTAssertEqual(paths.socketURL.lastPathComponent, "daemon.sock")
         XCTAssertEqual(
             paths.installedBinaryURL.deletingLastPathComponent().standardizedFileURL,
             paths.daemonDirectory.standardizedFileURL
+        )
+    }
+
+    private func makeSafariTokenResolver(
+        backend: RecordingAccountKeychainBackend,
+        service: String
+    ) -> BurnBarSafariDaemonTokenResolver {
+        BurnBarSafariDaemonTokenResolver(
+            tokenFileURL: URL(fileURLWithPath: "/missing-daemon-socket-auth-token"),
+            tokenFileReader: { _ in nil },
+            keychainReader: {
+                guard let data = backend.storage[service]?[
+                    OpenBurnBarIdentity.daemonSocketAuthTokenAccount
+                ] else {
+                    return nil
+                }
+                return String(data: data, encoding: .utf8)
+            }
         )
     }
 
@@ -2010,6 +2109,26 @@ private final class FirstSetFailsThenDeletesKeychainBackend: KeychainStoreBacken
 
     func delete(service: String, account: String) throws {
         deleteCallCount += 1
+        storage[service]?[account] = nil
+    }
+}
+
+private final class RecordingAccountKeychainBackend: KeychainStoreBackend, @unchecked Sendable {
+    var storage: [String: [String: Data]] = [:]
+    private(set) var writtenAccounts: [String] = []
+    private(set) var deletedAccounts: [String] = []
+
+    func set(_ value: Data, service: String, account: String) throws {
+        writtenAccounts.append(account)
+        storage[service, default: [:]][account] = value
+    }
+
+    func data(for service: String, account: String, allowUserInteraction _: Bool) throws -> Data? {
+        storage[service]?[account]
+    }
+
+    func delete(service: String, account: String) throws {
+        deletedAccounts.append(account)
         storage[service]?[account] = nil
     }
 }
