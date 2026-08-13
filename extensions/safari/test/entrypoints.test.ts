@@ -390,7 +390,59 @@ describe('WebExtension runtime entrypoints', () => {
       outcome: 'success'
     });
     expect(root.querySelector('.composer')).not.toBeNull();
+    expect(root.querySelector('.popup-tools')).toBeNull();
 
+    const shapeToggle = requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="toggle-popup-shape"]'),
+      'popup shape toggle'
+    );
+    expect(shapeToggle.getAttribute('aria-pressed')).toBe('true');
+    shapeToggle.click();
+    expect(root.querySelector<HTMLElement>('.shell')?.dataset.popupShape).toBe('compact');
+    expect(document.documentElement.dataset.popupShape).toBe('compact');
+    expect(
+      root.querySelector<HTMLButtonElement>('[data-action="toggle-popup-shape"]')?.getAttribute('aria-pressed')
+    ).toBe('false');
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="toggle-popup-shape"]'),
+      'compact popup shape toggle'
+    ).click();
+    expect(root.querySelector<HTMLElement>('.shell')?.dataset.popupShape).toBe('expanded');
+    expect(document.documentElement.dataset.popupShape).toBe('expanded');
+
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="toggle-mode-popover"]'),
+      'mode popover trigger'
+    ).click();
+    expect(root.querySelector<HTMLElement>('#mode-popover')?.hidden).toBe(false);
+    const modeRange = requireElement(root.querySelector<HTMLInputElement>('[data-input="mode-range"]'), 'mode range');
+    expect(modeRange.getAttribute('aria-valuetext')).toBe('Ask');
+    modeRange.focus();
+    const setModeCountBeforeInput = requests.filter((request) => request.type === 'popup.setMode').length;
+    modeRange.value = '2';
+    modeRange.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(modeRange.isConnected).toBe(true);
+    expect(document.activeElement).toBe(modeRange);
+    expect(modeRange.getAttribute('aria-valuetext')).toBe('Watch');
+    expect(root.querySelector('.mode-popover-value')?.textContent).toBe('Watch');
+    expect(root.querySelector('.mode-description')?.textContent).toContain('approve from Safari');
+    expect(root.querySelector<HTMLElement>('.mode-knob')?.style.getPropertyValue('--mode-fraction')).toBe(
+      String(2 / 3)
+    );
+    expect(requests.filter((request) => request.type === 'popup.setMode')).toHaveLength(setModeCountBeforeInput);
+    modeRange.dispatchEvent(new Event('change', { bubbles: true }));
+    await flushTasks();
+    expect(requests).toContainEqual({ type: 'popup.setMode', mode: 'watch' });
+    expect(root.querySelector<HTMLElement>('#mode-popover')?.hidden).toBe(true);
+    requireElement(root.querySelector<HTMLButtonElement>('[data-action="mode:ask"]'), 'Ask mode').click();
+    await flushTasks();
+
+    requireElement(root.querySelector<HTMLButtonElement>('[data-action="toggle-tools"]'), 'popup tools').click();
+    expect(root.querySelector('.popup-tools')?.getAttribute('aria-label')).toBe('OpenBurnBar controls');
+    expect(root.querySelector<HTMLButtonElement>('[data-action="toggle-tools"]')?.getAttribute('aria-expanded')).toBe(
+      'true'
+    );
+    expect(root.querySelector('[data-action="toggle-tools"]')?.getAttribute('aria-controls')).toBe('popup-tools');
     requireElement(
       root.querySelector<HTMLButtonElement>('[data-action="diagnostics-copy"]'),
       'copy diagnostics'

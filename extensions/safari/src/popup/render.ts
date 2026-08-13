@@ -1,6 +1,7 @@
 import type { ActivityEvent, ApprovalPreview, LearningItem, TranscriptEntry } from '../shared/messages';
 import type { BridgeAgentOption } from '../shared/protocol';
 import { SAFARI_PERFORMANCE_LABELS, formatPerformanceDuration } from './diagnostics';
+import { initializeModeVisuals } from './modeVisuals';
 import type { PopupViewModel } from './viewModel';
 
 const TRANSCRIPT_FOLLOW_THRESHOLD_PX = 32;
@@ -64,6 +65,8 @@ function icon(name: string): SVGSVGElement {
     copy: 'M8 7V3h13v13h-4v5H3V7h5Zm2-2v2h7v7h2V5h-9Zm5 4H5v10h10V9Z',
     download: 'M11 3h2v9l3.5-3.5L18 10l-6 6-6-6 1.5-1.5L11 12V3ZM4 19h16v2H4v-2Z',
     send: 'M4 12h15M13 6l6 6-6 6',
+    expand: 'M8 3H3v5h2V5h3V3Zm8 0v2h3v3h2V3h-5ZM5 16H3v5h5v-2H5v-3Zm16 0h-2v3h-3v2h5v-5Z',
+    more: 'M5 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z',
     brain:
       'M9.2 3.1A4 4 0 0 0 5 7v.2A4.5 4.5 0 0 0 4 16v.2A3.8 3.8 0 0 0 10 19v-5H8v-2h2V7.5A4.4 4.4 0 0 0 9.2 3.1ZM14.8 3.1A4 4 0 0 1 19 7v.2a4.5 4.5 0 0 1 1 8.8v.2A3.8 3.8 0 0 1 14 19v-5h2v-2h-2V7.5a4.4 4.4 0 0 1 .8-4.4Z'
   };
@@ -173,38 +176,46 @@ function restoreTranscriptScroll(node: HTMLElement | null, state: TranscriptScro
   node.scrollTop = !state || state.followLatest ? node.scrollHeight : state.top;
 }
 
-function renderHeader(viewModel: PopupViewModel): HTMLElement {
+function renderHeader(viewModel: PopupViewModel, toolsOpen: boolean, expanded: boolean): HTMLElement {
   const header = element('header', 'topbar');
   const identity = element('div', 'identity design-context');
   const logoWrap = element('div', 'logo-wrap');
   const logo = element('img', 'logo');
   logo.src = 'icons/app-logo.svg';
-  logo.alt = 'OpenBurnBar';
+  logo.alt = '';
   logoWrap.append(logo);
   logoWrap.setAttribute('aria-label', 'OpenBurnBar Safari Agent');
   identity.append(logoWrap);
 
-  const host = element('span', 'pill pill--host');
-  host.append(icon('globe'), document.createTextNode(viewModel.pageDetail || 'Safari'));
-  const page = element('span', 'pill pill--page');
-  page.append(icon('page'), element('span', undefined, viewModel.pageLabel));
-  const access = element(
-    'span',
-    `pill pill--${viewModel.snapshot?.page?.permission === 'granted' ? 'ok' : 'muted'}`,
-    viewModel.snapshot?.page?.permission === 'granted' ? 'Site access' : 'Site access'
+  const copy = element('div', 'identity-copy');
+  copy.append(
+    element('strong', 'product-name', viewModel.pageLabel),
+    element('span', 'surface-name', viewModel.pageDetail || 'Safari')
   );
-  identity.append(host, page, access);
+  identity.append(copy);
 
   const controls = element('div', 'topbar-actions');
   const status = element('span', `connection connection--${viewModel.connectionTone}`);
   status.setAttribute('role', 'status');
+  status.title = viewModel.connectionLabel;
   status.append(element('span', 'connection-orb'), document.createTextNode(viewModel.connectionLabel));
+  const resize = button(expanded ? 'Compact chat' : 'Expand chat', 'toggle-popup-shape', 'glass-icon-button');
+  resize.setAttribute('aria-pressed', String(expanded));
+  resize.title = expanded ? 'Use compact chat' : 'Expand chat';
+  resize.replaceChildren(icon('expand'));
+  const tools = button(toolsOpen ? 'Close controls' : 'Open controls', 'toggle-tools', 'glass-icon-button');
+  tools.setAttribute('aria-expanded', String(toolsOpen));
+  if (toolsOpen) {
+    tools.setAttribute('aria-controls', 'popup-tools');
+  }
+  tools.title = toolsOpen ? 'Close controls' : 'Model, trust, learning, and diagnostics';
+  tools.replaceChildren(icon('more'));
   const stop = button('Stop', 'abort', 'stop-button');
   stop.disabled = !viewModel.stopEnabled;
   stop.title = viewModel.stopEnabled ? 'Stop this run now (⌃⌥⌘.)' : 'No active run';
   stop.setAttribute('aria-keyshortcuts', 'Control+Alt+Meta+.');
   stop.prepend(icon('stop'));
-  controls.append(status, stop);
+  controls.append(status, resize, tools, stop);
   header.append(identity, controls);
   return header;
 }
@@ -248,12 +259,13 @@ function renderModes(viewModel: PopupViewModel, open: boolean): HTMLElement {
     0,
     viewModel.modes.findIndex((mode) => mode.id === viewModel.selectedMode)
   );
-  const knob = element('img', 'mode-knob');
-  knob.src = 'icons/app-logo.svg';
-  knob.alt = '';
+  const fire = element('canvas', 'mode-fire');
+  fire.setAttribute('aria-hidden', 'true');
+  const knob = element('canvas', 'mode-knob');
   knob.setAttribute('aria-hidden', 'true');
-  knob.style.left = `${viewModel.modes.length > 1 ? (selectedIndex / (viewModel.modes.length - 1)) * 100 : 0}%`;
-  track.append(knob);
+  const knobFraction = viewModel.modes.length > 1 ? selectedIndex / (viewModel.modes.length - 1) : 0;
+  knob.style.setProperty('--mode-fraction', String(knobFraction));
+  track.append(fire, knob);
   for (let index = 0; index < viewModel.modes.length; index += 1) {
     const tick = element('span', 'mode-tick');
     tick.setAttribute('aria-hidden', 'true');
@@ -271,6 +283,7 @@ function renderModes(viewModel: PopupViewModel, open: boolean): HTMLElement {
   for (const mode of viewModel.modes) {
     const option = button(mode.label, `mode:${mode.id}`, 'mode-button');
     const selected = mode.id === viewModel.selectedMode;
+    option.dataset.modeDescription = mode.description;
     option.setAttribute('aria-pressed', String(selected));
     option.setAttribute('aria-label', mode.accessibleLabel);
     option.classList.toggle('is-selected', selected);
@@ -442,21 +455,32 @@ function renderComposer(viewModel: PopupViewModel, modePopoverOpen: boolean): HT
   const textarea = element('textarea', 'composer-input');
   textarea.value = viewModel.draft;
   textarea.placeholder = viewModel.composerPlaceholder;
-  textarea.rows = 3;
+  textarea.rows = 2;
   textarea.maxLength = 8_000;
   textarea.dataset.input = 'draft';
   focusKey(textarea, 'input:draft');
   textarea.setAttribute('aria-label', viewModel.composerPlaceholder);
   textarea.setAttribute('aria-keyshortcuts', 'Meta+Enter');
   const footer = element('div', 'composer-footer');
-  const context = element('button', 'composer-context', 'Page');
-  context.type = 'button';
-  focusKey(context, 'composer:context');
-  context.disabled = true;
-  context.title = 'Current Safari page context';
-  context.setAttribute('aria-label', 'Current Safari page context');
-  context.prepend(icon('page'));
-  const hint = element('span', 'composer-hint', '⌘↵ to send');
+  const agent = element('select', 'mini mini--agent composer-agent');
+  agent.dataset.input = 'agent';
+  focusKey(agent, 'input:composer-agent');
+  agent.setAttribute('aria-label', viewModel.selectedMode === 'handoff' ? 'Installed agent' : 'Agent or model');
+  if (viewModel.noAgents) {
+    const empty = element('option', undefined, 'No agents');
+    empty.disabled = true;
+    empty.selected = true;
+    agent.append(empty);
+  } else {
+    for (const group of viewModel.agentGroups) {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      for (const option of group.agents) {
+        optgroup.append(renderAgentOption(option, viewModel.selectedAgent?.id));
+      }
+      agent.append(optgroup);
+    }
+  }
   const modeTrigger = button(
     viewModel.modes.find((mode) => mode.id === viewModel.selectedMode)?.label ?? 'Ask',
     'toggle-mode-popover',
@@ -475,7 +499,7 @@ function renderComposer(viewModel: PopupViewModel, modePopoverOpen: boolean): HT
   }
   submit.setAttribute('aria-label', viewModel.primaryLabel);
   submit.prepend(icon('send'));
-  footer.append(element('span', 'mini mini--auto', 'Auto'), context, hint, modeTrigger, submit);
+  footer.append(agent, modeTrigger, submit);
   form.append(textarea, footer);
   if (viewModel.primaryDisabledReason) {
     const reason = element('p', 'disabled-reason', viewModel.primaryDisabledReason);
@@ -874,9 +898,12 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
   const previousTranscriptScroll = captureTranscriptScroll(root.querySelector<HTMLElement>('.transcript'));
   const modePopoverWasOpen = root.dataset.modePopoverOpen === 'true';
   const agentDrawerWasOpen = root.querySelector<HTMLDetailsElement>('.agent-drawer')?.open ?? false;
+  const toolsWereOpen = root.dataset.toolsOpen === 'true';
+  const popupExpanded = root.dataset.popupShape !== 'compact';
   const shell = element('main', 'shell');
+  shell.dataset.popupShape = popupExpanded ? 'expanded' : 'compact';
   shell.dataset.modePopoverOpen = String(modePopoverWasOpen);
-  shell.append(renderHeader(viewModel), renderModes(viewModel, modePopoverWasOpen));
+  shell.append(renderHeader(viewModel, toolsWereOpen, popupExpanded), renderModes(viewModel, modePopoverWasOpen));
 
   const scroll = element('div', 'content-scroll');
   const error = renderError(viewModel);
@@ -884,23 +911,30 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
     scroll.append(error);
   }
   scroll.append(renderTranscript(viewModel.snapshot?.transcript ?? []));
-  scroll.append(renderAgentPicker(viewModel, agentDrawerWasOpen));
   const approvals = renderApprovals(viewModel.snapshot?.approvals ?? []);
   if (approvals) {
     scroll.append(approvals);
   }
-  scroll.append(
-    renderActivity(viewModel.snapshot?.activity ?? []),
-    renderPerformance(viewModel, performanceWasOpen),
-    renderTrust(viewModel, trustWasOpen),
-    renderLearning(viewModel, learningWasOpen)
-  );
   shell.append(scroll);
+  if (toolsWereOpen) {
+    const tools = element('aside', 'popup-tools');
+    tools.id = 'popup-tools';
+    tools.setAttribute('aria-label', 'OpenBurnBar controls');
+    tools.append(
+      renderAgentPicker(viewModel, agentDrawerWasOpen),
+      renderActivity(viewModel.snapshot?.activity ?? []),
+      renderPerformance(viewModel, performanceWasOpen),
+      renderTrust(viewModel, trustWasOpen),
+      renderLearning(viewModel, learningWasOpen)
+    );
+    shell.append(tools);
+  }
   const composer = renderComposer(viewModel, modePopoverWasOpen);
   if (composer) {
     shell.append(composer);
   }
   root.replaceChildren(shell);
+  initializeModeVisuals(root);
 
   restoreScroll(root.querySelector<HTMLElement>('.content-scroll'), previousContentScroll);
   restoreTranscriptScroll(root.querySelector<HTMLElement>('.transcript'), previousTranscriptScroll);

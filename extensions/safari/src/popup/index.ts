@@ -241,6 +241,18 @@ appRoot.addEventListener('click', (event) => {
     renderPopup(appRoot, buildPopupViewModel(state));
     return;
   }
+  if (action === 'toggle-tools') {
+    appRoot.dataset.toolsOpen = appRoot.dataset.toolsOpen === 'true' ? 'false' : 'true';
+    renderPopup(appRoot, buildPopupViewModel(state));
+    return;
+  }
+  if (action === 'toggle-popup-shape') {
+    const nextShape = appRoot.dataset.popupShape === 'compact' ? 'expanded' : 'compact';
+    appRoot.dataset.popupShape = nextShape;
+    document.documentElement.dataset.popupShape = nextShape;
+    renderPopup(appRoot, buildPopupViewModel(state));
+    return;
+  }
   if (action.startsWith('approval:')) {
     const [, approvalId, decision] = action.split(':');
     if (approvalId && (decision === 'allow_once' || decision === 'allow_session' || decision === 'block')) {
@@ -294,10 +306,19 @@ appRoot.addEventListener('input', (event) => {
       break;
     case 'mode-range': {
       const index = Number(input.value);
-      const mode = ['ask', 'agentic', 'watch', 'handoff'][index];
-      if (mode === 'ask' || mode === 'agentic' || mode === 'watch' || mode === 'handoff') {
-        appRoot.dataset.modePopoverOpen = 'false';
-        void send({ type: 'popup.setMode', mode });
+      const options = appRoot.querySelectorAll<HTMLButtonElement>('.mode-button[data-action^="mode:"]');
+      const option = options.item(index);
+      const label = option?.textContent?.trim();
+      const description = option?.dataset.modeDescription;
+      const value = appRoot.querySelector<HTMLElement>('.mode-popover-value');
+      const descriptionNode = appRoot.querySelector<HTMLElement>('.mode-description');
+      const knob = appRoot.querySelector<HTMLElement>('.mode-knob');
+      if (option && label && description && value && descriptionNode && knob) {
+        value.textContent = label;
+        descriptionNode.textContent = description;
+        input.setAttribute('aria-valuetext', label);
+        const knobFraction = options.length > 1 ? index / (options.length - 1) : 0;
+        knob.style.setProperty('--mode-fraction', String(knobFraction));
       }
       break;
     }
@@ -314,6 +335,20 @@ appRoot.addEventListener('change', (event) => {
     return;
   }
   if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+  if (input.dataset.input === 'mode-range') {
+    const index = Number(input.value);
+    const option = appRoot.querySelectorAll<HTMLButtonElement>('.mode-button[data-action^="mode:"]').item(index);
+    const mode = option?.dataset.action?.slice('mode:'.length);
+    if (mode === 'ask' || mode === 'agentic' || mode === 'watch' || mode === 'handoff') {
+      appRoot.dataset.modePopoverOpen = 'false';
+      if (mode === state.snapshot?.mode) {
+        renderPopup(appRoot, buildPopupViewModel(state));
+      } else {
+        void send({ type: 'popup.setMode', mode });
+      }
+    }
     return;
   }
   switch (input.dataset.input) {
