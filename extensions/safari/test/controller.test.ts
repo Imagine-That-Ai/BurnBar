@@ -485,6 +485,12 @@ describe('Safari background controller integration', () => {
     expectSuccess(permission);
     expect(permission.snapshot.page?.permission).toBe('granted');
     expect(permission.snapshot.trust.siteAllowed).toBe(true);
+    expect(harness.popupCalls.find((call) => call.action === 'trust.update')?.payload).toMatchObject({
+      safariSessionId: 'safari-session-1',
+      origin: 'https://example.com',
+      decision: 'allow',
+      trustMode: 'step'
+    });
 
     const cloudNotice = await harness.controller.handlePopupRequest({
       type: 'popup.setTrust',
@@ -1837,6 +1843,73 @@ describe('Safari background controller integration', () => {
     });
     expectSuccess(acknowledged);
     expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toEqual(originalPreferences);
+  });
+
+  it('binds newly granted loopback website access to daemon trust before persisting it locally', async () => {
+    const harness = createControllerHarness();
+    const activeTab = harness.controls.tabs.get(1);
+    if (!activeTab) {
+      throw new Error('Expected the mock active Safari tab.');
+    }
+    activeTab.url = 'http://127.0.0.1:42771/mixed';
+    activeTab.title = 'Mixed Content Fixture';
+    await harness.controller.initialize();
+
+    const granted = await harness.controller.handlePopupRequest({
+      type: 'popup.requestSitePermission'
+    });
+
+    expectSuccess(granted);
+    expect(granted.snapshot.page).toMatchObject({
+      url: 'http://127.0.0.1:42771/mixed',
+      permission: 'granted'
+    });
+    expect(granted.snapshot.trust.siteAllowed).toBe(true);
+    expect(harness.popupCalls.find((call) => call.action === 'trust.update')?.payload).toMatchObject({
+      safariSessionId: 'safari-session-1',
+      origin: 'http://127.0.0.1:42771',
+      decision: 'allow',
+      trustMode: 'step'
+    });
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      sites: {
+        'http://127.0.0.1:42771': {
+          allowed: true,
+          sensitiveOverride: false
+        }
+      }
+    });
+  });
+
+  it('does not persist newly granted Safari website access when daemon trust rejects it', async () => {
+    const harness = createControllerHarness();
+    const activeTab = harness.controls.tabs.get(1);
+    if (!activeTab) {
+      throw new Error('Expected the mock active Safari tab.');
+    }
+    activeTab.url = 'http://127.0.0.1:42771/mixed';
+    activeTab.title = 'Mixed Content Fixture';
+    await harness.controller.initialize();
+    harness.setPopupActionResult('trust.update', { accepted: false, output: {} });
+
+    const rejected = await harness.controller.handlePopupRequest({
+      type: 'popup.requestSitePermission'
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: 'trust_update_rejected'
+      },
+      snapshot: {
+        trust: {
+          siteAllowed: false
+        }
+      }
+    });
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      sites: {}
+    });
   });
 
   it('never sends unowned tab URL or title metadata through poll, list, active-page, or completion payloads', async () => {

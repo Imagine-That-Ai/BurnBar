@@ -1366,9 +1366,7 @@ export class SafariBackgroundController {
     }
     const origin = originForURL(tab.url);
     if (origin) {
-      const existing = this.preferences.sites[origin] ?? { allowed: false, sensitiveOverride: false };
-      this.preferences.sites[origin] = { ...existing, allowed: true };
-      await this.store.save(this.preferences);
+      await this.setTrust({ siteAllowed: true });
     }
     await this.initialize(true);
   }
