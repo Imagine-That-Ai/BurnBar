@@ -2,6 +2,7 @@ import { SafariBackgroundController } from '../src/background/controller';
 import { SafariGatewayClient } from '../src/background/gatewayClient';
 import { BrowserNativeMessagingAdapter, NativeBridge } from '../src/background/nativeBridge';
 import { SAFARI_PERFORMANCE_STORAGE_KEY } from '../src/background/performance';
+import { SafariExtensionError, type SerializedError } from '../src/shared/errors';
 import { isContentRequest, type ContentResponse, type PopupResponse } from '../src/shared/messages';
 import type {
   BridgePopupActionResult,
@@ -26,6 +27,7 @@ interface ControllerHarness {
   gatewayCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }>;
   contentActions: ContentAction[];
   setPopupActionError(action: string, error: Error | undefined): void;
+  setPopupActionNativeErrors(action: string, errors: SerializedError[]): void;
   setPopupActionHandler(
     action: string,
     handler:
@@ -36,6 +38,7 @@ interface ControllerHarness {
   setGatewayHandler(handler: GatewayHandler): void;
   setNativeBootstrap(value: SafariBootstrapResponse): void;
   setHelloProtocolVersion(protocolVersion: number): void;
+  setHelloSessionIds(sessionIds: string[]): void;
   setUISnapshot(value: Record<string, unknown>): void;
 }
 
@@ -162,12 +165,15 @@ function createControllerHarness(): ControllerHarness {
   const gatewayCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
   const contentActions: ContentAction[] = [];
   const popupActionErrors = new Map<string, Error>();
+  const popupActionNativeErrors = new Map<string, SerializedError[]>();
   const popupActionHandlers = new Map<
     string,
     (payload: Record<string, unknown>) => BridgePopupActionResult | Promise<BridgePopupActionResult>
   >();
   const popupActionResults = new Map<string, BridgePopupActionResult>();
   let helloProtocolVersion = 1;
+  let helloSessionIds = ['safari-session-1'];
+  let helloCount = 0;
   let nativeBootstrap = bootstrap;
   let uiSnapshot = defaultUISnapshot();
 
@@ -264,7 +270,7 @@ function createControllerHarness(): ControllerHarness {
     switch (request.method) {
       case 'bridge.hello':
         return nativeSuccess(request, {
-          sessionId: 'safari-session-1',
+          sessionId: helloSessionIds[Math.min(helloCount++, helloSessionIds.length - 1)],
           protocolVersion: helloProtocolVersion,
           leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
           pollAfterMillis: 200
@@ -276,6 +282,15 @@ function createControllerHarness(): ControllerHarness {
         const popupActionError = popupActionErrors.get(action);
         if (popupActionError) {
           throw popupActionError;
+        }
+        const nativeErrors = popupActionNativeErrors.get(action);
+        const nativeError = nativeErrors?.shift();
+        if (nativeError) {
+          return {
+            protocolVersion: 1,
+            id: request.id,
+            error: nativeError
+          };
         }
         const popupActionHandler = popupActionHandlers.get(action);
         if (popupActionHandler) {
@@ -388,6 +403,9 @@ function createControllerHarness(): ControllerHarness {
         popupActionErrors.delete(action);
       }
     },
+    setPopupActionNativeErrors(action, errors) {
+      popupActionNativeErrors.set(action, [...errors]);
+    },
     setPopupActionHandler(action, handler) {
       if (handler) {
         popupActionHandlers.set(action, handler);
@@ -411,6 +429,10 @@ function createControllerHarness(): ControllerHarness {
     setHelloProtocolVersion(protocolVersion) {
       helloProtocolVersion = protocolVersion;
     },
+    setHelloSessionIds(sessionIds) {
+      helloSessionIds = [...sessionIds];
+      helloCount = 0;
+    },
     setUISnapshot(value) {
       uiSnapshot = value;
     }
@@ -419,6 +441,26 @@ function createControllerHarness(): ControllerHarness {
 
 function expectSuccess(response: PopupResponse): asserts response is Extract<PopupResponse, { ok: true }> {
   expect(response.ok, response.ok ? undefined : response.error.message).toBe(true);
+}
+
+async function authorizeCloudScreenshots(harness: ControllerHarness): Promise<void> {
+  const snapshot = harness.controller.currentSnapshot();
+  const page = snapshot.page;
+  if (!page) {
+    throw new Error('Expected an active page.');
+  }
+  harness.controls.grantedOrigins.add('http://*/*');
+  harness.controls.grantedOrigins.add('https://*/*');
+  expectSuccess(
+    await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: snapshot.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: new URL(page.url).origin,
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
+    })
+  );
 }
 
 type NativeCommandOverrides = Omit<Partial<NativeCommand>, 'targetTabId'> & {
@@ -492,11 +534,7 @@ describe('Safari background controller integration', () => {
       trustMode: 'step'
     });
 
-    const cloudNotice = await harness.controller.handlePopupRequest({
-      type: 'popup.setTrust',
-      patch: { cloudScreenshotAcknowledged: true }
-    });
-    expectSuccess(cloudNotice);
+    await authorizeCloudScreenshots(harness);
     const answer = await harness.controller.handlePopupRequest({
       type: 'popup.ask',
       prompt: 'What color is the call to action?'
@@ -559,12 +597,7 @@ describe('Safari background controller integration', () => {
       gatewayAttributionCapability: '34'.repeat(32),
       gatewayAttributionExpiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
     });
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     const bootstrapCallsBeforeAsk = harness.popupCalls.filter((call) => call.action === 'bootstrap').length;
     const answer = await harness.controller.handlePopupRequest({
       type: 'popup.ask',
@@ -583,12 +616,7 @@ describe('Safari background controller integration', () => {
     const harness = createControllerHarness();
     await harness.controller.initialize();
     expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     let releaseProjection: (() => void) | undefined;
     const projectionBlocked = new Promise<void>((resolve) => {
       releaseProjection = resolve;
@@ -630,12 +658,7 @@ describe('Safari background controller integration', () => {
     const harness = createControllerHarness();
     await harness.controller.initialize();
     expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     let releaseGateway: (() => void) | undefined;
     harness.setGatewayHandler(
       () =>
@@ -671,12 +694,7 @@ describe('Safari background controller integration', () => {
     });
     await harness.controller.initialize();
     expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     let releaseRenewal: (() => void) | undefined;
     harness.setPopupActionHandler(
       'bootstrap',
@@ -739,12 +757,7 @@ describe('Safari background controller integration', () => {
       gatewayAttributionCapability: 'malformed',
       gatewayAttributionExpiresAt: new Date(Date.now() + 5 * 60_000).toISOString()
     });
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     const bootstrapCallsBeforeAsk = harness.popupCalls.filter((call) => call.action === 'bootstrap').length;
     const answer = await harness.controller.handlePopupRequest({
       type: 'popup.ask',
@@ -840,12 +853,7 @@ describe('Safari background controller integration', () => {
     const harness = createControllerHarness();
     await harness.controller.initialize();
     expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     harness.setGatewayHandler(async (_input, init) => {
       if (!init?.signal) {
         throw new Error('Expected the gateway request to carry an AbortSignal.');
@@ -928,12 +936,7 @@ describe('Safari background controller integration', () => {
     const harness = createControllerHarness();
     await harness.controller.initialize();
     expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     expectSuccess(
       await harness.controller.handlePopupRequest({
         type: 'popup.setLearning',
@@ -978,12 +981,7 @@ describe('Safari background controller integration', () => {
     const harness = createControllerHarness();
     await harness.controller.initialize();
     expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     expectSuccess(
       await harness.controller.handlePopupRequest({
         type: 'popup.setLearning',
@@ -1027,12 +1025,7 @@ describe('Safari background controller integration', () => {
         type: 'popup.requestSitePermission'
       })
     );
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
     harness.setUISnapshot({
       ...defaultUISnapshot(),
       killSwitchEnabled: true
@@ -1365,12 +1358,7 @@ describe('Safari background controller integration', () => {
         patch: { siteAllowed: true, sensitiveSiteOverride: true, onlyCurrentTab: false }
       })
     );
-    expectSuccess(
-      await harness.controller.handlePopupRequest({
-        type: 'popup.setTrust',
-        patch: { cloudScreenshotAcknowledged: true }
-      })
-    );
+    await authorizeCloudScreenshots(harness);
 
     const agentic = await harness.controller.handlePopupRequest({
       type: 'popup.startAgentic',
@@ -1937,6 +1925,140 @@ describe('Safari background controller integration', () => {
     });
   });
 
+  it('reattaches and retries native trust exactly once when the daemon replaced the Safari session', async () => {
+    const harness = createControllerHarness();
+    harness.setHelloSessionIds(['safari-session-old', 'safari-session-new']);
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+    harness.setPopupActionNativeErrors('trust.update', [
+      {
+        code: 'daemon_rejected',
+        message: 'The OpenBurnBar daemon rejected the Safari request.',
+        retryable: false,
+        details: { daemonCode: -32001 }
+      }
+    ]);
+
+    const authorized = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
+    });
+
+    expectSuccess(authorized);
+    const trustCalls = harness.popupCalls.filter((call) => call.action === 'trust.update');
+    expect(trustCalls).toHaveLength(2);
+    expect(trustCalls.map((call) => call.payload.safariSessionId)).toEqual([
+      'safari-session-old',
+      'safari-session-new'
+    ]);
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged: true,
+      sites: {
+        'https://example.com': {
+          allowed: true
+        }
+      }
+    });
+  });
+
+  it('surfaces the daemon code and persists nothing when the one session retry is also rejected', async () => {
+    const harness = createControllerHarness();
+    harness.setHelloSessionIds(['safari-session-old', 'safari-session-new']);
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+    harness.setPopupActionNativeErrors('trust.update', [
+      {
+        code: 'daemon_rejected',
+        message: 'The OpenBurnBar daemon rejected the Safari request.',
+        retryable: false,
+        details: { daemonCode: -32001 }
+      },
+      {
+        code: 'daemon_rejected',
+        message: 'The OpenBurnBar daemon rejected the Safari request.',
+        retryable: false,
+        details: { daemonCode: -32001 }
+      }
+    ]);
+
+    const rejected = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: 'daemon_rejected',
+        details: { daemonCode: -32001 }
+      },
+      snapshot: {
+        trust: {
+          siteAllowed: false,
+          cloudScreenshotAcknowledged: false
+        }
+      }
+    });
+    expect(harness.popupCalls.filter((call) => call.action === 'trust.update')).toHaveLength(2);
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      automaticallyTrustInvokedWebsites: false,
+      cloudScreenshotDisclosureAcknowledged: false,
+      sites: {}
+    });
+  });
+
+  it('requires cloud screenshot disclosure acknowledgment inside the unified permission transaction', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+
+    const rejected = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: false,
+      websiteAccessGranted: true
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: { code: 'cloud_disclosure_not_acknowledged' }
+    });
+    expect(harness.popupCalls.some((call) => call.action === 'trust.update')).toBe(false);
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      cloudScreenshotDisclosureAcknowledged: false,
+      sites: {}
+    });
+  });
+
   it('does not persist page or cloud trust when the native authority rejects unified setup', async () => {
     const harness = createControllerHarness();
     await harness.controller.initialize();
@@ -1973,6 +2095,161 @@ describe('Safari background controller integration', () => {
       cloudScreenshotDisclosureAcknowledged: false,
       sites: {}
     });
+  });
+
+  it('rolls native trust back and remains retryable when local permission persistence fails', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+    const baselinePreferences = structuredClone(harness.controls.storage.get('openburnbar.safari.preferences.v1'));
+    harness.controls.setStorageSetError(new Error('local storage unavailable'));
+
+    const rejected = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: { code: 'popup_request_failed', message: 'local storage unavailable' },
+      snapshot: {
+        trust: {
+          siteAllowed: false,
+          cloudScreenshotAcknowledged: false
+        }
+      }
+    });
+    expect(
+      harness.popupCalls.filter((call) => call.action === 'trust.update').map((call) => call.payload.decision)
+    ).toEqual(['allow', 'remove']);
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toEqual(baselinePreferences);
+
+    harness.controls.setStorageSetError(undefined);
+    const retrySnapshot = rejected.snapshot;
+    if (!retrySnapshot) {
+      throw new Error('Expected a fail-closed snapshot for retry.');
+    }
+    const retryPage = retrySnapshot.page;
+    if (!retryPage) {
+      throw new Error('Expected the page to remain available for retry.');
+    }
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.authorizePage',
+        expectedStateVersion: retrySnapshot.stateVersion,
+        expectedTabId: retryPage.tabId,
+        expectedOrigin: 'https://example.com',
+        acknowledgeCloudScreenshots: true,
+        websiteAccessGranted: true
+      })
+    );
+  });
+
+  it('fails closed when local persistence fails and native trust rollback is rejected', async () => {
+    const harness = createControllerHarness();
+    harness.setPopupActionHandler('trust.update', (payload) => ({
+      accepted: payload.decision !== 'remove',
+      output: {}
+    }));
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+    const baselinePreferences = structuredClone(harness.controls.storage.get('openburnbar.safari.preferences.v1'));
+    harness.controls.setStorageSetError(new Error('local storage unavailable'));
+
+    const rejected = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: 'authorization_partial_failure',
+        retryable: true,
+        details: {
+          rollback: { code: 'trust_rollback_rejected' }
+        }
+      },
+      snapshot: {
+        trust: {
+          siteAllowed: false,
+          cloudScreenshotAcknowledged: false
+        }
+      }
+    });
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toEqual(baselinePreferences);
+  });
+
+  it('fails closed with the daemon code when local persistence fails and native rollback throws', async () => {
+    const harness = createControllerHarness();
+    harness.setPopupActionHandler('trust.update', (payload) => {
+      if (payload.decision === 'remove') {
+        throw new SafariExtensionError('daemon_rejected', 'The OpenBurnBar daemon rejected the Safari request.', {
+          details: { daemonCode: -32603 }
+        });
+      }
+      return { accepted: true, output: {} };
+    });
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+    const baselinePreferences = structuredClone(harness.controls.storage.get('openburnbar.safari.preferences.v1'));
+    harness.controls.setStorageSetError(new Error('local storage unavailable'));
+
+    const rejected = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: 'authorization_partial_failure',
+        retryable: true,
+        details: {
+          daemonCode: -32603,
+          rollback: {
+            code: 'native_bridge_unavailable'
+          }
+        }
+      },
+      snapshot: {
+        trust: {
+          siteAllowed: false,
+          cloudScreenshotAcknowledged: false
+        }
+      }
+    });
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toEqual(baselinePreferences);
   });
 
   it('persists nothing when Safari denies or falsely reports unified website access', async () => {

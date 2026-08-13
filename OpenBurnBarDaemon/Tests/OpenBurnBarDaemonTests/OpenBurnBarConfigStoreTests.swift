@@ -7,6 +7,33 @@ import Security
 #endif
 
 final class BurnBarConfigStoreTests: XCTestCase {
+    func testCredentialSlotUpsertRejectsAlteredDaemonReadback() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-credential-readback-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let store = BurnBarConfigStore(
+            fileURL: rootURL.appendingPathComponent("provider-config.json"),
+            catalog: BurnBarCatalogLoader.bundledCatalog,
+            secretStore: AlteringProviderSecretStore(),
+            logger: BurnBarDaemonLogger(category: "config-store-tests")
+        )
+
+        do {
+            _ = try await store.upsertCredentialSlot(
+                providerID: "zai",
+                slotID: "primary",
+                label: "Primary",
+                apiKey: "exact-secret",
+                isEnabled: true
+            )
+            XCTFail("altered daemon readback must fail closed")
+        } catch BurnBarConfigStoreError.credentialReadbackFailed(let providerID, let slotID) {
+            XCTAssertEqual(providerID, "zai")
+            XCTAssertEqual(slotID, "primary")
+        }
+    }
     override func setUp() {
         super.setUp()
         // Keep the developer's real "Claude Code-credentials" Keychain item from leaking
@@ -1792,6 +1819,19 @@ private actor UnreadableSecretStore: BurnBarProviderSecretStoring {
     }
 
     func setSecret(_ secret: String?, for providerID: String) async throws {}
+}
+
+private actor AlteringProviderSecretStore: BurnBarProviderSecretStoring {
+    private var value: String?
+
+    func secret(for providerID: String) async throws -> String? {
+        guard value != nil else { return nil }
+        return "altered-after-write"
+    }
+
+    func setSecret(_ secret: String?, for providerID: String) async throws {
+        value = secret
+    }
 }
 
 /// A secret store whose reads/writes succeed but whose deletes

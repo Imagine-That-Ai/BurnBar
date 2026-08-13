@@ -586,6 +586,7 @@ describe('WebExtension runtime entrypoints', () => {
     );
     await flushTasks();
 
+    expect(root.textContent).toContain('Choosing Allow & continue acknowledges this disclosure.');
     const permissionSheetAction = requireElement(
       root.querySelector<HTMLButtonElement>('[data-action="complete-permission-setup"]'),
       'unified permission action'
@@ -618,7 +619,6 @@ describe('WebExtension runtime entrypoints', () => {
       ['trust-site', 'siteAllowed'],
       ['trust-tab', 'onlyCurrentTab'],
       ['trust-sensitive', 'sensitiveSiteOverride'],
-      ['trust-cloud', 'cloudScreenshotAcknowledged'],
       ['trust-kill', 'globalKillSwitch']
     ] as const) {
       const input = requireElement(
@@ -632,6 +632,7 @@ describe('WebExtension runtime entrypoints', () => {
         requests.some((request) => request.type === 'popup.setTrust' && typeof request.patch[patchKey] === 'boolean')
       ).toBe(true);
     }
+    expect(root.querySelector('[data-input="trust-cloud"]')).toBeNull();
 
     const correctionDraft = requireElement(
       root.querySelector<HTMLTextAreaElement>('[data-input="correction-draft"]'),

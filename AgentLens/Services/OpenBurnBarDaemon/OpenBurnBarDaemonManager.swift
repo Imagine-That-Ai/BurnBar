@@ -334,6 +334,7 @@ final class OpenBurnBarDaemonManager {
     let computerUseBudgetStatusStore: ComputerUseBudgetStatusStore
     let computerUseQuotaUsageStore: ComputerUseQuotaUsageStore
     let computerUseCloudMeteringRecorder: any ComputerUseCloudMeteringRecording
+    let providerCredentialCustodyMigrator: ProviderCredentialCustodyMigrator
     weak var dataStore: DataStore?
     private var uploadPendingUsageAfterImport: (() async -> Void)?
     let computerUseCapabilityPublisherInstanceID = UUID().uuidString
@@ -365,7 +366,8 @@ final class OpenBurnBarDaemonManager {
         uploadPendingUsageAfterImport: (() async -> Void)? = nil,
         computerUseBudgetStatusStore: ComputerUseBudgetStatusStore = ComputerUseBudgetStatusStore(),
         computerUseQuotaUsageStore: ComputerUseQuotaUsageStore = ComputerUseQuotaUsageStore(),
-        computerUseCloudMeteringRecorder: any ComputerUseCloudMeteringRecording = ComputerUseCloudMeteringService()
+        computerUseCloudMeteringRecorder: any ComputerUseCloudMeteringRecording = ComputerUseCloudMeteringService(),
+        providerCredentialCustodyMigrator: ProviderCredentialCustodyMigrator = ProviderCredentialCustodyMigrator()
     ) {
         self.settingsManager = settingsManager
         self.paths = paths
@@ -376,6 +378,7 @@ final class OpenBurnBarDaemonManager {
         self.computerUseBudgetStatusStore = computerUseBudgetStatusStore
         self.computerUseQuotaUsageStore = computerUseQuotaUsageStore
         self.computerUseCloudMeteringRecorder = computerUseCloudMeteringRecorder
+        self.providerCredentialCustodyMigrator = providerCredentialCustodyMigrator
     }
 
     /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the

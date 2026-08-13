@@ -300,7 +300,12 @@ export class SafariBackgroundController {
   private localWorkGeneration = 0;
   private localTurnActive = false;
   private nativeProjectionInFlight: Promise<void> | undefined;
-  private pageAuthorizationInFlight: Promise<void> | undefined;
+  private pageAuthorizationInFlight:
+    | {
+        key: string;
+        promise: Promise<void>;
+      }
+    | undefined;
   private locallyHaltedSession: { sessionId: string | undefined } | undefined;
   private readonly navigationEpochs = new Map<number, number>();
 
@@ -1391,17 +1396,112 @@ export class SafariBackgroundController {
   }
 
   private async authorizePage(request: Extract<PopupRequest, { type: 'popup.authorizePage' }>): Promise<void> {
+    const authorizationKey = [
+      request.expectedStateVersion,
+      request.expectedTabId,
+      request.expectedOrigin,
+      request.acknowledgeCloudScreenshots,
+      request.websiteAccessGranted
+    ].join(':');
     if (this.pageAuthorizationInFlight) {
-      return this.pageAuthorizationInFlight;
+      if (this.pageAuthorizationInFlight.key !== authorizationKey) {
+        throw new SafariExtensionError(
+          'authorization_in_progress',
+          'A different Safari permission request is already finishing. Wait for it to complete, then try again.'
+        );
+      }
+      return this.pageAuthorizationInFlight.promise;
     }
     const operation = this.performPageAuthorization(request);
     const tracked = operation.finally(() => {
-      if (this.pageAuthorizationInFlight === tracked) {
+      if (this.pageAuthorizationInFlight?.promise === tracked) {
         this.pageAuthorizationInFlight = undefined;
       }
     });
-    this.pageAuthorizationInFlight = tracked;
+    this.pageAuthorizationInFlight = {
+      key: authorizationKey,
+      promise: tracked
+    };
     return tracked;
+  }
+
+  private daemonCode(error: unknown): number | undefined {
+    if (!(error instanceof SafariExtensionError)) {
+      return undefined;
+    }
+    const details = error.details;
+    if (isRecord(details) && typeof details.daemonCode === 'number' && Number.isSafeInteger(details.daemonCode)) {
+      return details.daemonCode;
+    }
+    return this.daemonCode(details);
+  }
+
+  private isDetachedAuthorizationSession(error: unknown): boolean {
+    if (!(error instanceof SafariExtensionError)) {
+      return false;
+    }
+    return (
+      error.code === 'safari_session_detached' ||
+      error.code === 'safari_session_mismatch' ||
+      (error.code === 'daemon_rejected' && this.daemonCode(error) === -32001)
+    );
+  }
+
+  private async reattachAuthorizationSession(tab: BrowserTab): Promise<void> {
+    const activePage = this.pageStateFromTab(tab);
+    const permission = tab.url ? await this.permissionController.status(tab.url) : 'unsupported';
+    const previousSessionId = this.bridge.sessionId;
+    const attached = await this.bridge.hello(activePage, this.capabilities(permission));
+    if (attached.protocolVersion !== 1) {
+      throw new SafariExtensionError(
+        'protocol_mismatch',
+        `OpenBurnBar negotiated unsupported Safari protocol ${attached.protocolVersion}.`
+      );
+    }
+    if (previousSessionId && previousSessionId !== attached.sessionId) {
+      this.ownership.releaseSession(previousSessionId);
+      this.locallyHaltedSession = undefined;
+      this.nativeTrustedOrigins.clear();
+      this.localWorkGeneration += 1;
+    }
+    this.ownership.claimUserHanded(tab, attached.sessionId);
+    this.mutate((state) => {
+      state.bridge.connection = 'connected';
+    });
+  }
+
+  private async requestAuthorizationTrust(
+    origin: string,
+    tab: BrowserTab,
+    decision: 'allow' | 'remove'
+  ): Promise<Awaited<ReturnType<NativeBridge['popupAction']>>> {
+    const updateTrust = () =>
+      this.bridge.popupAction('trust.update', {
+        origin,
+        decision,
+        trustMode: decision === 'allow' ? 'step' : 'manual'
+      });
+    let trustResponse: Awaited<ReturnType<typeof updateTrust>>;
+    try {
+      trustResponse = await updateTrust();
+    } catch (error) {
+      if (!this.isDetachedAuthorizationSession(error)) {
+        throw error;
+      }
+      await this.reattachAuthorizationSession(tab);
+      trustResponse = await updateTrust();
+    }
+    return trustResponse;
+  }
+
+  private async updateAuthorizationTrust(origin: string, tab: BrowserTab): Promise<void> {
+    const trustResponse = await this.requestAuthorizationTrust(origin, tab, 'allow');
+    if (!trustResponse.accepted) {
+      throw new SafariExtensionError(
+        'trust_update_rejected',
+        'Safari access was granted, but OpenBurnBar could not establish trusted access. Reconnect and try again.'
+      );
+    }
   }
 
   private async performPageAuthorization(
@@ -1426,6 +1526,15 @@ export class SafariBackgroundController {
       throw new SafariExtensionError(
         'site_permission_denied',
         'Safari did not grant website access. Choose Allow in Safari, then try again.'
+      );
+    }
+    const selectedAgent = this.snapshot.bridge.agents.find((agent) => agent.id === this.snapshot.selectedAgentId);
+    const cloudDisclosureRequired =
+      Boolean(selectedAgent?.cloud) && !this.preferences.cloudScreenshotDisclosureAcknowledged;
+    if (cloudDisclosureRequired && !request.acknowledgeCloudScreenshots) {
+      throw new SafariExtensionError(
+        'cloud_disclosure_not_acknowledged',
+        'Review the cloud screenshot disclosure and choose Allow & continue to acknowledge it.'
       );
     }
     const status = await this.permissionController.status(initialTab.url);
@@ -1455,24 +1564,15 @@ export class SafariBackgroundController {
       allowed: false,
       sensitiveOverride: false
     };
-    const trustResponse = await this.bridge.popupAction('trust.update', {
-      origin: currentOrigin,
-      decision: 'allow',
-      trustMode: 'step'
-    });
-    if (!trustResponse.accepted) {
-      throw new SafariExtensionError(
-        'trust_update_rejected',
-        'Safari access was granted, but OpenBurnBar could not establish trusted access. Reconnect and try again.'
-      );
-    }
+    await this.updateAuthorizationTrust(currentOrigin, currentTab);
     this.nativeTrustedOrigins.add(currentOrigin);
 
     const nextPreferences: SafariPreferences = {
       ...previousPreferences,
       automaticallyTrustInvokedWebsites: true,
       cloudScreenshotDisclosureAcknowledged:
-        previousPreferences.cloudScreenshotDisclosureAcknowledged || request.acknowledgeCloudScreenshots,
+        previousPreferences.cloudScreenshotDisclosureAcknowledged ||
+        (cloudDisclosureRequired && request.acknowledgeCloudScreenshots),
       sites: {
         ...previousPreferences.sites,
         [currentOrigin]: {
@@ -1484,18 +1584,37 @@ export class SafariBackgroundController {
     try {
       await this.store.save(nextPreferences);
     } catch (error) {
-      const rollback = await this.bridge.popupAction('trust.update', {
-        origin: currentOrigin,
-        decision: 'remove',
-        trustMode: 'manual'
-      });
-      if (!rollback.accepted) {
+      let rollbackFailure: unknown;
+      try {
+        const rollback = await this.requestAuthorizationTrust(currentOrigin, currentTab, 'remove');
+        if (!rollback.accepted) {
+          rollbackFailure = new SafariExtensionError(
+            'trust_rollback_rejected',
+            'OpenBurnBar rejected the trusted-site rollback.'
+          );
+        }
+      } catch (rollbackError) {
+        rollbackFailure = rollbackError;
+      }
+      // Local projection must fail closed even when native rollback cannot be
+      // confirmed. A later retry re-reads native authority before claiming
+      // success; this origin is never treated as locally authorized.
+      this.nativeTrustedOrigins.delete(currentOrigin);
+      if (rollbackFailure) {
+        const serializedRollback = serializeError(rollbackFailure, 'trust_rollback_failed');
+        const rollbackDaemonCode = this.daemonCode(rollbackFailure);
         throw new SafariExtensionError(
           'authorization_partial_failure',
-          'OpenBurnBar granted native trust but could not save it locally or roll it back. Restart OpenBurnBar before retrying.'
+          'OpenBurnBar granted native trust but could not save it locally or confirm rollback. Keep OpenBurnBar open and retry permission setup.',
+          {
+            retryable: true,
+            details: {
+              rollback: serializedRollback,
+              ...(rollbackDaemonCode === undefined ? {} : { daemonCode: rollbackDaemonCode })
+            }
+          }
         );
       }
-      this.nativeTrustedOrigins.delete(currentOrigin);
       throw error;
     }
     this.preferences = nextPreferences;

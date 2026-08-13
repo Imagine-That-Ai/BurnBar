@@ -35,6 +35,9 @@ public enum OpenBurnBarIdentity {
     public static let legacyChatGatewayKeychainServices = ["com.burnbar.chat-gateway-secrets"]
     public static let providerAPIKeychainService = "com.openburnbar.provider-api-keys"
     public static let legacyProviderAPIKeychainServices = ["com.burnbar.provider-api-keys"]
+    public static let daemonProviderSecretKeychainService = "com.openburnbar.daemon.provider-secrets"
+    public static let daemonProviderSecretMigrationBackupKeychainService =
+        "com.openburnbar.daemon.provider-secrets.migration-backup"
     public static let openClawBearerTokenAccount = "settings.chat.openclaw.bearerToken"
     public static let hermesBearerTokenAccount = "settings.chat.hermes.bearerToken"
     public static let piAgentBearerTokenAccount = "settings.chat.piagent.bearerToken"
