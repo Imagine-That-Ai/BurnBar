@@ -249,11 +249,28 @@ struct TokenUsage: Codable, Identifiable, Hashable {
         self.outputTokens = outputTokens
         self.cacheCreationTokens = cacheCreationTokens
         self.cacheReadTokens = cacheReadTokens
-        self.totalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens
+        // Saturating sum: untrusted usage input must never trap on
+        // accumulator overflow (usage-parsers scrutiny, reviewer issue 3).
+        self.totalTokens = Self.saturatingTotal(
+            [inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens]
+        )
         self.cost = costUSD
         self.startTime = startTime
         self.endTime = endTime
         self.createdAt = Date()
+    }
+
+    /// Saturating sum for `totalTokens`: an overflow saturates at Int.max
+    /// instead of trapping (never-crash handling for malformed/untrusted
+    /// usage input).
+    private static func saturatingTotal(_ values: [Int]) -> Int {
+        var total = 0
+        for value in values {
+            let (partial, overflow) = total.addingReportingOverflow(value)
+            if overflow { return Int.max }
+            total = partial
+        }
+        return total
     }
     
     // Computed properties

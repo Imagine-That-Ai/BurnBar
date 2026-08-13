@@ -123,7 +123,11 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
         for entry in topLevelEntries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
             if Self.isSessionDirectory(entry) {
                 health.itemsScanned += 1
-                let parsed = parseSessionDirectory(entry, health: &health)
+                let parsed = parseSessionDirectory(
+                    entry,
+                    projectDirName: entry.lastPathComponent,
+                    health: &health
+                )
                 if let parsed {
                     usages.append(parsed.usage)
                     if let conversation = parsed.conversation {
@@ -143,7 +147,11 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
 
             for sessionDir in sessionDirs.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
                 health.itemsScanned += 1
-                let parsed = parseSessionDirectory(sessionDir, health: &health)
+                let parsed = parseSessionDirectory(
+                    sessionDir,
+                    projectDirName: entry.lastPathComponent,
+                    health: &health
+                )
                 if let parsed {
                     usages.append(parsed.usage)
                     if let conversation = parsed.conversation {
@@ -170,6 +178,7 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
 
     private func parseSessionDirectory(
         _ sessionDir: URL,
+        projectDirName: String,
         health: inout TranscriptParseHealth
     ) -> (usage: TokenUsage, conversation: ConversationRecord?)? {
         let updatesFile = sessionDir.appendingPathComponent("updates.jsonl")
@@ -178,7 +187,10 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
         let chatFile = sessionDir.appendingPathComponent("chat_history.jsonl")
 
         let summary = readSummary(summaryFile)
-        let projectName = summary.cwd ?? Self.decodeProjectName(sessionDir.lastPathComponent)
+        // The real layout is `sessions/<url-encoded-project>/<session-id>/`;
+        // the caller passes the project dir name so the fallback decodes the
+        // project path, not the session id (VAL-PROV-016).
+        let projectName = summary.cwd ?? Self.decodeProjectName(projectDirName)
         let sessionId = summary.id ?? sessionDir.lastPathComponent
         let model = summary.model ?? ""
 
@@ -261,25 +273,46 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                 health.malformedLines += 1
                 continue
             }
+            // Wrong-shape lines (valid JSON without the expected
+            // params/update/sessionUpdate shape) are typed malformed, never
+            // silent skips (VAL-PROV-007). A `turn_completed` frame without
+            // a usage object is a legitimate variant (cancelled/error turns
+            // carry no usage in real sessions).
             guard let params = json["params"] as? [String: Any],
                   let update = params["update"] as? [String: Any],
-                  update["sessionUpdate"] as? String == "turn_completed",
-                  let frameUsage = update["usage"] as? [String: Any] else {
+                  let sessionUpdate = update["sessionUpdate"] as? String else {
+                health.malformedLines += 1
                 continue
             }
-            let input = Self.strictInt(frameUsage["inputTokens"]) ?? 0
-            let output = Self.strictInt(frameUsage["outputTokens"]) ?? 0
-            let cached = Self.strictInt(frameUsage["cachedReadTokens"]) ?? 0
-            if input > 0 || output > 0 || cached > 0 {
-                usage.inputTokens += input
-                usage.outputTokens += output
-                usage.cacheReadTokens += cached
-                found = true
+            if sessionUpdate == "turn_completed" {
+                if let frameUsage = update["usage"] as? [String: Any] {
+                    var malformed = false
+                    let input = Self.strictInt(frameUsage["inputTokens"], malformed: &malformed)
+                    let output = Self.strictInt(frameUsage["outputTokens"], malformed: &malformed)
+                    let cached = Self.strictInt(frameUsage["cachedReadTokens"], malformed: &malformed)
+                    if malformed {
+                        health.malformedLines += 1
+                    }
+                    if input > 0 || output > 0 || cached > 0 {
+                        usage.inputTokens = Self.addingChecked(usage.inputTokens, input)
+                        usage.outputTokens = Self.addingChecked(usage.outputTokens, output)
+                        usage.cacheReadTokens = Self.addingChecked(usage.cacheReadTokens, cached)
+                        found = true
+                    }
+                } else if let present = update["usage"], !(present is NSNull) {
+                    // A present-but-wrong-typed usage object is malformed.
+                    health.malformedLines += 1
+                }
             }
-            if let timestamp = json["timestamp"] as? Double {
+            if let timestamp = Self.validEpochTimestamp(json["timestamp"]) {
                 let date = Date(timeIntervalSince1970: timestamp)
                 if usage.startTime == nil { usage.startTime = date }
                 usage.endTime = date
+            } else if json["timestamp"] != nil, !(json["timestamp"] is NSNull) {
+                // A present-but-invalid numeric timestamp degrades the
+                // session honestly; it never emits an epoch-zero row
+                // (VAL-PROV-015).
+                health.malformedLines += 1
             }
         }
 
@@ -301,18 +334,34 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                 health.malformedLines += 1
                 continue
             }
-            guard json["type"] as? String == "turn_ended",
-                  let frameUsage = json["usage"] as? [String: Any] else {
+            // Wrong-shape lines (valid JSON without the expected
+            // type/usage shape) are typed malformed, never silent skips
+            // (VAL-PROV-007). A `turn_ended` frame without a usage object
+            // is a legitimate variant (real sessions carry usage only in
+            // updates.jsonl).
+            guard let type = json["type"] as? String else {
+                health.malformedLines += 1
                 continue
             }
-            let input = Self.strictInt(frameUsage["inputTokens"]) ?? 0
-            let output = Self.strictInt(frameUsage["outputTokens"]) ?? 0
-            let cached = Self.strictInt(frameUsage["cachedReadTokens"]) ?? 0
-            if input > 0 || output > 0 || cached > 0 {
-                usage.inputTokens += input
-                usage.outputTokens += output
-                usage.cacheReadTokens += cached
-                found = true
+            if type == "turn_ended" {
+                if let frameUsage = json["usage"] as? [String: Any] {
+                    var malformed = false
+                    let input = Self.strictInt(frameUsage["inputTokens"], malformed: &malformed)
+                    let output = Self.strictInt(frameUsage["outputTokens"], malformed: &malformed)
+                    let cached = Self.strictInt(frameUsage["cachedReadTokens"], malformed: &malformed)
+                    if malformed {
+                        health.malformedLines += 1
+                    }
+                    if input > 0 || output > 0 || cached > 0 {
+                        usage.inputTokens = Self.addingChecked(usage.inputTokens, input)
+                        usage.outputTokens = Self.addingChecked(usage.outputTokens, output)
+                        usage.cacheReadTokens = Self.addingChecked(usage.cacheReadTokens, cached)
+                        found = true
+                    }
+                } else if let present = json["usage"], !(present is NSNull) {
+                    // A present-but-wrong-typed usage object is malformed.
+                    health.malformedLines += 1
+                }
             }
             if let timestamp = json["ts"] as? String,
                let date = Self.parseTimestamp(timestamp) {
@@ -398,7 +447,14 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                 health.malformedLines += 1
                 continue
             }
-            let type = json["type"] as? String ?? ""
+            // Wrong-shape lines (valid JSON without a string `type`) are
+            // typed malformed, never silent skips (VAL-PROV-007). Content
+            // is legitimately absent on some real lines (tool results,
+            // reasoning); those are skipped without degrading.
+            guard let type = json["type"] as? String else {
+                health.malformedLines += 1
+                continue
+            }
             let content = Self.extractContent(from: json)
             guard !content.isEmpty else { continue }
 
@@ -449,8 +505,36 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
     /// (`%2FUsers%2Falbertonunez` → `/Users/albertonunez`). Percent-escapes
     /// and non-ASCII names decode exactly; undecodable names are returned
     /// unchanged (VAL-PROV-016).
+    ///
+    /// The real agent double-encodes spaces in project dirs
+    /// (`My%2520App` → `My App`), so decoding repeats until stable with a
+    /// bounded safe loop (max 8 passes — each pass strictly shrinks the
+    /// string, so a stable result is reached in at most the number of
+    /// `%`-escapes; the bound only guards pathological inputs). A pass that
+    /// fails to decode (e.g. a lone `%`) stops the loop and keeps the last
+    /// successfully decoded form.
     static func decodeProjectName(_ slug: String) -> String {
-        slug.removingPercentEncoding ?? slug
+        var current = slug
+        for _ in 0..<8 {
+            guard let decoded = current.removingPercentEncoding else { break }
+            if decoded == current { break }
+            current = decoded
+        }
+        return current
+    }
+
+    /// Validates a numeric epoch-seconds update timestamp: it must be a
+    /// finite, positive number (booleans, zero, negatives, NaN/infinity,
+    /// and non-numeric values are rejected). Invalid timestamps never emit
+    /// epoch-zero rows (VAL-PROV-015).
+    static func validEpochTimestamp(_ value: Any?) -> TimeInterval? {
+        guard let number = value as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID() else {
+            return nil
+        }
+        let double = number.doubleValue
+        guard double.isFinite, double > 0 else { return nil }
+        return double
     }
 
     /// ISO-8601 with optional fractional seconds and optional non-UTC offsets.
@@ -475,19 +559,56 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
 
     /// Strict integer extraction: rejects booleans, fractional values, and
     /// non-finite numbers (mirrors the daemon's strict JSON decoding).
-    static func strictInt(_ value: Any?) -> Int? {
-        guard let number = value as? NSNumber,
-              CFGetTypeID(number) != CFBooleanGetTypeID() else {
-            return nil
+    ///
+    /// The upper bound is checked with EXACT JSON-number/integer validation
+    /// (`Int64(exactly:)` on the bridged value) — never `Double(Int.max)`,
+    /// which rounds to 2^63 and is not representable as an Int. A JSON
+    /// number at the 64-bit boundary is rejected instead of trapping at
+    /// `Int(double)` (usage-parsers scrutiny, reviewer issue 3).
+    ///
+    /// `malformed` is set when the field is PRESENT but not a valid
+    /// non-negative integer (boolean, fractional, out-of-range, non-numeric)
+    /// so the caller can degrade parse health instead of silently coercing
+    /// to zero (VAL-PROV-007). Absent/null fields are not malformed.
+    static func strictInt(_ value: Any?, malformed: inout Bool) -> Int {
+        guard let number = value as? NSNumber else {
+            if value != nil, !(value is NSNull) {
+                malformed = true
+            }
+            return 0
         }
-        let double = number.doubleValue
-        guard double.isFinite,
-              double >= 0,
-              double <= Double(Int.max),
-              double.rounded() == double else {
-            return nil
+        guard CFGetTypeID(number) != CFBooleanGetTypeID(),
+              let int64 = Self.exactInt64(number),
+              int64 >= 0,
+              let int = Int(exactly: int64) else {
+            malformed = true
+            return 0
         }
-        return Int(double)
+        return int
+    }
+
+    /// Exact JSON-number → Int64 conversion. Integer-backed NSNumber values
+    /// bridge directly; floating-point-backed values convert only when the
+    /// value is finite and integral (fractional values are rejected, and
+    /// `Int64(exactly:)` returns nil for values beyond the representable
+    /// range — including the Double(Int64.max) boundary trap, which rounds
+    /// to 2^63).
+    private static func exactInt64(_ number: NSNumber) -> Int64? {
+        let type = String(cString: number.objCType)
+        if type == "d" || type == "f" {
+            let double = number.doubleValue
+            guard double.isFinite else { return nil }
+            return Int64(exactly: double)
+        }
+        return number as? Int64
+    }
+
+    /// Checked accumulation: a sum that would overflow Int.max saturates at
+    /// Int.max instead of trapping (untrusted usage input never crashes the
+    /// parser; the saturated row is still honest about the magnitude).
+    static func addingChecked(_ lhs: Int, _ rhs: Int) -> Int {
+        let (sum, overflow) = lhs.addingReportingOverflow(rhs)
+        return overflow ? Int.max : sum
     }
 
     private static func extractContent(from json: [String: Any]) -> String {

@@ -287,6 +287,210 @@ final class PiParserTests: XCTestCase {
         XCTAssertEqual(session?.cacheCreationTokens, 50)
     }
 
+    // MARK: strictness repair — wrong-shape lines and malformed usage fields
+
+    func test_wrongShapeMessageLineDegradesHealthWithoutDroppingValidRows() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pi-wrongshape-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectDir = tempDir.appendingPathComponent("--Users-test--proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let file = projectDir.appendingPathComponent("2026-08-11T00-00-00-000Z_ws1.jsonl")
+        let sessionLine = "{\"type\":\"session\",\"version\":3,\"id\":\"ws1\","
+            + "\"timestamp\":\"2026-08-11T00:00:00.000Z\",\"cwd\":\"/Users/test/proj\"}"
+        let badLine = "{\"type\":\"message\",\"id\":\"bad\",\"timestamp\":\"2026-08-11T00:00:01.000Z\","
+            + "\"message\":\"not-a-dict\"}"
+        let goodLine = "{\"type\":\"message\",\"id\":\"good\",\"timestamp\":\"2026-08-11T00:00:02.000Z\","
+            + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],"
+            + "\"model\":\"deepseek-v4-flash\","
+            + "\"usage\":{\"input\":100,\"output\":50,\"cacheRead\":0,\"cacheWrite\":0}}}"
+        let content = sessionLine + "\n" + badLine + "\n" + goodLine
+        try content.write(to: file, atomically: true, encoding: .utf8)
+
+        let parser = makeParser(sessionsRoot: tempDir.path)
+        let result = try await parser.parse()
+        let session = result.usages.first { $0.sessionId == "ws1" }
+        XCTAssertNotNil(session, "Valid rows must survive wrong-shape siblings")
+        XCTAssertEqual(session?.inputTokens, 100)
+        XCTAssertEqual(session?.outputTokens, 50)
+        XCTAssertTrue(parser.lastParseHealth.isDegraded, "Wrong-shape line must degrade parse health")
+        XCTAssertGreaterThan(parser.lastParseHealth.malformedLines, 0)
+    }
+
+    func test_malformedUsageFieldDegradesHealthNotSilentlyCoerced() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pi-badusage-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectDir = tempDir.appendingPathComponent("--Users-test--proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let file = projectDir.appendingPathComponent("2026-08-11T00-00-00-000Z_bu1.jsonl")
+        let sessionLine = "{\"type\":\"session\",\"version\":3,\"id\":\"bu1\","
+            + "\"timestamp\":\"2026-08-11T00:00:00.000Z\",\"cwd\":\"/Users/test/proj\"}"
+        let messageLine = "{\"type\":\"message\",\"id\":\"m1\",\"timestamp\":\"2026-08-11T00:00:01.000Z\","
+            + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],"
+            + "\"model\":\"deepseek-v4-flash\",\"usage\":{\"input\":\"not-a-number\",\"output\":130,"
+            + "\"cacheRead\":0,\"cacheWrite\":0}}}"
+        let content = sessionLine + "\n" + messageLine
+        try content.write(to: file, atomically: true, encoding: .utf8)
+
+        let parser = makeParser(sessionsRoot: tempDir.path)
+        let result = try await parser.parse()
+        let session = result.usages.first { $0.sessionId == "bu1" }
+        XCTAssertNotNil(session, "Row with a valid output field must survive")
+        XCTAssertEqual(session?.inputTokens, 0, "Malformed input must not be coerced")
+        XCTAssertEqual(session?.outputTokens, 130, "Valid output must be preserved")
+        XCTAssertTrue(parser.lastParseHealth.isDegraded, "Malformed usage field must degrade parse health")
+        XCTAssertGreaterThan(parser.lastParseHealth.malformedLines, 0)
+    }
+
+    // MARK: strictness repair — line-1 header authority
+
+    func test_line1HeaderAuthority_laterSessionRecordCannotReplaceIdentity() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pi-header-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectDir = tempDir.appendingPathComponent("--Users-test--proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let file = projectDir.appendingPathComponent("2026-08-11T00-00-00-000Z_h1.jsonl")
+        let header = "{\"type\":\"session\",\"version\":3,\"id\":\"AAA\","
+            + "\"timestamp\":\"2026-08-11T01:00:00.000Z\",\"cwd\":\"/Users/alpha\"}"
+        let laterHeader = "{\"type\":\"session\",\"version\":3,\"id\":\"BBB\","
+            + "\"timestamp\":\"2026-08-11T02:00:00.000Z\",\"cwd\":\"/Users/beta\"}"
+        let messageLine = "{\"type\":\"message\",\"id\":\"m1\",\"timestamp\":\"2026-08-11T02:00:01.000Z\","
+            + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],"
+            + "\"model\":\"deepseek-v4-flash\","
+            + "\"usage\":{\"input\":100,\"output\":50,\"cacheRead\":0,\"cacheWrite\":0}}}"
+        let content = header + "\n" + laterHeader + "\n" + messageLine
+        try content.write(to: file, atomically: true, encoding: .utf8)
+
+        let parser = makeParser(sessionsRoot: tempDir.path)
+        let result = try await parser.parse()
+        let session = result.usages.first { $0.sessionId == "AAA" }
+        XCTAssertNotNil(session, "Line-1 session identity must win")
+        XCTAssertNil(result.usages.first { $0.sessionId == "BBB" }, "Later session record must never replace identity")
+        XCTAssertEqual(session?.projectName, "/Users/alpha")
+        XCTAssertEqual(session?.startTime, Self.isoDate("2026-08-11T01:00:00.000Z"))
+        XCTAssertEqual(session?.endTime, Self.isoDate("2026-08-11T02:00:01.000Z"))
+        XCTAssertFalse(parser.lastParseHealth.isDegraded, "Well-formed duplicate session record is not malformed")
+    }
+
+    func test_malformedFirstHeaderSkipsTranscriptHonestly() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pi-badheader-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectDir = tempDir.appendingPathComponent("--Users-test--proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let file = projectDir.appendingPathComponent("2026-08-11T00-00-00-000Z_bh1.jsonl")
+        let badHeader = "{\"type\":\"session\",\"version\":3,\"id\":123,"
+            + "\"timestamp\":\"2026-08-11T01:00:00.000Z\",\"cwd\":\"/Users/alpha\"}"
+        let messageLine = "{\"type\":\"message\",\"id\":\"m1\",\"timestamp\":\"2026-08-11T01:00:01.000Z\","
+            + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],"
+            + "\"model\":\"deepseek-v4-flash\","
+            + "\"usage\":{\"input\":100,\"output\":50,\"cacheRead\":0,\"cacheWrite\":0}}}"
+        let content = badHeader + "\n" + messageLine
+        try content.write(to: file, atomically: true, encoding: .utf8)
+
+        let parser = makeParser(sessionsRoot: tempDir.path)
+        let result = try await parser.parse()
+        XCTAssertTrue(result.usages.isEmpty, "Malformed header must not yield a row with fabricated identity")
+        XCTAssertTrue(parser.lastParseHealth.isDegraded)
+        XCTAssertGreaterThan(parser.lastParseHealth.malformedLines, 0)
+    }
+
+    func test_transcriptWithoutSessionRecordIsSkippedHonestly() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pi-nosession-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectDir = tempDir.appendingPathComponent("--Users-test--proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let file = projectDir.appendingPathComponent("2026-08-11T00-00-00-000Z_ns1.jsonl")
+        let messageLine = "{\"type\":\"message\",\"id\":\"m1\",\"timestamp\":\"2026-08-11T01:00:01.000Z\","
+            + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],"
+            + "\"model\":\"deepseek-v4-flash\","
+            + "\"usage\":{\"input\":100,\"output\":50,\"cacheRead\":0,\"cacheWrite\":0}}}"
+        try messageLine.write(to: file, atomically: true, encoding: .utf8)
+
+        let parser = makeParser(sessionsRoot: tempDir.path)
+        let result = try await parser.parse()
+        XCTAssertTrue(result.usages.isEmpty, "No session record means no row with fabricated identity")
+        XCTAssertTrue(parser.lastParseHealth.isDegraded, "First line without a session record is wrong-shape")
+    }
+
+    // MARK: strictness repair — exact integer bounds and checked accumulation
+
+    func test_strictIntExactBoundaryValues() {
+        var malformed = false
+        // Int64.max is representable as Int on 64-bit.
+        XCTAssertEqual(PiParser.strictInt(NSNumber(value: Int64.max), malformed: &malformed), Int.max)
+        XCTAssertFalse(malformed)
+        // 2^63 (Double(Int.max) rounds to this) must be rejected, never trap.
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt(NSNumber(value: Double(Int64.max)), malformed: &malformed), 0)
+        XCTAssertTrue(malformed, "Double(Int.max) boundary value must be rejected")
+        // Huge non-integral values are rejected.
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt(NSNumber(value: 1e19), malformed: &malformed), 0)
+        XCTAssertTrue(malformed)
+        // Booleans, fractional, negative, and string values are rejected.
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt(NSNumber(value: true), malformed: &malformed), 0)
+        XCTAssertTrue(malformed)
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt(NSNumber(value: 5.5), malformed: &malformed), 0)
+        XCTAssertTrue(malformed)
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt(NSNumber(value: -1), malformed: &malformed), 0)
+        XCTAssertTrue(malformed)
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt("5", malformed: &malformed), 0)
+        XCTAssertTrue(malformed)
+        // Integral doubles and absent/null fields are accepted.
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt(NSNumber(value: 5.0), malformed: &malformed), 5)
+        XCTAssertFalse(malformed)
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt(nil, malformed: &malformed), 0)
+        XCTAssertFalse(malformed, "Absent field is not malformed")
+        malformed = false
+        XCTAssertEqual(PiParser.strictInt(NSNull(), malformed: &malformed), 0)
+        XCTAssertFalse(malformed, "Null field is not malformed")
+    }
+
+    func test_checkedAccumulationSaturatesInsteadOfTrapping() {
+        XCTAssertEqual(PiParser.addingChecked(10, 5), 15)
+        XCTAssertEqual(PiParser.addingChecked(Int.max, 1), Int.max, "Overflow must saturate, never trap")
+        XCTAssertEqual(PiParser.addingChecked(Int.max - 1, 1), Int.max)
+    }
+
+    func test_hugeUsageValuesNeverTrap() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pi-huge-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectDir = tempDir.appendingPathComponent("--Users-test--proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let file = projectDir.appendingPathComponent("2026-08-11T00-00-00-000Z_hg1.jsonl")
+        let sessionLine = "{\"type\":\"session\",\"version\":3,\"id\":\"hg1\","
+            + "\"timestamp\":\"2026-08-11T00:00:00.000Z\",\"cwd\":\"/Users/test/proj\"}"
+        let line1 = "{\"type\":\"message\",\"id\":\"m1\",\"timestamp\":\"2026-08-11T00:00:01.000Z\","
+            + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],"
+            + "\"model\":\"deepseek-v4-flash\",\"usage\":{\"input\":9223372036854775807,\"output\":10,"
+            + "\"cacheRead\":0,\"cacheWrite\":0}}}"
+        let line2 = "{\"type\":\"message\",\"id\":\"m2\",\"timestamp\":\"2026-08-11T00:00:02.000Z\","
+            + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],"
+            + "\"model\":\"deepseek-v4-flash\",\"usage\":{\"input\":9223372036854775808,\"output\":20,"
+            + "\"cacheRead\":0,\"cacheWrite\":0}}}"
+        let content = sessionLine + "\n" + line1 + "\n" + line2
+        try content.write(to: file, atomically: true, encoding: .utf8)
+
+        let parser = makeParser(sessionsRoot: tempDir.path)
+        let result = try await parser.parse()
+        let session = result.usages.first { $0.sessionId == "hg1" }
+        XCTAssertNotNil(session, "Boundary usage values must not crash the parser")
+        XCTAssertEqual(session?.inputTokens, Int.max, "Int64.max is accepted; 2^63 is rejected")
+        XCTAssertEqual(session?.outputTokens, 30)
+        XCTAssertTrue(parser.lastParseHealth.isDegraded, "2^63 usage value must degrade parse health")
+    }
+
     // MARK: helpers
 
     private static func isoDate(_ string: String) -> Date? {

@@ -154,6 +154,7 @@ final class PiParser: LogParser, @unchecked Sendable {
         var sessionID: String?
         var cwd: String?
         var sawAnyLine = false
+        var headerCaptured = false
 
         for line in handle.readAllUTF8LinesLossy() {
             guard !line.isEmpty else { continue }
@@ -163,11 +164,39 @@ final class PiParser: LogParser, @unchecked Sendable {
                 health.malformedLines += 1
                 continue
             }
-            ingestLine(json, sessionID: &sessionID, cwd: &cwd, into: &accumulator)
+            if !headerCaptured {
+                // Line-1 authority (VAL-PROV-011/016): the first nonblank
+                // session record is the authoritative header. Valid JSON
+                // before it is a wrong-shape line; a malformed header or a
+                // transcript with no session record at all is skipped
+                // honestly — later records never replace session identity
+                // or start time.
+                if json["type"] as? String == "session" {
+                    guard Self.isValidSessionRecord(json) else {
+                        health.malformedLines += 1
+                        return nil
+                    }
+                    headerCaptured = true
+                    sessionID = (json["id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                    cwd = (json["cwd"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                    if let timestamp = json["timestamp"] as? String,
+                       let date = Self.parseTimestamp(timestamp) {
+                        accumulator.startTime = date
+                        accumulator.endTime = date
+                    }
+                } else {
+                    health.malformedLines += 1
+                }
+                continue
+            }
+            ingestLine(json, into: &accumulator, health: &health)
         }
 
         // Zero-byte and blank-lines-only files are silent no-ops (VAL-PROV-013).
         guard sawAnyLine else { return nil }
+        // A transcript with no session record never yields a row with
+        // fabricated identity (line-1 authority).
+        guard headerCaptured else { return nil }
 
         let projectName = cwd ?? Self.decodeProjectName(projectDirName)
         let sessionId = sessionID ?? file.deletingPathExtension().lastPathComponent
@@ -235,9 +264,8 @@ final class PiParser: LogParser, @unchecked Sendable {
 
     private func ingestLine(
         _ json: [String: Any],
-        sessionID: inout String?,
-        cwd: inout String?,
-        into accumulator: inout PiSessionAccumulator
+        into accumulator: inout PiSessionAccumulator,
+        health: inout TranscriptParseHealth
     ) {
         let type = json["type"] as? String ?? ""
 
@@ -246,24 +274,28 @@ final class PiParser: LogParser, @unchecked Sendable {
         // (the session is skipped honestly when none parse).
         if let timestamp = json["timestamp"] as? String,
            let date = Self.parseTimestamp(timestamp) {
-            if accumulator.startTime == nil { accumulator.startTime = date }
             accumulator.endTime = date
         }
 
         switch type {
         case "session":
-            if let id = json["id"] as? String, !id.isEmpty {
-                sessionID = id
-            }
-            if let path = json["cwd"] as? String, !path.isEmpty {
-                cwd = path
+            // Line-1 authority: a later session record is not the header.
+            // A well-formed duplicate is ignored; a malformed one degrades
+            // the parse health instead of being silently skipped.
+            if !Self.isValidSessionRecord(json) {
+                health.malformedLines += 1
             }
         case "model_change":
             if let model = json["modelId"] as? String, !model.isEmpty {
                 accumulator.model = TokenExtractionUtility.normalizeModelName(model)
             }
         case "message":
-            guard let message = json["message"] as? [String: Any] else { return }
+            guard let message = json["message"] as? [String: Any] else {
+                // Valid JSON with the wrong shape: typed malformed, never a
+                // silent skip (VAL-PROV-007).
+                health.malformedLines += 1
+                return
+            }
             let role = (message["role"] as? String ?? "").lowercased()
             let content = Self.extractContent(from: message)
 
@@ -294,18 +326,29 @@ final class PiParser: LogParser, @unchecked Sendable {
             }
 
             if let usage = message["usage"] as? [String: Any] {
-                let input = Self.strictInt(usage["input"]) ?? 0
-                let output = Self.strictInt(usage["output"]) ?? 0
-                let cacheRead = Self.strictInt(usage["cacheRead"]) ?? 0
-                let cacheWrite = Self.strictInt(usage["cacheWrite"]) ?? 0
+                // Strict usage primitives: a present-but-malformed usage
+                // field degrades the parse health instead of being silently
+                // coerced to zero (VAL-PROV-007). Absent fields are simply
+                // not counted.
+                var malformed = false
+                let input = Self.strictInt(usage["input"], malformed: &malformed)
+                let output = Self.strictInt(usage["output"], malformed: &malformed)
+                let cacheRead = Self.strictInt(usage["cacheRead"], malformed: &malformed)
+                let cacheWrite = Self.strictInt(usage["cacheWrite"], malformed: &malformed)
+                if malformed {
+                    health.malformedLines += 1
+                }
                 if input > 0 || output > 0 || cacheRead > 0 || cacheWrite > 0 {
-                    accumulator.inputTokens += input
-                    accumulator.outputTokens += output
-                    accumulator.cacheReadTokens += cacheRead
-                    accumulator.cacheCreationTokens += cacheWrite
+                    accumulator.inputTokens = Self.addingChecked(accumulator.inputTokens, input)
+                    accumulator.outputTokens = Self.addingChecked(accumulator.outputTokens, output)
+                    accumulator.cacheReadTokens = Self.addingChecked(accumulator.cacheReadTokens, cacheRead)
+                    accumulator.cacheCreationTokens = Self.addingChecked(accumulator.cacheCreationTokens, cacheWrite)
                 }
             }
         default:
+            // Unknown record types are ignored: the real transcript format
+            // evolves (thinking_level_change, future event kinds) and an
+            // unknown type is not a malformed line.
             break
         }
     }
@@ -357,19 +400,67 @@ final class PiParser: LogParser, @unchecked Sendable {
 
     /// Strict integer extraction: rejects booleans, fractional values, and
     /// non-finite numbers (mirrors the daemon's strict JSON decoding).
-    static func strictInt(_ value: Any?) -> Int? {
-        guard let number = value as? NSNumber,
-              CFGetTypeID(number) != CFBooleanGetTypeID() else {
-            return nil
+    ///
+    /// The upper bound is checked with EXACT JSON-number/integer validation
+    /// (`Int64(exactly:)` on the bridged value) — never `Double(Int.max)`,
+    /// which rounds to 2^63 and is not representable as an Int. A JSON
+    /// number at the 64-bit boundary is rejected instead of trapping at
+    /// `Int(double)` (usage-parsers scrutiny, reviewer issue 3).
+    ///
+    /// `malformed` is set when the field is PRESENT but not a valid
+    /// non-negative integer (boolean, fractional, out-of-range, non-numeric)
+    /// so the caller can degrade parse health instead of silently coercing
+    /// to zero (VAL-PROV-007). Absent/null fields are not malformed.
+    static func strictInt(_ value: Any?, malformed: inout Bool) -> Int {
+        guard let number = value as? NSNumber else {
+            if value != nil, !(value is NSNull) {
+                malformed = true
+            }
+            return 0
         }
-        let double = number.doubleValue
-        guard double.isFinite,
-              double >= 0,
-              double <= Double(Int.max),
-              double.rounded() == double else {
-            return nil
+        guard CFGetTypeID(number) != CFBooleanGetTypeID(),
+              let int64 = Self.exactInt64(number),
+              int64 >= 0,
+              let int = Int(exactly: int64) else {
+            malformed = true
+            return 0
         }
-        return Int(double)
+        return int
+    }
+
+    /// Exact JSON-number → Int64 conversion. Integer-backed NSNumber values
+    /// bridge directly; floating-point-backed values convert only when the
+    /// value is finite and integral (fractional values are rejected, and
+    /// `Int64(exactly:)` returns nil for values beyond the representable
+    /// range — including the Double(Int64.max) boundary trap, which rounds
+    /// to 2^63).
+    private static func exactInt64(_ number: NSNumber) -> Int64? {
+        let type = String(cString: number.objCType)
+        if type == "d" || type == "f" {
+            let double = number.doubleValue
+            guard double.isFinite else { return nil }
+            return Int64(exactly: double)
+        }
+        return number as? Int64
+    }
+
+    /// Checked accumulation: a sum that would overflow Int.max saturates at
+    /// Int.max instead of trapping (untrusted usage input never crashes the
+    /// parser; the saturated row is still honest about the magnitude).
+    static func addingChecked(_ lhs: Int, _ rhs: Int) -> Int {
+        let (sum, overflow) = lhs.addingReportingOverflow(rhs)
+        return overflow ? Int.max : sum
+    }
+
+    /// Line-1 session-record shape (VAL-PROV-011/016): `type == "session"`
+    /// with a non-empty string `id` and, when present, a string `cwd` and a
+    /// string `timestamp`. A record with a missing/empty id, or a mistyped
+    /// cwd/timestamp, is malformed — it can never become session identity.
+    static func isValidSessionRecord(_ json: [String: Any]) -> Bool {
+        guard let id = json["id"] as? String, !id.isEmpty else { return false }
+        if let cwd = json["cwd"], !(cwd is String) { return false }
+        if let timestamp = json["timestamp"], !(timestamp is String) { return false }
+        return true
     }
 
     private static func extractContent(from message: [String: Any]) -> String {

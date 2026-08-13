@@ -629,8 +629,8 @@ parser appends `agent/sessions` / `sessions`). They are registered in
 
 ### Pi transcripts (`~/.pi/agent/sessions/<project-dir>/*.jsonl`)
 
-- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`.
-- **Usage lines:** `{"type":"message",…,"message":{"role":"assistant","content":[…],"usage":{"input":N,"output":N,"cacheRead":N,"cacheWrite":N,"reasoning":N,"totalTokens":N,"cost":{…}}}}`.
+- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`. The first nonblank session record is the header: it alone determines session identity (`id`), project path (`cwd`), and start time. Later session records never replace it; a transcript whose first line is not a well-formed session record (or whose header is malformed) is skipped honestly and degrades parse health.
+- **Usage lines:** `{"type":"message",…,"message":{"role":"assistant","content":[…],"usage":{"input":N,"output":N,"cacheRead":N,"cacheWrite":N,"reasoning":N,"totalTokens":N,"cost":{…}}}}`. Usage primitives are validated strictly: a present-but-malformed usage field (boolean, fractional, out-of-range, non-numeric) degrades parse health instead of being silently coerced to zero; valid rows survive.
 - **Model:** `message.model` on assistant lines, falling back to `model_change.modelId` events.
 - **Project name (REAL ENCODING, verified 2026-08-12):** session dirs are
   `--` + `-`-joined path components + `--` (e.g.
@@ -653,13 +653,25 @@ parser appends `agent/sessions` / `sessions`). They are registered in
 - **Usage source priority:** `updates.jsonl` `turn_completed` frames
   (`params.update.usage.inputTokens/outputTokens/cachedReadTokens`), then
   `events.jsonl` `turn_ended` frames with a `usage` object. Real sessions
-  verified 2026-08-12 carry usage only in `updates.jsonl`.
+  verified 2026-08-12 carry usage only in `updates.jsonl`. Wrong-shape
+  lines (valid JSON without the expected frame shape) and present-but-
+  malformed usage fields degrade parse health; a `turn_completed`/`turn_ended`
+  frame without a usage object is a legitimate variant (cancelled/error
+  turns carry no usage) and is not malformed.
+- **Numeric update timestamps** (`updates.jsonl` `timestamp`, epoch seconds)
+  are validated for positivity and finiteness; a present-but-invalid
+  numeric timestamp (zero, negative, boolean, non-numeric) degrades the
+  session honestly and never emits an epoch-zero row.
 - **Session metadata:** `summary.json` (`info.id`, `info.cwd`,
   `current_model_id`, `created_at`, `updated_at`); `cwd` is authoritative
   over the URL-decoded dir name.
 - **Project names** are URL-decoded from the session dir name
   (`%2FUsers%2Falbertonunez` → `/Users/albertonunez`); percent-escapes and
-  non-ASCII names decode exactly.
+  non-ASCII names decode exactly. The real agent double-encodes spaces in
+  project dirs (`My%2520App` → `My App`), so the fallback decoder repeats
+  percent-decoding until stable with a bounded safe loop (max 8 passes;
+  each pass strictly shrinks the string, and a pass that fails to decode
+  keeps the last successfully decoded form).
 - **Timestamps:** ISO-8601 with optional fractional seconds; sessions with no
   parseable timestamps are skipped honestly (never epoch-zero).
 - **Parse health:** same `lastParseHealth` surface as PiParser.
