@@ -1,4 +1,5 @@
 @testable import BurnBar
+import Darwin
 import XCTest
 
 // MARK: - Pi Parser Tests
@@ -191,11 +192,14 @@ final class PiParserTests: XCTestCase {
     // MARK: VAL-PROV-013 — empty and zero-byte files
 
     func test_zeroByteFileIsSilentNoOp() async throws {
+        // e222 is the checked-in TRUE zero-byte fixture (round-1 repair: it
+        // previously contained a newline byte). In situ: no row, no crash.
         let result = try await makeParser().parse()
         XCTAssertNil(result.usages.first { $0.sessionId == "019feded-0fb0-7b52-9d6d-b2d26d75e222" })
     }
 
     func test_blankLinesOnlyFileIsSilentNoOp() async throws {
+        // e226 is the checked-in blank-lines-only fixture (3 newline bytes).
         let result = try await makeParser().parse()
         XCTAssertNil(result.usages.first { $0.sessionId == "019feded-0fb0-7b52-9d6d-b2d26d75e226" })
     }
@@ -204,6 +208,50 @@ final class PiParserTests: XCTestCase {
         let result = try await makeParser().parse()
         XCTAssertNotNil(result.usages.first { $0.sessionId == "019feded-0fb0-7b52-9d6d-b2d26d75e223" })
         XCTAssertNotNil(result.usages.first { $0.sessionId == "019feded-0fb0-7b52-9d6d-b2d26d75e127" })
+    }
+
+    func test_zeroByteAndBlankFilesAreHealthyNoOpsInIsolation() async throws {
+        // The checked-in e222 (true 0 bytes) and e226 (blank-lines-only)
+        // fixtures, isolated with the valid e223 sibling: exactly the valid
+        // rows parse and the empty files are healthy no-ops — never a
+        // degraded state (VAL-PROV-013 round-1 gap: the exact no-op tests
+        // must assert NON-degraded parse health).
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pi-empty-health-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectDir = tempDir.appendingPathComponent("--Users-albertonunez--", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let sourceDir = URL(fileURLWithPath: fixturesRoot)
+            .appendingPathComponent("--Users-albertonunez--", isDirectory: true)
+        let names = [
+            "2026-08-11T23-00-00-000Z_019feded-0fb0-7b52-9d6d-b2d26d75e222.jsonl",
+            "2026-08-11T23-55-00-000Z_019feded-0fb0-7b52-9d6d-b2d26d75e226.jsonl",
+            "2026-08-11T23-30-00-000Z_019feded-0fb0-7b52-9d6d-b2d26d75e223.jsonl"
+        ]
+        for name in names {
+            try FileManager.default.copyItem(
+                at: sourceDir.appendingPathComponent(name),
+                to: projectDir.appendingPathComponent(name)
+            )
+        }
+
+        // The checked-in zero-byte fixture is truly 0 bytes (round-1 gap: it
+        // previously contained a newline byte).
+        let zeroByteAttributes = try FileManager.default.attributesOfItem(
+            atPath: projectDir.appendingPathComponent(names[0]).path
+        )
+        let zeroByteSize = (zeroByteAttributes[.size] as? NSNumber)?.intValue
+        XCTAssertEqual(zeroByteSize, 0, "The checked-in zero-byte fixture must be truly 0 bytes")
+
+        let parser = makeParser(sessionsRoot: tempDir.path)
+        let result = try await parser.parse()
+        XCTAssertEqual(result.usages.count, 1, "Exactly the valid sibling parses")
+        XCTAssertNotNil(result.usages.first { $0.sessionId == "019feded-0fb0-7b52-9d6d-b2d26d75e223" })
+        XCTAssertNil(result.usages.first { $0.sessionId == "019feded-0fb0-7b52-9d6d-b2d26d75e222" })
+        XCTAssertNil(result.usages.first { $0.sessionId == "019feded-0fb0-7b52-9d6d-b2d26d75e226" })
+        XCTAssertFalse(parser.lastParseHealth.isDegraded,
+                       "Empty files are a healthy no-op, never a malformed state (VAL-PROV-013)")
+        XCTAssertEqual(parser.lastParseHealth.malformedLines, 0)
     }
 
     // MARK: VAL-PROV-014 — concurrent write never yields torn rows
@@ -216,6 +264,61 @@ final class PiParserTests: XCTestCase {
         XCTAssertNotNil(session)
         XCTAssertEqual(session?.inputTokens, 700)
         XCTAssertEqual(session?.outputTokens, 140)
+    }
+
+    func test_concurrentWriterAppendingTornTailNeverYieldsTornRows() async throws {
+        // VAL-PROV-014 round-1 gap: the static torn-tail fixture is fully
+        // written before parse begins. This test uses a FIFO transcript:
+        // the parser blocks in open() while a detached writer task writes
+        // 500 complete rows and then appends an unterminated JSONL line
+        // (no trailing newline) — the append lands WHILE parsing is in
+        // flight, and only complete rows are emitted. Never a half-parsed
+        // row, never a crash.
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pi-concurrent-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let projectDir = tempDir.appendingPathComponent("--Users-test--proj", isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let file = projectDir.appendingPathComponent("2026-08-11T00-00-00-000Z_cw1.jsonl")
+        XCTAssertEqual(mkfifo(file.path, 0o600), 0, "mkfifo failed with errno \(errno)")
+
+        let writer = Task.detached(priority: .userInitiated) {
+            let handle = try FileHandle(forWritingTo: file)
+            defer { try? handle.close() }
+            var lines = [
+                "{\"type\":\"session\",\"version\":3,\"id\":\"cw1\","
+                    + "\"timestamp\":\"2026-08-11T00:00:00.000Z\",\"cwd\":\"/Users/test/proj\"}"
+            ]
+            for index in 0..<500 {
+                lines.append(
+                    "{\"type\":\"message\",\"id\":\"m\(index)\","
+                        + "\"timestamp\":\"2026-08-11T00:00:0\(index % 10).000Z\","
+                        + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}],"
+                        + "\"model\":\"deepseek-v4-flash\","
+                        + "\"usage\":{\"input\":100,\"output\":50,\"cacheRead\":0,\"cacheWrite\":0}}}"
+                )
+            }
+            try handle.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))
+            // Append an unterminated line (no trailing newline) while the
+            // parser is in flight: a partial record that must be skipped,
+            // never half-parsed.
+            let torn = "{\"type\":\"message\",\"id\":\"torn\",\"timestamp\":\"2026-08-11T00:00:05.000Z\","
+                + "\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"torn \u{1F680}"
+            try handle.write(contentsOf: Data(torn.utf8))
+        }
+
+        let parser = makeParser(sessionsRoot: tempDir.path)
+        let result = try await parser.parse()
+        try await writer.value
+
+        let session = result.usages.first { $0.sessionId == "cw1" }
+        XCTAssertNotNil(session, "Complete rows must survive the concurrent torn append")
+        XCTAssertEqual(session?.inputTokens, 500 * 100, "All 500 complete rows must be counted")
+        XCTAssertEqual(session?.outputTokens, 500 * 50)
+        XCTAssertEqual(result.usages.count, 1, "The torn tail must never yield a second row")
+        XCTAssertTrue(parser.lastParseHealth.isDegraded,
+                      "The torn tail is malformed input and must degrade parse health")
+        XCTAssertGreaterThan(parser.lastParseHealth.malformedLines, 0)
     }
 
     // MARK: VAL-PROV-015 — timestamp variants
