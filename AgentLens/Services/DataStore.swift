@@ -792,6 +792,36 @@ final class DataStore {
         Self.makeProviderSummaries(from: usages(in: dateRange))
     }
 
+    /// Provider rollups for sessions whose span overlaps `dateRange`, including
+    /// explicit zero-data entries for every tracked provider. Zero-data
+    /// providers (e.g. grokBot, whose parser is an honest no-op) stay reachable
+    /// in the usage surface instead of vanishing from the sidebar (VAL-PROV-019).
+    /// Data-bearing providers are ranked by cost first; zero-data entries sort
+    /// below them, tie-broken by provider name for determinism.
+    func providerSummariesIncludingZeroData(in dateRange: ClosedRange<Date>?) -> [ProviderSummary] {
+        let withData = Self.makeProviderSummaries(from: usages(in: dateRange))
+        var byProvider: [AgentProvider: ProviderSummary] = [:]
+        for summary in withData {
+            byProvider[summary.provider] = summary
+        }
+        let zeroData = AgentProvider.allCases.compactMap { provider -> ProviderSummary? in
+            guard byProvider[provider] == nil else { return nil }
+            return ProviderSummary(
+                provider: provider,
+                totalCost: 0,
+                totalTokens: 0,
+                totalInputTokens: 0,
+                totalOutputTokens: 0,
+                sessionCount: 0,
+                modelBreakdown: []
+            )
+        }
+        return (withData + zeroData).sorted {
+            if $0.totalCost != $1.totalCost { return $0.totalCost > $1.totalCost }
+            return $0.provider.rawValue < $1.provider.rawValue
+        }
+    }
+
     private static func makeProviderSummaries(from usages: [TokenUsage]) -> [ProviderSummary] {
         AgentProvider.allCases.compactMap { provider -> ProviderSummary? in
             let providerUsages = usages.filter { $0.provider == provider }

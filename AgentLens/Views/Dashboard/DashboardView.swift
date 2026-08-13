@@ -379,7 +379,7 @@ struct DashboardView: View {
                     }
 
                     if viewMode == .agents {
-                        ForEach(Array(dashboardProviderSummaries.enumerated()), id: \.element.id) { index, summary in
+                        ForEach(Array(dashboardSidebarProviderSummaries.enumerated()), id: \.element.id) { index, summary in
                             SidebarItem(
                                 provider: summary.provider,
                                 isSelected: mainRoute == .provider(summary.provider),
@@ -514,7 +514,7 @@ struct DashboardView: View {
                     )
                 }
 
-                if viewMode == .agents ? dashboardProviderSummaries.isEmpty : dashboardModelSummaries.isEmpty {
+                if viewMode == .agents ? dashboardSidebarProviderSummaries.isEmpty : dashboardModelSummaries.isEmpty {
                     Text(viewMode == .agents ? "No providers in this window" : "No models in this window")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -564,7 +564,7 @@ struct DashboardView: View {
     private var sidebarRouteOrder: [DashboardMainRoute] {
         var routes: [DashboardMainRoute] = [.overview]
         if viewMode == .agents {
-            routes.append(contentsOf: dashboardProviderSummaries.map { .provider($0.provider) })
+            routes.append(contentsOf: dashboardSidebarProviderSummaries.map { .provider($0.provider) })
         } else {
             routes.append(contentsOf: dashboardModelSummaries.map { .model($0.modelName) })
         }
@@ -1060,6 +1060,12 @@ struct DashboardView: View {
     /// Sidebar, overview rankings, and hero totals match the toolbar time window.
     private var dashboardProviderSummaries: [ProviderSummary] {
         dataStore.providerSummaries(in: dashboardDateRange)
+    }
+    /// Agents-mode sidebar entries: data-bearing providers plus explicit
+    /// zero-data entries so honest no-op providers (grokBot) stay reachable
+    /// and labeled — never hidden, never fabricated (VAL-PROV-019).
+    private var dashboardSidebarProviderSummaries: [ProviderSummary] {
+        dataStore.providerSummariesIncludingZeroData(in: dashboardDateRange)
     }
 
     private var dashboardModelSummaries: [ModelSummary] {

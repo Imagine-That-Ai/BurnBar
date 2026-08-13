@@ -1,6 +1,53 @@
 import SwiftUI
 import Charts
 
+// MARK: - Provider Detail Metrics
+
+/// One metric tile rendered in the provider detail header.
+struct ProviderDetailMetric: Equatable {
+    let label: String
+    let value: String
+}
+
+/// Single presentation helper for provider-detail header metrics. Unsupported
+/// providers (e.g. grokBot) render typed support/confidence labels from the
+/// canonical `ProviderSupportLevel`/`DataConfidence` copy — never an
+/// exact-looking "$0.00"/zero metric (VAL-PROV-010). Zero-usage providers
+/// render "No data" for averages instead of fabricated zeros.
+enum ProviderDetailMetrics {
+    static func headerMetrics(
+        provider: AgentProvider,
+        usages: [TokenUsage],
+        displayMode: UsageDisplayMode,
+        topModelName: String
+    ) -> [ProviderDetailMetric] {
+        if provider.supportLevel == .unsupported {
+            return [
+                ProviderDetailMetric(label: "Tracking", value: provider.supportLevel.label),
+                ProviderDetailMetric(label: "Data confidence", value: provider.dataConfidence.label),
+                ProviderDetailMetric(label: "Top Model", value: topModelName)
+            ]
+        }
+
+        let cost = usages.reduce(0) { $0 + $1.cost }
+        let tokens = usages.reduce(0) { $0 + $1.totalTokens }
+        let primary: String
+        let average: String
+        if displayMode == .currency {
+            primary = cost.formatAsCost()
+            average = usages.isEmpty ? "No data" : (cost / Double(usages.count)).formatAsCost()
+        } else {
+            primary = tokens.formatAsTokenVolume()
+            average = usages.isEmpty ? "No data" : (tokens / usages.count).formatAsTokenVolume()
+        }
+        return [
+            ProviderDetailMetric(label: displayMode == .currency ? "Spend" : "Volume", value: primary),
+            ProviderDetailMetric(label: displayMode == .currency ? "Avg session" : "Avg session (tokens)", value: average),
+            ProviderDetailMetric(label: "Top Model", value: topModelName)
+        ]
+    }
+}
+
 // MARK: - Provider Card
 
 struct ProviderCard: View {
@@ -237,15 +284,9 @@ struct ProviderDashboardView: View {
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
 
                         HStack(spacing: DesignSystem.Spacing.md) {
-                            providerMetric(
-                                label: settingsManager.usageDisplayMode == .currency ? "Spend" : "Volume",
-                                value: primaryProviderMetric
-                            )
-                            providerMetric(
-                                label: settingsManager.usageDisplayMode == .currency ? "Avg session" : "Avg session (tokens)",
-                                value: averageSessionMetric
-                            )
-                            providerMetric(label: "Top Model", value: topModelName)
+                            ForEach(headerMetrics, id: \.label) { metric in
+                                providerMetric(label: metric.label, value: metric.value)
+                            }
                         }
                     }
 
@@ -390,22 +431,13 @@ struct ProviderDashboardView: View {
         formatTokens(usages.reduce(0) { $0 + $1.totalTokens })
     }
 
-    private var primaryProviderMetric: String {
-        let cost = usages.reduce(0) { $0 + $1.cost }
-        let tokens = usages.reduce(0) { $0 + $1.totalTokens }
-        return settingsManager.formatUsageMetric(cost: cost, tokens: tokens)
-    }
-
-    private var averageSessionMetric: String {
-        guard !usages.isEmpty else {
-            return settingsManager.usageDisplayMode == .currency ? "$0.00" : "0"
-        }
-        if settingsManager.usageDisplayMode == .currency {
-            let value = usages.reduce(0) { $0 + $1.cost } / Double(usages.count)
-            return value.formatAsCost()
-        }
-        let t = usages.reduce(0) { $0 + $1.totalTokens } / usages.count
-        return t.formatAsTokenVolume()
+    private var headerMetrics: [ProviderDetailMetric] {
+        ProviderDetailMetrics.headerMetrics(
+            provider: provider,
+            usages: usages,
+            displayMode: settingsManager.usageDisplayMode,
+            topModelName: topModelName
+        )
     }
 
     private var topModels: [ModelUsage] {
