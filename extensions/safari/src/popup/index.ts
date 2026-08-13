@@ -231,8 +231,14 @@ appRoot.addEventListener('click', (event) => {
   if (action.startsWith('mode:')) {
     const mode = action.slice('mode:'.length);
     if (mode === 'ask' || mode === 'agentic' || mode === 'watch' || mode === 'handoff') {
+      appRoot.dataset.modePopoverOpen = 'false';
       void send({ type: 'popup.setMode', mode });
     }
+    return;
+  }
+  if (action === 'toggle-mode-popover') {
+    appRoot.dataset.modePopoverOpen = appRoot.dataset.modePopoverOpen === 'true' ? 'false' : 'true';
+    renderPopup(appRoot, buildPopupViewModel(state));
     return;
   }
   if (action.startsWith('approval:')) {
@@ -286,6 +292,15 @@ appRoot.addEventListener('input', (event) => {
     case 'draft':
       dispatch({ type: 'draft', value: input.value });
       break;
+    case 'mode-range': {
+      const index = Number(input.value);
+      const mode = ['ask', 'agentic', 'watch', 'handoff'][index];
+      if (mode === 'ask' || mode === 'agentic' || mode === 'watch' || mode === 'handoff') {
+        appRoot.dataset.modePopoverOpen = 'false';
+        void send({ type: 'popup.setMode', mode });
+      }
+      break;
+    }
     case 'correction-draft':
       dispatch({ type: 'correctionDraft', value: input.value });
       break;
@@ -320,6 +335,12 @@ appRoot.addEventListener('change', (event) => {
     case 'learning-opt-in':
       void send({ type: 'popup.setLearning', optedIn: input.checked });
       break;
+  }
+});
+
+appRoot.addEventListener('toggle', (event) => {
+  if (event.target instanceof HTMLDetailsElement && event.target.classList.contains('agent-drawer')) {
+    renderPopup(appRoot, buildPopupViewModel(state));
   }
 });
 

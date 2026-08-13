@@ -51,6 +51,8 @@ function icon(name: string): SVGSVGElement {
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   const paths: Record<string, string> = {
     stop: 'M7 7h10v10H7z',
+    globe:
+      'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 0c2.1 2.4 3.2 5.4 3.2 9S14.1 18.6 12 21c-2.1-2.4-3.2-5.4-3.2-9S9.9 5.4 12 3ZM3.4 9h17.2M3.4 15h17.2',
     shield: 'M12 2 4.5 5v6c0 5 3.2 9.4 7.5 11 4.3-1.6 7.5-6 7.5-11V5L12 2Zm0 4 4.5 1.8V11c0 3.4-1.9 6.5-4.5 7.8V6Z',
     page: 'M6 2h8l4 4v16H6V2Zm8 1.8V7h3.2L14 3.8ZM8.5 11v1.5h7V11h-7Zm0 4v1.5h7V15h-7Z',
     spark: 'm12 2 1.5 6.5L20 10l-6.5 1.5L12 18l-1.5-6.5L4 10l6.5-1.5L12 2Z',
@@ -173,15 +175,25 @@ function restoreTranscriptScroll(node: HTMLElement | null, state: TranscriptScro
 
 function renderHeader(viewModel: PopupViewModel): HTMLElement {
   const header = element('header', 'topbar');
-  const identity = element('div', 'identity');
+  const identity = element('div', 'identity design-context');
   const logoWrap = element('div', 'logo-wrap');
   const logo = element('img', 'logo');
   logo.src = 'icons/app-logo.svg';
-  logo.alt = '';
+  logo.alt = 'OpenBurnBar';
   logoWrap.append(logo);
-  const titles = element('div', 'identity-copy');
-  titles.append(element('strong', 'product-name', 'OpenBurnBar'), element('span', 'surface-name', 'Safari Agent'));
-  identity.append(logoWrap, titles);
+  logoWrap.setAttribute('aria-label', 'OpenBurnBar Safari Agent');
+  identity.append(logoWrap);
+
+  const host = element('span', 'pill pill--host');
+  host.append(icon('globe'), document.createTextNode(viewModel.pageDetail || 'Safari'));
+  const page = element('span', 'pill pill--page');
+  page.append(icon('page'), element('span', undefined, viewModel.pageLabel));
+  const access = element(
+    'span',
+    `pill pill--${viewModel.snapshot?.page?.permission === 'granted' ? 'ok' : 'muted'}`,
+    viewModel.snapshot?.page?.permission === 'granted' ? 'Site access' : 'Site access'
+  );
+  identity.append(host, page, access);
 
   const controls = element('div', 'topbar-actions');
   const status = element('span', `connection connection--${viewModel.connectionTone}`);
@@ -197,38 +209,43 @@ function renderHeader(viewModel: PopupViewModel): HTMLElement {
   return header;
 }
 
-function renderPageBand(viewModel: PopupViewModel): HTMLElement {
-  const band = element('section', 'page-band');
-  band.setAttribute('aria-label', 'Current Safari page');
-  const glyph = element('span', 'page-glyph');
-  glyph.append(icon('page'));
-  const copy = element('div', 'page-copy');
-  const title = element('strong', 'page-title', viewModel.pageLabel);
-  title.title = viewModel.pageLabel;
-  const detail = element('span', 'page-detail', viewModel.pageDetail);
-  copy.append(title, detail);
-  const chips = element('div', 'page-chips');
-  if (viewModel.pageSensitive) {
-    const sensitive = element('span', 'chip chip--sensitive', 'Sensitive');
-    sensitive.title = 'Credential, banking, billing, or payment context detected';
-    chips.append(sensitive);
+function renderModes(viewModel: PopupViewModel, open: boolean): HTMLElement {
+  const section = element('section', 'mode-section mode-popover');
+  section.setAttribute('role', 'group');
+  section.setAttribute('aria-label', 'OpenBurnBar mode');
+  section.setAttribute('aria-describedby', 'mode-description');
+  section.hidden = !open;
+  const heading = element('div', 'mode-popover-heading');
+  heading.append(element('span', 'mode-popover-label', 'Mode'));
+  const selected = viewModel.modes.find((mode) => mode.id === viewModel.selectedMode) ?? viewModel.modes[0];
+  if (!selected) {
+    return section;
   }
-  const permission = element(
-    'span',
-    `chip chip--${viewModel.snapshot?.page?.permission === 'granted' ? 'ready' : 'muted'}`,
-    viewModel.snapshot?.page?.permission === 'granted' ? 'Allowed' : 'Site access'
+  heading.append(element('strong', 'mode-popover-value', selected.label));
+  section.append(heading);
+  const scale = element('div', 'mode-scale');
+  scale.append(element('span', undefined, 'Faster'), element('span', undefined, 'Smarter'));
+  section.append(scale);
+  const range = element('input', 'mode-range');
+  range.type = 'range';
+  range.min = '0';
+  range.max = String(Math.max(0, viewModel.modes.length - 1));
+  range.step = '1';
+  range.value = String(
+    Math.max(
+      0,
+      viewModel.modes.findIndex((mode) => mode.id === viewModel.selectedMode)
+    )
   );
-  permission.title = viewModel.permissionLabel;
-  chips.append(permission);
-  band.append(glyph, copy, chips);
-  return band;
-}
+  range.dataset.input = 'mode-range';
+  focusKey(range, 'input:mode-range');
+  range.setAttribute('aria-label', 'OpenBurnBar mode');
+  range.setAttribute('aria-valuetext', selected.label);
+  section.append(range);
 
-function renderModes(viewModel: PopupViewModel): HTMLElement {
-  const section = element('section', 'mode-section');
-  const control = element('div', 'mode-control');
+  const control = element('div', 'mode-control mode-options');
   control.setAttribute('role', 'group');
-  control.setAttribute('aria-label', 'OpenBurnBar mode');
+  control.setAttribute('aria-label', 'OpenBurnBar mode options');
   control.setAttribute('aria-describedby', 'mode-description');
   for (const mode of viewModel.modes) {
     const option = button(mode.label, `mode:${mode.id}`, 'mode-button');
@@ -244,15 +261,29 @@ function renderModes(viewModel: PopupViewModel): HTMLElement {
   return section;
 }
 
-function renderAgentPicker(viewModel: PopupViewModel): HTMLElement {
+function renderAgentPicker(viewModel: PopupViewModel, open: boolean): HTMLElement {
+  const details = element('details', 'agent-drawer');
+  details.open = open;
+  const summary = element('summary', 'agent-drawer-summary');
+  focusKey(summary, 'drawer:agent');
+  const title = element(
+    'span',
+    'agent-drawer-title',
+    viewModel.selectedMode === 'handoff' ? 'Installed agent' : 'Brain'
+  );
+  const selectionHint = viewModel.selectedAgent
+    ? `${viewModel.selectedAgent.providerName} · ${viewModel.selectedAgent.cloud ? 'cloud' : 'local'}`
+    : viewModel.noAgents
+      ? 'No compatible agents found'
+      : 'Discovery from OpenBurnBar';
+  summary.append(title, element('span', 'agent-drawer-status', selectionHint), icon('chevron'));
+  details.append(summary);
+
   const section = element('section', 'agent-section');
   const labelRow = element('div', 'section-heading-row');
   labelRow.append(
     element('label', 'section-heading', viewModel.selectedMode === 'handoff' ? 'Installed agent' : 'Brain')
   );
-  const selectionHint = viewModel.selectedAgent
-    ? `${viewModel.selectedAgent.providerName} · ${viewModel.selectedAgent.cloud ? 'cloud' : 'local'}`
-    : 'Discovery from OpenBurnBar';
   labelRow.append(element('span', 'section-meta', selectionHint));
 
   const controls = element('div', 'agent-controls');
@@ -287,7 +318,8 @@ function renderAgentPicker(viewModel: PopupViewModel): HTMLElement {
   selectWrap.append(select, icon('chevron'));
   controls.append(search, selectWrap);
   section.append(labelRow, controls);
-  return section;
+  details.append(section);
+  return details;
 }
 
 function renderAgentOption(agent: BridgeAgentOption, selectedAgentId?: string): HTMLOptionElement {
@@ -303,11 +335,12 @@ function renderTranscript(entries: TranscriptEntry[]): HTMLElement {
   section.setAttribute('aria-label', 'Conversation');
   section.setAttribute('aria-live', 'polite');
   if (entries.length === 0) {
-    const empty = element('div', 'empty-state');
-    const orb = element('div', 'empty-orb');
-    orb.append(icon('spark'));
+    const empty = element('div', 'empty empty-state');
+    const mark = element('img', 'empty-mark');
+    mark.src = 'icons/app-logo.svg';
+    mark.alt = '';
     empty.append(
-      orb,
+      mark,
       element('strong', undefined, 'The page is in view.'),
       element('p', undefined, 'Ask what it says, what it looks like, or what you want done.')
     );
@@ -379,7 +412,7 @@ function renderApprovals(approvals: ApprovalPreview[]): HTMLElement | undefined 
   return section;
 }
 
-function renderComposer(viewModel: PopupViewModel): HTMLElement | undefined {
+function renderComposer(viewModel: PopupViewModel, modePopoverOpen: boolean): HTMLElement | undefined {
   if (!viewModel.composerVisible) {
     return undefined;
   }
@@ -403,7 +436,14 @@ function renderComposer(viewModel: PopupViewModel): HTMLElement | undefined {
   context.setAttribute('aria-label', 'Current Safari page context');
   context.prepend(icon('page'));
   const hint = element('span', 'composer-hint', '⌘↵ to send');
-  const submit = element('button', 'button button--primary composer-submit', viewModel.primaryLabel);
+  const modeTrigger = button(
+    viewModel.modes.find((mode) => mode.id === viewModel.selectedMode)?.label ?? 'Ask',
+    'toggle-mode-popover',
+    'button btn btn--ember-outline mode-trigger'
+  );
+  modeTrigger.setAttribute('aria-haspopup', 'true');
+  modeTrigger.setAttribute('aria-expanded', String(modePopoverOpen));
+  const submit = element('button', 'send composer-submit');
   submit.type = 'submit';
   focusKey(submit, 'submit:composer');
   submit.disabled = viewModel.primaryDisabled;
@@ -411,8 +451,9 @@ function renderComposer(viewModel: PopupViewModel): HTMLElement | undefined {
   if (viewModel.primaryDisabledReason) {
     submit.title = viewModel.primaryDisabledReason;
   }
+  submit.setAttribute('aria-label', viewModel.primaryLabel);
   submit.prepend(icon('send'));
-  footer.append(context, hint, submit);
+  footer.append(element('span', 'mini mini--auto', 'Auto'), context, hint, modeTrigger, submit);
   form.append(textarea, footer);
   if (viewModel.primaryDisabledReason) {
     const reason = element('p', 'disabled-reason', viewModel.primaryDisabledReason);
@@ -809,13 +850,11 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
   const previousFocus = captureFocus(root);
   const previousContentScroll = captureScroll(root.querySelector<HTMLElement>('.content-scroll'));
   const previousTranscriptScroll = captureTranscriptScroll(root.querySelector<HTMLElement>('.transcript'));
+  const modePopoverWasOpen = root.dataset.modePopoverOpen === 'true';
+  const agentDrawerWasOpen = root.querySelector<HTMLDetailsElement>('.agent-drawer')?.open ?? false;
   const shell = element('main', 'shell');
-  shell.append(
-    renderHeader(viewModel),
-    renderPageBand(viewModel),
-    renderModes(viewModel),
-    renderAgentPicker(viewModel)
-  );
+  shell.dataset.modePopoverOpen = String(modePopoverWasOpen);
+  shell.append(renderHeader(viewModel), renderModes(viewModel, modePopoverWasOpen));
 
   const scroll = element('div', 'content-scroll');
   const error = renderError(viewModel);
@@ -823,13 +862,10 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
     scroll.append(error);
   }
   scroll.append(renderTranscript(viewModel.snapshot?.transcript ?? []));
+  scroll.append(renderAgentPicker(viewModel, agentDrawerWasOpen));
   const approvals = renderApprovals(viewModel.snapshot?.approvals ?? []);
   if (approvals) {
     scroll.append(approvals);
-  }
-  const composer = renderComposer(viewModel);
-  if (composer) {
-    scroll.append(composer);
   }
   scroll.append(
     renderActivity(viewModel.snapshot?.activity ?? []),
@@ -838,6 +874,10 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
     renderLearning(viewModel, learningWasOpen)
   );
   shell.append(scroll);
+  const composer = renderComposer(viewModel, modePopoverWasOpen);
+  if (composer) {
+    shell.append(composer);
+  }
   root.replaceChildren(shell);
 
   restoreScroll(root.querySelector<HTMLElement>('.content-scroll'), previousContentScroll);
