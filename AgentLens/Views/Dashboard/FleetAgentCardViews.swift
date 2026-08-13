@@ -10,29 +10,11 @@ struct FleetAgentCard: View {
     let viewModel: FleetViewModel
 
     private var statusColor: Color {
-        switch agent.status {
-        case .running:
-            return DesignSystem.Colors.success
-        case .idle:
-            return DesignSystem.Colors.textMuted
-        case .stale:
-            return DesignSystem.Colors.warning
-        case .unknown:
-            return DesignSystem.Colors.textSecondary
-        }
+        FleetStatusPresentation.color(for: agent.status)
     }
 
     private var statusLabel: String {
-        switch agent.status {
-        case .running:
-            return "Running"
-        case .idle:
-            return "Idle"
-        case .stale:
-            return "Stale"
-        case .unknown:
-            return "Unknown"
-        }
+        FleetStatusPresentation.label(for: agent.status)
     }
 
     var body: some View {
@@ -43,7 +25,14 @@ struct FleetAgentCard: View {
                         .fill(statusColor)
                         .frame(width: 9, height: 9)
 
-                    Text(agent.displayName)
+                    // Provider identity matches the usage surface: same
+                    // display name, icon, and theme color (VAL-CROSS-003).
+                    Image(systemName: viewModel.providerIconName(for: agent.id))
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(viewModel.providerColor(for: agent.id))
+                        .frame(width: 16)
+
+                    Text(viewModel.providerName(for: agent.id))
                         .font(DesignSystem.Typography.headline)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .lineLimit(1)
@@ -52,7 +41,7 @@ struct FleetAgentCard: View {
 
                     Text(statusLabel)
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(statusColor)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
                 }
 
                 if let task = agent.currentTask, !task.isEmpty {
@@ -80,10 +69,19 @@ struct FleetAgentCard: View {
                     if let note = agent.note, !note.isEmpty {
                         Text(note)
                             .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
                             .lineLimit(1)
                     }
                 }
+
+                // Visible provenance (VAL-DASH-027): the confidence label plus
+                // the first non-secret signal kind — never color-only, never
+                // secret-bearing (kind only, never path/detail).
+                Text(FleetConfidencePresentation.provenanceLabel(for: agent))
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(DesignSystem.Spacing.md)
@@ -95,7 +93,7 @@ struct FleetAgentCard: View {
     private var confidenceBadge: some View {
         Text(FleetConfidencePresentation.shortLabel(for: agent.confidence))
             .font(DesignSystem.Typography.tiny)
-            .foregroundStyle(confidenceColor)
+            .foregroundStyle(DesignSystem.Colors.textPrimary)
             .padding(.horizontal, DesignSystem.Spacing.sm)
             .padding(.vertical, DesignSystem.Spacing.xxs)
             .background(
@@ -104,35 +102,24 @@ struct FleetAgentCard: View {
             )
             .overlay(
                 Capsule()
-                    .stroke(confidenceColor.opacity(0.35), lineWidth: 1)
+                    .stroke(confidenceColor, lineWidth: 1)
             )
     }
 
     private var confidenceColor: Color {
-        switch agent.confidence {
-        case .exactProcess:
-            return DesignSystem.Colors.success
-        case .activeSessionFile:
-            return DesignSystem.Colors.whimsy
-        case .logHeartbeat:
-            return DesignSystem.Colors.amber
-        case .estimated:
-            return DesignSystem.Colors.warning
-        case .unsupported:
-            return DesignSystem.Colors.textMuted
-        }
+        FleetConfidencePresentation.color(for: agent.confidence)
     }
 
     private func cardRow(label: String, value: String?) -> some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             Text(label)
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .frame(width: 84, alignment: .leading)
 
             Text(value ?? "—")
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(value == nil ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textSecondary)
+                .foregroundStyle(value == nil ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
@@ -141,8 +128,8 @@ struct FleetAgentCard: View {
     }
 
     private var accessibilityLabel: String {
-        let provenance = FleetConfidencePresentation.provenance(for: agent)
-        var parts = ["\(agent.displayName), \(statusLabel), \(provenance)"]
+        let provenance = FleetConfidencePresentation.provenanceLabel(for: agent)
+        var parts = ["\(viewModel.providerName(for: agent.id)), \(statusLabel), \(provenance)"]
         if let task = agent.currentTask, !task.isEmpty {
             parts.append("task: \(task)")
         }
@@ -220,7 +207,7 @@ struct FleetMachinePanel: View {
 
             Text(value ?? "—")
                 .font(DesignSystem.Typography.monoSmall)
-                .foregroundStyle(value == nil ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textPrimary)
+                .foregroundStyle(value == nil ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textPrimary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
@@ -265,7 +252,7 @@ struct FleetProbeHealthSection: View {
 
             Text(probeHealthText(entry.state))
                 .font(DesignSystem.Typography.tiny)
-                .foregroundStyle(DesignSystem.Colors.textMuted)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -315,7 +302,7 @@ struct FleetRepoGroupRow: View {
 
                 Text(group.agents.map { viewModel.providerName(for: $0) }.joined(separator: ", "))
                     .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

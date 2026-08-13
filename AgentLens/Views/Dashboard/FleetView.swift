@@ -55,7 +55,7 @@ struct FleetView: View {
                     // neutral state instead of the last running count.
                     Text("Unavailable")
                         .font(DesignSystem.Typography.display)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                         .accessibilityLabel("Fleet data unavailable")
                 } else {
                     Text("\(viewModel.runningCount) running")
@@ -67,7 +67,7 @@ struct FleetView: View {
                 if let snapshot = viewModel.snapshot {
                     Text("Updated \(FleetFormatting.formatRelativeTime(snapshot.generatedAt))")
                         .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
             }
         }
@@ -80,15 +80,15 @@ struct FleetView: View {
         if viewModel.isStale, let age = viewModel.snapshotAgeSeconds {
             HStack(spacing: DesignSystem.Spacing.sm) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.blaze)
 
                 Text(
                     "Snapshot is stale (\(FleetFormatting.formatAge(age)) old — the daemon has not refreshed within "
                         + "\(viewModel.cadenceSeconds * FleetService.stalenessThresholdMultiplier)s)."
                 )
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, DesignSystem.Spacing.md)
@@ -139,7 +139,7 @@ struct FleetView: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     Image(systemName: "bolt.horizontal.circle.fill")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(DesignSystem.Typography.headline)
                         .foregroundStyle(DesignSystem.Colors.error)
 
                     Text("BurnBar daemon unreachable")
@@ -160,12 +160,12 @@ struct FleetView: View {
                         + "The dashboard reconnects on the next poll."
                 )
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(reason)
                     .font(DesignSystem.Typography.monoTiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -248,7 +248,7 @@ struct FleetView: View {
 
             Text("\(count)")
                 .font(DesignSystem.Typography.monoSmall)
-                .foregroundStyle(count > 0 ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                .foregroundStyle(count > 0 ? DesignSystem.Colors.success : DesignSystem.Colors.textSecondary)
         }
         .padding(.horizontal, DesignSystem.Spacing.sm)
         .padding(.vertical, DesignSystem.Spacing.xs)
@@ -294,7 +294,7 @@ struct FleetView: View {
             if snapshot.repos.isEmpty {
                 Text("No repo attribution available")
                     .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
             } else {
                 VStack(spacing: DesignSystem.Spacing.sm) {
                     ForEach(snapshot.repos, id: \.projectName) { group in

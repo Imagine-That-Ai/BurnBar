@@ -69,6 +69,52 @@ final class FleetViewModelTests: XCTestCase {
         }
     }
 
+    func test_providerIconMatchesUsageSurfaceIdentity() {
+        // VAL-CROSS-003: the fleet card icon for an agent is the same SF
+        // Symbol the usage surface renders for the same provider.
+        for id in BurnBarFleetAgentID.declaredRoster {
+            guard let provider = AgentProvider(fleetAgentID: id) else {
+                return XCTFail("\(id.wireValue) must map to a provider")
+            }
+            let viewModel = FleetViewModel(
+                service: FleetService(socketURL: socketURL) { _ in
+                    FleetTestFixtures.makeSnapshot()
+                }
+            )
+            XCTAssertEqual(
+                viewModel.providerIconName(for: id),
+                provider.iconName,
+                "fleet icon for \(id.wireValue) must match the usage surface icon"
+            )
+            XCTAssertEqual(
+                viewModel.providerName(for: id),
+                provider.displayName,
+                "fleet name for \(id.wireValue) must match the usage surface name"
+            )
+        }
+    }
+
+    func test_unsupportedRosterRowsAreDetectedAndExcludedFromRunningTotals() {
+        // VAL-DASH-031: kimi/gemini-cli rows are present, labeled unsupported,
+        // and excluded from running/resource totals.
+        let snapshot = FleetTestFixtures.makeEmptySnapshot()
+        let service = FleetService(socketURL: socketURL) { _ in snapshot }
+        let viewModel = FleetViewModel(service: service)
+        service.fetchOnce()
+
+        let kimi = viewModel.agents.first { $0.id == .kimi }
+        let gemini = viewModel.agents.first { $0.id == .geminiCLI }
+        XCTAssertNotNil(kimi, "kimi row must be present")
+        XCTAssertNotNil(gemini, "gemini-cli row must be present")
+        XCTAssertTrue(viewModel.isUnsupportedRosterRow(kimi!))
+        XCTAssertTrue(viewModel.isUnsupportedRosterRow(gemini!))
+        XCTAssertEqual(kimi?.status, .unknown)
+        XCTAssertEqual(gemini?.status, .unknown)
+        XCTAssertEqual(viewModel.runningCount, 0, "unsupported rows never count as running")
+        XCTAssertEqual(viewModel.countsByProvider.first { $0.agentID == .kimi }?.count, 0)
+        XCTAssertEqual(viewModel.countsByProvider.first { $0.agentID == .geminiCLI }?.count, 0)
+    }
+
     func test_viewAppearedStartsSinglePoller() {
         let service = FleetService(socketURL: socketURL) { _ in
             FleetTestFixtures.makeSnapshot()
@@ -174,8 +220,9 @@ final class FleetFormattingTests: XCTestCase {
 
 // MARK: - Confidence Presentation Tests
 
-/// Confidence level → label mapping (VAL-DASH-024/027): every level is
-/// textually labeled and provenance includes a signal kind when present.
+/// Confidence level → label/color mapping (VAL-DASH-024/027): every level is
+/// textually labeled, the five level colors are pairwise distinct in both
+/// appearances, and provenance includes a signal kind when present.
 final class FleetConfidencePresentationTests: XCTestCase {
 
     func test_allFiveLevelsHaveDistinctLabels() {
@@ -191,6 +238,13 @@ final class FleetConfidencePresentationTests: XCTestCase {
             FleetConfidencePresentation.label(for: .unsupported),
             "No live signal"
         )
+    }
+
+    func test_allFiveLevelsHaveDistinctShortLabels() {
+        let labels = BurnBarFleetConfidence.allCases.map {
+            FleetConfidencePresentation.shortLabel(for: $0)
+        }
+        XCTAssertEqual(Set(labels).count, 5, "all five badge labels must be textually distinct")
     }
 
     func test_provenanceIncludesSignalKindWhenPresent() {
@@ -213,5 +267,151 @@ final class FleetConfidencePresentationTests: XCTestCase {
             FleetConfidencePresentation.provenance(for: agent),
             "Exact process"
         )
+    }
+
+    func test_provenanceLabelSurfacesPerCardAndNeverBearsPaths() {
+        // VAL-DASH-027: the visible provenance label carries the confidence
+        // label plus the signal KIND — never the path or detail (which could
+        // bear secret material).
+        let agent = FleetTestFixtures.makeAgent(
+            signals: [
+                BurnBarFleetSignalSource(
+                    kind: "heartbeat-file",
+                    path: "/Users/albertonunez/.hermes/state/gateway.heartbeat",
+                    detail: "token=SECRET"
+                )
+            ]
+        )
+        let label = FleetConfidencePresentation.provenanceLabel(for: agent)
+        XCTAssertTrue(label.contains("Exact process"))
+        XCTAssertTrue(label.contains("heartbeat-file"))
+        XCTAssertFalse(label.contains("gateway.heartbeat"), "path must never appear")
+        XCTAssertFalse(label.contains("SECRET"), "detail must never appear")
+    }
+
+    func test_provenanceLabelForUnsupportedStatesNoLiveSignal() {
+        // Unsupported rows say that no live signal is available (VAL-DASH-027).
+        let agent = FleetTestFixtures.makeAgent(
+            status: .unknown,
+            confidence: .unsupported,
+            signals: [
+                BurnBarFleetSignalSource(
+                    kind: "root-presence",
+                    path: "/fixtures/kimi"
+                )
+            ]
+        )
+        XCTAssertEqual(
+            FleetConfidencePresentation.provenanceLabel(for: agent),
+            "No live signal"
+        )
+    }
+
+    func test_fiveLevelColorsArePairwiseDistinctInBothAppearances() {
+        // VAL-DASH-024: all five levels render distinctly. The color mapping
+        // is deterministic; the textual label is the primary carrier of
+        // meaning (colorblind-safe, VAL-DASH-004).
+        let colors = BurnBarFleetConfidence.allCases.map {
+            FleetConfidencePresentation.color(for: $0)
+        }
+        XCTAssertEqual(Set(colors).count, 5, "five distinct level colors")
+    }
+
+    func test_levelColorsMeetUIComponentContrastAgainstSurface() {
+        // VAL-DASH-021: status dots/badges meet WCAG AA 3:1 for UI components
+        // against the card surface in both appearances. The mapping is
+        // appearance-adaptive, so the test asserts the documented token
+        // values (pinned in docs/fleet/BURNBAR_FLEET_SIGNALS.md) rather than
+        // resolved NSColors.
+        let expected: [BurnBarFleetConfidence: (light: String, dark: String)] = [
+            .exactProcess: ("3A7835", "38D898"),       // success
+            .activeSessionFile: ("6A5ACD", "8B7FE8"),  // whimsy
+            .logHeartbeat: ("C47800", "FFA800"),       // warning
+            .estimated: ("D45800", "E86100"),          // blaze
+            .unsupported: ("9A8B7A", "7A6E62")         // textMuted
+        ]
+        for (level, pair) in expected {
+            XCTAssertGreaterThanOrEqual(
+                Self.contrastRatio(light: pair.light, dark: pair.dark),
+                3.0,
+                "\(level) level color must meet the 3:1 UI boundary"
+            )
+        }
+    }
+
+    /// WCAG relative-luminance contrast ratio of the two pinned token values
+    /// against the card surface token in the same appearance.
+    static func contrastRatio(light: String, dark: String) -> Double {
+        let surfaceLight = "FAF7F0"
+        let surfaceDark = "1D1914"
+        return min(
+            Self.ratio(light, surfaceLight),
+            Self.ratio(dark, surfaceDark)
+        )
+    }
+
+    private static func ratio(_ first: String, _ second: String) -> Double {
+        let firstLuminance = luminance(first)
+        let secondLuminance = luminance(second)
+        let high = max(firstLuminance, secondLuminance)
+        let low = min(firstLuminance, secondLuminance)
+        return (high + 0.05) / (low + 0.05)
+    }
+
+    private static func luminance(_ hex: String) -> Double {
+        let red = Double(Int(hex.prefix(2), radix: 16) ?? 0) / 255
+        let green = Double(Int(hex.dropFirst(2).prefix(2), radix: 16) ?? 0) / 255
+        let blue = Double(Int(hex.dropFirst(4).prefix(2), radix: 16) ?? 0) / 255
+        func linear(_ channel: Double) -> Double {
+            channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    }
+}
+
+// MARK: - Status Presentation Tests
+
+/// Status → label/color mapping (VAL-DASH-005/025): `unknown` has its own
+/// treatment, distinct from `idle` and from the empty-fleet state.
+final class FleetStatusPresentationTests: XCTestCase {
+
+    func test_allFourStatusesHaveDistinctLabels() {
+        let labels = BurnBarFleetAgentStatus.allCases.map {
+            FleetStatusPresentation.label(for: $0)
+        }
+        XCTAssertEqual(Set(labels).count, 4, "all four statuses must be textually distinct")
+        XCTAssertEqual(FleetStatusPresentation.label(for: .running), "Running")
+        XCTAssertEqual(FleetStatusPresentation.label(for: .idle), "Idle")
+        XCTAssertEqual(FleetStatusPresentation.label(for: .stale), "Stale")
+        XCTAssertEqual(FleetStatusPresentation.label(for: .unknown), "Unknown")
+    }
+
+    func test_unknownStatusIsDistinctFromIdle() {
+        // VAL-DASH-025: unknown renders its own treatment — neither idle nor
+        // omitted. The label and the color both differ from idle.
+        XCTAssertNotEqual(
+            FleetStatusPresentation.label(for: .unknown),
+            FleetStatusPresentation.label(for: .idle)
+        )
+        XCTAssertNotEqual(
+            FleetStatusPresentation.color(for: .unknown),
+            FleetStatusPresentation.color(for: .idle)
+        )
+    }
+
+    func test_statusColorsMeetUIComponentContrastAgainstSurface() {
+        let expected: [BurnBarFleetAgentStatus: (light: String, dark: String)] = [
+            .running: ("3A7835", "38D898"),      // success
+            .idle: ("9A8B7A", "7A6E62"),         // textMuted
+            .stale: ("C47800", "FFA800"),        // warning
+            .unknown: ("6B5D4E", "A89A8A")       // textSecondary
+        ]
+        for (status, pair) in expected {
+            XCTAssertGreaterThanOrEqual(
+                FleetConfidencePresentationTests.contrastRatio(light: pair.light, dark: pair.dark),
+                3.0,
+                "\(status) status color must meet the 3:1 UI boundary"
+            )
+        }
     }
 }

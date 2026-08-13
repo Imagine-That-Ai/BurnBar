@@ -8,6 +8,13 @@ import SwiftUI
 /// Documented confidence level → label/color mapping for the fleet dashboard
 /// (VAL-DASH-024). Every level is textually labeled — never color-only — and
 /// the mapping is deterministic and fixed-DTO testable.
+///
+/// The color mapping is pinned here and documented in
+/// docs/fleet/BURNBAR_FLEET_SIGNALS.md ("Fleet dashboard rendering contract").
+/// Every level color meets the WCAG AA 3:1 UI-component boundary against the
+/// card surface in both appearances (verified by
+/// `FleetConfidencePresentationTests`); the textual label is the primary
+/// carrier of meaning (VAL-DASH-021).
 enum FleetConfidencePresentation {
     /// Canonical textual label for a confidence level.
     static func label(for confidence: BurnBarFleetConfidence) -> String {
@@ -41,14 +48,84 @@ enum FleetConfidencePresentation {
         }
     }
 
+    /// The level color for a confidence value. All five values are pairwise
+    /// distinct in both appearances (colorblind-safe rendering pairs the
+    /// color with the textual label — never color-only, VAL-DASH-004/024).
+    /// Every level color meets the WCAG AA 3:1 UI-component boundary against
+    /// the card surface in both appearances (verified by
+    /// `FleetConfidencePresentationTests`).
+    static func color(for confidence: BurnBarFleetConfidence) -> Color {
+        switch confidence {
+        case .exactProcess:
+            return DesignSystem.Colors.success
+        case .activeSessionFile:
+            return DesignSystem.Colors.whimsy
+        case .logHeartbeat:
+            return DesignSystem.Colors.warning
+        case .estimated:
+            return DesignSystem.Colors.blaze
+        case .unsupported:
+            return DesignSystem.Colors.textMuted
+        }
+    }
+
     /// Provenance copy for a card's accessibility label: the confidence label
     /// plus the first non-secret signal kind when one exists (VAL-DASH-027).
+    /// Only the signal KIND is used — never the path or detail, which could
+    /// bear secret material.
     static func provenance(for agent: BurnBarFleetAgent) -> String {
         let confidenceLabel = label(for: agent.confidence)
         guard let signalKind = agent.signals.first?.kind, !signalKind.isEmpty else {
             return confidenceLabel
         }
         return "\(confidenceLabel) · \(signalKind)"
+    }
+
+    /// Visible per-card provenance text (VAL-DASH-027): the confidence label
+    /// plus the first non-secret signal kind when one exists. Unsupported rows
+    /// state that no live signal is available. Never color-only, never
+    /// secret-bearing (kind only, never path/detail).
+    static func provenanceLabel(for agent: BurnBarFleetAgent) -> String {
+        switch agent.confidence {
+        case .unsupported:
+            return "No live signal"
+        default:
+            return provenance(for: agent)
+        }
+    }
+}
+
+// MARK: - Status Presentation
+
+/// Documented status → label/color mapping for the fleet dashboard
+/// (VAL-DASH-005/025). `unknown` has its own treatment, distinct from `idle`
+/// and from the empty-fleet state. Every status color meets the WCAG AA 3:1
+/// UI-component boundary against the card surface in both appearances.
+enum FleetStatusPresentation {
+    static func label(for status: BurnBarFleetAgentStatus) -> String {
+        switch status {
+        case .running:
+            return "Running"
+        case .idle:
+            return "Idle"
+        case .stale:
+            return "Stale"
+        case .unknown:
+            return "Unknown"
+        }
+    }
+
+    static func color(for status: BurnBarFleetAgentStatus) -> Color {
+        switch status {
+        case .running:
+            return DesignSystem.Colors.success
+        case .idle:
+            return DesignSystem.Colors.textMuted
+        case .stale:
+            return DesignSystem.Colors.warning
+        case .unknown:
+            return DesignSystem.Colors.textSecondary
+        }
     }
 }
 
@@ -138,6 +215,22 @@ final class FleetViewModel {
             return agentID.wireValue
         }
         return provider.displayName
+    }
+
+    /// The provider SF Symbol for a fleet agent id — the same icon the usage
+    /// surface renders for the same provider (VAL-CROSS-003).
+    func providerIconName(for agentID: BurnBarFleetAgentID) -> String {
+        guard let provider = AgentProvider(fleetAgentID: agentID) else {
+            return "questionmark.circle"
+        }
+        return provider.iconName
+    }
+
+    /// True for the typed unsupported roster rows (kimi, gemini-cli): present,
+    /// labeled unsupported, and excluded from running/resource totals
+    /// (VAL-DASH-031).
+    func isUnsupportedRosterRow(_ agent: BurnBarFleetAgent) -> Bool {
+        agent.confidence == .unsupported
     }
 
     // MARK: - Lifecycle

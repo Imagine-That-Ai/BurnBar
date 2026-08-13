@@ -846,6 +846,97 @@ and never stops or duplicates another window's polling.
 
 ---
 
+## Fleet dashboard rendering contract (M3, implemented)
+
+The FleetView rendering rules are pinned here; the fixed-DTO view-model tests
+assert them (VAL-DASH-002/003/004/005/021/024/025/027/031, VAL-CROSS-003).
+
+**Running-count header and per-provider chips (VAL-DASH-002).** The header
+shows the snapshot's `runningCount` ("N running") — never a count that
+includes `idle`/`unknown`/`stale` rows. Per-provider chips render
+`countsByAgent` for every declared roster id in canonical roster order.
+**Zero-count rule (documented):** chips for agents with count 0 are shown
+with an explicit "0" (never hidden, never omitted) — the chip count is
+`countsByAgent[id] ?? 0`. Chips are excluded from the running total by
+construction (they render per-provider counts, and the header total is the
+snapshot's `runningCount`).
+
+**Per-agent cards (VAL-DASH-003).** Every agent row renders a card with:
+status (dot + label), provider identity (name + icon + theme color from the
+app's `AgentProvider` mapping — the SAME identity the usage surface renders
+for that provider, VAL-CROSS-003), current task (or honest absence "—"),
+repo (`projectName` or "—"), model (or "—"), last activity (relative time or
+"—"), PID (only when the row carries a `process` block), a confidence badge,
+and a visible provenance line. Absent DTO fields render as "—", never
+invented values.
+
+**Status mapping (VAL-DASH-005/025).** Status → label/color (all colors meet
+the WCAG AA 3:1 UI-component boundary against the card surface in both
+appearances):
+
+| Status | Label | Color token |
+|---|---|---|
+| `running` | Running | `DesignSystem.Colors.success` |
+| `idle` | Idle | `DesignSystem.Colors.textMuted` |
+| `stale` | Stale | `DesignSystem.Colors.warning` |
+| `unknown` | Unknown | `DesignSystem.Colors.textSecondary` |
+
+`unknown` has its own treatment — visually and textually distinct from
+`idle` and from the empty-fleet state; it is never rendered as idle and never
+omitted. Status labels render in `textPrimary` (the dot carries the status
+color; the label is never color-only).
+
+**Confidence level → label/color mapping (VAL-DASH-024).** All five levels
+are textually labeled (badge text in `textPrimary` on a tinted capsule with a
+solid level-color stroke) and the level colors are pairwise distinct in both
+appearances:
+
+| Level | Badge label | Full label | Color token |
+|---|---|---|---|
+| `exactProcess` | Exact | Exact process | `DesignSystem.Colors.success` |
+| `activeSessionFile` | Session | Session file | `DesignSystem.Colors.whimsy` |
+| `logHeartbeat` | Heartbeat | Log heartbeat | `DesignSystem.Colors.warning` |
+| `estimated` | Estimated | Estimated | `DesignSystem.Colors.blaze` |
+| `unsupported` | Unsupported | No live signal | `DesignSystem.Colors.textMuted` |
+
+Every level color meets the WCAG AA 3:1 UI-component boundary against the
+card surface in both appearances. Meaning is never color-only: the textual
+label is the primary carrier (colorblind-safe, VAL-DASH-004).
+
+**Confidence provenance (VAL-DASH-027).** Every card exposes a visible
+provenance line AND an accessibility label built from the row's confidence
+label plus the first non-secret signal KIND when signals exist (for example
+"Exact process · session-registry"). Only the signal `kind` is used — never
+the `path` or `detail`, which could bear secret material. Unsupported rows
+say "No live signal". No card invents a process or signal source.
+
+**Unsupported roster rows (VAL-DASH-031).** Kimi and Gemini CLI rows are
+rendered exactly once each, with their snapshot status (`unknown`/`idle`),
+`unsupported` confidence, an explicit unsupported label, and no
+running-count, resource, or usage-history claim. They are excluded from
+running/resource totals by construction (they are never `running`).
+
+**Empty-fleet state (VAL-DASH-007).** A healthy zero-running snapshot (all
+ten declared rows present and non-running — never an empty `agents[]`
+payload) renders an explicit empty-fleet card ("No agents are currently
+running") with the next-check cadence, while the machine panel and the
+Kimi/Gemini CLI unsupported rows remain visible.
+
+**Design-token conformance (VAL-DASH-014).** The fleet view files
+(`FleetView.swift`, `FleetViewModel.swift`, `FleetService.swift`,
+`FleetAgentCardViews.swift`, `FleetFormatting.swift`) use named
+`DesignSystem` tokens only — no raw `Color(hex:)` literals, no ad-hoc font
+sizes, no hardcoded colors. Provider accents come from
+`DesignSystem.Colors.primary(for:)` via the `AgentProvider` mapping.
+
+**WCAG AA contrast policy (VAL-DASH-021).** Normal text (11pt+) renders at
+≥4.5:1 against its background; UI components (status dots, badge strokes,
+chips) render at ≥3:1. The pinned mappings above are verified by
+`FleetConfidencePresentationTests`/`FleetStatusPresentationTests` contrast
+assertions and by the fixed-DTO view-model tests.
+
+---
+
 ## Probe etiquette (binding)
 
 - Read-only everything; `kill -0` / `proc_pidinfo` for liveness; no signals, no writes, no deletes outside your own temp dirs.
