@@ -514,6 +514,72 @@ function command(
 }
 
 describe('Safari background controller integration', () => {
+  it('publishes the active page before native attachment finishes', async () => {
+    const harness = createControllerHarness();
+    let releaseHello: (() => void) | undefined;
+    const helloBlocked = new Promise<void>((resolve) => {
+      releaseHello = resolve;
+    });
+    harness.setHelloObserver(async () => {
+      await helloBlocked;
+    });
+
+    const initializing = harness.controller.initialize();
+    await vi.waitFor(() => {
+      expect(harness.helloCount()).toBe(1);
+    });
+
+    const snapshots = harness.controls.runtimeMessages.filter(
+      (message): message is { type: 'background.snapshot'; snapshot: PopupResponse['snapshot'] } =>
+        typeof message === 'object' && message !== null && Reflect.get(message, 'type') === 'background.snapshot'
+    );
+    expect(snapshots.at(-1)?.snapshot).toMatchObject({
+      bridge: { connection: 'disconnected' },
+      busy: true,
+      page: {
+        tabId: 1,
+        title: 'Example',
+        url: 'https://example.com/',
+        permission: 'prompt'
+      }
+    });
+
+    releaseHello?.();
+    await initializing;
+    expect(harness.controller.currentSnapshot()).toMatchObject({
+      bridge: { connection: 'connected' },
+      page: {
+        tabId: 1,
+        title: 'Example',
+        url: 'https://example.com/',
+        permission: 'prompt'
+      }
+    });
+  });
+
+  it('preserves the active page while reporting native attachment failure as offline', async () => {
+    const harness = createControllerHarness();
+    harness.controls.setNativeHandler(() => {
+      throw new Error('native handler unavailable');
+    });
+
+    await harness.controller.initialize();
+
+    expect(harness.controller.currentSnapshot()).toMatchObject({
+      bridge: { connection: 'disconnected' },
+      busy: false,
+      page: {
+        tabId: 1,
+        title: 'Example',
+        url: 'https://example.com/',
+        permission: 'prompt'
+      },
+      lastError: {
+        code: 'native_bridge_unavailable'
+      }
+    });
+  });
+
   it('keeps bridge hello valid when Safari reports an empty tab title', async () => {
     const harness = createControllerHarness();
     const activeTab = harness.controls.tabs.get(1);
