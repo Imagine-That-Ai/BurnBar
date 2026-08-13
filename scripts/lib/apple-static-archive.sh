@@ -80,8 +80,12 @@ openburnbar_prune_symbol_empty_archive_members() {
     rm -rf "$scan_dir"
     return 65
   fi
+  # Xcode toolchains emit the same member diagnostic in both quoted-warning
+  # and unquoted-file forms. Keep the accepted grammar exact: every log line
+  # must still parse as one symbol-empty archive member below.
   LC_ALL=C sed -n \
-    "s/^libtool: warning: '.*(\\(.*\\))' has no symbols$/\\1/p" \
+    -e "s/^libtool: warning: '.*(\\(.*\\))' has no symbols$/\\1/p" \
+    -e "s/^libtool: file: .*(\\(.*\\)) has no symbols$/\\1/p" \
     "$classification_log" >"$empty_member_list"
   classification_line_count="$(
     wc -l <"$classification_log" | tr -d '[:space:]'
