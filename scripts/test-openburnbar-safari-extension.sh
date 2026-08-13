@@ -20,4 +20,8 @@ npm ci --prefix "$extension_root"
 echo "==> Running the canonical Safari extension CI suite"
 npm run test:ci --prefix "$extension_root"
 
+echo "==> Verifying deterministic Safari certification fixtures"
+node "$repo_root/tools/safari-certification-fixtures/verify.mjs"
+node --test "$repo_root"/tools/safari-certification-fixtures/*.test.mjs
+
 echo "PASS: OpenBurnBar Safari extension CI suite"

@@ -10,6 +10,10 @@ fi
 trap 'rm -rf "$work_dir"' EXIT
 
 team_id="4Y367DF25B"
+current_mac_provisioning_udid="$(
+  /usr/sbin/system_profiler SPHardwareDataType -json 2>/dev/null \
+    | python3 "$repo_root/scripts/lib/parse-macos-provisioning-udid.py"
+)"
 app_path="$work_dir/OpenBurnBar.app"
 app_contents="$app_path/Contents"
 appex_path="$app_contents/PlugIns/OpenBurnBarSafariExtension.appex"
@@ -21,8 +25,9 @@ app_entitlements="$work_dir/app-entitlements.plist"
 appex_entitlements="$work_dir/appex-entitlements.plist"
 good_app_profile="$work_dir/good-app-profile.plist"
 good_appex_profile="$work_dir/good-appex-profile.plist"
+good_app_entitlements="$work_dir/good-app-entitlements.plist"
 good_appex_entitlements="$work_dir/good-appex-entitlements.plist"
-profile_verifier_log="$work_dir/profile-verifier.log"
+codesign_log="$work_dir/codesign.log"
 mock_bin="$work_dir/mock-bin"
 
 mkdir -p \
@@ -48,7 +53,8 @@ python3 - \
   "$appex_profile" \
   "$app_entitlements" \
   "$appex_entitlements" \
-  "$team_id" <<'PY'
+  "$team_id" \
+  "$current_mac_provisioning_udid" <<'PY'
 import datetime as dt
 import json
 import plistlib
@@ -64,6 +70,7 @@ from pathlib import Path
     app_entitlements_path,
     appex_entitlements_path,
     team_id,
+    current_mac_provisioning_udid,
 ) = sys.argv[1:]
 
 app_bundle_id = "com.openburnbar.app"
@@ -146,11 +153,14 @@ def development_profile(bundle_id: str) -> dict:
         "CreationDate": dt.datetime(2026, 8, 11, tzinfo=dt.timezone.utc),
         "ExpirationDate": dt.datetime(2099, 8, 11, tzinfo=dt.timezone.utc),
         "Name": f"OpenBurnBar Development: {bundle_id}",
-        "ProvisionedDevices": ["00000000-0000000000000000"],
+        "Platform": ["OSX"],
+        "ProvisionedDevices": [current_mac_provisioning_udid],
         "TeamIdentifier": [team_id],
+        "DeveloperCertificates": [b"openburnbar-fixture-signer"],
         "Entitlements": {
             "com.apple.application-identifier": f"{team_id}.{bundle_id}",
             "com.apple.developer.team-identifier": team_id,
+            "com.apple.security.get-task-allow": True,
             "com.apple.security.application-groups": [app_group, f"{team_id}.*"],
             "keychain-access-groups": [f"{team_id}.*"],
         },
@@ -172,6 +182,7 @@ PY
 
 cp "$app_profile" "$good_app_profile"
 cp "$appex_profile" "$good_appex_profile"
+cp "$app_entitlements" "$good_app_entitlements"
 cp "$appex_entitlements" "$good_appex_entitlements"
 
 cat > "$mock_bin/security" <<'SH'
@@ -197,7 +208,13 @@ cat > "$mock_bin/codesign" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
+printf '%s\n' "$*" >> "$MOCK_CODESIGN_LOG"
+
 if [[ " $* " == *" --verify "* ]]; then
+  exit 0
+fi
+if [[ "$1" == "-d" && " $* " == *" --extract-certificates "* ]]; then
+  printf 'openburnbar-fixture-signer' > codesign0
   exit 0
 fi
 if [[ "$1" == "-d" && " $* " == *" --entitlements :- "* ]]; then
@@ -233,21 +250,16 @@ echo "unexpected mock codesign invocation: $*" >&2
 exit 99
 SH
 
-cat > "$mock_bin/profile-verifier" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >> "$MOCK_PROFILE_VERIFIER_LOG"
-SH
-
-chmod +x "$mock_bin/security" "$mock_bin/codesign" "$mock_bin/profile-verifier"
+chmod +x \
+  "$mock_bin/security" \
+  "$mock_bin/codesign"
 
 export PATH="$mock_bin:$PATH"
 export MOCK_APPEX="$appex_path"
 export MOCK_APP_ENTITLEMENTS="$app_entitlements"
 export MOCK_APPEX_ENTITLEMENTS="$appex_entitlements"
-export MOCK_PROFILE_VERIFIER_LOG="$profile_verifier_log"
+export MOCK_CODESIGN_LOG="$codesign_log"
 export MOCK_TEAM_ID="$team_id"
-export OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER="$mock_bin/profile-verifier"
 
 assert_fails_with() {
   local expected="$1"
@@ -266,14 +278,15 @@ assert_fails_with() {
   fi
 }
 
-TMPDIR="$work_dir/missing-tmp-root" \
+OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER=/usr/bin/false \
+  TMPDIR="$work_dir/missing-tmp-root" \
   bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
   "$app_path" \
   "$team_id"
 
-if [[ "$(wc -l < "$profile_verifier_log" | tr -d ' ')" != "2" ]]; then
-  echo "FAIL: host and Safari profile certificate membership were not both verified." >&2
-  cat "$profile_verifier_log" >&2
+if [[ "$(grep -c -- "--extract-certificates" "$codesign_log")" != "2" ]]; then
+  echo "FAIL: host and Safari signer/profile certificate membership were not both verified." >&2
+  cat "$codesign_log" >&2
   exit 1
 fi
 
@@ -322,6 +335,186 @@ assert_fails_with \
   "$app_path" "$team_id"
 cp "$good_app_profile" "$app_profile"
 
+python3 - "$app_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["Platform"] = ["iOS"]
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+assert_fails_with \
+  "development app profile platform must be ['OSX']" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_app_profile" "$app_profile"
+
+python3 - "$appex_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile.pop("Platform", None)
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+assert_fails_with \
+  "development Safari profile platform must be ['OSX']" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_appex_profile" "$appex_profile"
+
+python3 - "$app_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["ProvisionedDevices"] = ["11111111-1111111111111111"]
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+assert_fails_with \
+  "development app profile must authorize this Mac's provisioning UDID" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_app_profile" "$app_profile"
+
+python3 - "$appex_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["ProvisionedDevices"] = ["11111111-1111111111111111"]
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+assert_fails_with \
+  "development Safari profile must authorize this Mac's provisioning UDID" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_appex_profile" "$appex_profile"
+
+python3 - "$app_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["Entitlements"]["com.apple.security.get-task-allow"] = False
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+assert_fails_with \
+  "development app profile get-task-allow entitlement must be True" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_app_profile" "$app_profile"
+
+python3 - "$appex_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["Entitlements"].pop("com.apple.security.get-task-allow", None)
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+assert_fails_with \
+  "development Safari profile get-task-allow entitlement must be True" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_appex_profile" "$appex_profile"
+
+python3 - "$app_entitlements" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    entitlements = plistlib.load(file)
+entitlements["com.apple.security.application-groups"].append("group.com.openburnbar.unexpected")
+with path.open("wb") as file:
+    plistlib.dump(entitlements, file)
+PY
+assert_fails_with \
+  "signed development app App Groups must be ['group.com.openburnbar.app']" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_app_entitlements" "$app_entitlements"
+
+python3 - "$app_entitlements" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    entitlements = plistlib.load(file)
+entitlements["keychain-access-groups"].append("4Y367DF25B.com.openburnbar.unexpected")
+with path.open("wb") as file:
+    plistlib.dump(entitlements, file)
+PY
+assert_fails_with \
+  "signed development app Keychain groups must be ['4Y367DF25B.com.openburnbar.app']" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_app_entitlements" "$app_entitlements"
+
+python3 - "$appex_entitlements" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    entitlements = plistlib.load(file)
+entitlements["com.apple.security.application-groups"].append("group.com.openburnbar.unexpected")
+with path.open("wb") as file:
+    plistlib.dump(entitlements, file)
+PY
+assert_fails_with \
+  "signed Safari App Groups must be ['group.com.openburnbar.app']" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_appex_entitlements" "$appex_entitlements"
+
+python3 - "$appex_entitlements" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    entitlements = plistlib.load(file)
+entitlements["keychain-access-groups"].append("4Y367DF25B.com.openburnbar.unexpected")
+with path.open("wb") as file:
+    plistlib.dump(entitlements, file)
+PY
+assert_fails_with \
+  "signed Safari Keychain groups must be ['4Y367DF25B.com.openburnbar.app']" \
+  bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
+  "$app_path" "$team_id"
+cp "$good_appex_entitlements" "$appex_entitlements"
+
 python3 - "$appex_entitlements" <<'PY'
 import plistlib
 import sys
@@ -346,4 +539,4 @@ assert_fails_with \
   bash "$repo_root/scripts/ci/verify-openburnbar-development-signing.sh" \
   "$app_path" "$team_id"
 
-echo "PASS: development signing gate accepts exact profiles and rejects wildcard profiles, missing App Group authority, weak flags, wrong entitlements, and wrong identity classes"
+echo "PASS: development signing gate accepts exact macOS/current-device profiles and rejects wildcard profiles, platform/device/debug mismatches, excess signed shared authority, weak flags, wrong entitlements, and wrong identity classes"

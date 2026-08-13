@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenBurnBar Safari certification fixtures</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body data-fixture="fixture-index">
+    <main class="shell">
+      <p class="eyebrow">OpenBurnBar · controlled local evidence</p>
+      <h1>Safari certification, without pretend proof.</h1>
+      <p class="lede">
+        These deterministic pages exercise the exact content and action edges named in the Safari QA
+        matrix. They run only on loopback, contain no real accounts or credentials, make no external
+        requests, and perform no production action.
+      </p>
+      <section class="notice" aria-labelledby="safety-heading">
+        <h2 id="safety-heading">Safety boundary</h2>
+        <p>
+          Browser automation against these pages is fixture evidence. Only a recording from the
+          installed native Safari extension can count as Safari certification.
+        </p>
+      </section>
+      <ol class="fixture-grid">
+        <li>
+          <a href="/mixed">
+            <span class="fixture-number">Fixture 01</span>
+            <strong>Semantic article + vision</strong>
+            <span>Headings, table, link, illustration, and a chart with stable values.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/react-controls">
+            <span class="fixture-number">Fixture 02</span>
+            <strong>React-controlled controls</strong>
+            <span>Real React text input and select with visible input/change evidence.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/shadow">
+            <span class="fixture-number">Fixtures 03 + 04</span>
+            <strong>Open and closed shadow roots</strong>
+            <span>Inspectable open content plus a narrow supported page-world bridge.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/strict-csp">
+            <span class="fixture-number">Fixture 05</span>
+            <strong>Strict Content Security Policy</strong>
+            <span>Header-enforced self-only resources with no inline script allowance.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/infinite-scroll">
+            <span class="fixture-number">Fixture 06</span>
+            <strong>Infinite scroll</strong>
+            <span>Deterministic batches, stable item IDs, observer and button paths.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/zoom-offset">
+            <span class="fixture-number">Fixture 07</span>
+            <strong>Zoom + viewport offsets</strong>
+            <span>A target on a wide page after controlled horizontal and vertical scroll.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/frames">
+            <span class="fixture-number">Fixture 08</span>
+            <strong>Same- and cross-origin frames</strong>
+            <span>One primary-origin child and one isolated secondary-loopback child.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/protected/banking">
+            <span class="fixture-number">Fixture 09</span>
+            <strong>Protected denial route</strong>
+            <span>Credential and payment semantics with an inert, server-rejected form.</span>
+          </a>
+        </li>
+        <li>
+          <a href="/owned-tabs/start">
+            <span class="fixture-number">Fixture 10</span>
+            <strong>Run-owned tab flow</strong>
+            <span>Open, navigate, verify, list, and close a tab without leaving loopback.</span>
+          </a>
+        </li>
+      </ol>
+      <p><a href="/manifest.json">Inspect the live fixture manifest</a></p>
+    </main>
+  </body>
+</html>

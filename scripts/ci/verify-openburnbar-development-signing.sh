@@ -15,7 +15,6 @@ expected_bundle_id="com.openburnbar.app"
 expected_app_group="group.com.openburnbar.app"
 expected_keychain_suffix="com.openburnbar.app"
 embedded_profile="$app_path/Contents/embedded.provisionprofile"
-profile_verifier="${OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER:-$repo_root/scripts/ci/verify-signing-profile-certificate.sh}"
 
 if [[ ! "$expected_team_id" =~ ^[A-Z0-9]{10}$ ]]; then
   echo "ERROR: Expected Apple team ID must be exactly 10 uppercase letters/digits; found '${expected_team_id:-missing}'." >&2
@@ -28,6 +27,14 @@ fi
 if [[ ! -f "$embedded_profile" || -L "$embedded_profile" ]]; then
   echo "ERROR: OpenBurnBar development app is missing a real embedded provisioning profile: $embedded_profile" >&2
   exit 66
+fi
+
+if ! current_mac_provisioning_udid="$(
+  /usr/sbin/system_profiler SPHardwareDataType -json 2>/dev/null \
+    | python3 "$repo_root/scripts/lib/parse-macos-provisioning-udid.py" 2>/dev/null
+)"; then
+  echo "ERROR: Could not determine this Mac's unique provisioning UDID from system_profiler." >&2
+  exit 69
 fi
 
 tmp_root="${TMPDIR:-/tmp}"
@@ -79,7 +86,8 @@ python3 - \
   "$expected_team_id" \
   "$expected_bundle_id" \
   "$expected_app_group" \
-  "$expected_keychain_suffix" <<'PY'
+  "$expected_keychain_suffix" \
+  "$current_mac_provisioning_udid" <<'PY'
 import datetime as dt
 import plistlib
 import sys
@@ -92,6 +100,7 @@ from pathlib import Path
     bundle_id,
     app_group,
     keychain_suffix,
+    current_mac_provisioning_udid,
 ) = sys.argv[1:]
 
 with Path(signed_entitlements_path).open("rb") as file:
@@ -136,14 +145,14 @@ require_equal(
     True,
     "signed development app get-task-allow entitlement",
 )
-require_member(
+require_equal(
     signed.get("com.apple.security.application-groups"),
-    app_group,
+    [app_group],
     "signed development app App Groups",
 )
-require_member(
+require_equal(
     signed.get("keychain-access-groups"),
-    expected_keychain_group,
+    [expected_keychain_group],
     "signed development app Keychain groups",
 )
 
@@ -155,9 +164,16 @@ if team_identifiers != [team_id]:
     )
 if profile.get("ProvisionsAllDevices") is True:
     fail("development app profile must not be an all-devices distribution profile.")
+require_equal(
+    profile.get("Platform"),
+    ["OSX"],
+    "development app profile platform",
+)
 provisioned_devices = profile.get("ProvisionedDevices")
 if not isinstance(provisioned_devices, list) or not provisioned_devices:
     fail("development app profile must authorize at least one registered device.")
+if current_mac_provisioning_udid not in provisioned_devices:
+    fail("development app profile must authorize this Mac's provisioning UDID.")
 expiration = profile.get("ExpirationDate")
 if not isinstance(expiration, dt.datetime):
     fail("development app profile is missing ExpirationDate.")
@@ -169,6 +185,11 @@ if expiration <= dt.datetime.now(dt.timezone.utc):
 profile_entitlements = profile.get("Entitlements")
 if not isinstance(profile_entitlements, dict):
     fail("development app profile is missing Entitlements.")
+require_equal(
+    profile_entitlements.get("com.apple.security.get-task-allow"),
+    True,
+    "development app profile get-task-allow entitlement",
+)
 require_equal(
     profile_entitlements.get("com.apple.application-identifier"),
     expected_application_identifier,
@@ -193,7 +214,9 @@ if not isinstance(profile_keychain_groups, list) or not {
     )
 PY
 
-bash "$profile_verifier" "$app_path" "$embedded_profile"
+bash "$repo_root/scripts/ci/verify-signing-profile-certificate.sh" \
+  "$app_path" \
+  "$embedded_profile"
 bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
   "$app_path" \
   development \
