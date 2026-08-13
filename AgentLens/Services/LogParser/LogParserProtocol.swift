@@ -14,6 +14,31 @@ protocol LogParser: Sendable {
     func parse() async throws -> ParseResult
 }
 
+// MARK: - Transcript Parse Health
+
+/// Typed parse-health surface for the M2 usage parsers (VAL-PROV-007).
+///
+/// Each parser records per-parse counts on `lastParseHealth`:
+/// - `itemsScanned`: transcript files (Pi) or session directories (Grok CLI) examined;
+/// - `itemsParsed`: items that produced a `TokenUsage` row;
+/// - `itemsSkipped`: items that produced no row (missing/empty/blank files, no
+///   parseable timestamps, no usage data);
+/// - `malformedLines`: JSON lines that could not be decoded (truncated JSON,
+///   garbage bytes, wrong shape). A non-zero count degrades the parse
+///   (`isDegraded == true`) without dropping valid rows.
+struct TranscriptParseHealth: Equatable, Sendable {
+    var itemsScanned = 0
+    var itemsParsed = 0
+    var itemsSkipped = 0
+    var malformedLines = 0
+
+    var isDegraded: Bool { malformedLines > 0 }
+
+    var summary: String {
+        "scanned=\(itemsScanned) parsed=\(itemsParsed) skipped=\(itemsSkipped) malformedLines=\(malformedLines)"
+    }
+}
+
 // MARK: - FileHandle Extensions
 
 extension FileHandle {
@@ -24,6 +49,21 @@ extension FileHandle {
               let content = String(data: data, encoding: .utf8) else {
             return []
         }
+        return content.split(whereSeparator: \.isNewline).map(String.init)
+    }
+
+    /// Lossy UTF-8 line reader: invalid byte sequences become U+FFFD instead
+    /// of failing the whole-file decode, so a torn multi-byte tail degrades to
+    /// a malformed line (skipped, counted in parse health) while valid rows
+    /// are preserved (VAL-PROV-007/014). Used by the M2 transcript parsers.
+    func readAllUTF8LinesLossy() -> [String] {
+        let data = readDataToEndOfFile()
+        guard !data.isEmpty else { return [] }
+        // Lossy decode is intentional: invalid bytes become U+FFFD so a torn
+        // multi-byte tail degrades to a skipped malformed line instead of
+        // failing the whole-file decode (VAL-PROV-007/014).
+        // swiftlint:disable:next optional_data_string_conversion
+        let content = String(decoding: data, as: UTF8.self)
         return content.split(whereSeparator: \.isNewline).map(String.init)
     }
 

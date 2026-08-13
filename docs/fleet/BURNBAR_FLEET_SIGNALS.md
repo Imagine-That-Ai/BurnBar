@@ -617,6 +617,62 @@ Known traps from the verified inventory. Every one of these is a documented beha
 
 ---
 
+## Usage parsers (M2, implemented)
+
+The app-side usage parsers (`PiParser`, `GrokCLIParser`) read the same declared
+history roots as the probes, with the same root-injection seam
+(`BURNBAR_FLEET_ROOT_PI` / `BURNBAR_FLEET_ROOT_GROK_CLI` per-probe overrides,
+`BURNBAR_FLEET_ROOTS_DIR` base override; both point at the agent ROOT, the
+parser appends `agent/sessions` / `sessions`). They are registered in
+`UsageAggregator.parsers`; Grok Bot's usage parser is an honest empty no-op
+(live-signal-only provider, VAL-PROV-008).
+
+### Pi transcripts (`~/.pi/agent/sessions/<project-dir>/*.jsonl`)
+
+- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`.
+- **Usage lines:** `{"type":"message",…,"message":{"role":"assistant","content":[…],"usage":{"input":N,"output":N,"cacheRead":N,"cacheWrite":N,"reasoning":N,"totalTokens":N,"cost":{…}}}}`.
+- **Model:** `message.model` on assistant lines, falling back to `model_change.modelId` events.
+- **Project name (REAL ENCODING, verified 2026-08-12):** session dirs are
+  `--` + `-`-joined path components + `--` (e.g.
+  `--Users-albertonunez-Documents-Developer-imaginethat-llc--`), which is
+  ambiguous for hyphenated components. The transcript line-1 `cwd` field is
+  the AUTHORITATIVE project path when present; the `--`-boundary slug decode
+  (split only on `--`, single hyphens preserved, components percent-decoded)
+  is the fallback. The M1 probe implements the same split rule for repo
+  attribution; the M2 parser prefers `cwd` per the M1 probe worker's note.
+- **Timestamps:** ISO-8601 with optional fractional seconds and optional
+  non-UTC offsets; a session with no parseable timestamps is skipped
+  honestly (never epoch-zero).
+- **Parse health:** each parser exposes `lastParseHealth`
+  (`itemsScanned/itemsParsed/itemsSkipped/malformedLines`); malformed lines
+  degrade the parse without dropping valid rows. Empty and zero-byte files
+  are silent no-ops.
+
+### Grok CLI sessions (`~/.grok/sessions/<url-encoded-project>/`)
+
+- **Usage source priority:** `updates.jsonl` `turn_completed` frames
+  (`params.update.usage.inputTokens/outputTokens/cachedReadTokens`), then
+  `events.jsonl` `turn_ended` frames with a `usage` object. Real sessions
+  verified 2026-08-12 carry usage only in `updates.jsonl`.
+- **Session metadata:** `summary.json` (`info.id`, `info.cwd`,
+  `current_model_id`, `created_at`, `updated_at`); `cwd` is authoritative
+  over the URL-decoded dir name.
+- **Project names** are URL-decoded from the session dir name
+  (`%2FUsers%2Falbertonunez` → `/Users/albertonunez`); percent-escapes and
+  non-ASCII names decode exactly.
+- **Timestamps:** ISO-8601 with optional fractional seconds; sessions with no
+  parseable timestamps are skipped honestly (never epoch-zero).
+- **Parse health:** same `lastParseHealth` surface as PiParser.
+
+### Fixture etiquette (binding for parser fixtures)
+
+- Fixtures under `AgentLensTests/Fixtures/pi` and `AgentLensTests/Fixtures/grok`
+  contain only synthetic token/usage content. No fixture is derived from
+  `local-exec-daemon-connection.json` or any credential-bearing file; no
+  real token/secret-shaped values are committed (VAL-PROV-012).
+
+---
+
 ## Probe etiquette (binding)
 
 - Read-only everything; `kill -0` / `proc_pidinfo` for liveness; no signals, no writes, no deletes outside your own temp dirs.

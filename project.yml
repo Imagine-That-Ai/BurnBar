@@ -124,6 +124,14 @@ targets:
     platform: macOS
     sources:
       - path: AgentLensTests
+        # M2 parser fixtures are read from the source tree via #filePath-relative
+        # paths (see the parser test helpers); excluding them from the build
+        # avoids duplicate-resource collisions (e.g. multiple chat_history.jsonl
+        # under grok session dirs) and keeps the bundle lean. ReplayGoldens stay
+        # bundled (pre-existing behavior).
+        excludes:
+          - "Fixtures/pi/**"
+          - "Fixtures/grok/**"
     settings:
       base:
         PRODUCT_NAME: BurnBarTests

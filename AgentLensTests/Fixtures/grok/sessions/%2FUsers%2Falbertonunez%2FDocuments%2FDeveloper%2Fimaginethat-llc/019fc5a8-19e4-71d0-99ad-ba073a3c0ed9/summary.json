@@ -1,0 +1,20 @@
+{
+  "info": {
+    "id": "019fc5a8-19e4-71d0-99ad-ba073a3c0ed9",
+    "cwd": "/Users/albertonunez/Documents/Developer/imaginethat-llc"
+  },
+  "session_summary": "Events-only usage session",
+  "created_at": "2026-07-18T09:00:00Z",
+  "updated_at": "2026-07-18T09:01:00Z",
+  "num_messages": 2,
+  "num_chat_messages": 2,
+  "current_model_id": "grok-4.5",
+  "chat_format_version": 1,
+  "request_id": "e75b6475-e858-43b9-9831-2809236ca028",
+  "grok_home": "/Users/albertonunez/.grok",
+  "last_active_at": "2026-07-18T09:01:00Z",
+  "generated_title": "Events-only usage session",
+  "agent_name": "grok-build-plan",
+  "sandbox_profile": "off",
+  "reasoning_effort": "high"
+}

@@ -1,0 +1,4 @@
+{"type":"session","version":3,"id":"019feded-0fb0-7b52-9d6d-b2d26d75e203","cwd":"/Users/albertonunez"}
+{"type":"model_change","id":"3b4bcbbd","parentId":null,"provider":"deepseek","modelId":"deepseek-v4-flash"}
+{"type":"message","id":"75fafe70","parentId":"e4cdc298","message":{"role":"user","content":[{"type":"text","text":"No timestamps anywhere."}],"timestamp":1786496401000}}
+{"type":"message","id":"7d700243","parentId":"75fafe70","message":{"role":"assistant","content":[{"type":"text","text":"No timestamps reply."}],"api":"openai-completions","provider":"deepseek","model":"deepseek-v4-flash","usage":{"input":220,"output":90,"cacheRead":0,"cacheWrite":0,"reasoning":0,"totalTokens":310,"cost":{"input":0.0000308,"output":0.0000252,"cacheRead":0,"cacheWrite":0,"total":0.000056}},"stopReason":"end_turn","timestamp":1786496402000,"responseId":"e8fda73b-ec3c-4957-857c-3bbeb7f42755","rawStopReason":"stop"}}

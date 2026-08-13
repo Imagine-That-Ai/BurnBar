@@ -1,0 +1,21 @@
+{
+  "info": {
+    "id": "019f5df0-f85a-7fb3-9a08-7a957d5f0893",
+    "cwd": "/Users/albertonunez"
+  },
+  "session_summary": "Hourly Disk Cleanup Script for Temp and Worktree Directories",
+  "created_at": "2026-07-14T00:05:01.332073Z",
+  "updated_at": "2026-07-14T00:05:17.045026Z",
+  "num_messages": 10,
+  "num_chat_messages": 8,
+  "current_model_id": "grok-4.5",
+  "next_trace_turn": 1,
+  "chat_format_version": 1,
+  "request_id": "e75b6475-e858-43b9-9831-2809236ca024",
+  "grok_home": "/Users/albertonunez/.grok",
+  "last_active_at": "2026-07-14T00:05:17.045026Z",
+  "generated_title": "Hourly Disk Cleanup Script for Temp and Worktree Directories",
+  "agent_name": "grok-build-plan",
+  "sandbox_profile": "off",
+  "reasoning_effort": "high"
+}

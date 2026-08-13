@@ -1,0 +1,2 @@
+{"type":"user","content":[{"type":"text","text":"Run the unknown-model session."}]}
+{"type":"assistant","content":"Done.","model_id":"grok-4.5-ultra-unknown","model_fingerprint":"fp_a39489019fa99b6e","reasoning_effort":"high"}

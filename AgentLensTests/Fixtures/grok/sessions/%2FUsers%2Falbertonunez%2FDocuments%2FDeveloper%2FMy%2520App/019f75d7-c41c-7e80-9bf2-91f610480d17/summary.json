@@ -1,0 +1,20 @@
+{
+  "info": {
+    "id": "019f75d7-c41c-7e80-9bf2-91f610480d17",
+    "cwd": "/Users/albertonunez/Documents/Developer/My App"
+  },
+  "session_summary": "Refactor the café ordering flow",
+  "created_at": "2026-07-15T10:00:00Z",
+  "updated_at": "2026-07-15T10:02:00Z",
+  "num_messages": 4,
+  "num_chat_messages": 3,
+  "current_model_id": "grok-4.5",
+  "chat_format_version": 1,
+  "request_id": "e75b6475-e858-43b9-9831-2809236ca025",
+  "grok_home": "/Users/albertonunez/.grok",
+  "last_active_at": "2026-07-15T10:02:00Z",
+  "generated_title": "Refactor the café ordering flow",
+  "agent_name": "grok-build-plan",
+  "sandbox_profile": "off",
+  "reasoning_effort": "high"
+}

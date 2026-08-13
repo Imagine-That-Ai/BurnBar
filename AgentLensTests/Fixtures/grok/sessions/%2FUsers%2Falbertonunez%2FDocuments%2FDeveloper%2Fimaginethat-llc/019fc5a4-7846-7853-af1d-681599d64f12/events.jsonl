@@ -1,0 +1,2 @@
+{"ts":"2026-07-17T09:00:00Z","type":"turn_started","session_id":"019fc5a4-7846-7853-af1d-681599d64f12","turn_number":0,"model_id":"grok-4.5-ultra-unknown","yolo_mode":true,"conversation_message_count":1,"session_relationship":"primary","schema_version":"1.0"}
+{"ts":"2026-07-17T09:01:00Z","type":"turn_ended","outcome":"completed"}

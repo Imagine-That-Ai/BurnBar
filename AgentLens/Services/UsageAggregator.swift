@@ -146,6 +146,8 @@ final class UsageAggregator {
             .augment: AugmentParser(),
             .hermes: HermesParser(),
             .grokBot: GrokBotParser(),
+            .grokCLI: GrokCLIParser(),
+            .pi: PiParser(),
             .geminiCLI: GeminiCLIParser(),
             .goose: GooseParser(),
         ]

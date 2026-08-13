@@ -1,0 +1,5 @@
+{"ts":"2026-07-14T00:05:03.819Z","type":"mcp_config_resolved","servers":[{"name":"cmux-agent-mcp","transport":"stdio","source":"local"},{"name":"mem0-mcp","transport":"http","source":"local"},{"name":"neon","transport":"http","source":"local"},{"name":"playwright","transport":"stdio","source":"local"},{"name":"serena","transport":"stdio","source":"local"}],"disabled":[]}
+{"ts":"2026-07-14T00:05:04.468Z","type":"turn_started","session_id":"019f5df0-f85a-7fb3-9a08-7a957d5f0893","turn_number":0,"model_id":"grok-4.5","yolo_mode":true,"conversation_message_count":3,"session_relationship":"primary","schema_version":"1.0"}
+{"ts":"2026-07-14T00:05:04.575Z","type":"loop_started","loop_index":0}
+{"ts":"2026-07-14T00:05:06.443Z","type":"first_token"}
+{"ts":"2026-07-14T00:05:17.045Z","type":"turn_ended","outcome":"cancelled","cancellation_category":"mid_turn_abort","cancellation_context":{"trigger":"ctrl_c"}}
