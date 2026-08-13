@@ -410,6 +410,11 @@ describe('popup rendering', () => {
     expect(root.querySelector('[role="group"][aria-label="OpenBurnBar mode"]')?.getAttribute('aria-describedby')).toBe(
       'mode-description'
     );
+    expect(root.querySelector('[role="group"][aria-label="OpenBurnBar mode"]')?.id).toBe('mode-popover');
+    expect(root.querySelector('[data-input="mode-range"]')?.getAttribute('aria-describedby')).toBe('mode-description');
+    expect(root.querySelector('[data-input="mode-range"]')?.getAttribute('aria-valuetext')).toBe('Ask');
+    expect(root.querySelector('.mode-knob')?.getAttribute('aria-hidden')).toBe('true');
+    expect(root.querySelectorAll('.mode-tick[aria-hidden="true"]')).toHaveLength(4);
     expect(root.querySelectorAll('.mode-button')).toHaveLength(4);
     expect(root.querySelectorAll('.mode-button[aria-pressed="true"]')).toHaveLength(1);
     expect(root.querySelector('.mode-button.is-selected')?.getAttribute('aria-pressed')).toBe('true');
@@ -445,6 +450,8 @@ describe('popup rendering', () => {
     expect(root.querySelector('.composer-submit')?.getAttribute('aria-keyshortcuts')).toBe('Meta+Enter');
     expect(root.querySelector<HTMLButtonElement>('.composer-context')?.textContent).toContain('Page');
     expect(root.querySelector<HTMLButtonElement>('.composer-context')?.disabled).toBe(true);
+    expect(root.querySelector<HTMLButtonElement>('.mode-trigger')?.getAttribute('aria-controls')).toBe('mode-popover');
+    expect(root.querySelector<HTMLButtonElement>('.mode-trigger')?.getAttribute('aria-expanded')).toBe('false');
     expect(root.querySelector('.composer-submit .icon')?.getAttribute('aria-hidden')).toBe('true');
     expect(root.querySelector('.error-banner')?.getAttribute('role')).toBe('alert');
     expect(root.querySelector('img[src="x"]')).toBeNull();
