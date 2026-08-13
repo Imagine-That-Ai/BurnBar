@@ -13,7 +13,7 @@ export function permissionPatternForURL(urlValue: string): string {
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new SafariExtensionError('unsupported_page', 'OpenBurnBar can only read regular HTTP and HTTPS pages.');
   }
-  return `${url.origin}/*`;
+  return `${url.protocol}//${url.hostname}/*`;
 }
 
 export class SitePermissionController {

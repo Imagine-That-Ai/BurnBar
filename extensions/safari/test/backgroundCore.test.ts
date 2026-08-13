@@ -21,6 +21,10 @@ describe('background permission, storage, ownership, page, and capture adapters'
     const { browser, controls } = createMockBrowser();
     const permissions = new SitePermissionController(browser);
     expect(permissionPatternForURL('https://example.com/path?q=1')).toBe('https://example.com/*');
+    expect(permissionPatternForURL('http://127.0.0.1:42771/mixed')).toBe('http://127.0.0.1/*');
+    expect(permissionPatternForURL('http://localhost:42771/mixed')).toBe('http://localhost/*');
+    expect(permissionPatternForURL('https://example.com:8443/path')).toBe('https://example.com/*');
+    expect(permissionPatternForURL('http://[::1]:42771/mixed')).toBe('http://[::1]/*');
     expect(() => permissionPatternForURL('file:///tmp/test')).toThrow(/HTTP and HTTPS/u);
     expect(() => permissionPatternForURL('not a url')).toThrow(/valid web URL/u);
     expect(await permissions.status('https://example.com/path')).toBe('prompt');
@@ -29,6 +33,13 @@ describe('background permission, storage, ownership, page, and capture adapters'
     expect(await permissions.status('https://example.com/other')).toBe('granted');
     expect(await permissions.revoke('https://example.com/path')).toBe(true);
     expect(await permissions.status('file:///tmp/test')).toBe('unsupported');
+
+    controls.grantedOrigins.add('http://127.0.0.1/*');
+    expect(await permissions.status('http://127.0.0.1:42771/mixed')).toBe('granted');
+    expect(await permissions.revoke('http://127.0.0.1:42771/mixed')).toBe(true);
+    expect(await permissions.status('http://127.0.0.1:42771/mixed')).toBe('prompt');
+    expect(await permissions.request('http://127.0.0.1:42771/mixed')).toBe('granted');
+    expect(controls.grantedOrigins).toContain('http://127.0.0.1/*');
   });
 
   it('round-trips preferences and sanitizes malformed storage', async () => {
