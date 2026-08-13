@@ -2018,7 +2018,7 @@ export class SafariBackgroundController {
       if (agents && agents.length > 0) {
         state.bridge.agents = agents;
       }
-      if (transcript) {
+      if (transcript && transcript.length > 0) {
         state.transcript = transcript.slice(-MAX_TRANSCRIPT_ENTRIES);
       }
       if (terminalPhase) {

@@ -779,6 +779,34 @@ describe('Safari background controller integration', () => {
     expectSuccess(await asking);
   });
 
+  it('preserves a completed local Ask transcript when the native snapshot has no run transcript', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
+    await authorizeCloudScreenshots(harness);
+
+    const answer = await harness.controller.handlePopupRequest({
+      type: 'popup.ask',
+      prompt: 'What color is the call to action?'
+    });
+    expectSuccess(answer);
+    expect(answer.snapshot.transcript.map((entry) => entry.text)).toEqual([
+      'What color is the call to action?',
+      'The CTA is orange.'
+    ]);
+
+    harness.setUISnapshot({
+      ...defaultUISnapshot(),
+      transcript: []
+    });
+    const refreshed = await harness.controller.handlePopupRequest({ type: 'popup.refresh' });
+    expectSuccess(refreshed);
+    expect(refreshed.snapshot.transcript.map((entry) => entry.text)).toEqual([
+      'What color is the call to action?',
+      'The CTA is orange.'
+    ]);
+  });
+
   it('stops during native renewal before DOM or screenshot capture and performs zero provider contact', async () => {
     const harness = createControllerHarness();
     harness.setNativeBootstrap({
