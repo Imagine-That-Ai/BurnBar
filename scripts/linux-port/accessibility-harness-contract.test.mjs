@@ -29,7 +29,7 @@ const REQUIRED_ROUTES = [
 ];
 
 test('axe runs every route and both fail-closed capability states', () => {
-  assert.equal(packageJson.devDependencies['axe-core'], '4.12.1');
+  assert.equal(packageJson.devDependencies['axe-core'], '4.13.0');
   assert.match(axeAudit, /for \(const route of ROUTES\)/);
   assert.match(axeAudit, /capability-unavailable/);
   assert.match(axeAudit, /capability-degraded/);
