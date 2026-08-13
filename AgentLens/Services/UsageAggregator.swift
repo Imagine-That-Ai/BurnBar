@@ -1597,6 +1597,19 @@ final class CodexParser: LogParser, @unchecked Sendable {
     private let environment: [String: String]?
     private let cacheURL: URL
 
+    /// Rollout paths skipped because they resolved OUTSIDE the (possibly
+    /// overridden) Codex root during the last `parse()` — typed containment
+    /// surface (round-2 scrutiny issue 2). Out-of-root paths are never opened.
+    private(set) var lastSkippedOutOfRootRolloutPaths = 0
+
+    /// The Codex root honoring the override seam (real `~/.codex` with no
+    /// overrides). `rollout_path` values are only followed inside this root.
+    private var codexRootPath: String {
+        ParserRootResolver.resolvedRoot(for: provider, environment: environment)
+            ?? (("~" as NSString).expandingTildeInPath as NSString)
+                .appendingPathComponent(".codex")
+    }
+
     init(
         fileManager: FileManager = .default,
         appPaths: BurnBarAppPaths = .live(),
@@ -1617,6 +1630,7 @@ final class CodexParser: LogParser, @unchecked Sendable {
         let dbPath = (basePath as NSString).appendingPathComponent("state_5.sqlite")
 
         guard fileManager.fileExists(atPath: dbPath) else {
+            lastSkippedOutOfRootRolloutPaths = 0
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -1629,6 +1643,15 @@ final class CodexParser: LogParser, @unchecked Sendable {
         var sessionCache = loadSessionCache()
         var activePaths = Set<String>()
         var cacheMutated = false
+        var skippedOutOfRootRolloutPaths = 0
+
+        // Containment root (round-2 scrutiny issue 2): rollout_path values are
+        // only followed when they resolve INSIDE the (possibly overridden)
+        // Codex root. With no override this is the real `~/.codex` root, so
+        // real rollout paths (e.g. `~/.codex/archived_sessions/…`) keep
+        // working; under an injected root any path escaping it is skipped
+        // typed and NEVER opened.
+        let codexRoot = URL(fileURLWithPath: codexRootPath).resolvingSymlinksInPath()
 
         var config = Configuration()
         config.readonly = true
@@ -1686,40 +1709,51 @@ final class CodexParser: LogParser, @unchecked Sendable {
 
                 if hasRolloutPath, let rolloutPath: String = row["rollout_path"] {
                     let expandedPath = (rolloutPath as NSString).expandingTildeInPath
-                    let cacheKey = URL(fileURLWithPath: expandedPath).standardizedFileURL.path
-                    activePaths.insert(cacheKey)
+                    let resolvedPath = URL(fileURLWithPath: expandedPath).resolvingSymlinksInPath()
+                    // Containment: only follow rollout paths that resolve inside
+                    // the Codex root. Out-of-root paths are skipped typed (never
+                    // read) — a hermetic refreshAll must never open live user
+                    // data referenced by a fixture database. The row still
+                    // parses via the tokens_used fallback below.
+                    if resolvedPath.path == codexRoot.path
+                        || resolvedPath.path.hasPrefix(codexRoot.path + "/") {
+                        let cacheKey = resolvedPath.path
+                        activePaths.insert(cacheKey)
 
-                    if let signature = fileSignature(forPath: expandedPath),
-                       let cached = sessionCache.fileEntries[cacheKey],
-                       cached.signature == signature {
-                        if let tokenUsage = cached.tokenUsage {
-                            inputTokens = tokenUsage.input
-                            outputTokens = tokenUsage.output
-                            cacheReadTokens = tokenUsage.cacheRead
-                            foundExact = true
+                        if let signature = fileSignature(forPath: resolvedPath.path),
+                           let cached = sessionCache.fileEntries[cacheKey],
+                           cached.signature == signature {
+                            if let tokenUsage = cached.tokenUsage {
+                                inputTokens = tokenUsage.input
+                                outputTokens = tokenUsage.output
+                                cacheReadTokens = tokenUsage.cacheRead
+                                foundExact = true
+                            }
+                        } else {
+                            let parsed = parseCodexSessionJSONL(path: resolvedPath.path)
+                            if let parsed {
+                                inputTokens = parsed.input
+                                outputTokens = parsed.output
+                                cacheReadTokens = parsed.cacheRead
+                                foundExact = true
+                            }
+
+                            if let signature = fileSignature(forPath: resolvedPath.path) {
+                                sessionCache.fileEntries[cacheKey] = CodexSessionCacheEntry(
+                                    signature: signature,
+                                    tokenUsage: parsed.map {
+                                        CodexSessionTokenUsage(
+                                            input: $0.input,
+                                            output: $0.output,
+                                            cacheRead: $0.cacheRead
+                                        )
+                                    }
+                                )
+                                cacheMutated = true
+                            }
                         }
                     } else {
-                        let parsed = parseCodexSessionJSONL(path: expandedPath)
-                        if let parsed {
-                            inputTokens = parsed.input
-                            outputTokens = parsed.output
-                            cacheReadTokens = parsed.cacheRead
-                            foundExact = true
-                        }
-
-                        if let signature = fileSignature(forPath: expandedPath) {
-                            sessionCache.fileEntries[cacheKey] = CodexSessionCacheEntry(
-                                signature: signature,
-                                tokenUsage: parsed.map {
-                                    CodexSessionTokenUsage(
-                                        input: $0.input,
-                                        output: $0.output,
-                                        cacheRead: $0.cacheRead
-                                    )
-                                }
-                            )
-                            cacheMutated = true
-                        }
+                        skippedOutOfRootRolloutPaths += 1
                     }
                 }
 
@@ -1768,6 +1802,7 @@ final class CodexParser: LogParser, @unchecked Sendable {
             persistSessionCache(sessionCache)
         }
 
+        lastSkippedOutOfRootRolloutPaths = skippedOutOfRootRolloutPaths
         return usages
     }
 

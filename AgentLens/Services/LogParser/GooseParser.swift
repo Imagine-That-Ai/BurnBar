@@ -279,9 +279,21 @@ final class GooseParser: LogParser, @unchecked Sendable {
 
     private func resolvedSessionDirectories() -> [String] {
         var candidates: [String] = []
-        let env = ProcessInfo.processInfo.environment["GOOSE_PATH_ROOT"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let env, !env.isEmpty {
-            candidates.append(((env as NSString).appendingPathComponent("data/sessions") as NSString).expandingTildeInPath)
+        // GOOSE_PATH_ROOT comes from the injected environment dict when one is
+        // provided (hermetic seam, round-2 scrutiny issue 1): the live process
+        // environment is NEVER consulted in that case. An explicit empty value
+        // in the injected dict disables the variable. With no injected
+        // environment the live variable is honored (real-root behavior).
+        let goosePathRoot: String?
+        if let environment {
+            goosePathRoot = environment["GOOSE_PATH_ROOT"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            goosePathRoot = ProcessInfo.processInfo.environment["GOOSE_PATH_ROOT"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let goosePathRoot, !goosePathRoot.isEmpty {
+            candidates.append(((goosePathRoot as NSString).appendingPathComponent("data/sessions") as NSString).expandingTildeInPath)
         }
 
         candidates.append(ParserRootResolver.expand(

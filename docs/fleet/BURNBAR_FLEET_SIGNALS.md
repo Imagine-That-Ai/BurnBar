@@ -662,6 +662,22 @@ generic injection seam (all defaults preserve the real-root behavior):
   per-provider exact row counts, zero duplicate sessionIds on the second
   refresh, and no writes outside the injected temp app-support dir
   (VAL-PROV-009/018).
+- **Hermetic-boundary containment (round-2 scrutiny repair,
+  hermetic-seam-containment-repair):** two escape paths are closed and proven
+  by `HermeticSeamContainmentTests`:
+  - `GooseParser` reads `GOOSE_PATH_ROOT` from the INJECTED environment dict
+    when one is provided — the live process environment is never consulted in
+    that case, and an explicit empty value in the injected dict disables the
+    variable. With no injected environment the live variable is honored
+    (real-root behavior preserved). Proven with a live-env decoy root whose
+    database must never be scanned.
+  - `CodexParser` only follows `rollout_path` values that resolve INSIDE the
+    (possibly overridden) Codex root; out-of-root paths are skipped typed
+    (`CodexParser.lastSkippedOutOfRootRolloutPaths`) and NEVER opened. The
+    thread row still parses via the `tokens_used` fallback. Proven with a
+    canary file outside the injected root whose backdated access time must
+    stay unchanged and whose exact token content must never appear in the
+    parsed row — at the parser level AND through a full `refreshAll()`.
 
 ### Pi transcripts (`~/.pi/agent/sessions/<project-dir>/*.jsonl`)
 
