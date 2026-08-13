@@ -1,11 +1,14 @@
 # P-30 Linux pet companion capability slice
 
 **Status:** the compositor-aware implementation, Linux-native companion
-chat/file-drop slice, and macOS-shaped 3D pet catalog/avatar selection are ready
-at source level. The installed-candidate proof package is not yet registered in
-the product workflow, and Tier A parity remains blocked until the exact signed
-candidate passes all seven compositor and architecture environments. macOS-only
-2D atlas forms, persona/local-floor behavior, and compositor receipts remain
+chat/file-drop slice, macOS-shaped pet catalog/avatar selection, and legacy 2D
+atlas runtime are ready at source level. The generated catalog contains 114
+unique entries, including 112 GLB-backed entries and three atlas forms (two
+atlas-only plus one hybrid). The installed-candidate proof package is not yet
+registered in the product workflow, and Tier A parity remains blocked until the
+exact signed candidate passes all seven compositor and architecture
+environments. macOS's offscreen 3D thumbnail pipeline, persona/local-floor
+behavior, behavior-driven state transitions, and compositor receipts remain
 open.
 
 ## Difference
@@ -20,11 +23,14 @@ pointer and keyboard repositioning, and a compact daemon-backed companion chat
 bubble. Dropping a supported file on the pet opens the bubble and stages the
 attachment through the same bounded upload policy as the full chat composer;
 the full chat pop-out remains available. Wayland correctly remains contained.
-Linux now loads a generated catalog of the 110 bundled 3D PetCompanion models,
+Linux now loads a generated catalog of 114 shared PetCompanion entries,
 supports search/group filtering, persists the selected avatar, and reads only
-the selected GLB from the packaged Tauri resource directory. macOS-only 2D
-atlas forms, persona/local-floor behavior, and installed proof of the
-chat/drop/catalog flows remain outside the current P-30 certification claim.
+the selected GLB or legacy atlas image from packaged Tauri resource
+directories. Atlas-backed selections render the source frame grid with the
+macOS-compatible row/frame math and reduced-motion behavior. macOS's
+offscreen 3D thumbnail pipeline, persona/local-floor behavior, and installed
+proof of the chat/drop/catalog flows remain outside the current P-30
+certification claim.
 
 The old Linux route inferred overlay support from `XDG_SESSION_TYPE` and
 `XDG_CURRENT_DESKTOP`, which could label KDE/Sway/other Wayland sessions as
@@ -51,10 +57,10 @@ desktop overlay.
 5. Keep selection/clear, repositioning, contained chat, and bounded file-drop
    staging available in the contained fallback; never turn them into an
    unproven desktop-overlay claim.
-6. Keep the generated 3D pet catalog in lockstep with the shared macOS
-   `petdef.json` resources; load selected GLBs through the bounded native
-   `pet_asset_read` command rather than copying the entire model set into the
-   web bundle.
+6. Keep the generated pet catalog in lockstep with both shared macOS
+   `Resources/Models` and legacy `Resources/Pets` `petdef.json` resources;
+   load selected GLBs and atlas images through bounded native readers rather
+   than copying the entire asset set into the web bundle.
 7. Promote only after the installed evidence harness proves the same signed
    candidate across GNOME X11, GNOME Wayland, KDE Wayland, and Sway on the
    required architectures.
@@ -90,13 +96,15 @@ claim to close the full macOS feature gap.
   `inspectChatAttachment()` policy. Unsupported types and files over 10 MiB are
   rejected visibly before any bytes cross the bridge.
 - `scripts/linux-port/generate-linux-pet-catalog.mjs` derives the Linux catalog
-  from the committed macOS `Resources/Models/*/petdef.json` files. The Tauri
-  shell packages those existing resources under `pet-models` and exposes one
-  allowlisted, bounded GLB reader with source-tree fallback for development.
-- The Linux picker matches the macOS library's practical controls for the
-  synced 3D set: search, category groups, selected-state semantics, and
-  persisted avatar choice. It does not yet render macOS's thumbnail pipeline
-  or support the legacy 2D atlas forms.
+  from the committed macOS `Resources/Models/*/petdef.json` and
+  `Resources/Pets/*/petdef.json` files. The Tauri shell packages those
+  resources under `pet-models` and `pet-atlas`, exposing bounded, allowlisted
+  GLB and atlas readers with source-tree fallback only for development.
+- The Linux picker matches the macOS library's practical controls: search,
+  category groups, selected-state semantics, persisted avatar choice, and
+  default-form selection. The selected legacy atlas form now renders through
+  a bounded Canvas2D frame runtime. The offscreen 3D thumbnail pipeline and
+  thumbnail-backed picker cards remain open.
 - The verifier rejects screenshot or AT-SPI replay, forged click-through,
   optimistic Wayland capability, missing focus/status/shortcut metadata,
   failed relaunch, package substitution, and incomplete process restoration.
@@ -131,7 +139,8 @@ Installed-app checks still required before promotion:
 4. Select and clear the pet, reposition it with pointer and keyboard, reset it
    with Home, and verify each live status plus focused AT-SPI node.
 5. Open the pet library, search by display name and group, select a different
-   3D avatar, restart the app, and verify that the selected id and model are
+   3D avatar, select Claude Code, Goose, or Hugging Face to exercise the legacy
+   atlas form, restart the app, and verify that the selected id and form are
    restored from the same packaged resource set.
 6. Open companion chat, send a text turn, drop a supported Markdown/text file,
    confirm the staged attachment is visible before sending, and verify

@@ -1089,6 +1089,16 @@ export type PetAssetResponse = {
   dataBase64: string;
 };
 
+export type PetAtlasResponse = {
+  schemaVersion: number;
+  petId: string;
+  imageName: string;
+  mimeType: string;
+  byteLength: number;
+  sha256: string;
+  dataBase64: string;
+};
+
 // ─────────────────────────── P11: session env ─────────────────────────────
 
 export type SessionEnv = { XDG_SESSION_TYPE?: string; XDG_CURRENT_DESKTOP?: string };
@@ -1800,6 +1810,8 @@ export interface LinuxShellBridge {
   petCompanionStatus?(): Promise<PetCompanionStatus>;
   /** Optional on older packaged shells; reads one allowlisted bundled GLB. */
   petAssetRead?(glbName: string): Promise<PetAssetResponse>;
+  /** Optional on older packaged shells; reads one allowlisted bundled atlas image. */
+  petAtlasRead?(petID: string, imageName: string): Promise<PetAtlasResponse>;
   textExpansionList?(): Promise<TextExpansionSnapshot>;
   textExpansionUpsert?(snippet: TextExpansionWireSnippet): Promise<TextExpansionWireSnippet>;
   textExpansionDelete?(id: string): Promise<TextExpansionSnapshot>;

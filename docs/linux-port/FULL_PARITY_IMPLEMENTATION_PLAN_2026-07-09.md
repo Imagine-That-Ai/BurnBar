@@ -41,19 +41,19 @@ known platform divergences.
 > it is not release certification.
 >
 > **Continuation update (2026-08-04, Linux pet parity):** the isolated branch
-> `codex/linux-pet-catalog-20260804` adds the next coherent P-30 unit. A
-> deterministic generator derives `apps/linux-desktop/public/pets/catalog.json`
-> from the 110 committed macOS `Resources/Models/*/petdef.json` definitions;
-> the Linux route adds searchable/grouped selection with persisted avatar state;
-> and the Tauri shell packages the existing model directory under `pet-models`
-> and exposes a bounded, allowlisted `pet_asset_read` command. This keeps the
-> web bundle small while making the selected 3D asset identical to the macOS
-> source asset. Verification is green: frontend **113 files / 1,049 tests**,
-> TypeScript, ESLint, production bundle verification, catalog generator test,
-> no-suppression gate, and Tauri Rust **163/163**. This is source-level proof;
-> the 2D atlas/form pipeline, thumbnail rendering, persona/local-floor behavior,
-> compositor receipts, signed candidate, and seven-environment certification
-> remain release gates.
+> `codex/linux-pet-catalog-20260804` adds the searchable/grouped/persisted
+> catalog and bounded GLB reader, and the follow-on branch
+> `codex/linux-pet-atlas-20260804` extends that same contract to the legacy
+> `Resources/Pets` forms. The deterministic generator now emits 114 unique
+> entries from the shared macOS `Resources/Models` and `Resources/Pets`
+> definitions; the selected 112 GLB-backed entries use `pet_asset_read`, while
+> the three atlas forms use the bounded `pet_atlas_read` command and a
+> Canvas2D row/frame runtime with reduced-motion handling. Verification is
+> green: frontend **114 files / 1,051 tests**, TypeScript, ESLint, production
+> bundle verification, catalog/packaging tests, no-suppression gate, and Tauri
+> Rust **164/164**. This is source-level proof; the macOS offscreen 3D
+> thumbnail pipeline, persona/local-floor behavior, compositor receipts,
+> signed candidate, and seven-environment certification remain release gates.
 >
 > **Implementation continuation (2026-07-21):** `dd78a83bef` and `9d6363fbd9`
 > expand Linux local usage ingestion from the Copilot-only default to all 18
