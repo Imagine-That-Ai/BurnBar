@@ -108,6 +108,13 @@ export type PopupRequest =
     }
   | { type: 'popup.setTrust'; patch: Partial<TrustSettings> }
   | { type: 'popup.requestSitePermission' }
+  | {
+      type: 'popup.authorizePage';
+      expectedStateVersion: number;
+      expectedTabId: number;
+      expectedOrigin: string;
+      acknowledgeCloudScreenshots: boolean;
+    }
   | { type: 'popup.setLearning'; optedIn: boolean }
   | { type: 'popup.teachCorrection'; correction: string }
   | { type: 'popup.learningReview'; itemId: string; decision: 'approve' | 'reject' | 'forget' };
@@ -179,6 +186,24 @@ export function isPopupRequest(value: unknown): value is PopupRequest {
     case 'popup.clearPerformance':
     case 'popup.requestSitePermission':
       return hasExactKeys(value, ['type']);
+    case 'popup.authorizePage':
+      return (
+        hasExactKeys(value, [
+          'type',
+          'expectedStateVersion',
+          'expectedTabId',
+          'expectedOrigin',
+          'acknowledgeCloudScreenshots'
+        ]) &&
+        typeof value.expectedStateVersion === 'number' &&
+        Number.isSafeInteger(value.expectedStateVersion) &&
+        value.expectedStateVersion >= 0 &&
+        typeof value.expectedTabId === 'number' &&
+        Number.isSafeInteger(value.expectedTabId) &&
+        value.expectedTabId >= 0 &&
+        isNonEmptyString(value.expectedOrigin) &&
+        typeof value.acknowledgeCloudScreenshots === 'boolean'
+      );
     case 'popup.abort':
       return (
         hasExactKeys(value, ['type', 'trigger']) &&

@@ -12,6 +12,8 @@ export interface SafariPreferences {
   selectedAgentId?: string;
   mode: SafariMode;
   onlyCurrentTab: boolean;
+  automaticallyTrustInvokedWebsites: boolean;
+  cloudScreenshotDisclosureAcknowledged: boolean;
   learningOptedIn: boolean;
   learningConsentSeen: boolean;
   sites: Record<string, StoredSiteTrust>;
@@ -20,6 +22,8 @@ export interface SafariPreferences {
 const DEFAULT_PREFERENCES: SafariPreferences = {
   mode: 'ask',
   onlyCurrentTab: true,
+  automaticallyTrustInvokedWebsites: false,
+  cloudScreenshotDisclosureAcknowledged: false,
   learningOptedIn: false,
   learningConsentSeen: false,
   sites: {}
@@ -61,6 +65,14 @@ export function parsePreferences(value: unknown): SafariPreferences {
     mode: isMode(record.mode) ? record.mode : DEFAULT_PREFERENCES.mode,
     onlyCurrentTab:
       typeof record.onlyCurrentTab === 'boolean' ? record.onlyCurrentTab : DEFAULT_PREFERENCES.onlyCurrentTab,
+    automaticallyTrustInvokedWebsites:
+      typeof record.automaticallyTrustInvokedWebsites === 'boolean'
+        ? record.automaticallyTrustInvokedWebsites
+        : DEFAULT_PREFERENCES.automaticallyTrustInvokedWebsites,
+    cloudScreenshotDisclosureAcknowledged:
+      typeof record.cloudScreenshotDisclosureAcknowledged === 'boolean'
+        ? record.cloudScreenshotDisclosureAcknowledged
+        : DEFAULT_PREFERENCES.cloudScreenshotDisclosureAcknowledged,
     learningOptedIn:
       typeof record.learningOptedIn === 'boolean' ? record.learningOptedIn : DEFAULT_PREFERENCES.learningOptedIn,
     learningConsentSeen:

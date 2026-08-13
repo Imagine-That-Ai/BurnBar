@@ -60,6 +60,8 @@ describe('background permission, storage, ownership, page, and capture adapters'
       selectedAgentId: 'model-1',
       mode: 'handoff',
       onlyCurrentTab: false,
+      automaticallyTrustInvokedWebsites: false,
+      cloudScreenshotDisclosureAcknowledged: false,
       learningOptedIn: true,
       learningConsentSeen: true,
       sites: {
@@ -71,6 +73,8 @@ describe('background permission, storage, ownership, page, and capture adapters'
     const preferences = {
       mode: 'agentic' as const,
       onlyCurrentTab: true,
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged: true,
       learningOptedIn: false,
       learningConsentSeen: true,
       sites: {

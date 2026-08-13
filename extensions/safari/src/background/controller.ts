@@ -260,9 +260,12 @@ export class SafariBackgroundController {
   private readonly store: SafariSessionStore;
   private readonly performanceRecorder: SafariPerformanceRecorder;
   private readonly ownership = new TabOwnershipRegistry();
+  private readonly nativeTrustedOrigins = new Set<string>();
   private preferences: SafariPreferences = {
     mode: 'ask',
     onlyCurrentTab: true,
+    automaticallyTrustInvokedWebsites: false,
+    cloudScreenshotDisclosureAcknowledged: false,
     learningOptedIn: false,
     learningConsentSeen: false,
     sites: {}
@@ -297,6 +300,7 @@ export class SafariBackgroundController {
   private localWorkGeneration = 0;
   private localTurnActive = false;
   private nativeProjectionInFlight: Promise<void> | undefined;
+  private pageAuthorizationInFlight: Promise<void> | undefined;
   private locallyHaltedSession: { sessionId: string | undefined } | undefined;
   private readonly navigationEpochs = new Map<number, number>();
 
@@ -394,6 +398,9 @@ export class SafariBackgroundController {
         case 'popup.requestSitePermission':
           await this.requestSitePermission();
           break;
+        case 'popup.authorizePage':
+          await this.authorizePage(request);
+          break;
         case 'popup.setLearning':
           await this.measurePerformance(
             'learning_mutation',
@@ -439,6 +446,7 @@ export class SafariBackgroundController {
         delete state.selectedAgentId;
       }
       state.trust.onlyCurrentTab = this.preferences.onlyCurrentTab;
+      state.trust.cloudScreenshotAcknowledged = this.preferences.cloudScreenshotDisclosureAcknowledged;
       state.learning.optedIn = this.preferences.learningOptedIn;
       state.learning.consentSeen = this.preferences.learningConsentSeen;
       state.busy = true;
@@ -466,6 +474,7 @@ export class SafariBackgroundController {
           this.ownership.releaseSession(previousSessionId);
         }
         this.locallyHaltedSession = undefined;
+        this.nativeTrustedOrigins.clear();
         this.localWorkGeneration += 1;
       }
       if (tab) {
@@ -1320,6 +1329,9 @@ export class SafariBackgroundController {
     if (patch.onlyCurrentTab !== undefined) {
       nextPreferences.onlyCurrentTab = patch.onlyCurrentTab;
     }
+    if (patch.cloudScreenshotAcknowledged !== undefined) {
+      nextPreferences.cloudScreenshotDisclosureAcknowledged = patch.cloudScreenshotAcknowledged;
+    }
     if (patch.siteAllowed !== undefined || patch.sensitiveSiteOverride !== undefined) {
       if (!origin) {
         throw new SafariExtensionError(
@@ -1339,6 +1351,11 @@ export class SafariBackgroundController {
       });
       if (!response.accepted) {
         throw new SafariExtensionError('trust_update_rejected', 'OpenBurnBar did not accept the site trust change.');
+      }
+      if (proposedSite.allowed) {
+        this.nativeTrustedOrigins.add(origin);
+      } else {
+        this.nativeTrustedOrigins.delete(origin);
       }
       nextPreferences.sites[origin] = proposedSite;
     }
@@ -1367,8 +1384,129 @@ export class SafariBackgroundController {
     const origin = originForURL(tab.url);
     if (origin) {
       await this.setTrust({ siteAllowed: true });
+      this.preferences.automaticallyTrustInvokedWebsites = true;
+      await this.store.save(this.preferences);
     }
     await this.initialize(true);
+  }
+
+  private async authorizePage(request: Extract<PopupRequest, { type: 'popup.authorizePage' }>): Promise<void> {
+    if (this.pageAuthorizationInFlight) {
+      return this.pageAuthorizationInFlight;
+    }
+    const operation = this.performPageAuthorization(request);
+    const tracked = operation.finally(() => {
+      if (this.pageAuthorizationInFlight === tracked) {
+        this.pageAuthorizationInFlight = undefined;
+      }
+    });
+    this.pageAuthorizationInFlight = tracked;
+    return tracked;
+  }
+
+  private async performPageAuthorization(
+    request: Extract<PopupRequest, { type: 'popup.authorizePage' }>
+  ): Promise<void> {
+    const initialTab = await activeTab(this.browserAPI);
+    const initialOrigin = originForURL(initialTab?.url);
+    if (
+      !initialTab?.url ||
+      typeof initialTab.id !== 'number' ||
+      initialTab.id !== request.expectedTabId ||
+      initialOrigin !== request.expectedOrigin ||
+      request.expectedStateVersion !== this.snapshot.stateVersion
+    ) {
+      throw new SafariExtensionError(
+        'authorization_page_changed',
+        'The Safari page changed while access was being prepared. Open OpenBurnBar again on the page you want to use.'
+      );
+    }
+
+    const status =
+      (await this.permissionController.status(initialTab.url)) === 'granted'
+        ? 'granted'
+        : await this.permissionController.requestAllWebsites();
+    if (status !== 'granted') {
+      throw new SafariExtensionError(
+        'site_permission_denied',
+        'Safari did not grant website access. Choose Allow in Safari, then try again.'
+      );
+    }
+
+    const currentTab = await activeTab(this.browserAPI);
+    const currentOrigin = originForURL(currentTab?.url);
+    if (
+      !currentTab?.url ||
+      currentTab.id !== initialTab.id ||
+      currentOrigin !== initialOrigin ||
+      currentTab.url !== initialTab.url
+    ) {
+      throw new SafariExtensionError(
+        'authorization_page_changed',
+        'The Safari page changed while its permission sheet was open. Return to the page and try again.'
+      );
+    }
+
+    const previousPreferences = this.preferences;
+    const existing = previousPreferences.sites[currentOrigin] ?? {
+      allowed: false,
+      sensitiveOverride: false
+    };
+    const trustResponse = await this.bridge.popupAction('trust.update', {
+      origin: currentOrigin,
+      decision: 'allow',
+      trustMode: 'step'
+    });
+    if (!trustResponse.accepted) {
+      throw new SafariExtensionError(
+        'trust_update_rejected',
+        'Safari access was granted, but OpenBurnBar could not establish trusted access. Reconnect and try again.'
+      );
+    }
+    this.nativeTrustedOrigins.add(currentOrigin);
+
+    const nextPreferences: SafariPreferences = {
+      ...previousPreferences,
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged:
+        previousPreferences.cloudScreenshotDisclosureAcknowledged || request.acknowledgeCloudScreenshots,
+      sites: {
+        ...previousPreferences.sites,
+        [currentOrigin]: {
+          ...existing,
+          allowed: true
+        }
+      }
+    };
+    try {
+      await this.store.save(nextPreferences);
+    } catch (error) {
+      const rollback = await this.bridge.popupAction('trust.update', {
+        origin: currentOrigin,
+        decision: 'remove',
+        trustMode: 'manual'
+      });
+      if (!rollback.accepted) {
+        throw new SafariExtensionError(
+          'authorization_partial_failure',
+          'OpenBurnBar granted native trust but could not save it locally or roll it back. Restart OpenBurnBar before retrying.'
+        );
+      }
+      this.nativeTrustedOrigins.delete(currentOrigin);
+      throw error;
+    }
+    this.preferences = nextPreferences;
+    await this.refreshCurrentPage(false);
+    if (
+      this.snapshot.page?.permission !== 'granted' ||
+      !this.snapshot.trust.siteAllowed ||
+      (request.acknowledgeCloudScreenshots && !this.snapshot.trust.cloudScreenshotAcknowledged)
+    ) {
+      throw new SafariExtensionError(
+        'authorization_verification_failed',
+        'OpenBurnBar could not verify the completed Safari permission. Try again.'
+      );
+    }
   }
 
   private async setLearning(optedIn: boolean): Promise<void> {
@@ -1500,9 +1638,43 @@ export class SafariBackgroundController {
     if (this.bridge.sessionId) {
       this.ownership.claimUserHanded(tab, this.bridge.sessionId);
     }
-    const origin = originForURL(tab.url);
-    const siteTrust = origin ? this.preferences.sites[origin] : undefined;
     const permission = await this.permissionController.status(tab.url);
+    const origin = originForURL(tab.url);
+    let siteTrust = origin ? this.preferences.sites[origin] : undefined;
+    if (
+      origin &&
+      permission === 'granted' &&
+      this.preferences.automaticallyTrustInvokedWebsites &&
+      !this.nativeTrustedOrigins.has(origin)
+    ) {
+      try {
+        const response = await this.bridge.popupAction('trust.update', {
+          origin,
+          decision: 'allow',
+          trustMode: 'step'
+        });
+        if (response.accepted) {
+          this.nativeTrustedOrigins.add(origin);
+          const nextPreferences: SafariPreferences = {
+            ...this.preferences,
+            sites: {
+              ...this.preferences.sites,
+              [origin]: {
+                allowed: true,
+                sensitiveOverride: siteTrust?.sensitiveOverride ?? false
+              }
+            }
+          };
+          await this.store.save(nextPreferences);
+          this.preferences = nextPreferences;
+          siteTrust = nextPreferences.sites[origin];
+        } else {
+          siteTrust = undefined;
+        }
+      } catch {
+        siteTrust = undefined;
+      }
+    }
     const base = this.pageStateFromTab(tab);
     let sensitive = pageURLLooksSensitive(tab.url);
     if (extract && siteTrust?.allowed) {
@@ -1521,9 +1693,10 @@ export class SafariBackgroundController {
         sensitive,
         permission
       };
-      state.trust.siteAllowed = siteTrust?.allowed ?? false;
+      state.trust.siteAllowed = this.preferences.automaticallyTrustInvokedWebsites && (siteTrust?.allowed ?? false);
       state.trust.sensitiveSiteOverride = siteTrust?.sensitiveOverride ?? false;
       state.trust.onlyCurrentTab = this.preferences.onlyCurrentTab;
+      state.trust.cloudScreenshotAcknowledged = this.preferences.cloudScreenshotDisclosureAcknowledged;
       state.trust.globalKillSwitch = state.bridge.killSwitchEnabled;
     });
   }

@@ -108,6 +108,13 @@ describe('shared utilities', () => {
         }
       },
       { type: 'popup.requestSitePermission' },
+      {
+        type: 'popup.authorizePage',
+        expectedStateVersion: 7,
+        expectedTabId: 1,
+        expectedOrigin: 'https://example.com',
+        acknowledgeCloudScreenshots: true
+      },
       { type: 'popup.setLearning', optedIn: true },
       { type: 'popup.teachCorrection', correction: 'Prefer annual totals.' },
       { type: 'popup.learningReview', itemId: 'proposal-1', decision: 'approve' }
@@ -128,6 +135,13 @@ describe('shared utilities', () => {
       { type: 'popup.abort' },
       { type: 'popup.abort', trigger: 'timer' },
       { type: 'popup.abort', trigger: 'stop_button', extra: true },
+      {
+        type: 'popup.authorizePage',
+        expectedStateVersion: -1,
+        expectedTabId: 1,
+        expectedOrigin: 'https://example.com',
+        acknowledgeCloudScreenshots: true
+      },
       {
         type: 'popup.recordPerformance',
         metric: 'ask_first_token',

@@ -379,6 +379,160 @@ describe('popup state and view model', () => {
 });
 
 describe('popup rendering', () => {
+  it('renders one first-use permission sheet that explains and completes the cloud setup sequence', () => {
+    const root = document.createElement('div');
+    renderPopup(
+      root,
+      buildPopupViewModel({
+        ...createInitialPopupState(),
+        initialized: true,
+        draft: 'Summarize this page',
+        snapshot: snapshot({
+          page: { ...snapshotPage(), permission: 'prompt' },
+          trust: {
+            ...snapshot().trust,
+            siteAllowed: false,
+            cloudScreenshotAcknowledged: false
+          }
+        })
+      })
+    );
+
+    const sheet = root.querySelector<HTMLElement>('.permission-sheet[role="dialog"]');
+    expect(sheet).not.toBeNull();
+    expect(sheet?.getAttribute('aria-modal')).toBe('true');
+    expect(sheet?.textContent).toMatch(/Safari.*access/is);
+    expect(sheet?.textContent).toMatch(/allow.*website/is);
+    expect(sheet?.textContent).toMatch(/cloud.*screenshot/is);
+    expect(sheet?.querySelectorAll('button')).toHaveLength(1);
+    expect(sheet?.querySelector('[data-action="complete-permission-setup"]')).not.toBeNull();
+    expect(
+      sheet?.querySelector('[data-action="complete-permission-setup"]')?.getAttribute('aria-label') ??
+        sheet?.querySelector('[data-action="complete-permission-setup"]')?.textContent
+    ).toMatch(/allow|continue|set up/iu);
+    expect(root.querySelector<HTMLButtonElement>('.composer-submit')?.disabled).toBe(true);
+  });
+
+  it('keeps the permission sheet until Safari access, durable origin trust, and cloud disclosure are all ready', () => {
+    const root = document.createElement('div');
+    const local = {
+      ...createInitialPopupState(),
+      initialized: true,
+      draft: 'Summarize this page'
+    };
+    const renderBlocked = (value: PopupSnapshot): HTMLElement | null => {
+      renderPopup(root, buildPopupViewModel({ ...local, snapshot: value }));
+      return root.querySelector('.permission-sheet[role="dialog"]');
+    };
+
+    expect(
+      renderBlocked(
+        snapshot({
+          page: { ...snapshotPage(), permission: 'prompt' },
+          trust: { ...snapshot().trust, siteAllowed: false, cloudScreenshotAcknowledged: false }
+        })
+      )
+    ).not.toBeNull();
+    expect(
+      renderBlocked(
+        snapshot({
+          trust: { ...snapshot().trust, siteAllowed: false, cloudScreenshotAcknowledged: false }
+        })
+      )
+    ).not.toBeNull();
+    expect(
+      renderBlocked(
+        snapshot({
+          trust: { ...snapshot().trust, siteAllowed: true, cloudScreenshotAcknowledged: false }
+        })
+      )
+    ).not.toBeNull();
+
+    renderPopup(
+      root,
+      buildPopupViewModel({
+        ...local,
+        snapshot: snapshot({
+          trust: { ...snapshot().trust, siteAllowed: true, cloudScreenshotAcknowledged: true }
+        })
+      })
+    );
+    expect(root.querySelector('.permission-sheet[role="dialog"]')).toBeNull();
+    expect(root.querySelector<HTMLButtonElement>('.composer-submit')?.disabled).toBe(false);
+
+    renderPopup(
+      root,
+      buildPopupViewModel({
+        ...local,
+        snapshot: snapshot({
+          trust: { ...snapshot().trust, siteAllowed: true, cloudScreenshotAcknowledged: true }
+        })
+      })
+    );
+    expect(root.querySelector('.permission-sheet[role="dialog"]')).toBeNull();
+  });
+
+  it('does not request cloud screenshot disclosure for a local model', () => {
+    const root = document.createElement('div');
+    renderPopup(
+      root,
+      buildPopupViewModel({
+        ...createInitialPopupState(),
+        initialized: true,
+        draft: 'Summarize this page locally',
+        snapshot: snapshot({
+          selectedAgentId: 'codex',
+          mode: 'handoff',
+          page: { ...snapshotPage(), sensitive: false, permission: 'granted' },
+          trust: {
+            ...snapshot().trust,
+            siteAllowed: true,
+            cloudScreenshotAcknowledged: false
+          }
+        })
+      })
+    );
+
+    expect(root.querySelector('.permission-sheet[role="dialog"]')).toBeNull();
+    expect(root.textContent).not.toMatch(/acknowledge.*cloud screenshot/iu);
+    expect(root.querySelector<HTMLButtonElement>('.composer-submit')?.disabled).toBe(false);
+  });
+
+  it('keeps permission failures actionable without exposing a second setup flow', () => {
+    const root = document.createElement('div');
+    renderPopup(
+      root,
+      buildPopupViewModel({
+        ...createInitialPopupState(),
+        initialized: true,
+        draft: 'Summarize this page',
+        snapshot: snapshot({
+          page: { ...snapshotPage(), permission: 'denied' },
+          trust: {
+            ...snapshot().trust,
+            siteAllowed: false,
+            cloudScreenshotAcknowledged: false
+          },
+          lastError: {
+            code: 'permission_denied',
+            message: 'Safari did not grant website access. Review the Safari prompt and try again.',
+            retryable: true
+          }
+        })
+      })
+    );
+
+    const sheet = root.querySelector<HTMLElement>('.permission-sheet[role="dialog"]');
+    expect(sheet).not.toBeNull();
+    expect(sheet?.textContent).toMatch(/Safari.*(denied|access)/isu);
+    expect(sheet?.querySelectorAll('[data-action="complete-permission-setup"]')).toHaveLength(1);
+    expect(root.querySelector('.error-banner')?.getAttribute('role')).toBe('alert');
+    expect(root.querySelector('.error-banner')?.textContent).toContain(
+      'Safari did not grant website access. Review the Safari prompt and try again.'
+    );
+    expect(root.querySelector('[data-action="refresh"]')).not.toBeNull();
+  });
+
   it('renders the complete accessible operator cockpit without injecting message markup', () => {
     const root = document.createElement('div');
     document.body.append(root);

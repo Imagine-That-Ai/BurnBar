@@ -45,6 +45,11 @@ export interface PopupViewModel {
   primaryDisabled: boolean;
   primaryDisabledReason?: string;
   showCloudDisclosure: boolean;
+  showPermissionSheet: boolean;
+  permissionSheetHost: string;
+  permissionSheetNeedsSafari: boolean;
+  permissionSheetNeedsSiteTrust: boolean;
+  permissionSheetNeedsCloudDisclosure: boolean;
   stopEnabled: boolean;
   snapshot?: PopupSnapshot;
 }
@@ -181,13 +186,26 @@ export function buildPopupViewModel(state: PopupLocalState): PopupViewModel {
   const correctionByteCount = new TextEncoder().encode(state.correctionDraft.trim()).byteLength;
   const pageURL = snapshot?.page?.url;
   let pageDetail = 'Open a webpage to begin';
+  let pageOrigin = '';
   if (pageURL) {
     try {
-      pageDetail = new URL(pageURL).hostname;
+      const parsed = new URL(pageURL);
+      pageDetail = parsed.hostname;
+      pageOrigin = parsed.origin;
     } catch {
       pageDetail = pageURL;
     }
   }
+  const permissionSheetNeedsSafari =
+    Boolean(snapshot?.page) && snapshot?.page?.permission !== 'granted' && snapshot?.page?.permission !== 'unsupported';
+  const permissionSheetNeedsSiteTrust =
+    Boolean(snapshot?.page) && snapshot?.page?.permission !== 'unsupported' && !snapshot?.trust.siteAllowed;
+  const permissionSheetNeedsCloudDisclosure =
+    Boolean(selectedAgent?.cloud) && !snapshot?.trust.cloudScreenshotAcknowledged;
+  const showPermissionSheet =
+    Boolean(snapshot?.page) &&
+    snapshot?.page?.permission !== 'unsupported' &&
+    (permissionSheetNeedsSafari || permissionSheetNeedsSiteTrust || permissionSheetNeedsCloudDisclosure);
 
   return {
     ready: state.initialized && Boolean(snapshot),
@@ -247,6 +265,11 @@ export function buildPopupViewModel(state: PopupLocalState): PopupViewModel {
       Boolean(disabledReason) || state.submitting || Boolean(snapshot?.busy) || state.draft.trim().length === 0,
     ...(disabledReason ? { primaryDisabledReason: disabledReason } : {}),
     showCloudDisclosure: selectedAgent?.cloud ?? false,
+    showPermissionSheet,
+    permissionSheetHost: pageOrigin || pageDetail,
+    permissionSheetNeedsSafari,
+    permissionSheetNeedsSiteTrust,
+    permissionSheetNeedsCloudDisclosure,
     stopEnabled: Boolean(snapshot?.running || snapshot?.busy),
     ...(snapshot ? { snapshot } : {})
   };
