@@ -42,18 +42,12 @@ describe('shared utilities', () => {
     expect(() => getBrowserAPI(null)).toThrow(/unavailable/u);
   });
 
-  it('resolves the active tab from Safari’s last-focused browser window', async () => {
+  it('resolves the active tab from Safari’s current browser window', async () => {
     const { browser } = createMockBrowser();
     const queries: Record<string, unknown>[] = [];
     browser.tabs.query = async (query) => {
       queries.push(query);
-      // Safari's MV3 background context can have no "current" window while
-      // the extension popup is attached to a real, last-focused browser
-      // window.
-      if (query.currentWindow === true) {
-        return [];
-      }
-      return query.lastFocusedWindow === true
+      return query.currentWindow === true
         ? [
             {
               id: 2,
@@ -68,10 +62,10 @@ describe('shared utilities', () => {
     };
 
     expect((await activeTab(browser))?.id).toBe(2);
-    expect(queries).toEqual([{ active: true, lastFocusedWindow: true }]);
+    expect(queries).toEqual([{ active: true, currentWindow: true }]);
   });
 
-  it('fails closed when Safari has no active tab in its last-focused browser window', async () => {
+  it('fails closed when Safari has no active tab in its current browser window', async () => {
     const { browser } = createMockBrowser([]);
     expect(await activeTab(browser)).toBeUndefined();
   });

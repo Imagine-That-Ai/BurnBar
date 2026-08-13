@@ -465,6 +465,7 @@ export class SafariBackgroundController {
     const activePage = tab ? this.pageStateFromTab(tab) : undefined;
     const permission = tab?.url ? await this.permissionController.status(tab.url) : 'unsupported';
     const capabilities = this.capabilities(permission);
+    this.publishCurrentPage(tab, permission);
 
     try {
       await this.withAttachmentLock(async () => {
@@ -1772,11 +1773,7 @@ export class SafariBackgroundController {
   private async refreshCurrentPage(extract: boolean): Promise<void> {
     const tab = await activeTab(this.browserAPI);
     if (!tab?.url || typeof tab.id !== 'number') {
-      this.mutate((state) => {
-        delete state.page;
-        state.trust.siteAllowed = false;
-        state.trust.sensitiveSiteOverride = false;
-      });
+      this.publishCurrentPage(undefined, 'unsupported');
       return;
     }
     if (this.bridge.sessionId) {
@@ -1831,14 +1828,34 @@ export class SafariBackgroundController {
         // Page metadata remains useful even before Safari grants script access.
       }
     }
+    this.publishCurrentPage(tab, permission, siteTrust, base, sensitive);
+  }
+
+  private publishCurrentPage(
+    tab: BrowserTab | undefined,
+    permission: SitePermissionStatus,
+    siteTrust?: SafariPreferences['sites'][string],
+    pageState?: PageState,
+    sensitive?: boolean
+  ): void {
+    if (!tab?.url || typeof tab.id !== 'number') {
+      this.mutate((state) => {
+        delete state.page;
+        state.trust.siteAllowed = false;
+        state.trust.sensitiveSiteOverride = false;
+      });
+      return;
+    }
+    const origin = originForURL(tab.url);
+    const resolvedTrust = siteTrust ?? (origin ? this.preferences.sites[origin] : undefined);
     this.mutate((state) => {
       state.page = {
-        ...base,
-        sensitive,
+        ...(pageState ?? this.pageStateFromTab(tab)),
+        sensitive: sensitive ?? pageURLLooksSensitive(tab.url ?? ''),
         permission
       };
-      state.trust.siteAllowed = this.preferences.automaticallyTrustInvokedWebsites && (siteTrust?.allowed ?? false);
-      state.trust.sensitiveSiteOverride = siteTrust?.sensitiveOverride ?? false;
+      state.trust.siteAllowed = this.preferences.automaticallyTrustInvokedWebsites && (resolvedTrust?.allowed ?? false);
+      state.trust.sensitiveSiteOverride = resolvedTrust?.sensitiveOverride ?? false;
       state.trust.onlyCurrentTab = this.preferences.onlyCurrentTab;
       state.trust.cloudScreenshotAcknowledged = this.preferences.cloudScreenshotDisclosureAcknowledged;
       state.trust.globalKillSwitch = state.bridge.killSwitchEnabled;
