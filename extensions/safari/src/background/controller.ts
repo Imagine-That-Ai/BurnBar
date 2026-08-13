@@ -295,6 +295,7 @@ export class SafariBackgroundController {
   };
   private initialized = false;
   private initializing: Promise<void> | undefined;
+  private attachmentTail: Promise<void> = Promise.resolve();
   private pollLoopRunning = false;
   private pollGeneration = 0;
   private localWorkGeneration = 0;
@@ -335,6 +336,9 @@ export class SafariBackgroundController {
   async initialize(force = false): Promise<void> {
     if (this.initialized && !force) {
       return;
+    }
+    if (force && this.pageAuthorizationInFlight) {
+      await this.pageAuthorizationInFlight.promise;
     }
     if (this.initializing) {
       return this.initializing;
@@ -463,34 +467,36 @@ export class SafariBackgroundController {
     const capabilities = this.capabilities(permission);
 
     try {
-      const previousSessionId = this.bridge.sessionId;
-      const attached = await this.measurePerformance('native_attach', undefined, async () => {
-        const response = await this.bridge.hello(activePage, capabilities);
-        if (response.protocolVersion !== 1) {
-          throw new SafariExtensionError(
-            'protocol_mismatch',
-            `OpenBurnBar negotiated unsupported Safari protocol ${response.protocolVersion}.`
-          );
+      await this.withAttachmentLock(async () => {
+        const previousSessionId = this.bridge.sessionId;
+        const attached = await this.measurePerformance('native_attach', undefined, async () => {
+          const response = await this.bridge.hello(activePage, capabilities);
+          if (response.protocolVersion !== 1) {
+            throw new SafariExtensionError(
+              'protocol_mismatch',
+              `OpenBurnBar negotiated unsupported Safari protocol ${response.protocolVersion}.`
+            );
+          }
+          return response;
+        });
+        if (previousSessionId !== attached.sessionId) {
+          if (previousSessionId) {
+            this.ownership.releaseSession(previousSessionId);
+          }
+          this.locallyHaltedSession = undefined;
+          this.nativeTrustedOrigins.clear();
+          this.localWorkGeneration += 1;
         }
-        return response;
-      });
-      if (previousSessionId !== attached.sessionId) {
-        if (previousSessionId) {
-          this.ownership.releaseSession(previousSessionId);
+        if (tab) {
+          this.ownership.claimUserHanded(tab, attached.sessionId);
         }
-        this.locallyHaltedSession = undefined;
-        this.nativeTrustedOrigins.clear();
-        this.localWorkGeneration += 1;
-      }
-      if (tab) {
-        this.ownership.claimUserHanded(tab, attached.sessionId);
-      }
-      await this.bootstrapNative();
-      await this.refreshNativeProjection();
-      await this.refreshCatalog();
-      this.mutate((state) => {
-        state.bridge.connection = 'connected';
-        state.busy = false;
+        await this.bootstrapNative();
+        await this.refreshNativeProjection();
+        await this.refreshCatalog();
+        this.mutate((state) => {
+          state.bridge.connection = 'connected';
+          state.busy = false;
+        });
       });
       if (this.options.startPolling !== false) {
         this.startPollLoop();
@@ -507,6 +513,20 @@ export class SafariBackgroundController {
       });
     }
     await this.refreshCurrentPage(false);
+  }
+
+  private async withAttachmentLock<TResult>(operation: () => Promise<TResult>): Promise<TResult> {
+    const predecessor = this.attachmentTail;
+    let release: (() => void) | undefined;
+    this.attachmentTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await predecessor;
+    try {
+      return await operation();
+    } finally {
+      release?.();
+    }
   }
 
   private capabilities(permission: SitePermissionStatus): SafariExtensionCapabilities {
@@ -1488,8 +1508,10 @@ export class SafariBackgroundController {
       if (!this.isDetachedAuthorizationSession(error)) {
         throw error;
       }
-      await this.reattachAuthorizationSession(tab);
-      trustResponse = await updateTrust();
+      trustResponse = await this.withAttachmentLock(async () => {
+        await this.reattachAuthorizationSession(tab);
+        return updateTrust();
+      });
     }
     return trustResponse;
   }
