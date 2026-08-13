@@ -24,6 +24,7 @@ public actor BurnBarRunJournal {
         try ensureParentDirectory(for: fileURL)
 
         let persistedEvent = try BurnBarRunJournalPrivacyRedactor.redacted(event)
+        let existingEvents = try loadEventsIfNeeded()
         let encodedEvent = try encoder.encode(persistedEvent) + Data([0x0A])
         if FileManager.default.fileExists(atPath: fileURL.path) {
             let handle = try FileHandle(forWritingTo: fileURL)
@@ -35,9 +36,7 @@ public actor BurnBarRunJournal {
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
 
-        if cachedEvents != nil {
-            cachedEvents?.append(persistedEvent)
-        }
+        cachedEvents = existingEvents + [persistedEvent]
 
         logger.debug(
             "run_journal_event_appended",

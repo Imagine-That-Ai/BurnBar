@@ -1658,7 +1658,7 @@ jobs:
 
           source scripts/lib/libsignal-swift-compat.sh
           source scripts/lib/xcode-source-classification.sh
-          openburnbar_configure_xcode_process_tmpdir
+          openburnbar_configure_xcode_process_tmpdir "${OPENBURNBAR_XCODE_PROCESS_TMPDIR:-/tmp}"
 
           cleanup_release_packages() {
             local original_status=$?

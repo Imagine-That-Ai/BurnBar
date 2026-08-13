@@ -852,6 +852,116 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.learning.approve",
+    "caseName": "learningApprove",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.approve",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.forget",
+    "caseName": "learningForget",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.forget",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.list",
+    "caseName": "learningList",
+    "domain": "learning",
+    "capability": "memory_read",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.opt_in",
+    "caseName": "learningOptIn",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.opt_in",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.opt_out",
+    "caseName": "learningOptOut",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.opt_out",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.propose",
+    "caseName": "learningPropose",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.propose",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.recall",
+    "caseName": "learningRecall",
+    "domain": "learning",
+    "capability": "memory_read",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.recall",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.reject",
+    "caseName": "learningReject",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.reject",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.rollback",
+    "caseName": "learningRollback",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.rollback",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.timeline",
+    "caseName": "learningTimeline",
+    "domain": "learning",
+    "capability": "memory_read",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.learning.timeline",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.learning.update",
+    "caseName": "learningUpdate",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable mutation response for daemon.learning",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.media.call.accept",
     "caseName": "daemonMediaCallAccept",
     "domain": "media",
@@ -1469,6 +1579,286 @@ export const burnBarRpcIpcCanon = [
     "owner": "OpenBurnBarDaemon",
     "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
     "result": "Codable response for daemon.quota.signals",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.abort",
+    "caseName": "safariAbort",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.abort",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.approval.respond",
+    "caseName": "safariApprovalRespond",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable mutation response for daemon.safari.approval",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.bootstrap",
+    "caseName": "safariBootstrap",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.bootstrap",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.click",
+    "caseName": "safariClick",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.click",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.close_tab",
+    "caseName": "safariCloseTab",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.close_tab",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.command.complete",
+    "caseName": "safariCommandComplete",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.command.complete",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.command.poll",
+    "caseName": "safariCommandPoll",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.command.poll",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.extract",
+    "caseName": "safariExtract",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.extract",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.focus",
+    "caseName": "safariFocus",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.focus",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.full_page_screenshot",
+    "caseName": "safariFullPageScreenshot",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.full_page_screenshot",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.handoff",
+    "caseName": "safariHandoff",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.handoff",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.hover",
+    "caseName": "safariHover",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.hover",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.list_tabs",
+    "caseName": "safariListTabs",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.list_tabs",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.navigate",
+    "caseName": "safariNavigate",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.navigate",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.open_tab",
+    "caseName": "safariOpenTab",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.open_tab",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.page_context",
+    "caseName": "safariPageContext",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.page_context",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.press_key",
+    "caseName": "safariPressKey",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.press_key",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.run_javascript",
+    "caseName": "safariRunJavaScript",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.run_javascript",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.screenshot",
+    "caseName": "safariScreenshot",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.screenshot",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.scroll",
+    "caseName": "safariScroll",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.scroll",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.select_option",
+    "caseName": "safariSelectOption",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.select_option",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.session.attach",
+    "caseName": "safariSessionAttach",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.session.attach",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.session.detach",
+    "caseName": "safariSessionDetach",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.session.detach",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.session.status",
+    "caseName": "safariSessionStatus",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.session.status",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.trust.update",
+    "caseName": "safariTrustUpdate",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable mutation response for daemon.safari.trust",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.type",
+    "caseName": "safariType",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.type",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.ui.snapshot",
+    "caseName": "safariUISnapshot",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.ui.snapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.safari.wait_for",
+    "caseName": "safariWaitFor",
+    "domain": "safari",
+    "capability": "safari",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.safari.wait_for",
     "error": "BurnBarRPCError"
   },
   {

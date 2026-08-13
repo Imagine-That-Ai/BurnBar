@@ -827,9 +827,13 @@ final class BurnBarConfigStoreTests: XCTestCase {
             claudeOAuthRefreshSession: session
         )
         try await store.setSecret(storedPayload, for: providerSlotKey)
+        let initialRevision = await store.credentialReplacementRevision()
+        XCTAssertEqual(initialRevision, 0)
 
         let secret = try await store.secret(for: providerSlotKey)
         XCTAssertEqual(secret, "refreshed-oauth-token")
+        let refreshedRevision = await store.credentialReplacementRevision()
+        XCTAssertEqual(refreshedRevision, 1)
         XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies(), [
             "grant_type=refresh_token&refresh_token=old-refresh-token&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e"
         ])
@@ -955,6 +959,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
             claudeOAuthRefreshSession: session
         )
         try await store.setSecret(expiredPayload, for: providerKey)
+        let initialRevision = await store.credentialReplacementRevision()
+        XCTAssertEqual(initialRevision, 0)
 
         // Write a Claude Code credentials file with a valid access token.
         let ccExpiresAtMilliseconds = Date().addingTimeInterval(3600).timeIntervalSince1970 * 1000
@@ -1270,6 +1276,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
         // an expired token that would cause a 401 on the live model refresh.
         let secret = try await store.secret(for: providerKey)
         XCTAssertNil(secret)
+        let finalRevision = await store.credentialReplacementRevision()
+        XCTAssertEqual(finalRevision, 0)
         XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies().count, 1)
     }
 
@@ -1305,6 +1313,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
             claudeOAuthRefreshSession: session
         )
         try await store.setSecret(expiringPayload, for: providerKey)
+        let initialRevision = await store.credentialReplacementRevision()
+        XCTAssertEqual(initialRevision, 0)
 
         await store.proactivelyRefreshExpiringOAuthCredentials(for: [providerKey], refreshWindow: 3600)
 
@@ -1312,6 +1322,8 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let oauth = try XCTUnwrap(claudeOAuthPayload(from: refreshedPayload))
         XCTAssertEqual(oauth["accessToken"] as? String, "proactive-access")
         XCTAssertEqual(oauth["refreshToken"] as? String, "proactive-refresh")
+        let refreshedRevision = await store.credentialReplacementRevision()
+        XCTAssertEqual(refreshedRevision, 1)
         XCTAssertEqual(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies(), [
             "grant_type=refresh_token&refresh_token=old-refresh&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e"
         ])
@@ -1351,11 +1363,15 @@ final class BurnBarConfigStoreTests: XCTestCase {
         )
         try await store.setSecret(futurePayload, for: "anthropic")
         try await store.setSecret(nonAnthropicPayload, for: "zai")
+        let initialRevision = await store.credentialReplacementRevision()
+        XCTAssertEqual(initialRevision, 0)
 
         await store.proactivelyRefreshExpiringOAuthCredentials(for: ["anthropic", "zai"], refreshWindow: 3600)
 
         XCTAssertEqual(try keychainSecret(service: service, account: anthropicAccount), futurePayload)
         XCTAssertEqual(try keychainSecret(service: service, account: zaiAccount), nonAnthropicPayload)
+        let finalRevision = await store.credentialReplacementRevision()
+        XCTAssertEqual(finalRevision, 0)
         XCTAssertTrue(ClaudeOAuthRefreshURLProtocol.recordedRequestBodies().isEmpty)
     }
     #endif

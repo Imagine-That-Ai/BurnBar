@@ -20,7 +20,7 @@ TREE = "b" * 40
 TEAM = "A1B2C3D4E5"
 IDENTITY = "Apple Development: OpenBurnBar Fixture (CERT123456)"
 CERTIFICATE = b"openburnbar-development-certificate"
-CERTIFICATE_SHA1 = hashlib.sha1(CERTIFICATE).hexdigest().upper()
+CERTIFICATE_SHA256 = hashlib.sha256(CERTIFICATE).hexdigest().upper()
 CURRENT_MAC_UDID = "AAAAAAAA-BBBBBBBB"
 
 
@@ -109,8 +109,8 @@ class DevelopmentReceiptTests(unittest.TestCase):
                 TEAM,
                 "--signing-identity",
                 identity,
-                "--signing-certificate-sha1",
-                CERTIFICATE_SHA1,
+                "--signing-certificate-sha256",
+                CERTIFICATE_SHA256,
                 "--current-mac-provisioning-udid",
                 CURRENT_MAC_UDID,
                 "--version",
@@ -136,8 +136,8 @@ class DevelopmentReceiptTests(unittest.TestCase):
             self.assertRegex(receipt["artifact"]["treeSha256"], r"^[0-9a-f]{64}$")
             self.assertEqual(receipt["signing"]["identity"], IDENTITY)
             self.assertEqual(
-                receipt["signing"]["certificateSha1"],
-                CERTIFICATE_SHA1,
+                receipt["signing"]["certificateSha256"],
+                CERTIFICATE_SHA256,
             )
             self.assertRegex(
                 receipt["signing"]["hostProfileSha256"],
@@ -237,8 +237,8 @@ class DevelopmentReceiptTests(unittest.TestCase):
                     TEAM,
                     "--signing-identity",
                     IDENTITY,
-                    "--signing-certificate-sha1",
-                    CERTIFICATE_SHA1,
+                    "--signing-certificate-sha256",
+                    CERTIFICATE_SHA256,
                     "--current-mac-provisioning-udid",
                     CURRENT_MAC_UDID,
                     "--version",
@@ -301,8 +301,8 @@ class DevelopmentReceiptTests(unittest.TestCase):
                     TEAM,
                     "--signing-identity",
                     IDENTITY,
-                    "--signing-certificate-sha1",
-                    CERTIFICATE_SHA1,
+                    "--signing-certificate-sha256",
+                    CERTIFICATE_SHA256,
                     "--current-mac-provisioning-udid",
                     CURRENT_MAC_UDID,
                     "--version",
@@ -364,8 +364,8 @@ class DevelopmentReceiptTests(unittest.TestCase):
                     TEAM,
                     "--signing-identity",
                     IDENTITY,
-                    "--signing-certificate-sha1",
-                    CERTIFICATE_SHA1,
+                    "--signing-certificate-sha256",
+                    CERTIFICATE_SHA256,
                     "--current-mac-provisioning-udid",
                     CURRENT_MAC_UDID,
                     "--version",

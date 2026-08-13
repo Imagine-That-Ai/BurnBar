@@ -17,6 +17,7 @@ team_id="4Y367DF25B"
 signing_identity="Apple Development: OpenBurnBar Fixture (CERT123456)"
 identity_sha1="1234567890ABCDEF1234567890ABCDEF12345678"
 second_identity_sha1="ABCDEF1234567890ABCDEF1234567890ABCDEF12"
+certificate_sha256="53E0F0DC7BFE1F043380956ECDF432B83D4E625E0DC8F732BF1A325C305DE5A5"
 
 fail_test() {
   echo "FAIL: $*" >&2
@@ -143,6 +144,19 @@ case "${OPENBURNBAR_FIXTURE_IDENTITY_MODE:-one}" in
     exit 2
     ;;
 esac
+SH
+
+  cat >"$mock_bin/codesign" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'codesign' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
+printf ' <%s>' "$@" >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
+printf '\n' >>"$OPENBURNBAR_FIXTURE_COMMAND_LOG"
+if [[ "$*" != *"--extract-certificates"* ]]; then
+  echo "unexpected fixture codesign command: $*" >&2
+  exit 2
+fi
+printf 'openburnbar-fixture-leaf-certificate\n' >codesign0
 SH
 
   cat >"$mock_bin/xcodebuild" <<'SH'
@@ -384,7 +398,7 @@ for name in (
     "safari_profile",
     "team_id",
     "signing_identity",
-    "signing_certificate_sha1",
+    "signing_certificate_sha256",
     "current_mac_provisioning_udid",
     "version",
     "build",
@@ -403,7 +417,7 @@ payload = {
     "signing": {
         "teamId": args.team_id,
         "identity": args.signing_identity,
-        "certificateSha1": args.signing_certificate_sha1,
+        "certificateSha256": args.signing_certificate_sha256,
         "currentMacProvisioningUDID": args.current_mac_provisioning_udid,
         "hostProfile": Path(args.host_profile).read_text(),
         "safariProfile": Path(args.safari_profile).read_text(),
@@ -416,13 +430,14 @@ with Path(__import__("os").environ["OPENBURNBAR_FIXTURE_COMMAND_LOG"]).open("a")
         f"<{args.candidate_commit}> <{args.candidate_tree}> "
         f"<{args.app}> <{args.host_profile}> <{args.safari_profile}> "
         f"<{args.team_id}> <{args.signing_identity}> "
-        f"<{args.signing_certificate_sha1}>\n"
+        f"<{args.signing_certificate_sha256}>\n"
     )
 PY
 
   chmod +x \
     "$mock_bin/git" \
     "$mock_bin/security" \
+    "$mock_bin/codesign" \
     "$mock_bin/xcodebuild" \
     "$mock_bin/ditto" \
     "$mock_bin/PlistBuddy" \
@@ -469,6 +484,8 @@ run_fixture_with_paths() {
     OPENBURNBAR_FIXTURE_SAFARI_CI_MARKER="$fixture_root/safari-ci-complete" \
     OPENBURNBAR_GIT_BIN="$fixture_root/mock-bin/git" \
     OPENBURNBAR_SECURITY_BIN="$fixture_root/mock-bin/security" \
+    OPENBURNBAR_CODESIGN_BIN="$fixture_root/mock-bin/codesign" \
+    OPENBURNBAR_SHASUM_BIN="/usr/bin/shasum" \
     OPENBURNBAR_XCODEBUILD_BIN="$fixture_root/mock-bin/xcodebuild" \
     OPENBURNBAR_DITTO_BIN="$fixture_root/mock-bin/ditto" \
     OPENBURNBAR_PYTHON_BIN="/usr/bin/python3" \
@@ -583,7 +600,7 @@ assert receipt["candidate"] == {
 assert receipt["artifact"] == {"version": "1.0.34", "build": "76"}
 assert receipt["signing"]["teamId"] == "$team_id"
 assert receipt["signing"]["identity"] == "$signing_identity"
-assert receipt["signing"]["certificateSha1"] == "$identity_sha1"
+assert receipt["signing"]["certificateSha256"] == "$certificate_sha256"
 assert receipt["signing"]["currentMacProvisioningUDID"] == "FIXTURE-MAC-UDID"
 assert receipt["signing"]["hostProfile"] == "host-profile\n"
 assert receipt["signing"]["safariProfile"] == "safari-profile\n"

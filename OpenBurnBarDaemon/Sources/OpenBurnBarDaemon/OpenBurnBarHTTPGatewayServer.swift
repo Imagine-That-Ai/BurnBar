@@ -52,6 +52,10 @@ public actor BurnBarHTTPGatewayServer {
 
     let rateLimiter: BurnBarRateLimiter?
 
+    /// Ephemeral process-local key used only to pseudonymize presented
+    /// credentials for in-memory rate-limit buckets and redacted logs.
+    let rateLimitClientKeySecret = SymmetricKey(size: .bits256)
+
     let safariAttributionAuthority: SafariGatewayAttributionAuthority?
 
     /// remediation(loopback-c): a dedicated, stricter rate limiter that bounds

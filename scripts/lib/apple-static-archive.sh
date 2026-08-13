@@ -25,6 +25,35 @@ openburnbar_require_apple_static_archive_tools() {
   fi
 }
 
+openburnbar_parse_apple_static_archive_diagnostics() {
+  local diagnostic_log="${1:-}"
+  local empty_member_list="${2:-}"
+  local archive_label="${3:-<unknown archive>}"
+  if [[ -z "$diagnostic_log" || ! -f "$diagnostic_log" || -z "$empty_member_list" ]]; then
+    echo "Apple static-archive diagnostic parser received invalid paths." >&2
+    return 64
+  fi
+
+  # Apple libtool has emitted both forms below across Xcode releases:
+  #   libtool: warning: 'archive.a(member.o)' has no symbols
+  #   libtool: file: /path/archive.a(member.o) has no symbols
+  # Accept only these known diagnostics. Any new output remains fail-closed.
+  LC_ALL=C sed -E -n \
+    -e "s/^libtool: warning: '.*\\(([^()]*)\\)' has no symbols$/\\1/p" \
+    -e "s/^libtool: file: .*\\(([^()]*)\\) has no symbols$/\\1/p" \
+    "$diagnostic_log" >"$empty_member_list"
+
+  local diagnostic_count
+  local parsed_count
+  diagnostic_count="$(wc -l <"$diagnostic_log" | tr -d '[:space:]')"
+  parsed_count="$(wc -l <"$empty_member_list" | tr -d '[:space:]')"
+  if ((diagnostic_count != parsed_count)); then
+    echo "Apple libtool emitted an unrecognized archive diagnostic: $archive_label" >&2
+    cat "$diagnostic_log" >&2
+    return 65
+  fi
+}
+
 openburnbar_prune_symbol_empty_archive_members() {
   local archive="${1:-}"
   if [[ -z "$archive" || ! -s "$archive" ]]; then
@@ -47,7 +76,6 @@ openburnbar_prune_symbol_empty_archive_members() {
   local member_path
   local kept_count=0
   local pruned_count=0
-  local classification_line_count=0
 
   if ! xcrun ar -t "$archive" >"$member_list"; then
     echo "Unable to read Apple static archive members: $archive" >&2
@@ -80,21 +108,16 @@ openburnbar_prune_symbol_empty_archive_members() {
     rm -rf "$scan_dir"
     return 65
   fi
-  LC_ALL=C sed -n \
-    "s/^libtool: warning: '.*(\\(.*\\))' has no symbols$/\\1/p" \
-    "$classification_log" >"$empty_member_list"
-  classification_line_count="$(
-    wc -l <"$classification_log" | tr -d '[:space:]'
-  )"
-  pruned_count="$(
-    wc -l <"$empty_member_list" | tr -d '[:space:]'
-  )"
-  if ((classification_line_count != pruned_count)); then
-    echo "Apple libtool emitted an unrecognized archive diagnostic: $archive" >&2
-    cat "$classification_log" >&2
+  if ! openburnbar_parse_apple_static_archive_diagnostics \
+    "$classification_log" \
+    "$empty_member_list" \
+    "$archive"; then
     rm -rf "$scan_dir"
     return 65
   fi
+  pruned_count="$(
+    wc -l <"$empty_member_list" | tr -d '[:space:]'
+  )"
   if ((pruned_count == 0)); then
     rm -rf "$scan_dir"
     return 0
