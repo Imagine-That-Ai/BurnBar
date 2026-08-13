@@ -108,7 +108,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         cacheKey: cacheKey,
                         cacheMutated: &cacheMutated
                     )
-                    appendCached(scrubbed, includeConversation: false, usages: &usages, conversations: &conversations)
+                    appendCached(scrubbed, includeConversation: false, options: options, usages: &usages, conversations: &conversations)
                     continue
                 }
 
@@ -116,7 +116,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                 let hasMetadata = fileManager.fileExists(atPath: metadataFile.path)
                 guard hasSettings || hasMetadata else {
                     if let cached {
-                        appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                        appendCached(cached, includeConversation: false, options: options, usages: &usages, conversations: &conversations)
                     }
                     continue
                 }
@@ -129,7 +129,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                 }
                 guard try gate.shouldRead(sessionFiles, candidateAlreadyRecorded: true) else {
                     if let cached {
-                        appendCached(cached, includeConversation: false, usages: &usages, conversations: &conversations)
+                        appendCached(cached, includeConversation: false, options: options, usages: &usages, conversations: &conversations)
                     }
                     continue
                 }
@@ -152,7 +152,7 @@ public final class FactoryDroidParser: LogParser, Sendable {
                         options.metrics?.recordDeferred(.contentReadFailed)
                         recordDeferredSessionFiles(sessionFiles, options: options)
                     }
-                    appendCached(refreshed, includeConversation: true, usages: &usages, conversations: &conversations)
+                    appendCached(refreshed, includeConversation: true, options: options, usages: &usages, conversations: &conversations)
                 } else {
                     let parsed = try? parseSession(
                         sessionId: baseName,
@@ -437,10 +437,11 @@ public final class FactoryDroidParser: LogParser, Sendable {
     private func appendCached(
         _ cached: FactoryDroidCacheEntry,
         includeConversation: Bool,
+        options: LogParseOptions,
         usages: inout [TokenUsage],
         conversations: inout [ConversationRecord]
     ) {
-        if let usage = cached.usage {
+        if options.includeCachedUnchangedUsages, let usage = cached.usage {
             usages.append(usage)
         }
         if includeConversation, let conversation = cached.conversation {

@@ -61,6 +61,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (fenced, trust-signaled; deliberately no write tool).
 - Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
 
+### Fixed - Usage refresh no longer captures only Claude Code burn
+
+- Split ingest into a parallel **live** lane (files touched in the last 12h)
+  and an isolated **catch-up** lane for historical unread bytes. The menu-bar
+  refresh waits only for live; a 3GB Claude tail can no longer delay Grok or
+  Factory measurement.
+- Give each provider its own byte budget and run providers concurrently on
+  the live tick so one parser cannot pin the others.
+- Stop opening every Codex rollout file during thread fetch just to classify
+  subagents; use `thread_source` or a path heuristic instead.
+- Grok live ticks skip idle session directories after cheap mtimes instead of
+  opening every `updates.jsonl`.
+- Treat `~/.grok/` (and other current CLI homes) as known log roots, strip
+  duplicated newline log paths, ignore the SuperGrok quota sidecar when it
+  was persisted as xAI's session-log directory, and point Factory/Grok
+  parsers at those sanitized settings paths.
+- Serialize live, catch-up, and single-provider usage persists with a
+  non-reentrant mutex so two lanes cannot delete/insert the same session.
+- Cache unchanged Grok leaf sessions so catch-up drains a multi-GB tree
+  instead of rereading the same prefix every slice.
+
 ## [1.0.34] - 2026-08-09
 
 ### Fixed - Domain-core protected signer path vs GitHub Actions API

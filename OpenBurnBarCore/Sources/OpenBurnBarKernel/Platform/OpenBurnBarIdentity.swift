@@ -137,6 +137,10 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("factory_droid_parser_cache.json")
     }
 
+    public var grokParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("grok_parser_cache.json")
+    }
+
     public var junieParserCacheURL: URL {
         supportDirectory.appendingPathComponent("junie_parser_cache.json")
     }
