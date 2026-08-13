@@ -61,6 +61,7 @@ function icon(name: string): SVGSVGElement {
       'M12 4a9 9 0 0 0-9 9c0 2.4.9 4.7 2.5 6.4l1.5-1.3A7 7 0 1 1 17 18l1.5 1.4A9 9 0 0 0 12 4Zm4.7 4.3-5.6 3.2A2.5 2.5 0 1 0 13 13.4l4.7-4.1-1-1Z',
     copy: 'M8 7V3h13v13h-4v5H3V7h5Zm2-2v2h7v7h2V5h-9Zm5 4H5v10h10V9Z',
     download: 'M11 3h2v9l3.5-3.5L18 10l-6 6-6-6 1.5-1.5L11 12V3ZM4 19h16v2H4v-2Z',
+    send: 'M4 12h15M13 6l6 6-6 6',
     brain:
       'M9.2 3.1A4 4 0 0 0 5 7v.2A4.5 4.5 0 0 0 4 16v.2A3.8 3.8 0 0 0 10 19v-5H8v-2h2V7.5A4.4 4.4 0 0 0 9.2 3.1ZM14.8 3.1A4 4 0 0 1 19 7v.2a4.5 4.5 0 0 1 1 8.8v.2A3.8 3.8 0 0 1 14 19v-5h2v-2h-2V7.5a4.4 4.4 0 0 1 .8-4.4Z'
   };
@@ -394,7 +395,14 @@ function renderComposer(viewModel: PopupViewModel): HTMLElement | undefined {
   textarea.setAttribute('aria-label', viewModel.composerPlaceholder);
   textarea.setAttribute('aria-keyshortcuts', 'Meta+Enter');
   const footer = element('div', 'composer-footer');
-  footer.append(element('span', 'composer-hint', '⌘↵ to send'));
+  const context = element('button', 'composer-context', 'Page');
+  context.type = 'button';
+  focusKey(context, 'composer:context');
+  context.disabled = true;
+  context.title = 'Current Safari page context';
+  context.setAttribute('aria-label', 'Current Safari page context');
+  context.prepend(icon('page'));
+  const hint = element('span', 'composer-hint', '⌘↵ to send');
   const submit = element('button', 'button button--primary composer-submit', viewModel.primaryLabel);
   submit.type = 'submit';
   focusKey(submit, 'submit:composer');
@@ -403,8 +411,8 @@ function renderComposer(viewModel: PopupViewModel): HTMLElement | undefined {
   if (viewModel.primaryDisabledReason) {
     submit.title = viewModel.primaryDisabledReason;
   }
-  submit.prepend(icon('spark'));
-  footer.append(submit);
+  submit.prepend(icon('send'));
+  footer.append(context, hint, submit);
   form.append(textarea, footer);
   if (viewModel.primaryDisabledReason) {
     const reason = element('p', 'disabled-reason', viewModel.primaryDisabledReason);
