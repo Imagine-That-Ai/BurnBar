@@ -39,6 +39,8 @@ interface ControllerHarness {
   setNativeBootstrap(value: SafariBootstrapResponse): void;
   setHelloProtocolVersion(protocolVersion: number): void;
   setHelloSessionIds(sessionIds: string[]): void;
+  helloCount(): number;
+  setHelloObserver(observer: ((sessionId: string, helloCount: number) => void | Promise<void>) | undefined): void;
   setUISnapshot(value: Record<string, unknown>): void;
 }
 
@@ -174,6 +176,8 @@ function createControllerHarness(): ControllerHarness {
   let helloProtocolVersion = 1;
   let helloSessionIds = ['safari-session-1'];
   let helloCount = 0;
+  let attachedSessionId: string | undefined;
+  let helloObserver: ((sessionId: string, helloCount: number) => void | Promise<void>) | undefined;
   let nativeBootstrap = bootstrap;
   let uiSnapshot = defaultUISnapshot();
 
@@ -265,16 +269,21 @@ function createControllerHarness(): ControllerHarness {
     }
   });
 
-  controls.setNativeHandler((message) => {
+  controls.setNativeHandler(async (message) => {
     const request = requireNativeRequest(message);
     switch (request.method) {
-      case 'bridge.hello':
+      case 'bridge.hello': {
+        const sessionId = helloSessionIds[Math.min(helloCount, helloSessionIds.length - 1)] ?? 'safari-session-1';
+        helloCount += 1;
+        attachedSessionId = sessionId;
+        await helloObserver?.(sessionId, helloCount);
         return nativeSuccess(request, {
-          sessionId: helloSessionIds[Math.min(helloCount++, helloSessionIds.length - 1)],
+          sessionId,
           protocolVersion: helloProtocolVersion,
           leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
           pollAfterMillis: 200
         });
+      }
       case 'bridge.popupAction': {
         const action = String(request.params.action);
         const payload = requireRecord(request.params.payload, 'popup action payload');
@@ -290,6 +299,18 @@ function createControllerHarness(): ControllerHarness {
             protocolVersion: 1,
             id: request.id,
             error: nativeError
+          };
+        }
+        if (payload.safariSessionId !== attachedSessionId) {
+          return {
+            protocolVersion: 1,
+            id: request.id,
+            error: {
+              code: 'daemon_rejected',
+              message: 'The OpenBurnBar daemon rejected the Safari request.',
+              retryable: false,
+              details: { daemonCode: -32001 }
+            }
           };
         }
         const popupActionHandler = popupActionHandlers.get(action);
@@ -432,6 +453,12 @@ function createControllerHarness(): ControllerHarness {
     setHelloSessionIds(sessionIds) {
       helloSessionIds = [...sessionIds];
       helloCount = 0;
+    },
+    helloCount() {
+      return helloCount;
+    },
+    setHelloObserver(observer) {
+      helloObserver = observer;
     },
     setUISnapshot(value) {
       uiSnapshot = value;
@@ -1970,6 +1997,60 @@ describe('Safari background controller integration', () => {
         }
       }
     });
+  });
+
+  it('defers forced initialization until recovered native trust commits', async () => {
+    const harness = createControllerHarness();
+    harness.setHelloSessionIds(['safari-session-old', 'safari-session-retry', 'safari-session-refresh']);
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+    harness.setPopupActionNativeErrors('trust.update', [
+      {
+        code: 'daemon_rejected',
+        message: 'The OpenBurnBar daemon rejected the Safari request.',
+        retryable: false,
+        details: { daemonCode: -32001 }
+      }
+    ]);
+    let forcedInitialization: Promise<void> | undefined;
+    harness.setHelloObserver((_sessionId, helloCount) => {
+      if (helloCount === 2) {
+        forcedInitialization = harness.controller.initialize(true);
+      }
+    });
+
+    const authorized = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
+    });
+
+    expectSuccess(authorized);
+    expect(harness.helloCount()).toBe(2);
+    expect(
+      harness.popupCalls.filter((call) => call.action === 'trust.update').map((call) => call.payload.safariSessionId)
+    ).toEqual(['safari-session-old', 'safari-session-retry']);
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged: true,
+      sites: {
+        'https://example.com': {
+          allowed: true
+        }
+      }
+    });
+
+    await forcedInitialization;
+    expect(harness.helloCount()).toBe(3);
   });
 
   it('surfaces the daemon code and persists nothing when the one session retry is also rejected', async () => {
