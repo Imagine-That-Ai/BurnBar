@@ -138,6 +138,10 @@ export function getBrowserAPI(candidate?: unknown): BrowserAPI {
 }
 
 export async function activeTab(browserAPI: BrowserAPI): Promise<BrowserTab | undefined> {
-  const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
+  // Safari runs the MV3 service worker outside the browser window that owns
+  // the toolbar popup. In that context `currentWindow` can resolve to no
+  // window at all, even while the popup is visibly attached to an active tab.
+  // `lastFocusedWindow` preserves the user-invoked Safari window boundary.
+  const tabs = await browserAPI.tabs.query({ active: true, lastFocusedWindow: true });
   return tabs[0];
 }
