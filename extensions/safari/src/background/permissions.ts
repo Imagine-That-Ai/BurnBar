@@ -2,6 +2,7 @@ import type { BrowserAPI } from '../shared/browser';
 import { SafariExtensionError } from '../shared/errors';
 
 export type SitePermissionStatus = 'granted' | 'prompt' | 'denied' | 'unsupported';
+const ALL_WEBSITE_ORIGINS = ['http://*/*', 'https://*/*'] as const;
 
 export function permissionPatternForURL(urlValue: string): string {
   let url: URL;
@@ -22,7 +23,10 @@ export class SitePermissionController {
   async status(url: string): Promise<SitePermissionStatus> {
     try {
       const pattern = permissionPatternForURL(url);
-      return (await this.browserAPI.permissions.contains({ origins: [pattern] })) ? 'granted' : 'prompt';
+      if (await this.browserAPI.permissions.contains({ origins: [pattern] })) {
+        return 'granted';
+      }
+      return (await this.browserAPI.permissions.contains({ origins: [...ALL_WEBSITE_ORIGINS] })) ? 'granted' : 'prompt';
     } catch (error) {
       if (error instanceof SafariExtensionError) {
         return 'unsupported';
@@ -35,6 +39,14 @@ export class SitePermissionController {
     const pattern = permissionPatternForURL(url);
     try {
       return (await this.browserAPI.permissions.request({ origins: [pattern] })) ? 'granted' : 'denied';
+    } catch {
+      return 'denied';
+    }
+  }
+
+  async requestAllWebsites(): Promise<SitePermissionStatus> {
+    try {
+      return (await this.browserAPI.permissions.request({ origins: [...ALL_WEBSITE_ORIGINS] })) ? 'granted' : 'denied';
     } catch {
       return 'denied';
     }

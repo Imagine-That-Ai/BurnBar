@@ -799,8 +799,8 @@ function renderTrust(viewModel: PopupViewModel, preserveOpen: boolean): HTMLElem
   if (viewModel.showCloudDisclosure) {
     body.append(
       checkboxRow(
-        'Send this session’s screenshots',
-        'The selected cloud model receives resized JPEGs. OpenBurnBar never stores provider keys here.',
+        'Allow cloud screenshots',
+        'The selected cloud model may receive resized JPEGs when you invoke it. OpenBurnBar never stores provider keys here.',
         'trust-cloud',
         snapshot?.trust.cloudScreenshotAcknowledged ?? false
       )
@@ -962,6 +962,92 @@ function renderError(viewModel: PopupViewModel): HTMLElement | undefined {
   return banner;
 }
 
+function permissionChecklistRow(label: string, detail: string, complete: boolean): HTMLElement {
+  const row = element('div', `permission-check${complete ? ' is-complete' : ''}`);
+  const mark = element('span', 'permission-check-mark');
+  mark.append(icon(complete ? 'check' : 'shield'));
+  const copy = element('span', 'permission-check-copy');
+  copy.append(element('strong', undefined, label), element('span', undefined, detail));
+  row.append(mark, copy);
+  return row;
+}
+
+function renderPermissionSheet(viewModel: PopupViewModel): HTMLElement | undefined {
+  if (!viewModel.showPermissionSheet || !viewModel.snapshot?.page) {
+    return undefined;
+  }
+  const sheet = element('section', 'permission-sheet');
+  sheet.setAttribute('role', 'dialog');
+  sheet.setAttribute('aria-modal', 'true');
+  sheet.setAttribute('aria-labelledby', 'permission-sheet-title');
+  sheet.setAttribute('aria-describedby', 'permission-sheet-description');
+
+  const glow = element('div', 'permission-sheet-glow');
+  glow.setAttribute('aria-hidden', 'true');
+  const eyebrow = element('span', 'permission-sheet-eyebrow', 'Private by default');
+  const title = element('h2', 'permission-sheet-title', 'Use OpenBurnBar on websites');
+  title.id = 'permission-sheet-title';
+  const description = element(
+    'p',
+    'permission-sheet-description',
+    `Allow once, then OpenBurnBar will be ready when you invoke it on ${viewModel.permissionSheetHost || 'a website'}.`
+  );
+  description.id = 'permission-sheet-description';
+
+  const checklist = element('div', 'permission-checklist');
+  checklist.append(
+    permissionChecklistRow(
+      'Safari website access',
+      'Safari asks once for access to websites.',
+      !viewModel.permissionSheetNeedsSafari
+    ),
+    permissionChecklistRow(
+      'OpenBurnBar trust',
+      'Each site is registered securely when you invoke OpenBurnBar.',
+      !viewModel.permissionSheetNeedsSiteTrust
+    )
+  );
+  if (viewModel.showCloudDisclosure) {
+    checklist.append(
+      permissionChecklistRow(
+        'Cloud screenshot disclosure',
+        'The selected cloud model receives resized page screenshots with your request.',
+        !viewModel.permissionSheetNeedsCloudDisclosure
+      )
+    );
+  }
+
+  const scope = element(
+    'p',
+    'permission-sheet-scope',
+    'OpenBurnBar stays limited to your active tab. Sensitive sites and page actions still require their own approval.'
+  );
+  const error = viewModel.snapshot.lastError;
+  if (error) {
+    const notice = element('div', 'permission-sheet-error');
+    notice.setAttribute('role', 'alert');
+    notice.append(
+      element('strong', undefined, 'Permission was not completed'),
+      element('span', undefined, error.message)
+    );
+    sheet.append(glow, eyebrow, title, description, checklist, scope, notice);
+  } else {
+    sheet.append(glow, eyebrow, title, description, checklist, scope);
+  }
+  const primary = button(
+    error ? 'Try again' : 'Allow & continue',
+    'complete-permission-setup',
+    'permission-sheet-primary'
+  );
+  primary.disabled = viewModel.snapshot.busy;
+  primary.setAttribute(
+    'aria-label',
+    error ? 'Try website permission setup again' : 'Allow website access and continue'
+  );
+  sheet.append(primary);
+  return sheet;
+}
+
 export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void {
   root.setAttribute('aria-busy', String(!viewModel.ready));
   const trustWasOpen = root.querySelector<HTMLDetailsElement>('.trust-drawer')?.open ?? false;
@@ -1006,6 +1092,10 @@ export function renderPopup(root: HTMLElement, viewModel: PopupViewModel): void 
     shell.append(tools);
   }
   shell.append(renderComposer(viewModel, modePopoverWasOpen, modelPickerWasOpen));
+  const permissionSheet = renderPermissionSheet(viewModel);
+  if (permissionSheet) {
+    shell.append(permissionSheet);
+  }
   root.replaceChildren(shell);
   initializeModeVisuals(root);
 

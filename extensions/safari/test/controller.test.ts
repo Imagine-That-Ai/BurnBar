@@ -1236,6 +1236,8 @@ describe('Safari background controller integration', () => {
       mode: 'handoff',
       selectedAgentId: 'vision-model',
       onlyCurrentTab: true,
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged: false,
       learningOptedIn: false,
       learningConsentSeen: false,
       sites: {}
@@ -1796,6 +1798,8 @@ describe('Safari background controller integration', () => {
       mode: 'ask' as const,
       selectedAgentId: 'vision-model',
       onlyCurrentTab: true,
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged: false,
       learningOptedIn: false,
       learningConsentSeen: false,
       sites: {
@@ -1842,7 +1846,10 @@ describe('Safari background controller integration', () => {
       patch: { cloudScreenshotAcknowledged: true }
     });
     expectSuccess(acknowledged);
-    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toEqual(originalPreferences);
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toEqual({
+      ...originalPreferences,
+      cloudScreenshotDisclosureAcknowledged: true
+    });
   });
 
   it('binds newly granted loopback website access to daemon trust before persisting it locally', async () => {
@@ -1878,6 +1885,131 @@ describe('Safari background controller integration', () => {
           sensitiveOverride: false
         }
       }
+    });
+  });
+
+  it('authorizes Safari, exact native trust, durable future-site setup, and cloud disclosure in one request', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+
+    const authorized = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true
+    });
+
+    expectSuccess(authorized);
+    expect(harness.controls.grantedOrigins).toEqual(new Set(['http://*/*', 'https://*/*']));
+    expect(harness.popupCalls.find((call) => call.action === 'trust.update')?.payload).toMatchObject({
+      safariSessionId: 'safari-session-1',
+      origin: 'https://example.com',
+      decision: 'allow',
+      trustMode: 'step'
+    });
+    expect(authorized.snapshot).toMatchObject({
+      page: { permission: 'granted' },
+      trust: {
+        siteAllowed: true,
+        onlyCurrentTab: true,
+        cloudScreenshotAcknowledged: true
+      }
+    });
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged: true,
+      onlyCurrentTab: true,
+      sites: {
+        'https://example.com': {
+          allowed: true,
+          sensitiveOverride: false
+        }
+      }
+    });
+  });
+
+  it('does not persist page or cloud trust when the native authority rejects unified setup', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    const before = harness.controller.currentSnapshot();
+    const page = before.page;
+    if (!page) {
+      throw new Error('Expected an active page.');
+    }
+    harness.setPopupActionResult('trust.update', { accepted: false, output: {} });
+
+    const rejected = await harness.controller.handlePopupRequest({
+      type: 'popup.authorizePage',
+      expectedStateVersion: before.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: { code: 'trust_update_rejected' },
+      snapshot: {
+        trust: {
+          siteAllowed: false,
+          cloudScreenshotAcknowledged: false
+        }
+      }
+    });
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      automaticallyTrustInvokedWebsites: false,
+      cloudScreenshotDisclosureAcknowledged: false,
+      sites: {}
+    });
+  });
+
+  it('silently registers a future origin after the user enables one-time website setup', async () => {
+    const harness = createControllerHarness();
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
+    harness.controls.storage.set('openburnbar.safari.preferences.v1', {
+      mode: 'ask',
+      selectedAgentId: 'vision-model',
+      onlyCurrentTab: true,
+      automaticallyTrustInvokedWebsites: true,
+      cloudScreenshotDisclosureAcknowledged: true,
+      learningOptedIn: false,
+      learningConsentSeen: false,
+      sites: {}
+    });
+    const activeTab = harness.controls.tabs.get(1);
+    if (!activeTab) {
+      throw new Error('Expected an active page.');
+    }
+    activeTab.url = 'https://future.example/path';
+    activeTab.title = 'Future site';
+
+    await harness.controller.initialize();
+
+    expect(harness.controller.currentSnapshot()).toMatchObject({
+      page: {
+        url: 'https://future.example/path',
+        permission: 'granted'
+      },
+      trust: {
+        siteAllowed: true,
+        cloudScreenshotAcknowledged: true,
+        onlyCurrentTab: true
+      }
+    });
+    expect(
+      harness.popupCalls.find(
+        (call) => call.action === 'trust.update' && call.payload.origin === 'https://future.example'
+      )?.payload
+    ).toMatchObject({
+      decision: 'allow',
+      trustMode: 'step'
     });
   });
 

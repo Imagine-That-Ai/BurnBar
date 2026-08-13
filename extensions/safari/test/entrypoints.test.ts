@@ -351,6 +351,23 @@ describe('WebExtension runtime entrypoints', () => {
             trust: { ...currentSnapshot.trust, ...request.patch }
           };
           break;
+        case 'popup.authorizePage':
+          if (!currentSnapshot.page) {
+            throw new Error('Expected a current page for permission authorization.');
+          }
+          currentSnapshot = {
+            ...currentSnapshot,
+            page: {
+              ...currentSnapshot.page,
+              permission: 'granted'
+            },
+            trust: {
+              ...currentSnapshot.trust,
+              siteAllowed: true,
+              cloudScreenshotAcknowledged: request.acknowledgeCloudScreenshots
+            }
+          };
+          break;
         case 'popup.setLearning':
           currentSnapshot = {
             ...currentSnapshot,
@@ -540,12 +557,18 @@ describe('WebExtension runtime entrypoints', () => {
 
     currentSnapshot = {
       ...currentSnapshot,
+      stateVersion: currentSnapshot.stateVersion + 1,
       mode: 'ask',
       selectedAgentId: 'vision-model',
       page: {
         ...requireValue(currentSnapshot.page, 'current popup page'),
         sensitive: true,
         permission: 'prompt'
+      },
+      trust: {
+        ...currentSnapshot.trust,
+        siteAllowed: false,
+        cloudScreenshotAcknowledged: false
       },
       lastError: {
         code: 'temporary_test_error',
@@ -561,6 +584,20 @@ describe('WebExtension runtime entrypoints', () => {
       {}
     );
     await flushTasks();
+
+    const permissionSheetAction = requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="complete-permission-setup"]'),
+      'unified permission action'
+    );
+    permissionSheetAction.click();
+    await flushTasks();
+    expect(requests).toContainEqual({
+      type: 'popup.authorizePage',
+      expectedStateVersion: currentSnapshot.stateVersion,
+      expectedTabId: 1,
+      expectedOrigin: 'https://example.com',
+      acknowledgeCloudScreenshots: true
+    });
 
     for (const [inputName, patchKey] of [
       ['trust-site', 'siteAllowed'],
@@ -613,10 +650,6 @@ describe('WebExtension runtime entrypoints', () => {
       'approve learning'
     ).click();
     requireElement(root.querySelector<HTMLButtonElement>('[data-action="refresh"]'), 'refresh button').click();
-    requireElement(
-      root.querySelector<HTMLButtonElement>('[data-action="request-permission"]'),
-      'permission button'
-    ).click();
     requireElement(root.querySelector<HTMLButtonElement>('[data-action="abort"]'), 'abort button').click();
     await flushTasks();
 
@@ -661,7 +694,13 @@ describe('WebExtension runtime entrypoints', () => {
         },
         { type: 'popup.learningReview', itemId: 'proposal-1', decision: 'approve' },
         { type: 'popup.setLearning', optedIn: false },
-        { type: 'popup.requestSitePermission' },
+        {
+          type: 'popup.authorizePage',
+          expectedStateVersion: 2,
+          expectedTabId: 1,
+          expectedOrigin: 'https://example.com',
+          acknowledgeCloudScreenshots: true
+        },
         { type: 'popup.performanceSnapshot' },
         { type: 'popup.clearPerformance' },
         { type: 'popup.abort', trigger: 'stop_button' },

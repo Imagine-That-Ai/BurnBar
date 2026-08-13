@@ -268,6 +268,29 @@ appRoot.addEventListener('click', (event) => {
     renderPopup(appRoot, buildPopupViewModel(state));
     return;
   }
+  if (action === 'complete-permission-setup') {
+    const snapshot = state.snapshot;
+    const page = snapshot?.page;
+    if (!snapshot || !page) {
+      return;
+    }
+    let expectedOrigin: string;
+    try {
+      expectedOrigin = new URL(page.url).origin;
+    } catch {
+      return;
+    }
+    void send({
+      type: 'popup.authorizePage',
+      expectedStateVersion: snapshot.stateVersion,
+      expectedTabId: page.tabId,
+      expectedOrigin,
+      acknowledgeCloudScreenshots: Boolean(
+        buildPopupViewModel(state).selectedAgent?.cloud && !snapshot.trust.cloudScreenshotAcknowledged
+      )
+    });
+    return;
+  }
   if (action.startsWith('approval:')) {
     const [, approvalId, decision] = action.split(':');
     if (approvalId && (decision === 'allow_once' || decision === 'allow_session' || decision === 'block')) {
