@@ -65,10 +65,26 @@ const detectedCount = totalCount - primaryCount;
           <a class="hero__agpl" href="/trust">{SITE.license.replace("-only", "")}</a>
         </div>
 
+        <img
+          class="hero__logo"
+          src="/brand/logo-256.png"
+          srcset="/brand/logo-256.png 1x, /brand/logo-512.png 2x"
+          alt=""
+          width="56"
+          height="56"
+          decoding="async"
+          fetchpriority="high"
+        />
+
         <h1 id="hero-h" class="hero__h">
-          Watch your AI agents.
+          Watch your agents.
           <span class="hero__h-second">Before the bill.</span>
         </h1>
+
+        <p class="hero__sub lead">
+          Your agents don't send a receipt. We do. Live in the menu bar, from local logs. No
+          telemetry. No account.
+        </p>
 
         <div class="lead-glass-wrap glass-pane">
           <div class="hero__providers">
@@ -108,7 +124,7 @@ const detectedCount = totalCount - primaryCount;
 
         <div class="hero__ctas">
           <a class="btn btn--ember" href="/download">
-            Download for macOS
+            Download for Mac — {SITE.macReleaseLatest}
             <span class="btn-arrow" aria-hidden="true">→</span>
           </a>
           <a class="btn btn--ghost" href="/download#linux">
@@ -706,6 +722,13 @@ const detectedCount = totalCount - primaryCount;
   .hero__agpl:hover {
     border-color: var(--ember-core);
   }
+  .hero__logo {
+    display: block;
+    width: 56px;
+    height: 56px;
+    margin-bottom: var(--s-4);
+    border-radius: 22%;
+  }
   .hero__h {
     font-size: var(--t-display);
     line-height: 0.97;
@@ -725,6 +748,11 @@ const detectedCount = totalCount - primaryCount;
       "wght" 360,
       "ital" 1;
     letter-spacing: -0.04em;
+  }
+  .hero__sub {
+    margin-top: var(--s-5);
+    max-width: 42ch;
+    color: var(--text-base);
   }
   .hero .lead {
     margin-top: var(--s-5);
