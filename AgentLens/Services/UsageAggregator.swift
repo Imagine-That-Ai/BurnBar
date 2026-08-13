@@ -47,6 +47,10 @@ final class UsageAggregator {
     private var projectionWorkerTask: Task<Void, Never>?
     private var conversationIndexingTask: Task<Void, Never>?
     private var catchUpIngestTask: Task<Void, Never>?
+    /// Identity of the catch-up worker that currently owns `catchUpIngestTask`.
+    /// A cancelled worker can finish after a replacement was installed, and it
+    /// must not clear the replacement's handle. See `finishCatchUpIngest`.
+    private var catchUpIngestGeneration = 0
     private var projectionSweepRequested = false
     private var lastProjectionInsightRefreshAt: Date?
     /// Set by `MemoryFootprintWatchdog` when the process footprint crosses
@@ -186,23 +190,32 @@ final class UsageAggregator {
         // ── Heavy work runs entirely off the main thread ─────────────
         // `RefreshBackgroundWork` is a `nonisolated` namespace, so awaiting it
         // from this `@MainActor` method runs it off the main actor (SE-0338).
+        // The lanes share parser instances, and the stateful parsers (Claude,
+        // Factory, Grok) load and rewrite the same on-disk caches. Two passes
+        // in flight at once lose cache updates, rescan what the other lane
+        // already read, or publish a stale cache. `isRefreshing` only covers
+        // foreground refreshes and the persist gate only covers writes, so
+        // parser execution needs its own gate. Foreground lanes wait for it;
+        // the catch-up lane yields (see `scheduleCatchUpIngest`).
         let result: FullRefreshResult
         do {
-            switch lane {
-            case .live:
-                result = try await RefreshBackgroundWork.runLiveRefresh(
-                    parsers: parsers,
-                    dataStore: dataStore,
-                    orchestrator: orchestrator,
-                    settings: settings
-                )
-            case .catchUp:
-                result = try await RefreshBackgroundWork.runFullRefresh(
-                    parsers: parsers,
-                    dataStore: dataStore,
-                    orchestrator: orchestrator,
-                    settings: settings
-                )
+            result = try await UsageParserPassGate.shared.withLock { () async throws -> FullRefreshResult in
+                switch lane {
+                case .live:
+                    return try await RefreshBackgroundWork.runLiveRefresh(
+                        parsers: parsers,
+                        dataStore: dataStore,
+                        orchestrator: orchestrator,
+                        settings: settings
+                    )
+                case .catchUp:
+                    return try await RefreshBackgroundWork.runFullRefresh(
+                        parsers: parsers,
+                        dataStore: dataStore,
+                        orchestrator: orchestrator,
+                        settings: settings
+                    )
+                }
             }
         } catch is CancellationError {
             return
@@ -292,12 +305,13 @@ final class UsageAggregator {
         settings: RefreshSettingsSnapshot
     ) {
         guard catchUpIngestTask == nil else { return }
+        catchUpIngestGeneration &+= 1
+        let generation = catchUpIngestGeneration
         catchUpIngestTask = Task(priority: .utility) { [weak self] in
             await MainActor.run { self?.isCatchingUp = true }
             defer {
                 Task { @MainActor in
-                    self?.isCatchingUp = false
-                    self?.catchUpIngestTask = nil
+                    self?.finishCatchUpIngest(generation: generation)
                 }
             }
             var remainingSlices = UsageIngestionPolicy.maxCatchUpSlicesPerKick
@@ -307,14 +321,21 @@ final class UsageAggregator {
                     nanoseconds: UsageIngestionPolicy.catchUpSliceDelayNanoseconds
                 )
                 guard !Task.isCancelled else { break }
+                // Never wait on the gate here: a live tick holding it must not
+                // queue a catch-up slice behind itself. Stopping instead is
+                // free — the live tick that owns the gate re-kicks catch-up
+                // when it finishes.
                 let slice: FullRefreshResult
                 do {
-                    slice = try await RefreshBackgroundWork.runCatchUpRefresh(
-                        parsers: parsers,
-                        dataStore: dataStore,
-                        orchestrator: orchestrator,
-                        settings: settings
-                    )
+                    guard let sliceResult = try await UsageParserPassGate.shared.withLockIfAvailable({
+                        try await RefreshBackgroundWork.runCatchUpRefresh(
+                            parsers: parsers,
+                            dataStore: dataStore,
+                            orchestrator: orchestrator,
+                            settings: settings
+                        )
+                    }) else { break }
+                    slice = sliceResult
                 } catch {
                     break
                 }
@@ -330,6 +351,16 @@ final class UsageAggregator {
                 }
             }
         }
+    }
+
+    /// Retires a catch-up worker, but only while it still owns the handle.
+    /// A cancelled worker's teardown runs asynchronously, so it can land after
+    /// memory-pressure recovery installed a fresh worker; clearing the handle
+    /// then would let a second worker start alongside the live one.
+    private func finishCatchUpIngest(generation: Int) {
+        guard generation == catchUpIngestGeneration else { return }
+        isCatchingUp = false
+        catchUpIngestTask = nil
     }
 
     private func mergeCatchUpResult(_ result: FullRefreshResult) {
@@ -353,6 +384,9 @@ final class UsageAggregator {
         conversationIndexingTask = nil
         catchUpIngestTask?.cancel()
         catchUpIngestTask = nil
+        // Retire the cancelled worker's identity so its late teardown cannot
+        // clear the handle of whatever runs after recovery.
+        catchUpIngestGeneration &+= 1
         isCatchingUp = false
         if parserImportError == nil {
             parserImportError = "Background parsing paused: memory footprint reached \(footprintMB)MB. It resumes automatically once memory recovers."
@@ -477,12 +511,16 @@ final class UsageAggregator {
         // ── Heavy work runs entirely off the main thread ─────────────
         // `RefreshBackgroundWork` is a `nonisolated` namespace, so awaiting it
         // from this `@MainActor` method runs it off the main actor (SE-0338).
-        let result = await RefreshBackgroundWork.runSingleProviderRefresh(
-            provider: provider,
-            parser: parser,
-            dataStore: dataStore,
-            settings: settings
-        )
+        // Same shared parser instance the refresh lanes drive, so this pass
+        // takes the parser gate too.
+        let result = await UsageParserPassGate.shared.withLock {
+            await RefreshBackgroundWork.runSingleProviderRefresh(
+                provider: provider,
+                parser: parser,
+                dataStore: dataStore,
+                settings: settings
+            )
+        }
 
         // ── Apply results back on the main actor ─────────────────────────
         parserHealth[provider] = result.health
@@ -529,6 +567,59 @@ final class UsageAggregator {
         )
         if ProviderQuotaService.supportedProviders.contains(provider) {
             await quotaService.refresh(provider: provider, dataStore: dataStore)
+        }
+    }
+}
+
+// MARK: - Parser Pass Gate
+
+/// Serializes parser execution across the live, catch-up, and single-provider
+/// lanes. The lanes share parser instances whose caches live on disk, so an
+/// overlapping pass can drop cache updates, repeat a large scan, or publish
+/// stale cache state — none of which `UsageIngestPersistGate` (writes only) or
+/// `isRefreshing` (foreground only) prevent.
+///
+/// Like `UsageIngestPersistGate` this is a real async mutex rather than an
+/// actor critical section: `await` inside the body would otherwise re-enter
+/// the actor and let a second pass start mid-parse (SE-0306).
+actor UsageParserPassGate {
+    static let shared = UsageParserPassGate()
+
+    private var isHeld = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Waits for the gate. Use from lanes the UI is waiting on.
+    func withLock<T: Sendable>(_ body: @Sendable () async throws -> T) async rethrows -> T {
+        await acquire()
+        defer { release() }
+        return try await body()
+    }
+
+    /// Runs `body` only when the gate is free, otherwise returns `nil` without
+    /// waiting. Background lanes use this so they never queue themselves ahead
+    /// of, or behind, a foreground pass.
+    func withLockIfAvailable<T: Sendable>(_ body: @Sendable () async throws -> T) async rethrows -> T? {
+        guard !isHeld else { return nil }
+        isHeld = true
+        defer { release() }
+        return try await body()
+    }
+
+    private func acquire() async {
+        if isHeld {
+            await withCheckedContinuation { continuation in
+                waiters.append(continuation)
+            }
+        } else {
+            isHeld = true
+        }
+    }
+
+    private func release() {
+        if waiters.isEmpty {
+            isHeld = false
+        } else {
+            waiters.removeFirst().resume()
         }
     }
 }
