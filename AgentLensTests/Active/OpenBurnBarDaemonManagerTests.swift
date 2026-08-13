@@ -1616,13 +1616,36 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             paths.supportDirectory.standardizedFileURL
         )
         XCTAssertEqual(paths.daemonDirectory.lastPathComponent, "daemon")
+        let expectedSharedRoot = try! XCTUnwrap(
+            OpenBurnBarCore.BurnBarSafariSharedContainer.liveRoot()
+        )
         XCTAssertEqual(
             paths.socketURL.deletingLastPathComponent().standardizedFileURL,
-            paths.supportDirectory.standardizedFileURL
+            expectedSharedRoot?.standardizedFileURL
         )
+        XCTAssertEqual(paths.socketURL.lastPathComponent, "daemon.sock")
         XCTAssertEqual(
             paths.installedBinaryURL.deletingLastPathComponent().standardizedFileURL,
             paths.daemonDirectory.standardizedFileURL
+        )
+    }
+
+    func test_liveRuntimePathsUseInjectedSharedContainerForSafariSocket() {
+        let sharedRoot = URL(
+            fileURLWithPath: "/tmp/openburnbar-test-app-group",
+            isDirectory: true
+        )
+        let paths = OpenBurnBarDaemonRuntimePaths.live(
+            sharedContainerRoot: sharedRoot
+        )
+
+        XCTAssertEqual(
+            paths.socketURL,
+            sharedRoot.appendingPathComponent("daemon.sock", isDirectory: false)
+        )
+        XCTAssertEqual(
+            paths.socketAuthTokenFileURL.deletingLastPathComponent(),
+            paths.supportDirectory
         )
     }
 

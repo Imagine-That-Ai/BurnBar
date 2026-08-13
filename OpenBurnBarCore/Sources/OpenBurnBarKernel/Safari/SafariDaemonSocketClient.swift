@@ -20,15 +20,23 @@ public struct BurnBarSafariDaemonRuntimePaths: Hashable, Sendable {
         self.socketAuthTokenFileURL = socketAuthTokenFileURL
     }
 
-    public static func live(homeDirectoryURL: URL? = nil) -> Self {
+    public static func live(
+        fileManager: FileManager = .default,
+        sharedContainerRoot: URL? = nil,
+        homeDirectoryURL: URL? = nil
+    ) throws -> Self {
         let homeDirectory = homeDirectoryURL ?? canonicalLoginHomeDirectory()
         let supportDirectory = homeDirectory
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("Application Support", isDirectory: true)
             .appendingPathComponent(OpenBurnBarIdentity.supportDirectoryName, isDirectory: true)
+        guard let sharedContainerRoot = sharedContainerRoot
+            ?? BurnBarSafariSharedContainer.liveRoot(fileManager: fileManager) else {
+            throw BurnBarSafariAppGroupPayloadError.appGroupUnavailable
+        }
         return Self(
-            socketURL: supportDirectory.appendingPathComponent(
-                "openburnbar-daemon.sock",
+            socketURL: sharedContainerRoot.appendingPathComponent(
+                "daemon.sock",
                 isDirectory: false
             ),
             socketAuthTokenFileURL: supportDirectory.appendingPathComponent(
@@ -296,9 +304,12 @@ public struct BurnBarSafariDaemonSocketClient: Sendable {
 
     public static func live(
         fileManager: FileManager = .default,
+        sharedContainerRoot: URL? = nil,
         homeDirectoryURL: URL? = nil
-    ) -> Self {
-        let paths = BurnBarSafariDaemonRuntimePaths.live(
+    ) throws -> Self {
+        let paths = try BurnBarSafariDaemonRuntimePaths.live(
+            fileManager: fileManager,
+            sharedContainerRoot: sharedContainerRoot,
             homeDirectoryURL: homeDirectoryURL
         )
         return Self(

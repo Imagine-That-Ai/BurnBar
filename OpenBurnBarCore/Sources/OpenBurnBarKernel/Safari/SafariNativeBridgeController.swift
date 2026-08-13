@@ -292,7 +292,10 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
         )
         return BurnBarSafariNativeBridgeController(
             daemon: .live(
-                socketClient: .live(fileManager: fileManager),
+                socketClient: try .live(
+                    fileManager: fileManager,
+                    sharedContainerRoot: payloadStore.trustedRoot
+                ),
                 payloadStore: payloadStore
             ),
             chunkStore: chunkStore
