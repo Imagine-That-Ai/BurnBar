@@ -10,10 +10,12 @@ struct ProviderDetailMetric: Equatable {
 }
 
 /// Single presentation helper for provider-detail header metrics. Unsupported
-/// providers (e.g. grokBot) render typed support/confidence labels from the
-/// canonical `ProviderSupportLevel`/`DataConfidence` copy — never an
-/// exact-looking "$0.00"/zero metric (VAL-PROV-010). Zero-usage providers
-/// render "No data" for averages instead of fabricated zeros.
+/// providers (e.g. grokBot) and empty partial providers (e.g. grokCLI, pi
+/// with no usage rows in range) render typed support/confidence labels from
+/// the canonical `ProviderSupportLevel`/`DataConfidence` copy — never an
+/// exact-looking "$0.00"/zero metric (VAL-PROV-010, round-3 scrutiny).
+/// Zero-usage providers render "No data" for averages instead of fabricated
+/// zeros.
 enum ProviderDetailMetrics {
     static func headerMetrics(
         provider: AgentProvider,
@@ -21,7 +23,7 @@ enum ProviderDetailMetrics {
         displayMode: UsageDisplayMode,
         topModelName: String
     ) -> [ProviderDetailMetric] {
-        if provider.supportLevel == .unsupported {
+        if usages.isEmpty && provider.supportLevel != .supported {
             return [
                 ProviderDetailMetric(label: "Tracking", value: provider.supportLevel.label),
                 ProviderDetailMetric(label: "Data confidence", value: provider.dataConfidence.label),

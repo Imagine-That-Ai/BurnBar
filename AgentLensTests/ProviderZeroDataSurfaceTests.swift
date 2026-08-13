@@ -178,16 +178,79 @@ final class ProviderZeroDataSurfaceTests: XCTestCase {
         XCTAssertEqual(metrics[2].value, "claude-sonnet-4")
     }
 
-    func test_partialProviderUsesStandardMetricTiles() {
-        let metrics = ProviderDetailMetrics.headerMetrics(
-            provider: .grokCLI,
-            usages: [],
-            displayMode: .tokens,
-            topModelName: "None"
-        )
-        XCTAssertEqual(metrics[0].label, "Volume")
-        XCTAssertEqual(metrics[1].label, "Avg session (tokens)")
-        XCTAssertEqual(metrics[1].value, "No data", "zero-usage average must be typed no-data")
+    // MARK: Round-3 scrutiny (provider-zero-label chain) — empty PARTIAL
+    // providers (grokCLI, pi) must route the detail header metric tiles
+    // through the typed no-data treatment in BOTH display modes, never
+    // exact-looking "$0.00"/"0" primary metrics.
+
+    func test_emptyPartialProviderHeaderMetricsUseTypedNoDataTiles() {
+        for provider in [AgentProvider.grokCLI, .pi] {
+            for mode in [UsageDisplayMode.currency, .tokens] {
+                let metrics = ProviderDetailMetrics.headerMetrics(
+                    provider: provider,
+                    usages: [],
+                    displayMode: mode,
+                    topModelName: "None"
+                )
+                XCTAssertEqual(metrics.count, 3, "\(provider) \(mode) typed tiles")
+                XCTAssertEqual(metrics[0].label, "Tracking")
+                XCTAssertEqual(metrics[0].value, ProviderSupportLevel.partial.label, "\(provider) \(mode) support tile")
+                XCTAssertEqual(metrics[1].label, "Data confidence")
+                XCTAssertEqual(metrics[1].value, DataConfidence.estimated.label, "\(provider) \(mode) confidence tile")
+                XCTAssertEqual(metrics[2].label, "Top Model")
+                XCTAssertEqual(metrics[2].value, "None")
+                XCTAssertFalse(metrics.contains { $0.value == "$0.00" }, "\(provider) \(mode) must never render $0.00")
+                XCTAssertFalse(metrics.contains { $0.value == "0" }, "\(provider) \(mode) must never render a bare 0")
+            }
+        }
+    }
+
+    func test_emptyPartialProviderHeaderMetricsNeverExactZerosInEitherMode() {
+        for mode in [UsageDisplayMode.currency, .tokens] {
+            let metrics = ProviderDetailMetrics.headerMetrics(
+                provider: .grokCLI,
+                usages: [],
+                displayMode: mode,
+                topModelName: "None"
+            )
+            XCTAssertFalse(metrics.contains { $0.value == "$0.00" }, "currency mode must not fabricate $0.00")
+            XCTAssertFalse(metrics.contains { $0.value == "0" }, "token mode must not fabricate 0")
+            XCTAssertTrue(metrics.contains { $0.value == ProviderSupportLevel.partial.label })
+            XCTAssertTrue(metrics.contains { $0.value == DataConfidence.estimated.label })
+        }
+    }
+
+    func test_dataBearingPartialProviderKeepsStandardMetricTiles() {
+        // A partial provider with real usage rows in range keeps the standard
+        // Spend/Volume tiles — the typed no-data branch applies only to empty
+        // partial providers (round-3 scrutiny).
+        let now = Date()
+        let usages = [
+            TokenUsage(
+                provider: .grokCLI,
+                sessionId: "s1",
+                projectName: "p",
+                model: "grok-4",
+                inputTokens: 10,
+                outputTokens: 10,
+                costUSD: 0.5,
+                startTime: now,
+                endTime: now
+            )
+        ]
+        for mode in [UsageDisplayMode.currency, .tokens] {
+            let metrics = ProviderDetailMetrics.headerMetrics(
+                provider: .grokCLI,
+                usages: usages,
+                displayMode: mode,
+                topModelName: "grok-4"
+            )
+            XCTAssertEqual(metrics[0].label, mode == .currency ? "Spend" : "Volume")
+            XCTAssertEqual(metrics[0].value, mode == .currency ? "$0.50" : "20")
+            XCTAssertEqual(metrics[1].label, mode == .currency ? "Avg session" : "Avg session (tokens)")
+            XCTAssertEqual(metrics[1].value, mode == .currency ? "$0.50" : "20")
+            XCTAssertEqual(metrics[2].value, "grok-4")
+        }
     }
 
     // MARK: Round-2 scrutiny (grokbot-usage-honesty-repair follow-up) —
