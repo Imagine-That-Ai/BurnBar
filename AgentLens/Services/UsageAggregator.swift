@@ -647,12 +647,18 @@ private extension UsageAggregator {
         conversationIndexingTask = Task(priority: .utility) { [weak self] in
             defer { self?.conversationIndexingTask = nil }
 
-            let result = await RefreshBackgroundWork.runConversationIndexing(
-                parsers: parsers,
-                dataStore: dataStore,
-                orchestrator: orchestrator,
-                indexingEnabled: indexingEnabled
-            )
+            // Shares parser caches with refresh lanes — yield instead of
+            // queuing; next tick retries (same gate as catch-up at ~330).
+            guard let result = await UsageParserPassGate.shared.withLockIfAvailable({
+                await RefreshBackgroundWork.runConversationIndexing(
+                    parsers: parsers,
+                    dataStore: dataStore,
+                    orchestrator: orchestrator,
+                    indexingEnabled: indexingEnabled
+                )
+            }) else {
+                return
+            }
             guard !Task.isCancelled, let self else { return }
 
             if !result.errors.isEmpty {
