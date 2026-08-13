@@ -20,8 +20,12 @@ public struct BurnBarSafariDaemonRuntimePaths: Hashable, Sendable {
         self.socketAuthTokenFileURL = socketAuthTokenFileURL
     }
 
-    public static func live(fileManager: FileManager = .default) -> Self {
-        let supportDirectory = OpenBurnBarAppPaths.live(fileManager: fileManager).supportDirectory
+    public static func live(homeDirectoryURL: URL? = nil) -> Self {
+        let homeDirectory = homeDirectoryURL ?? canonicalLoginHomeDirectory()
+        let supportDirectory = homeDirectory
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Application Support", isDirectory: true)
+            .appendingPathComponent(OpenBurnBarIdentity.supportDirectoryName, isDirectory: true)
         return Self(
             socketURL: supportDirectory.appendingPathComponent(
                 "openburnbar-daemon.sock",
@@ -32,6 +36,17 @@ public struct BurnBarSafariDaemonRuntimePaths: Hashable, Sendable {
                 isDirectory: false
             )
         )
+    }
+
+    private static func canonicalLoginHomeDirectory() -> URL {
+        #if canImport(Darwin) || canImport(Glibc)
+        if let entry = getpwuid(getuid()),
+           let path = String(validatingCString: entry.pointee.pw_dir),
+           !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        #endif
+        return FileManager.default.homeDirectoryForCurrentUser
     }
 }
 
@@ -279,8 +294,13 @@ public struct BurnBarSafariDaemonSocketClient: Sendable {
         )
     }
 
-    public static func live(fileManager: FileManager = .default) -> Self {
-        let paths = BurnBarSafariDaemonRuntimePaths.live(fileManager: fileManager)
+    public static func live(
+        fileManager: FileManager = .default,
+        homeDirectoryURL: URL? = nil
+    ) -> Self {
+        let paths = BurnBarSafariDaemonRuntimePaths.live(
+            homeDirectoryURL: homeDirectoryURL
+        )
         return Self(
             socketURL: paths.socketURL,
             tokenResolver: .live(

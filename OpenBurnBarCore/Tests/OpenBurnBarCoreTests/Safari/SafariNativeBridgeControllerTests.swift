@@ -8,6 +8,24 @@ import Crypto
 import XCTest
 
 final class SafariNativeBridgeControllerTests: XCTestCase {
+    func test_socketPathTooLongIsReportedHonestly() throws {
+        let recorder = SafariRPCRecorder { _, _ in
+            throw BurnBarSafariDaemonSocketError.socketPathTooLong
+        }
+        let controller = try makeController(recorder: recorder)
+
+        let response = try responseObject(
+            controller.handle(propertyList: helloRequest())
+        )
+        let error = try XCTUnwrap(response["error"] as? [String: Any])
+        XCTAssertEqual(error["code"] as? String, "daemon_socket_path_too_long")
+        XCTAssertEqual(
+            error["message"] as? String,
+            "The OpenBurnBar daemon socket path exceeds the platform limit."
+        )
+        XCTAssertEqual(error["retryable"] as? Bool, false)
+    }
+
     func test_uiSnapshotDefaultsMissingInstalledAgentsForOlderPayloads() throws {
         let response = BurnBarSafariUISnapshotResponse(
             bootstrap: BurnBarSafariBootstrapResponse(
