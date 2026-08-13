@@ -337,6 +337,26 @@ final class CursorConnectorTests: XCTestCase {
         ])
     }
 
+    func test_keychainBackendScopesEveryOperationToConfiguredAccessGroup() throws {
+        let security = RecordingSecurityKeychainOperations()
+        let accessGroup = OpenBurnBarIdentity.sharedKeychainAccessGroup
+        let backend = SecurityKeychainStoreBackend(
+            security: security,
+            accessGroup: accessGroup
+        )
+
+        try backend.set(Data("secret".utf8), service: "service", account: "account")
+        _ = try backend.data(for: "service", account: "account", allowUserInteraction: false)
+        try backend.delete(service: "service", account: "account")
+
+        XCTAssertEqual(security.accessGroups, [
+            accessGroup,
+            accessGroup,
+            accessGroup,
+            accessGroup
+        ])
+    }
+
     func test_proxyScript_preservesDeepSeekReasoningContentAcrossResponsesConversion() {
         let script = CursorConnectorManager.proxyScript()
 
@@ -1032,9 +1052,14 @@ private final class RecordingSecurityKeychainOperations: SecurityKeychainOperati
     private let lock = NSLock()
     private var disabledDepth = 0
     private var recordedEvents: [Event] = []
+    private var recordedAccessGroups: [String?] = []
 
     var events: [Event] {
         lock.withLock { recordedEvents }
+    }
+
+    var accessGroups: [String?] {
+        lock.withLock { recordedAccessGroups }
     }
 
     func runWithDisabledInteraction(_ operation: () -> OSStatus) -> OSStatus {
@@ -1044,31 +1069,33 @@ private final class RecordingSecurityKeychainOperations: SecurityKeychainOperati
     }
 
     func update(query: CFDictionary, attributes: CFDictionary) -> OSStatus {
-        record(.update)
+        record(.update, query: query)
         return errSecItemNotFound
     }
 
     func add(query: CFDictionary) -> OSStatus {
-        record(.add)
+        record(.add, query: query)
         return errSecSuccess
     }
 
     func copyMatching(query: CFDictionary, item: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus {
-        record(.copyMatching)
+        record(.copyMatching, query: query)
         return errSecItemNotFound
     }
 
     func delete(query: CFDictionary) -> OSStatus {
-        record(.delete)
+        record(.delete, query: query)
         return errSecSuccess
     }
 
-    private func record(_ operation: Event.Operation) {
+    private func record(_ operation: Event.Operation, query: CFDictionary) {
+        let accessGroup = (query as NSDictionary)[kSecAttrAccessGroup] as? String
         lock.withLock {
             recordedEvents.append(Event(
                 operation: operation,
                 interactionDisabled: disabledDepth > 0
             ))
+            recordedAccessGroups.append(accessGroup)
         }
     }
 }

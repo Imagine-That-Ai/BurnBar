@@ -311,7 +311,10 @@ final class OpenBurnBarDaemonManager {
     static let daemonSocketAuthTokenAccount = OpenBurnBarCore.OpenBurnBarIdentity.daemonSocketAuthTokenAccount
     static let controllerRuntimeSecrets = KeychainStore(
         service: OpenBurnBarCore.OpenBurnBarIdentity.controllerRuntimeKeychainService,
-        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices
+        legacyServices: OpenBurnBarCore.OpenBurnBarIdentity.legacyControllerRuntimeKeychainServices,
+        backend: SecurityKeychainStoreBackend(
+            accessGroup: OpenBurnBarCore.OpenBurnBarIdentity.sharedKeychainAccessGroup
+        )
     )
     static let providerRuntimeSecrets = KeychainStore(
         service: OpenBurnBarCore.OpenBurnBarIdentity.cursorConnectorKeychainService,

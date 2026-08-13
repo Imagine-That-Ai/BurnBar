@@ -199,6 +199,7 @@ public struct BurnBarSafariDaemonTokenResolver: Sendable {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: OpenBurnBarIdentity.controllerRuntimeKeychainService,
             kSecAttrAccount as String: OpenBurnBarIdentity.daemonSocketAuthTokenAccount,
+            kSecAttrAccessGroup as String: OpenBurnBarIdentity.sharedKeychainAccessGroup,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
