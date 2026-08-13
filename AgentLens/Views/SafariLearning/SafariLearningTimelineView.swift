@@ -587,7 +587,7 @@ private struct SafariLearningFilterChip: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(filter.title), \(count) items")
+        .accessibilityLabel("\(filter.title), \(filteredCount) items")
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier(
             OBBAccessibilityID.safariLearningFilter(filter.rawValue)
