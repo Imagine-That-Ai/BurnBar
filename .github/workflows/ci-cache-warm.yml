@@ -435,4 +435,4 @@ jobs:
             exit 1
           fi
           echo "--- .spm-cache-new top-level:"
-          ls -la .spm-cache-new | head -n 40
+          find .spm-cache-new -maxdepth 1 -mindepth 1 -exec basename {} \; | sort | head -n 40
