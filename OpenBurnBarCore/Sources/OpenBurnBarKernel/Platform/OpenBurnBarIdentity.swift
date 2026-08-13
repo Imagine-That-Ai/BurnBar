@@ -29,6 +29,7 @@ public enum OpenBurnBarIdentity {
     ]
     public static let controllerRuntimeKeychainService = "com.openburnbar.controller-runtime"
     public static let legacyControllerRuntimeKeychainServices = ["com.burnbar.controller-runtime"]
+    public static let sharedKeychainAccessGroup = "4Y367DF25B.com.openburnbar.app"
     public static let controllerTelegramBotTokenAccount = "provider.controller.telegram.apiKey"
     public static let chatGatewayKeychainService = "com.openburnbar.chat-gateway-secrets"
     public static let legacyChatGatewayKeychainServices = ["com.burnbar.chat-gateway-secrets"]
