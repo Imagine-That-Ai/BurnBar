@@ -114,10 +114,10 @@ final class SafariDaemonSocketClientTests: XCTestCase {
         }
     }
 
-    func test_overlongInjectedSocketPathFailsBeforeConnect() {
+    func test_overlongUnicodeSocketPathFailsBeforeConnect() {
         let client = BurnBarSafariDaemonSocketClient(
             socketURL: URL(
-                fileURLWithPath: "/tmp/\(String(repeating: "x", count: 256)).sock"
+                fileURLWithPath: "/tmp/\(String(repeating: "🧭", count: 40)).sock"
             ),
             tokenResolver: fixedTokenResolver()
         )

@@ -33,7 +33,7 @@ function installCanvasHarness(open: boolean): CanvasHarness {
   }
   vi.spyOn(fire, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 204, 26));
   vi.spyOn(knob, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 50, 50));
-  const context = {
+  const context = Object.assign(Object.create(CanvasRenderingContext2D.prototype), {
     createImageData: vi.fn((width: number, height: number) => ({
       data: new Uint8ClampedArray(width * height * 4),
       height,
@@ -46,8 +46,8 @@ function installCanvasHarness(open: boolean): CanvasHarness {
       width
     })),
     putImageData: vi.fn()
-  };
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
+  });
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context);
   return { context, root, fire, knob, fallback };
 }
 

@@ -55,7 +55,11 @@ if [[ ! -d "$created_release" || -L "$created_release" ]]; then
   echo "FAIL: Atomic release-root creation did not create a real directory." >&2
   exit 1
 fi
-if [[ "$(stat -f %Lp "$created_release")" != "700" ]]; then
+created_release_mode="$(
+  stat -f '%Lp' "$created_release" 2>/dev/null ||
+    stat -c '%a' "$created_release"
+)"
+if [[ "$created_release_mode" != "700" ]]; then
   echo "FAIL: Atomic release-root creation did not preserve mode 0700." >&2
   exit 1
 fi

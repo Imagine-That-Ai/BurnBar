@@ -399,7 +399,7 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
 
         let ready = try await source.snapshot()
         XCTAssertEqual(try factoryAccount(in: ready).quotaState, .healthy)
-        XCTAssertEqual(try factoryModel(in: ready).routeEligible, true)
+        XCTAssertTrue(try factoryModel(in: ready).routeEligible)
 
         try await configStore.updateCredentialSlotStatus(
             providerID: "factory",
@@ -412,7 +412,7 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
         XCTAssertEqual(try factoryAccount(in: coolingDown).quotaState, .coolingDown)
         XCTAssertEqual(try factoryAccount(in: coolingDown).lastError, "retry later")
         XCTAssertEqual(try factoryModel(in: coolingDown).quotaState, .coolingDown)
-        XCTAssertEqual(try factoryModel(in: coolingDown).routeEligible, false)
+        XCTAssertFalse(try factoryModel(in: coolingDown).routeEligible)
 
         try await configStore.updateCredentialSlotStatus(
             providerID: "factory",
@@ -424,7 +424,7 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
         let recovered = try await source.snapshot()
         XCTAssertEqual(try factoryAccount(in: recovered).quotaState, .healthy)
         XCTAssertNil(try factoryAccount(in: recovered).lastError)
-        XCTAssertEqual(try factoryModel(in: recovered).routeEligible, true)
+        XCTAssertTrue(try factoryModel(in: recovered).routeEligible)
 
         XCTAssertEqual(
             droid.count,
@@ -451,7 +451,7 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
         XCTAssertEqual(try factoryAccount(in: exhausted).quotaState, .exhausted)
         XCTAssertEqual(try factoryAccount(in: exhausted).quotaRemainingPercent, 0)
         XCTAssertEqual(try factoryModel(in: exhausted).quotaState, .exhausted)
-        XCTAssertEqual(try factoryModel(in: exhausted).routeEligible, false)
+        XCTAssertFalse(try factoryModel(in: exhausted).routeEligible)
 
         try await configStore.updateCredentialSlotQuota(
             providerID: "factory",
@@ -464,7 +464,7 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
         XCTAssertEqual(try factoryAccount(in: recovered).quotaState, .healthy)
         XCTAssertEqual(try factoryAccount(in: recovered).quotaRemainingPercent, 80)
         XCTAssertEqual(try factoryModel(in: recovered).quotaState, .healthy)
-        XCTAssertEqual(try factoryModel(in: recovered).routeEligible, true)
+        XCTAssertTrue(try factoryModel(in: recovered).routeEligible)
         XCTAssertEqual(droid.count, 1, "quota transitions must not repeat provider discovery")
     }
 
@@ -483,7 +483,7 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
             message: "retry later"
         )
         let coolingDown = try await source.snapshot()
-        XCTAssertEqual(try factoryModel(in: coolingDown).routeEligible, false)
+        XCTAssertFalse(try factoryModel(in: coolingDown).routeEligible)
 
         try await configStore.recordCredentialSelection(
             providerID: "factory",
@@ -491,7 +491,7 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
         )
         let restored = try await source.snapshot()
         XCTAssertEqual(try factoryAccount(in: restored).quotaState, .healthy)
-        XCTAssertEqual(try factoryModel(in: restored).routeEligible, true)
+        XCTAssertTrue(try factoryModel(in: restored).routeEligible)
         XCTAssertEqual(droid.count, 1, "selection bookkeeping must reuse provider discovery")
     }
 

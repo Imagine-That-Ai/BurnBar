@@ -34,13 +34,15 @@ openburnbar_parse_apple_static_archive_diagnostics() {
     return 64
   fi
 
-  # Apple libtool has emitted both forms below across Xcode releases:
+  # Apple libtool has emitted both forms below across Xcode releases, with
+  # either a bare tool name or the invoked executable path as a prefix:
   #   libtool: warning: 'archive.a(member.o)' has no symbols
   #   libtool: file: /path/archive.a(member.o) has no symbols
+  #   /Applications/Xcode.app/.../libtool: file: /path/archive.a(member.o) has no symbols
   # Accept only these known diagnostics. Any new output remains fail-closed.
   LC_ALL=C sed -E -n \
-    -e "s/^libtool: warning: '.*\\(([^()]*)\\)' has no symbols$/\\1/p" \
-    -e "s/^libtool: file: .*\\(([^()]*)\\) has no symbols$/\\1/p" \
+    -e "s|^(.*/)?libtool: warning: '.*\\(([^()]*)\\)' has no symbols$|\\2|p" \
+    -e "s|^(.*/)?libtool: file: .*\\(([^()]*)\\) has no symbols$|\\2|p" \
     "$diagnostic_log" >"$empty_member_list"
 
   local diagnostic_count

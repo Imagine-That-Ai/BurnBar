@@ -119,6 +119,16 @@ extension GatewayHarness {
         )
     }
 
+    func advertisedRouteKeysByFamily(
+        for requestedModel: BurnBarHTTPGatewayServer.GatewayRequestedModel
+    ) async throws -> [BurnBarProviderFormatFamily: Set<String>] {
+        try await server.advertisedRouteKeysByFamily(for: requestedModel)
+    }
+
+    func handleModelsBody(includeUnadvertised: Bool) async -> Data {
+        await server.handleModels(includeUnadvertised: includeUnadvertised).body
+    }
+
     static func reservePort() throws -> Int {
         var lastError: POSIXError?
         for _ in 0..<4096 {
