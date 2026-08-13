@@ -114,6 +114,7 @@ export type PopupRequest =
       expectedTabId: number;
       expectedOrigin: string;
       acknowledgeCloudScreenshots: boolean;
+      websiteAccessGranted: boolean;
     }
   | { type: 'popup.setLearning'; optedIn: boolean }
   | { type: 'popup.teachCorrection'; correction: string }
@@ -193,7 +194,8 @@ export function isPopupRequest(value: unknown): value is PopupRequest {
           'expectedStateVersion',
           'expectedTabId',
           'expectedOrigin',
-          'acknowledgeCloudScreenshots'
+          'acknowledgeCloudScreenshots',
+          'websiteAccessGranted'
         ]) &&
         typeof value.expectedStateVersion === 'number' &&
         Number.isSafeInteger(value.expectedStateVersion) &&
@@ -202,7 +204,8 @@ export function isPopupRequest(value: unknown): value is PopupRequest {
         Number.isSafeInteger(value.expectedTabId) &&
         value.expectedTabId >= 0 &&
         isNonEmptyString(value.expectedOrigin) &&
-        typeof value.acknowledgeCloudScreenshots === 'boolean'
+        typeof value.acknowledgeCloudScreenshots === 'boolean' &&
+        typeof value.websiteAccessGranted === 'boolean'
       );
     case 'popup.abort':
       return (

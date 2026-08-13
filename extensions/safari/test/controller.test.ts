@@ -1896,13 +1896,16 @@ describe('Safari background controller integration', () => {
     if (!page) {
       throw new Error('Expected an active page.');
     }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
 
     const authorized = await harness.controller.handlePopupRequest({
       type: 'popup.authorizePage',
       expectedStateVersion: before.stateVersion,
       expectedTabId: page.tabId,
       expectedOrigin: 'https://example.com',
-      acknowledgeCloudScreenshots: true
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
     });
 
     expectSuccess(authorized);
@@ -1942,6 +1945,8 @@ describe('Safari background controller integration', () => {
     if (!page) {
       throw new Error('Expected an active page.');
     }
+    harness.controls.grantedOrigins.add('http://*/*');
+    harness.controls.grantedOrigins.add('https://*/*');
     harness.setPopupActionResult('trust.update', { accepted: false, output: {} });
 
     const rejected = await harness.controller.handlePopupRequest({
@@ -1949,7 +1954,8 @@ describe('Safari background controller integration', () => {
       expectedStateVersion: before.stateVersion,
       expectedTabId: page.tabId,
       expectedOrigin: 'https://example.com',
-      acknowledgeCloudScreenshots: true
+      acknowledgeCloudScreenshots: true,
+      websiteAccessGranted: true
     });
 
     expect(rejected).toMatchObject({
@@ -1967,6 +1973,46 @@ describe('Safari background controller integration', () => {
       cloudScreenshotDisclosureAcknowledged: false,
       sites: {}
     });
+  });
+
+  it('persists nothing when Safari denies or falsely reports unified website access', async () => {
+    for (const websiteAccessGranted of [false, true]) {
+      const harness = createControllerHarness();
+      await harness.controller.initialize();
+      const before = harness.controller.currentSnapshot();
+      const page = before.page;
+      if (!page) {
+        throw new Error('Expected an active page.');
+      }
+
+      const rejected = await harness.controller.handlePopupRequest({
+        type: 'popup.authorizePage',
+        expectedStateVersion: before.stateVersion,
+        expectedTabId: page.tabId,
+        expectedOrigin: 'https://example.com',
+        acknowledgeCloudScreenshots: true,
+        websiteAccessGranted
+      });
+
+      expect(rejected).toMatchObject({
+        ok: false,
+        error: {
+          code: websiteAccessGranted ? 'authorization_verification_failed' : 'site_permission_denied'
+        },
+        snapshot: {
+          trust: {
+            siteAllowed: false,
+            cloudScreenshotAcknowledged: false
+          }
+        }
+      });
+      expect(harness.popupCalls.some((call) => call.action === 'trust.update')).toBe(false);
+      expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+        automaticallyTrustInvokedWebsites: false,
+        cloudScreenshotDisclosureAcknowledged: false,
+        sites: {}
+      });
+    }
   });
 
   it('silently registers a future origin after the user enables one-time website setup', async () => {

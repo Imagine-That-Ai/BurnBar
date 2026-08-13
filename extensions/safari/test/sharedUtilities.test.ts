@@ -113,7 +113,8 @@ describe('shared utilities', () => {
         expectedStateVersion: 7,
         expectedTabId: 1,
         expectedOrigin: 'https://example.com',
-        acknowledgeCloudScreenshots: true
+        acknowledgeCloudScreenshots: true,
+        websiteAccessGranted: true
       },
       { type: 'popup.setLearning', optedIn: true },
       { type: 'popup.teachCorrection', correction: 'Prefer annual totals.' },
@@ -138,6 +139,14 @@ describe('shared utilities', () => {
       {
         type: 'popup.authorizePage',
         expectedStateVersion: -1,
+        expectedTabId: 1,
+        expectedOrigin: 'https://example.com',
+        acknowledgeCloudScreenshots: true,
+        websiteAccessGranted: true
+      },
+      {
+        type: 'popup.authorizePage',
+        expectedStateVersion: 7,
         expectedTabId: 1,
         expectedOrigin: 'https://example.com',
         acknowledgeCloudScreenshots: true
