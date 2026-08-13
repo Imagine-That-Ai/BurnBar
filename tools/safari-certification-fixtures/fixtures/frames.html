@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Same- and cross-origin frame fixture</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/frames.js"></script>
+  </head>
+  <body data-fixture="same-and-cross-origin-frames">
+    <main class="shell">
+      <p class="eyebrow">Fixture 08 · frame boundaries</p>
+      <h1>One page, two origins.</h1>
+      <p class="lede">
+        The left frame shares this origin. The right frame comes from the dedicated secondary
+        loopback listener on a different port.
+      </p>
+      <section class="frame-grid">
+        <div>
+          <h2>Same origin</h2>
+          <iframe id="same-origin-frame" name="same-origin-frame" src="/frame/same" title="Same-origin fixture"></iframe>
+        </div>
+        <div>
+          <h2>Cross origin</h2>
+          <iframe
+            id="cross-origin-frame"
+            name="cross-origin-frame"
+            src="{{SECONDARY_ORIGIN}}/frame/cross"
+            title="Cross-origin fixture"
+          ></iframe>
+        </div>
+      </section>
+      <p id="frame-status" class="status" role="status">Waiting for both child frames.</p>
+    </main>
+  </body>
+</html>

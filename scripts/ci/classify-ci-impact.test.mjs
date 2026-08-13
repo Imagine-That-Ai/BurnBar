@@ -59,6 +59,14 @@ test("Safari extension paths select only the required Safari, macOS, and web lan
     ))
       assert.equal(result[lane], false, `${path}:${lane}`);
   }
+
+  const fixtures = classifyPaths([
+    "tools/safari-certification-fixtures/server.test.mjs",
+  ]);
+  assert.equal(fixtures.full, false);
+  assert.equal(fixtures.safari, true);
+  for (const lane of LANES.filter((lane) => lane !== "safari"))
+    assert.equal(fixtures[lane], false, `fixture:${lane}`);
 });
 
 test("shared Swift sources select every Swift consumer", () => {

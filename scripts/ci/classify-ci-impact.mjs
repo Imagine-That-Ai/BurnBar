@@ -113,6 +113,7 @@ const LANE_PATTERNS = {
   safari: [
     /^OpenBurnBarSafariExtension\//,
     /^extensions\/safari\//,
+    /^tools\/safari-certification-fixtures\//,
     /^scripts\/test-openburnbar-safari-extension\.sh$/,
     /^scripts\/ci\/(?:sign|verify)-openburnbar-safari-extension(?:\.test)?\.sh$/,
     /^scripts\/ci\/verify-openburnbar-safari-extension-layout\.py$/,

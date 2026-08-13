@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="title desc">
+  <title id="title">Harbor crossings by day</title>
+  <desc id="desc">Monday 12, Tuesday 18, Wednesday 9, Thursday 24, Friday 15. Thursday is highest.</desc>
+  <rect width="960" height="600" fill="#f8fbfa"/>
+  <g stroke="#cbd7d4" stroke-width="2">
+    <path d="M120 480 H900"/>
+    <path d="M120 400 H900"/>
+    <path d="M120 320 H900"/>
+    <path d="M120 240 H900"/>
+    <path d="M120 160 H900"/>
+    <path d="M120 80 H900"/>
+  </g>
+  <g fill="#536273" font-family="system-ui, sans-serif" font-size="24">
+    <text x="78" y="488">0</text>
+    <text x="65" y="408">5</text>
+    <text x="52" y="328">10</text>
+    <text x="52" y="248">15</text>
+    <text x="52" y="168">20</text>
+    <text x="52" y="88">25</text>
+  </g>
+  <g fill="#0f766e">
+    <rect x="160" y="288" width="100" height="192" rx="8"/>
+    <rect x="310" y="192" width="100" height="288" rx="8"/>
+    <rect x="460" y="336" width="100" height="144" rx="8"/>
+    <rect x="610" y="96" width="100" height="384" rx="8" fill="#bb3e2d"/>
+    <rect x="760" y="240" width="100" height="240" rx="8"/>
+  </g>
+  <g fill="#17202a" font-family="system-ui, sans-serif" font-size="25" text-anchor="middle">
+    <text x="210" y="278">12</text>
+    <text x="360" y="182">18</text>
+    <text x="510" y="326">9</text>
+    <text x="660" y="86">24</text>
+    <text x="810" y="230">15</text>
+  </g>
+  <g fill="#536273" font-family="system-ui, sans-serif" font-size="21" text-anchor="middle">
+    <text x="210" y="525">Monday</text>
+    <text x="360" y="525">Tuesday</text>
+    <text x="510" y="525">Wednesday</text>
+    <text x="660" y="525">Thursday</text>
+    <text x="810" y="525">Friday</text>
+  </g>
+</svg>

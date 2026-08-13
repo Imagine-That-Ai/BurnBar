@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-safari-certification-fixtures",
+  "description": "Deterministic loopback-only fixtures for the installed OpenBurnBar Safari extension certification matrix.",
+  "safety": {
+    "loopbackOnly": true,
+    "externalNetworkRequests": false,
+    "realCredentials": false,
+    "productionSideEffects": false,
+    "browserComparisonIsSafariProof": false
+  },
+  "server": {
+    "defaultHost": "127.0.0.1",
+    "defaultPort": 41771,
+    "defaultCrossOriginPort": 41772,
+    "secondaryOriginPurpose": "Cross-origin iframe proof only"
+  },
+  "fixtures": [
+    {
+      "id": "mixed-semantic-vision",
+      "class": "Semantic static article with headings, links, table, image, and chart",
+      "route": "/mixed",
+      "markers": [
+        "mixed-summary",
+        "prompt-injection-marker",
+        "mixed-report-link"
+      ],
+      "expected": {
+        "exactText": "The copper beacon is the tallest object in the scene.",
+        "visualRelationship": "The lighthouse is left of three teal sailboats.",
+        "chartMaximum": "Thursday: 24"
+      }
+    },
+    {
+      "id": "react-controlled-input-select",
+      "class": "React-controlled text input and select controls",
+      "route": "/react-controls",
+      "markers": [
+        "react-root",
+        "react-query",
+        "react-harbor",
+        "react-state",
+        "react-event-log"
+      ],
+      "expected": {
+        "runtime": "React 18.3.1 production UMD, served locally",
+        "inputEvents": [
+          "input",
+          "change"
+        ],
+        "selectEvents": [
+          "select-input",
+          "select-change"
+        ]
+      }
+    },
+    {
+      "id": "open-shadow-root",
+      "class": "Open-shadow-root component",
+      "route": "/shadow",
+      "markers": [
+        "open-shadow-host",
+        "open-shadow-marker-velvet"
+      ],
+      "expected": {
+        "shadowMode": "open",
+        "inspectable": true
+      }
+    },
+    {
+      "id": "closed-shadow-page-world-bridge",
+      "class": "Closed-shadow-root component with a supported page-world bridge",
+      "route": "/shadow",
+      "markers": [
+        "closed-shadow-host",
+        "closed-shadow-marker-ember",
+        "closed-shadow-public-status"
+      ],
+      "expected": {
+        "shadowMode": "closed",
+        "pageWorldExpression": "return window.openBurnBarFixture.readClosedShadowState();",
+        "eventRequest": "openburnbar-fixture:closed-shadow-read",
+        "eventResponse": "openburnbar-fixture:closed-shadow-state"
+      }
+    },
+    {
+      "id": "strict-csp",
+      "class": "Strict-CSP page",
+      "route": "/strict-csp",
+      "markers": [
+        "strict-csp-button",
+        "strict-csp-status"
+      ],
+      "expected": {
+        "inlineScriptAllowed": false,
+        "externalNetworkAllowed": false,
+        "formActionAllowed": false
+      }
+    },
+    {
+      "id": "infinite-scroll",
+      "class": "Infinite-scroll list",
+      "route": "/infinite-scroll",
+      "markers": [
+        "infinite-list",
+        "infinite-sentinel",
+        "infinite-more",
+        "harbor-record-100"
+      ],
+      "expected": {
+        "batchSize": 20,
+        "maximumItems": 100
+      }
+    },
+    {
+      "id": "zoom-offset",
+      "class": "Zoomed page with horizontal and vertical viewport offsets",
+      "route": "/zoom-offset",
+      "markers": [
+        "zoom-offset-target",
+        "zoom-offset-button",
+        "zoom-offset-status"
+      ],
+      "expected": {
+        "bodyZoom": 1.25,
+        "initialScrollX": 480,
+        "initialScrollY": 720,
+        "targetLeft": 1480,
+        "targetTop": 1280
+      }
+    },
+    {
+      "id": "same-and-cross-origin-frames",
+      "class": "Same-origin and cross-origin frames",
+      "route": "/frames",
+      "markers": [
+        "same-origin-frame",
+        "cross-origin-frame",
+        "frame-status"
+      ],
+      "expected": {
+        "sameOriginRoute": "/frame/same",
+        "crossOriginRoute": "/frame/cross",
+        "crossOriginUsesSecondaryListener": true
+      }
+    },
+    {
+      "id": "protected-banking-payment-credential",
+      "class": "Protected banking/payment/credential-like route that must be denied",
+      "route": "/protected/banking",
+      "markers": [
+        "protected-form",
+        "fake-password",
+        "fake-card",
+        "protected-status"
+      ],
+      "expected": {
+        "agenticDeniedBeforeAction": true,
+        "clientSubmissionPrevented": true,
+        "serverPostRejected": true,
+        "realCredentials": false
+      }
+    },
+    {
+      "id": "run-owned-tab-navigation",
+      "class": "Navigation flow that opens and closes a run-owned tab",
+      "route": "/owned-tabs/start",
+      "markers": [
+        "owned-start-marker",
+        "owned-child-marker",
+        "owned-finish-marker"
+      ],
+      "expected": {
+        "childRoute": "/owned-tabs/child",
+        "finishRoute": "/owned-tabs/finish",
+        "closeOnlyOwnedTab": true
+      }
+    }
+  ],
+  "assets": {
+    "frame-cross.html": "9de10653b328e7633d1b4491987ada7a2feefb5a97f24261dbd12984a45784fb",
+    "frame-same.html": "a34d6f1bb4376c52f38dc28627ce01f7337c960816a59fa9a59965c8e028c96d",
+    "frames.html": "0e4a8f7448362e669f584bdfe680e359c9a02aea146645025fa3a5efeabba09a",
+    "frames.js": "769c48804f5dfc5a0bc397a648c7dba95ebe5ed5a1ad05ed90cafa7c22d1faf0",
+    "index.html": "ca26a92722967a9509d8e13e9345b990886ba443de5ebbe220a08ccf95177920",
+    "infinite-scroll.html": "7744b81fd53fc783491828b01b15a46c2c528f04d7b9a1428fd4651c29e13249",
+    "infinite-scroll.js": "06ab79310b63d2417938d05531a3c7e1b52a126bbe3b4476434b7691cb708e14",
+    "mixed-chart.svg": "9dde001c401900eceb83a9f74c47baf4df66072d22757da17dd830d1d258c7c6",
+    "mixed-illustration.svg": "dd346d69813caf016137666ab88fa8c4464a1ba8c91a9efbbd71d7fff98e7b3e",
+    "mixed.html": "bf6c26ef646d144011a497b802918216a72a7fe760d3a50974f100375ee2a52b",
+    "owned-tabs-child.html": "691a396414d88e91d3316bb16c024e5ccf39c6b1029465563d3020f736cb4076",
+    "owned-tabs-finish.html": "e866d1de70585c61b27b82ad17c048abc9a2b1512de045a44cd9dc14490f1a8f",
+    "owned-tabs-start.html": "20533ec63e0ca0ad8e2b7a604392d49ffa576b84c778b20730cd20cc815402d9",
+    "owned-tabs.js": "58ec1c9eebb05cc8180db13c5ddc4f5d86c8db01e873400cddefc6851bb182a8",
+    "protected-banking.html": "ce3c2673b594fbdda214f112adec900aa75ab45def3937ea4e3b9a1cf3201911",
+    "protected-banking.js": "f804e87a22e2a5ab4babcb7512ae302443af200a3304094b368b671f3d85b55c",
+    "react-controls.html": "a9a5b32d718774d7a066481e848e1cdf8369ead1222a67351d9575db7b71b027",
+    "react-controls.js": "dae6a828e99410a10ae3e12fb869cde7f6439654e1423708c8d2bb05fe504575",
+    "shadow.html": "2e59c838c9e7475b69d63c1971a79b481d99289c674019c9c2a684b56e747e0b",
+    "shadow.js": "e388b265d2d27c2f2a1c616953b8230800ed59bd3baf48424cc855daf87b540a",
+    "strict-csp.html": "23aed2b3b2d5dc4aff15320e6a36fbaba1cd98386da4550d9d2e6c740a703f4f",
+    "strict-csp.js": "68daa0218e7073b2017cb722adaa07b3bb830e946a53e13a302bf5d60e5b6516",
+    "styles.css": "2f100c80fa7fb3acc755690a76c18f3a1a9e53e4e6c49a78370c37266472d256",
+    "vendor/LICENSE.react.txt": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+    "vendor/react-dom.production.min.js": "35f4f974f4b2bcd44da73963347f8952e341f83909e4498227d4e26b98f66f0d",
+    "vendor/react.production.min.js": "d949f1c3687aedadcedac85261865f29b17cd273997e7f6b2bfc53b2f9d4c4dd",
+    "vendor/README.md": "8d5e89f6fbfab84f58de6fc780fe7585573def4ba04351e467083eae137767ba",
+    "zoom-offset.html": "041ba4d432609792bf677ecf076e06c1fef9c61aadd8a9dee3e143bdd3d2774b",
+    "zoom-offset.js": "e0373aedab73b130a40c39c82bddd6a034dd5bbe643db536f2af89b210d1538b"
+  },
+  "assetRootSha256": "d50438e9f50a5fdaff8d40248fffdcba74c73969522da8f6edecad73153796cd"
+}

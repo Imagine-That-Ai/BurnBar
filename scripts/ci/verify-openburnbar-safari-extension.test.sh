@@ -8,6 +8,13 @@ trap 'rm -rf "$work_dir"' EXIT
 
 team_id="4Y367DF25B"
 bundle_id="com.openburnbar.app.safari-extension"
+current_mac_provisioning_udid=""
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  current_mac_provisioning_udid="$(
+    /usr/sbin/system_profiler SPHardwareDataType -json 2>/dev/null \
+      | python3 "$repo_root/scripts/lib/parse-macos-provisioning-udid.py"
+  )"
+fi
 app_path="$work_dir/OpenBurnBar.app"
 appex_path="$app_path/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 contents_path="$appex_path/Contents"
@@ -16,8 +23,10 @@ executable_path="$contents_path/MacOS/OpenBurnBarSafariExtension"
 profile_path="$work_dir/OpenBurnBarSafariExtension-MAC_APP_DIRECT.provisionprofile"
 signed_entitlements_path="$work_dir/signed-entitlements.plist"
 good_entitlements_path="$work_dir/good-entitlements.plist"
+good_direct_profile="$work_dir/good-direct-profile.plist"
+good_development_profile="$work_dir/good-development-profile.plist"
+good_development_entitlements="$work_dir/good-development-entitlements.plist"
 codesign_log="$work_dir/codesign.log"
-profile_verifier_log="$work_dir/profile-verifier.log"
 mock_bin="$work_dir/mock-bin"
 
 mkdir -p \
@@ -108,6 +117,7 @@ profile = {
     "Name": "OpenBurnBar Safari Extension MAC_APP_DIRECT",
     "ProvisionsAllDevices": True,
     "TeamIdentifier": [team_id],
+    "DeveloperCertificates": [b"openburnbar-fixture-signer"],
     "Entitlements": entitlements,
 }
 
@@ -144,6 +154,10 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$MOCK_CODESIGN_LOG"
 
 if [[ " $* " == *" --verify "* ]]; then
+  exit 0
+fi
+if [[ "$1" == "-d" && " $* " == *" --extract-certificates "* ]]; then
+  printf 'openburnbar-fixture-signer' > codesign0
   exit 0
 fi
 if [[ "$1" == "-d" && " $* " == *" --entitlements :- "* ]]; then
@@ -190,13 +204,7 @@ echo "unexpected mock codesign invocation: $*" >&2
 exit 99
 SH
 
-cat > "$mock_bin/profile-verifier" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >> "$MOCK_PROFILE_VERIFIER_LOG"
-SH
-
-chmod +x "$mock_bin/security" "$mock_bin/codesign" "$mock_bin/profile-verifier"
+chmod +x "$mock_bin/security" "$mock_bin/codesign"
 
 export PATH="$mock_bin:$PATH"
 export MOCK_APPEX="$appex_path"
@@ -205,8 +213,6 @@ export MOCK_SIGNED_ENTITLEMENTS="$signed_entitlements_path"
 export MOCK_CODESIGN_TEAM="$team_id"
 export MOCK_NESTED_PATH="$contents_path/Frameworks/Nested.framework"
 export MOCK_NESTED_CODESIGN_TEAM="$team_id"
-export MOCK_PROFILE_VERIFIER_LOG="$profile_verifier_log"
-export OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER="$mock_bin/profile-verifier"
 
 assert_fails_with() {
   local expected="$1"
@@ -233,6 +239,7 @@ bash "$repo_root/scripts/ci/sign-openburnbar-safari-extension.sh" \
 
 embedded_profile="$contents_path/embedded.provisionprofile"
 cmp "$profile_path" "$embedded_profile"
+cp "$embedded_profile" "$good_direct_profile"
 cp "$signed_entitlements_path" "$good_entitlements_path"
 
 python3 - "$signed_entitlements_path" "$team_id" "$bundle_id" <<'PY'
@@ -256,7 +263,7 @@ if [[ -z "$nested_line" || -z "$appex_line" || "$nested_line" -ge "$appex_line" 
   cat "$codesign_log" >&2
   exit 1
 fi
-if [[ ! -s "$profile_verifier_log" ]]; then
+if ! grep -Fq -- "--extract-certificates" "$codesign_log"; then
   echo "FAIL: Safari signing/profile certificate membership verifier was not invoked." >&2
   exit 1
 fi
@@ -266,11 +273,103 @@ if ! grep -Fq -- "--verify --strict --verbose=4 $MOCK_NESTED_PATH" "$codesign_lo
   exit 1
 fi
 
-bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
+OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER=/usr/bin/false \
+  bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
   "$app_path" \
   direct \
   "$team_id" \
   "$profile_path"
+
+if [[ -n "$current_mac_provisioning_udid" ]]; then
+  python3 - \
+    "$embedded_profile" \
+    "$signed_entitlements_path" \
+    "$current_mac_provisioning_udid" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+profile_path, entitlements_path, current_mac_provisioning_udid = sys.argv[1:]
+with Path(profile_path).open("rb") as file:
+    profile = plistlib.load(file)
+profile.pop("ProvisionsAllDevices", None)
+profile["Platform"] = ["OSX"]
+profile["ProvisionedDevices"] = [current_mac_provisioning_udid]
+profile["Entitlements"]["com.apple.security.get-task-allow"] = True
+with Path(profile_path).open("wb") as file:
+    plistlib.dump(profile, file)
+
+with Path(entitlements_path).open("rb") as file:
+    entitlements = plistlib.load(file)
+entitlements["com.apple.security.get-task-allow"] = True
+with Path(entitlements_path).open("wb") as file:
+    plistlib.dump(entitlements, file)
+PY
+  cp "$embedded_profile" "$good_development_profile"
+  cp "$signed_entitlements_path" "$good_development_entitlements"
+  export MOCK_CODESIGN_AUTHORITY="Apple Development: OpenBurnBar Test ($team_id)"
+  bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
+    "$app_path" \
+    development \
+    "$team_id"
+
+  python3 - "$embedded_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["Platform"] = ["iOS"]
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+  assert_fails_with \
+    "development Safari profile platform must be ['OSX']" \
+    bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
+    "$app_path" development "$team_id"
+  cp "$good_development_profile" "$embedded_profile"
+
+  python3 - "$embedded_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["ProvisionedDevices"] = ["11111111-1111111111111111"]
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+  assert_fails_with \
+    "development Safari profile must authorize this Mac's provisioning UDID" \
+    bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
+    "$app_path" development "$team_id"
+  cp "$good_development_profile" "$embedded_profile"
+
+  python3 - "$embedded_profile" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+with path.open("rb") as file:
+    profile = plistlib.load(file)
+profile["Entitlements"].pop("com.apple.security.get-task-allow", None)
+with path.open("wb") as file:
+    plistlib.dump(profile, file)
+PY
+  assert_fails_with \
+    "development Safari profile get-task-allow entitlement must be True" \
+    bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
+    "$app_path" development "$team_id"
+fi
+
+cp "$good_direct_profile" "$embedded_profile"
+cp "$good_entitlements_path" "$signed_entitlements_path"
+unset MOCK_CODESIGN_AUTHORITY
 
 python3 - "$signed_entitlements_path" <<'PY'
 import plistlib
@@ -285,7 +384,7 @@ with path.open("wb") as file:
     plistlib.dump(entitlements, file)
 PY
 assert_fails_with \
-  "signed Safari App Groups must include 'group.com.openburnbar.app'" \
+  "signed Safari App Groups must be ['group.com.openburnbar.app']" \
   bash "$repo_root/scripts/ci/verify-openburnbar-safari-extension.sh" \
   "$app_path" direct "$team_id"
 cp "$good_entitlements_path" "$signed_entitlements_path"

@@ -18,7 +18,6 @@ expected_app_group="group.com.openburnbar.app"
 expected_keychain_suffix="com.openburnbar.app"
 appex_path="$app_path/Contents/PlugIns/OpenBurnBarSafariExtension.appex"
 embedded_profile="$appex_path/Contents/embedded.provisionprofile"
-profile_verifier="${OPENBURNBAR_SIGNING_PROFILE_CERTIFICATE_VERIFIER:-$repo_root/scripts/ci/verify-signing-profile-certificate.sh}"
 
 case "$distribution" in
   development | direct | mas) ;;
@@ -53,6 +52,17 @@ if [[ -n "$provided_profile" ]]; then
   if ! cmp -s "$provided_profile" "$embedded_profile"; then
     echo "ERROR: Embedded Safari extension profile differs from the candidate profile supplied to the verifier." >&2
     exit 1
+  fi
+fi
+
+current_mac_provisioning_udid=""
+if [[ "$distribution" == "development" ]]; then
+  if ! current_mac_provisioning_udid="$(
+    /usr/sbin/system_profiler SPHardwareDataType -json 2>/dev/null \
+      | python3 "$repo_root/scripts/lib/parse-macos-provisioning-udid.py" 2>/dev/null
+  )"; then
+    echo "ERROR: Could not determine this Mac's unique provisioning UDID from system_profiler." >&2
+    exit 69
   fi
 fi
 
@@ -167,7 +177,8 @@ python3 - \
   "$expected_team_id" \
   "$expected_bundle_id" \
   "$expected_app_group" \
-  "$expected_keychain_suffix" <<'PY'
+  "$expected_keychain_suffix" \
+  "$current_mac_provisioning_udid" <<'PY'
 import datetime as dt
 import plistlib
 import sys
@@ -181,6 +192,7 @@ from pathlib import Path
     bundle_id,
     app_group,
     keychain_suffix,
+    current_mac_provisioning_udid,
 ) = sys.argv[1:]
 
 with Path(signed_entitlements_path).open("rb") as file:
@@ -225,14 +237,14 @@ require_equal(
     True,
     "signed Safari network client entitlement",
 )
-require_member(
+require_equal(
     signed.get("com.apple.security.application-groups"),
-    app_group,
+    [app_group],
     "signed Safari App Groups",
 )
-require_member(
+require_equal(
     signed.get("keychain-access-groups"),
-    expected_keychain_group,
+    [expected_keychain_group],
     "signed Safari Keychain groups",
 )
 if distribution == "development":
@@ -293,14 +305,28 @@ provisioned_devices = profile.get("ProvisionedDevices")
 if distribution == "development":
     if all_devices:
         fail("development Safari profile must not be an all-devices distribution profile.")
+    require_equal(
+        profile.get("Platform"),
+        ["OSX"],
+        "development Safari profile platform",
+    )
     if not isinstance(provisioned_devices, list) or not provisioned_devices:
         fail("development Safari profile must authorize at least one registered device.")
+    if current_mac_provisioning_udid not in provisioned_devices:
+        fail("development Safari profile must authorize this Mac's provisioning UDID.")
+    require_equal(
+        profile_entitlements.get("com.apple.security.get-task-allow"),
+        True,
+        "development Safari profile get-task-allow entitlement",
+    )
 if distribution == "direct" and not all_devices:
     fail("direct Safari profile must set ProvisionsAllDevices=true (MAC_APP_DIRECT).")
 if distribution == "mas" and all_devices:
     fail("Mac App Store Safari profile must not be a MAC_APP_DIRECT all-devices profile.")
 PY
 
-bash "$profile_verifier" "$appex_path" "$embedded_profile"
+bash "$repo_root/scripts/ci/verify-signing-profile-certificate.sh" \
+  "$appex_path" \
+  "$embedded_profile"
 
 echo "PASS: $distribution OpenBurnBar Safari extension and nested code are structurally complete, profile-bound, explicitly signed by team $expected_team_id, sandboxed, App-Group scoped, and hardened."
