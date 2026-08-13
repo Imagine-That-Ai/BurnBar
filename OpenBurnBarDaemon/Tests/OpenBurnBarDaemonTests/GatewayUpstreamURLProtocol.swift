@@ -16,7 +16,7 @@ struct GatewayUpstreamRequest: Hashable {
 }
 
 final class GatewayUpstreamURLProtocol: URLProtocol {
-    private struct Response {
+    private struct Response: Sendable {
         let status: Int
         let body: Data
         let delayNanoseconds: UInt64
@@ -24,9 +24,25 @@ final class GatewayUpstreamURLProtocol: URLProtocol {
         let headers: [String: String]
     }
 
+    private final class DelayedResponse: @unchecked Sendable {
+        private let owner: GatewayUpstreamURLProtocol
+        private let response: Response
+
+        init(owner: GatewayUpstreamURLProtocol, response: Response) {
+            self.owner = owner
+            self.response = response
+        }
+
+        func send() {
+            owner.sendUnlessStopped(response)
+        }
+    }
+
     private static let lock = NSLock()
     nonisolated(unsafe) private static var queuedResponses: [Response] = []
     nonisolated(unsafe) private static var requests: [GatewayUpstreamRequest] = []
+    private let loadingLock = NSLock()
+    private var loadingStopped = false
 
     static func enqueue(
         status: Int,
@@ -131,12 +147,25 @@ final class GatewayUpstreamURLProtocol: URLProtocol {
 
         if response.delayNanoseconds > 0 {
             let delay = TimeInterval(response.delayNanoseconds) / 1_000_000_000
-            // URL loading already invokes each protocol instance independently.
-            // Sleeping that worker keeps the fixture deterministic without
-            // claiming that Foundation's non-Sendable URLProtocol is Sendable.
-            Thread.sleep(forTimeInterval: delay)
+            let delayed = DelayedResponse(owner: self, response: response)
+            DispatchQueue.global().asyncAfter(
+                deadline: .now() + delay
+            ) {
+                delayed.send()
+            }
+            return
         }
         send(response)
+    }
+
+    private func sendUnlessStopped(_ response: Response) {
+        loadingLock.lock()
+        let shouldSend = loadingStopped == false
+        loadingStopped = true
+        loadingLock.unlock()
+        if shouldSend {
+            send(response)
+        }
     }
 
     private func send(_ response: Response) {
@@ -155,7 +184,11 @@ final class GatewayUpstreamURLProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        loadingLock.lock()
+        loadingStopped = true
+        loadingLock.unlock()
+    }
 
     private static func bodyString(from request: URLRequest) -> String {
         if let body = request.httpBody {

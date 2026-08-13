@@ -288,8 +288,8 @@ final class SafariLearningTimelineViewModelTests: XCTestCase {
             model.editDraft?.content,
             "My unsaved durable content."
         )
-        XCTAssertTrue(model.editDraft?.hasConflict == true)
-        XCTAssertFalse(model.editDraft?.canSave == true)
+        XCTAssertEqual(model.editDraft?.hasConflict, true)
+        XCTAssertNotEqual(model.editDraft?.canSave, true)
         XCTAssertEqual(model.banner?.kind, .warning)
 
         model.reloadCurrentVersionForEditor()
@@ -299,7 +299,7 @@ final class SafariLearningTimelineViewModelTests: XCTestCase {
             model.editDraft?.content,
             "Daemon-authoritative durable content."
         )
-        XCTAssertFalse(model.editDraft?.hasConflict == true)
+        XCTAssertNotEqual(model.editDraft?.hasConflict, true)
     }
 
     func testProfileControlsFailClosedOnFreeAndSupportPauseThenDelete() async {
@@ -425,8 +425,8 @@ final class SafariLearningTimelineViewModelTests: XCTestCase {
         )
         let second = manager.openSafariLearning(client: client)
 
-        XCTAssertTrue(first === second)
-        XCTAssertTrue(firstModel === manager._currentSafariLearningModel())
+        XCTAssertIdentical(first, second)
+        XCTAssertIdentical(firstModel, manager._currentSafariLearningModel())
         XCTAssertEqual(first.title, "What BurnBar Learned About You")
         XCTAssertEqual(first.contentMinSize.width, 720)
         XCTAssertEqual(first.contentMinSize.height, 520)

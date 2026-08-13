@@ -11,7 +11,7 @@ import re
 import stat
 import sys
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -29,6 +29,7 @@ NOTARY_ID = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-"
     r"[0-9a-f]{4}-[0-9a-f]{12}$"
 )
+UTC = timezone(timedelta(0))
 SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 REQUIRED_ARTIFACT_KINDS = (
     "appcast",
@@ -62,9 +63,7 @@ PUBLICATION_PLAN = (
 )
 PUBLICATION_PHASES = tuple(dict.fromkeys(phase for _, phase in PUBLICATION_PLAN))
 DISCOVERY_COMMIT_KINDS = ("appcast", "latestMetadata")
-IMMUTABLE_ARTIFACT_KINDS = {
-    kind for kind, phase in PUBLICATION_PLAN if phase == "immutable-payload"
-}
+IMMUTABLE_ARTIFACT_KINDS = {kind for kind, phase in PUBLICATION_PLAN if phase == "immutable-payload"}
 
 
 def fail(message: str) -> None:
@@ -147,12 +146,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def now_utc() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def require_dict(value: Any, label: str) -> dict[str, Any]:
@@ -200,10 +194,7 @@ def open_safe_file(
             fail(f"{label} must be owned by the current user: {path}")
         actual_mode = stat.S_IMODE(metadata.st_mode)
         if required_mode is not None and actual_mode != required_mode:
-            fail(
-                f"{label} mode must be {required_mode:04o}; "
-                f"found {actual_mode:04o}: {path}"
-            )
+            fail(f"{label} mode must be {required_mode:04o}; found {actual_mode:04o}: {path}")
         return descriptor, metadata
     except OSError as error:
         if descriptor >= 0:
@@ -313,10 +304,7 @@ def normalize_public_base_url(value: str) -> str:
         or parsed.query
         or parsed.fragment
     ):
-        fail(
-            "public base URL must be an HTTPS origin/path without credentials, "
-            "query parameters, or fragments."
-        )
+        fail("public base URL must be an HTTPS origin/path without credentials, query parameters, or fragments.")
     path = parsed.path.rstrip("/")
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
@@ -447,10 +435,7 @@ def parse_http_response_headers(
     ):
         values = headers.get(header_name, [])
         if len(values) != 1 or not values[0]:
-            fail(
-                f"{label} must contain exactly one non-empty "
-                f"{header_name} header."
-            )
+            fail(f"{label} must contain exactly one non-empty {header_name} header.")
         observed[output_name] = values[0]
     return observed
 
@@ -462,10 +447,7 @@ def parse_observed_http_headers(path: Path, label: str) -> dict[str, Any]:
         require_entity_headers=True,
     )
     if observed["statusCode"] != 200:
-        fail(
-            f"{label} final HTTP status is "
-            f"{observed['statusCode']}, expected 200."
-        )
+        fail(f"{label} final HTTP status is {observed['statusCode']}, expected 200.")
     return observed
 
 
@@ -548,12 +530,7 @@ def validate_release_receipt(
     version = release.get("version")
     build = release.get("build")
     team_id = release.get("teamId")
-    if (
-        not isinstance(version, str)
-        or not version
-        or not isinstance(build, str)
-        or not build
-    ):
+    if not isinstance(version, str) or not version or not isinstance(build, str) or not build:
         fail("release receipt version/build are invalid.")
     if release.get("channel") != "direct-download":
         fail("release receipt is not for the direct-download channel.")
@@ -629,10 +606,7 @@ def validate_local_artifacts(
             path,
             f"release artifact {kind}",
         )
-        if (
-            actual_sha != artifact["sha256"]
-            or actual_size != artifact["sizeBytes"]
-        ):
+        if actual_sha != artifact["sha256"] or actual_size != artifact["sizeBytes"]:
             fail(f"release artifact {kind} does not match its release receipt.")
         paths[kind] = path
     return paths
@@ -645,10 +619,7 @@ def require_metadata_value(
     label: str,
 ) -> None:
     if value.get(key) != expected:
-        fail(
-            f"{label} {key} must be {expected!r}; "
-            f"found {value.get(key)!r}."
-        )
+        fail(f"{label} {key} must be {expected!r}; found {value.get(key)!r}.")
 
 
 def validate_release_metadata(
@@ -737,9 +708,7 @@ def validate_appcast(
         fail("appcast has no release items.")
     release = require_dict(receipt["release"], "release receipt release")
     current = items[0]
-    short_version = current.findtext(
-        f"{{{SPARKLE_NAMESPACE}}}shortVersionString"
-    )
+    short_version = current.findtext(f"{{{SPARKLE_NAMESPACE}}}shortVersionString")
     build = current.findtext(f"{{{SPARKLE_NAMESPACE}}}version")
     if short_version != release["version"] or build != release["build"]:
         fail("appcast first item does not match the exact release version/build.")
@@ -823,9 +792,7 @@ def build_preflight(
         release_receipt_path.name,
         "Developer ID release receipt file name",
     )
-    if receipt_file_name in {
-        artifact["fileName"] for artifact in artifacts.values()
-    }:
+    if receipt_file_name in {artifact["fileName"] for artifact in artifacts.values()}:
         fail("Developer ID release receipt reuses a release artifact file name.")
     release_receipt_artifact = {
         "kind": "releaseReceipt",
@@ -920,10 +887,7 @@ def validate_preflight(value: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(bucket, str) or not SAFE_BUCKET.fullmatch(bucket):
         fail("R2 preflight bucket is invalid.")
     base_url = destination.get("publicBaseUrl")
-    if (
-        not isinstance(base_url, str)
-        or normalize_public_base_url(base_url) != base_url
-    ):
+    if not isinstance(base_url, str) or normalize_public_base_url(base_url) != base_url:
         fail("R2 preflight public base URL is invalid.")
     source_receipt = require_dict(
         value.get("sourceReleaseReceipt"),
@@ -996,14 +960,8 @@ def validate_preflight(value: dict[str, Any]) -> list[dict[str, Any]]:
         if artifact.get("publicationPhase") != expected_phase:
             fail(f"R2 preflight artifact {kind} publication phase is invalid.")
         expected_commit_set_member = kind in DISCOVERY_COMMIT_KINDS
-        if (
-            artifact.get("discoveryCommitSetMember")
-            is not expected_commit_set_member
-        ):
-            fail(
-                f"R2 preflight artifact {kind} discovery commit-set "
-                "flag is invalid."
-            )
+        if artifact.get("discoveryCommitSetMember") is not expected_commit_set_member:
+            fail(f"R2 preflight artifact {kind} discovery commit-set flag is invalid.")
         observed_kinds.add(kind)
         observed_names.add(file_name)
         normalized.append(dict(artifact))
@@ -1012,17 +970,10 @@ def validate_preflight(value: dict[str, Any]) -> list[dict[str, Any]]:
     expected_order = [kind for kind, _ in PUBLICATION_PLAN]
     if [artifact["kind"] for artifact in normalized] != expected_order:
         fail("R2 preflight artifacts are not in the required publication order.")
-    release_receipt_artifact = next(
-        artifact
-        for artifact in normalized
-        if artifact["kind"] == "releaseReceipt"
-    )
+    release_receipt_artifact = next(artifact for artifact in normalized if artifact["kind"] == "releaseReceipt")
     for key in ("fileName", "sha256", "sizeBytes", "publicUrl"):
         if release_receipt_artifact[key] != source_receipt[key]:
-            fail(
-                "R2 preflight release receipt artifact does not match "
-                f"sourceReleaseReceipt: {key}."
-            )
+            fail(f"R2 preflight release receipt artifact does not match sourceReleaseReceipt: {key}.")
     return normalized
 
 
@@ -1043,11 +994,7 @@ def verify_public_artifacts(
         public_header_dir,
         "public header evidence directory",
     )
-    selected = [
-        artifact
-        for artifact in artifacts
-        if phase is None or artifact["publicationPhase"] == phase
-    ]
+    selected = [artifact for artifact in artifacts if phase is None or artifact["publicationPhase"] == phase]
     if phase is not None and not selected:
         fail(f"public verification phase contains no artifacts: {phase}.")
 
@@ -1060,14 +1007,8 @@ def verify_public_artifacts(
             public_path,
             f"downloaded public artifact {artifact['kind']}",
         )
-        if (
-            public_sha != artifact["sha256"]
-            or public_size != artifact["sizeBytes"]
-        ):
-            fail(
-                f"downloaded public artifact {artifact['kind']} does not "
-                "match the exact local release bytes."
-            )
+        if public_sha != artifact["sha256"] or public_size != artifact["sizeBytes"]:
+            fail(f"downloaded public artifact {artifact['kind']} does not match the exact local release bytes.")
 
         header_path = header_root / f"{artifact['fileName']}.headers"
         if header_path.parent != header_root:
@@ -1077,21 +1018,15 @@ def verify_public_artifacts(
             f"public response headers for {artifact['kind']}",
         )
         expected_content_type = normalize_content_type(artifact["contentType"])
-        observed_content_type = normalize_content_type(
-            observed_headers["contentType"]
-        )
+        observed_content_type = normalize_content_type(observed_headers["contentType"])
         if observed_content_type != expected_content_type:
             fail(
                 f"public Content-Type for {artifact['kind']} is "
                 f"{observed_headers['contentType']!r}, expected "
                 f"{artifact['contentType']!r}."
             )
-        expected_cache_control = normalize_cache_control(
-            artifact["cacheControl"]
-        )
-        observed_cache_control = normalize_cache_control(
-            observed_headers["cacheControl"]
-        )
+        expected_cache_control = normalize_cache_control(artifact["cacheControl"])
+        observed_cache_control = normalize_cache_control(observed_headers["cacheControl"])
         if observed_cache_control != expected_cache_control:
             fail(
                 f"public Cache-Control for {artifact['kind']} is "
@@ -1108,9 +1043,7 @@ def verify_public_artifacts(
                 "contentType": artifact["contentType"],
                 "cacheControl": artifact["cacheControl"],
                 "publicationPhase": artifact["publicationPhase"],
-                "discoveryCommitSetMember": artifact[
-                    "discoveryCommitSetMember"
-                ],
+                "discoveryCommitSetMember": artifact["discoveryCommitSetMember"],
                 "observedResponse": {
                     "statusCode": observed_headers["statusCode"],
                     "contentType": observed_headers["contentType"],
@@ -1145,14 +1078,8 @@ def verify_public_phase(
 def discovery_artifacts(
     artifacts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    selected = [
-        artifact
-        for artifact in artifacts
-        if artifact["kind"] in DISCOVERY_COMMIT_KINDS
-    ]
-    if [artifact["kind"] for artifact in selected] != list(
-        DISCOVERY_COMMIT_KINDS
-    ):
+    selected = [artifact for artifact in artifacts if artifact["kind"] in DISCOVERY_COMMIT_KINDS]
+    if [artifact["kind"] for artifact in selected] != list(DISCOVERY_COMMIT_KINDS):
         fail("R2 preflight discovery commit set is incomplete or out of order.")
     return selected
 
@@ -1199,17 +1126,11 @@ def build_discovery_snapshot(
             fail("discovery snapshot bytes resolved outside evidence directory.")
         if status_code == 404:
             if snapshot_path.exists():
-                fail(
-                    f"absent discovery snapshot unexpectedly contains bytes: "
-                    f"{artifact['kind']}."
-                )
+                fail(f"absent discovery snapshot unexpectedly contains bytes: {artifact['kind']}.")
             entry["state"] = "absent"
         elif status_code == 200:
             if not snapshot_path.exists():
-                fail(
-                    f"present discovery snapshot is missing bytes: "
-                    f"{artifact['kind']}."
-                )
+                fail(f"present discovery snapshot is missing bytes: {artifact['kind']}.")
             headers = parse_observed_http_headers(
                 header_path,
                 f"discovery snapshot headers for {artifact['kind']}",
@@ -1229,8 +1150,7 @@ def build_discovery_snapshot(
             )
         else:
             fail(
-                f"discovery snapshot for {artifact['kind']} returned "
-                f"HTTP {status_code}; expected 200 or explicit 404."
+                f"discovery snapshot for {artifact['kind']} returned HTTP {status_code}; expected 200 or explicit 404."
             )
         objects.append(entry)
     return {
@@ -1263,10 +1183,7 @@ def validate_discovery_snapshot(value: dict[str, Any]) -> list[dict[str, Any]]:
     if destination.get("provider") != "cloudflare-r2":
         fail("discovery snapshot destination provider is invalid.")
     base_url = destination.get("publicBaseUrl")
-    if (
-        not isinstance(base_url, str)
-        or normalize_public_base_url(base_url) != base_url
-    ):
+    if not isinstance(base_url, str) or normalize_public_base_url(base_url) != base_url:
         fail("discovery snapshot public base URL is invalid.")
 
     objects = require_list(value.get("objects"), "discovery snapshot objects")
@@ -1290,14 +1207,10 @@ def validate_discovery_snapshot(value: dict[str, Any]) -> list[dict[str, Any]]:
         state = item.get("state")
         if state == "absent":
             if item.get("statusCode") != 404:
-                fail(
-                    f"absent discovery snapshot {expected_kind} must record 404."
-                )
+                fail(f"absent discovery snapshot {expected_kind} must record 404.")
         elif state == "present":
             if item.get("statusCode") != 200:
-                fail(
-                    f"present discovery snapshot {expected_kind} must record 200."
-                )
+                fail(f"present discovery snapshot {expected_kind} must record 200.")
             item_sha = item.get("sha256")
             item_size = item.get("sizeBytes")
             if not isinstance(item_sha, str) or not SHA256.fullmatch(item_sha):
@@ -1342,22 +1255,13 @@ def verify_discovery_rollback(
         )
         if item["state"] == "absent":
             if observed["statusCode"] != 404:
-                fail(
-                    f"discovery rollback did not restore absence for "
-                    f"{item['kind']}."
-                )
+                fail(f"discovery rollback did not restore absence for {item['kind']}.")
             if public_path.exists():
-                fail(
-                    f"absent discovery rollback unexpectedly contains bytes: "
-                    f"{item['kind']}."
-                )
+                fail(f"absent discovery rollback unexpectedly contains bytes: {item['kind']}.")
             continue
 
         if observed["statusCode"] != 200:
-            fail(
-                f"discovery rollback did not restore HTTP 200 for "
-                f"{item['kind']}."
-            )
+            fail(f"discovery rollback did not restore HTTP 200 for {item['kind']}.")
         observed_headers = parse_observed_http_headers(
             header_path,
             f"discovery rollback headers for {item['kind']}",
@@ -1367,24 +1271,11 @@ def verify_discovery_rollback(
             f"discovery rollback bytes for {item['kind']}",
         )
         if public_sha != item["sha256"] or public_size != item["sizeBytes"]:
-            fail(
-                f"discovery rollback bytes do not match snapshot for "
-                f"{item['kind']}."
-            )
-        if normalize_content_type(
-            observed_headers["contentType"]
-        ) != normalize_content_type(item["contentType"]):
-            fail(
-                f"discovery rollback Content-Type does not match snapshot for "
-                f"{item['kind']}."
-            )
-        if normalize_cache_control(
-            observed_headers["cacheControl"]
-        ) != normalize_cache_control(item["cacheControl"]):
-            fail(
-                f"discovery rollback Cache-Control does not match snapshot for "
-                f"{item['kind']}."
-            )
+            fail(f"discovery rollback bytes do not match snapshot for {item['kind']}.")
+        if normalize_content_type(observed_headers["contentType"]) != normalize_content_type(item["contentType"]):
+            fail(f"discovery rollback Content-Type does not match snapshot for {item['kind']}.")
+        if normalize_cache_control(observed_headers["cacheControl"]) != normalize_cache_control(item["cacheControl"]):
+            fail(f"discovery rollback Cache-Control does not match snapshot for {item['kind']}.")
 
 
 def build_publication_receipt(
@@ -1448,10 +1339,7 @@ def build_publication_receipt(
     canonical_trust_verifier = "scripts/ci/verify-public-macos-download-trust.sh"
     if platform_trust_mode == "canonical":
         if platform_trust_verifier != canonical_trust_verifier:
-            fail(
-                "canonical public platform trust must use "
-                f"{canonical_trust_verifier}."
-            )
+            fail(f"canonical public platform trust must use {canonical_trust_verifier}.")
         public_dmg_trust_verified = True
     elif platform_trust_mode == "test-override":
         if not platform_trust_verifier:

@@ -78,18 +78,63 @@ export interface BrowserAPI {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isFunctionProperty(record: Record<string, unknown>, key: string): boolean {
+  return typeof record[key] === 'function';
+}
+
+function requireAPIObject(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = record[key];
+  if (!isRecord(value)) {
+    throw new Error(`The WebExtension browser API is missing ${key}.`);
+  }
+  return value;
+}
+
+function isBrowserAPI(value: unknown): value is BrowserAPI {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const runtime = requireAPIObject(value, 'runtime');
+  const tabs = requireAPIObject(value, 'tabs');
+  const scripting = requireAPIObject(value, 'scripting');
+  const permissions = requireAPIObject(value, 'permissions');
+  const storage = requireAPIObject(value, 'storage');
+  const localStorage = requireAPIObject(storage, 'local');
+  return (
+    isFunctionProperty(runtime, 'getURL') &&
+    isFunctionProperty(runtime, 'getManifest') &&
+    isFunctionProperty(runtime, 'sendMessage') &&
+    isFunctionProperty(runtime, 'sendNativeMessage') &&
+    typeof runtime.onMessage === 'object' &&
+    runtime.onMessage !== null &&
+    isFunctionProperty(tabs, 'query') &&
+    isFunctionProperty(tabs, 'get') &&
+    isFunctionProperty(tabs, 'sendMessage') &&
+    isFunctionProperty(tabs, 'captureVisibleTab') &&
+    isFunctionProperty(tabs, 'create') &&
+    isFunctionProperty(tabs, 'update') &&
+    isFunctionProperty(tabs, 'remove') &&
+    isFunctionProperty(tabs, 'reload') &&
+    isFunctionProperty(scripting, 'executeScript') &&
+    isFunctionProperty(permissions, 'contains') &&
+    isFunctionProperty(permissions, 'request') &&
+    isFunctionProperty(permissions, 'remove') &&
+    isFunctionProperty(localStorage, 'get') &&
+    isFunctionProperty(localStorage, 'set') &&
+    isFunctionProperty(localStorage, 'remove')
+  );
+}
+
 export function getBrowserAPI(candidate?: unknown): BrowserAPI {
-  const resolved =
-    candidate ??
-    (
-      globalThis as unknown as {
-        browser?: unknown;
-      }
-    ).browser;
-  if (!resolved || typeof resolved !== 'object') {
+  const resolved = candidate ?? Reflect.get(globalThis, 'browser');
+  if (!isBrowserAPI(resolved)) {
     throw new Error('The WebExtension browser API is unavailable.');
   }
-  return resolved as BrowserAPI;
+  return resolved;
 }
 
 export async function activeTab(browserAPI: BrowserAPI): Promise<BrowserTab | undefined> {

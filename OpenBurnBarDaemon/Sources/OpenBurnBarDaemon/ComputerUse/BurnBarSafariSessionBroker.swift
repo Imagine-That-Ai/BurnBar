@@ -392,8 +392,7 @@ public actor BurnBarSafariSessionBroker {
 
         let completion: BurnBarSafariCommandCompletionRequest = try await withTaskCancellationHandler(
             operation: {
-                try await withCheckedThrowingContinuation {
-                    (continuation: CheckedContinuation<BurnBarSafariCommandCompletionRequest, Error>) in
+                try await withCheckedThrowingContinuation { continuation in
                     guard Task.isCancelled == false else {
                         continuation.resume(throwing: BrokerError.commandCancelled)
                         return

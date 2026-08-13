@@ -23,7 +23,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
             SafariHandoffProcessWatchdog.runIfRequested(
                 arguments: [
                     "--normal-daemon-argument",
-                    SafariHandoffProcessWatchdog.marker,
+                    SafariHandoffProcessWatchdog.marker
                 ]
             )
         )
@@ -38,7 +38,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
             SafariHandoffProcessWatchdog.statusFD,
             SafariHandoffProcessWatchdog.stdoutFD,
             SafariHandoffProcessWatchdog.stderrFD,
-            SafariHandoffProcessWatchdog.sentinelLifetimeFD,
+            SafariHandoffProcessWatchdog.sentinelLifetimeFD
         ]
 
         XCTAssertEqual(
@@ -98,7 +98,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                         size: 83,
                         modificationSeconds: 89,
                         modificationNanoseconds: 97
-                    ),
+                    )
                 ]
             )
         let containmentIdentity =
@@ -117,7 +117,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
             environment: [
                 "HOME": "/Users/test",
                 "PATH": "/usr/bin:/bin",
-                "TERM": "dumb",
+                "TERM": "dumb"
             ]
         )
 
@@ -148,7 +148,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
             [
                 "/opt/openburnbar/bin/agent.js",
                 "/usr/bin/env",
-                "/usr/bin/node",
+                "/usr/bin/node"
             ]
         )
         XCTAssertEqual(decoded.arguments, ["--version", "--json"])
@@ -158,8 +158,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
     }
 
     func testReadyTerminalAndLaunchFailureMessagesRoundTripExactly()
-        throws
-    {
+        throws {
         let messages = [
             SafariHandoffProcessWatchdog.Message(
                 kind: .ready,
@@ -184,7 +183,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 processGroupID: nil,
                 waitStatus: nil,
                 error: "watchdog_launch_rejected"
-            ),
+            )
         ]
 
         for message in messages {
@@ -227,8 +226,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
     }
 
     func testStatusFrameDecoderBoundsPartialAndMultipleMessages()
-        throws
-    {
+        throws {
         let ready = SafariHandoffProcessWatchdog.Message(
             kind: .ready,
             processGroupID: 10_002,
@@ -412,8 +410,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
         }
 
         func testPOSIXSessionWaitsForSentinelReadyBeforeWatchdogPublication()
-            throws
-        {
+            throws {
             let sourceURL = URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent()
                 .deletingLastPathComponent()
@@ -529,7 +526,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 processGroupID: processGroupID,
                 poll: [
                     .init(result: -1, error: EINTR),
-                    .init(result: 1, events: Int16(POLLHUP)),
+                    .init(result: 1, events: Int16(POLLHUP))
                 ]
             )
 
@@ -543,7 +540,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 probe.signalsSnapshot(),
                 [
                     .init(target: -processGroupID, signal: SIGTERM),
-                    .init(target: -processGroupID, signal: SIGKILL),
+                    .init(target: -processGroupID, signal: SIGKILL)
                 ]
             )
             XCTAssertEqual(probe.sleepsSnapshot(), [25])
@@ -571,7 +568,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 probe.signalsSnapshot(),
                 [
                     .init(target: -processGroupID, signal: SIGTERM),
-                    .init(target: -processGroupID, signal: SIGKILL),
+                    .init(target: -processGroupID, signal: SIGKILL)
                 ]
             )
         }
@@ -597,7 +594,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 probe.signalsSnapshot(),
                 [
                     .init(target: -processGroupID, signal: SIGTERM),
-                    .init(target: -processGroupID, signal: SIGKILL),
+                    .init(target: -processGroupID, signal: SIGKILL)
                 ]
             )
             XCTAssertEqual(probe.sleepsSnapshot(), [25])
@@ -657,7 +654,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                     .init(
                         target: -containmentIdentity.processGroupID,
                         signal: SIGKILL
-                    ),
+                    )
                 ]
             )
             XCTAssertEqual(probe.sleepsSnapshot(), [100_000])
@@ -673,18 +670,18 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 currentProcessGroup: 9_001,
                 waitNoHang: [
                     .init(result: 0),
-                    .init(result: 0),
+                    .init(result: 0)
                 ],
                 waitBlocking: [
                     .init(result: -1, error: EINTR),
-                    .init(result: childPID, status: killedStatus),
+                    .init(result: childPID, status: killedStatus)
                 ],
                 poll: [
                     .init(
                         result: 1,
                         livenessEvents: Int16(POLLHUP)
                     ),
-                    .init(result: 0),
+                    .init(result: 0)
                 ],
                 uptimeNanoseconds: [100, 100, 111]
             )
@@ -709,7 +706,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                     .init(
                         target: -containmentIdentity.processGroupID,
                         signal: SIGKILL
-                    ),
+                    )
                 ]
             )
             XCTAssertEqual(probe.waitBlockingCallCount, 2)
@@ -757,7 +754,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                     .init(
                         target: -containmentIdentity.processGroupID,
                         signal: SIGKILL
-                    ),
+                    )
                 ]
             )
             XCTAssertTrue(probe.unexpectedCallsSnapshot().isEmpty)
@@ -772,11 +769,11 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 waitNoHang: [
                     .init(result: -1, error: EINTR),
                     .init(result: 0),
-                    .init(result: childPID, status: status),
+                    .init(result: childPID, status: status)
                 ],
                 poll: [
                     .init(result: -1, error: EINTR),
-                    .init(result: 0),
+                    .init(result: 0)
                 ]
             )
 
@@ -799,7 +796,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                     .init(
                         target: -containmentIdentity.processGroupID,
                         signal: SIGKILL
-                    ),
+                    )
                 ]
             )
             XCTAssertTrue(probe.unexpectedCallsSnapshot().isEmpty)
@@ -813,7 +810,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 currentProcessGroup: 9_001,
                 waitNoHang: [
                     .init(result: 0),
-                    .init(result: childPID, status: status),
+                    .init(result: childPID, status: status)
                 ],
                 poll: [.init(result: 0)]
             )
@@ -853,7 +850,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 waitNoHang: [.init(result: 0)],
                 waitBlocking: [
                     .init(result: -1, error: EINTR),
-                    .init(result: childPID, status: killedStatus),
+                    .init(result: childPID, status: killedStatus)
                 ],
                 poll: [.init(result: -1, error: EIO)]
             )
@@ -875,7 +872,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                     .init(
                         target: -containmentIdentity.processGroupID,
                         signal: SIGKILL
-                    ),
+                    )
                 ]
             )
             XCTAssertEqual(probe.waitBlockingCallCount, 2)
@@ -912,7 +909,7 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                     .init(
                         target: -containmentIdentity.processGroupID,
                         signal: SIGKILL
-                    ),
+                    )
                 ]
             )
             XCTAssertEqual(probe.waitNoHangCallCount, 1)
@@ -947,13 +944,46 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                     .init(
                         target: -containmentIdentity.processGroupID,
                         signal: SIGKILL
-                    ),
+                    )
                 ]
             )
             XCTAssertEqual(probe.waitNoHangCallCount, 1)
             XCTAssertEqual(probe.waitBlockingCallCount, 1)
             XCTAssertEqual(probe.pollCallCount, 1)
             XCTAssertTrue(probe.unexpectedCallsSnapshot().isEmpty)
+        }
+
+        func testInvalidChildIsNeverObservedButVerifiedGroupCanStillBeContained() {
+            for childPID in [pid_t(0), pid_t(1)] {
+                let identity = processIdentity(101)
+                let probe = SafariWatchdogMonitorProbe(
+                    currentProcessGroup: 100
+                )
+                XCTAssertNil(
+                    SafariHandoffProcessWatchdog.monitor(
+                        childPID: childPID,
+                        containmentIdentity: identity,
+                        runtime: probe.runtime
+                    )
+                )
+                XCTAssertTrue(
+                    SafariHandoffProcessWatchdog.terminateRemainingGroup(
+                        identity,
+                        excludingReapedChild: true,
+                        runtime: probe.runtime
+                    )
+                )
+                XCTAssertEqual(
+                    probe.signalsSnapshot(),
+                    [
+                        .init(target: -identity.processGroupID, signal: SIGTERM),
+                        .init(target: -identity.processGroupID, signal: SIGKILL)
+                    ]
+                )
+                XCTAssertEqual(probe.sleepsSnapshot(), [100_000])
+                XCTAssertEqual(probe.waitNoHangCallCount, 0)
+                XCTAssertTrue(probe.unexpectedCallsSnapshot().isEmpty)
+            }
         }
 
         func testUnsafeOrMismatchedProcessGroupsAreNeverObservedOrSignalled() {
@@ -988,31 +1018,17 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
                 )
             )
 
-            for (childPID, identity, currentGroup) in [
-                (pid_t(0), processIdentity(101), pid_t(100)),
-                (pid_t(1), processIdentity(101), pid_t(100)),
-                (
-                    pid_t(101),
-                    processIdentity(1),
-                    pid_t(100)
-                ),
-                (
-                    pid_t(101),
-                    processIdentity(-2),
-                    pid_t(100)
-                ),
-                (
-                    pid_t(101),
-                    processIdentity(100),
-                    pid_t(100)
-                ),
+            for identity in [
+                processIdentity(1),
+                processIdentity(-2),
+                processIdentity(100)
             ] {
                 let probe = SafariWatchdogMonitorProbe(
-                    currentProcessGroup: currentGroup
+                    currentProcessGroup: 100
                 )
                 XCTAssertNil(
                     SafariHandoffProcessWatchdog.monitor(
-                        childPID: childPID,
+                        childPID: 101,
                         containmentIdentity: identity,
                         runtime: probe.runtime
                     )
@@ -1030,7 +1046,8 @@ final class SafariHandoffProcessWatchdogTests: XCTestCase {
             }
 
             let mismatchedProbe = SafariWatchdogMonitorProbe(
-                currentProcessGroup: 100
+                currentProcessGroup: 100,
+                processMatches: [false]
             )
             XCTAssertNil(
                 SafariHandoffProcessWatchdog.monitor(

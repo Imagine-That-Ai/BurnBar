@@ -94,11 +94,7 @@ class SnapshotRecordingPromotionTests(unittest.TestCase):
 
         replace.assert_not_called()
         self.assertEqual(source.read_bytes(), b"canonical")
-        leftovers = [
-            path
-            for path in self.source.parent.iterdir()
-            if path.name.startswith(".snapshot-promotion-")
-        ]
+        leftovers = [path for path in self.source.parent.iterdir() if path.name.startswith(".snapshot-promotion-")]
         self.assertEqual(leftovers, [])
 
     def test_rejects_duplicate_source_basenames_before_mutation(self) -> None:
@@ -186,11 +182,7 @@ class SnapshotRecordingPromotionTests(unittest.TestCase):
 
         self.assertEqual(first.read_bytes(), b"old-a")
         self.assertEqual(second.read_bytes(), b"old-b")
-        leftovers = [
-            path
-            for path in self.source.parent.iterdir()
-            if path.name.startswith(".snapshot-promotion-")
-        ]
+        leftovers = [path for path in self.source.parent.iterdir() if path.name.startswith(".snapshot-promotion-")]
         self.assertEqual(leftovers, [])
 
     def test_rejects_missing_bundle_record_mode_before_mutation(self) -> None:

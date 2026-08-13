@@ -1,19 +1,10 @@
 import { extractPageContext, isSensitiveControl } from '../src/content/extract';
+import { requireElement, testDOMRect } from './helpers/assertions';
 
 function visibleRect(index = 0): DOMRect {
   const left = 20 + index * 8;
   const top = 20 + index * 12;
-  return {
-    x: left,
-    y: top,
-    left,
-    top,
-    width: 180,
-    height: 32,
-    right: left + 180,
-    bottom: top + 32,
-    toJSON: () => ({})
-  } as DOMRect;
+  return testDOMRect(left, top, 180, 32);
 }
 
 describe('page context extraction', () => {
@@ -63,8 +54,8 @@ describe('page context extraction', () => {
         <input id="card" name="card_number" autocomplete="cc-number" value="4111111111111111" data-index="2" />
       </main>
     `;
-    const password = document.getElementById('password')!;
-    const card = document.getElementById('card')!;
+    const password = requireElement(document.getElementById('password'), 'password input');
+    const card = requireElement(document.getElementById('card'), 'card input');
     expect(isSensitiveControl(password)).toBe(true);
     expect(isSensitiveControl(card)).toBe(true);
 

@@ -182,20 +182,30 @@ final class SafariDaemonRPCBoundaryTests: XCTestCase {
         let socketPath = socketPath(name: "handoff")
         let packageRoot = root.appendingPathComponent("packages", isDirectory: true)
         let trustedExecutable = root.appendingPathComponent("trusted-codex")
-        let launches = SafariHandoffLaunchRecorder()
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: true
+        )
+        try Data("#!/bin/sh\nexit 0\n".utf8).write(
+            to: trustedExecutable,
+            options: [.atomic]
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o700)],
+            ofItemAtPath: trustedExecutable.path
+        )
+        let handoffSupervisor = SafariRPCBoundaryHandoffSupervisor()
         let handoffService = BurnBarResumeService(
             logger: BurnBarDaemonLogger(category: "safari-rpc-boundary-tests"),
             safariHandoffRootURL: packageRoot,
-            detachedLauncher: { argv, workingDirectory in
-                launches.record(argv: argv, workingDirectory: workingDirectory)
-                return 4242
-            },
             cliExecutableResolver: { cliType in
                 cliType == .codex ? trustedExecutable : nil
             }
         )
         let server = BurnBarDaemonServer(
-            configuration: configuration(socketPath: socketPath)
+            configuration: configuration(socketPath: socketPath),
+            safariHandoffSupervisor: handoffSupervisor,
+            safariHandoffRootURL: packageRoot
         )
         await server.installSafariHandoffServiceForRPCBoundaryTests(
             handoffService
@@ -264,7 +274,9 @@ final class SafariDaemonRPCBoundaryTests: XCTestCase {
             code: BurnBarRPCErrorCode.conflict,
             contains: "page changed"
         )
-        XCTAssertEqual(launches.snapshot().count, 0)
+        let launchCountBeforeExactHandoff =
+            await handoffSupervisor.launchCount
+        XCTAssertEqual(launchCountBeforeExactHandoff, 0)
 
         let launched: BurnBarRPCResponseEnvelope<BurnBarSafariHandoffResponse> =
             try sendEnvelope(
@@ -274,16 +286,19 @@ final class SafariDaemonRPCBoundaryTests: XCTestCase {
                     page: livePage
                 ),
                 socketPath: socketPath
-            )
+        )
         XCTAssertNil(launched.error)
-        XCTAssertEqual(launched.result?.phase, .completed)
+        XCTAssertEqual(launched.result?.phase, .waitingOnCompanion)
         XCTAssertEqual(launched.result?.launched, true)
-        XCTAssertEqual(launched.result?.running, false)
-        XCTAssertEqual(launches.snapshot().count, 1)
-        XCTAssertEqual(launches.snapshot().records.first?.argv.first, trustedExecutable.path)
+        XCTAssertEqual(launched.result?.running, true)
+        let launchCountAfterExactHandoff =
+            await handoffSupervisor.launchCount
+        XCTAssertEqual(launchCountAfterExactHandoff, 1)
+        let launch = await handoffSupervisor.firstLaunch
+        XCTAssertEqual(launch?.executableURL.path, trustedExecutable.path)
         let launchedRunID = try XCTUnwrap(launched.result?.runId)
         XCTAssertEqual(
-            launches.snapshot().records.first?.workingDirectory,
+            launch?.packageDirectory.path,
             packageRoot.appendingPathComponent(launchedRunID).path
         )
 
@@ -317,7 +332,9 @@ final class SafariDaemonRPCBoundaryTests: XCTestCase {
             code: BurnBarRPCErrorCode.unauthorized,
             contains: "detached or has been replaced"
         )
-        XCTAssertEqual(launches.snapshot().count, 1)
+        let launchCountAfterDetach =
+            await handoffSupervisor.launchCount
+        XCTAssertEqual(launchCountAfterDetach, 1)
     }
 
     func testApprovalSocketConsumesOnlyTheExactLiveSafariBindingOnce()
@@ -979,8 +996,9 @@ final class SafariDaemonRPCBoundaryTests: XCTestCase {
     ) where Result: Codable & Sendable {
         XCTAssertNil(response.result, file: file, line: line)
         XCTAssertEqual(response.error?.code, code, file: file, line: line)
-        XCTAssertTrue(
-            response.error?.message.contains(messageFragment) == true,
+        XCTAssertEqual(
+            response.error?.message.contains(messageFragment),
+            true,
             "Expected RPC error message to contain '\(messageFragment)', got '\(response.error?.message ?? "nil")'.",
             file: file,
             line: line
@@ -1109,33 +1127,112 @@ private enum SafariRPCBoundaryTestError: Error, LocalizedError {
     }
 }
 
-private final class SafariHandoffLaunchRecorder: @unchecked Sendable {
-    struct Record {
-        let argv: [String]
-        let workingDirectory: String?
+private actor SafariRPCBoundaryHandoffSupervisor:
+    SafariHandoffProcessSupervising {
+    private var launches:
+        [SafariHandoffProcessSupervisor.LaunchSpecification] = []
+    private var observations:
+        [BurnBarRunID: SafariHandoffProcessSupervisor.Observation] = [:]
+
+    var launchCount: Int { launches.count }
+    var firstLaunch: SafariHandoffProcessSupervisor.LaunchSpecification? {
+        launches.first
     }
 
-    struct Snapshot {
-        let records: [Record]
-        var count: Int { records.count }
-    }
-
-    private let lock = NSLock()
-    private var records: [Record] = []
-
-    func record(argv: [String], workingDirectory: String?) {
-        lock.lock()
-        records.append(
-            Record(argv: argv, workingDirectory: workingDirectory)
+    func launch(
+        _ specification: SafariHandoffProcessSupervisor.LaunchSpecification
+    ) async throws -> SafariHandoffProcessSupervisor.Observation {
+        launches.append(specification)
+        let launchedAt = Date()
+        let observation = SafariHandoffProcessSupervisor.Observation(
+            runID: specification.runID,
+            targetHarness: specification.targetHarness,
+            state: .running,
+            launchedAt: launchedAt,
+            observedAt: launchedAt,
+            completedAt: nil,
+            terminationReason: nil,
+            exitStatus: nil,
+            stdoutBytes: 0,
+            stderrBytes: 0,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+            failure: nil,
+            packageDirectory: specification.packageDirectory
         )
-        lock.unlock()
+        observations[specification.runID] = observation
+        return observation
     }
 
-    func snapshot() -> Snapshot {
-        lock.lock()
-        let snapshot = Snapshot(records: records)
-        lock.unlock()
-        return snapshot
+    func observation(
+        for runID: BurnBarRunID
+    ) async -> SafariHandoffProcessSupervisor.Observation? {
+        observations[runID]
+    }
+
+    func cancel(
+        runID: BurnBarRunID
+    ) async -> SafariHandoffProcessSupervisor.Observation? {
+        guard let current = observations[runID] else { return nil }
+        let cancelled = SafariHandoffProcessSupervisor.Observation(
+            runID: runID,
+            targetHarness: current.targetHarness,
+            state: .cancelled,
+            launchedAt: current.launchedAt,
+            observedAt: Date(),
+            completedAt: Date(),
+            terminationReason: .cancelled,
+            exitStatus: 15,
+            stdoutBytes: 0,
+            stderrBytes: 0,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+            failure: nil,
+            packageDirectory: current.packageDirectory
+        )
+        observations[runID] = cancelled
+        return cancelled
+    }
+
+    func registerInterruptedRun(
+        runID: BurnBarRunID,
+        targetHarness: String,
+        packageDirectory: URL,
+        expectedPackageIdentity:
+            SafariHandoffProcessSupervisor.FilesystemIdentity?,
+        launchedAt: Date
+    ) async -> SafariHandoffProcessSupervisor.Observation {
+        if let current = observations[runID] { return current }
+        let interrupted = SafariHandoffProcessSupervisor.Observation(
+            runID: runID,
+            targetHarness: targetHarness,
+            state: .interrupted,
+            launchedAt: launchedAt,
+            observedAt: Date(),
+            completedAt: Date(),
+            terminationReason: .interrupted,
+            exitStatus: nil,
+            stdoutBytes: 0,
+            stderrBytes: 0,
+            stdoutTruncated: false,
+            stderrTruncated: false,
+            failure: .interrupted,
+            packageDirectory: packageDirectory
+        )
+        observations[runID] = interrupted
+        return interrupted
+    }
+
+    func cleanupEligiblePackages(now: Date) async {}
+
+    func discard(runID: BurnBarRunID) async {
+        observations.removeValue(forKey: runID)
+    }
+
+    func shutdownAll() async {
+        for runID in observations.keys {
+            _ = await cancel(runID: runID)
+        }
     }
 }
 

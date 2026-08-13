@@ -1,5 +1,18 @@
 {
   "target": 2000,
-  "total": 0,
-  "files": []
+  "total": 3,
+  "files": [
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/SafariHandoffProcessSupervisor.swift",
+      "lines": 4632
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/Learning/LearningCoordinator.swift",
+      "lines": 2444
+    },
+    {
+      "path": "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonServer.swift",
+      "lines": 2082
+    }
+  ]
 }

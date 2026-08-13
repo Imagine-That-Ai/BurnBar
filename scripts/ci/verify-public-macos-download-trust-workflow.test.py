@@ -7,12 +7,7 @@ import unittest
 from pathlib import Path
 
 
-WORKFLOW = (
-    Path(__file__).resolve().parents[2]
-    / ".github"
-    / "workflows"
-    / "public-macos-download-trust.yml"
-)
+WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "public-macos-download-trust.yml"
 ENTITLEMENTS = "OpenBurnBarSafariExtension/Resources/OpenBurnBarSafariExtension.entitlements"
 DETECTOR_TEST = "scripts/ci/verify-public-macos-download-trust-workflow.test.py"
 GOVERNED_PATHS = (

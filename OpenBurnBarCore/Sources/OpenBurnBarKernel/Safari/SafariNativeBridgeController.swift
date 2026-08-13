@@ -80,6 +80,9 @@ public struct BurnBarSafariPopupActionResult: Codable, Hashable, Sendable {
     }
 }
 
+// AUDIT: The controller is immutable after initialization; mutable transfer
+// state is owned by the chunk store's lock-protected storage.
+// sendable-allowlist: internal-lock-snapshot-store
 /// Synchronous, deterministic core of `SafariWebExtensionHandler`.
 ///
 /// The extension process is short-lived and Safari may invoke several handler

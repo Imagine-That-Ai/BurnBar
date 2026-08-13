@@ -672,8 +672,7 @@ extension BurnBarDaemonServer {
         ),
               authorization.runID == runID,
               authorization.clientID == identity.clientID,
-              authorization.expiresAt == nil
-                || authorization.expiresAt! > Date(),
+              authorization.expiresAt.map({ $0 > Date() }) ?? true,
               let run = await runService.snapshot(for: runID),
               run.clientID == identity.clientID,
               run.sessionID == identity.sessionID,
@@ -1009,7 +1008,7 @@ extension BurnBarDaemonServer {
               ),
               authorization.runID == runID,
               authorization.clientID == identity.clientID,
-              authorization.expiresAt == nil || authorization.expiresAt! > Date(),
+              authorization.expiresAt.map({ $0 > Date() }) ?? true,
               let run = await runService.snapshot(for: runID),
               run.clientID == identity.clientID,
               run.sessionID == identity.sessionID,

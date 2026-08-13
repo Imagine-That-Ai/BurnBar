@@ -29,25 +29,31 @@ function isMode(value: unknown): value is SafariMode {
   return value === 'ask' || value === 'agentic' || value === 'watch' || value === 'handoff';
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseStoredSiteTrust(value: unknown): StoredSiteTrust | undefined {
+  if (!isRecord(value) || typeof value.allowed !== 'boolean' || typeof value.sensitiveOverride !== 'boolean') {
+    return undefined;
+  }
+  return {
+    allowed: value.allowed,
+    sensitiveOverride: value.sensitiveOverride
+  };
+}
+
 export function parsePreferences(value: unknown): SafariPreferences {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return { ...DEFAULT_PREFERENCES };
   }
-  const record = value as Record<string, unknown>;
+  const record = value;
   const sites: Record<string, StoredSiteTrust> = {};
-  if (record.sites && typeof record.sites === 'object' && !Array.isArray(record.sites)) {
-    for (const [origin, candidate] of Object.entries(record.sites as Record<string, unknown>)) {
-      if (
-        candidate &&
-        typeof candidate === 'object' &&
-        !Array.isArray(candidate) &&
-        typeof (candidate as Record<string, unknown>).allowed === 'boolean' &&
-        typeof (candidate as Record<string, unknown>).sensitiveOverride === 'boolean'
-      ) {
-        sites[origin] = {
-          allowed: (candidate as Record<string, unknown>).allowed as boolean,
-          sensitiveOverride: (candidate as Record<string, unknown>).sensitiveOverride as boolean
-        };
+  if (isRecord(record.sites)) {
+    for (const [origin, candidate] of Object.entries(record.sites)) {
+      const siteTrust = parseStoredSiteTrust(candidate);
+      if (siteTrust) {
+        sites[origin] = siteTrust;
       }
     }
   }

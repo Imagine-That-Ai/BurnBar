@@ -1,6 +1,6 @@
 {
   "note": "Force-unwrap (!) site budget across AgentLens/, OpenBurnBarMobile/, OpenBurnBarCore/Sources/, OpenBurnBarDaemon/Sources/, OpenBurnBarKeyboard/, OpenBurnBarWidget/. Shrink-only: count may only decrease as sites are removed. Excludes try! and as! (governed by force_try / force_cast) and implicitly-unwrapped optional type declarations (governed by implicitly_unwrapped_optional). String interpolation expressions are counted (executable code). Regenerate via scripts/debt/check-force-unwrap-budget.sh --update.",
-  "total": 213,
+  "total": 211,
   "files": [
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarAssistantModels/AssistantRuntimeID.swift",
@@ -124,10 +124,6 @@
     },
     {
       "path": "AgentLens/Services/ProviderUsageAPI/OpenRouterUsageAPI.swift",
-      "count": 2
-    },
-    {
-      "path": "AgentLens/Views/Chat/Components/ChatEngineBackendStrip.swift",
       "count": 2
     },
     {

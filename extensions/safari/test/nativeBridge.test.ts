@@ -7,6 +7,7 @@ import {
   type NativeMessagingAdapter
 } from '../src/background/nativeBridge';
 import type { NativeRequestEnvelope, PageState, SafariTabSnapshot } from '../src/shared/protocol';
+import { requireNativeRequest, requireRecord } from './helpers/assertions';
 import { createMockBrowser } from './helpers/mockBrowser';
 
 const activePage: PageState = {
@@ -42,8 +43,9 @@ describe('NativeBridge', () => {
   it('uses the centralized native application adapter', async () => {
     const { browser, controls } = createMockBrowser();
     controls.setNativeHandler((message) => {
-      const request = message as NativeRequestEnvelope;
-      return responseFor(request, { accepted: true });
+      const request = requireRecord(message, 'native adapter payload');
+      expect(request).toEqual({ hello: true });
+      return { accepted: true };
     });
     const adapter = new BrowserNativeMessagingAdapter(browser);
     await adapter.send({ hello: true });
@@ -56,7 +58,7 @@ describe('NativeBridge', () => {
     const messages: NativeRequestEnvelope[] = [];
     const adapter: NativeMessagingAdapter = {
       async send(message) {
-        const request = message as NativeRequestEnvelope;
+        const request = requireNativeRequest(message);
         messages.push(request);
         switch (request.method) {
           case 'bridge.hello':
@@ -130,7 +132,7 @@ describe('NativeBridge', () => {
     const messages: NativeRequestEnvelope[] = [];
     const adapter: NativeMessagingAdapter = {
       async send(message) {
-        const request = message as NativeRequestEnvelope;
+        const request = requireNativeRequest(message);
         messages.push(request);
         if (request.method === 'bridge.chunk.commit') {
           return responseFor(request, { delivered: true });
@@ -153,14 +155,12 @@ describe('NativeBridge', () => {
     expect(result).toEqual({ delivered: true });
     expect(messages[0]?.method).toBe('bridge.chunk.begin');
     expect(messages.at(-1)?.method).toBe('bridge.chunk.commit');
-    const begin = messages[0]?.params as Record<string, unknown>;
+    const begin = messages[0]?.params ?? {};
     expect(begin.sha256).toMatch(/^[a-f0-9]{64}$/u);
     const appendMessages = messages.filter((message) => message.method === 'bridge.chunk.append');
     expect(appendMessages.length).toBe(Number(begin.chunkCount));
     const reconstructed = new Uint8Array(
-      appendMessages.flatMap((message) =>
-        Array.from(base64ToBytes(String((message.params as Record<string, unknown>).data)))
-      )
+      appendMessages.flatMap((message) => Array.from(base64ToBytes(String(message.params.data))))
     );
     expect(new TextDecoder().decode(reconstructed)).toContain('"method":"bridge.popupAction"');
     expect(new TextDecoder().decode(reconstructed)).toContain('🔥');
@@ -203,7 +203,7 @@ describe('NativeBridge', () => {
 
     const adapter: NativeMessagingAdapter = {
       async send(message) {
-        const request = message as NativeRequestEnvelope;
+        const request = requireNativeRequest(message);
         return responseFor(
           request,
           request.method === 'bridge.hello'

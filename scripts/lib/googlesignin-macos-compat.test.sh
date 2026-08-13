@@ -113,11 +113,28 @@ if [[ "$(openburnbar_google_sign_in_compat_sha256 "$header_path")" != "$patched_
   echo "GoogleSignIn compatibility fixture did not apply the reviewed patch." >&2
   exit 1
 fi
-if ! rg -qU '#import "GIDAppCheckError.h"\n#import "GIDConfiguration.h"' "$header_path"; then
+has_adjacent_imports() {
+  local first_import="$1"
+  local second_import="$2"
+  local source_path="$3"
+  awk -v first="$first_import" -v second="$second_import" '
+    previous == first && $0 == second { found = 1 }
+    { previous = $0 }
+    END { exit found ? 0 : 1 }
+  ' "$source_path"
+}
+
+if ! has_adjacent_imports \
+  '#import "GIDAppCheckError.h"' \
+  '#import "GIDConfiguration.h"' \
+  "$header_path"; then
   echo "GIDAppCheckError.h was not made an unconditional umbrella import." >&2
   exit 1
 fi
-if ! rg -qU '#import "GIDConfiguration.h"\n#import "GIDSignInButton.h"' "$header_path"; then
+if ! has_adjacent_imports \
+  '#import "GIDConfiguration.h"' \
+  '#import "GIDSignInButton.h"' \
+  "$header_path"; then
   echo "GIDSignInButton.h was not made an unconditional umbrella import." >&2
   exit 1
 fi

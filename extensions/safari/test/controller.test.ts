@@ -2,7 +2,7 @@ import { SafariBackgroundController } from '../src/background/controller';
 import { SafariGatewayClient } from '../src/background/gatewayClient';
 import { BrowserNativeMessagingAdapter, NativeBridge } from '../src/background/nativeBridge';
 import { SAFARI_PERFORMANCE_STORAGE_KEY } from '../src/background/performance';
-import type { ContentResponse, PopupResponse } from '../src/shared/messages';
+import { isContentRequest, type ContentResponse, type PopupResponse } from '../src/shared/messages';
 import type {
   BridgePopupActionResult,
   ContentAction,
@@ -11,13 +11,9 @@ import type {
   SafariBootstrapResponse
 } from '../src/shared/protocol';
 import { createMockBrowser } from './helpers/mockBrowser';
+import { parseJSONRecord, requireNativeRequest, requireRecord } from './helpers/assertions';
 
-interface NativeRequest {
-  protocolVersion: number;
-  id: string;
-  method: string;
-  params: Record<string, unknown>;
-}
+type NativeRequest = ReturnType<typeof requireNativeRequest>;
 
 type GatewayHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -178,7 +174,10 @@ function createControllerHarness(): ControllerHarness {
   controls.setContentHandler((tabId, message) => {
     const tab = controls.tabs.get(tabId) ?? {};
     const pageState = pageStateFor(tab);
-    const request = message as { type: string; action?: ContentAction; token?: string; y?: number };
+    if (!isContentRequest(message)) {
+      throw new Error('Unexpected malformed content request.');
+    }
+    const request = message;
     switch (request.type) {
       case 'content.ping':
         return { ok: true, result: { ready: true }, pageState } satisfies ContentResponse;
@@ -256,12 +255,12 @@ function createControllerHarness(): ControllerHarness {
       case 'content.abort':
         return { ok: true, result: { ready: true }, pageState } satisfies ContentResponse;
       default:
-        throw new Error(`Unexpected content request ${request.type}`);
+        throw new Error('Unexpected content request.');
     }
   });
 
   controls.setNativeHandler((message) => {
-    const request = message as NativeRequest;
+    const request = requireNativeRequest(message);
     switch (request.method) {
       case 'bridge.hello':
         return nativeSuccess(request, {
@@ -272,7 +271,7 @@ function createControllerHarness(): ControllerHarness {
         });
       case 'bridge.popupAction': {
         const action = String(request.params.action);
-        const payload = request.params.payload as Record<string, unknown>;
+        const payload = requireRecord(request.params.payload, 'popup action payload');
         popupCalls.push({ action, payload });
         const popupActionError = popupActionErrors.get(action);
         if (popupActionError) {
@@ -489,7 +488,7 @@ describe('Safari background controller integration', () => {
     expect(answer.snapshot.running).toBe(false);
     expect(harness.gatewayCalls).toHaveLength(1);
     expect(String(harness.gatewayCalls[0]?.input)).toBe('http://127.0.0.1:8317/v1/chat/completions');
-    const gatewayBody = JSON.parse(String(harness.gatewayCalls[0]?.init?.body)) as Record<string, unknown>;
+    const gatewayBody = parseJSONRecord(String(harness.gatewayCalls[0]?.init?.body), 'gateway body');
     expect(gatewayBody).toMatchObject({ model: 'vision-model', stream: true });
     expect(JSON.stringify(gatewayBody)).not.toContain('controller-loopback-bearer');
     expect(harness.popupCalls.some((call) => call.action === 'ask')).toBe(false);
@@ -669,7 +668,7 @@ describe('Safari background controller integration', () => {
         })
     );
     const pageContextCallsBeforeAsk = harness.controls.tabMessages.filter(
-      ({ message }) => (message as { type?: string }).type === 'content.pageContext'
+      ({ message }) => isContentRequest(message) && message.type === 'content.pageContext'
     ).length;
     const capturesBeforeAsk = harness.controls.captures.length;
     const asking = harness.controller.handlePopupRequest({
@@ -691,7 +690,7 @@ describe('Safari background controller integration', () => {
     expect(harness.gatewayCalls).toHaveLength(0);
     expect(
       harness.controls.tabMessages.filter(
-        ({ message }) => (message as { type?: string }).type === 'content.pageContext'
+        ({ message }) => isContentRequest(message) && message.type === 'content.pageContext'
       )
     ).toHaveLength(pageContextCallsBeforeAsk);
     expect(harness.controls.captures).toHaveLength(capturesBeforeAsk);
@@ -880,7 +879,7 @@ describe('Safari background controller integration', () => {
     expect(answer.snapshot.transcript.at(-1)?.error).toBeUndefined();
     expect(
       harness.controls.tabMessages.some(
-        ({ tabId, message }) => tabId === 1 && (message as { type?: string }).type === 'content.abort'
+        ({ tabId, message }) => tabId === 1 && isContentRequest(message) && message.type === 'content.abort'
       )
     ).toBe(true);
     expect(harness.popupCalls.filter((call) => call.action === 'abort')).toHaveLength(1);
@@ -941,11 +940,10 @@ describe('Safari background controller integration', () => {
     expect(new TextEncoder().encode(String(recall?.payload.query)).byteLength).toBeLessThanOrEqual(2 * 1024);
     expect(String(recall?.payload.query)).not.toBe(prompt);
 
-    const gatewayBody = JSON.parse(String(harness.gatewayCalls[0]?.init?.body)) as {
-      messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>;
-    };
-    const system = gatewayBody.messages[0]?.content;
-    const user = gatewayBody.messages[1]?.content;
+    const gatewayBody = parseJSONRecord(String(harness.gatewayCalls[0]?.init?.body), 'gateway body');
+    const messages = Array.isArray(gatewayBody.messages) ? gatewayBody.messages : [];
+    const system = requireRecord(messages[0], 'system message').content;
+    const user = requireRecord(messages[1], 'user message').content;
     expect(typeof system === 'string' ? system : '').not.toContain('Prefers annual totals.');
     expect(Array.isArray(user) ? user[0]?.text : '').toContain(recalled);
     expect(Array.isArray(user) ? user[0]?.text : '').toContain(prompt);
@@ -989,10 +987,9 @@ describe('Safari background controller integration', () => {
 
     expect(harness.gatewayCalls).toHaveLength(2);
     for (const call of harness.gatewayCalls) {
-      const body = JSON.parse(String(call.init?.body)) as {
-        messages: Array<{ content: string | Array<{ text?: string }> }>;
-      };
-      const user = body.messages[1]?.content;
+      const body = parseJSONRecord(String(call.init?.body), 'gateway body');
+      const messages = Array.isArray(body.messages) ? body.messages : [];
+      const user = requireRecord(messages[1], 'user message').content;
       expect(Array.isArray(user) ? user[0]?.text : '').not.toContain('<untrusted_learned_context');
     }
   });
@@ -1363,7 +1360,7 @@ describe('Safari background controller integration', () => {
     expectSuccess(stopped);
     expect(stopped.snapshot.running).toBe(false);
     expect(
-      harness.controls.tabMessages.some(({ message }) => (message as { type?: string }).type === 'content.abort')
+      harness.controls.tabMessages.some(({ message }) => isContentRequest(message) && message.type === 'content.abort')
     ).toBe(true);
 
     const restarted = await harness.controller.handlePopupRequest({
@@ -1664,7 +1661,7 @@ describe('Safari background controller integration', () => {
       }
     });
     expect(
-      harness.controls.tabMessages.some(({ message }) => (message as { type?: string }).type === 'content.abort')
+      harness.controls.tabMessages.some(({ message }) => isContentRequest(message) && message.type === 'content.abort')
     ).toBe(true);
 
     const staleProjection = await harness.controller.handlePopupRequest({ type: 'popup.refresh' });
@@ -1841,7 +1838,8 @@ describe('Safari background controller integration', () => {
     await harness.controller.pollOnce();
     const firstPoll = [...harness.controls.nativeMessages]
       .reverse()
-      .find((message) => (message as NativeRequest).method === 'bridge.poll') as NativeRequest | undefined;
+      .map(requireNativeRequest)
+      .find((message) => message.method === 'bridge.poll');
     expect(firstPoll?.params.knownTabs).toEqual([
       expect.objectContaining({
         tabId: 1,
@@ -1883,7 +1881,8 @@ describe('Safari background controller integration', () => {
     await harness.controller.pollOnce();
     const privateTabPoll = [...harness.controls.nativeMessages]
       .reverse()
-      .find((message) => (message as NativeRequest).method === 'bridge.poll') as NativeRequest | undefined;
+      .map(requireNativeRequest)
+      .find((message) => message.method === 'bridge.poll');
     expect(privateTabPoll?.params).not.toHaveProperty('activePage');
     expect(JSON.stringify(privateTabPoll)).not.toContain(secretURL);
     expect(JSON.stringify(privateTabPoll)).not.toContain(secretTitle);
@@ -2040,7 +2039,7 @@ describe('Safari background controller integration', () => {
     expect(harness.controls.tabs.has(2)).toBe(false);
     expect(harness.controls.tabs.get(1)?.url).toBe('https://openburnbar.com/');
     expect(
-      harness.controls.tabMessages.some(({ message }) => (message as { type?: string }).type === 'content.abort')
+      harness.controls.tabMessages.some(({ message }) => isContentRequest(message) && message.type === 'content.abort')
     ).toBe(true);
     expect(
       harness.completions.every(

@@ -111,7 +111,7 @@ final class GitHubCopilotUsageAPITests: XCTestCase {
     }
 }
 
-private final class GitHubCopilotUsageStubURLProtocol: URLProtocol {
+private class GitHubCopilotUsageStubURLProtocol: URLProtocol {
     private struct State: Sendable {
         var responseData = Data()
         var requestCount = 0

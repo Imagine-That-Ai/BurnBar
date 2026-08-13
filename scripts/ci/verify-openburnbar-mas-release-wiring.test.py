@@ -25,6 +25,21 @@ class VerifyOpenBurnBarMASReleaseWiringTests(unittest.TestCase):
             "Mac App Store archive/export requires a clean exact-candidate checkout",
             script,
         )
+        safari_ci = (
+            "openburnbar_without_candidate_git_environment \\\n  bash scripts/test-openburnbar-safari-extension.sh"
+        )
+        self.assertEqual(script.count("verify_exact_candidate_state"), 3)
+        self.assertLess(
+            script.index("verify_exact_candidate_state\n"),
+            script.index(safari_ci),
+        )
+        self.assertLess(
+            script.index(safari_ci),
+            script.index(
+                "verify_exact_candidate_state",
+                script.index(safari_ci),
+            ),
+        )
         self.assertLess(
             script.index("OPENBURNBAR_CANDIDATE_COMMIT"),
             script.index("xcodebuild archive"),
@@ -43,15 +58,15 @@ class VerifyOpenBurnBarMASReleaseWiringTests(unittest.TestCase):
             "Mac App Store export inspection path must be fresh",
             script,
         )
-        self.assertIn("--archive-app \"$app_path\"", script)
-        self.assertIn("--export-inspection \"$export_inspection\"", script)
-        self.assertIn("--exported-app \"$exported_app_path\"", script)
+        self.assertIn('--archive-app "$app_path"', script)
+        self.assertIn('--export-inspection "$export_inspection"', script)
+        self.assertIn('--exported-app "$exported_app_path"', script)
         self.assertLess(
             script.index("artifact-receipt"),
             script.rindex('if [[ "$upload" == "1" ]]'),
         )
         self.assertIn("unset APP_STORE_ASC_KEY_PATH", script)
-        self.assertIn("APP_STORE_ASC_KEY_P8=\"$asc_key_payload\"", script)
+        self.assertIn('APP_STORE_ASC_KEY_P8="$asc_key_payload"', script)
         self.assertIn("App Store upload requires an App Store Connect key ID", script)
         self.assertIn("App Store upload requires numeric OPENBURNBAR_ASC_APPLE_ID", script)
         for command in (
@@ -65,9 +80,7 @@ class VerifyOpenBurnBarMASReleaseWiringTests(unittest.TestCase):
                 script,
             )
 
-        swiftpm = (
-            ROOT / "scripts/prepare-openburnbar-app-swiftpm.sh"
-        ).read_text(encoding="utf-8")
+        swiftpm = (ROOT / "scripts/prepare-openburnbar-app-swiftpm.sh").read_text(encoding="utf-8")
         self.assertIn("unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE", swiftpm)
 
     def test_readiness_uses_same_locked_source_preparation_lifecycle(self) -> None:
@@ -136,9 +149,7 @@ class VerifyOpenBurnBarMASReleaseWiringTests(unittest.TestCase):
         self.assertIn("processingReceiptSha256", script)
         self.assertIn("load_processing_receipt", script)
 
-        lifecycle = (
-            ROOT / "scripts/ci/verify-openburnbar-mas-installed-candidate.sh"
-        ).read_text()
+        lifecycle = (ROOT / "scripts/ci/verify-openburnbar-mas-installed-candidate.sh").read_text()
         self.assertIn("verify-openburnbar-mas-artifact.sh", lifecycle)
         self.assertIn("verify-openburnbar-mas-installed-receipt.py", lifecycle)
         self.assertIn("--processing-receipt", lifecycle)

@@ -630,13 +630,17 @@ def test_release_smoke_uses_packaged_daemon_helper_without_persistent_install_as
     ) in workflow
     assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarDaemon"' in workflow
     assert 'install_name_tool -add_rpath "@executable_path/../Frameworks" "$HELPERS_DIR/OpenBurnBarCLI"' in workflow
+    assert "configure_bundled_sqlcipher_linkage()" in website_release
     assert (
-        'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarDaemon"'
-        in website_release
-    )
+        'configure_bundled_sqlcipher_linkage \\\n'
+        '  "$helpers_dir/OpenBurnBarDaemon" \\\n'
+        '  "OpenBurnBarDaemon"'
+    ) in website_release
     assert (
-        'install_name_tool -add_rpath "@executable_path/../Frameworks" "$helpers_dir/OpenBurnBarCLI"' in website_release
-    )
+        'configure_bundled_sqlcipher_linkage \\\n'
+        '  "$helpers_dir/OpenBurnBarCLI" \\\n'
+        '  "OpenBurnBarCLI"'
+    ) in website_release
     assert 'cp -R "$DAEMON_RESOURCE_BUNDLE" "$DAEMON_HELPER_RESOURCE_BUNDLE"' in workflow
     assert 'cp -R "$daemon_resource_bundle" "$daemon_helper_resource_bundle"' in website_release
     assert 'cp -R "$PROJECT_CODE_MEMORY_DIR" "$HELPERS_DIR/ProjectCodeMemory"' not in workflow
@@ -803,8 +807,14 @@ def test_safari_host_entitlements_share_exact_app_group_and_keychain_across_chan
         assert "application-groups" in direct_surface
         assert "Keychain" in direct_surface
 
-    assert "app_profile_app_groups" in website_release
-    assert "scripts/ci/verify-openburnbar-direct-release.sh" in website_release
+    assert (
+        'bash scripts/ci/verify-openburnbar-direct-release.sh \\\n'
+        '  "$app_path" \\\n'
+        '  "$app_profile_team_id" \\\n'
+        '  "$app_profile" \\\n'
+        '  "$safari_extension_profile" \\\n'
+        '  "$signing_receipt_path"'
+    ) in website_release
     assert 'codesign -d --entitlements :- "$app_path"' in direct_release_verifier
     assert "signed host App Groups" in direct_release_verifier
     assert "signed host Keychain groups" in direct_release_verifier

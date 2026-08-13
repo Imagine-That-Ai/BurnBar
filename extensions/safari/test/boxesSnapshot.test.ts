@@ -7,28 +7,15 @@ import {
   viewportInfo
 } from '../src/content/boxes';
 import { selectorForElement, SnapshotRegistry } from '../src/content/snapshot';
-
-function rect(left: number, top: number, width: number, height: number): DOMRect {
-  return {
-    x: left,
-    y: top,
-    left,
-    top,
-    width,
-    height,
-    right: left + width,
-    bottom: top + height,
-    toJSON: () => ({})
-  } as DOMRect;
-}
+import { requireElement, testDOMRect } from './helpers/assertions';
 
 describe('box and snapshot utilities', () => {
   it('maps viewport CSS coordinates with visual viewport offsets', () => {
     expect(
-      rectToBoundingBox(rect(10.126, 20.994, 100.555, 42.222), {
+      rectToBoundingBox(testDOMRect(10.126, 20.994, 100.555, 42.222), {
         offsetLeft: 3.25,
         offsetTop: 4.5
-      } as VisualViewport)
+      })
     ).toEqual({
       x: 13.38,
       y: 25.49,
@@ -43,7 +30,7 @@ describe('box and snapshot utilities', () => {
   });
 
   it('fails closed for degenerate boxes and falls back when viewport metadata is absent', () => {
-    expect(rectToBoundingBox(rect(1, 2, -3, -4), null)).toEqual({
+    expect(rectToBoundingBox(testDOMRect(1, 2, -3, -4), null)).toEqual({
       x: 1,
       y: 2,
       width: 0,
@@ -57,35 +44,49 @@ describe('box and snapshot utilities', () => {
     expect(isBoxInViewport({ x: -10, y: 0, width: 10, height: 10 }, { width: 100, height: 100 })).toBe(false);
     expect(isBoxInViewport({ x: 0, y: -10, width: 10, height: 10 }, { width: 100, height: 100 })).toBe(false);
 
-    const documentValue = {
-      documentElement: {
-        scrollWidth: 900,
-        clientWidth: 800,
-        scrollHeight: 1200,
-        clientHeight: 700
-      },
-      body: null
-    } as unknown as Document;
-    const windowValue = {
-      visualViewport: null,
-      innerWidth: undefined,
-      innerHeight: undefined,
-      scrollX: Number.NaN,
-      scrollY: Number.NaN,
-      devicePixelRatio: 0
-    } as unknown as Window;
-    expect(viewportInfo(documentValue, windowValue)).toEqual({
-      width: 800,
-      height: 700,
-      scrollX: 0,
-      scrollY: 0,
-      pageWidth: 900,
-      pageHeight: 1200,
-      devicePixelRatio: 1,
-      visualViewportOffsetLeft: 0,
-      visualViewportOffsetTop: 0,
-      visualViewportScale: 1
+    const documentValue = document.implementation.createHTMLDocument();
+    Object.defineProperties(documentValue.documentElement, {
+      scrollWidth: { configurable: true, value: 900 },
+      clientWidth: { configurable: true, value: 800 },
+      scrollHeight: { configurable: true, value: 1200 },
+      clientHeight: { configurable: true, value: 700 }
     });
+    const descriptors = Object.fromEntries(
+      ['visualViewport', 'innerWidth', 'innerHeight', 'scrollX', 'scrollY', 'devicePixelRatio'].map((key) => [
+        key,
+        Object.getOwnPropertyDescriptor(window, key)
+      ])
+    );
+    try {
+      Object.defineProperties(window, {
+        visualViewport: { configurable: true, value: null },
+        innerWidth: { configurable: true, value: undefined },
+        innerHeight: { configurable: true, value: undefined },
+        scrollX: { configurable: true, value: Number.NaN },
+        scrollY: { configurable: true, value: Number.NaN },
+        devicePixelRatio: { configurable: true, value: 0 }
+      });
+      expect(viewportInfo(documentValue, window)).toEqual({
+        width: 800,
+        height: 700,
+        scrollX: 0,
+        scrollY: 0,
+        pageWidth: 900,
+        pageHeight: 1200,
+        devicePixelRatio: 1,
+        visualViewportOffsetLeft: 0,
+        visualViewportOffsetTop: 0,
+        visualViewportScale: 1
+      });
+    } finally {
+      for (const [key, descriptor] of Object.entries(descriptors)) {
+        if (descriptor) {
+          Object.defineProperty(window, key, descriptor);
+        } else {
+          Reflect.deleteProperty(window, key);
+        }
+      }
+    }
   });
 
   it('reports page and visual viewport geometry', () => {
@@ -114,9 +115,9 @@ describe('box and snapshot utilities', () => {
         <div><button data-testid="save">Save</button><button>Other</button></div>
       </main>
     `;
-    const buy = document.getElementById('buy')!;
-    const save = document.querySelector('[data-testid="save"]')!;
-    const other = document.querySelector('div button:nth-of-type(2)')!;
+    const buy = requireElement(document.getElementById('buy'), '#buy button');
+    const save = requireElement(document.querySelector('[data-testid="save"]'), 'save button');
+    const other = requireElement(document.querySelector('div button:nth-of-type(2)'), 'other button');
     expect(selectorForElement(buy)).toBe('#buy');
     expect(selectorForElement(save)).toContain('[data-testid="save"]');
     expect(selectorForElement(other)).toContain(':nth-of-type(2)');

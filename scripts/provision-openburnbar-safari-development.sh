@@ -70,6 +70,7 @@ Environment overrides are intended only for deterministic fixture tests:
   OPENBURNBAR_SYSTEM_PROFILER_BIN
   OPENBURNBAR_PREPARE_SWIFTPM_SCRIPT
   OPENBURNBAR_PREPARE_SIGNAL_FFI_SCRIPT
+  OPENBURNBAR_SAFARI_CI_SCRIPT
   OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT
   OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT
   OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER
@@ -183,6 +184,7 @@ plist_buddy_bin="${OPENBURNBAR_PLIST_BUDDY_BIN:-/usr/libexec/PlistBuddy}"
 system_profiler_bin="${OPENBURNBAR_SYSTEM_PROFILER_BIN:-/usr/sbin/system_profiler}"
 prepare_swiftpm_script="${OPENBURNBAR_PREPARE_SWIFTPM_SCRIPT:-$repo_root/scripts/prepare-openburnbar-app-swiftpm.sh}"
 prepare_signal_ffi_script="${OPENBURNBAR_PREPARE_SIGNAL_FFI_SCRIPT:-$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh}"
+safari_ci_script="${OPENBURNBAR_SAFARI_CI_SCRIPT:-$repo_root/scripts/test-openburnbar-safari-extension.sh}"
 google_compat_script="${OPENBURNBAR_GOOGLE_SIGN_IN_COMPAT_SCRIPT:-$repo_root/scripts/lib/googlesignin-macos-compat.sh}"
 libsignal_compat_script="${OPENBURNBAR_LIBSIGNAL_COMPAT_SCRIPT:-$repo_root/scripts/lib/libsignal-swift-compat.sh}"
 development_verifier="${OPENBURNBAR_DEVELOPMENT_SIGNING_VERIFIER:-$repo_root/scripts/ci/verify-openburnbar-development-signing.sh}"
@@ -211,6 +213,7 @@ openburnbar_configure_exact_candidate_git "$repo_root"
 for required_file in \
   "$prepare_swiftpm_script" \
   "$prepare_signal_ffi_script" \
+  "$safari_ci_script" \
   "$google_compat_script" \
   "$libsignal_compat_script" \
   "$development_verifier" \
@@ -278,7 +281,7 @@ verify_exact_candidate_state() {
   worktree_state="$(
     openburnbar_candidate_git status \
       --porcelain=v1 \
-      --untracked-files=normal \
+      --untracked-files=all \
       --ignore-submodules=none
   )"
   if [[ -n "$worktree_state" ]]; then
@@ -288,6 +291,8 @@ verify_exact_candidate_state() {
   fi
 }
 
+verify_exact_candidate_state
+openburnbar_without_candidate_git_environment bash "$safari_ci_script"
 verify_exact_candidate_state
 
 identity_matches=()

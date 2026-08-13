@@ -99,26 +99,31 @@ log_path="$release_dir/archive.log"
 package_cache="${OPENBURNBAR_MAC_APP_STORE_PACKAGE_CACHE:-$repo_root/.spm-cache}"
 artifact_receipt="$release_dir/mas-archive-export-receipt.json"
 
-if [[ ! "$candidate_commit" =~ ^[0-9a-f]{40}$ || ! "$candidate_tree" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "ERROR: Mac App Store archive/export requires full lowercase OPENBURNBAR_CANDIDATE_COMMIT and OPENBURNBAR_CANDIDATE_TREE values." >&2
-  exit 1
-fi
-actual_candidate_commit="$(openburnbar_candidate_git rev-parse 'HEAD^{commit}')"
-actual_candidate_tree="$(openburnbar_candidate_git rev-parse 'HEAD^{tree}')"
-commit_candidate_tree="$(openburnbar_candidate_git rev-parse "$candidate_commit^{tree}")"
-if [[ "$candidate_commit" != "$actual_candidate_commit" \
-  || "$candidate_tree" != "$actual_candidate_tree" \
-  || "$candidate_tree" != "$commit_candidate_tree" ]]; then
-  echo "ERROR: Mac App Store candidate binding does not match the exact checked-out commit/tree." >&2
-  echo "  supplied: $candidate_commit $candidate_tree" >&2
-  echo "  actual:   $actual_candidate_commit $actual_candidate_tree" >&2
-  echo "  commit:   $commit_candidate_tree" >&2
-  exit 1
-fi
-if [[ -n "$(openburnbar_candidate_git status --porcelain=v1 --untracked-files=all)" ]]; then
-  echo "ERROR: Mac App Store archive/export requires a clean exact-candidate checkout." >&2
-  exit 1
-fi
+verify_exact_candidate_state() {
+  if [[ ! "$candidate_commit" =~ ^[0-9a-f]{40}$ || ! "$candidate_tree" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "ERROR: Mac App Store archive/export requires full lowercase OPENBURNBAR_CANDIDATE_COMMIT and OPENBURNBAR_CANDIDATE_TREE values." >&2
+    exit 1
+  fi
+  local actual_candidate_commit actual_candidate_tree commit_candidate_tree
+  actual_candidate_commit="$(openburnbar_candidate_git rev-parse 'HEAD^{commit}')"
+  actual_candidate_tree="$(openburnbar_candidate_git rev-parse 'HEAD^{tree}')"
+  commit_candidate_tree="$(openburnbar_candidate_git rev-parse "$candidate_commit^{tree}")"
+  if [[ "$candidate_commit" != "$actual_candidate_commit" \
+    || "$candidate_tree" != "$actual_candidate_tree" \
+    || "$candidate_tree" != "$commit_candidate_tree" ]]; then
+    echo "ERROR: Mac App Store candidate binding does not match the exact checked-out commit/tree." >&2
+    echo "  supplied: $candidate_commit $candidate_tree" >&2
+    echo "  actual:   $actual_candidate_commit $actual_candidate_tree" >&2
+    echo "  commit:   $commit_candidate_tree" >&2
+    exit 1
+  fi
+  if [[ -n "$(openburnbar_candidate_git status --porcelain=v1 --untracked-files=all)" ]]; then
+    echo "ERROR: Mac App Store archive/export requires a clean exact-candidate checkout." >&2
+    exit 1
+  fi
+}
+
+verify_exact_candidate_state
 
 require_entitlement_bool() {
   local file="$1"
@@ -236,6 +241,7 @@ validate_app_store_connect_auth_configuration
 
 openburnbar_without_candidate_git_environment \
   bash scripts/test-openburnbar-safari-extension.sh
+verify_exact_candidate_state
 openburnbar_prepare_libsignal_swift_compat "$repo_root"
 
 openburnbar_verify_xcode_project_sync "$repo_root"

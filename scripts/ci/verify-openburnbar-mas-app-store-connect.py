@@ -11,7 +11,7 @@ import re
 import stat
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,7 @@ TERMINAL_SUCCESS_STATES = {
     "succeeded",
     "valid",
 }
+UTC = timezone(timedelta(0))
 TERMINAL_FAILURE_STATES = {
     "error",
     "failed",
@@ -154,15 +155,10 @@ def validate_submission_response(path: Path, label: str) -> dict[str, str]:
     success_messages = values_for_keys(value, SUCCESS_MESSAGE_KEYS)
     successes = [status for status in statuses if status in TERMINAL_SUCCESS_STATES]
     nonterminal = [
-        status
-        for status in statuses
-        if status not in TERMINAL_SUCCESS_STATES and status not in TERMINAL_FAILURE_STATES
+        status for status in statuses if status not in TERMINAL_SUCCESS_STATES and status not in TERMINAL_FAILURE_STATES
     ]
     if nonterminal or (not successes and not success_messages):
-        raise ValueError(
-            f"{label} response contains no unambiguous success signal; "
-            f"found statuses={statuses!r}"
-        )
+        raise ValueError(f"{label} response contains no unambiguous success signal; found statuses={statuses!r}")
     return {"responseSha256": hashlib.sha256(raw).hexdigest()}
 
 
@@ -176,15 +172,12 @@ def validate_terminal_status(path: Path, label: str) -> dict[str, str]:
         raise ValueError(f"{label} response contains no status")
     failures = [status for status in statuses if status in TERMINAL_FAILURE_STATES]
     nonterminal = [
-        status
-        for status in statuses
-        if status not in TERMINAL_SUCCESS_STATES and status not in TERMINAL_FAILURE_STATES
+        status for status in statuses if status not in TERMINAL_SUCCESS_STATES and status not in TERMINAL_FAILURE_STATES
     ]
     successes = [status for status in statuses if status in TERMINAL_SUCCESS_STATES]
     if failures or nonterminal or not successes:
         raise ValueError(
-            f"{label} response must contain only accepted/processed terminal statuses; "
-            f"found statuses={statuses!r}"
+            f"{label} response must contain only accepted/processed terminal statuses; found statuses={statuses!r}"
         )
     return {
         "processedStatus": sorted(set(successes))[0],
@@ -257,8 +250,7 @@ def validate_exact_build_readback(
     }
     if mismatches:
         raise ValueError(
-            "exact-build readback identity does not match the requested OpenBurnBar build: "
-            f"{mismatches!r}"
+            f"exact-build readback identity does not match the requested OpenBurnBar build: {mismatches!r}"
         )
     return {**status, **actual_identity}
 
@@ -325,9 +317,7 @@ def load_artifact_receipt(
         or metadata.st_uid != os.getuid()
         or stat.S_IMODE(metadata.st_mode) & 0o077
     ):
-        raise ValueError(
-            "MAS archive/export receipt must be one owner-only regular file"
-        )
+        raise ValueError("MAS archive/export receipt must be one owner-only regular file")
     try:
         value = json.loads(path.read_bytes())
     except json.JSONDecodeError as error:
@@ -352,19 +342,12 @@ def load_artifact_receipt(
         "version": version,
         "build": build,
     }
-    if not isinstance(release, dict) or any(
-        release.get(key) != expected for key, expected in expected_release.items()
-    ):
+    if not isinstance(release, dict) or any(release.get(key) != expected for key, expected in expected_release.items()):
         raise ValueError("MAS archive/export receipt release identity does not match")
     artifacts = value.get("artifacts")
     if not isinstance(artifacts, dict):
         raise ValueError("MAS archive/export receipt is missing artifact bindings")
-    archive_app = (
-        archive
-        / "Products"
-        / "Applications"
-        / "OpenBurnBar.app"
-    )
+    archive_app = archive / "Products" / "Applications" / "OpenBurnBar.app"
     archive_appex = safari_extension(archive_app, "archive app")
     appex = safari_extension(app, "exported app")
     expected_artifacts = {
@@ -382,9 +365,7 @@ def load_artifact_receipt(
         if artifacts.get(key) != expected
     }
     if mismatches:
-        raise ValueError(
-            f"MAS archive/export receipt artifact bindings do not match: {mismatches!r}"
-        )
+        raise ValueError(f"MAS archive/export receipt artifact bindings do not match: {mismatches!r}")
     return {
         "artifactReceiptSha256": sha256_file(path),
         **expected_artifacts,
@@ -399,9 +380,7 @@ def require_descendant(path: Path, parent: Path, label: str) -> Path:
     try:
         relative = absolute_path.relative_to(absolute_parent)
     except ValueError as error:
-        raise ValueError(
-            f"{label} must be contained by {absolute_parent}: {absolute_path}"
-        ) from error
+        raise ValueError(f"{label} must be contained by {absolute_parent}: {absolute_path}") from error
     current = absolute_parent
     for component in relative.parts:
         current /= component
@@ -448,9 +427,7 @@ def run_artifact_verifier(
     )
     if completed.returncode != 0:
         details = completed.stderr.strip() or completed.stdout.strip() or "no verifier output"
-        raise ValueError(
-            f"{label} failed with exit {completed.returncode}: {details}"
-        )
+        raise ValueError(f"{label} failed with exit {completed.returncode}: {details}")
 
 
 def create_artifact_receipt(args: argparse.Namespace) -> dict[str, Any]:
@@ -461,15 +438,10 @@ def create_artifact_receipt(args: argparse.Namespace) -> dict[str, Any]:
     if args.archive.is_symlink() or not args.archive.is_dir():
         raise ValueError(f"Mac App Store archive must be a real directory: {args.archive}")
     if args.export_inspection.is_symlink() or not args.export_inspection.is_dir():
-        raise ValueError(
-            "Mac App Store package expansion must be a real directory: "
-            f"{args.export_inspection}"
-        )
+        raise ValueError(f"Mac App Store package expansion must be a real directory: {args.export_inspection}")
     if args.pkg.is_symlink() or not args.pkg.is_file():
         raise ValueError(f"exported package must be a real file: {args.pkg}")
-    expected_archive_app = Path(os.path.abspath(
-        args.archive / "Products" / "Applications" / "OpenBurnBar.app"
-    ))
+    expected_archive_app = Path(os.path.abspath(args.archive / "Products" / "Applications" / "OpenBurnBar.app"))
     if Path(os.path.abspath(args.archive_app)) != expected_archive_app:
         raise ValueError(
             "archive host app must be the canonical OpenBurnBar.app inside the "
@@ -483,18 +455,13 @@ def create_artifact_receipt(args: argparse.Namespace) -> dict[str, Any]:
         "exported host app",
     )
 
-    canonical_verifier = Path(__file__).with_name(
-        "verify-openburnbar-mas-artifact.sh"
-    ).resolve()
+    canonical_verifier = Path(__file__).with_name("verify-openburnbar-mas-artifact.sh").resolve()
     if (
         args.artifact_verifier.is_symlink()
         or not args.artifact_verifier.is_file()
         or args.artifact_verifier.resolve() != canonical_verifier
     ):
-        raise ValueError(
-            "artifact verifier must be the canonical "
-            "scripts/ci/verify-openburnbar-mas-artifact.sh"
-        )
+        raise ValueError("artifact verifier must be the canonical scripts/ci/verify-openburnbar-mas-artifact.sh")
 
     archive_appex = safari_extension(args.archive_app, "archive host app")
     exported_appex = safari_extension(args.exported_app, "exported host app")
@@ -530,10 +497,7 @@ def create_artifact_receipt(args: argparse.Namespace) -> dict[str, Any]:
             "version": args.version,
             "build": args.build,
             "teamId": args.team_id,
-            "createdAt": datetime.now(timezone.utc)
-            .replace(microsecond=0)
-            .isoformat()
-            .replace("+00:00", "Z"),
+            "createdAt": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         },
         "artifacts": {
             "archiveTreeSha256": sha256_tree(args.archive),
@@ -615,9 +579,7 @@ def create_receipt(args: argparse.Namespace) -> dict[str, Any]:
             "safariExtensionTreeSha256": sha256_tree(appex),
             "packageSha256": sha256_file(args.pkg),
             "packageSize": args.pkg.stat().st_size,
-            "archiveExportReceiptSha256": artifact_evidence[
-                "artifactReceiptSha256"
-            ],
+            "archiveExportReceiptSha256": artifact_evidence["artifactReceiptSha256"],
         },
         "responses": {
             "validationSha256": validation["responseSha256"],
@@ -720,9 +682,7 @@ def main() -> int:
         elif args.command == "artifact-receipt":
             result = create_artifact_receipt(args)
         elif args.command == "upload-preflight":
-            canonical_verifier = Path(__file__).with_name(
-                "verify-openburnbar-mas-artifact.sh"
-            ).resolve()
+            canonical_verifier = Path(__file__).with_name("verify-openburnbar-mas-artifact.sh").resolve()
             if (
                 args.artifact_verifier.is_symlink()
                 or not args.artifact_verifier.is_file()

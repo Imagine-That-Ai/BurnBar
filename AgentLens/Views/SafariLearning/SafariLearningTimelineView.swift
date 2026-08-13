@@ -1,4 +1,4 @@
-import OpenBurnBarCore
+import OpenBurnBarKernel
 import SwiftUI
 
 // MARK: - Timeline
@@ -495,11 +495,10 @@ private struct SafariLearningFilterBar: View {
             }
 
             HStack(spacing: DesignSystem.Spacing.xs) {
-                ForEach(SafariLearningTimelineViewModel.Filter.allCases) {
-                    filter in
+                ForEach(SafariLearningTimelineViewModel.Filter.allCases) { filter in
                     SafariLearningFilterChip(
                         filter: filter,
-                        count: model.count(for: filter),
+                        filteredCount: model.count(for: filter),
                         selected: model.filter == filter,
                         onSelect: { model.filter = filter }
                     )
@@ -538,7 +537,7 @@ private struct SafariLearningFilterBar: View {
 
 private struct SafariLearningFilterChip: View {
     let filter: SafariLearningTimelineViewModel.Filter
-    let count: Int
+    let filteredCount: Int
     let selected: Bool
     let onSelect: () -> Void
 
@@ -546,8 +545,8 @@ private struct SafariLearningFilterChip: View {
         Button(action: onSelect) {
             HStack(spacing: DesignSystem.Spacing.xs) {
                 Text(filter.title)
-                if count > 0 {
-                    Text("\(count)")
+                if filteredCount != 0 {
+                    Text("\(filteredCount)")
                         .font(DesignSystem.Typography.tiny)
                         .padding(.horizontal, DesignSystem.Spacing.xs)
                         .padding(.vertical, 1)

@@ -1,5 +1,5 @@
 import { SafariExtensionError } from '../shared/errors';
-import type { PageContext, SafariBootstrapResponse, ScreenshotResult } from '../shared/protocol';
+import { isRecord, type PageContext, type SafariBootstrapResponse, type ScreenshotResult } from '../shared/protocol';
 
 const MAX_GATEWAY_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_GATEWAY_ANSWER_CHARACTERS = 200_000;
@@ -226,9 +226,7 @@ export function buildSafariAskBody(request: SafariGatewayAskRequest): Record<str
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }
 
 function firstChoice(value: unknown): Record<string, unknown> | undefined {

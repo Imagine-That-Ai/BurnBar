@@ -140,8 +140,10 @@ export function createMockBrowser(
         for (const tab of tabs.values()) {
           tab.active = false;
         }
+        const tabId = nextTabId;
+        nextTabId += 1;
         const tab: BrowserTab = {
-          id: nextTabId,
+          id: tabId,
           windowId: 10,
           active: options.active !== false,
           currentWindow: true,
@@ -149,8 +151,7 @@ export function createMockBrowser(
           title: '',
           status: 'complete'
         };
-        nextTabId += 1;
-        tabs.set(tab.id!, tab);
+        tabs.set(tabId, tab);
         return { ...tab };
       },
       update: async (tabId, options) => {

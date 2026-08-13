@@ -21,8 +21,7 @@ import {
   type BridgePopupActionResult,
   type PageState,
   type SafariExtensionCapabilities,
-  type SafariTabSnapshot,
-  type NativeResponseEnvelope
+  type SafariTabSnapshot
 } from '../shared/protocol';
 
 export const OPENBURNBAR_NATIVE_APPLICATION_ID = 'com.openburnbar.app';
@@ -131,20 +130,20 @@ export class NativeBridge {
     return this.attachedSessionId;
   }
 
-  async request<TResult = unknown>(
+  async request<_TResult = unknown>(
     method: Exclude<BridgeMethod, `bridge.chunk.${string}`>,
     params: Record<string, unknown>
-  ): Promise<TResult> {
+  ): Promise<unknown> {
     const requestId = this.idFactory();
     const envelope = createNativeRequest(requestId, method, params);
     const encoded = this.textEncoder.encode(JSON.stringify(envelope));
     if (encoded.byteLength <= this.maxInlineBytes) {
-      return this.sendEnvelope<TResult>(envelope);
+      return this.sendEnvelope(envelope);
     }
-    return this.sendChunked<TResult>(method, encoded);
+    return this.sendChunked(method, encoded);
   }
 
-  private async sendEnvelope<TResult>(envelope: ReturnType<typeof createNativeRequest>): Promise<TResult> {
+  private async sendEnvelope(envelope: ReturnType<typeof createNativeRequest>): Promise<unknown> {
     let rawResponse: unknown;
     try {
       rawResponse = await this.adapter.send(envelope);
@@ -158,14 +157,14 @@ export class NativeBridge {
         }
       );
     }
-    const response = parseNativeResponse(rawResponse, envelope.id) as NativeResponseEnvelope<TResult>;
+    const response = parseNativeResponse(rawResponse, envelope.id);
     return unwrapNativeResponse(response);
   }
 
-  private async sendChunked<TResult>(
+  private async sendChunked(
     originalMethod: Exclude<BridgeMethod, `bridge.chunk.${string}`>,
     encodedEnvelope: Uint8Array
-  ): Promise<TResult> {
+  ): Promise<unknown> {
     const transferId = this.idFactory();
     const chunkCount = Math.ceil(encodedEnvelope.byteLength / this.maxInlineBytes);
     const digest = await sha256Hex(encodedEnvelope);
@@ -189,7 +188,7 @@ export class NativeBridge {
         })
       );
     }
-    return this.sendEnvelope<TResult>(
+    return this.sendEnvelope(
       createNativeRequest(this.idFactory(), 'bridge.chunk.commit', {
         transferId
       })

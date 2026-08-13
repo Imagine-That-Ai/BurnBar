@@ -66,10 +66,7 @@ def select(
     candidates = real_candidates(root, kind, recursive)
     if len(candidates) != 1:
         rendered = ", ".join(str(path) for path in candidates) or "none"
-        fail(
-            f"expected exactly one {kind} candidate under {root}; "
-            f"found {len(candidates)}: {rendered}"
-        )
+        fail(f"expected exactly one {kind} candidate under {root}; found {len(candidates)}: {rendered}")
     selected = candidates[0].resolve()
     if expected is not None and selected != expected.resolve():
         fail(f"selected {kind} {selected} does not equal expected path {expected.resolve()}")

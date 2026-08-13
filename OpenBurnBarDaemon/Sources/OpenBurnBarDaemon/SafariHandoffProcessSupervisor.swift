@@ -44,8 +44,7 @@ public protocol SafariHandoffProcessSupervising: Sendable {
 /// sentinel lifetime pipe. Either failure therefore contains the exact CLI
 /// process group without trusting a reusable numeric PID or PGID.
 public actor SafariHandoffProcessSupervisor:
-    SafariHandoffProcessSupervising
-{
+    SafariHandoffProcessSupervising {
     public struct FilesystemIdentity: Sendable, Equatable, Codable {
         public let device: UInt64
         public let inode: UInt64
@@ -577,8 +576,7 @@ public actor SafariHandoffProcessSupervisor:
 
         init(
             environment: @escaping @Sendable () -> [String: String],
-            sleep: @escaping @Sendable (UInt64) async -> Void = {
-                nanoseconds in
+            sleep: @escaping @Sendable (UInt64) async -> Void = { nanoseconds in
                 try? await Task.sleep(nanoseconds: nanoseconds)
             },
             uptimeNanoseconds: @escaping @Sendable () -> UInt64 = {
@@ -685,6 +683,9 @@ public actor SafariHandoffProcessSupervisor:
         }
     }
 
+    // AUDIT: This wrapper owns the hand-off process descriptors and closes them
+    // exactly once with the package lifetime.
+    // sendable-allowlist: process-handle
     private final class PackageHandle: @unchecked Sendable {
         let rootDescriptor: Int32
         let packageDescriptor: Int32
@@ -1937,7 +1938,7 @@ public actor SafariHandoffProcessSupervisor:
             "ANTIGRAVITY_HOME",
             "GEMINI_HOME",
             "CURSOR_AGENT_HOME",
-            "CURSOR_AGENT_CONFIG_PATH",
+            "CURSOR_AGENT_CONFIG_PATH"
         ] {
             environment.removeValue(forKey: key)
         }
@@ -2331,7 +2332,13 @@ extension SafariHandoffProcessSupervisor {
                       FileManager.default.fileExists(atPath: path) else {
                     return nil
                 }
-                try validateParentDirectories(of: path + "/placeholder")
+                do {
+                    try validateParentDirectories(
+                        of: path + "/placeholder"
+                    )
+                } catch ExecutableTrustFailure.untrustedParentDirectory {
+                    return nil
+                }
                 return path
             }
             guard trusted.isEmpty == false else {
@@ -2641,12 +2648,17 @@ extension SafariHandoffProcessSupervisor {
 // MARK: - Production watchdog session
 
 #if os(macOS)
+// AUDIT: The watchdog owns POSIX process/session descriptors and serializes
+// mutable observation state through its lock and dispatch queue.
+// sendable-allowlist: process-handle
 private final class POSIXWatchdogSession:
     SafariHandoffProcessSupervisor.WatchdogSession,
-    @unchecked Sendable
-{
+    @unchecked Sendable { // sendable-allowlist: process-handle
     typealias Supervisor = SafariHandoffProcessSupervisor
 
+    // AUDIT: Output bytes and truncation counters are snapshots guarded by the
+    // collector's NSLock while the watchdog reads pipes concurrently.
+    // sendable-allowlist: internal-lock-snapshot-store
     private final class Collector: @unchecked Sendable {
         private let lock = NSLock()
         private var data = Data()
@@ -3160,8 +3172,7 @@ private final class POSIXWatchdogSession:
     }
 
     private func readInitialStatus()
-        throws -> SafariHandoffProcessWatchdog.Message
-    {
+        throws -> SafariHandoffProcessWatchdog.Message {
         var line = Data()
         let deadline = DispatchTime.now().uptimeNanoseconds
             + 10_000_000_000
@@ -3770,6 +3781,9 @@ public enum SafariHandoffProcessSentinel {
     static let readyByte: UInt8 = 0xA5
     private static let terminationGraceMicroseconds: useconds_t = 2_000_000
 
+    // AUDIT: These closures are immutable POSIX C-API shims; no mutable state
+    // crosses the sentinel boundary.
+    // sendable-allowlist: foundation-sdk-shim
     struct Runtime: @unchecked Sendable {
         let pollEvents: @Sendable (
             _ descriptor: inout pollfd,
@@ -3910,6 +3924,9 @@ public enum SafariHandoffProcessWatchdog {
     static let maximumStatusBytes = 16 * 1024
     private static let terminationGraceNanoseconds: UInt64 = 2_000_000_000
 
+    // AUDIT: These closures are immutable POSIX C-API shims; process/session
+    // state remains owned by the watchdog implementation.
+    // sendable-allowlist: foundation-sdk-shim
     struct MonitorRuntime: @unchecked Sendable {
         let waitNoHang: @Sendable (
             _ childPID: pid_t,
@@ -3972,7 +3989,11 @@ public enum SafariHandoffProcessWatchdog {
                 getpgrp()
             },
             processMatches: { identity in
+                #if os(macOS)
                 SafariHandoffProcessWatchdog.processMatches(identity)
+                #else
+                false
+                #endif
             }
         )
     }
@@ -4537,7 +4558,7 @@ private enum SafariHandoffReceiptKeyStore {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationContext as String:
-                nonInteractiveKeychainAuthenticationContext(),
+                nonInteractiveKeychainAuthenticationContext()
         ]
         var item: CFTypeRef?
         let status = withKeychainUserInteractionDisabled {
@@ -4565,7 +4586,7 @@ private enum SafariHandoffReceiptKeyStore {
                 kSecAttrAccount as String: account,
                 kSecValueData as String: key,
                 kSecAttrAccessible as String:
-                    kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                    kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             ]
             let addStatus = withKeychainUserInteractionDisabled {
                 SecItemAdd(query as CFDictionary, nil)

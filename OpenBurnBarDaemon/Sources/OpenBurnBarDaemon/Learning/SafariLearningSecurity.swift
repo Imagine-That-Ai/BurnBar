@@ -124,8 +124,8 @@ enum SafariLearningSecurity {
         let regexRules: [(String, String)] = [
             (#"(?is)<\s*(system|assistant|developer)(?:\s|>)"#, "prompt-injection:forged-role-tag"),
             (#"(?is)<!--.*?(ignore|system|developer|instruction).*?-->"#, "prompt-injection:hidden-comment"),
-            (#"(?im)^\s*(system|assistant|developer)\s*:"# , "prompt-injection:forged-role-line"),
-            (#"(?i)\b(?:javascript|data|file)\s*:"# , "unsafe-url-scheme"),
+            (#"(?im)^\s*(system|assistant|developer)\s*:"#, "prompt-injection:forged-role-line"),
+            (#"(?i)\b(?:javascript|data|file)\s*:"#, "unsafe-url-scheme"),
             (#"(?im)^\s*(?:`{3,}|~{3,})[^\n]*$"#, "script-ast:fenced-code"),
             (#"(?is)<\s*(?:script|iframe|object|embed|applet)\b"#, "script-ast:active-html"),
             (#"(?is)<\s*(?:form|link|meta|svg)\b[^>]*(?:action|href|http-equiv|on[a-z]{3,})\s*="#, "script-ast:active-html"),
@@ -138,10 +138,9 @@ enum SafariLearningSecurity {
             (#"\$\([^)]+\)"#, "script-execution:command-substitution"),
             (#"`[^`\n]*(?:curl|wget|sudo|rm\s+-rf|launchctl|crontab)[^`\n]*`"#, "script-execution:inline-shell")
         ]
-        for (pattern, finding) in regexRules {
-            if matches(pattern, in: folded) {
-                findings.append(finding)
-            }
+        for (pattern, finding) in regexRules
+            where matches(pattern, in: folded) {
+            findings.append(finding)
         }
 
         if combined.unicodeScalars.contains(where: {
@@ -193,7 +192,7 @@ enum SafariLearningSecurity {
             return true
         }
         if trimmed.utf8.count > 2 * 1_024,
-           matchCount(#""[^"\n]{1,80}"\s*:"# , in: trimmed, stoppingAt: 24) >= 24 {
+           matchCount(#""[^"\n]{1,80}"\s*:"#, in: trimmed, stoppingAt: 24) >= 24 {
             return true
         }
 

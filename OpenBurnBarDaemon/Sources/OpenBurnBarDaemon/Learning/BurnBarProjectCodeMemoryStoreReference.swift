@@ -1,5 +1,8 @@
 import Foundation
 
+// AUDIT: The reference is a lock-protected mutable slot; callers receive the
+// current store only through the synchronization boundary.
+// sendable-allowlist: internal-lock-snapshot-store
 /// Thread-safe indirection between the daemon's lazy code-memory bootstrap and
 /// the long-lived Safari learning coordinator.
 ///

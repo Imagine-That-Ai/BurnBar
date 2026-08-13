@@ -282,7 +282,7 @@ test "$(stat -f '%Lp' "$evidence")" = "700"
 test "$(stat -f '%Lp' "$receipt")" = "600"
 grep -Fq -- "--delivery-id DELIVERY-1 --wait" "$xcrun_log"
 grep -Fq -- "--platform macos --wait" "$xcrun_log"
-if rg -F "TEST-SECRET" "$evidence" >/dev/null; then
+if grep -R -F -q -- "TEST-SECRET" "$evidence"; then
   echo "FAIL: App Store Connect evidence leaked private key material." >&2
   exit 1
 fi

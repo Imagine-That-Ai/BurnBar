@@ -87,16 +87,15 @@ scripts/materialize-openburnbar-safari-xcode-project.sh
 
 The transition runs pinned XcodeGen `2.45.4` twice, requires the historical
 PBX SHA-256
-`84cfb5ee1607479837e75a4338eef39470f7ac7dc60aa077b7d2db6c66727e69`,
-compares the complete semantic graphs, restores generated Info plists
-byte-for-byte, and accepts only these source-membership changes:
+`8cb6a230de34e118dbb38945a7033ed6960d736158f8598d76b86aab2ace1491`,
+compares the complete semantic graphs after normalizing PBX object IDs and
+top-level target-reference order, restores generated Info plists byte-for-byte,
+and accepts only these source-membership changes:
 
-- `OpenBurnBarDaemon` Sources: 230 → 232
-- `OpenBurnBarDaemonTests` Sources: 119 → 121
-- `GatewayRequestAttribution.swift`
-- `SafariHandoffProcessSupervisor.swift`
-- `SafariHandoffProcessSupervisorTests.swift`
-- `SafariHandoffProcessWatchdogTests.swift`
+- `OpenBurnBarDaemon` Sources: 235 → 235 (no production additions or removals)
+- `OpenBurnBarDaemonTests` Sources: 128 → 130
+- `OpenBurnBarHTTPGatewayServerTestSupport.swift`
+- `OpenBurnBarMissionControlServiceTests+NextActions.swift`
 
 After the generated project and all source changes pass the focused and broad
 native gates, stage only the ownership-audited paths through the dedicated

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Verify the one permitted XcodeGen source-membership transition.
 
-The Safari certification successor adds exactly two daemon sources and two
-daemon-test sources to a project that was previously generated without those
-untracked files. This verifier compares target source memberships by semantic
-file reference instead of PBX object identifier, strips only the four audited
-PBX file/build objects and their exact references, and then applies the
-repository's full semantic PBX normalizer. It therefore fails closed on both
-unexpected source membership and any unrelated target, build-setting, phase,
-package, resource, or project-graph drift.
+The Safari certification successor adds exactly two daemon-test sources to a
+project that was previously generated without those untracked files. Daemon
+production membership must remain unchanged. This verifier compares target
+source memberships by semantic file reference instead of PBX object
+identifier, strips only the two audited PBX file/build objects and their exact
+references, and then applies the repository's full semantic PBX normalizer. It
+therefore fails closed on both unexpected source membership and any unrelated
+target, build-setting, phase, package, resource, or project-graph drift.
 """
 
 from __future__ import annotations
@@ -31,20 +31,14 @@ OBJECT_ENTRY = re.compile(
 ISA = re.compile(r"\bisa\s*=\s*(?P<isa>[A-Za-z0-9_]+)\s*;")
 
 EXPECTED_BASE_COUNTS = {
-    "OpenBurnBarDaemon": 230,
-    "OpenBurnBarDaemonTests": 119,
+    "OpenBurnBarDaemon": 235,
+    "OpenBurnBarDaemonTests": 128,
 }
 EXPECTED_ADDITIONS = {
-    "OpenBurnBarDaemon": collections.Counter(
-        {
-            "GatewayRequestAttribution.swift": 1,
-            "SafariHandoffProcessSupervisor.swift": 1,
-        }
-    ),
     "OpenBurnBarDaemonTests": collections.Counter(
         {
-            "SafariHandoffProcessSupervisorTests.swift": 1,
-            "SafariHandoffProcessWatchdogTests.swift": 1,
+            "OpenBurnBarHTTPGatewayServerTestSupport.swift": 1,
+            "OpenBurnBarMissionControlServiceTests+NextActions.swift": 1,
         }
     ),
 }
@@ -203,11 +197,7 @@ def top_level_statements(body: str) -> list[str]:
             if brace_depth == 0:
                 fail("unbalanced braces in PBX object")
             brace_depth -= 1
-        elif (
-            character == ";"
-            and parenthesis_depth == 0
-            and brace_depth == 0
-        ):
+        elif character == ";" and parenthesis_depth == 0 and brace_depth == 0:
             statement = body[statement_start:index].strip()
             if statement:
                 statements.append(statement)
@@ -268,10 +258,7 @@ def require_object(
         fail(f"PBX object {identifier} is referenced but missing")
     actual_isa = object_isa(pbx_object)
     if actual_isa != expected_isa:
-        fail(
-            f"PBX object {identifier} must be {expected_isa}; "
-            f"found {actual_isa or 'unknown'}"
-        )
+        fail(f"PBX object {identifier} must be {expected_isa}; found {actual_isa or 'unknown'}")
     return pbx_object
 
 
@@ -284,10 +271,7 @@ def file_reference_label(file_reference: PBXObject) -> str:
     normalized = label.replace("\\", "/").rstrip("/")
     basename = normalized.rsplit("/", 1)[-1]
     if not basename or basename in {".", ".."}:
-        fail(
-            f"PBXFileReference {file_reference.identifier} has unsafe label "
-            f"{label!r}"
-        )
+        fail(f"PBXFileReference {file_reference.identifier} has unsafe label {label!r}")
     return basename
 
 
@@ -314,10 +298,7 @@ def source_memberships(path: Path) -> ProjectMemberships:
             if phase is not None and object_isa(phase) == "PBXSourcesBuildPhase":
                 source_phase_ids.append(phase_id)
         if len(source_phase_ids) != 1:
-            fail(
-                f"target {target_name!r} must have exactly one Sources build "
-                f"phase; found {len(source_phase_ids)}"
-            )
+            fail(f"target {target_name!r} must have exactly one Sources build phase; found {len(source_phase_ids)}")
 
         source_phase = require_object(
             objects,
@@ -334,10 +315,7 @@ def source_memberships(path: Path) -> ProjectMemberships:
                 fail(f"PBXBuildFile {build_file_id} has no fileRef")
             file_reference_id = file_reference_id.split()[0]
             if not re.fullmatch(PBX_ID_PATTERN, file_reference_id):
-                fail(
-                    f"PBXBuildFile {build_file_id} has malformed fileRef "
-                    f"{file_reference_id!r}"
-                )
+                fail(f"PBXBuildFile {build_file_id} has malformed fileRef {file_reference_id!r}")
             file_reference = require_object(
                 objects,
                 file_reference_id,
@@ -409,11 +387,7 @@ def remove_list_references(
             re.DOTALL,
         )
         line_occurrences = list(line_reference.finditer(items))
-        occurrences = (
-            line_occurrences
-            if line_occurrences
-            else list(inline_reference.finditer(items))
-        )
+        occurrences = line_occurrences if line_occurrences else list(inline_reference.finditer(items))
         if len(occurrences) != 1:
             fail(
                 f"PBX object {pbx_object.identifier} must contain expected "
@@ -423,11 +397,7 @@ def remove_list_references(
         reference = line_reference if line_occurrences else inline_reference
         items = reference.sub("", items, count=1)
 
-    return (
-        pbx_object.body[: list_match.start("items")]
-        + items
-        + pbx_object.body[list_match.end("items") :]
-    )
+    return pbx_object.body[: list_match.start("items")] + items + pbx_object.body[list_match.end("items") :]
 
 
 def stripped_generated_project(
@@ -442,10 +412,7 @@ def stripped_generated_project(
         for source, expected_count in additions.items():
             memberships = generated.entries[target].get(source, [])
             if len(memberships) != expected_count:
-                fail(
-                    f"generated {target} source identity for {source} is "
-                    f"ambiguous: found {len(memberships)}"
-                )
+                fail(f"generated {target} source identity for {source} is ambiguous: found {len(memberships)}")
             for membership in memberships:
                 removal_object_ids.add(membership.build_file_identifier)
                 removal_object_ids.add(membership.file_reference_identifier)
@@ -457,9 +424,7 @@ def stripped_generated_project(
     replacements: list[tuple[int, int, str]] = []
     for pbx_object in generated.objects.values():
         if pbx_object.identifier in removal_object_ids:
-            replacements.append(
-                (pbx_object.entry_start, pbx_object.entry_end, "")
-            )
+            replacements.append((pbx_object.entry_start, pbx_object.entry_end, ""))
             continue
 
         reference_counts = {
@@ -471,11 +436,7 @@ def stripped_generated_project(
             )
             for identifier in removal_object_ids
         }
-        referenced = {
-            identifier
-            for identifier, count in reference_counts.items()
-            if count
-        }
+        referenced = {identifier for identifier, count in reference_counts.items() if count}
         if not referenced:
             continue
 
@@ -535,6 +496,49 @@ def stripped_generated_project(
     return stripped
 
 
+def normalized_project_target_order(text: str) -> str:
+    """Sort the PBXProject target list by semantic target name."""
+
+    objects = parse_objects(text)
+    project_objects = [pbx_object for pbx_object in objects.values() if object_isa(pbx_object) == "PBXProject"]
+    if not project_objects:
+        fail("project.pbxproj contains no PBXProject")
+    if len(project_objects) != 1:
+        fail(f"project.pbxproj must contain exactly one PBXProject; found {len(project_objects)}")
+    project = project_objects[0]
+    targets_match = re.search(
+        r"\btargets\s*=\s*\((?P<items>.*?)\);",
+        project.body,
+        re.DOTALL,
+    )
+    if targets_match is None:
+        fail("PBXProject is missing targets list")
+
+    target_ids = re.findall(rf"\b{PBX_ID_PATTERN}\b", targets_match.group("items"))
+    named_targets: list[tuple[str, str]] = []
+    for target_id in target_ids:
+        target = require_object(objects, target_id, "PBXNativeTarget")
+        target_name = scalar(target.body, "name") or target.comment
+        if not target_name:
+            fail(f"PBXNativeTarget {target_id} has no name")
+        named_targets.append((target_name, target_id))
+    target_names = [name for name, _ in named_targets]
+    if len(target_names) != len(set(target_names)):
+        fail("PBXProject targets list contains duplicate semantic target names")
+
+    indentation_match = re.search(r"\n(?P<indent>[ \t]*)[A-F0-9]{24}\b", targets_match.group("items"))
+    indentation = indentation_match.group("indent") if indentation_match else "\t\t\t\t"
+    sorted_items = "".join(
+        f"\n{indentation}{target_id} /* {target_name} */," for target_name, target_id in sorted(named_targets)
+    )
+    if targets_match.group("items").endswith("\n"):
+        sorted_items += "\n"
+    normalized_body = (
+        project.body[: targets_match.start("items")] + sorted_items + project.body[targets_match.end("items") :]
+    )
+    return text[: project.body_start] + normalized_body + text[project.body_end :]
+
+
 def canonicalizer_module():
     verifier = Path(__file__).with_name("verify-xcodegen-pbxproj-drift.py")
     if not verifier.is_file() or verifier.is_symlink():
@@ -556,22 +560,24 @@ def require_no_other_semantic_drift(
     after: Path,
     generated: ProjectMemberships,
 ) -> None:
-    original_text = before.read_text(encoding="utf-8", errors="strict")
     generated_text = after.read_text(encoding="utf-8", errors="strict")
     stripped_text = stripped_generated_project(generated_text, generated)
     canonicalizer = canonicalizer_module()
-    with tempfile.TemporaryDirectory(
-        prefix="openburnbar-safari-xcodegen-transition."
-    ) as temporary_directory:
+    with tempfile.TemporaryDirectory(prefix="openburnbar-safari-xcodegen-transition.") as temporary_directory:
+        original_path = Path(temporary_directory) / "original.pbxproj"
         stripped_path = Path(temporary_directory) / "stripped.pbxproj"
-        stripped_path.write_text(stripped_text, encoding="utf-8")
-        original_canonical = canonicalizer.canonical_pbxproj(before)
+        original_path.write_text(
+            normalized_project_target_order(before.read_text(encoding="utf-8", errors="strict")),
+            encoding="utf-8",
+        )
+        stripped_path.write_text(
+            normalized_project_target_order(stripped_text),
+            encoding="utf-8",
+        )
+        original_canonical = canonicalizer.canonical_pbxproj(original_path)
         stripped_canonical = canonicalizer.canonical_pbxproj(stripped_path)
     if original_canonical != stripped_canonical:
-        fail(
-            "generated project contains semantic drift outside the four "
-            "audited Safari source memberships"
-        )
+        fail("generated project contains semantic drift outside the two audited daemon-test source memberships")
 
 
 def verify_transition(before: Path, after: Path) -> None:
@@ -580,20 +586,14 @@ def verify_transition(before: Path, after: Path) -> None:
     if set(original.by_target) != set(generated.by_target):
         added_targets = sorted(set(generated.by_target) - set(original.by_target))
         removed_targets = sorted(set(original.by_target) - set(generated.by_target))
-        fail(
-            "native target set changed; "
-            f"added={added_targets or 'none'}, removed={removed_targets or 'none'}"
-        )
+        fail(f"native target set changed; added={added_targets or 'none'}, removed={removed_targets or 'none'}")
 
     for target, expected_count in EXPECTED_BASE_COUNTS.items():
         actual_count = original.by_target.get(target)
         if actual_count is None:
             fail(f"required target {target!r} is missing from the original project")
         if sum(actual_count.values()) != expected_count:
-            fail(
-                f"original {target} Sources count must be {expected_count}; "
-                f"found {sum(actual_count.values())}"
-            )
+            fail(f"original {target} Sources count must be {expected_count}; found {sum(actual_count.values())}")
 
     changed_targets: set[str] = set()
     for target in sorted(original.by_target):
@@ -604,38 +604,23 @@ def verify_transition(before: Path, after: Path) -> None:
         changed_targets.add(target)
         expected_added = EXPECTED_ADDITIONS.get(target, collections.Counter())
         if removed:
-            fail(
-                f"{target} removed source membership that is not permitted: "
-                f"{render(removed)}"
-            )
+            fail(f"{target} removed source membership that is not permitted: {render(removed)}")
         if added != expected_added:
-            fail(
-                f"{target} source additions must be exactly "
-                f"{render(expected_added)}; found {render(added)}"
-            )
+            fail(f"{target} source additions must be exactly {render(expected_added)}; found {render(added)}")
 
     if changed_targets != set(EXPECTED_ADDITIONS):
-        fail(
-            "changed source targets must be exactly "
-            f"{sorted(EXPECTED_ADDITIONS)}; found {sorted(changed_targets)}"
-        )
+        fail(f"changed source targets must be exactly {sorted(EXPECTED_ADDITIONS)}; found {sorted(changed_targets)}")
 
     for target, additions in EXPECTED_ADDITIONS.items():
         expected_generated_count = EXPECTED_BASE_COUNTS[target] + sum(additions.values())
         actual_generated_count = sum(generated.by_target[target].values())
         if actual_generated_count != expected_generated_count:
-            fail(
-                f"generated {target} Sources count must be "
-                f"{expected_generated_count}; found {actual_generated_count}"
-            )
+            fail(f"generated {target} Sources count must be {expected_generated_count}; found {actual_generated_count}")
         for source, expected_occurrences in additions.items():
             original_occurrences = original.by_target[target][source]
             generated_occurrences = generated.by_target[target][source]
             if original_occurrences != 0:
-                fail(
-                    f"original {target} unexpectedly already contains "
-                    f"{source} x{original_occurrences}"
-                )
+                fail(f"original {target} unexpectedly already contains {source} x{original_occurrences}")
             if generated_occurrences != expected_occurrences:
                 fail(
                     f"generated {target} must contain {source} exactly "
@@ -647,8 +632,7 @@ def verify_transition(before: Path, after: Path) -> None:
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         print(
-            "usage: verify-openburnbar-safari-xcodegen-transition.py "
-            "<original.pbxproj> <generated.pbxproj>",
+            "usage: verify-openburnbar-safari-xcodegen-transition.py <original.pbxproj> <generated.pbxproj>",
             file=sys.stderr,
         )
         return 64
@@ -658,8 +642,8 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: XcodeGen changed only OpenBurnBarDaemon 230->232 and "
-        "OpenBurnBarDaemonTests 119->121 with the four audited Safari sources."
+        "PASS: XcodeGen kept OpenBurnBarDaemon at 235 Sources and changed "
+        "OpenBurnBarDaemonTests 128->130 with only the two audited test sources."
     )
     return 0
 

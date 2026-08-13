@@ -61,9 +61,7 @@ class ParseMacOSProvisioningUDIDTests(unittest.TestCase):
         self.assertIn("found 2", result.stderr)
 
     def test_rejects_malformed_identifier(self) -> None:
-        result = self.run_parser(
-            {"SPHardwareDataType": [{"provisioning_UDID": "not valid"}]}
-        )
+        result = self.run_parser({"SPHardwareDataType": [{"provisioning_UDID": "not valid"}]})
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("malformed provisioning_UDID", result.stderr)

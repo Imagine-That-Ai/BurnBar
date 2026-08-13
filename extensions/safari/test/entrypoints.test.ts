@@ -1,6 +1,13 @@
-import type { PopupRequest, PopupResponse, PopupSnapshot } from '../src/shared/messages';
+import {
+  isPopupRequest,
+  isPopupResponse,
+  type PopupRequest,
+  type PopupResponse,
+  type PopupSnapshot
+} from '../src/shared/messages';
 import { buildSafariPerformanceDiagnostics } from '../src/shared/performance';
 import { createMockBrowser } from './helpers/mockBrowser';
+import { requireElement, requireRecord, requireValue, testDOMRect } from './helpers/assertions';
 
 function popupSnapshot(overrides: Partial<PopupSnapshot> = {}): PopupSnapshot {
   return {
@@ -144,9 +151,12 @@ describe('WebExtension runtime entrypoints', () => {
     ).resolves.toBeUndefined();
     expect(controls.nativeMessages).toHaveLength(0);
 
-    const response = (await controls.emitRuntimeMessage({
+    const response = await controls.emitRuntimeMessage({
       type: 'popup.bootstrap'
-    })) as PopupResponse;
+    });
+    if (!isPopupResponse(response)) {
+      throw new Error('Expected a valid popup response.');
+    }
     expect(response.ok).toBe(true);
     if (!response.ok) {
       throw new Error(response.error.message);
@@ -176,17 +186,7 @@ describe('WebExtension runtime entrypoints', () => {
     vi.spyOn(document.documentElement, 'scrollHeight', 'get').mockReturnValue(1600);
     vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1280);
     vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(800);
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
-      x: 10,
-      y: 20,
-      left: 10,
-      top: 20,
-      width: 120,
-      height: 40,
-      right: 130,
-      bottom: 60,
-      toJSON: () => ({})
-    } as DOMRect);
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(testDOMRect(10, 20, 120, 40));
     vi.spyOn(document.head, 'append').mockImplementation((...nodes: (Node | string)[]) => {
       const node = nodes[0];
       if (node instanceof Node) {
@@ -203,17 +203,23 @@ describe('WebExtension runtime entrypoints', () => {
     }
     vi.stubGlobal('Image', FakeImage);
     const createElement = document.createElement.bind(document);
-    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string, options?: ElementCreationOptions) => {
       if (tagName === 'canvas') {
-        return {
-          width: 0,
-          height: 0,
-          getContext: () => ({ drawImage: vi.fn() }),
-          toDataURL: () => 'data:image/jpeg;base64,anBlZw=='
-        } as unknown as HTMLCanvasElement;
+        const canvas = createElement('canvas');
+        Object.defineProperties(canvas, {
+          getContext: {
+            configurable: true,
+            value: vi.fn(() => ({ drawImage: vi.fn() }))
+          },
+          toDataURL: {
+            configurable: true,
+            value: vi.fn(() => 'data:image/jpeg;base64,anBlZw==')
+          }
+        });
+        return canvas;
       }
-      return createElement(tagName);
-    }) as typeof document.createElement);
+      return createElement(tagName, options);
+    });
 
     await import('../src/content/index');
     await flushTasks();
@@ -260,11 +266,14 @@ describe('WebExtension runtime entrypoints', () => {
     await expect(controls.emitRuntimeMessage({ type: 'content.abort', reason: 'test stop' })).resolves.toMatchObject({
       ok: true
     });
-    const prepared = (await controls.emitRuntimeMessage({
-      type: 'content.capture.prepare',
-      token: 'capture-1'
-    })) as { result: { pageHeight: number } };
-    expect(prepared.result.pageHeight).toBeGreaterThan(0);
+    const prepared = requireRecord(
+      await controls.emitRuntimeMessage({
+        type: 'content.capture.prepare',
+        token: 'capture-1'
+      }),
+      'capture preparation response'
+    );
+    expect(requireRecord(prepared.result, 'capture preparation result').pageHeight).toBeGreaterThan(0);
     await expect(
       controls.emitRuntimeMessage({
         type: 'content.capture.scroll',
@@ -321,7 +330,10 @@ describe('WebExtension runtime entrypoints', () => {
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
     let currentSnapshot = popupSnapshot();
     browser.runtime.sendMessage = vi.fn(async (message: unknown) => {
-      const request = message as PopupRequest;
+      if (!isPopupRequest(message)) {
+        throw new Error('Expected a valid popup request.');
+      }
+      const request = message;
       requests.push(request);
       switch (request.type) {
         case 'popup.setMode':
@@ -369,7 +381,7 @@ describe('WebExtension runtime entrypoints', () => {
 
     await import('../src/popup/index');
     await flushTasks();
-    const root = document.getElementById('app')!;
+    const root = requireElement(document.getElementById('app'), 'popup root');
     expect(requests[0]).toEqual({ type: 'popup.bootstrap' });
     expect(requests).toContainEqual({
       type: 'popup.recordPerformance',
@@ -379,24 +391,33 @@ describe('WebExtension runtime entrypoints', () => {
     });
     expect(root.querySelector('.composer')).not.toBeNull();
 
-    root.querySelector<HTMLButtonElement>('[data-action="diagnostics-copy"]')!.click();
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="diagnostics-copy"]'),
+      'copy diagnostics'
+    ).click();
     await flushTasks();
     expect(clipboardWrite).toHaveBeenCalledOnce();
     const copiedJSON = String(clipboardWrite.mock.calls[0]?.[0]);
     expect(copiedJSON).toContain('"localOnly": true');
     expect(copiedJSON).not.toContain('https://example.com/');
 
-    root.querySelector<HTMLButtonElement>('[data-action="diagnostics-download"]')!.click();
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="diagnostics-download"]'),
+      'download diagnostics'
+    ).click();
     await flushTasks();
     expect(createObjectURL).toHaveBeenCalledOnce();
     vi.advanceTimersByTime(0);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:openburnbar-performance');
 
-    root.querySelector<HTMLButtonElement>('[data-action="diagnostics-clear"]')!.click();
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="diagnostics-clear"]'),
+      'clear diagnostics'
+    ).click();
     expect(root.querySelector<HTMLButtonElement>('[data-action="diagnostics-clear"]')?.textContent).toContain(
       'Confirm clear'
     );
-    root.querySelector<HTMLButtonElement>('[data-action="diagnostics-clear"]')!.click();
+    requireElement(root.querySelector<HTMLButtonElement>('[data-action="diagnostics-clear"]'), 'confirm clear').click();
     await flushTasks();
     expect(currentSnapshot.performance).toMatchObject({
       totalRecorded: 0,
@@ -405,44 +426,50 @@ describe('WebExtension runtime entrypoints', () => {
       summaries: []
     });
 
-    const draft = root.querySelector<HTMLTextAreaElement>('[data-input="draft"]')!;
+    const draft = requireElement(root.querySelector<HTMLTextAreaElement>('[data-input="draft"]'), 'Ask draft');
     draft.value = 'What color is the CTA?';
     draft.dispatchEvent(new Event('input', { bubbles: true }));
-    root
-      .querySelector<HTMLFormElement>('[data-form="composer"]')!
-      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    requireElement(root.querySelector<HTMLFormElement>('[data-form="composer"]'), 'Ask form').dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true })
+    );
     await flushTasks();
     expect(requests).toContainEqual({
       type: 'popup.ask',
       prompt: 'What color is the CTA?'
     });
 
-    root.querySelector<HTMLButtonElement>('[data-action="mode:agentic"]')!.click();
+    requireElement(root.querySelector<HTMLButtonElement>('[data-action="mode:agentic"]'), 'Agentic mode').click();
     await flushTasks();
-    const agenticDraft = root.querySelector<HTMLTextAreaElement>('[data-input="draft"]')!;
+    const agenticDraft = requireElement(
+      root.querySelector<HTMLTextAreaElement>('[data-input="draft"]'),
+      'Agentic draft'
+    );
     agenticDraft.value = 'Find the cheapest option';
     agenticDraft.dispatchEvent(new Event('input', { bubbles: true }));
-    root
-      .querySelector<HTMLFormElement>('[data-form="composer"]')!
-      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    requireElement(root.querySelector<HTMLFormElement>('[data-form="composer"]'), 'Agentic form').dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true })
+    );
     await flushTasks();
     expect(requests).toContainEqual({
       type: 'popup.startAgentic',
       prompt: 'Find the cheapest option'
     });
 
-    root.querySelector<HTMLButtonElement>('[data-action="mode:handoff"]')!.click();
+    requireElement(root.querySelector<HTMLButtonElement>('[data-action="mode:handoff"]'), 'Handoff mode').click();
     await flushTasks();
-    const agentSelect = root.querySelector<HTMLSelectElement>('[data-input="agent"]')!;
+    const agentSelect = requireElement(root.querySelector<HTMLSelectElement>('[data-input="agent"]'), 'agent select');
     agentSelect.value = 'codex';
     agentSelect.dispatchEvent(new Event('change', { bubbles: true }));
     await flushTasks();
-    const handoffDraft = root.querySelector<HTMLTextAreaElement>('[data-input="draft"]')!;
+    const handoffDraft = requireElement(
+      root.querySelector<HTMLTextAreaElement>('[data-input="draft"]'),
+      'Handoff draft'
+    );
     handoffDraft.value = 'Prepare a briefing';
     handoffDraft.dispatchEvent(new Event('input', { bubbles: true }));
-    root
-      .querySelector<HTMLFormElement>('[data-form="composer"]')!
-      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    requireElement(root.querySelector<HTMLFormElement>('[data-form="composer"]'), 'Handoff form').dispatchEvent(
+      new Event('submit', { bubbles: true, cancelable: true })
+    );
     await flushTasks();
     expect(requests).toContainEqual({
       type: 'popup.handoff',
@@ -454,7 +481,7 @@ describe('WebExtension runtime entrypoints', () => {
       mode: 'ask',
       selectedAgentId: 'vision-model',
       page: {
-        ...currentSnapshot.page!,
+        ...requireValue(currentSnapshot.page, 'current popup page'),
         sensitive: true,
         permission: 'prompt'
       },
@@ -480,7 +507,10 @@ describe('WebExtension runtime entrypoints', () => {
       ['trust-cloud', 'cloudScreenshotAcknowledged'],
       ['trust-kill', 'globalKillSwitch']
     ] as const) {
-      const input = root.querySelector<HTMLInputElement>(`[data-input="${inputName}"]`)!;
+      const input = requireElement(
+        root.querySelector<HTMLInputElement>(`[data-input="${inputName}"]`),
+        `${inputName} input`
+      );
       input.checked = !input.checked;
       input.dispatchEvent(new Event('change', { bubbles: true }));
       await flushTasks();
@@ -489,12 +519,16 @@ describe('WebExtension runtime entrypoints', () => {
       ).toBe(true);
     }
 
-    const correctionDraft = root.querySelector<HTMLTextAreaElement>('[data-input="correction-draft"]')!;
+    const correctionDraft = requireElement(
+      root.querySelector<HTMLTextAreaElement>('[data-input="correction-draft"]'),
+      'correction draft'
+    );
     correctionDraft.value = 'Always compare annual totals before monthly prices.';
     correctionDraft.dispatchEvent(new Event('input', { bubbles: true }));
-    root
-      .querySelector<HTMLFormElement>('[data-form="learning-correction"]')!
-      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    requireElement(
+      root.querySelector<HTMLFormElement>('[data-form="learning-correction"]'),
+      'learning correction form'
+    ).dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await flushTasks();
     expect(requests).toContainEqual({
       type: 'popup.teachCorrection',
@@ -502,14 +536,26 @@ describe('WebExtension runtime entrypoints', () => {
     });
     expect(root.querySelector<HTMLTextAreaElement>('[data-input="correction-draft"]')?.value).toBe('');
 
-    const learningToggle = root.querySelector<HTMLInputElement>('[data-input="learning-opt-in"]')!;
+    const learningToggle = requireElement(
+      root.querySelector<HTMLInputElement>('[data-input="learning-opt-in"]'),
+      'learning opt-in'
+    );
     learningToggle.checked = false;
     learningToggle.dispatchEvent(new Event('change', { bubbles: true }));
-    root.querySelector<HTMLButtonElement>('[data-action="approval:approval-1:allow_once"]')!.click();
-    root.querySelector<HTMLButtonElement>('[data-action="learning:proposal-1:approve"]')!.click();
-    root.querySelector<HTMLButtonElement>('[data-action="refresh"]')!.click();
-    root.querySelector<HTMLButtonElement>('[data-action="request-permission"]')!.click();
-    root.querySelector<HTMLButtonElement>('[data-action="abort"]')!.click();
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="approval:approval-1:allow_once"]'),
+      'allow-once approval'
+    ).click();
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="learning:proposal-1:approve"]'),
+      'approve learning'
+    ).click();
+    requireElement(root.querySelector<HTMLButtonElement>('[data-action="refresh"]'), 'refresh button').click();
+    requireElement(
+      root.querySelector<HTMLButtonElement>('[data-action="request-permission"]'),
+      'permission button'
+    ).click();
+    requireElement(root.querySelector<HTMLButtonElement>('[data-action="abort"]'), 'abort button').click();
     await flushTasks();
 
     root.dispatchEvent(

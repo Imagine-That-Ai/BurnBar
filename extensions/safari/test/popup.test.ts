@@ -3,6 +3,7 @@ import { createInitialPopupState, reducePopupState } from '../src/popup/state';
 import { buildPopupViewModel } from '../src/popup/viewModel';
 import type { PopupSnapshot } from '../src/shared/messages';
 import { buildSafariPerformanceDiagnostics } from '../src/shared/performance';
+import { requireElement, requireValue } from './helpers/assertions';
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -170,6 +171,10 @@ function snapshot(overrides: Partial<PopupSnapshot> = {}): PopupSnapshot {
   };
 }
 
+function snapshotPage(): NonNullable<PopupSnapshot['page']> {
+  return requireValue(snapshot().page, 'popup page snapshot');
+}
+
 describe('popup state and view model', () => {
   it('reduces local draft, filter, submission, initialization, and snapshot state', () => {
     const initial = createInitialPopupState();
@@ -291,7 +296,7 @@ describe('popup state and view model', () => {
     expect(
       view(
         snapshot({
-          page: { ...snapshot().page!, permission: 'unsupported' }
+          page: { ...snapshotPage(), permission: 'unsupported' }
         })
       ).primaryDisabledReason
     ).toMatch(/does not allow extensions/u);
@@ -316,7 +321,7 @@ describe('popup state and view model', () => {
       view(
         snapshot({
           mode: 'agentic',
-          page: { ...snapshot().page!, sensitive: false },
+          page: { ...snapshotPage(), sensitive: false },
           trust: { ...snapshot().trust, globalKillSwitch: true }
         })
       ).primaryDisabledReason
@@ -338,7 +343,7 @@ describe('popup state and view model', () => {
     expect(
       view(
         snapshot({
-          page: { ...snapshot().page!, sensitive: false },
+          page: { ...snapshotPage(), sensitive: false },
           trust: { ...snapshot().trust, cloudScreenshotAcknowledged: false }
         })
       ).primaryDisabledReason
@@ -347,7 +352,7 @@ describe('popup state and view model', () => {
     const degraded = view(
       snapshot({
         bridge: { ...snapshot().bridge, connection: 'degraded' },
-        page: { ...snapshot().page!, url: 'not a valid URL', title: '', permission: 'prompt' }
+        page: { ...snapshotPage(), url: 'not a valid URL', title: '', permission: 'prompt' }
       })
     );
     expect(degraded.connectionLabel).toBe('Limited');
@@ -359,14 +364,14 @@ describe('popup state and view model', () => {
     expect(
       view(
         snapshot({
-          page: { ...snapshot().page!, permission: 'denied' }
+          page: { ...snapshotPage(), permission: 'denied' }
         })
       ).permissionLabel
     ).toBe('Website access denied');
     expect(
       view(
         snapshot({
-          page: { ...snapshot().page!, permission: 'denied' }
+          page: { ...snapshotPage(), permission: 'denied' }
         })
       ).primaryDisabledReason
     ).toMatch(/Grant Safari website access/u);
@@ -413,9 +418,7 @@ describe('popup rendering', () => {
     expect(root.querySelector('.stop-button')?.hasAttribute('disabled')).toBe(false);
     expect(root.querySelector('.stop-button')?.getAttribute('aria-keyshortcuts')).toBe('Control+Alt+Meta+.');
     expect(root.querySelector('.approval-card')?.textContent).toContain('Allow once');
-    expect((root.querySelector('.composer-input') as HTMLTextAreaElement | null)?.value).toBe(
-      'Find the least expensive option'
-    );
+    expect(root.querySelector<HTMLTextAreaElement>('.composer-input')?.value).toBe('Find the least expensive option');
     expect(root.querySelector('.trust-drawer')?.textContent).toContain('Screenshots stay on this Mac');
     expect(root.querySelector('.learning-drawer')?.textContent).toContain('Extract store prices');
     expect(root.querySelector('.performance-drawer')?.textContent).toContain('Ask first token');
@@ -431,7 +434,7 @@ describe('popup rendering', () => {
     );
     expect(root.querySelector('.learning-correction')?.textContent).toContain('Explicit only');
     expect(root.querySelector('.learning-correction-note')?.textContent).toContain('does not infer a correction');
-    expect((root.querySelector('[data-input="correction-draft"]') as HTMLTextAreaElement | null)?.value).toBe(
+    expect(root.querySelector<HTMLTextAreaElement>('[data-input="correction-draft"]')?.value).toBe(
       'Always compare annual totals before monthly prices.'
     );
     expect(root.querySelector('[data-input="correction-draft"]')?.getAttribute('aria-describedby')).toContain(
@@ -483,17 +486,23 @@ describe('popup rendering', () => {
     expect(transcript).not.toBeNull();
     expect(search).not.toBeNull();
 
-    trust!.open = true;
-    learning!.open = true;
-    performance!.open = true;
-    content!.scrollTop = 173;
-    Object.defineProperties(transcript!, {
+    const trustDrawer = requireElement(trust, 'trust drawer');
+    const learningDrawer = requireElement(learning, 'learning drawer');
+    const performanceDrawer = requireElement(performance, 'performance drawer');
+    const contentScroll = requireElement(content, 'content scroll');
+    const transcriptPanel = requireElement(transcript, 'transcript');
+    const searchInput = requireElement(search, 'agent search input');
+    trustDrawer.open = true;
+    learningDrawer.open = true;
+    performanceDrawer.open = true;
+    contentScroll.scrollTop = 173;
+    Object.defineProperties(transcriptPanel, {
       clientHeight: { configurable: true, value: 200 },
       scrollHeight: { configurable: true, value: 900 }
     });
-    transcript!.scrollTop = 211;
-    search!.focus();
-    search!.setSelectionRange(1, 5, 'forward');
+    transcriptPanel.scrollTop = 211;
+    searchInput.focus();
+    searchInput.setSelectionRange(1, 5, 'forward');
 
     renderPopup(root, model);
 
@@ -540,8 +549,8 @@ describe('popup rendering', () => {
       const approval = root.querySelector<HTMLButtonElement>('[data-action="approval:approval-1:allow_session"]');
       expect(transcript).not.toBeNull();
       expect(approval).not.toBeNull();
-      transcript!.scrollTop = 690;
-      approval!.focus();
+      requireElement(transcript, 'transcript').scrollTop = 690;
+      requireElement(approval, 'approval action').focus();
 
       renderPopup(root, model);
 
@@ -577,7 +586,7 @@ describe('popup rendering', () => {
       },
       mode: 'watch',
       page: {
-        ...snapshot().page!,
+        ...snapshotPage(),
         permission: 'unsupported'
       },
       transcript: [],
@@ -604,7 +613,7 @@ describe('popup rendering', () => {
         initialized: true,
         draft: 'Summarize this page',
         snapshot: snapshot({
-          page: { ...snapshot().page!, permission: 'denied' }
+          page: { ...snapshotPage(), permission: 'denied' }
         })
       })
     );

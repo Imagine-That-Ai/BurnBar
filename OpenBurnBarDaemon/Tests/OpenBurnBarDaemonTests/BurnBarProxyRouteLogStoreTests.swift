@@ -300,8 +300,7 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
     }
 
     func testSafariAttributionCapabilityRenewalExtendsExpiryWithoutLosingReplayState()
-        async throws
-    {
+        async throws {
         let clientID = BurnBarClientID(rawValue: "safari-client")
         let sessionID = BurnBarSessionID(rawValue: "safari-session")
         let observedNow = Locked(Date(timeIntervalSince1970: 1_786_512_000))
@@ -323,14 +322,12 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
             "7DC72490-799E-4A9D-B22B-35E6860B9C31"
         let freshAfterRenewal =
             "D13FE268-C157-492E-8914-C37748383A63"
-        let headers: (String, String) -> [String: String] = {
-            token,
-            correlationID in
+        let headers: (String, String) -> [String: String] = { token, correlationID in
             [
                 "x-openburnbar-client":
                     GatewayRequestAttribution.safariClientSource,
                 "x-openburnbar-correlation-id": correlationID,
-                SafariGatewayAttributionAuthority.capabilityHeader: token,
+                SafariGatewayAttributionAuthority.capabilityHeader: token
             ]
         }
 
@@ -389,8 +386,7 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
     }
 
     func testConcurrentForcedRotationPreventsSuspendedRenewalFromRevivingOldGeneration()
-        async throws
-    {
+        async throws {
         let clientID = BurnBarClientID(rawValue: "safari-client")
         let sessionID = BurnBarSessionID(rawValue: "safari-session")
         let validator = OrderedAttributionValidator()
@@ -436,7 +432,7 @@ final class BurnBarProxyRouteLogStoreTests: XCTestCase {
                 "x-openburnbar-client":
                     GatewayRequestAttribution.safariClientSource,
                 "x-openburnbar-correlation-id": correlationID,
-                SafariGatewayAttributionAuthority.capabilityHeader: token,
+                SafariGatewayAttributionAuthority.capabilityHeader: token
             ]
         }
         let oldGenerationResolution = await authority.resolve(

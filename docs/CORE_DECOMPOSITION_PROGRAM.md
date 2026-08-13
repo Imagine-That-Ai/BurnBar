@@ -620,6 +620,18 @@ stay unchanged. The deny-gate is otherwise unmodified.
 
 **Usage-memory v61 ceiling adjustment (2026-08-16):** PR #2259 adds the byte-identical `OpenBurnBarDatabase+UsageMemoryMigrations.swift` sibling to `OpenBurnBarData` (21 files / 4,573 LOC). File ceiling moves 20 → 21; LOC ceiling stays 4,920.
 
+**Safari external-certification bridge ceiling adjustment (2026-08-13):** the exact
+OpenBurnBar Safari candidate adds five cross-platform Kernel-owned wire/authority files
+(`SafariAppGroupPayloadStore`, `SafariBridgeChunkStore`, `SafariDaemonSocketClient`,
+`SafariNativeBridgeController`, and `SafariNativeBridgeProtocol`) plus the Safari contract
+surface. These types are consumed by the native appex, daemon, and Core tests through
+`OpenBurnBarKernel`; moving them into a dependency-only leaf would duplicate the bridge
+boundary or invert the package dependency graph. The candidate measures 52,101 Kernel LOC
+across 160 files, so the planned Kernel ceiling moves narrowly from 47,250 to 52,250 LOC
+(149 LOC of bounded headroom). The file ceiling remains 185 and the deny-gate remains in
+force for any further Kernel growth; future bridge expansion requires decomposition or a
+separate reviewed ceiling change.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated

@@ -219,7 +219,8 @@ final class SafariNativeBridgeControllerTests: XCTestCase {
         guard case .object(let sentObject) = sent,
               case .object(let state)? = sentObject["pageState"],
               case .number = state["capturedAt"] else {
-            return XCTFail("daemon boundary must retain default Swift Codable Date numbers")
+            XCTFail("daemon boundary must retain default Swift Codable Date numbers")
+            return
         }
     }
 
@@ -256,10 +257,13 @@ final class SafariNativeBridgeControllerTests: XCTestCase {
         ]
         let response = try responseObject(controller.handle(propertyList: request))
         let result = try XCTUnwrap(response["result"] as? [String: Any])
-        XCTAssertTrue((result["leaseExpiresAt"] as? String)?.contains("T") == true)
+        XCTAssertEqual(
+            (result["leaseExpiresAt"] as? String)?.contains("T"),
+            true
+        )
         let command = try XCTUnwrap(result["command"] as? [String: Any])
-        XCTAssertTrue((command["issuedAt"] as? String)?.hasSuffix("Z") == true)
-        XCTAssertTrue((command["expiresAt"] as? String)?.hasSuffix("Z") == true)
+        XCTAssertEqual((command["issuedAt"] as? String)?.hasSuffix("Z"), true)
+        XCTAssertEqual((command["expiresAt"] as? String)?.hasSuffix("Z"), true)
     }
 
     func test_nativeAskAndArbitraryAliasesFailClosedWithoutDaemonCalls() throws {

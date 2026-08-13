@@ -699,10 +699,11 @@ public actor BurnBarRunService {
                 }
             : []
         return BurnBarRunEventBatch(
-            runs: (scopedRuns.map(\.snapshot) + handoffSnapshots)
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .prefix(request.limit)
-                .map { $0 },
+            runs: Array(
+                (scopedRuns.map(\.snapshot) + handoffSnapshots)
+                    .sorted { $0.updatedAt > $1.updatedAt }
+                    .prefix(request.limit)
+            ),
             approvals: approvals,
             pendingToolCalls: pendingToolCalls,
             arbitration: await clientRegistry.arbitration(),
@@ -1164,8 +1165,7 @@ public actor BurnBarRunService {
     }
 
     private static func makeSafariHandoffDateFormatter()
-        -> ISO8601DateFormatter
-    {
+        -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [
             .withInternetDateTime,

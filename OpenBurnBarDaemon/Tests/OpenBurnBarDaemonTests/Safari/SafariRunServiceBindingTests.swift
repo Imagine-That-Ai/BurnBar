@@ -583,7 +583,8 @@ final class SafariRunServiceBindingTests: XCTestCase {
             XCTFail("A different Safari client must not read this hand-off run.")
         } catch let error as BurnBarRunServiceError {
             guard case .runNotFound(let rejectedRunID) = error else {
-                return XCTFail("Unexpected cross-client get error: \(error)")
+                XCTFail("Unexpected cross-client get error: \(error)")
+                return
             }
             XCTAssertEqual(rejectedRunID, runID)
         }
@@ -598,7 +599,8 @@ final class SafariRunServiceBindingTests: XCTestCase {
             XCTFail("A different Safari session must not poll this hand-off run.")
         } catch let error as BurnBarRunServiceError {
             guard case .runNotFound(let rejectedRunID) = error else {
-                return XCTFail("Unexpected cross-session poll error: \(error)")
+                XCTFail("Unexpected cross-session poll error: \(error)")
+                return
             }
             XCTAssertEqual(rejectedRunID, runID)
         }
@@ -623,7 +625,8 @@ final class SafariRunServiceBindingTests: XCTestCase {
             XCTFail("The same hand-off run identity must never be reused.")
         } catch let error as BurnBarRunServiceError {
             guard case .externalRunAlreadyExists(let duplicateRunID) = error else {
-                return XCTFail("Unexpected duplicate identity error: \(error)")
+                XCTFail("Unexpected duplicate identity error: \(error)")
+                return
             }
             XCTAssertEqual(duplicateRunID, runID)
         }
@@ -1020,7 +1023,8 @@ final class SafariRunServiceBindingTests: XCTestCase {
             XCTFail("Expected run \(expectedRunID.rawValue) to be hidden.")
         } catch let error as BurnBarRunServiceError {
             guard case .runNotFound(let actualRunID) = error else {
-                return XCTFail("Unexpected run lookup error: \(error)")
+                XCTFail("Unexpected run lookup error: \(error)")
+                return
             }
             XCTAssertEqual(actualRunID, expectedRunID)
         } catch {

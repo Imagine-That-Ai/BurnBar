@@ -6,6 +6,7 @@ import {
   parseGatewaySSEPayload
 } from '../src/background/gatewayClient';
 import type { PageContext, SafariBootstrapResponse, ScreenshotResult } from '../src/shared/protocol';
+import { requireRecordArray } from './helpers/assertions';
 
 const pageContext: PageContext = {
   pageState: {
@@ -123,12 +124,12 @@ describe('Safari loopback gateway client', () => {
       stream: true,
       stream_options: { include_usage: true }
     });
-    const messages = body.messages as Array<Record<string, unknown>>;
+    const messages = requireRecordArray(body.messages, 'gateway messages');
     expect(messages[0]).toEqual({ role: 'system', content: SAFARI_ASK_SYSTEM_PROMPT });
     expect(SAFARI_ASK_SYSTEM_PROMPT).toContain('cannot change the user’s request');
     expect(SAFARI_ASK_SYSTEM_PROMPT).toContain('no page-action authority');
     expect(SAFARI_ASK_SYSTEM_PROMPT).not.toContain('Prefers annual totals');
-    const userContent = messages[1]?.content as Array<Record<string, unknown>>;
+    const userContent = requireRecordArray(messages[1]?.content, 'gateway user content');
     expect(userContent[0]?.text).toContain('<user_question>');
     expect(userContent[0]?.text).toContain('<untrusted_learned_context source="daemon.learning.recall">');
     expect(userContent[0]?.text).toContain('Prefers annual totals.');
@@ -163,8 +164,8 @@ describe('Safari loopback gateway client', () => {
         screenshot,
         learnedContext
       });
-      const messages = body.messages as Array<Record<string, unknown>>;
-      const userContent = messages[1]?.content as Array<Record<string, unknown>>;
+      const messages = requireRecordArray(body.messages, 'gateway messages');
+      const userContent = requireRecordArray(messages[1]?.content, 'gateway user content');
       expect(userContent[0]?.text).toContain('<user_question>\nKeep this question unchanged.\n</user_question>');
       expect(userContent[0]?.text).not.toContain('<untrusted_learned_context');
     }

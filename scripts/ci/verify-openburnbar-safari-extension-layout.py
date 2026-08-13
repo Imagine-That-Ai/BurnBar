@@ -21,9 +21,7 @@ EXPECTED_PERSISTENT_HOSTS = frozenset(
     }
 )
 EXPECTED_OPTIONAL_PAGE_HOSTS = frozenset({"http://*/*", "https://*/*"})
-REQUIRED_PERMISSIONS = frozenset(
-    {"activeTab", "nativeMessaging", "scripting", "storage", "tabs"}
-)
+REQUIRED_PERMISSIONS = frozenset({"activeTab", "nativeMessaging", "scripting", "storage", "tabs"})
 
 
 def fail(message: str) -> None:
@@ -40,9 +38,7 @@ def require_member(values: object, expected: str, label: str) -> None:
         fail(f"{label} must include {expected!r}; found {values!r}.")
 
 
-def require_exact_string_set(
-    values: object, expected: frozenset[str], label: str
-) -> None:
+def require_exact_string_set(values: object, expected: frozenset[str], label: str) -> None:
     if (
         not isinstance(values, list)
         or any(not isinstance(value, str) for value in values)
@@ -84,10 +80,7 @@ def validate(appex_path: Path) -> None:
     if not info_path.is_file() or info_path.is_symlink():
         fail(f"Safari extension Info.plist is missing or symlinked at {info_path}.")
     if not manifest_path.is_file() or manifest_path.is_symlink():
-        fail(
-            "Safari WebExtension manifest must exist at the appex resource root: "
-            f"{manifest_path}."
-        )
+        fail(f"Safari WebExtension manifest must exist at the appex resource root: {manifest_path}.")
 
     info = load_plist(info_path)
     require_equal(
@@ -105,10 +98,7 @@ def validate(appex_path: Path) -> None:
         fail("Safari extension CFBundleExecutable must be non-empty.")
     executable_path = contents / "MacOS" / executable
     if not executable_path.is_file() or not os.access(executable_path, os.X_OK):
-        fail(
-            "Safari extension executable is missing or not executable at "
-            f"{executable_path}."
-        )
+        fail(f"Safari extension executable is missing or not executable at {executable_path}.")
 
     extension = info.get("NSExtension")
     if not isinstance(extension, dict):
@@ -119,13 +109,8 @@ def validate(appex_path: Path) -> None:
         "Safari NSExtensionPointIdentifier",
     )
     principal_class = extension.get("NSExtensionPrincipalClass")
-    if not isinstance(principal_class, str) or not principal_class.endswith(
-        ".SafariWebExtensionHandler"
-    ):
-        fail(
-            "Safari NSExtensionPrincipalClass must resolve to "
-            "<module>.SafariWebExtensionHandler."
-        )
+    if not isinstance(principal_class, str) or not principal_class.endswith(".SafariWebExtensionHandler"):
+        fail("Safari NSExtensionPrincipalClass must resolve to <module>.SafariWebExtensionHandler.")
 
     manifest = load_manifest(manifest_path)
     require_equal(manifest.get("manifest_version"), 3, "Safari manifest_version")
@@ -143,15 +128,9 @@ def validate(appex_path: Path) -> None:
         "Safari background service worker",
     )
     browser_settings = manifest.get("browser_specific_settings")
-    safari_settings = (
-        browser_settings.get("safari")
-        if isinstance(browser_settings, dict)
-        else None
-    )
+    safari_settings = browser_settings.get("safari") if isinstance(browser_settings, dict) else None
     require_equal(
-        safari_settings.get("strict_min_version")
-        if isinstance(safari_settings, dict)
-        else None,
+        safari_settings.get("strict_min_version") if isinstance(safari_settings, dict) else None,
         EXPECTED_MINIMUM_SAFARI,
         "Safari strict_min_version",
     )
@@ -197,9 +176,7 @@ def validate(appex_path: Path) -> None:
 
     content_security_policy = manifest.get("content_security_policy")
     extension_pages_csp = (
-        content_security_policy.get("extension_pages")
-        if isinstance(content_security_policy, dict)
-        else None
+        content_security_policy.get("extension_pages") if isinstance(content_security_policy, dict) else None
     )
     if not isinstance(extension_pages_csp, str):
         fail("Safari manifest must define content_security_policy.extension_pages.")
@@ -207,16 +184,11 @@ def validate(appex_path: Path) -> None:
         fail("Safari extension CSP must restrict scripts to 'self'.")
     if "object-src 'none'" not in extension_pages_csp:
         fail("Safari extension CSP must disable object sources.")
-    if any(
-        forbidden in extension_pages_csp
-        for forbidden in ("'unsafe-eval'", "'unsafe-inline'", "http:", "https:")
-    ):
+    if any(forbidden in extension_pages_csp for forbidden in ("'unsafe-eval'", "'unsafe-inline'", "http:", "https:")):
         fail("Safari extension CSP must not authorize inline, evaluated, or remote code.")
 
     resources_root = resources.resolve()
-    for relative in sorted(
-        {value for value in referenced_files if isinstance(value, str)}
-    ):
+    for relative in sorted({value for value in referenced_files if isinstance(value, str)}):
         relative_path = Path(relative)
         if not relative or relative_path.is_absolute() or ".." in relative_path.parts:
             fail(f"Safari manifest contains an unsafe resource path: {relative!r}.")
@@ -224,10 +196,7 @@ def validate(appex_path: Path) -> None:
         try:
             candidate.relative_to(resources_root)
         except ValueError:
-            fail(
-                "Safari manifest resource escapes the appex resource root: "
-                f"{relative!r}."
-            )
+            fail(f"Safari manifest resource escapes the appex resource root: {relative!r}.")
         if not candidate.is_file():
             fail(f"Safari manifest references missing resource {relative!r}.")
 
