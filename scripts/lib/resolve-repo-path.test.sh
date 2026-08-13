@@ -55,10 +55,18 @@ if [[ ! -d "$created_release" || -L "$created_release" ]]; then
   echo "FAIL: Atomic release-root creation did not create a real directory." >&2
   exit 1
 fi
-created_release_mode="$(
-  stat -f '%Lp' "$created_release" 2>/dev/null ||
-    stat -c '%a' "$created_release"
-)"
+case "$(uname -s)" in
+  Darwin)
+    created_release_mode="$(stat -f '%Lp' "$created_release")"
+    ;;
+  Linux)
+    created_release_mode="$(stat -c '%a' "$created_release")"
+    ;;
+  *)
+    echo "FAIL: Unsupported stat platform." >&2
+    exit 1
+    ;;
+esac
 if [[ "$created_release_mode" != "700" ]]; then
   echo "FAIL: Atomic release-root creation did not preserve mode 0700." >&2
   exit 1
