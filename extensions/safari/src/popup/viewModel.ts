@@ -39,7 +39,7 @@ export interface PopupViewModel {
   };
   diagnosticsClearArmed: boolean;
   draft: string;
-  composerVisible: boolean;
+  composerReadOnly: boolean;
   composerPlaceholder: string;
   primaryLabel: string;
   primaryDisabled: boolean;
@@ -103,6 +103,9 @@ function primaryDisabledReason(snapshot: PopupSnapshot, selectedAgent?: BridgeAg
   }
   if (snapshot.busy) {
     return 'OpenBurnBar is already handling another request.';
+  }
+  if (snapshot.mode === 'watch') {
+    return 'Watch mode is read-only. Switch to Ask, Act, or Hand off to start a request.';
   }
   if (!snapshot.page) {
     return 'Open a regular webpage in Safari.';
@@ -225,13 +228,15 @@ export function buildPopupViewModel(state: PopupLocalState): PopupViewModel {
     ...(state.diagnosticsNotice ? { diagnosticsNotice: state.diagnosticsNotice } : {}),
     diagnosticsClearArmed: state.diagnosticsClearArmed,
     draft: state.draft,
-    composerVisible: selectedMode !== 'watch',
+    composerReadOnly: selectedMode === 'watch',
     composerPlaceholder:
       selectedMode === 'ask'
         ? 'What do you want to know about this page?'
-        : selectedMode === 'handoff'
-          ? 'What should the agent investigate from this page?'
-          : 'What should OpenBurnBar do on this page?',
+        : selectedMode === 'watch'
+          ? 'Watch mode mirrors the active run and keeps this chat dock in view.'
+          : selectedMode === 'handoff'
+            ? 'What should the agent investigate from this page?'
+            : 'What should OpenBurnBar do on this page?',
     primaryLabel:
       selectedMode === 'ask'
         ? 'Ask OpenBurnBar'
