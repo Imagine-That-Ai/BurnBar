@@ -337,6 +337,55 @@ final class CursorConnectorTests: XCTestCase {
         ])
     }
 
+    func test_keychainBackendOnlyAllowsInteractiveDeleteWhenExplicitlyRequested() throws {
+        let security = RecordingSecurityKeychainOperations()
+        let backend = SecurityKeychainStoreBackend(security: security)
+
+        try backend.delete(service: "service", account: "background")
+        try backend.delete(service: "service", account: "migration", allowUserInteraction: true)
+
+        XCTAssertEqual(security.events, [
+            RecordingSecurityKeychainOperations.Event(operation: .delete, interactionDisabled: true),
+            RecordingSecurityKeychainOperations.Event(operation: .delete, interactionDisabled: false)
+        ])
+    }
+
+    func test_interactiveKeychainReadSurfacesUserCancellation() {
+        let security = RecordingSecurityKeychainOperations()
+        security.copyMatchingStatus = errSecUserCanceled
+        let backend = SecurityKeychainStoreBackend(security: security)
+
+        XCTAssertThrowsError(
+            try backend.data(
+                for: "service",
+                account: "account",
+                allowUserInteraction: true
+            )
+        ) { error in
+            guard case KeychainStoreError.unhandled(errSecUserCanceled) = error else {
+                return XCTFail("Expected interactive cancellation, got \(error)")
+            }
+        }
+    }
+
+    func test_interactiveKeychainReadSurfacesAuthorizationDenial() {
+        let security = RecordingSecurityKeychainOperations()
+        security.copyMatchingStatus = errSecAuthFailed
+        let backend = SecurityKeychainStoreBackend(security: security)
+
+        XCTAssertThrowsError(
+            try backend.data(
+                for: "service",
+                account: "account",
+                allowUserInteraction: true
+            )
+        ) { error in
+            guard case KeychainStoreError.unhandled(errSecAuthFailed) = error else {
+                return XCTFail("Expected interactive authorization denial, got \(error)")
+            }
+        }
+    }
+
     func test_keychainBackendScopesEveryOperationToConfiguredAccessGroup() throws {
         let security = RecordingSecurityKeychainOperations()
         let accessGroup = OpenBurnBarIdentity.sharedKeychainAccessGroup
@@ -1053,6 +1102,7 @@ private final class RecordingSecurityKeychainOperations: SecurityKeychainOperati
     private var disabledDepth = 0
     private var recordedEvents: [Event] = []
     private var recordedAccessGroups: [String?] = []
+    var copyMatchingStatus: OSStatus = errSecItemNotFound
 
     var events: [Event] {
         lock.withLock { recordedEvents }
@@ -1080,7 +1130,7 @@ private final class RecordingSecurityKeychainOperations: SecurityKeychainOperati
 
     func copyMatching(query: CFDictionary, item: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus {
         record(.copyMatching, query: query)
-        return errSecItemNotFound
+        return copyMatchingStatus
     }
 
     func delete(query: CFDictionary) -> OSStatus {

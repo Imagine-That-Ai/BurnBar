@@ -338,65 +338,82 @@ extension OpenBurnBarDaemonManager {
         guard case .healthy = status else { return }
 
         await performBusyWork {
-            let socketURL = paths.socketURL
-            let snapshot = try await daemonRPC {
-                try OpenBurnBarDaemonSocketClient.config(at: socketURL)
-            }
+            _ = try await migrateProviderCredentialSlotSecrets(providerID: targetProviderID)
+        }
+    }
 
-            for settings in snapshot.providers {
-                if let targetProviderID, settings.providerID != targetProviderID {
-                    continue
+    @discardableResult
+    func migrateProviderCredentialSlotSecrets(
+        providerID targetProviderID: String? = nil
+    ) async throws -> [ProviderCredentialCustodyMigrationResult] {
+        let socketURL = paths.socketURL
+        let snapshot = try await daemonRPC {
+            try OpenBurnBarDaemonSocketClient.config(at: socketURL)
+        }
+        let slots = snapshot.providers.flatMap { settings in
+            settings.credentialSlots.compactMap { slot -> ProviderCredentialCustodySlot? in
+                guard targetProviderID == nil || settings.providerID == targetProviderID else {
+                    return nil
                 }
-
-                for slot in settings.credentialSlots {
-                    let account = slotSecretAccount(providerID: settings.providerID, slotID: slot.slotID)
-                    // Read defensively: a locked or ACL-restricted keychain item for
-                    // one slot must not abort repair for all remaining providers.
-                    // A `nil` result (item not found) or an error (auth denied,
-                    // locked keychain) both mean we cannot migrate this slot — log
-                    // and continue to the next one.
-                    let apiKey: String?
-                    do {
-                        apiKey = try Self.providerRuntimeSecrets.string(for: account)?
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                    } catch {
-                        AppLogger.daemon.error(
-                            "provider_slot_secret_read_failed",
-                            metadata: [
-                                "provider": settings.providerID,
-                                "slot": slot.slotID,
-                                "errorClass": "\(String(describing: type(of: error)))"
-                            ]
-                        )
-                        continue
-                    }
-                    guard let apiKey, !apiKey.isEmpty else {
-                        continue
-                    }
-
-                    // Observable cleanup: ownership migrates to the daemon via the
-                    // upsert below regardless, but a real keychain fault leaves an
-                    // orphaned app-side plaintext copy. Log it (instead of the old
-                    // diagnostic-free `try?`) so the leak is detectable, and keep
-                    // repairing the remaining slots.
-                    Self.purgeProviderSlotSecretObservable(
-                        account: account,
-                        from: Self.providerRuntimeSecrets
-                    )
-                    _ = try await daemonRPC {
-                        try OpenBurnBarDaemonSocketClient.upsertProviderCredentialSlot(
-                            BurnBarProviderCredentialSlotUpsertRequest(
-                                providerID: settings.providerID,
-                                slotID: slot.slotID,
-                                label: slot.label,
-                                apiKey: apiKey,
-                                isEnabled: slot.isEnabled
-                            ),
-                            at: socketURL
-                        )
-                    }
-                }
+                return ProviderCredentialCustodySlot(
+                    providerID: settings.providerID,
+                    slotID: slot.slotID,
+                    label: slot.label,
+                    isEnabled: slot.isEnabled,
+                    status: slot.status,
+                    endpointProfileID: slot.endpointProfileID,
+                    region: slot.region,
+                    tokenPlanTier: slot.tokenPlanTier,
+                    tokenPlanBillingCycle: slot.tokenPlanBillingCycle,
+                    authMethodID: slot.authMethodID
+                )
             }
+        }
+
+        let results = await providerCredentialCustodyMigrator.migrate(slots: slots) { slot, credential in
+            _ = try await self.daemonRPC {
+                try OpenBurnBarDaemonSocketClient.upsertProviderCredentialSlot(
+                    BurnBarProviderCredentialSlotUpsertRequest(
+                        providerID: slot.providerID,
+                        slotID: slot.slotID,
+                        label: slot.label,
+                        apiKey: credential,
+                        isEnabled: slot.isEnabled,
+                        endpointProfileID: slot.endpointProfileID,
+                        region: slot.region,
+                        tokenPlanTier: slot.tokenPlanTier,
+                        tokenPlanBillingCycle: slot.tokenPlanBillingCycle,
+                        authMethodID: slot.authMethodID
+                    ),
+                    at: socketURL
+                )
+            }
+        }
+        for result in results {
+            let metadata = [
+                "provider": result.providerID,
+                "slot": result.slotID,
+                "disposition": result.disposition.rawValue,
+                "failureClass": result.failureClass ?? ""
+            ]
+            if result.disposition == .failed {
+                AppLogger.daemon.error("provider_credential_custody_migration_failed", metadata: metadata)
+            } else {
+                AppLogger.daemon.info("provider_credential_custody_migration_finished", metadata: metadata)
+            }
+        }
+        try Self.requireSuccessfulProviderCredentialCustodyMigration(results)
+        return results
+    }
+
+    static func requireSuccessfulProviderCredentialCustodyMigration(
+        _ results: [ProviderCredentialCustodyMigrationResult]
+    ) throws {
+        let failures = results.filter { $0.disposition == .failed }
+        guard failures.isEmpty else {
+            throw OpenBurnBarDaemonManagerError.rpcError(
+                "Provider credential custody repair failed for \(failures.count) configured slot(s)."
+            )
         }
     }
 

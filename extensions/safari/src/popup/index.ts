@@ -232,6 +232,9 @@ async function completePermissionSetup(): Promise<void> {
   } catch {
     return;
   }
+  const acknowledgeCloudScreenshots = Boolean(
+    buildPopupViewModel(state).selectedAgent?.cloud && !snapshot.trust.cloudScreenshotAcknowledged
+  );
 
   // Safari requires permissions.request to begin synchronously inside the
   // user's click. Moving this call behind runtime.sendMessage loses the user
@@ -250,9 +253,7 @@ async function completePermissionSetup(): Promise<void> {
     expectedStateVersion: snapshot.stateVersion,
     expectedTabId: page.tabId,
     expectedOrigin,
-    acknowledgeCloudScreenshots: Boolean(
-      buildPopupViewModel(state).selectedAgent?.cloud && !snapshot.trust.cloudScreenshotAcknowledged
-    ),
+    acknowledgeCloudScreenshots,
     websiteAccessGranted
   });
 }

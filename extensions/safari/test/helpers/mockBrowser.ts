@@ -43,6 +43,7 @@ interface MockBrowserControls {
   tabMessages: Array<{ tabId: number; message: unknown }>;
   scriptExecutions: unknown[];
   captures: string[];
+  setStorageSetError(error: Error | undefined): void;
   setNativeHandler(handler: (message: unknown) => Promise<unknown> | unknown): void;
   setContentHandler(handler: (tabId: number, message: unknown) => Promise<unknown> | unknown): void;
   emitRuntimeMessage(message: unknown, sender?: BrowserRuntimeMessageSender): Promise<unknown>;
@@ -78,6 +79,7 @@ export function createMockBrowser(
   const tabMessages: Array<{ tabId: number; message: unknown }> = [];
   const scriptExecutions: unknown[] = [];
   const captures: string[] = ['data:image/jpeg;base64,anBlZw=='];
+  let storageSetError: Error | undefined;
   let nativeHandler: (message: unknown) => Promise<unknown> | unknown = () => {
     throw new Error('Native handler not configured');
   };
@@ -227,6 +229,9 @@ export function createMockBrowser(
           return Object.fromEntries(storage);
         },
         set: async (items) => {
+          if (storageSetError) {
+            throw storageSetError;
+          }
           for (const [key, value] of Object.entries(items)) {
             storage.set(key, value);
           }
@@ -260,6 +265,9 @@ export function createMockBrowser(
     tabMessages,
     scriptExecutions,
     captures,
+    setStorageSetError(error) {
+      storageSetError = error;
+    },
     setNativeHandler(handler) {
       nativeHandler = handler;
     },

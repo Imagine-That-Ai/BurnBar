@@ -798,11 +798,12 @@ function renderTrust(viewModel: PopupViewModel, preserveOpen: boolean): HTMLElem
   }
   if (viewModel.showCloudDisclosure) {
     body.append(
-      checkboxRow(
-        'Allow cloud screenshots',
-        'The selected cloud model may receive resized JPEGs when you invoke it. OpenBurnBar never stores provider keys here.',
-        'trust-cloud',
-        snapshot?.trust.cloudScreenshotAcknowledged ?? false
+      element(
+        'p',
+        'privacy-note',
+        snapshot?.trust.cloudScreenshotAcknowledged
+          ? 'Cloud screenshot disclosure acknowledged. Resized page screenshots are sent only when you invoke the selected cloud model.'
+          : 'Cloud screenshot disclosure must be acknowledged through the single Allow & continue permission flow.'
       )
     );
   }
@@ -962,6 +963,31 @@ function renderError(viewModel: PopupViewModel): HTMLElement | undefined {
   return banner;
 }
 
+function daemonCode(error: NonNullable<PopupViewModel['snapshot']>['lastError']): number | undefined {
+  if (!error || typeof error.details !== 'object' || error.details === null) {
+    return undefined;
+  }
+  const code = (error.details as Record<string, unknown>).daemonCode;
+  return typeof code === 'number' && Number.isSafeInteger(code) ? code : undefined;
+}
+
+function permissionFailureDetail(error: NonNullable<PopupViewModel['snapshot']>['lastError']): string {
+  if (!error) {
+    return '';
+  }
+  const code = daemonCode(error);
+  if (error.code === 'daemon_rejected' && code === -32001) {
+    return 'OpenBurnBar reconnected once, but its Safari session was replaced again. Keep the app open and try once more. Diagnostic code: -32001.';
+  }
+  if (error.code === 'daemon_rejected' && code === -32603) {
+    return 'OpenBurnBar could not save its trusted-site rule. Restart the app and try again. Diagnostic code: -32603.';
+  }
+  if (error.code === 'daemon_rejected' && code !== undefined) {
+    return `${error.message} Diagnostic code: ${code}.`;
+  }
+  return error.message;
+}
+
 function permissionChecklistRow(label: string, detail: string, complete: boolean): HTMLElement {
   const row = element('div', `permission-check${complete ? ' is-complete' : ''}`);
   const mark = element('span', 'permission-check-mark');
@@ -1011,7 +1037,7 @@ function renderPermissionSheet(viewModel: PopupViewModel): HTMLElement | undefin
     checklist.append(
       permissionChecklistRow(
         'Cloud screenshot disclosure',
-        'The selected cloud model receives resized page screenshots with your request.',
+        'When you invoke the selected cloud model, resized page screenshots are sent with your request. Choosing Allow & continue acknowledges this disclosure.',
         !viewModel.permissionSheetNeedsCloudDisclosure
       )
     );
@@ -1028,7 +1054,7 @@ function renderPermissionSheet(viewModel: PopupViewModel): HTMLElement | undefin
     notice.setAttribute('role', 'alert');
     notice.append(
       element('strong', undefined, 'Permission was not completed'),
-      element('span', undefined, error.message)
+      element('span', undefined, permissionFailureDetail(error))
     );
     sheet.append(glow, eyebrow, title, description, checklist, scope, notice);
   } else {

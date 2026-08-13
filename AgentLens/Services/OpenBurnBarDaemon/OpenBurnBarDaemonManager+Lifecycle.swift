@@ -61,6 +61,9 @@ extension OpenBurnBarDaemonManager {
         try await daemonLifecycleStep("health check") {
             try await awaitHealthy()
         }
+        try await daemonLifecycleStep("repair provider credential custody") {
+            _ = try await migrateProviderCredentialSlotSecrets()
+        }
     }
 
     private func daemonLifecycleStep(_ step: String, _ operation: () throws -> Void) throws {

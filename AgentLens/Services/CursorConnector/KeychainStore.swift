@@ -46,6 +46,13 @@ protocol KeychainStoreBackend: Sendable {
     func set(_ value: Data, service: String, account: String) throws
     func data(for service: String, account: String, allowUserInteraction: Bool) throws -> Data?
     func delete(service: String, account: String) throws
+    func delete(service: String, account: String, allowUserInteraction: Bool) throws
+}
+
+extension KeychainStoreBackend {
+    func delete(service: String, account: String, allowUserInteraction _: Bool) throws {
+        try delete(service: service, account: account)
+    }
 }
 
 protocol SecurityKeychainOperations: Sendable {
@@ -166,9 +173,11 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
             }
         }
         if status == errSecItemNotFound
-            || status == errSecInteractionNotAllowed
-            || status == errSecUserCanceled
-            || status == errSecAuthFailed {
+            || (!allowUserInteraction && (
+                status == errSecInteractionNotAllowed
+                    || status == errSecUserCanceled
+                    || status == errSecAuthFailed
+            )) {
             return nil
         }
         guard status == errSecSuccess else {
@@ -181,9 +190,18 @@ struct SecurityKeychainStoreBackend: KeychainStoreBackend {
     }
 
     func delete(service: String, account: String) throws {
+        try delete(service: service, account: account, allowUserInteraction: false)
+    }
+
+    func delete(service: String, account: String, allowUserInteraction: Bool) throws {
         let query = genericPasswordQuery(service: service, account: account)
-        let status = security.runWithDisabledInteraction {
-            security.delete(query: query as CFDictionary)
+        let status: OSStatus
+        if allowUserInteraction {
+            status = security.delete(query: query as CFDictionary)
+        } else {
+            status = security.runWithDisabledInteraction {
+                security.delete(query: query as CFDictionary)
+            }
         }
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainStoreError.unhandled(status)

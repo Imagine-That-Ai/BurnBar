@@ -288,7 +288,7 @@ public actor BurnBarConfigStore {
         let secretStoreKey = slotSecretStoreKey(providerID: normalizedProviderID, slotID: resolvedSlotID)
         try await secretStore.setSecret(key, for: secretStoreKey)
         guard let persistedKey = try await secretStore.secret(for: secretStoreKey),
-              persistedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+              persistedKey == key else {
             try? await secretStore.setSecret(nil, for: secretStoreKey)
             throw BurnBarConfigStoreError.credentialReadbackFailed(
                 providerID: normalizedProviderID,
