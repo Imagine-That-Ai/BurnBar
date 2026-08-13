@@ -277,6 +277,22 @@ updates:
         update-types: ["minor", "patch", "major"]
 
   - package-ecosystem: "npm"
+    directory: "/extensions/safari"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
     directory: "/packages/design-tokens"
     schedule:
       interval: "weekly"
