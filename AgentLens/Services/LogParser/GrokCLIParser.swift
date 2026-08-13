@@ -200,6 +200,13 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
         var usage = readUsage(fromUpdates: updatesFile, health: &health)
         if usage == nil {
             usage = readUsage(fromEvents: eventsFile, health: &health)
+        } else {
+            // updates.jsonl supplied usage: events.jsonl is STILL scanned
+            // for malformed-shape health WITHOUT double-counting its usage
+            // frames (round-3 scrutiny, issue 3). The secondary stream's
+            // malformed lines must never be invisible in the normal
+            // two-file session layout.
+            _ = readUsage(fromEvents: eventsFile, health: &health)
         }
 
         // Timestamps: summary created_at/updated_at, then the usage frame's
@@ -257,6 +264,39 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
         var endTime: Date?
     }
 
+    /// Shared usage-object ingestion for `turn_completed` (updates.jsonl)
+    /// and `turn_ended` (events.jsonl) frames. Returns true when the frame
+    /// carried a usage object with at least one positive token count.
+    ///
+    /// A present-but-wrong-typed usage value (string, array, number,
+    /// boolean) is malformed input and degrades the typed parse health;
+    /// absent and null usage remain legitimate variants (cancelled/error
+    /// turns carry no usage in real sessions).
+    private func ingestUsageObject(
+        _ value: Any?,
+        into usage: inout GrokUsage,
+        health: inout TranscriptParseHealth
+    ) -> Bool {
+        guard let frameUsage = value as? [String: Any] else {
+            if let present = value, !(present is NSNull) {
+                health.malformedLines += 1
+            }
+            return false
+        }
+        var malformed = false
+        let input = Self.strictInt(frameUsage["inputTokens"], malformed: &malformed)
+        let output = Self.strictInt(frameUsage["outputTokens"], malformed: &malformed)
+        let cached = Self.strictInt(frameUsage["cachedReadTokens"], malformed: &malformed)
+        if malformed {
+            health.malformedLines += 1
+        }
+        guard input > 0 || output > 0 || cached > 0 else { return false }
+        usage.inputTokens = Self.addingChecked(usage.inputTokens, input)
+        usage.outputTokens = Self.addingChecked(usage.outputTokens, output)
+        usage.cacheReadTokens = Self.addingChecked(usage.cacheReadTokens, cached)
+        return true
+    }
+
     /// Reads `updates.jsonl` `session/update` frames carrying
     /// `update.sessionUpdate == "turn_completed"` with a `usage` object.
     private func readUsage(fromUpdates file: URL, health: inout TranscriptParseHealth) -> GrokUsage? {
@@ -285,23 +325,18 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                 continue
             }
             if sessionUpdate == "turn_completed" {
-                if let frameUsage = update["usage"] as? [String: Any] {
-                    var malformed = false
-                    let input = Self.strictInt(frameUsage["inputTokens"], malformed: &malformed)
-                    let output = Self.strictInt(frameUsage["outputTokens"], malformed: &malformed)
-                    let cached = Self.strictInt(frameUsage["cachedReadTokens"], malformed: &malformed)
-                    if malformed {
-                        health.malformedLines += 1
-                    }
-                    if input > 0 || output > 0 || cached > 0 {
-                        usage.inputTokens = Self.addingChecked(usage.inputTokens, input)
-                        usage.outputTokens = Self.addingChecked(usage.outputTokens, output)
-                        usage.cacheReadTokens = Self.addingChecked(usage.cacheReadTokens, cached)
-                        found = true
-                    }
-                } else if let present = update["usage"], !(present is NSNull) {
-                    // A present-but-wrong-typed usage object is malformed.
+                // Strict shape validation (round-3 scrutiny, issue 2): a
+                // turn_completed frame must carry string `prompt_id` and
+                // string `stop_reason` fields (present in every real
+                // session; pinned in docs/fleet/BURNBAR_FLEET_SIGNALS.md
+                // §6). A bare or wrong-typed frame is malformed.
+                guard let promptID = update["prompt_id"], promptID is String,
+                      let stopReason = update["stop_reason"], stopReason is String else {
                     health.malformedLines += 1
+                    continue
+                }
+                if ingestUsageObject(update["usage"], into: &usage, health: &health) {
+                    found = true
                 }
             }
             if let timestamp = Self.validEpochTimestamp(json["timestamp"]) {
@@ -324,9 +359,10 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
     /// `first_token`. Any other event kind is unknown input and degrades the
     /// typed parse health instead of being silently accepted (round-2
     /// scrutiny, issue 3). New event kinds must be added here deliberately.
-    private static let knownNonUsageEventTypes: Set<String> = [
-        "mcp_config_resolved", "turn_started", "loop_started", "first_token"
-    ]
+    /// Shape validation for these kinds lives in
+    /// `GrokCLIParserEventShapes` (round-3 scrutiny, issue 2).
+    private static let knownNonUsageEventTypes: Set<String> =
+        GrokCLIParserEventShapes.knownNonUsageEventTypes
 
     /// Reads `events.jsonl` `turn_ended` frames carrying a `usage` object.
     private func readUsage(fromEvents file: URL, health: inout TranscriptParseHealth) -> GrokUsage? {
@@ -352,28 +388,26 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                 continue
             }
             if type == "turn_ended" {
-                if let frameUsage = json["usage"] as? [String: Any] {
-                    var malformed = false
-                    let input = Self.strictInt(frameUsage["inputTokens"], malformed: &malformed)
-                    let output = Self.strictInt(frameUsage["outputTokens"], malformed: &malformed)
-                    let cached = Self.strictInt(frameUsage["cachedReadTokens"], malformed: &malformed)
-                    if malformed {
-                        health.malformedLines += 1
-                    }
-                    if input > 0 || output > 0 || cached > 0 {
-                        usage.inputTokens = Self.addingChecked(usage.inputTokens, input)
-                        usage.outputTokens = Self.addingChecked(usage.outputTokens, output)
-                        usage.cacheReadTokens = Self.addingChecked(usage.cacheReadTokens, cached)
-                        found = true
-                    }
-                } else if let present = json["usage"], !(present is NSNull) {
-                    // A present-but-wrong-typed usage object is malformed.
+                // Strict shape validation (round-3 scrutiny, issue 2): a
+                // turn_ended frame must carry a string `outcome` field.
+                guard let outcome = json["outcome"], outcome is String else {
                     health.malformedLines += 1
+                    continue
+                }
+                if ingestUsageObject(json["usage"], into: &usage, health: &health) {
+                    found = true
                 }
             } else if Self.knownNonUsageEventTypes.contains(type) {
-                // Known benign event kind. A present-but-wrong-typed usage
-                // field on a known event is still wrong-shaped input.
-                if let present = json["usage"], !(present is NSNull) {
+                // Known benign event kind. The allowlist is name-only
+                // without shape validation: an allowlisted NAME with a
+                // malformed payload (missing required fields, wrong
+                // primitive types) is still wrong-shaped input and
+                // degrades the typed parse health (round-3 scrutiny,
+                // issue 2). A present-but-wrong-typed usage field on a
+                // known event is also malformed.
+                if !GrokCLIParserEventShapes.isValidAllowlistedEventShape(json) {
+                    health.malformedLines += 1
+                } else if let present = json["usage"], !(present is NSNull) {
                     health.malformedLines += 1
                 }
             } else {
@@ -645,6 +679,13 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
     /// (number, boolean, object, non-part array) degrades the typed parse
     /// health instead of being silently skipped (round-2 scrutiny,
     /// issue 4).
+    ///
+    /// Every DICTIONARY part must match the documented text-part shape
+    /// (`{"type":"text","text":…}`): a part that is not a dictionary, or a
+    /// dictionary without a string `text` field (e.g. image-only parts,
+    /// arbitrary-key dictionaries), is malformed input and degrades the
+    /// typed parse health — it is never silently dropped (round-3
+    /// scrutiny, issue 4).
     private static func extractContent(from json: [String: Any]) -> (text: String, malformed: Bool) {
         guard let content = json["content"], !(content is NSNull) else {
             return ("", false)
@@ -654,13 +695,16 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
         }
         if let parts = content as? [[String: Any]] {
             var text = ""
+            var malformed = false
             for part in parts {
-                if let partText = part["text"] as? String {
-                    if !text.isEmpty { text += "\n" }
-                    text += partText
+                guard let partText = part["text"] as? String else {
+                    malformed = true
+                    continue
                 }
+                if !text.isEmpty { text += "\n" }
+                text += partText
             }
-            return (text, false)
+            return (text, malformed)
         }
         return ("", true)
     }

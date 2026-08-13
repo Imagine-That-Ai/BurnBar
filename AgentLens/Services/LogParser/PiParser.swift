@@ -161,7 +161,18 @@ final class PiParser: LogParser, @unchecked Sendable {
             sawAnyLine = true
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                // Line-1 authority (VAL-PROV-011/016): the FIRST nonblank
+                // PHYSICAL record must be a well-formed session record.
+                // Malformed first bytes (lossy-decode garbage, truncated
+                // JSON) invalidate the transcript exactly like a
+                // wrong-shaped first record — a later session header is
+                // never accepted as the line-1 authority (round-3
+                // scrutiny, issue 1). Only malformed lines AFTER a valid
+                // header continue.
                 health.malformedLines += 1
+                if !headerCaptured {
+                    return nil
+                }
                 continue
             }
             if !headerCaptured {

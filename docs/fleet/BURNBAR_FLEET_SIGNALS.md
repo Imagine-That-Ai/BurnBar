@@ -681,7 +681,7 @@ generic injection seam (all defaults preserve the real-root behavior):
 
 ### Pi transcripts (`~/.pi/agent/sessions/<project-dir>/*.jsonl`)
 
-- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`. The first nonblank session record is the header: it alone determines session identity (`id`), project path (`cwd`), and start time. Later session records never replace it; a transcript whose first line is not a well-formed session record (or whose header is malformed) is skipped honestly and degrades parse health. A later session header is NEVER accepted as the line-1 authority after a wrong-shaped first record (round-2 scrutiny, issue 5).
+- **Line 1 is the authoritative session record:** `{"type":"session","version":3,"id":"<uuid>","timestamp":"…","cwd":"/Users/…"}`. The first nonblank session record is the header: it alone determines session identity (`id`), project path (`cwd`), and start time. Later session records never replace it; a transcript whose first line is not a well-formed session record (or whose header is malformed) is skipped honestly and degrades parse health. A later session header is NEVER accepted as the line-1 authority after a wrong-shaped first record (round-2 scrutiny, issue 5). The rule extends to malformed FIRST PHYSICAL BYTES: lossy-decode garbage or truncated JSON at the head of the file invalidates the transcript exactly like a wrong-shaped first record — a later well-formed session header is never accepted (round-3 scrutiny, issue 1). Only malformed lines AFTER a valid header continue.
 - **Usage lines:** `{"type":"message",…,"message":{"role":"assistant","content":[…],"usage":{"input":N,"output":N,"cacheRead":N,"cacheWrite":N,"reasoning":N,"totalTokens":N,"cost":{…}}}}`. Usage primitives are validated strictly: a present-but-malformed usage field (boolean, fractional, out-of-range, non-numeric) degrades parse health instead of being silently coerced to zero; valid rows survive. A PRESENT `usage` value that is not an object (string, array, number, boolean) is wrong-typed and degrades parse health; absent and null usage remain acceptable (round-2 scrutiny, issue 1).
 - **Tolerated record kinds (explicit allowlist):** `session`, `model_change`, `thinking_level_change`, `message`. Any other top-level record kind (e.g. `{"type":"bogus"}`) is unknown input and degrades the typed parse health — it is never silently accepted. New record kinds must be added to the allowlist deliberately (round-2 scrutiny, issue 2).
 - **Model:** `message.model` on assistant lines, falling back to `model_change.modelId` events.
@@ -710,18 +710,42 @@ generic injection seam (all defaults preserve the real-root behavior):
   lines (valid JSON without the expected frame shape) and present-but-
   malformed usage fields degrade parse health; a `turn_completed`/`turn_ended`
   frame without a usage object is a legitimate variant (cancelled/error
-  turns carry no usage) and is not malformed.
+  turns carry no usage) and is not malformed. A `turn_completed` frame must
+  carry string `prompt_id` and string `stop_reason` fields (present in
+  every real session); a bare or wrong-typed frame is malformed. A
+  `turn_ended` frame must carry a string `outcome` field (round-3
+  scrutiny, issue 2).
 - **Events allowlist (explicit):** `events.jsonl` non-usage event kinds are
   `mcp_config_resolved`, `turn_started`, `loop_started`, `first_token`
   (verified 2026-08-12). Any other event kind (e.g. `{"type":"bogus"}`) is
   unknown input and degrades the typed parse health — never silently
   accepted. A known event kind carrying a present-but-wrong-typed `usage`
-  value is also malformed (round-2 scrutiny, issue 3).
+  value is also malformed (round-2 scrutiny, issue 3). The allowlist is
+  NAME-AND-SHAPE: every allowlisted event validates its required fields
+  and primitive types — `mcp_config_resolved` requires `servers`/`disabled`
+  arrays; `turn_started` requires string `session_id`, integer
+  `turn_number`, string `model_id`, boolean `yolo_mode`, integer
+  `conversation_message_count`, string `session_relationship`, and
+  `schema_version` (string or integer — real sessions carry both `"1.0"`
+  and `1`); `loop_started` requires integer `loop_index`; `first_token`
+  has no required fields. An allowlisted NAME with a malformed payload
+  (missing required fields, wrong primitive types, JSON booleans in
+  integer fields) degrades the typed parse health (round-3 scrutiny,
+  issue 2).
+- **Secondary-stream health:** when `updates.jsonl` supplies usage,
+  `events.jsonl` is STILL scanned for malformed-shape health WITHOUT
+  double-counting its usage frames — malformed secondary events are never
+  invisible in the normal two-file session layout (round-3 scrutiny,
+  issue 3).
 - **Chat content strictness:** a `chat_history.jsonl` line with a PRESENT
   wrong-typed `content` value (number, boolean, object, non-part array) is
   malformed and degrades parse health — never silently skipped. Absent and
   null content remain legitimate (tool results, reasoning) and are not
-  malformed (round-2 scrutiny, issue 4).
+  malformed (round-2 scrutiny, issue 4). Every DICTIONARY part must match
+  the documented text-part shape (`{"type":"text","text":…}`): a part
+  without a string `text` field (image-only parts, arbitrary-key
+  dictionaries) is malformed and degrades parse health — never silently
+  dropped (round-3 scrutiny, issue 4).
 - **Numeric update timestamps** (`updates.jsonl` `timestamp`, epoch seconds)
   are validated for positivity and finiteness; a present-but-invalid
   numeric timestamp (zero, negative, boolean, non-numeric) degrades the

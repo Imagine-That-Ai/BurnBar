@@ -409,6 +409,8 @@ final class UsageAggregatorRefreshAllTests: XCTestCase {
                 "params": [
                     "update": [
                         "sessionUpdate": "turn_completed",
+                        "prompt_id": "p1",
+                        "stop_reason": "completed",
                         "usage": ["inputTokens": 100, "outputTokens": 50, "cachedReadTokens": 10]
                     ]
                 ]

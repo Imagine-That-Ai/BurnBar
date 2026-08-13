@@ -34,6 +34,7 @@
 		1FDC3D17CAA154F4B8C8F467 /* TokenExtractionUtility.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA269E3080C36499D19BB076 /* TokenExtractionUtility.swift */; };
 		20226898B29A1336722A8F74 /* ParserRootResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3F819CB6E1D0BE54BBEB22 /* ParserRootResolver.swift */; };
 		2160E0861FDA738ABA9FB7F2 /* ConversationIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F78AAB24FFCF6E834BEF9F57 /* ConversationIndexer.swift */; };
+		22143D75FA5A0E8BF92D0861 /* GrokCLIParserStrictnessRound3Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 398CE01CD51A025B5F6BEDB2 /* GrokCLIParserStrictnessRound3Tests.swift */; };
 		22ED69E3B33A04412FFF512E /* OpenRouterUsageAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECCDF707C013B9746C2C881C /* OpenRouterUsageAPI.swift */; };
 		24CC9553D5FCF5770DD2B335 /* BurnBarDaemonConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99AFB17D951FAEEA4824E20 /* BurnBarDaemonConfiguration.swift */; };
 		267548479D5D76B223AC5DDD /* BurnBarFleetHermesProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F535B954FAAB30120B89D85B /* BurnBarFleetHermesProbe.swift */; };
@@ -68,6 +69,7 @@
 		4C169BE060466EBFA824FE12 /* MiniSparkline.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA53CDBBD782834EC9FA51B8 /* MiniSparkline.swift */; };
 		4C1DEE0A243A0D0F82A5F94B /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0C003B0BC42F2B9629E344 /* ContextBuilder.swift */; };
 		4C2BE788814BF6CF5A4AF1C2 /* ForgeDevParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CEE8A9E8BBBA1DE97E27FC5 /* ForgeDevParser.swift */; };
+		4C3D61DB19BDC0EFFE9C05EC /* GrokCLIParserEventShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52D861D3CE82E96A3C86A014 /* GrokCLIParserEventShapes.swift */; };
 		4C52690DDDAEFA506DA9E720 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5FCA7AC5B4BDDE494D4748F4 /* GRDB */; };
 		4D455F701D9DB63B75DB7138 /* BurnBarDaemonManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC89C463323EF989AEA92AE4 /* BurnBarDaemonManager.swift */; };
 		4D6FC9F8B7F755B88D125720 /* BurnBarFleetRootPresenceProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A09CE2DC8EB087FFF1881BAB /* BurnBarFleetRootPresenceProbe.swift */; };
@@ -180,6 +182,7 @@
 		DCC4F16F8E2E49A56F568888 /* ICloudSessionMirrorService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B483FB92F7D6DD4CA3BE7E72 /* ICloudSessionMirrorService.swift */; };
 		DE1ECD298FB354C53988CC25 /* BurnBarFleetServiceFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2B488594B0C2C4D595877E /* BurnBarFleetServiceFactory.swift */; };
 		DE2C571750F03FFE66D97412 /* BurnBarFleetServerRPCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3A173256F75384A53F77603 /* BurnBarFleetServerRPCTests.swift */; };
+		DEFAC27D6663F52E69BC39A9 /* PiParserStrictnessRound3Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1CEEEC57E02338B2AD6953 /* PiParserStrictnessRound3Tests.swift */; };
 		DF4C62848DBDC029EDBDF0C1 /* BurnBarFleetGrokBotProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37EA7C0F40838BD1C7E59F8 /* BurnBarFleetGrokBotProbe.swift */; };
 		E0A8312686E5453E69374B2E /* BurnBarConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362C0D92E7C496843E0AF8C6 /* BurnBarConfigStoreTests.swift */; };
 		E0AF93D560D7D5C985E42467 /* BurnBarDaemonLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = D907E693E39D95550BE34A51 /* BurnBarDaemonLogger.swift */; };
@@ -297,6 +300,7 @@
 		362C0D92E7C496843E0AF8C6 /* BurnBarConfigStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarConfigStoreTests.swift; sourceTree = "<group>"; };
 		36350E32BFC87CC729892DE2 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		38BBC1A296B1ADB3642EF4A4 /* HermeticSeamContainmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermeticSeamContainmentTests.swift; sourceTree = "<group>"; };
+		398CE01CD51A025B5F6BEDB2 /* GrokCLIParserStrictnessRound3Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCLIParserStrictnessRound3Tests.swift; sourceTree = "<group>"; };
 		3A62CB9AD5C417A7D35564F6 /* BurnBarFleetPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetPersistenceTests.swift; sourceTree = "<group>"; };
 		3A6FC3BE7A6E6EA1AFE3E41E /* ChatFAB.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatFAB.swift; sourceTree = "<group>"; };
 		3B994E197D62EA81E57DAD31 /* ProviderQuotaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaService.swift; sourceTree = "<group>"; };
@@ -314,6 +318,7 @@
 		510115F44A19580B00773F09 /* BurnBarFleetSnapshotBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetSnapshotBuilder.swift; sourceTree = "<group>"; };
 		5117B944730A212EB03A155D /* ModelProviderLogoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelProviderLogoView.swift; sourceTree = "<group>"; };
 		516803FEE424627EFA549B4B /* GoogleService-Info.plist.example */ = {isa = PBXFileReference; path = "GoogleService-Info.plist.example"; sourceTree = "<group>"; };
+		52D861D3CE82E96A3C86A014 /* GrokCLIParserEventShapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCLIParserEventShapes.swift; sourceTree = "<group>"; };
 		543EF3A2D2A3D55B71D5EE9A /* SessionLogMarkdownFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLogMarkdownFormatter.swift; sourceTree = "<group>"; };
 		5520282B54D5B55516E83A6A /* BurnBarConfigStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarConfigStore.swift; sourceTree = "<group>"; };
 		57C75EE1CC1C5085466E59BE /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
@@ -353,6 +358,7 @@
 		8C7570151F5AA138EA100752 /* InsightEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightEngine.swift; sourceTree = "<group>"; };
 		8CEE8A9E8BBBA1DE97E27FC5 /* ForgeDevParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForgeDevParser.swift; sourceTree = "<group>"; };
 		8DCE6654BB36FDEC775973BE /* ClaudeConversationExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeConversationExtractor.swift; sourceTree = "<group>"; };
+		8E1CEEEC57E02338B2AD6953 /* PiParserStrictnessRound3Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiParserStrictnessRound3Tests.swift; sourceTree = "<group>"; };
 		8F7561D8D709E094A10B7EA9 /* Alternate3Dashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Alternate3Dashboard.swift; sourceTree = "<group>"; };
 		919C163E3845CED5CB2A8D6A /* AccountManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountManager.swift; sourceTree = "<group>"; };
 		92599A99F821919AC0FC4801 /* BurnBarUsageRecorderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarUsageRecorderTests.swift; sourceTree = "<group>"; };
@@ -536,6 +542,7 @@
 				93949AFABCF26567712367AB /* GooseParser.swift */,
 				77EA62BBCFB2B2FF063D600A /* GrokBotParser.swift */,
 				99168763AABF2B17C9E518FD /* GrokCLIParser.swift */,
+				52D861D3CE82E96A3C86A014 /* GrokCLIParserEventShapes.swift */,
 				57FF1667F8EAA777B7E06A45 /* HermesParser.swift */,
 				021276DEE6679BDBF0E71042 /* KimiParser.swift */,
 				A092BBAFB87D0879CA16B36D /* LogParserProtocol.swift */,
@@ -743,9 +750,11 @@
 				7804F13D717D2F98E7183BC3 /* CrossEncoderRerankerTests.swift */,
 				DD03FDBE76B81491FE3AD390 /* CursorConnectorTests.swift */,
 				F7F630B724939E45EFCB2EB6 /* GrokCLIParserStrictnessRound2Tests.swift */,
+				398CE01CD51A025B5F6BEDB2 /* GrokCLIParserStrictnessRound3Tests.swift */,
 				1E90F5A0BACA60739A69595D /* GrokCLIParserTests.swift */,
 				38BBC1A296B1ADB3642EF4A4 /* HermeticSeamContainmentTests.swift */,
 				6DA6D83FE35E5470F6F595E6 /* PiParserStrictnessRound2Tests.swift */,
+				8E1CEEEC57E02338B2AD6953 /* PiParserStrictnessRound3Tests.swift */,
 				EA99E287B4A0688C19EBE06B /* PiParserTests.swift */,
 				5C7B9095083BF1AF6D2EDAC7 /* ProviderQuotaServiceTests.swift */,
 				6C13962E8AE055B767D428DD /* ProviderZeroDataSurfaceTests.swift */,
@@ -1204,6 +1213,7 @@
 				6C2C48F577AF34DC382F00CE /* GooseParser.swift in Sources */,
 				8EE95876BDA93F0778AE9185 /* GrokBotParser.swift in Sources */,
 				A7CB871C6EB420F84040040C /* GrokCLIParser.swift in Sources */,
+				4C3D61DB19BDC0EFFE9C05EC /* GrokCLIParserEventShapes.swift in Sources */,
 				FFA4BA5909843CBFA8373FF6 /* HermesParser.swift in Sources */,
 				DCC4F16F8E2E49A56F568888 /* ICloudSessionMirrorService.swift in Sources */,
 				345CE3C3DC3EEFE4EDDCE6BF /* InsightBriefCard.swift in Sources */,
@@ -1311,9 +1321,11 @@
 				BD88BFC5BFFF32DFFBE9374F /* CrossEncoderRerankerTests.swift in Sources */,
 				98E18FD279ED3571BCE5686D /* CursorConnectorTests.swift in Sources */,
 				91212FEBE80E01CF35B02AA5 /* GrokCLIParserStrictnessRound2Tests.swift in Sources */,
+				22143D75FA5A0E8BF92D0861 /* GrokCLIParserStrictnessRound3Tests.swift in Sources */,
 				2A112E3A93001D7ACBCFC13A /* GrokCLIParserTests.swift in Sources */,
 				D384DC06FE4227168E6C55C6 /* HermeticSeamContainmentTests.swift in Sources */,
 				78B0E0BDC018DB9FC2FF525B /* PiParserStrictnessRound2Tests.swift in Sources */,
+				DEFAC27D6663F52E69BC39A9 /* PiParserStrictnessRound3Tests.swift in Sources */,
 				434FA8ECC9541C17158F8047 /* PiParserTests.swift in Sources */,
 				6E7324835087667843154F8C /* ProviderQuotaServiceTests.swift in Sources */,
 				5F49E9EAE93B594F13ABA561 /* ProviderZeroDataSurfaceTests.swift in Sources */,
