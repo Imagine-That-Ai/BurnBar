@@ -6,7 +6,7 @@ import Foundation
 import XCTest
 
 final class SafariDaemonSocketClientTests: XCTestCase {
-    func test_liveRuntimePathsUseSharedContainerSocketAndCanonicalLoginToken() throws {
+    func test_liveRuntimePathsUseSharedContainerSocketAndSharedToken() throws {
         let paths = try BurnBarSafariDaemonRuntimePaths.live(
             sharedContainerRoot: URL(
                 fileURLWithPath: "/Users/tester/Library/Group Containers/group.com.openburnbar.app",
@@ -21,7 +21,7 @@ final class SafariDaemonSocketClientTests: XCTestCase {
         )
         XCTAssertEqual(
             paths.socketAuthTokenFileURL.path,
-            "/Users/tester/Library/Application Support/OpenBurnBar/daemon-socket-auth-token"
+            "/Users/tester/Library/Group Containers/group.com.openburnbar.app/daemon-socket-auth-token"
         )
     }
 
@@ -40,7 +40,7 @@ final class SafariDaemonSocketClientTests: XCTestCase {
         )
         XCTAssertEqual(
             client.tokenResolver.tokenFileURL.path,
-            "/Users/tester/Library/Application Support/OpenBurnBar/daemon-socket-auth-token"
+            "/Users/tester/Library/Group Containers/group.com.openburnbar.app/daemon-socket-auth-token"
         )
     }
 

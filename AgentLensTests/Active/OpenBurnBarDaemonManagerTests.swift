@@ -1744,7 +1744,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
         XCTAssertEqual(
             paths.socketAuthTokenFileURL.deletingLastPathComponent(),
-            paths.supportDirectory
+            sharedRoot
         )
     }
 

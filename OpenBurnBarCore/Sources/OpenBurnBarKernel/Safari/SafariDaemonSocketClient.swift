@@ -25,11 +25,6 @@ public struct BurnBarSafariDaemonRuntimePaths: Hashable, Sendable {
         sharedContainerRoot: URL? = nil,
         homeDirectoryURL: URL? = nil
     ) throws -> Self {
-        let homeDirectory = homeDirectoryURL ?? canonicalLoginHomeDirectory()
-        let supportDirectory = homeDirectory
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Application Support", isDirectory: true)
-            .appendingPathComponent(OpenBurnBarIdentity.supportDirectoryName, isDirectory: true)
         guard let sharedContainerRoot = sharedContainerRoot
             ?? BurnBarSafariSharedContainer.liveRoot(fileManager: fileManager) else {
             throw BurnBarSafariAppGroupPayloadError.appGroupUnavailable
@@ -39,7 +34,7 @@ public struct BurnBarSafariDaemonRuntimePaths: Hashable, Sendable {
                 "daemon.sock",
                 isDirectory: false
             ),
-            socketAuthTokenFileURL: supportDirectory.appendingPathComponent(
+            socketAuthTokenFileURL: sharedContainerRoot.appendingPathComponent(
                 "daemon-socket-auth-token",
                 isDirectory: false
             )
