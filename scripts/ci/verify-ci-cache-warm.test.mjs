@@ -19,8 +19,8 @@ const APP_GATE = ".github/workflows/app-pr-gate.yml";
 const SPM_HASH_FILES =
   "hashFiles('OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'OpenBurnBarCore/Package.resolved', 'OpenBurnBarDaemon/Package.resolved', 'Vendor/GRDB-SQLCipher/Package.resolved')";
 
-const APP_SPM_KEY = `\${{ runner.os }}-app-spm-\${{ ${SPM_HASH_FILES} }}`;
-const MOBILE_SPM_KEY = `\${{ runner.os }}-mobile-spm-\${{ ${SPM_HASH_FILES} }}`;
+const APP_SPM_KEY = '${{ runner.os }}-app-spm-${{ ' + SPM_HASH_FILES + ' }}';
+const MOBILE_SPM_KEY = '${{ runner.os }}-mobile-spm-${{ ' + SPM_HASH_FILES + ' }}';
 
 const PACKAGE_RESOLVED_TRIGGERS = [
   "OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
