@@ -327,7 +327,10 @@ final class ChartFactRowSQLTests: XCTestCase {
         )
     }
 
-    private static func explainQueryPlan(
+    // GRDB `DatabasePool.read` / `DatabaseQueue.read` closures are nonisolated.
+    // Keep these oracles off MainActor so compactMap/EXPLAIN stay valid after
+    // the suite itself is isolated for DataStore inits.
+    nonisolated private static func explainQueryPlan(
         _ db: Database,
         sql: String,
         arguments: StatementArguments = StatementArguments()
@@ -387,7 +390,7 @@ final class ChartFactRowSQLTests: XCTestCase {
         return (pool, usageStore, now)
     }
 
-    private static func namedChartFact(_ row: Row) -> ChartFactRow? {
+    nonisolated private static func namedChartFact(_ row: Row) -> ChartFactRow? {
         guard let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
               let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"]),
               let sessionId = row["sessionId"] as? String,
@@ -431,7 +434,7 @@ final class ChartFactRowSQLTests: XCTestCase {
         )
     }
 
-    private static func namedUsage(_ row: Row) -> TokenUsage? {
+    nonisolated private static func namedUsage(_ row: Row) -> TokenUsage? {
         guard let idString = row["id"] as? String,
               let id = UUID(uuidString: idString),
               let providerString = row["provider"] as? String,
