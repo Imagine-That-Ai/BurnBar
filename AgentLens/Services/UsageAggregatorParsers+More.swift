@@ -860,73 +860,77 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
     }
 
-    private static let partQueryChunkSize = 400
-    private static let openCodePartSelectAllowlist = [
-        "data", "json", "value", "content", "payload",
-        "messageID", "message_id", "messageId"
-    ]
-
-    private static func openCodePartSelectList(
-        existingColumns: Set<String>,
-        required: [String] = []
-    ) -> String {
-        var selected: [String] = []
-        var seen = Set<String>()
-        for column in required + openCodePartSelectAllowlist {
-            guard existingColumns.contains(column), seen.insert(column).inserted else { continue }
-            selected.append(column)
-        }
-        return selected.isEmpty ? "*" : selected.joined(separator: ", ")
-    }
-
     private func fetchOpenCodePartRows(db: Database, messageIDs: Set<String>?) throws -> [Row] {
         let columns = Set(
             try Row.fetchAll(db, sql: "PRAGMA table_info(part)").compactMap { $0["name"] as? String }
         )
+        let selectList = OpenBurnBarCore.OpenCodePartQuery.selectList(existingColumns: columns)
         let rows: [Row]
         if let messageIDs {
-            let idColumn = ["messageID", "message_id", "messageId"].first { columns.contains($0) }
-            if let idColumn {
-                rows = try Self.queryOpenCodePartRows(
+            if let idColumn = OpenBurnBarCore.OpenCodePartQuery.idColumn(in: columns) {
+                rows = try Self.queryBoundedOpenCodePartRows(
                     db: db,
-                    idColumn: idColumn,
+                    whereSQL: { OpenBurnBarCore.OpenCodePartQuery.idColumnWhereSQL(idColumn: idColumn, placeholderCount: $0) },
                     messageIDs: messageIDs,
-                    selectList: Self.openCodePartSelectList(existingColumns: columns, required: [idColumn])
+                    selectList: OpenBurnBarCore.OpenCodePartQuery.selectList(
+                        existingColumns: columns,
+                        required: [idColumn]
+                    )
                 )
+            } else if let payloadColumn = OpenBurnBarCore.OpenCodePartQuery.payloadColumn(in: columns),
+                      Self.sqliteSupportsJSONExtract(db) {
+                let bounded = try Self.queryBoundedOpenCodePartRows(
+                    db: db,
+                    whereSQL: { OpenBurnBarCore.OpenCodePartQuery.jsonExtractWhereSQL(payloadColumn: payloadColumn, placeholderCount: $0) },
+                    messageIDs: messageIDs,
+                    selectList: selectList
+                )
+                rows = bounded.isEmpty
+                    ? try Row.fetchAll(db, sql: "SELECT \(selectList) FROM part")
+                    : bounded
             } else {
-                rows = try Row.fetchAll(
-                    db,
-                    sql: "SELECT \(Self.openCodePartSelectList(existingColumns: columns)) FROM part"
-                )
+                rows = try Row.fetchAll(db, sql: "SELECT \(selectList) FROM part")
             }
         } else {
-            rows = try Row.fetchAll(
-                db,
-                sql: "SELECT \(Self.openCodePartSelectList(existingColumns: columns)) FROM part"
-            )
+            rows = try Row.fetchAll(db, sql: "SELECT \(selectList) FROM part")
         }
         partReadCount.withLock { $0 += rows.count }
         return rows
     }
 
-    private static func queryOpenCodePartRows(
+    private static func sqliteSupportsJSONExtract(_ db: Database) -> Bool {
+        do {
+            guard let row = try Row.fetchOne(db, sql: OpenBurnBarCore.OpenCodePartQuery.jsonExtractProbeSQL) else {
+                return false
+            }
+            let text: String? = row["probe"]
+            let intValue: Int64? = row["probe"]
+            return OpenBurnBarCore.OpenCodePartQuery.jsonExtractProbeSucceeded(
+                intValue: intValue,
+                textValue: text
+            )
+        } catch {
+            return false
+        }
+    }
+
+    private static func queryBoundedOpenCodePartRows(
         db: Database,
-        idColumn: String,
+        whereSQL: (Int) -> String?,
         messageIDs: Set<String>,
         selectList: String
     ) throws -> [Row] {
-        let allowed = Set(["messageID", "message_id", "messageId"])
-        guard allowed.contains(idColumn), !messageIDs.isEmpty else { return [] }
+        guard !messageIDs.isEmpty else { return [] }
         var collected: [Row] = []
         let ordered = Array(messageIDs)
         var index = 0
         while index < ordered.count {
-            let end = min(index + partQueryChunkSize, ordered.count)
+            let end = min(index + OpenBurnBarCore.OpenCodePartQuery.chunkSize, ordered.count)
             let chunk = Array(ordered[index..<end])
-            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+            guard let clause = whereSQL(chunk.count) else { return [] }
             let rows = try Row.fetchAll(
                 db,
-                sql: "SELECT \(selectList) FROM part WHERE \(idColumn) IN (\(placeholders))",
+                sql: "SELECT \(selectList) FROM part WHERE \(clause)",
                 arguments: StatementArguments(chunk)
             )
             collected.append(contentsOf: rows)

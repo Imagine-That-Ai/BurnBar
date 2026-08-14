@@ -224,6 +224,26 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
         XCTAssertFalse(bodies.conversations.isEmpty)
     }
 
+    func test_macOpenCode_usageOnlyJSONOnlyPartBoundsByJsonExtract() async throws {
+        let path = try makeMacOpenCodeJSONOnlyPartDatabase(decoyPartCount: 20)
+        let parser = OpenCodeParser(databasePathOverride: path)
+        let first = try await parser.parse(options: LogParseOptions.usageAccounting())
+        XCTAssertEqual(
+            parser.lastPartReadCount,
+            2,
+            "JSON-only part must json_extract the heuristic ids, not SELECT the whole table"
+        )
+        let bySession = Dictionary(uniqueKeysWithValues: first.usages.map { ($0.sessionId, $0) })
+        XCTAssertEqual(bySession["session-explicit"]?.inputTokens, 21)
+        let heuristic = try XCTUnwrap(bySession["session-heuristic"])
+        XCTAssertGreaterThan(heuristic.inputTokens, 0)
+        XCTAssertEqual(heuristic.provenanceConfidence, .lowConfidenceEstimate)
+
+        let bodies = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
+        XCTAssertEqual(parser.lastPartReadCount, 23)
+        XCTAssertFalse(bodies.conversations.isEmpty)
+    }
+
     func test_macPi_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {
         let root = try makeTemporaryDirectory("mac-pi")
         try write(
@@ -323,6 +343,68 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
                         arguments: [message.id, "{\"type\":\"text\",\"text\":\"\(message.partText)\"}"]
                     )
                 }
+            }
+        }
+        return path
+    }
+
+    private func makeMacOpenCodeJSONOnlyPartDatabase(decoyPartCount: Int) throws -> String {
+        let root = try makeTemporaryDirectory("mac-opencode-json-only-part")
+        let path = root.appendingPathComponent("opencode.db").path
+        let db = try DatabaseQueue(path: path)
+        try db.write { db in
+            try db.execute(sql: "CREATE TABLE session (id TEXT, data TEXT)")
+            try db.execute(sql: "CREATE TABLE message (id TEXT, sessionID TEXT, data TEXT)")
+            try db.execute(sql: "CREATE TABLE part (data TEXT)")
+            try db.execute(
+                sql: "INSERT INTO session (id, data) VALUES (?, ?)",
+                arguments: ["session-explicit", #"{"title":"Demo","directory":"/tmp/demo","id":"session-explicit"}"#]
+            )
+            try db.execute(
+                sql: "INSERT INTO session (id, data) VALUES (?, ?)",
+                arguments: ["session-heuristic", #"{"title":"Heuristic","directory":"/tmp/demo","id":"session-heuristic"}"#]
+            )
+            try db.execute(
+                sql: "INSERT INTO message (id, sessionID, data) VALUES (?, ?, ?)",
+                arguments: [
+                    "message-explicit",
+                    "session-explicit",
+                    #"{"role":"assistant","model":"gpt-4o","tokens":{"input":21,"output":9},"cost":0.02}"#
+                ]
+            )
+            try db.execute(
+                sql: "INSERT INTO message (id, sessionID, data) VALUES (?, ?, ?)",
+                arguments: [
+                    "message-h-user",
+                    "session-heuristic",
+                    #"{"role":"user","model":"gpt-4o","cost":0.02}"#
+                ]
+            )
+            try db.execute(
+                sql: "INSERT INTO message (id, sessionID, data) VALUES (?, ?, ?)",
+                arguments: [
+                    "message-h-assistant",
+                    "session-heuristic",
+                    #"{"role":"assistant","model":"gpt-4o","cost":0.02}"#
+                ]
+            )
+            try db.execute(
+                sql: "INSERT INTO part (data) VALUES (?)",
+                arguments: [#"{"type":"text","text":"explicit body","messageID":"message-explicit"}"#]
+            )
+            try db.execute(
+                sql: "INSERT INTO part (data) VALUES (?)",
+                arguments: [#"{"type":"text","text":"hello from the user","messageID":"message-h-user"}"#]
+            )
+            try db.execute(
+                sql: "INSERT INTO part (data) VALUES (?)",
+                arguments: [#"{"type":"text","text":"hello from the assistant","messageID":"message-h-assistant"}"#]
+            )
+            for index in 0..<decoyPartCount {
+                try db.execute(
+                    sql: "INSERT INTO part (data) VALUES (?)",
+                    arguments: ["{\"type\":\"text\",\"text\":\"decoy \(index)\",\"messageID\":\"decoy-\(index)\"}"]
+                )
             }
         }
         return path

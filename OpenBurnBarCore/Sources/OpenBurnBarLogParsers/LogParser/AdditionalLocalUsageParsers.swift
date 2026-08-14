@@ -653,71 +653,76 @@ public final class OpenCodeParser: LogParser, Sendable {
 
     /// Usage-only ticks query `part` only for sessions that lack explicit
     /// token buckets. Conversation-body passes still read every text part.
-    /// When `messageIDs` is nil the full table is scanned.
+    /// When `messageIDs` is nil the full table is scanned. JSON-only schemas
+    /// (no message-id column) bound via `json_extract` on an existing payload
+    /// column — that column is not invented.
     private func fetchOpenCodePartRows(
         db: SQLiteReading,
         messageIDs: Set<String>?
     ) throws -> [SQLiteRow] {
         let columns = Set(try db.columnNames(ofTable: "part"))
+        let selectList = OpenCodePartQuery.selectList(existingColumns: columns)
         let rows: [SQLiteRow]
         if let messageIDs {
-            let idColumn = ["messageID", "message_id", "messageId"].first { columns.contains($0) }
-            if let idColumn {
-                rows = try Self.queryPartRows(
+            if let idColumn = OpenCodePartQuery.idColumn(in: columns) {
+                rows = try Self.queryBoundedPartRows(
                     db: db,
-                    idColumn: idColumn,
+                    whereSQL: { OpenCodePartQuery.idColumnWhereSQL(idColumn: idColumn, placeholderCount: $0) },
                     messageIDs: messageIDs,
-                    selectList: Self.openCodePartSelectList(existingColumns: columns, required: [idColumn])
+                    selectList: OpenCodePartQuery.selectList(existingColumns: columns, required: [idColumn])
                 )
+            } else if let payloadColumn = OpenCodePartQuery.payloadColumn(in: columns),
+                      Self.sqliteSupportsJSONExtract(db) {
+                let bounded = try Self.queryBoundedPartRows(
+                    db: db,
+                    whereSQL: { OpenCodePartQuery.jsonExtractWhereSQL(payloadColumn: payloadColumn, placeholderCount: $0) },
+                    messageIDs: messageIDs,
+                    selectList: selectList
+                )
+                // Empty extract is fail-closed to the full named-column scan so
+                // a JSON1 quirk cannot drop heuristic char-count totals.
+                rows = bounded.isEmpty
+                    ? try db.query("SELECT \(selectList) FROM part")
+                    : bounded
             } else {
-                rows = try db.query("SELECT \(Self.openCodePartSelectList(existingColumns: columns)) FROM part")
+                rows = try db.query("SELECT \(selectList) FROM part")
             }
         } else {
-            rows = try db.query("SELECT \(Self.openCodePartSelectList(existingColumns: columns)) FROM part")
+            rows = try db.query("SELECT \(selectList) FROM part")
         }
         partReadCount.withLock { $0 += rows.count }
         return rows
     }
 
-    private static let partQueryChunkSize = 400
-    private static let openCodePartSelectAllowlist = [
-        "data", "json", "value", "content", "payload",
-        "messageID", "message_id", "messageId"
-    ]
-
-    /// JSON-only `part` schemas still need a full scan when there is no
-    /// message-id column. Selecting the payload/id intersection avoids
-    /// shipping unused `part` columns either way.
-    private static func openCodePartSelectList(
-        existingColumns: Set<String>,
-        required: [String] = []
-    ) -> String {
-        var selected: [String] = []
-        var seen = Set<String>()
-        for column in required + openCodePartSelectAllowlist {
-            guard existingColumns.contains(column), seen.insert(column).inserted else { continue }
-            selected.append(column)
+    private static func sqliteSupportsJSONExtract(_ db: SQLiteReading) -> Bool {
+        do {
+            let rows = try db.query(OpenCodePartQuery.jsonExtractProbeSQL)
+            let probe = rows.first
+            return OpenCodePartQuery.jsonExtractProbeSucceeded(
+                intValue: probe?.int64("probe"),
+                textValue: probe?.string("probe")
+            )
+        } catch {
+            return false
         }
-        return selected.isEmpty ? "*" : selected.joined(separator: ", ")
     }
 
-    private static func queryPartRows(
+    private static func queryBoundedPartRows(
         db: SQLiteReading,
-        idColumn: String,
+        whereSQL: (Int) -> String?,
         messageIDs: Set<String>,
         selectList: String
     ) throws -> [SQLiteRow] {
-        let allowed = Set(["messageID", "message_id", "messageId"])
-        guard allowed.contains(idColumn), !messageIDs.isEmpty else { return [] }
+        guard !messageIDs.isEmpty else { return [] }
         var collected: [SQLiteRow] = []
         let ordered = Array(messageIDs)
         var index = 0
         while index < ordered.count {
-            let end = min(index + partQueryChunkSize, ordered.count)
+            let end = min(index + OpenCodePartQuery.chunkSize, ordered.count)
             let chunk = Array(ordered[index..<end])
-            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+            guard let clause = whereSQL(chunk.count) else { return [] }
             let rows = try db.query(
-                "SELECT \(selectList) FROM part WHERE \(idColumn) IN (\(placeholders))",
+                "SELECT \(selectList) FROM part WHERE \(clause)",
                 arguments: chunk.map { .text($0) }
             )
             collected.append(contentsOf: rows)

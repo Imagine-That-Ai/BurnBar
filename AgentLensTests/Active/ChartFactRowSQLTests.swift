@@ -258,6 +258,134 @@ final class ChartFactRowSQLTests: XCTestCase {
         XCTAssertEqual(indexed.map(\.sessionId), fromStore.map(\.sessionId))
     }
 
+    func test_databasePoolTuning_appliesReaderCountAndBusyTimeout() {
+        var config = Configuration()
+        OpenBurnBarDatabase.applyPoolTuning(&config)
+        XCTAssertEqual(config.maximumReaderCount, OpenBurnBarDatabase.PoolTuning.maximumReaderCount)
+        XCTAssertEqual(OpenBurnBarDatabase.PoolTuning.maximumReaderCount, 8)
+        XCTAssertEqual(OpenBurnBarDatabase.PoolTuning.busyTimeoutSeconds, 5)
+    }
+
+    func test_explainQueryPlan_onDiskPool_unsyncedUsesSyncPendingIndex() async throws {
+        let (pool, _, _) = try await makeOnDiskPoolStore()
+        defer { try? pool.close() }
+        try await pool.write { db in
+            try db.execute(sql: "ANALYZE")
+        }
+        let plan = try await pool.read { db in
+            try Self.explainQueryPlan(
+                db,
+                sql: """
+                    SELECT \(UsageStore.usageDecodeSelectColumns.joined(separator: ", "))
+                    FROM token_usage
+                    WHERE syncedAt IS NULL AND isRemote = 0
+                    ORDER BY startTime ASC LIMIT 400
+                    """
+            )
+        }
+        XCTAssertTrue(
+            plan.localizedCaseInsensitiveContains("token_usage_sync_pending_idx"),
+            "unsynced path must use the existing sync-pending index; got:\n\(plan)"
+        )
+        let indexes = try await pool.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'token_usage'"
+            )
+        }
+        XCTAssertFalse(
+            indexes.contains { $0.localizedCaseInsensitiveContains("covering") },
+            "covering-index migration is out of this PR; indexes=\(indexes)"
+        )
+    }
+
+    func test_explainQueryPlan_onDiskPool_chartIntersectionNeedsNoNewCoveringIndex() async throws {
+        let (pool, _, now) = try await makeOnDiskPoolStore()
+        defer { try? pool.close() }
+        try await pool.write { db in
+            try db.execute(sql: "ANALYZE")
+        }
+        let recent = ChartsDataService.recentRange(now: now)
+        let predicate = UsageStore.dateRangePredicate(recent)
+        let plan = try await pool.read { db in
+            try Self.explainQueryPlan(
+                db,
+                sql: """
+                    SELECT \(UsageStore.chartFactSelectColumns.joined(separator: ", "))
+                    FROM token_usage
+                    \(predicate.whereSQL)
+                    ORDER BY startTime DESC
+                    """,
+                arguments: predicate.arguments
+            )
+        }
+        XCTAssertTrue(plan.localizedCaseInsensitiveContains("token_usage"), plan)
+        XCTAssertFalse(
+            plan.localizedCaseInsensitiveContains("token_usage_chart_fact_covering"),
+            "no chart covering-index migration this round; got:\n\(plan)"
+        )
+    }
+
+    private static func explainQueryPlan(
+        _ db: Database,
+        sql: String,
+        arguments: StatementArguments = StatementArguments()
+    ) throws -> String {
+        let rows = try Row.fetchAll(db, sql: "EXPLAIN QUERY PLAN \(sql)", arguments: arguments)
+        return rows.map { row in
+            if let detail: String = row["detail"] {
+                return detail
+            }
+            return (0..<row.count).compactMap { row[$0] as? String }.joined(separator: " | ")
+        }.joined(separator: "\n")
+    }
+
+    private func makeOnDiskPoolStore() async throws -> (DatabasePool, UsageStore, Date) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-eqp-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("openburnbar.sqlite").path
+        var config = Configuration()
+        OpenBurnBarDatabase.applyPoolTuning(&config)
+        let pool = try DatabasePool(path: path, configuration: config)
+        XCTAssertEqual(pool.configuration.maximumReaderCount, OpenBurnBarDatabase.PoolTuning.maximumReaderCount)
+        _ = try DataStore(databaseQueue: pool, runMigrations: true, refreshOnInit: false)
+        try OpenBurnBarDatabase.configureWALMode(pool)
+        let usageStore = UsageStore(dbQueue: pool)
+        let now = Date()
+        var rows = ChartsSnapshotFixtures.sampleRows(now: now)
+        rows.append(
+            TokenUsage(
+                provider: .openCode,
+                sessionId: "session-unclassified",
+                projectName: "",
+                model: "mystery-model",
+                inputTokens: 10,
+                outputTokens: 10,
+                costUSD: 7.5,
+                startTime: now.addingTimeInterval(-3 * 3_600),
+                endTime: now.addingTimeInterval(-2.5 * 3_600),
+                provenanceConfidence: .lowConfidenceEstimate
+            )
+        )
+        for index in 0..<400 {
+            rows.append(
+                TokenUsage(
+                    provider: .codex,
+                    sessionId: "eqp-unsynced-\(index)",
+                    projectName: "eqp",
+                    model: "gpt-5.6",
+                    inputTokens: 1,
+                    outputTokens: 1,
+                    startTime: now.addingTimeInterval(Double(-index) * 60),
+                    endTime: now.addingTimeInterval(Double(-index) * 60 + 30)
+                )
+            )
+        }
+        try await usageStore.insert(rows)
+        return (pool, usageStore, now)
+    }
+
     private static func namedChartFact(_ row: Row) -> ChartFactRow? {
         guard let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
               let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"]),

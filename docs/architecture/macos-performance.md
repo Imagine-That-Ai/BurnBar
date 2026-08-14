@@ -1502,3 +1502,66 @@ Validation:
   (named-oracle vs index decode; SELECT order locked)
 - `AgentLensTests/Active/DashboardUsageViewModelTests`
 - `AgentLensTests/Active/RefreshTickPerfTests`
+
+## 31. Round 13 — watermark split, JSON-only OpenCode `part`, EQP, Aider off-registry
+
+Constraints from the leftovers in §30, implemented rather than deferred.
+
+### Usage parse cannot share indexing watermarks
+
+`LogParseOptions.usageAccounting(...)` is the only factory the refresh
+pipeline / single-provider refresh / privacy scrub parse through. It
+hard-wires `minimumFileModificationDate` and `fileDiscoveryTracker` to
+`nil`. Conversation indexing still passes the `idx2:` checkpoint
+watermark and discovery tracker. `UsageRefreshPipeline.parse` no longer
+accepts a cutoff argument — the previous test that forwarded one is now
+`test_parseStageNeverForwardsIndexingWatermarks`.
+
+### OpenCode JSON-only `part` is bounded without inventing a column
+
+When heuristic (zero-bucket) sessions exist and `part` has no
+`messageID` / `message_id` / `messageId` column, usage-only ticks run
+`WHERE COALESCE(json_extract(payload, '$.messageID'), …) IN (…)` on an
+allowlisted payload column (`data` / `json` / `value` / `content` /
+`payload`). JSON1 is probed once per fetch; a failed probe or empty
+extract falls back to the named-column full scan so heuristic
+char-count totals cannot drop. Conversation-body passes still read
+every text part. Named id-column `IN` lists are unchanged. Core and Mac
+parsers share `OpenCodePartQuery`.
+
+### EQP on a real DB; pool retune; no covering-index migration
+
+`EXPLAIN QUERY PLAN` on an on-disk `DatabasePool` (migrated production
+schema, `ANALYZE`) shows unsynced rows already use
+`token_usage_sync_pending_idx`. The chart / dashboard intersection
+`OR` is not covering-indexable on the existing `(provider, startTime)`
+indexes without a new migration, which this round does not add. Linux
+SQLiteConnection EQP pins the same unsynced index shape and that
+JSON-only `part` queries return two bound rows rather than the whole
+table.
+
+`DatabasePool` retune (no schema change): `maximumReaderCount = 8`
+(GRDB default 5) and `busyMode = .timeout(5)` via
+`OpenBurnBarDatabase.applyPoolTuning`, mirrored on Core SQLCipher open
+and daemon pools. Tests stay on in-memory `DatabaseQueue`.
+
+### Aider stays off `quotaSignalProviders`
+
+The JSONL facts cache from §30 does not make Aider a live quota signal.
+`quotaSignal: false` in the generated catalog, `nil` registry entry,
+and an explicit test remain the contract.
+
+Validation:
+- `OpenBurnBarCoreTests/ParserParseOptionsTests`
+  (`testUsageAccountingOptionsNeverCarryIndexingWatermarks`)
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests`
+  (JSON-only `part` `lastPartReadCount == 2` with 20 decoys)
+- `OpenBurnBarCoreTests/TokenUsageExplainQueryPlanTests`
+- `OpenBurnBarCoreTests/AiderQuotaCacheTests`
+  (`test_aiderStaysOffQuotaSignalProvidersByDesign`)
+- `AgentLensTests/Active/UsageRefreshPipelineTests`
+  (`test_parseStageNeverForwardsIndexingWatermarks`)
+- `AgentLensTests/Active/ChartFactRowSQLTests`
+  (on-disk pool EQP + pool tuning)
+- `AgentLensTests/Active/MacIdleUsageParserCacheTests`
+  (Mac JSON-only `part`)

@@ -113,6 +113,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through a cached statement cursor. Date fallbacks and daemon Pensieve
   sentinels reuse `ThreadSafeISO8601DateFormatter` instead of allocating
   a formatter per string or per file.
+- **Usage watermarks, OpenCode JSON-only `part`, and pool EQP.** Usage
+  refresh parse cannot carry indexing `idx2:` / `minimumFileModificationDate`
+  / discovery tracker (`LogParseOptions.usageAccounting`). OpenCode
+  usage-only ticks bound JSON-only `part` rows with `json_extract` on an
+  existing payload column (no invented message-id column). On-disk
+  `EXPLAIN QUERY PLAN` shows unsynced rows already use
+  `token_usage_sync_pending_idx`; no covering-index migration. Production
+  `DatabasePool` reader count is 8. Aider stays off `quotaSignalProviders`.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

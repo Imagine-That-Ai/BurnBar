@@ -556,6 +556,84 @@ final class IdleUsageParserCacheTests: XCTestCase {
         return path
     }
 
+    private func makeOpenCodeJSONOnlyPartDatabase(
+        decoyPartCount: Int
+    ) throws -> URL {
+        let root = try makeTemporaryDirectory("opencode-json-only-part")
+        let path = root.appendingPathComponent("opencode.db")
+        let db = try SQLiteConnection.openForWriting(creatingAt: path.path)
+        try db.execute("CREATE TABLE session (id TEXT, data TEXT, time_created INTEGER, time_updated INTEGER)")
+        try db.execute("CREATE TABLE message (id TEXT, sessionID TEXT, data TEXT, time_created INTEGER)")
+        try db.execute("CREATE TABLE part (data TEXT)")
+        try db.execute(
+            "INSERT INTO session VALUES (?, ?, ?, ?)",
+            arguments: [
+                .text("session-explicit"),
+                .text(#"{"title":"Demo","directory":"/tmp/demo","time":{"created":1750000000,"updated":1750000002}}"#),
+                .int(1_750_000_000),
+                .int(1_750_000_002)
+            ]
+        )
+        try db.execute(
+            "INSERT INTO session VALUES (?, ?, ?, ?)",
+            arguments: [
+                .text("session-heuristic"),
+                .text(#"{"title":"Heuristic","directory":"/tmp/demo","time":{"created":1750000010,"updated":1750000012}}"#),
+                .int(1_750_000_010),
+                .int(1_750_000_012)
+            ]
+        )
+        try db.execute(
+            "INSERT INTO message VALUES (?, ?, ?, ?)",
+            arguments: [
+                .text("message-explicit"),
+                .text("session-explicit"),
+                .text(#"{"role":"assistant","model":"gpt-4o","tokens":{"input":21,"output":9},"cost":0.02,"time":{"created":1750000001}}"#),
+                .int(1_750_000_001)
+            ]
+        )
+        try db.execute(
+            "INSERT INTO message VALUES (?, ?, ?, ?)",
+            arguments: [
+                .text("message-h-user"),
+                .text("session-heuristic"),
+                .text(#"{"role":"user","model":"gpt-4o","cost":0.02,"time":{"created":1750000011}}"#),
+                .int(1_750_000_011)
+            ]
+        )
+        try db.execute(
+            "INSERT INTO message VALUES (?, ?, ?, ?)",
+            arguments: [
+                .text("message-h-assistant"),
+                .text("session-heuristic"),
+                .text(#"{"role":"assistant","model":"gpt-4o","cost":0.02,"time":{"created":1750000012}}"#),
+                .int(1_750_000_012)
+            ]
+        )
+        try db.execute(
+            "INSERT INTO part VALUES (?)",
+            arguments: [.text(#"{"type":"text","text":"explicit body","messageID":"message-explicit"}"#)]
+        )
+        try db.execute(
+            "INSERT INTO part VALUES (?)",
+            arguments: [.text(#"{"type":"text","text":"hello from the user","messageID":"message-h-user"}"#)]
+        )
+        try db.execute(
+            "INSERT INTO part VALUES (?)",
+            arguments: [.text(#"{"type":"text","text":"hello from the assistant","messageID":"message-h-assistant"}"#)]
+        )
+        for index in 0..<decoyPartCount {
+            try db.execute(
+                "INSERT INTO part VALUES (?)",
+                arguments: [
+                    .text("{\"type\":\"text\",\"text\":\"decoy \(index)\",\"messageID\":\"decoy-\(index)\"}")
+                ]
+            )
+        }
+        db.close()
+        return path
+    }
+
     private func makeTemporaryDirectory(_ name: String) throws -> URL {
         let directory = fileManager.temporaryDirectory
             .appendingPathComponent("obb-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -1012,6 +1090,37 @@ final class IdleUsageParserCacheTests: XCTestCase {
 
         let bodies = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
         XCTAssertEqual(parser.lastPartReadCount, 3)
+        XCTAssertEqual(bodies.conversations.count, 2)
+    }
+
+    func test_openCodePartQuery_rejectsUnknownIdentifiers() throws {
+        XCTAssertNil(OpenCodePartQuery.jsonExtractWhereSQL(payloadColumn: "blob", placeholderCount: 1))
+        XCTAssertNil(OpenCodePartQuery.idColumnWhereSQL(idColumn: "id", placeholderCount: 1))
+        XCTAssertNil(OpenCodePartQuery.jsonExtractWhereSQL(payloadColumn: "data", placeholderCount: 0))
+        let clause = try XCTUnwrap(OpenCodePartQuery.jsonExtractWhereSQL(payloadColumn: "data", placeholderCount: 2))
+        XCTAssertTrue(clause.contains("json_extract(data, '$.messageID')"))
+        XCTAssertTrue(clause.contains("IN (?,?)"))
+        XCTAssertFalse(clause.contains("FROM part"))
+    }
+
+    func test_openCode_usageOnlyJSONOnlyPartBoundsByJsonExtract() async throws {
+        let path = try makeOpenCodeJSONOnlyPartDatabase(decoyPartCount: 20)
+        let parser = OpenCodeParser(databaseOverride: path)
+        let usageOnly = LogParseOptions.usageAccounting()
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(
+            parser.lastPartReadCount,
+            2,
+            "JSON-only part must json_extract the heuristic ids, not SELECT the whole table"
+        )
+        let heuristic = try XCTUnwrap(first.usages.first { $0.sessionId == "session-heuristic" })
+        XCTAssertGreaterThan(heuristic.inputTokens, 0)
+        XCTAssertEqual(heuristic.provenanceConfidence, .lowConfidenceEstimate)
+        XCTAssertEqual(first.usages.first { $0.sessionId == "session-explicit" }?.inputTokens, 21)
+
+        let bodies = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
+        XCTAssertEqual(parser.lastPartReadCount, 23)
         XCTAssertEqual(bodies.conversations.count, 2)
     }
 

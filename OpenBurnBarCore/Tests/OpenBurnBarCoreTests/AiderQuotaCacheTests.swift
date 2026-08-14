@@ -54,6 +54,13 @@ final class AiderQuotaCacheTests: XCTestCase {
         XCTAssertFalse(cacheText.contains("prompt_tokens"))
     }
 
+    func test_aiderStaysOffQuotaSignalProvidersByDesign() {
+        XCTAssertFalse(AgentProvider.quotaSignalProviders.contains(.aider))
+        XCTAssertFalse(AgentProvider.aider.isQuotaSignalProvider)
+        XCTAssertNil(ProviderQuotaAdapterRegistry.standard.entry(for: .aider))
+        XCTAssertEqual(AgentProviderIngestionCatalog.entry(for: .aider).quotaSignal, false)
+    }
+
     func test_fetch_resumesAppendOnlyGrowthWithoutRereadingHead() async throws {
         let root = try makeTemporaryDirectory("aider-quota-append")
         defer { try? FileManager.default.removeItem(at: root) }
