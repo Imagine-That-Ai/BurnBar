@@ -72,7 +72,10 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
-            let files = try fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
+            let files = try fileManager.contentsOfDirectory(
+                at: projectDir,
+                includingPropertiesForKeys: OpenBurnBarCore.FileSignature.directoryListingPrefetchKeys
+            )
                 .filter { $0.pathExtension == "jsonl" }
 
             for jsonlFile in files {
@@ -1065,7 +1068,10 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
         }
 
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
-        let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?
+        let jsonlFiles = (try? fm.contentsOfDirectory(
+            at: sessionsURL,
+            includingPropertiesForKeys: OpenBurnBarCore.FileSignature.directoryListingPrefetchKeys
+        ))?
             .filter { $0.pathExtension == "jsonl" } ?? []
 
         var usages: [TokenUsage] = []

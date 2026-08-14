@@ -347,6 +347,64 @@ final class DashboardUsageViewModelTests: XCTestCase {
         tracer.assertMaxQueries(count: 12)
     }
 
+    func test_dashboardSnapshot_usesOneCoveringScanAndFiltersWindowsInMemory() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        let now = Date()
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "covering-today",
+            model: "gpt-5",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1,
+            startTime: now,
+            endTime: now.addingTimeInterval(30)
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .claudeCode,
+            sessionId: "covering-week-ago",
+            model: "sonnet",
+            inputTokens: 20,
+            outputTokens: 10,
+            costUSD: 2,
+            startTime: now.addingTimeInterval(-8 * 24 * 3600),
+            endTime: now.addingTimeInterval(-8 * 24 * 3600 + 30)
+        ))
+
+        _ = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        tracer.resetLog()
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+
+        let coveringSelects = tracer.queryLog.filter { event in
+            let sql = event.sql
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            return sql.hasPrefix("select * from token_usage")
+        }
+        XCTAssertEqual(
+            coveringSelects.count,
+            1,
+            "Dashboard snapshot must decode covering rows once, not once per TimeRange"
+        )
+
+        let todayRange = try XCTUnwrap(TimeRange.today.dateRange(now: now))
+        let today = try XCTUnwrap(snapshot.windowSummaries[.today])
+        XCTAssertEqual(today.usages.map(\.sessionId), ["covering-today"])
+        XCTAssertEqual(
+            snapshot.loadedUsages.filter { $0.intersects(dateRange: todayRange) }.map(\.sessionId),
+            today.usages.map(\.sessionId)
+        )
+        XCTAssertEqual(Set(snapshot.loadedUsages.map(\.sessionId)), [
+            "covering-today",
+            "covering-week-ago"
+        ])
+    }
+
     func test_dashboardSnapshot_last7DaySeriesMatchesPerDayTotals() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)

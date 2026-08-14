@@ -55,6 +55,10 @@ extension DataStore {
         try await actor.usageStore.fetchChartFactRows(in: dateRange)
     }
 
+    func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
+        try await actor.fetchDashboardUsageSnapshot(loadedUsageLimit: loadedUsageLimit)
+    }
+
     func fetchUsageCostBreakdown(in dateRange: ClosedRange<Date>, limit: Int = 20) async throws -> UsageCostBreakdown {
         try await actor.usageStore.fetchUsageCostBreakdown(in: dateRange, limit: limit)
     }

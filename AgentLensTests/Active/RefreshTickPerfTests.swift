@@ -428,40 +428,39 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
     }
 
     /// The load-bearing equality: the marker-gated tick path must surface the
-    /// exact same aggregates as the legacy always-full recompute it replaced.
-    func test_tickPathAggregatesEqualLegacyFullRecompute() async throws {
+    /// same aggregates as the dashboard snapshot init path (SQL window totals
+    /// + hydration-limit covering rows). It must not `SELECT *` the ledger.
+    func test_tickPathAggregatesEqualDashboardSnapshot() async throws {
         let store = try makeStore()
         store.nowProvider = { [noon] in noon }
         try await store.insertChunked(makeRealisticUsageHistory(), chunkSize: 500)
 
-        // New path: marker-gated reload.
         await store.reloadUsagesIfChanged()
 
-        // Old path: unconditional full fetch + rebuild on a fresh view model.
-        let allRows = try await store.fetchAllUsage()
-        let legacy = DashboardUsageViewModel()
-        legacy.replaceUsages(allRows)
+        let snapshot = try await store.fetchDashboardUsageSnapshot(loadedUsageLimit: 5_000)
+        let expected = DashboardUsageViewModel()
+        expected.replaceUsageSnapshot(snapshot)
 
-        XCTAssertEqual(store.usages.count, allRows.count)
+        XCTAssertEqual(store.usages.count, snapshot.loadedUsages.count)
         let vm = store.usageViewModel
-        XCTAssertEqual(vm.totalCostAllTime, legacy.totalCostAllTime, accuracy: 1e-9)
-        XCTAssertEqual(vm.totalCostToday, legacy.totalCostToday, accuracy: 1e-9)
-        XCTAssertEqual(vm.totalCostThisWeek, legacy.totalCostThisWeek, accuracy: 1e-9)
-        XCTAssertEqual(vm.totalCostThisMonth, legacy.totalCostThisMonth, accuracy: 1e-9)
-        XCTAssertEqual(vm.totalTokensAllTime, legacy.totalTokensAllTime)
-        XCTAssertEqual(vm.totalTokensThisWeek, legacy.totalTokensThisWeek)
-        XCTAssertEqual(vm.rollingDailyAverage, legacy.rollingDailyAverage, accuracy: 1e-9)
-        XCTAssertEqual(vm.last7DayCosts.count, legacy.last7DayCosts.count)
-        for (lhs, rhs) in zip(vm.last7DayCosts, legacy.last7DayCosts) {
+        XCTAssertEqual(vm.totalCostAllTime, expected.totalCostAllTime, accuracy: 1e-9)
+        XCTAssertEqual(vm.totalCostToday, expected.totalCostToday, accuracy: 1e-9)
+        XCTAssertEqual(vm.totalCostThisWeek, expected.totalCostThisWeek, accuracy: 1e-9)
+        XCTAssertEqual(vm.totalCostThisMonth, expected.totalCostThisMonth, accuracy: 1e-9)
+        XCTAssertEqual(vm.totalTokensAllTime, expected.totalTokensAllTime)
+        XCTAssertEqual(vm.totalTokensThisWeek, expected.totalTokensThisWeek)
+        XCTAssertEqual(vm.rollingDailyAverage, expected.rollingDailyAverage, accuracy: 1e-9)
+        XCTAssertEqual(vm.last7DayCosts.count, expected.last7DayCosts.count)
+        for (lhs, rhs) in zip(vm.last7DayCosts, expected.last7DayCosts) {
             XCTAssertEqual(lhs, rhs, accuracy: 1e-9)
         }
         XCTAssertEqual(
             vm.providerSummaries.map { "\($0.provider.rawValue):\($0.sessionCount):\($0.totalTokens)" },
-            legacy.providerSummaries.map { "\($0.provider.rawValue):\($0.sessionCount):\($0.totalTokens)" }
+            expected.providerSummaries.map { "\($0.provider.rawValue):\($0.sessionCount):\($0.totalTokens)" }
         )
         XCTAssertEqual(
             vm.modelSummaries.map { "\($0.modelName):\($0.sessionCount):\($0.totalTokens)" },
-            legacy.modelSummaries.map { "\($0.modelName):\($0.sessionCount):\($0.totalTokens)" }
+            expected.modelSummaries.map { "\($0.modelName):\($0.sessionCount):\($0.totalTokens)" }
         )
     }
 }

@@ -192,7 +192,10 @@ public final class GooseParser: LogParser, Sendable {
 
         for sessionsPath in sessionDirectories where fileManager.fileExists(atPath: sessionsPath) {
             let sessionsURL = URL(fileURLWithPath: sessionsPath)
-            let jsonlFiles = (try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?.filter {
+            let jsonlFiles = (try? fileManager.contentsOfDirectory(
+                at: sessionsURL,
+                includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+            ))?.filter {
                 $0.pathExtension == "jsonl"
             } ?? []
 

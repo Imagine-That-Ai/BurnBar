@@ -1287,6 +1287,77 @@ Validation:
 - `AgentLensTests/Active/ChartsSnapshotBuilderTests`
 - `AgentLensTests/Active/SpendLensConservationTests`
 
+## §28 — Dashboard tick snapshot, Factory quota cache, listing prefetch (August 2026, round 10)
+
+Round 9 left three real burns on the graphics / GRDB / quota / usage lanes.
+
+### Lane 1 — Persist ticks use the dashboard snapshot, one covering scan
+
+`DataStoreCoordinator.reloadUsagesIfChanged` reloaded with `fetchAllUsage()` /
+`SELECT *` + `replaceUsages` whenever the write marker advanced or a window
+boundary passed. Init already used `fetchDashboardUsageSnapshot` +
+`replaceUsageSnapshot`. Persist ticks now take that same path
+(`GROUP BY` window totals + `quickHydrationLimit` covering rows).
+
+Inside the snapshot, bounded windows each used to `SELECT * … LIMIT N`.
+Provider / model totals already come from the overlapping-window `GROUP BY`.
+Covering rows are now loaded once (newest N, all-time) and filtered in
+memory for today / 7d / 30d / month credential and project covering lists.
+Those nested windows are recency suffixes of all-time, so the lists match
+per-window `LIMIT N` except a long-runner whose `startTime` is older than
+the newest N. Window **totals** still use intersection SQL and stay exact.
+
+### Lane 2 — Factory quota session cache
+
+Factory is on `quotaSignalProviders`. Unchanged `*.settings.json` files
+resume from a mtime+size disk cache of **quota facts only** (token total,
+cache reads, session date, lane, model). 5h / 7d / 30d membership is
+recomputed at fetch time. Conversation bodies and prompt text are not
+stored. The existing 30-day mtime skip still applies before a content
+read. Test / harness `sessionsDirectoryOverride` skips the billing API
+and dashboard scraper so cache tests cannot hang on network.
+
+### Lane 3 — Directory listings prefetch signature keys
+
+Goose, Gemini CLI, Claude Code (sessions + subagents), Mac Pi, Forge
+JSONL fallback, Muse flat-file fallback, Factory droid listings, and the
+Factory quota enumerator prefetch `fileSize` / `contentModificationDate` /
+`isRegularFile`. A later `FileSignature(for:)` hits the URL cache instead
+of a second `stat`. Apple's `contentsOfDirectory(includingPropertiesForKeys:)`
+documents this prefetch; `nil` keys are a default set, not "the keys we
+will read next."
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+  **Invariant, not remaining work.**
+- OpenCode JSON-only `part` schemas still full-scan `part` when any
+  heuristic session exists (IN-list needs a messageID column).
+- Forge still `contentsOfDirectory` on home every tick (creating
+  `~/foo/.forge.db` does not change `~` mtime) but already skips
+  `.forge.db` `fileExists` via per-child directory mtime.
+- Bounded-window credential / project covering lists can miss a
+  long-runner whose `startTime` is older than the newest N all-time
+  covering rows. SQL window totals still count it.
+- Aider quota adapter still full-reads analytics JSONL but Aider is
+  not on `quotaSignalProviders` / `ProviderQuotaAdapterRegistry.standard`.
+- Kilo Code quota is cached but still lists tasks with `contentsOfDirectory(atPath:)`
+  (Kilo is not a quota-signal provider).
+- GRDB named-column vs index decode on `ChartFactRow` (~2× per wiki;
+  brittle; dedicated unit).
+- Daemon `ISO8601DateFormatter()` per file (Pensieve etc.) is outside
+  this PR's Mac graphics / GRDB / quota / usage lanes.
+
+Validation:
+- `AgentLensTests/Active/RefreshTickPerfTests` (tick path == dashboard
+  snapshot; marker / boundary reload)
+- `AgentLensTests/Active/DashboardUsageViewModelTests`
+  (`test_dashboardSnapshot_usesOneCoveringScanAndFiltersWindowsInMemory`,
+  window totals vs per-window aggregates, constant query count)
+- `OpenBurnBarCoreTests/FactoryQuotaCacheTests` (second fetch cache hit,
+  changed settings reread, prompt text absent from cache)
+- `OpenBurnBarCoreTests/FactoryQuotaSessionSkipTests`
 
 
 

@@ -77,7 +77,10 @@ public final class GeminiCLIParser: LogParser, Sendable {
 
             guard fileManager.fileExists(atPath: chatsDir.path) else { continue }
 
-            let chatFiles = (try? fileManager.contentsOfDirectory(at: chatsDir, includingPropertiesForKeys: nil))?.filter {
+            let chatFiles = (try? fileManager.contentsOfDirectory(
+                at: chatsDir,
+                includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+            ))?.filter {
                 let name = $0.lastPathComponent
                 return name.hasPrefix("session-") && ($0.pathExtension == "json" || $0.pathExtension == "jsonl")
             } ?? []

@@ -93,20 +93,34 @@ extension UsageStore {
                 db: db,
                 windows: windows
             )
+            // One covering scan (newest `loadedUsageLimit` rows, all-time).
+            // Bounded windows previously each `SELECT * … LIMIT N` — five
+            // full-row decodes — even though provider/model totals already
+            // come from the GROUP BY fan-out. Credential / project covering
+            // lists filter this same newest-N set; nested recent windows
+            // (today / 7d / 30d / month) are suffixes of all-time recency,
+            // so the lists match per-window LIMIT N except a long-runner
+            // whose `startTime` is older than the newest N (aggregates
+            // still use intersection SQL and stay exact).
+            let coveringUsages = try Self.fetchUsageRows(
+                db: db,
+                dateRange: nil,
+                limit: loadedUsageLimit
+            )
             var windowSummaries: [TimeRange: DashboardUsageWindowSummary] = [:]
             for (timeRange, dateRange) in windows {
-                let loadedUsages = try Self.fetchUsageRows(
-                    db: db,
-                    dateRange: dateRange,
-                    limit: loadedUsageLimit
-                )
+                let windowCovering: [TokenUsage]
+                if let dateRange {
+                    windowCovering = coveringUsages.filter { $0.intersects(dateRange: dateRange) }
+                } else {
+                    windowCovering = coveringUsages
+                }
                 windowSummaries[timeRange] = Self.makeWindowSummary(
-                    loadedUsages: loadedUsages,
+                    loadedUsages: windowCovering,
                     aggregateRows: aggregatesByRange[timeRange] ?? []
                 )
             }
 
-            let allTime = windowSummaries[.allTime] ?? .empty
             let today = windowSummaries[.today] ?? .empty
 
             let dayTotals = try Self.fetchOverlappingDayCostAndTokens(
@@ -127,7 +141,7 @@ extension UsageStore {
 
             let dailySummaries = try Self.fetchDailySummaries(db: db)
             return DashboardUsageSnapshot(
-                loadedUsages: allTime.usages,
+                loadedUsages: coveringUsages,
                 windowSummaries: windowSummaries,
                 rollingDailyAverage: rollingDailyTotal / 7,
                 distinctUsageDayCount: dailySummaries.count,

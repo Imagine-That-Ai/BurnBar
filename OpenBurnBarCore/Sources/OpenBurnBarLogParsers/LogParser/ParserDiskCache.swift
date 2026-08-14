@@ -32,6 +32,15 @@ public struct FileSignature: Codable, Equatable, Sendable {
         self.modifiedAt = values.contentModificationDate?.timeIntervalSince1970 ?? 0
         self.sizeBytes = Int64(values.fileSize ?? 0)
     }
+
+    /// Prefetch these on `contentsOfDirectory` / `enumerator` so a later
+    /// `FileSignature(for:)` / `resourceValues(forKeys:)` hits the URL cache
+    /// instead of issuing a second `stat`.
+    public static let directoryListingPrefetchKeys: [URLResourceKey] = [
+        .fileSizeKey,
+        .contentModificationDateKey,
+        .isRegularFileKey
+    ]
 }
 
 public struct NamedFileSignature: Codable, Equatable, Sendable {

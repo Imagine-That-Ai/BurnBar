@@ -89,6 +89,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page covering scan now loads `ChartFactRow` columns only (burn / cache /
   provenance / histogram / Spend Lens included), so all-time no longer
   `SELECT *` / `decodeUsage`. Attribution still clamps `startTime`.
+- **Dashboard persist ticks** reload with `fetchDashboardUsageSnapshot` (the
+  same SQL window totals + hydration covering rows as init) instead of
+  `fetchAllUsage` / `SELECT *`. The snapshot itself decodes covering rows
+  once and filters them for bounded windows. **Factory quota** resumes
+  unchanged `*.settings.json` from a mtime+size cache of totals / lane /
+  session date only. Goose, Gemini CLI, Claude Code, Mac Pi, Forge, Muse,
+  and Factory listings prefetch size/mtime so cache signatures do not
+  re-stat.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

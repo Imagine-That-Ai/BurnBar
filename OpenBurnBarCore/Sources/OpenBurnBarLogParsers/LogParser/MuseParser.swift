@@ -183,7 +183,10 @@ public final class MuseParser: LogParser, Sendable {
         }
         // Fallback: if no session.jsonl found (e.g., test fixtures with flat files),
         // accept any *.jsonl directly under root.
-        if out.isEmpty, let contents = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
+        if out.isEmpty, let contents = try? fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+        ) {
             out.append(contentsOf: contents.filter { $0.pathExtension == "jsonl" })
         }
         return out.sorted { $0.path < $1.path }

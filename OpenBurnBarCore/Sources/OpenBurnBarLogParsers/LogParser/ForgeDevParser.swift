@@ -201,7 +201,10 @@ public final class ForgeDevParser: LogParser, Sendable {
 
         for projectDir in projectDirs {
             let projectName = projectDir.lastPathComponent
-            let files = (try? fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)) ?? []
+            let files = (try? fileManager.contentsOfDirectory(
+                at: projectDir,
+                includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+            )) ?? []
             for file in files where file.pathExtension == "jsonl" {
                 let sessionId = file.deletingPathExtension().lastPathComponent
                 try ingestJSONL(file: file, sessionId: sessionId, projectName: projectName)
