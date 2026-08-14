@@ -10,10 +10,7 @@ import com.openburnbar.data.derived.TrendInsightEngine
  * from the digest." Extracted so JVM tests can cover the memoization
  * decision without composing the card.
  */
-internal fun resolvedAtlasInsights(
-    digest: TrendDataDigest,
-    insights: List<TrendInsight>?,
-): List<TrendInsight> {
+internal fun resolvedAtlasInsights(digest: TrendDataDigest, insights: List<TrendInsight>?): List<TrendInsight> {
     if (insights != null) {
         return insights
     }

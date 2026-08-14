@@ -505,6 +505,7 @@ final class ArtifactStore: Sendable {
         }
 
         let whereSQL = clauses.isEmpty ? "" : "WHERE " + clauses.joined(separator: " AND ")
+        let statementArgs = args
         return try await dbQueue.read { db in
             var counts: [SharedArtifactSyncStatus: Int] = [:]
             let rows = try Row.fetchAll(
@@ -515,7 +516,7 @@ final class ArtifactStore: Sendable {
                 \(whereSQL)
                 GROUP BY syncStatus
                 """,
-                arguments: StatementArguments(args)
+                arguments: StatementArguments(statementArgs)
             )
             for row in rows {
                 guard let raw = row["syncStatus"] as? String,

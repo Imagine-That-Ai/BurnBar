@@ -58,7 +58,7 @@ final class AiderQuotaCacheTests: XCTestCase {
         XCTAssertFalse(AgentProvider.quotaSignalProviders.contains(.aider))
         XCTAssertFalse(AgentProvider.aider.isQuotaSignalProvider)
         XCTAssertNil(ProviderQuotaAdapterRegistry.standard.entry(for: .aider))
-        XCTAssertEqual(AgentProviderIngestionCatalog.entry(for: .aider).quotaSignal, false)
+        XCTAssertFalse(AgentProviderIngestionCatalog.entry(for: .aider).quotaSignal)
     }
 
     func test_fetch_resumesAppendOnlyGrowthWithoutRereadingHead() async throws {

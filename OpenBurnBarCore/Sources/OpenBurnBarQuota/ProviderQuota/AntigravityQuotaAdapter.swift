@@ -288,9 +288,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
                     newestInChunk = max(newestInChunk ?? timestamp, timestamp)
                     if timestamp >= cutoffMs && timestamp <= nowMs {
                         inWindowCount += 1
-                        if earliestInWindowTimestamp == nil || timestamp < earliestInWindowTimestamp! {
-                            earliestInWindowTimestamp = timestamp
-                        }
+                        earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? timestamp, timestamp)
                     }
                 }
                 if let newestInChunk, newestInChunk < cutoffMs {
@@ -333,9 +331,7 @@ public struct AntigravityQuotaAdapter: ProviderQuotaAdapter {
             let timestamp = event.timestamp
             if timestamp >= cutoffMs && timestamp <= nowMs {
                 inWindowCount += 1
-                if earliestInWindowTimestamp == nil || timestamp < earliestInWindowTimestamp! {
-                    earliestInWindowTimestamp = timestamp
-                }
+                earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? timestamp, timestamp)
             }
         }
         return HistoryLogScan(

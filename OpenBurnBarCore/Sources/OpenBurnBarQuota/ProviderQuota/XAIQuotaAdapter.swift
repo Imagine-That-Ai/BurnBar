@@ -525,9 +525,7 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
                     newestInChunk = max(newestInChunk ?? timestamp, timestamp)
                     if timestamp >= cutoffMs && timestamp <= nowMs {
                         inWindowCount += 1
-                        if earliestInWindowTimestamp == nil || timestamp < earliestInWindowTimestamp! {
-                            earliestInWindowTimestamp = timestamp
-                        }
+                        earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? timestamp, timestamp)
                     }
                 }
                 if let newestInChunk, newestInChunk < cutoffMs {
@@ -574,9 +572,7 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
             sawAnyEvent = true
             if event.timestamp >= cutoffMs && event.timestamp <= nowMs {
                 inWindowCount += 1
-                if earliestInWindowTimestamp == nil || event.timestamp < earliestInWindowTimestamp! {
-                    earliestInWindowTimestamp = event.timestamp
-                }
+                earliestInWindowTimestamp = min(earliestInWindowTimestamp ?? event.timestamp, event.timestamp)
             }
         }
         return SuperGrokLogScan(
