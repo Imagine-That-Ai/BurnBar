@@ -196,6 +196,129 @@ def test_allows_xcodegen_temp_package_product_id_churn(tmp_path: Path):
     assert "PBX object ID churn ignored" in result.stdout
 
 
+def test_allows_source_membership_list_reordering(tmp_path: Path):
+    committed = """// !$*UTF8*$!
+{
+  objects = {
+    AAAAAAAAAAAAAAAAAAAAAAAA /* Foo.swift */ = {
+      isa = PBXFileReference;
+      path = Foo.swift;
+    };
+    BBBBBBBBBBBBBBBBBBBBBBBB /* Bar.swift */ = {
+      isa = PBXFileReference;
+      path = Bar.swift;
+    };
+    CCCCCCCCCCCCCCCCCCCCCCCC /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      files = (
+        DDDDDDDDDDDDDDDDDDDDDDDD /* Foo.swift in Sources */,
+        EEEEEEEEEEEEEEEEEEEEEEEE /* Bar.swift in Sources */,
+      );
+    };
+    DDDDDDDDDDDDDDDDDDDDDDDD /* Foo.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = AAAAAAAAAAAAAAAAAAAAAAAA /* Foo.swift */;
+    };
+    EEEEEEEEEEEEEEEEEEEEEEEE /* Bar.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = BBBBBBBBBBBBBBBBBBBBBBBB /* Bar.swift */;
+    };
+  };
+}
+"""
+    generated = """// !$*UTF8*$!
+{
+  objects = {
+    111111111111111111111111 /* Foo.swift */ = {
+      isa = PBXFileReference;
+      path = Foo.swift;
+    };
+    222222222222222222222222 /* Bar.swift */ = {
+      isa = PBXFileReference;
+      path = Bar.swift;
+    };
+    333333333333333333333333 /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      files = (
+        555555555555555555555555 /* Bar.swift in Sources */,
+        444444444444444444444444 /* Foo.swift in Sources */,
+      );
+    };
+    444444444444444444444444 /* Foo.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = 111111111111111111111111 /* Foo.swift */;
+    };
+    555555555555555555555555 /* Bar.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = 222222222222222222222222 /* Bar.swift */;
+    };
+  };
+}
+"""
+
+    result = run_verifier(tmp_path, committed, generated)
+
+    assert result.returncode == 0
+
+
+def test_rejects_dropped_source_even_when_lists_are_reordered(tmp_path: Path):
+    committed = """// !$*UTF8*$!
+{
+  objects = {
+    AAAAAAAAAAAAAAAAAAAAAAAA /* Foo.swift */ = {
+      isa = PBXFileReference;
+      path = Foo.swift;
+    };
+    BBBBBBBBBBBBBBBBBBBBBBBB /* Bar.swift */ = {
+      isa = PBXFileReference;
+      path = Bar.swift;
+    };
+    CCCCCCCCCCCCCCCCCCCCCCCC /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      files = (
+        EEEEEEEEEEEEEEEEEEEEEEEE /* Bar.swift in Sources */,
+        DDDDDDDDDDDDDDDDDDDDDDDD /* Foo.swift in Sources */,
+      );
+    };
+    DDDDDDDDDDDDDDDDDDDDDDDD /* Foo.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = AAAAAAAAAAAAAAAAAAAAAAAA /* Foo.swift */;
+    };
+    EEEEEEEEEEEEEEEEEEEEEEEE /* Bar.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = BBBBBBBBBBBBBBBBBBBBBBBB /* Bar.swift */;
+    };
+  };
+}
+"""
+    generated = """// !$*UTF8*$!
+{
+  objects = {
+    111111111111111111111111 /* Foo.swift */ = {
+      isa = PBXFileReference;
+      path = Foo.swift;
+    };
+    333333333333333333333333 /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      files = (
+        444444444444444444444444 /* Foo.swift in Sources */,
+      );
+    };
+    444444444444444444444444 /* Foo.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = 111111111111111111111111 /* Foo.swift */;
+    };
+  };
+}
+"""
+
+    result = run_verifier(tmp_path, committed, generated)
+
+    assert result.returncode == 1
+    assert "semantic drift" in result.stderr
+    assert "Bar.swift" in result.stderr
+
+
 def test_rejects_temp_package_product_semantic_drift(tmp_path: Path):
     committed = """// !$*UTF8*$!
 {
