@@ -109,6 +109,75 @@ final class DailySummaryIntersectionTests: XCTestCase {
         XCTAssertEqual(snapshot.dailySummaries.count, 2)
     }
 
+    func test_fetchDistinctUsageDayCount_matchesIntersectionSummaries() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let today = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_776_355_200))
+        let yesterday = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: today))
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "span-days",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 20,
+            costUSD: 2,
+            startTime: yesterday.addingTimeInterval(22 * 3600),
+            endTime: today.addingTimeInterval(2 * 3600)
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .claudeCode,
+            sessionId: "today-only-days",
+            model: "sonnet",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1,
+            startTime: today.addingTimeInterval(2 * 3600),
+            endTime: today.addingTimeInterval(2 * 3600 + 30)
+        ))
+
+        let distinctDays = try await queue.read { db in
+            try UsageStore.fetchDistinctUsageDayCount(db: db, calendar: calendar)
+        }
+        let summaries = try await queue.read { db in
+            try UsageStore.fetchDailySummariesByPerDayIntersection(db: db, calendar: calendar)
+        }
+        XCTAssertEqual(distinctDays, summaries.count)
+        XCTAssertEqual(distinctDays, 2)
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let currentCalendarCount = try await queue.read { db in
+            try UsageStore.fetchDistinctUsageDayCount(db: db, calendar: .current)
+        }
+        XCTAssertEqual(snapshot.distinctUsageDayCount, currentCalendarCount)
+        XCTAssertEqual(snapshot.distinctUsageDayCount, snapshot.dailySummaries.count)
+    }
+
+    func test_fetchDistinctUsageDayCount_sameDaySessionCountsOnce() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let today = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_776_355_200))
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "same-day",
+            model: "gpt-5",
+            startTime: today.addingTimeInterval(3600),
+            endTime: today.addingTimeInterval(7200)
+        ))
+
+        let distinctDays = try await queue.read { db in
+            try UsageStore.fetchDistinctUsageDayCount(db: db, calendar: calendar)
+        }
+        XCTAssertEqual(distinctDays, 1)
+    }
+
     private func assertSummariesEqual(
         _ lhs: [DailyUsageSummary],
         _ rhs: [DailyUsageSummary],

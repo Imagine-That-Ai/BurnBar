@@ -533,6 +533,7 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
     private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CachedUsageBundleEntry<OpenBurnBarCore.FileSetSignature>>
     private let sessionScanCount = OpenBurnBarCore.Locked(0)
     private let sessionCacheHitCount = OpenBurnBarCore.Locked(0)
+    private let partReadCount = OpenBurnBarCore.Locked(0)
 
     init(
         databasePathOverride: String? = nil,
@@ -560,10 +561,12 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
 
     var lastSessionScanCount: Int { sessionScanCount.read() }
     var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    var lastPartReadCount: Int { partReadCount.read() }
 
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         sessionScanCount.write(0)
         sessionCacheHitCount.write(0)
+        partReadCount.write(0)
         let fm = fileManager
         let resolved = databasePathOverride.map { ($0 as NSString).expandingTildeInPath }
             ?? Self.resolvedDatabasePath()
@@ -597,7 +600,10 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
             )
         }
         sessionScanCount.withLock { $0 += 1 }
-        let result = try parseDatabase(dbPath: dbPath)
+        let result = try parseDatabase(
+            dbPath: dbPath,
+            includeConversationBodies: options.includeConversationBodies
+        )
         if let signature {
             parseCache.fileEntries = [
                 cacheKey: OpenBurnBarCore.CachedUsageBundleEntry(signature: signature, usages: result.usages)
@@ -642,7 +648,7 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
         var cost: Double?
     }
 
-    private func parseDatabase(dbPath: String) throws -> OpenBurnBarCore.ParseResult {
+    private func parseDatabase(dbPath: String, includeConversationBodies: Bool) throws -> OpenBurnBarCore.ParseResult {
         var config = Configuration()
         config.readonly = true
         let db = try DatabaseQueue(path: dbPath, configuration: config)
@@ -693,19 +699,33 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
             }
 
             if tables.contains("part") {
-                for row in try Row.fetchAll(db, sql: "SELECT * FROM part") {
-                    guard let json = Self.dataJSON(row) else { continue }
-                    let type = (json["type"] as? String ?? "text").lowercased()
-                    guard type == "text" || type == "reasoning" else { continue }
-                    guard let messageID = Self.identifier(row, json, keys: ["messageID", "message_id", "messageId"]) else { continue }
-                    let text = (json["text"] as? String ?? json["content"] as? String ?? "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { continue }
-                    if var existing = textByMessage[messageID] {
-                        existing += "\n\n" + text
-                        textByMessage[messageID] = existing
-                    } else {
-                        textByMessage[messageID] = text
+                let heuristicMessageIDs = Set(messagesBySession.flatMap { _, raw -> [String] in
+                    let input = raw.reduce(0) { $0 + $1.input }
+                    let output = raw.reduce(0) { $0 + $1.output }
+                    let cacheCreation = raw.reduce(0) { $0 + $1.cacheCreation }
+                    let cacheRead = raw.reduce(0) { $0 + $1.cacheRead }
+                    guard input == 0 && output == 0 && cacheCreation == 0 && cacheRead == 0 else {
+                        return []
+                    }
+                    return raw.map(\.messageID)
+                })
+                let scopedIDs: Set<String>? = includeConversationBodies ? nil : heuristicMessageIDs
+                if includeConversationBodies || !heuristicMessageIDs.isEmpty {
+                    for row in try fetchOpenCodePartRows(db: db, messageIDs: scopedIDs) {
+                        guard let json = Self.dataJSON(row) else { continue }
+                        let type = (json["type"] as? String ?? "text").lowercased()
+                        guard type == "text" || type == "reasoning" else { continue }
+                        guard let messageID = Self.identifier(row, json, keys: ["messageID", "message_id", "messageId"]) else { continue }
+                        if let scopedIDs, !scopedIDs.contains(messageID) { continue }
+                        let text = (json["text"] as? String ?? json["content"] as? String ?? "")
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !text.isEmpty else { continue }
+                        if var existing = textByMessage[messageID] {
+                            existing += "\n\n" + text
+                            textByMessage[messageID] = existing
+                        } else {
+                            textByMessage[messageID] = text
+                        }
                     }
                 }
             }
@@ -835,6 +855,52 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
         }
 
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
+    }
+
+    private static let partQueryChunkSize = 400
+
+    private func fetchOpenCodePartRows(db: Database, messageIDs: Set<String>?) throws -> [Row] {
+        let rows: [Row]
+        if let messageIDs {
+            let columns = Set(
+                try Row.fetchAll(db, sql: "PRAGMA table_info(part)").compactMap { $0["name"] as? String }
+            )
+            let idColumn = ["messageID", "message_id", "messageId"].first { columns.contains($0) }
+            if let idColumn {
+                rows = try Self.queryOpenCodePartRows(db: db, idColumn: idColumn, messageIDs: messageIDs)
+            } else {
+                rows = try Row.fetchAll(db, sql: "SELECT * FROM part")
+            }
+        } else {
+            rows = try Row.fetchAll(db, sql: "SELECT * FROM part")
+        }
+        partReadCount.withLock { $0 += rows.count }
+        return rows
+    }
+
+    private static func queryOpenCodePartRows(
+        db: Database,
+        idColumn: String,
+        messageIDs: Set<String>
+    ) throws -> [Row] {
+        let allowed = Set(["messageID", "message_id", "messageId"])
+        guard allowed.contains(idColumn), !messageIDs.isEmpty else { return [] }
+        var collected: [Row] = []
+        let ordered = Array(messageIDs)
+        var index = 0
+        while index < ordered.count {
+            let end = min(index + partQueryChunkSize, ordered.count)
+            let chunk = Array(ordered[index..<end])
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM part WHERE \(idColumn) IN (\(placeholders))",
+                arguments: StatementArguments(chunk)
+            )
+            collected.append(contentsOf: rows)
+            index = end
+        }
+        return collected
     }
 
     // MARK: - JSON / column helpers

@@ -447,6 +447,7 @@ public final class OpenCodeParser: LogParser, Sendable {
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
     private let sessionScanCount = Locked(0)
     private let sessionCacheHitCount = Locked(0)
+    private let partReadCount = Locked(0)
 
     public init(
         databaseOverride: URL? = nil,
@@ -469,6 +470,7 @@ public final class OpenCodeParser: LogParser, Sendable {
 
     var lastSessionScanCount: Int { sessionScanCount.read() }
     var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    var lastPartReadCount: Int { partReadCount.read() }
 
     public static func resolvedDatabasePath(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         if let explicit = environment["OPENCODE_DB_PATH"], !explicit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return LocalUsageParserSupport.expanded(explicit) }
@@ -480,6 +482,7 @@ public final class OpenCodeParser: LogParser, Sendable {
     public func parse(options: LogParseOptions) async throws -> ParseResult {
         sessionScanCount.write(0)
         sessionCacheHitCount.write(0)
+        partReadCount.write(0)
         let path = databaseOverride ?? Self.resolvedDatabasePath()
         guard fileManager.fileExists(atPath: path.path) else { return ParseResult(usages: [], conversations: []) }
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
@@ -552,25 +555,31 @@ public final class OpenCodeParser: LogParser, Sendable {
                 ))
             }
         }
-        let needsPartText = options.includeConversationBodies || messages.contains { _, raw in
-            raw.reduce(0) { $0 + $1.tokens.input } == 0
-                && raw.reduce(0) { $0 + $1.tokens.output } == 0
-        }
-        if tables.contains("part"), needsPartText {
-            for row in try db.query("SELECT * FROM part") {
-                guard let json = Self.data(from: row),
-                      ["text", "reasoning"].contains(
-                          LocalUsageParserSupport.string(json["type"])?.lowercased() ?? "text"
-                      ),
-                      let id = row.string("messageID")
-                        ?? row.string("message_id")
-                        ?? LocalUsageParserSupport.firstString(
-                            json,
-                            keys: ["messageID", "messageId", "message_id"]
-                        ),
-                      let text = LocalUsageParserSupport.string(json["text"] ?? json["content"])
-                else { continue }
-                texts[id, default: ""] += ((texts[id]?.isEmpty ?? true) ? "" : "\n\n") + text
+        let heuristicMessageIDs = Set(messages.flatMap { _, raw -> [String] in
+            let input = raw.reduce(0) { $0 + $1.tokens.input }
+            let output = raw.reduce(0) { $0 + $1.tokens.output }
+            guard input == 0 && output == 0 else { return [] }
+            return raw.map(\.id)
+        })
+        if tables.contains("part") {
+            let scopedIDs: Set<String>? = options.includeConversationBodies ? nil : heuristicMessageIDs
+            if options.includeConversationBodies || !heuristicMessageIDs.isEmpty {
+                for row in try fetchOpenCodePartRows(db: db, messageIDs: scopedIDs) {
+                    guard let json = Self.data(from: row),
+                          ["text", "reasoning"].contains(
+                              LocalUsageParserSupport.string(json["type"])?.lowercased() ?? "text"
+                          ),
+                          let id = row.string("messageID")
+                            ?? row.string("message_id")
+                            ?? LocalUsageParserSupport.firstString(
+                                json,
+                                keys: ["messageID", "messageId", "message_id"]
+                            ),
+                          let text = LocalUsageParserSupport.string(json["text"] ?? json["content"])
+                    else { continue }
+                    if let scopedIDs, !scopedIDs.contains(id) { continue }
+                    texts[id, default: ""] += ((texts[id]?.isEmpty ?? true) ? "" : "\n\n") + text
+                }
             }
         }
         var usages: [TokenUsage] = []
@@ -641,6 +650,56 @@ public final class OpenCodeParser: LogParser, Sendable {
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
+
+    /// Usage-only ticks query `part` only for sessions that lack explicit
+    /// token buckets. Conversation-body passes still read every text part.
+    /// When `messageIDs` is nil the full table is scanned.
+    private func fetchOpenCodePartRows(
+        db: SQLiteReading,
+        messageIDs: Set<String>?
+    ) throws -> [SQLiteRow] {
+        let rows: [SQLiteRow]
+        if let messageIDs {
+            let columns = Set(try db.columnNames(ofTable: "part"))
+            let idColumn = ["messageID", "message_id", "messageId"].first { columns.contains($0) }
+            if let idColumn {
+                rows = try Self.queryPartRows(db: db, idColumn: idColumn, messageIDs: messageIDs)
+            } else {
+                rows = try db.query("SELECT * FROM part")
+            }
+        } else {
+            rows = try db.query("SELECT * FROM part")
+        }
+        partReadCount.withLock { $0 += rows.count }
+        return rows
+    }
+
+    private static let partQueryChunkSize = 400
+
+    private static func queryPartRows(
+        db: SQLiteReading,
+        idColumn: String,
+        messageIDs: Set<String>
+    ) throws -> [SQLiteRow] {
+        let allowed = Set(["messageID", "message_id", "messageId"])
+        guard allowed.contains(idColumn), !messageIDs.isEmpty else { return [] }
+        var collected: [SQLiteRow] = []
+        let ordered = Array(messageIDs)
+        var index = 0
+        while index < ordered.count {
+            let end = min(index + partQueryChunkSize, ordered.count)
+            let chunk = Array(ordered[index..<end])
+            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+            let rows = try db.query(
+                "SELECT * FROM part WHERE \(idColumn) IN (\(placeholders))",
+                arguments: chunk.map { .text($0) }
+            )
+            collected.append(contentsOf: rows)
+            index = end
+        }
+        return collected
+    }
+
     private static func decode(_ value: String) -> [String: Any]? { try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any] }
 
     private static func data(from row: SQLiteRow) -> [String: Any]? {

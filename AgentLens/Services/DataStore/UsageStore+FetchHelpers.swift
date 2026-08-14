@@ -380,7 +380,29 @@ extension UsageStore {
     }
 
     static func fetchDistinctUsageDayCount(db: Database) throws -> Int { // pure-move: was private
-        try Int.fetchOne(db, sql: "SELECT COUNT(DISTINCT DATE(startTime)) FROM token_usage") ?? 0
+        try fetchDistinctUsageDayCount(db: db, calendar: .current)
+    }
+
+    /// Distinct local calendar days that at least one session overlaps.
+    /// Same membership as `fetchDailySummaries` / last-7-day intersection SQL.
+    static func fetchDistinctUsageDayCount(db: Database, calendar: Calendar) throws -> Int {
+        let fetched = try Row.fetchAll(db, sql: "SELECT startTime, endTime FROM token_usage")
+        var days = Set<Date>()
+        days.reserveCapacity(fetched.count)
+        for row in fetched {
+            guard let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
+                  let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"]) else {
+                continue
+            }
+            for day in UsageDayIntersection.overlappingDayStarts(
+                startTime: startTime,
+                endTime: endTime,
+                calendar: calendar
+            ) {
+                days.insert(day)
+            }
+        }
+        return days.count
     }
 
     static func fetchDailySummaries(db: Database) throws -> [DailyUsageSummary] { // pure-move: was private

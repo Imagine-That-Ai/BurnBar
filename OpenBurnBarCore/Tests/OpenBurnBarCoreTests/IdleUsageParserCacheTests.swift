@@ -496,6 +496,66 @@ final class IdleUsageParserCacheTests: XCTestCase {
         return transcript
     }
 
+    private struct OpenCodeMessageSeed {
+        let id: String
+        let role: String
+        let tokens: (input: Int, output: Int)?
+        let partText: String
+    }
+
+    private struct OpenCodeSessionSeed {
+        let id: String
+        let messages: [OpenCodeMessageSeed]
+    }
+
+    private func makeOpenCodeDatabase(sessions: [OpenCodeSessionSeed]) throws -> URL {
+        let root = try makeTemporaryDirectory("opencode-part")
+        let path = root.appendingPathComponent("opencode.db")
+        let db = try SQLiteConnection.openForWriting(creatingAt: path.path)
+        try db.execute("CREATE TABLE session (id TEXT, data TEXT, time_created INTEGER, time_updated INTEGER)")
+        try db.execute("CREATE TABLE message (id TEXT, sessionID TEXT, data TEXT, time_created INTEGER)")
+        try db.execute("CREATE TABLE part (messageID TEXT, data TEXT)")
+        var created = 1_750_000_000
+        for session in sessions {
+            try db.execute(
+                "INSERT INTO session VALUES (?, ?, ?, ?)",
+                arguments: [
+                    .text(session.id),
+                    .text(#"{"title":"Demo","directory":"/tmp/demo","time":{"created":\#(created),"updated":\#(created + 2)}}"#),
+                    .int(Int64(created)),
+                    .int(Int64(created + 2))
+                ]
+            )
+            for message in session.messages {
+                let tokenJSON: String
+                if let tokens = message.tokens {
+                    tokenJSON = #""tokens":{"input":\#(tokens.input),"output":\#(tokens.output)},"#
+                } else {
+                    tokenJSON = ""
+                }
+                try db.execute(
+                    "INSERT INTO message VALUES (?, ?, ?, ?)",
+                    arguments: [
+                        .text(message.id),
+                        .text(session.id),
+                        .text("{\"role\":\"\(message.role)\",\"model\":\"gpt-4o\",\(tokenJSON)\"cost\":0.02,\"time\":{\"created\":\(created + 1)}}"),
+                        .int(Int64(created + 1))
+                    ]
+                )
+                try db.execute(
+                    "INSERT INTO part VALUES (?, ?)",
+                    arguments: [
+                        .text(message.id),
+                        .text("{\"type\":\"text\",\"text\":\"\(message.partText)\"}")
+                    ]
+                )
+                created += 10
+            }
+        }
+        db.close()
+        return path
+    }
+
     private func makeTemporaryDirectory(_ name: String) throws -> URL {
         let directory = fileManager.temporaryDirectory
             .appendingPathComponent("obb-\(name)-\(UUID().uuidString)", isDirectory: true)
@@ -861,6 +921,82 @@ final class IdleUsageParserCacheTests: XCTestCase {
             expectedInput: 21,
             expectedOutput: 9
         )
+    }
+
+    func test_openCode_usageOnlySkipsPartWhenEverySessionHasExplicitTokens() async throws {
+        let path = try makeOpenCodeDatabase(
+            sessions: [
+                OpenCodeSessionSeed(
+                    id: "session-explicit",
+                    messages: [
+                        OpenCodeMessageSeed(
+                            id: "message-explicit",
+                            role: "assistant",
+                            tokens: (21, 9),
+                            partText: "explicit body that usage-only must not read"
+                        )
+                    ]
+                )
+            ]
+        )
+        let parser = OpenCodeParser(databaseOverride: path)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(parser.lastPartReadCount, 0)
+        XCTAssertEqual(first.usages.first?.inputTokens, 21)
+        XCTAssertEqual(first.usages.first?.outputTokens, 9)
+        XCTAssertEqual(first.usages.first?.provenanceConfidence, .exact)
+    }
+
+    func test_openCode_usageOnlyReadsPartOnlyForSessionsMissingExplicitTokens() async throws {
+        let path = try makeOpenCodeDatabase(
+            sessions: [
+                OpenCodeSessionSeed(
+                    id: "session-explicit",
+                    messages: [
+                        OpenCodeMessageSeed(
+                            id: "message-explicit",
+                            role: "assistant",
+                            tokens: (21, 9),
+                            partText: "explicit body"
+                        )
+                    ]
+                ),
+                OpenCodeSessionSeed(
+                    id: "session-heuristic",
+                    messages: [
+                        OpenCodeMessageSeed(
+                            id: "message-h-user",
+                            role: "user",
+                            tokens: nil,
+                            partText: "hello from the user"
+                        ),
+                        OpenCodeMessageSeed(
+                            id: "message-h-assistant",
+                            role: "assistant",
+                            tokens: nil,
+                            partText: "hello from the assistant"
+                        )
+                    ]
+                )
+            ]
+        )
+        let parser = OpenCodeParser(databaseOverride: path)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(parser.lastPartReadCount, 2)
+        let bySession = Dictionary(uniqueKeysWithValues: first.usages.map { ($0.sessionId, $0) })
+        XCTAssertEqual(bySession["session-explicit"]?.inputTokens, 21)
+        XCTAssertEqual(bySession["session-explicit"]?.provenanceConfidence, .exact)
+        let heuristic = try XCTUnwrap(bySession["session-heuristic"])
+        XCTAssertGreaterThan(heuristic.inputTokens, 0)
+        XCTAssertEqual(heuristic.provenanceConfidence, .lowConfidenceEstimate)
+
+        let bodies = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
+        XCTAssertEqual(parser.lastPartReadCount, 3)
+        XCTAssertEqual(bodies.conversations.count, 2)
     }
 
     func test_omp_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {

@@ -125,6 +125,10 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("ProviderQuotaScratch", isDirectory: true)
     }
 
+    public var kiloCodeQuotaCacheURL: URL {
+        providerQuotaScratchDirectory.appendingPathComponent("kilo_code_quota_cache.plist")
+    }
+
     public var vectorIndexesRootURL: URL {
         supportDirectory.appendingPathComponent("VectorIndexes", isDirectory: true)
     }

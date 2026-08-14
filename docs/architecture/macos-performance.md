@@ -1182,5 +1182,68 @@ Validation:
 - `AgentLensTests/Active/MacIdleUsageParserCacheTests` (Copilot / Aider /
   Cursor / OpenCode / Pi / OpenClaw usage-only second pass)
 
+## §26 — Remaining hot paths (August 2026, round 8)
+
+Round 7 closed Mac-semantics caches, daily-summary intersection, overlapping
+quota phases, Warp append resume, and discovery stats. Four leftovers were
+still on the table: distinct-day count was start-day SQL, OpenCode usage-only
+read every `part` row when any session lacked buckets, Kilo Code quota
+re-parsed every `ui_messages.json`, and Charts heatmap / outliers / entropy
+still needed a TokenUsage materialize.
+
+### Lane 1 — Distinct usage days use intersection membership
+
+`fetchDistinctUsageDayCount` counts unique local calendar days that at least
+one session overlaps (same `UsageDayIntersection` fold as daily summaries).
+The dashboard snapshot reuses `dailySummaries.count` so the all-time scan
+is not repeated. A spanning yesterday→today session is two days; a same-day
+session is one. Start-day `COUNT(DISTINCT DATE(startTime))` is gone.
+
+### Lane 2 — OpenCode usage-only `part` scope
+
+Core and Mac OpenCode parsers skip the `part` table on usage-only when every
+session has explicit token buckets. If some sessions are zero-bucket, they
+`SELECT * FROM part WHERE messageID IN (…)` for those message ids only
+(chunked). Conversation-body passes still read every text/reasoning part so
+transcripts stay complete. Heuristic totals for zero-bucket sessions are
+unchanged.
+
+### Lane 3 — Kilo Code quota task cache
+
+`KiloCodeQuotaAdapter` resumes unchanged `ui_messages.json` files from a
+mtime+size disk cache of **quota totals only** (tasks / tokens / cost).
+Conversation bodies are not stored. Kilo is not a `quotaSignalProviders`
+member, so it stays off `ProviderQuotaAdapterRegistry.standard`.
+
+### Lane 4 — Charts heatmap / outliers / entropy SQL twin
+
+`ChartSessionAnalytics` is the shared fold. `UsageStore.fetchChartSessionAnalytics`
+loads a narrow `startTime, cost, sessionId, projectName, model, provider`
+projection with the same intersection window as `fetchUsage(in:)`, then
+clamps `startTime` into the resolved chart range (not exploded onto every
+overlapped day). Equality tests match `ChartsSnapshot.build` on heatmap,
+top-5 outliers, and project entropy. Burn / cache / provenance / histogram
+still use the covering TokenUsage scan; all-time covering rows remain for
+those cards.
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+
+Validation:
+- `AgentLensTests/Active/DailySummaryIntersectionTests` (distinct-day count
+  vs per-day intersection summaries, spanning session)
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests` (OpenCode usage-only
+  skips `part` when every session has buckets; mixed explicit+heuristic
+  reads only heuristic message ids)
+- `AgentLensTests/Active/MacIdleUsageParserCacheTests` (Mac OpenCode `part`
+  scope)
+- `OpenBurnBarCoreTests/KiloCodeQuotaCacheTests` (second fetch cache hit,
+  changed task reread, bodies absent from cache)
+- `AgentLensTests/Active/ChartSessionAnalyticsSQLTests` (SQL vs
+  `ChartsSnapshot.build`, crossing-range clamp)
+
+
 
 

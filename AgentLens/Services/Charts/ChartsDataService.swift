@@ -61,8 +61,10 @@ final class ChartsDataService {
             do {
                 // Bounded TimeRange cases (today / 7d / 30d / month) all sit
                 // inside the last 31 days, so one intersection scan covers
-                // both windows. All-time still materializes every row — the
-                // heatmap needs per-session values, not a SQL aggregate.
+                // both windows. All-time still materializes covering rows for
+                // burn / cache / provenance; heatmap, outliers, and entropy
+                // have a SQL twin (`UsageStore.fetchChartSessionAnalytics`)
+                // that matches `ChartsSnapshot.build` without TokenUsage.
                 let coveringRows: [TokenUsage]
                 if requestedRange == nil {
                     coveringRows = try await dataStore.fetchAllUsage()

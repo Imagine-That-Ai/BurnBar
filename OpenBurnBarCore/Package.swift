@@ -827,6 +827,7 @@ let openBurnBarCoreOffAppleTestSources: [String]? = [
     "WarpTelemetryTailTests.swift",
     "GeminiCLIParserCacheTests.swift",
     "IdleUsageParserCacheTests.swift",
+    "KiloCodeQuotaCacheTests.swift",
     "ThreadSafeISO8601DateFormatterStaticParseTests.swift"
 ]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
@@ -852,6 +853,7 @@ let openBurnBarCoreOffAppleTestSources: [String]? = [
     "WarpTelemetryTailTests.swift",
     "GeminiCLIParserCacheTests.swift",
     "IdleUsageParserCacheTests.swift",
+    "KiloCodeQuotaCacheTests.swift",
     "ThreadSafeISO8601DateFormatterStaticParseTests.swift"
 ]
 let openBurnBarCorePlaceholderExcludes: [String] = []
@@ -892,6 +894,7 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
             "WarpTelemetryTailTests.swift",
             "GeminiCLIParserCacheTests.swift",
             "IdleUsageParserCacheTests.swift",
+            "KiloCodeQuotaCacheTests.swift",
             "ThreadSafeISO8601DateFormatterStaticParseTests.swift",
             "LinuxSecretStorageTests.swift",
             "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"

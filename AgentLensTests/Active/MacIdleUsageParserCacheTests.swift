@@ -153,6 +153,77 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
         XCTAssertEqual(second.usages.first?.inputTokens, firstInput)
     }
 
+    func test_macOpenCode_usageOnlySkipsPartWhenEverySessionHasExplicitTokens() async throws {
+        let path = try makeMacOpenCodeDatabase(
+            sessions: [
+                MacOpenCodeSessionSeed(
+                    id: "session-explicit",
+                    messages: [
+                        MacOpenCodeMessageSeed(
+                            id: "message-explicit",
+                            role: "assistant",
+                            tokens: (21, 9),
+                            partText: "explicit body that usage-only must not read"
+                        )
+                    ]
+                )
+            ]
+        )
+        let parser = OpenCodeParser(databasePathOverride: path)
+        let first = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(parser.lastPartReadCount, 0)
+        XCTAssertEqual(first.usages.first?.inputTokens, 21)
+        XCTAssertEqual(first.usages.first?.provenanceConfidence, .exact)
+    }
+
+    func test_macOpenCode_usageOnlyReadsPartOnlyForSessionsMissingExplicitTokens() async throws {
+        let path = try makeMacOpenCodeDatabase(
+            sessions: [
+                MacOpenCodeSessionSeed(
+                    id: "session-explicit",
+                    messages: [
+                        MacOpenCodeMessageSeed(
+                            id: "message-explicit",
+                            role: "assistant",
+                            tokens: (21, 9),
+                            partText: "explicit body"
+                        )
+                    ]
+                ),
+                MacOpenCodeSessionSeed(
+                    id: "session-heuristic",
+                    messages: [
+                        MacOpenCodeMessageSeed(
+                            id: "message-h-user",
+                            role: "user",
+                            tokens: nil,
+                            partText: "hello from the user"
+                        ),
+                        MacOpenCodeMessageSeed(
+                            id: "message-h-assistant",
+                            role: "assistant",
+                            tokens: nil,
+                            partText: "hello from the assistant"
+                        )
+                    ]
+                )
+            ]
+        )
+        let parser = OpenCodeParser(databasePathOverride: path)
+        let first = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(parser.lastPartReadCount, 2)
+        let bySession = Dictionary(uniqueKeysWithValues: first.usages.map { ($0.sessionId, $0) })
+        XCTAssertEqual(bySession["session-explicit"]?.inputTokens, 21)
+        let heuristic = try XCTUnwrap(bySession["session-heuristic"])
+        XCTAssertGreaterThan(heuristic.inputTokens, 0)
+        XCTAssertEqual(heuristic.provenanceConfidence, .lowConfidenceEstimate)
+
+        let bodies = try await parser.parse(options: LogParseOptions(includeConversationBodies: true))
+        XCTAssertEqual(parser.lastPartReadCount, 3)
+        XCTAssertFalse(bodies.conversations.isEmpty)
+    }
+
     func test_macPi_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {
         let root = try makeTemporaryDirectory("mac-pi")
         try write(
@@ -205,6 +276,56 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         temporaryDirectories.append(directory)
         return directory
+    }
+
+    private struct MacOpenCodeMessageSeed {
+        let id: String
+        let role: String
+        let tokens: (input: Int, output: Int)?
+        let partText: String
+    }
+
+    private struct MacOpenCodeSessionSeed {
+        let id: String
+        let messages: [MacOpenCodeMessageSeed]
+    }
+
+    private func makeMacOpenCodeDatabase(sessions: [MacOpenCodeSessionSeed]) throws -> String {
+        let root = try makeTemporaryDirectory("mac-opencode-part")
+        let path = root.appendingPathComponent("opencode.db").path
+        let db = try DatabaseQueue(path: path)
+        try db.write { db in
+            try db.execute(sql: "CREATE TABLE session (id TEXT, data TEXT)")
+            try db.execute(sql: "CREATE TABLE message (id TEXT, sessionID TEXT, data TEXT)")
+            try db.execute(sql: "CREATE TABLE part (messageID TEXT, data TEXT)")
+            for session in sessions {
+                try db.execute(
+                    sql: "INSERT INTO session (id, data) VALUES (?, ?)",
+                    arguments: [session.id, #"{"title":"Demo","directory":"/tmp/demo","id":"\#(session.id)"}"#]
+                )
+                for message in session.messages {
+                    let tokenJSON: String
+                    if let tokens = message.tokens {
+                        tokenJSON = #""tokens":{"input":\#(tokens.input),"output":\#(tokens.output)},"#
+                    } else {
+                        tokenJSON = ""
+                    }
+                    try db.execute(
+                        sql: "INSERT INTO message (id, sessionID, data) VALUES (?, ?, ?)",
+                        arguments: [
+                            message.id,
+                            session.id,
+                            "{\"role\":\"\(message.role)\",\"model\":\"gpt-4o\",\(tokenJSON)\"cost\":0.02}"
+                        ]
+                    )
+                    try db.execute(
+                        sql: "INSERT INTO part (messageID, data) VALUES (?, ?)",
+                        arguments: [message.id, "{\"type\":\"text\",\"text\":\"\(message.partText)\"}"]
+                    )
+                }
+            }
+        }
+        return path
     }
 
     private func write(_ string: String, to url: URL) throws {

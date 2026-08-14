@@ -78,6 +78,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   complete Body. Windsurf / Hermes reuse listing stats for discovery
   and gateway signatures; Forge skips `.forge.db` probes when a home
   child directory mtime is unchanged.
+- **Distinct usage days, OpenCode `part`, Kilo quota, and Charts analytics.**
+  Dashboard distinct-day count uses intersection membership (same days as
+  daily summaries) instead of `DATE(startTime)`. OpenCode usage-only ticks
+  skip `part` when every session has explicit token buckets and otherwise
+  query only the zero-bucket message ids. Kilo Code quota resumes unchanged
+  `ui_messages.json` files from a mtime+size cache of totals only. Charts
+  heatmap / outliers / entropy have a SQL twin that matches
+  `ChartsSnapshot.build` without decoding full `TokenUsage` rows.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

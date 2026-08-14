@@ -257,8 +257,10 @@ extension ChartsSnapshot {
         let reasoningTotal = rows.reduce(0) { $0 + $1.reasoningTokens }
         let reasoningShare = totalTokens > 0 ? Double(reasoningTotal) / Double(totalTokens) : 0
 
-        // Heatmap
-        let matrix = ChartBucketing.hourWeekdayMatrix(events: costEvents, calendar: calendar)
+        // Heatmap / outliers / entropy share one fold so the SQL narrow-scan
+        // path can match `ChartsSnapshot.build` bit-identically.
+        let sessionAnalytics = ChartSessionAnalytics.from(rows: rows, range: range, calendar: calendar)
+        let matrix = sessionAnalytics.hourWeekdayCost
         let peak = peakCell(in: matrix)
 
         // Week vs week (trailing fixed windows anchored at start of today)
@@ -271,27 +273,10 @@ extension ChartsSnapshot {
 
         // Sessions
         var sessionCosts: [String: Double] = [:]
-        var sessionMeta: [String: (project: String, model: String, provider: AgentProvider)] = [:]
         for row in rows {
             sessionCosts[row.sessionId, default: 0] += row.cost
-            if sessionMeta[row.sessionId] == nil {
-                sessionMeta[row.sessionId] = (row.projectName, row.model, row.provider)
-            }
         }
         let costsPerSession = Array(sessionCosts.values)
-        let outliers = sessionCosts
-            .sorted { $0.value > $1.value }
-            .prefix(5)
-            .compactMap { entry -> OutlierSession? in
-                guard let meta = sessionMeta[entry.key] else { return nil }
-                return OutlierSession(
-                    sessionId: entry.key,
-                    projectName: meta.project,
-                    model: meta.model,
-                    provider: meta.provider,
-                    cost: entry.value
-                )
-            }
 
         // Project focus
         var projectCosts: [String: Double] = [:]
@@ -310,7 +295,6 @@ extension ChartsSnapshot {
             )
             return ProjectDailySeries(projectName: project, dailyCosts: buckets.map(\.value))
         }
-        let projectEntropy = ChartBucketing.entropyIndex(Array(projectCosts.values))
 
         // Forecast (trailing 30 days observation, project to month end)
         let forecast = buildForecast(rows: recentRows, now: now, calendar: calendar)
@@ -368,10 +352,10 @@ extension ChartsSnapshot {
             weekOverWeekPercent: wowPercent,
             sessionCostBins: ChartBucketing.histogramLogBuckets(values: costsPerSession),
             medianSessionCost: ChartBucketing.median(costsPerSession.filter { $0 > 0 }),
-            outlierSessions: outliers,
+            outlierSessions: sessionAnalytics.outlierSessions,
             projectDayStarts: dayStarts,
             projectSeries: projectSeries,
-            projectEntropy: projectEntropy,
+            projectEntropy: sessionAnalytics.projectEntropy,
             forecast: forecast,
             provenanceShares: provenanceShares,
             exactShare: exactShare,
@@ -383,28 +367,48 @@ extension ChartsSnapshot {
 
     // MARK: Helpers
 
-    private static func resolvedRange(
+    static func attributionDate(
+        for startTime: Date,
+        in range: ClosedRange<Date>
+    ) -> Date {
+        min(max(startTime, range.lowerBound), range.upperBound)
+    }
+
+    static func attributionDate(
+        for row: TokenUsage,
+        in range: ClosedRange<Date>
+    ) -> Date {
+        attributionDate(for: row.startTime, in: range)
+    }
+
+    static func resolvedRange(
         for timeRange: TimeRange,
-        rows: [TokenUsage],
+        earliestStart: Date?,
         now: Date,
         calendar: Calendar
     ) -> ClosedRange<Date> {
         if let range = timeRange.dateRange(now: now) {
             return range.lowerBound...max(range.lowerBound, min(range.upperBound, now))
         }
-        // All Time: span the loaded data (fall back to the last 30 days when empty).
-        let earliest = rows.map(\.startTime).min()
+        let earliest = earliestStart
             ?? calendar.date(byAdding: .day, value: -30, to: now)
             ?? now.addingTimeInterval(-30 * 86_400)
         let lower = min(earliest, now.addingTimeInterval(-1))
         return lower...now
     }
 
-    private static func attributionDate(
-        for row: TokenUsage,
-        in range: ClosedRange<Date>
-    ) -> Date {
-        min(max(row.startTime, range.lowerBound), range.upperBound)
+    static func resolvedRange(
+        for timeRange: TimeRange,
+        rows: [TokenUsage],
+        now: Date,
+        calendar: Calendar
+    ) -> ClosedRange<Date> {
+        resolvedRange(
+            for: timeRange,
+            earliestStart: rows.map(\.startTime).min(),
+            now: now,
+            calendar: calendar
+        )
     }
 
     /// Per-bucket ratio of two summed row projections (e.g. cache reads over

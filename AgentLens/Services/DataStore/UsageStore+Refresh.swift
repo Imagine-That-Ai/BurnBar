@@ -125,14 +125,15 @@ extension UsageStore {
                 partial + (dayTotals[offset]?.cost ?? 0)
             }
 
+            let dailySummaries = try Self.fetchDailySummaries(db: db)
             return DashboardUsageSnapshot(
                 loadedUsages: allTime.usages,
                 windowSummaries: windowSummaries,
                 rollingDailyAverage: rollingDailyTotal / 7,
-                distinctUsageDayCount: try Self.fetchDistinctUsageDayCount(db: db),
+                distinctUsageDayCount: dailySummaries.count,
                 last7DayCosts: last7DayCosts,
                 last7DayTokenTotals: last7DayTokenTotals,
-                dailySummaries: try Self.fetchDailySummaries(db: db),
+                dailySummaries: dailySummaries,
                 topProviderToday: today.providerSummaries
                     .max { $0.totalCost < $1.totalCost }
                     .map { ($0.provider, $0.totalCost) }
