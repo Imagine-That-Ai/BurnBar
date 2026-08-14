@@ -1445,3 +1445,60 @@ Validation:
   (named covering SELECT; long-runner credential/project via SQL;
   TokenUsage-fold match when covering is complete)
 - `AgentLensTests/Active/RefreshTickPerfTests`
+
+## §30 — Aider quota resume, GRDB index decode, ISO-8601 reuse (August 2026, round 12)
+
+Context7 (`/groue/grdb.swift`, SQLite query planner, Foundation
+FileHandle) plus the named leftovers from §29.
+
+### Lane 1 — Aider quota JSONL cache
+
+`AiderQuotaAdapter` reread `~/.aider/analytics.jsonl` (and
+`analytics.json`) from offset 0 every fetch. It now keeps a mtime+size
+disk cache of **quota facts only** (`time`, tokens, cost), a byte offset
+past the last terminated line, and a 4 KB head prefix so a rewrite is
+not mistaken for append. Window membership (today / this month) is
+recomputed at fetch time. Aider stays off `quotaSignalProviders` /
+`ProviderQuotaAdapterRegistry.standard`.
+
+### Lane 2 — ChartFactRow / covering scan index decode + cursor
+
+Named SELECT was already in place; Swift still did case-insensitive
+`row["name"]` per column per row. GRDB wiki: index decode is ~2× vs
+names. `fetchChartFactRows`, `fetchChartSessionAnalytics`,
+`fetchUsageRows`, and `fetchUnsynced` now decode by SELECT ordinal,
+iterate `Row.fetchCursor` inside `db.read`, and reuse
+`cachedStatement`. A dedicated unit pins column order and asserts
+named-oracle vs index decode are bit-identical. No new GRDB migration.
+
+### Lane 3 — ISO-8601 reuse
+
+`OpenBurnBarDatabase.parseISO8601Date` allocated fractional+basic
+formatters per string after the sqlite formatters missed. It now uses
+`ThreadSafeISO8601DateFormatter.parse` (Mac) / a lock-guarded pair
+(Core Data). Daemon Pensieve session-end sentinels, Indexed Search,
+quota-signal / switcher / chat-thread / CLI ISO paths reuse
+`formatBasic` / `parseBasic` / `parse`. Default
+`ISO8601DateFormatter()` remains ≡ `parseBasic` / `formatBasic`.
+Codex `last_refresh` stays on the throwing Codable path.
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+  **Invariant, not remaining work.**
+- OpenCode JSON-only `part` schemas still full-scan `part` when any
+  heuristic session exists and there is no message-id column. Named-column
+  SELECT still applies.
+- Covering indexes / `DatabasePool` retune need EQP on a real DB.
+  No migration in this PR.
+- Aider is still off `quotaSignalProviders` / the standard registry
+  (by design).
+
+Validation:
+- `OpenBurnBarCoreTests/AiderQuotaCacheTests`
+- `OpenBurnBarCoreTests/KiloCodeQuotaCacheTests`
+- `AgentLensTests/Active/ChartFactRowSQLTests`
+  (named-oracle vs index decode; SELECT order locked)
+- `AgentLensTests/Active/DashboardUsageViewModelTests`
+- `AgentLensTests/Active/RefreshTickPerfTests`

@@ -20,16 +20,22 @@ extension OpenBurnBarDatabase {
         sqliteDateFormatter.string(from: date)
     }
 
-    private static func parseISO8601Date(_ string: String) -> Date? {
-        let fractionalFormatter = ISO8601DateFormatter()
-        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let parsed = fractionalFormatter.date(from: string) {
-            return parsed
-        }
+    private static let iso8601Lock = NSLock()
+    private static let iso8601FractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let iso8601BasicFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 
-        let basicFormatter = ISO8601DateFormatter()
-        basicFormatter.formatOptions = [.withInternetDateTime]
-        return basicFormatter.date(from: string)
+    private static func parseISO8601Date(_ string: String) -> Date? {
+        iso8601Lock.lock()
+        defer { iso8601Lock.unlock() }
+        return iso8601FractionalFormatter.date(from: string) ?? iso8601BasicFormatter.date(from: string)
     }
 
     static func parseDateValue(_ value: Any?) -> Date? {

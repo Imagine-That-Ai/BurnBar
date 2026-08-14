@@ -40,6 +40,120 @@ extension UsageStore {
         "billingKind"
     ]
 
+    /// SELECT-order indexes for `usageDecodeSelectColumns`. GRDB named lookup is
+    /// case-insensitive; index decode is the covering-scan hot path.
+    enum UsageDecodeCol: Int {
+        case id = 0
+        case provider
+        case sessionId
+        case projectName
+        case model
+        case inputTokens
+        case outputTokens
+        case cacheCreationTokens
+        case cacheReadTokens
+        case reasoningTokens
+        case cost
+        case startTime
+        case endTime
+        case createdAt
+        case usageSource
+        case executionSourceID
+        case executionSourceName
+        case executionSourceKind
+        case executionSourceConfidence
+        case sourceDeviceId
+        case sourceDeviceName
+        case isRemote
+        case providerID
+        case providerAccountID
+        case providerAccountLabel
+        case providerAccountSource
+        case provenanceMethod
+        case provenanceConfidence
+        case estimatorVersion
+        case parentRequestID
+        case billingKind
+    }
+
+    static let chartFactSelectColumns = [
+        "startTime",
+        "endTime",
+        "cost",
+        "sessionId",
+        "projectName",
+        "model",
+        "provider",
+        "billingKind",
+        "usageSource",
+        "inputTokens",
+        "outputTokens",
+        "cacheCreationTokens",
+        "cacheReadTokens",
+        "reasoningTokens",
+        "provenanceConfidence",
+        "isRemote"
+    ]
+
+    enum ChartFactCol: Int {
+        case startTime = 0
+        case endTime
+        case cost
+        case sessionId
+        case projectName
+        case model
+        case provider
+        case billingKind
+        case usageSource
+        case inputTokens
+        case outputTokens
+        case cacheCreationTokens
+        case cacheReadTokens
+        case reasoningTokens
+        case provenanceConfidence
+        case isRemote
+    }
+
+    static let chartSessionSelectColumns = [
+        "startTime",
+        "cost",
+        "sessionId",
+        "projectName",
+        "model",
+        "provider"
+    ]
+
+    enum ChartSessionCol: Int {
+        case startTime = 0
+        case cost
+        case sessionId
+        case projectName
+        case model
+        case provider
+    }
+
+    static func indexed(_ row: Row, _ index: Int) -> Any? {
+        let value: (any DatabaseValueConvertible)? = row[index]
+        return value
+    }
+
+    static func compactMapCachedRows<T>(
+        db: Database,
+        sql: String,
+        arguments: StatementArguments = StatementArguments(),
+        transform: (Row) -> T?
+    ) throws -> [T] {
+        let statement = try db.cachedStatement(sql: sql)
+        let cursor = try Row.fetchCursor(statement, arguments: arguments)
+        var result: [T] = []
+        while let row = try cursor.next() {
+            if let value = transform(row) {
+                result.append(value)
+            }
+        }
+        return result
+    }
+
     static let usageAggregateIdentityColumns = [
         "provider",
         "model",
@@ -63,16 +177,16 @@ extension UsageStore {
         let predicate = dateRangePredicate(dateRange)
         var arguments = predicate.arguments
         arguments += StatementArguments([limit])
-        let rows = try Row.fetchAll(
-            db,
+        return try compactMapCachedRows(
+            db: db,
             sql: """
                 SELECT \(usageDecodeSelectColumns.joined(separator: ", "))
                 FROM token_usage\(predicate.whereSQL)
                 ORDER BY startTime DESC LIMIT ?
                 """,
-            arguments: arguments
+            arguments: arguments,
+            transform: Self.decodeUsage
         )
-        return rows.compactMap(Self.decodeUsage)
     }
 
     static func fetchWindowSummary( // pure-move: was private

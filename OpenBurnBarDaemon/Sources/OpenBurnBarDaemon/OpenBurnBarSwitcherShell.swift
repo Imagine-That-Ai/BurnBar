@@ -355,7 +355,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
             return Date(timeIntervalSince1970: number.doubleValue)
         }
         if let string = value as? String {
-            return ISO8601DateFormatter().date(from: string)
+            return ThreadSafeISO8601DateFormatter.parseBasic(string)
         }
         return nil
     }

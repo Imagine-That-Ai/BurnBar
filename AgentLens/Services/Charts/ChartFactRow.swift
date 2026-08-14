@@ -14,7 +14,7 @@ extension TokenUsage: ChartWindowRow {}
 ///
 /// Enough columns to build `ChartsSnapshot` bit-identically to `[TokenUsage]`,
 /// without decoding UUIDs, accounts, execution source, or other ledger identity.
-struct ChartFactRow: Sendable {
+struct ChartFactRow: Sendable, Equatable {
     let startTime: Date
     let endTime: Date
     let cost: Double

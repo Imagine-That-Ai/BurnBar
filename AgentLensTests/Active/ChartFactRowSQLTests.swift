@@ -192,6 +192,182 @@ final class ChartFactRowSQLTests: XCTestCase {
         )
     }
 
+    func test_selectColumnOrder_matchesIndexEnums() {
+        XCTAssertEqual(
+            UsageStore.usageDecodeSelectColumns[UsageStore.UsageDecodeCol.id.rawValue],
+            "id"
+        )
+        XCTAssertEqual(
+            UsageStore.usageDecodeSelectColumns[UsageStore.UsageDecodeCol.billingKind.rawValue],
+            "billingKind"
+        )
+        XCTAssertEqual(
+            UsageStore.usageDecodeSelectColumns.count,
+            UsageStore.UsageDecodeCol.billingKind.rawValue + 1
+        )
+        XCTAssertEqual(
+            UsageStore.chartFactSelectColumns[UsageStore.ChartFactCol.startTime.rawValue],
+            "startTime"
+        )
+        XCTAssertEqual(
+            UsageStore.chartFactSelectColumns[UsageStore.ChartFactCol.isRemote.rawValue],
+            "isRemote"
+        )
+        XCTAssertEqual(
+            UsageStore.chartFactSelectColumns.count,
+            UsageStore.ChartFactCol.isRemote.rawValue + 1
+        )
+        XCTAssertEqual(
+            UsageStore.chartSessionSelectColumns[UsageStore.ChartSessionCol.provider.rawValue],
+            "provider"
+        )
+        XCTAssertEqual(
+            UsageStore.chartSessionSelectColumns.count,
+            UsageStore.ChartSessionCol.provider.rawValue + 1
+        )
+    }
+
+    func test_chartFactIndexDecode_matchesNamedColumnOracle() async throws {
+        let (usageStore, _) = try await seededStore()
+        let (named, indexed) = try await usageStore.dbQueue.read { db -> ([ChartFactRow], [ChartFactRow]) in
+            let sql = """
+                SELECT \(UsageStore.chartFactSelectColumns.joined(separator: ", "))
+                FROM token_usage
+                ORDER BY startTime DESC
+                """
+            let rows = try Row.fetchAll(db, sql: sql)
+            return (rows.compactMap(Self.namedChartFact), rows.compactMap(UsageStore.decodeChartFactRow))
+        }
+        XCTAssertFalse(indexed.isEmpty)
+        XCTAssertEqual(indexed, named)
+    }
+
+    func test_usageIndexDecode_matchesNamedColumnOracle() async throws {
+        let (usageStore, _) = try await seededStore()
+        let fromStore = try await usageStore.fetchAllUsage()
+        let (named, indexed) = try await usageStore.dbQueue.read { db -> ([TokenUsage], [TokenUsage]) in
+            let sql = """
+                SELECT \(UsageStore.usageDecodeSelectColumns.joined(separator: ", "))
+                FROM token_usage
+                ORDER BY startTime DESC
+                """
+            let rows = try Row.fetchAll(db, sql: sql)
+            return (rows.compactMap(Self.namedUsage), rows.compactMap(UsageStore.decodeUsage))
+        }
+        XCTAssertEqual(indexed, named)
+        XCTAssertEqual(indexed.map(\.sessionId), fromStore.map(\.sessionId))
+    }
+
+    private static func namedChartFact(_ row: Row) -> ChartFactRow? {
+        guard let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
+              let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"]),
+              let sessionId = row["sessionId"] as? String,
+              let projectName = row["projectName"] as? String,
+              let model = row["model"] as? String,
+              let providerRaw = row["provider"] as? String,
+              let provider = AgentProvider(rawValue: providerRaw) else {
+            return nil
+        }
+        let inputTokens = UsageStore.intValue(row["inputTokens"])
+        let outputTokens = UsageStore.intValue(row["outputTokens"])
+        let cacheCreationTokens = UsageStore.intValue(row["cacheCreationTokens"])
+        let cacheReadTokens = UsageStore.intValue(row["cacheReadTokens"])
+        let reasoningTokens = UsageStore.intValue(row["reasoningTokens"])
+        return ChartFactRow(
+            startTime: startTime,
+            endTime: endTime,
+            cost: UsageStore.doubleValue(row["cost"]),
+            sessionId: sessionId,
+            projectName: projectName,
+            model: model,
+            provider: provider,
+            billingKind: (row["billingKind"] as? String)
+                .flatMap(BurnBarBillingKind.init(rawValue:)) ?? .unknown,
+            usageSource: (row["usageSource"] as? String)
+                .flatMap(UsageSource.init(rawValue:)) ?? .unknown,
+            inputTokens: inputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: reasoningTokens,
+            totalTokens: TokenUsage.billedTotalTokens(
+                input: inputTokens,
+                output: outputTokens,
+                cacheCreation: cacheCreationTokens,
+                cacheRead: cacheReadTokens,
+                reasoning: reasoningTokens
+            ),
+            provenanceConfidence: (row["provenanceConfidence"] as? String)
+                .flatMap(UsageProvenanceConfidence.init(rawValue:)) ?? .unknown,
+            isRemote: UsageStore.intValue(row["isRemote"]) != 0
+        )
+    }
+
+    private static func namedUsage(_ row: Row) -> TokenUsage? {
+        guard let idString = row["id"] as? String,
+              let id = UUID(uuidString: idString),
+              let providerString = row["provider"] as? String,
+              let provider = AgentProvider(rawValue: providerString),
+              let sessionId = row["sessionId"] as? String,
+              let projectName = row["projectName"] as? String,
+              let model = row["model"] as? String else { return nil }
+        let inputTokens = UsageStore.intValue(row["inputTokens"])
+        let outputTokens = UsageStore.intValue(row["outputTokens"])
+        let cacheCreationTokens = UsageStore.intValue(row["cacheCreationTokens"])
+        let cacheReadTokens = UsageStore.intValue(row["cacheReadTokens"])
+        let reasoningTokens = UsageStore.intValue(row["reasoningTokens"])
+        let usageSource = (row["usageSource"] as? String).flatMap(UsageSource.init(rawValue:)) ?? .unknown
+        let executionSourceKind = (row["executionSourceKind"] as? String)
+            .flatMap(UsageExecutionSourceKind.init(rawValue:))
+        let executionSourceConfidence = (row["executionSourceConfidence"] as? String)
+            .flatMap(UsageProvenanceConfidence.init(rawValue:))
+        let provenanceMethod = (row["provenanceMethod"] as? String)
+            .flatMap(UsageProvenanceMethod.init(rawValue:)) ?? .unknown
+        let provenanceConfidence = (row["provenanceConfidence"] as? String)
+            .flatMap(UsageProvenanceConfidence.init(rawValue:)) ?? .unknown
+        let estimatorVersion = row["estimatorVersion"] as? String ?? ""
+        let cost = (row["cost"] as? Double) ?? ((row["cost"] as? NSNumber)?.doubleValue) ?? 0
+        let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"])
+        let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"])
+        let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
+        guard let startTime, let endTime else { return nil }
+        let providerID = (row["providerID"] as? String).map(ProviderID.init(rawValue:)) ?? provider.providerID
+        let providerAccountSourceRaw = row["providerAccountSource"] as? String
+        return TokenUsage(
+            id: id,
+            provider: provider,
+            sessionId: sessionId,
+            projectName: projectName,
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: reasoningTokens,
+            costUSD: cost,
+            startTime: startTime,
+            endTime: endTime,
+            createdAt: createdAt,
+            usageSource: usageSource,
+            executionSourceID: row["executionSourceID"] as? String,
+            executionSourceName: row["executionSourceName"] as? String,
+            executionSourceKind: executionSourceKind,
+            executionSourceConfidence: executionSourceConfidence,
+            sourceDeviceId: row["sourceDeviceId"] as? String,
+            sourceDeviceName: row["sourceDeviceName"] as? String,
+            isRemote: UsageStore.intValue(row["isRemote"]) != 0,
+            providerID: providerID,
+            providerAccountID: row["providerAccountID"] as? String,
+            providerAccountLabel: row["providerAccountLabel"] as? String,
+            providerAccountSource: providerAccountSourceRaw.flatMap(ProviderAccountStorageScope.init(rawValue:)),
+            provenanceMethod: provenanceMethod,
+            provenanceConfidence: provenanceConfidence,
+            estimatorVersion: estimatorVersion,
+            parentRequestID: row["parentRequestID"] as? String,
+            billingKind: (row["billingKind"] as? String)
+                .flatMap(BurnBarBillingKind.init(rawValue:)) ?? .unknown
+        )
+    }
+
     private func seededStore() async throws -> (UsageStore, Date) {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)

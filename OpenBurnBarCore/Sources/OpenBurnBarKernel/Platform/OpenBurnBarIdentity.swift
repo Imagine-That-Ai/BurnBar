@@ -133,6 +133,10 @@ public struct OpenBurnBarAppPaths: Sendable {
         providerQuotaScratchDirectory.appendingPathComponent("factory_quota_cache.plist")
     }
 
+    public var aiderQuotaCacheURL: URL {
+        providerQuotaScratchDirectory.appendingPathComponent("aider_quota_cache.plist")
+    }
+
     public var vectorIndexesRootURL: URL {
         supportDirectory.appendingPathComponent("VectorIndexes", isDirectory: true)
     }

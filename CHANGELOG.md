@@ -106,6 +106,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   URL `contentsOfDirectory` and drops the extra `fileExists`. Copilot,
   Warp, Augment, Prime, Muse, Mac OpenClaw, and shared local-parser
   listings prefetch size/mtime for `FileSignature`.
+- **Aider quota, ChartFactRow index decode, and ISO-8601 reuse.** Aider
+  analytics JSONL resumes from a mtime+size cache of tokens/cost/time
+  plus a byte offset past the last terminated line (no prompt text).
+  Charts / dashboard covering scans decode GRDB rows by SELECT ordinal
+  through a cached statement cursor. Date fallbacks and daemon Pensieve
+  sentinels reuse `ThreadSafeISO8601DateFormatter` instead of allocating
+  a formatter per string or per file.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

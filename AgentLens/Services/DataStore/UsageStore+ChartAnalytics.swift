@@ -19,67 +19,61 @@ extension UsageStore {
         dateRange: ClosedRange<Date>?
     ) throws -> [ChartFactRow] {
         let predicate = dateRangePredicate(dateRange)
-        let rows = try Row.fetchAll(
-            db,
+        return try compactMapCachedRows(
+            db: db,
             sql: """
-                SELECT startTime, endTime, cost, sessionId, projectName, model, provider,
-                       billingKind, usageSource,
-                       inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
-                       reasoningTokens, provenanceConfidence, isRemote
+                SELECT \(chartFactSelectColumns.joined(separator: ", "))
                 FROM token_usage
                 \(predicate.whereSQL)
                 ORDER BY startTime DESC
                 """,
-            arguments: predicate.arguments
+            arguments: predicate.arguments,
+            transform: Self.decodeChartFactRow
         )
-        var facts: [ChartFactRow] = []
-        facts.reserveCapacity(rows.count)
-        for row in rows {
-            guard let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
-                  let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"]),
-                  let sessionId = row["sessionId"] as? String,
-                  let projectName = row["projectName"] as? String,
-                  let model = row["model"] as? String,
-                  let providerRaw = row["provider"] as? String,
-                  let provider = AgentProvider(rawValue: providerRaw) else {
-                continue
-            }
-            let inputTokens = intValue(row["inputTokens"])
-            let outputTokens = intValue(row["outputTokens"])
-            let cacheCreationTokens = intValue(row["cacheCreationTokens"])
-            let cacheReadTokens = intValue(row["cacheReadTokens"])
-            let reasoningTokens = intValue(row["reasoningTokens"])
-            facts.append(
-                ChartFactRow(
-                    startTime: startTime,
-                    endTime: endTime,
-                    cost: doubleValue(row["cost"]),
-                    sessionId: sessionId,
-                    projectName: projectName,
-                    model: model,
-                    provider: provider,
-                    billingKind: (row["billingKind"] as? String)
-                        .flatMap(BurnBarBillingKind.init(rawValue:)) ?? .unknown,
-                    usageSource: (row["usageSource"] as? String)
-                        .flatMap(UsageSource.init(rawValue:)) ?? .unknown,
-                    inputTokens: inputTokens,
-                    cacheCreationTokens: cacheCreationTokens,
-                    cacheReadTokens: cacheReadTokens,
-                    reasoningTokens: reasoningTokens,
-                    totalTokens: TokenUsage.billedTotalTokens(
-                        input: inputTokens,
-                        output: outputTokens,
-                        cacheCreation: cacheCreationTokens,
-                        cacheRead: cacheReadTokens,
-                        reasoning: reasoningTokens
-                    ),
-                    provenanceConfidence: (row["provenanceConfidence"] as? String)
-                        .flatMap(UsageProvenanceConfidence.init(rawValue:)) ?? .unknown,
-                    isRemote: intValue(row["isRemote"]) != 0
-                )
-            )
+    }
+
+    static func decodeChartFactRow(_ row: Row) -> ChartFactRow? {
+        guard let startTime = OpenBurnBarDatabase.parseDateValue(indexed(row, ChartFactCol.startTime.rawValue)),
+              let endTime = OpenBurnBarDatabase.parseDateValue(indexed(row, ChartFactCol.endTime.rawValue)),
+              let sessionId = indexed(row, ChartFactCol.sessionId.rawValue) as? String,
+              let projectName = indexed(row, ChartFactCol.projectName.rawValue) as? String,
+              let model = indexed(row, ChartFactCol.model.rawValue) as? String,
+              let providerRaw = indexed(row, ChartFactCol.provider.rawValue) as? String,
+              let provider = AgentProvider(rawValue: providerRaw) else {
+            return nil
         }
-        return facts
+        let inputTokens = intValue(indexed(row, ChartFactCol.inputTokens.rawValue))
+        let outputTokens = intValue(indexed(row, ChartFactCol.outputTokens.rawValue))
+        let cacheCreationTokens = intValue(indexed(row, ChartFactCol.cacheCreationTokens.rawValue))
+        let cacheReadTokens = intValue(indexed(row, ChartFactCol.cacheReadTokens.rawValue))
+        let reasoningTokens = intValue(indexed(row, ChartFactCol.reasoningTokens.rawValue))
+        return ChartFactRow(
+            startTime: startTime,
+            endTime: endTime,
+            cost: doubleValue(indexed(row, ChartFactCol.cost.rawValue)),
+            sessionId: sessionId,
+            projectName: projectName,
+            model: model,
+            provider: provider,
+            billingKind: (indexed(row, ChartFactCol.billingKind.rawValue) as? String)
+                .flatMap(BurnBarBillingKind.init(rawValue:)) ?? .unknown,
+            usageSource: (indexed(row, ChartFactCol.usageSource.rawValue) as? String)
+                .flatMap(UsageSource.init(rawValue:)) ?? .unknown,
+            inputTokens: inputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: reasoningTokens,
+            totalTokens: TokenUsage.billedTotalTokens(
+                input: inputTokens,
+                output: outputTokens,
+                cacheCreation: cacheCreationTokens,
+                cacheRead: cacheReadTokens,
+                reasoning: reasoningTokens
+            ),
+            provenanceConfidence: (indexed(row, ChartFactCol.provenanceConfidence.rawValue) as? String)
+                .flatMap(UsageProvenanceConfidence.init(rawValue:)) ?? .unknown,
+            isRemote: intValue(indexed(row, ChartFactCol.isRemote.rawValue)) != 0
+        )
     }
 
     func fetchChartSessionAnalytics(
@@ -109,38 +103,17 @@ extension UsageStore {
     ) throws -> ChartSessionAnalytics {
         let requested = timeRange.dateRange(now: now)
         let predicate = dateRangePredicate(requested)
-        let rows = try Row.fetchAll(
-            db,
+        let events = try compactMapCachedRows(
+            db: db,
             sql: """
-                SELECT startTime, cost, sessionId, projectName, model, provider
+                SELECT \(chartSessionSelectColumns.joined(separator: ", "))
                 FROM token_usage
                 \(predicate.whereSQL)
                 ORDER BY startTime DESC
                 """,
-            arguments: predicate.arguments
+            arguments: predicate.arguments,
+            transform: Self.decodeChartSessionEvent
         )
-        var events: [ChartSessionAnalytics.Event] = []
-        events.reserveCapacity(rows.count)
-        for row in rows {
-            guard let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
-                  let sessionId = row["sessionId"] as? String,
-                  let projectName = row["projectName"] as? String,
-                  let model = row["model"] as? String,
-                  let providerRaw = row["provider"] as? String,
-                  let provider = AgentProvider(rawValue: providerRaw) else {
-                continue
-            }
-            events.append(
-                ChartSessionAnalytics.Event(
-                    startTime: startTime,
-                    cost: doubleValue(row["cost"]),
-                    sessionId: sessionId,
-                    projectName: projectName,
-                    model: model,
-                    provider: provider
-                )
-            )
-        }
         let range = ChartsSnapshot.resolvedRange(
             for: timeRange,
             earliestStart: events.map(\.startTime).min(),
@@ -148,5 +121,24 @@ extension UsageStore {
             calendar: calendar
         )
         return ChartSessionAnalytics.from(events: events, range: range, calendar: calendar)
+    }
+
+    static func decodeChartSessionEvent(_ row: Row) -> ChartSessionAnalytics.Event? {
+        guard let startTime = OpenBurnBarDatabase.parseDateValue(indexed(row, ChartSessionCol.startTime.rawValue)),
+              let sessionId = indexed(row, ChartSessionCol.sessionId.rawValue) as? String,
+              let projectName = indexed(row, ChartSessionCol.projectName.rawValue) as? String,
+              let model = indexed(row, ChartSessionCol.model.rawValue) as? String,
+              let providerRaw = indexed(row, ChartSessionCol.provider.rawValue) as? String,
+              let provider = AgentProvider(rawValue: providerRaw) else {
+            return nil
+        }
+        return ChartSessionAnalytics.Event(
+            startTime: startTime,
+            cost: doubleValue(indexed(row, ChartSessionCol.cost.rawValue)),
+            sessionId: sessionId,
+            projectName: projectName,
+            model: model,
+            provider: provider
+        )
     }
 }
