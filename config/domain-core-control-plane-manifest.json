@@ -79,7 +79,7 @@
     "scripts/ci/check_hermes_gateway_migration_drain.py": ["c5b03139b7659ec1","56c72187a56ffee0","d0b8154ba7f3a94e","479366432fa4d017"],
     "scripts/ci/check_libsignal_runtime_readiness.py": ["1ba98518d2c2c021","3753197c5e2366af","6cc096d15e5a7b80","f24caae3e2128f03"],
     "scripts/ci/check_native_signal_runtime_evidence.py": ["73dba00d4238f599","2a55236b025ca30a","f8d7196b420e1866","098880a9e80135cd"],
-    "scripts/ci/classify-ci-impact.mjs": ["8a969f77db858c03","a84811085cddc719","f3515a58b70477d0","4fb0785ecc7ed0ec"],
+    "scripts/ci/classify-ci-impact.mjs": ["0a329d8fa3b523d7","2e863349954fd74f","ceab704725139573","39b6e0faaec1e05f"],
     "scripts/ci/cleanup-firebase-config.sh": ["9a25b214f06cae90","39ecb7e061f5aacc","42524659a1ff0a6f","c23145b946531391"],
     "scripts/ci/create-apple-android-release-publication.mjs": ["509bdaf71ddbdd35","d218bb2993596212","c7a2c47396ab863d","507992de520c8e0d"],
     "scripts/ci/create-domain-core-deployment-identity.mjs": ["22904b6a641f76b8","56610eec7312c239","1da4184760b37e93","b908ba7b58906c7c"],
