@@ -162,7 +162,7 @@ export const MODEL_COLOR: Record<string, string> = {
   "glm-5-2": "#7c5cff",
   "gpt-5-6-luna-max": "#10a37f",
   "muse-spark-1-2-contributor": "#ff6d3f",
-  "qwen3-7-flash": "#f5b040",
+  "qwen3-7-flash": "#6950ef",
   // current export roster
   "claude-opus-4-8": "#d97757",
   "gpt-5-5": "#10a37f",
