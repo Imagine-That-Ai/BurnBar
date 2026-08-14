@@ -112,41 +112,40 @@ extension ProviderQuotaService {
 
         while !remainingProviders.isEmpty {
             if let existing = inFlightRefresh {
-                await existing.task.value
-                if inFlightRefresh?.id == existing.id {
-                    inFlightRefresh = nil
-                }
+                await finishInFlightRefresh(existing)
                 remainingProviders.removeAll { existing.providers.contains($0) }
+                guard !Task.isCancelled else { return }
                 continue
             }
 
+            guard !Task.isCancelled else { return }
             let targetProviders = remainingProviders
             let targetProviderSet = Set(targetProviders)
-            let refreshID = UUID()
             let task = Task { @MainActor [self] in
                 await performRefresh(
                     targetProviders,
-                    dataStore: dataStore,
-                    persistAllCredentialSlots: clearAllErrors
+                    dataStore: dataStore
                 )
             }
-            inFlightRefresh = InFlightRefresh(
-                id: refreshID,
+            let refresh = InFlightRefresh(
+                id: UUID(),
                 providers: targetProviderSet,
                 task: task
             )
-            await task.value
-            if inFlightRefresh?.id == refreshID {
-                inFlightRefresh = nil
-            }
+            inFlightRefresh = refresh
+            await finishInFlightRefresh(refresh)
             remainingProviders.removeAll { targetProviderSet.contains($0) }
+            guard !Task.isCancelled else { return }
+        }
+
+        if clearAllErrors {
+            await persistDaemonCredentialSlotAccounts(dataStore: dataStore)
         }
     }
 
     private func performRefresh(
         _ providers: [AgentProvider],
-        dataStore: DataStore,
-        persistAllCredentialSlots: Bool
+        dataStore: DataStore
     ) async {
         isFetching = true
         defer {
@@ -173,7 +172,7 @@ extension ProviderQuotaService {
         )
         await persistDaemonCredentialSlotAccounts(
             dataStore: dataStore,
-            providers: persistAllCredentialSlots ? nil : Set(providers)
+            providers: Set(providers)
         )
         await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
 
@@ -183,12 +182,39 @@ extension ProviderQuotaService {
 
     func refresh(provider: AgentProvider, dataStore: DataStore) async {
         guard Self.supportedProviders.contains(provider) else { return }
+        while let existing = inFlightRefresh {
+            await finishInFlightRefresh(existing)
+            guard !Task.isCancelled else { return }
+        }
+        guard !Task.isCancelled else { return }
+
+        let task = Task { @MainActor [self] in
+            await performProviderRefresh(provider, dataStore: dataStore)
+        }
+        let refresh = InFlightRefresh(
+            id: UUID(),
+            providers: [provider],
+            task: task
+        )
+        inFlightRefresh = refresh
+        await finishInFlightRefresh(refresh)
+    }
+
+    private func finishInFlightRefresh(_ refresh: InFlightRefresh) async {
+        await refresh.task.value
+        if inFlightRefresh?.id == refresh.id {
+            inFlightRefresh = nil
+        }
+    }
+
+    private func performProviderRefresh(_ provider: AgentProvider, dataStore: DataStore) async {
         activeProviders.insert(provider)
         defer { activeProviders.remove(provider) }
         let start = Date()
         Analytics.shared.track(.quotaRefreshStarted, ["provider_name": .string(provider.rawValue)])
 
         do {
+            await quotaRefreshActor.invalidateAPIKeyResolutionCache()
             let context = makeContext()
             let snapshot = try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
             upsertSnapshot(snapshot, for: provider)

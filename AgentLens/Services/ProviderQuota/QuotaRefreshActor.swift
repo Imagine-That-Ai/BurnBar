@@ -120,6 +120,10 @@ actor QuotaRefreshActor {
         return try await adapter.fetch(context: context)
     }
 
+    func invalidateAPIKeyResolutionCache() {
+        apiKeyResolutionCache = nil
+    }
+
     func fetchAllSnapshots(
         switcherProfileFetcher: ProviderQuotaSwitcherProfileFetcher,
         providers: [AgentProvider]? = nil
