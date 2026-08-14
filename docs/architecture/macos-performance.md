@@ -1102,5 +1102,85 @@ Validation:
   (`formatBasic` matches `ISO8601DateFormatter().string(from:)`)
 - plus the §23 idle-cache / quota suites
 
+## §25 — Remaining hot paths (August 2026, round 7)
+
+Round 6 cached remaining Core parsers. Five leftovers were still on
+the table: Mac AgentLens shadows, `fetchDailySummaries` start-day
+membership, sequential quota phases racing the Codex rollout cache,
+Warp usage full-reads on append, and Windsurf / Hermes / Forge
+discovery stats on cache hits.
+
+### Lane 1 — Mac-semantics idle caches
+
+Mac Copilot, Aider, Cursor, OpenCode, Pi, OpenClaw, and Junie keep a
+mtime+size disk cache of **token totals only** around the existing
+AgentLens parse math, written to dedicated `mac_*_parser_cache.json`
+files. ParserRegistry is not aliased to Core: Copilot still
+double-counts `assistant.usage` + `session.shutdown`, Junie still
+prefers `state.json`, OpenClaw still flattens nested wrappers. Aider
+signs each analytics file separately. Copilot's process-log fallback
+integers participate in the signature. Sharing Core cache files would
+let an isomorphic signature decode Mac totals as a Core hit.
+
+### Lane 2 — Daily summaries use intersection membership
+
+`fetchDailySummaries` attributes each row to every overlapped local
+calendar day (same predicate as last-7-day SQL). A spanning
+yesterday→today session counts on both days; a start-today session
+counts today only. `DashboardUsageViewModel` in-memory rebuild uses
+the same helper. Equality test: folded scan vs per-day intersection
+`GROUP BY`.
+
+### Lane 3 — Overlapping quota phases
+
+`CodexRolloutScanner` prunes only files under the directories it
+scanned. `CodexRolloutScanCache.mergingScan` overlays those roots on
+the live box and keeps other trees (default `~/.codex` vs switcher
+`CODEX_HOME`). `QuotaRefreshActor.fetchAllSnapshots` then `async let`s
+provider, account, and switcher phases.
+
+### Lane 4 — Warp append resume
+
+Changed `warp_network*.log` files resume from the last complete Body
+when the 4096-byte head digest matches. `byteOffset` is the UTF-8
+offset after that Body, so a partial Body at EOF is reread next tick.
+Head-digest mismatch (rewrite / rotation) fails closed to a full read.
+
+### Lane 5 — Discovery stats
+
+Windsurf and Hermes listing prefetches size/mtime/creation and builds
+`FileSignature` from those values (no second `FileSignature(for:)`
+stat). Hermes gateway signatures use that listing for `sessions.json`
+plus every sibling `.jsonl` — they do not `Data(contentsOf:)` the
+index or stat referenced transcripts to decide a cache hit. Forge
+still readdirs home every tick (creating `~/foo/.forge.db` does not
+change `~` mtime) but reuses per-child directory mtime to skip
+`.forge.db` `fileExists` probes. Override `{override}/.forge.db` stays
+scoped.
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Kilo Code's `KiloCodeQuotaAdapter` still `Data(contentsOf:)` task JSON
+  arrays, but it is not on the quota refresh path.
+- OpenCode usage-only still reads `part` when any session has zero
+  explicit token buckets (needed for heuristic totals).
+- `fetchDistinctUsageDayCount` still `COUNT(DISTINCT DATE(startTime))`
+  (start-day). Daily summaries and last-7-day series are intersection.
+
+Validation:
+- `OpenBurnBarCoreTests/CodexRolloutScannerTests` (scoped prune,
+  merge-on-write, locked apply)
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests` (Warp append resume,
+  rewrite fail-closed, Forge home-child probe skip, Mac vs Core cache
+  URL split)
+- `AgentLensTests/Active/DailySummaryIntersectionTests` (Swift vs
+  per-day SQL equality, spanning session)
+- `AgentLensTests/Active/MacIdleUsageParserCacheTests` (Copilot / Aider /
+  Cursor / OpenCode / Pi / OpenClaw usage-only second pass)
+
 
 

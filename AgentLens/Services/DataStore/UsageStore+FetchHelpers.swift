@@ -384,36 +384,107 @@ extension UsageStore {
     }
 
     static func fetchDailySummaries(db: Database) throws -> [DailyUsageSummary] { // pure-move: was private
-        let rows = try Row.fetchAll(db, sql: """
-            SELECT DATE(startTime) AS usageDay,
-                   provider,
-                   model,
-                   COUNT(*) AS sessionCount,
-                   COALESCE(SUM(inputTokens), 0) AS inputTokens,
-                   COALESCE(SUM(outputTokens), 0) AS outputTokens,
-                   COALESCE(SUM(cacheCreationTokens), 0) AS cacheCreationTokens,
-                   COALESCE(SUM(cacheReadTokens), 0) AS cacheReadTokens,
-                   COALESCE(SUM(totalTokens), 0) AS totalTokens,
-                   COALESCE(SUM(cost), 0) AS cost
-            FROM token_usage
-            GROUP BY usageDay, provider, model
-            ORDER BY usageDay DESC
-            """)
+        try fetchDailySummaries(db: db, calendar: .current)
+    }
 
-        var accumulators: [String: DailySummaryAccumulator] = [:]
-        for row in rows {
-            guard let dayString = row["usageDay"] as? String,
-                  let providerRaw = row["provider"] as? String,
+    static func fetchDailySummaries(db: Database, calendar: Calendar) throws -> [DailyUsageSummary] {
+        let fetched = try Row.fetchAll(
+            db,
+            sql: """
+                SELECT startTime, endTime, provider, model,
+                       inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
+                       totalTokens, cost
+                FROM token_usage
+                """
+        )
+        var rows: [UsageDayIntersection.UsageRow] = []
+        rows.reserveCapacity(fetched.count)
+        for row in fetched {
+            guard let providerRaw = row["provider"] as? String,
                   let provider = AgentProvider(rawValue: providerRaw),
-                  let model = row["model"] as? String else { continue }
-
-            accumulators[dayString, default: DailySummaryAccumulator(dayString: dayString)]
-                .record(row: row, provider: provider, model: model)
+                  let model = row["model"] as? String,
+                  let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
+                  let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"]) else {
+                continue
+            }
+            rows.append(
+                UsageDayIntersection.UsageRow(
+                    startTime: startTime,
+                    endTime: endTime,
+                    provider: provider,
+                    model: model,
+                    inputTokens: intValue(row["inputTokens"]),
+                    outputTokens: intValue(row["outputTokens"]),
+                    cacheCreationTokens: intValue(row["cacheCreationTokens"]),
+                    cacheReadTokens: intValue(row["cacheReadTokens"]),
+                    totalTokens: intValue(row["totalTokens"]),
+                    cost: doubleValue(row["cost"])
+                )
+            )
         }
+        return UsageDayIntersection.summaries(from: rows, calendar: calendar)
+    }
 
+    /// Per-day intersection `GROUP BY` used as the equality oracle for the
+    /// folded all-time daily-summary scan. Not a production hot path.
+    static func fetchDailySummariesByPerDayIntersection(
+        db: Database,
+        calendar: Calendar
+    ) throws -> [DailyUsageSummary] {
+        let bounds = try Row.fetchOne(
+            db,
+            sql: "SELECT MIN(startTime) AS minStart, MAX(endTime) AS maxEnd FROM token_usage"
+        )
+        guard let minStart = OpenBurnBarDatabase.parseDateValue(bounds?["minStart"]),
+              let maxEnd = OpenBurnBarDatabase.parseDateValue(bounds?["maxEnd"]) else {
+            return []
+        }
+        let firstDay = calendar.startOfDay(for: min(minStart, maxEnd))
+        let lastDay = calendar.startOfDay(for: max(minStart, maxEnd))
+        var accumulators: [Date: DailySummaryAccumulator] = [:]
+        var day = firstDay
+        while day <= lastDay {
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT provider, model,
+                           COUNT(*) AS sessionCount,
+                           COALESCE(SUM(inputTokens), 0) AS inputTokens,
+                           COALESCE(SUM(outputTokens), 0) AS outputTokens,
+                           COALESCE(SUM(cacheCreationTokens), 0) AS cacheCreationTokens,
+                           COALESCE(SUM(cacheReadTokens), 0) AS cacheReadTokens,
+                           COALESCE(SUM(totalTokens), 0) AS totalTokens,
+                           COALESCE(SUM(cost), 0) AS cost
+                    FROM token_usage
+                    WHERE \(intersectionSQL)
+                    GROUP BY provider, model
+                    """,
+                arguments: intersectionArguments(day...nextDay)
+            )
+            let dayString = overlappingDayString(day, calendar: calendar)
+            for row in rows {
+                guard let providerRaw = row["provider"] as? String,
+                      let provider = AgentProvider(rawValue: providerRaw),
+                      let model = row["model"] as? String else { continue }
+                accumulators[day, default: DailySummaryAccumulator(dayString: dayString, date: day)]
+                    .record(row: row, provider: provider, model: model)
+            }
+            if nextDay <= day { break }
+            day = nextDay
+        }
         return accumulators.values
             .compactMap(\.summary)
             .sorted { $0.date > $1.date }
+    }
+
+    private static func overlappingDayString(_ day: Date, calendar: Calendar) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = calendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: day)
     }
 
     static let intersectionSQL = "((startTime <= ? AND endTime >= ?) OR (endTime <= ? AND startTime >= ?))"

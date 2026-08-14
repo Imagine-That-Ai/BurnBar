@@ -23,9 +23,14 @@ public struct FileSignature: Codable, Equatable, Sendable {
 
     public init?(for url: URL, using fileManager: FileManager = .default) {
         let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
-        guard values?.isRegularFile == true else { return nil }
-        self.modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
-        self.sizeBytes = Int64(values?.fileSize ?? 0)
+        guard let values else { return nil }
+        self.init(resourceValues: values)
+    }
+
+    public init?(resourceValues values: URLResourceValues) {
+        guard values.isRegularFile == true else { return nil }
+        self.modifiedAt = values.contentModificationDate?.timeIntervalSince1970 ?? 0
+        self.sizeBytes = Int64(values.fileSize ?? 0)
     }
 }
 
@@ -67,6 +72,26 @@ public struct FileSetSignature: Codable, Equatable, Sendable {
             urls.append(wal)
         }
         self.init(urls: urls, using: fileManager)
+    }
+
+    /// Build a signature from URLs whose size/mtime/`isRegularFile` values
+    /// were already prefetched by a directory listing. A second
+    /// `FileSignature(for:)` stat is not performed.
+    public init?(prefetchedURLs urls: [URL]) {
+        var collected: [NamedFileSignature] = []
+        collected.reserveCapacity(urls.count)
+        for url in urls {
+            let values = try? url.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .fileSizeKey,
+                .contentModificationDateKey
+            ])
+            guard let values, let signature = FileSignature(resourceValues: values) else {
+                return nil
+            }
+            collected.append(NamedFileSignature(name: url.lastPathComponent, signature: signature))
+        }
+        self.init(files: collected)
     }
 }
 

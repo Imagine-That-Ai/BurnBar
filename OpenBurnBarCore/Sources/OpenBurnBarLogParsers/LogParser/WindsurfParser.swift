@@ -120,34 +120,50 @@ public final class WindsurfParser: LogParser, Sendable {
 
         let cascadeDir = ((cascadeDirectoryOverride ?? Self.cascadeDirectory) as NSString).expandingTildeInPath
         if fileManager.fileExists(atPath: cascadeDir) {
-            let allFiles = (try? fileManager.contentsOfDirectory(atPath: cascadeDir)) ?? []
-            let pbFiles = allFiles
-                .filter { $0.hasSuffix(".pb") }
-                .map { (cascadeDir as NSString).appendingPathComponent($0) }
+            let cascadeURL = URL(fileURLWithPath: cascadeDir, isDirectory: true)
+            let allFiles = (try? fileManager.contentsOfDirectory(
+                at: cascadeURL,
+                includingPropertiesForKeys: [
+                    .fileSizeKey,
+                    .contentModificationDateKey,
+                    .creationDateKey,
+                    .isRegularFileKey
+                ]
+            )) ?? []
+            let pbFiles = allFiles.filter { $0.pathExtension.lowercased() == "pb" }
 
-            for pbFile in pbFiles {
+            for pbURL in pbFiles {
                 try options.resourceGovernor?.checkpoint()
                 options.metrics?.recordCandidate()
                 options.metrics?.recordMetadataStat()
-                let pbURL = URL(fileURLWithPath: pbFile)
                 let cacheKey = pbURL.standardizedFileURL.path
                 activePaths.insert(cacheKey)
-                let sessionId = (pbFile as NSString).deletingPathExtension
-                    .components(separatedBy: "/").last ?? UUID().uuidString
+                let sessionId = pbURL.deletingPathExtension().lastPathComponent
 
-                guard let attrs = try? fileManager.attributesOfItem(atPath: pbFile) else {
+                let values = try? pbURL.resourceValues(forKeys: [
+                    .fileSizeKey,
+                    .contentModificationDateKey,
+                    .creationDateKey,
+                    .isRegularFileKey
+                ])
+                guard let values, values.isRegularFile == true else {
                     options.resourceGovernor?.recordDeferredFile()
                     options.metrics?.recordDeferred(.metadataUnavailable)
                     continue
                 }
+                let created = values.creationDate ?? Date()
+                let modified = values.contentModificationDate ?? created
+                let fileSize = values.fileSize ?? 0
+                let attrs: [FileAttributeKey: Any] = [
+                    .size: fileSize,
+                    .modificationDate: modified,
+                    .creationDate: created
+                ]
                 let discoveredFile = ParserDiscoveredFile.capture(
                     for: pbURL,
                     attributes: attrs
                 )
                 let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
-                let created = (attrs[.creationDate] as? Date) ?? Date()
-                let modified = (attrs[.modificationDate] as? Date) ?? created
-                let fileSize = (attrs[.size] as? Int) ?? 0
 
                 guard fileSize > 100 else { continue }
                 if let cutoff = options.minimumFileModificationDate,
@@ -157,7 +173,7 @@ public final class WindsurfParser: LogParser, Sendable {
                 }
                 options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
 
-                let protobufSignature = FileSignature(for: pbURL, using: fileManager)
+                let protobufSignature = FileSignature(resourceValues: values)
                 let signature = protobufSignature.map {
                     WindsurfCacheSignature(protobuf: $0, stateDB: stateDBSignature)
                 }

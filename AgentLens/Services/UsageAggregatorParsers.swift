@@ -8,34 +8,77 @@ import OpenBurnBarCore
 /// Parses Copilot CLI sessions from ~/.copilot/session-state/*/events.jsonl.
 /// Post-Feb 2026 Copilot CLI persists assistant.usage and session.shutdown events with exact token counts.
 /// Falls back to CompactionProcessor log deltas for older CLI versions.
-
-/// Parses Copilot CLI sessions from ~/.copilot/session-state/*/events.jsonl.
-/// Post-Feb 2026 Copilot CLI persists assistant.usage and session.shutdown events with exact token counts.
-/// Falls back to CompactionProcessor log deltas for older CLI versions.
 final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .copilot
 
-    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
-        let fm = FileManager.default
-        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm)
-        let sessionStatePath = ("~/.copilot/session-state" as NSString).expandingTildeInPath
-        let logsPath = ("~/.copilot/logs" as NSString).expandingTildeInPath
+    private let fileManager: FileManager
+    private let sessionStateURL: URL
+    private let logsURL: URL
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CachedUsageEntry<MacCopilotCacheSignature>>
+    private let sessionScanCount = OpenBurnBarCore.Locked(0)
+    private let sessionCacheHitCount = OpenBurnBarCore.Locked(0)
 
-        guard fm.fileExists(atPath: sessionStatePath) else {
+    private struct MacCopilotCacheSignature: Codable, Equatable, Sendable {
+        var files: OpenBurnBarCore.FileSetSignature
+        var fallbackInput: Int
+        var fallbackOutput: Int
+    }
+
+    init(
+        fileManager: FileManager = .default,
+        sessionStateURL: URL? = nil,
+        logsURL: URL? = nil,
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
+    ) {
+        self.fileManager = fileManager
+        self.sessionStateURL = sessionStateURL
+            ?? URL(fileURLWithPath: ("~/.copilot/session-state" as NSString).expandingTildeInPath)
+        self.logsURL = logsURL
+            ?? URL(fileURLWithPath: ("~/.copilot/logs" as NSString).expandingTildeInPath)
+        let cacheURL: URL
+        if sessionStateURL != nil {
+            cacheURL = self.sessionStateURL.appendingPathComponent(".obb-mac-copilot-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.macCopilotParserCacheURL
+        }
+        self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "MacCopilotParser"
+        )
+        ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
+    func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let fm = fileManager
+        let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm)
+
+        guard fm.fileExists(atPath: sessionStateURL.path) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
-        // Parse CompactionProcessor token data from process logs (fallback for old CLI).
-        let tokensBySession = try parseProcessLogs(logsPath: logsPath, gate: gate)
+        let tokensBySession = try parseProcessLogs(logsPath: logsURL.path, gate: gate)
 
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
-        // try?-ok(absent or unreadable session root yields no sessions)
         let sessionDirs = (try? fm.contentsOfDirectory(
-            at: URL(fileURLWithPath: sessionStatePath),
+            at: sessionStateURL,
             includingPropertiesForKeys: [.isDirectoryKey]
-        // try?-ok(unreadable directory metadata excludes that entry)
         ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
 
         for sessionDir in sessionDirs {
@@ -48,19 +91,55 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             if fm.fileExists(atPath: metadataFile.path) {
                 sessionFiles.append(metadataFile)
             }
+            let cacheKey = sessionDir.standardizedFileURL.path
+            activePaths.insert(cacheKey)
             guard try gate.shouldRead(sessionFiles) else { continue }
 
+            let fallback = tokensBySession[sessionId]
+            let files = OpenBurnBarCore.FileSetSignature(urls: sessionFiles, using: fm)
+            let signature = files.map {
+                MacCopilotCacheSignature(
+                    files: $0,
+                    fallbackInput: fallback?.input ?? 0,
+                    fallbackOutput: fallback?.output ?? 0
+                )
+            }
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(cached.totals.makeUsage(provider: .copilot, sessionId: sessionId))
+                continue
+            }
+
+            sessionScanCount.withLock { $0 += 1 }
             let metadataSummary = sessionFiles.count == 2 ? parseMetadata(metadataFile) : nil
             if let pair = parseSession(
                 eventsFile: eventsFile,
                 sessionId: sessionId,
                 metadataSummary: metadataSummary,
-                processLogData: tokensBySession[sessionId],
+                processLogData: fallback,
                 includeConversationBody: options.includeConversationBodies
             ) {
                 if let usage = pair.usage { usages.append(usage) }
                 if let conversation = pair.conversation { conversations.append(conversation) }
+                if let signature, let usage = pair.usage {
+                    parseCache.fileEntries[cacheKey] = OpenBurnBarCore.CachedUsageEntry(
+                        signature: signature,
+                        usage: usage
+                    )
+                    cacheMutated = true
+                }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
@@ -343,20 +422,50 @@ struct CopilotMetadataSummary {
 /// Requires user to configure: `analytics-log: ~/.aider/analytics.jsonl` in .aider.conf.yml
 final class AiderParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .aider
+    private let fileManager: FileManager
+    private let rootOverride: URL?
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CachedUsageBundleEntry<OpenBurnBarCore.FileSignature>>
+    private let sessionScanCount = OpenBurnBarCore.Locked(0)
+    private let sessionCacheHitCount = OpenBurnBarCore.Locked(0)
+
+    init(
+        fileManager: FileManager = .default,
+        rootOverride: URL? = nil,
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
+    ) {
+        self.fileManager = fileManager
+        self.rootOverride = rootOverride
+        let cacheURL: URL
+        if let rootOverride {
+            cacheURL = rootOverride.appendingPathComponent(".obb-mac-aider-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.macAiderParserCacheURL
+        }
+        self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "MacAiderParser"
+        )
+        ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
-        let fm = FileManager.default
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let fm = fileManager
         let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm)
+        let root = rootOverride
+            ?? URL(fileURLWithPath: ("~/.aider" as NSString).expandingTildeInPath, isDirectory: true)
 
         let candidatePaths = [
-            ("~/.aider/analytics.jsonl" as NSString).expandingTildeInPath,
-            ("~/.aider/analytics.json" as NSString).expandingTildeInPath
+            root.appendingPathComponent("analytics.jsonl"),
+            root.appendingPathComponent("analytics.json")
         ]
-
-        var analyticsFiles: [URL] = []
-        for path in candidatePaths where fm.fileExists(atPath: path) {
-            analyticsFiles.append(URL(fileURLWithPath: path))
-        }
+        let analyticsFiles = candidatePaths.filter { fm.fileExists(atPath: $0.path) }
 
         guard !analyticsFiles.isEmpty else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
@@ -364,14 +473,50 @@ final class AiderParser: OpenBurnBarCore.LogParser, Sendable {
 
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         for file in analyticsFiles {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
             guard try gate.shouldRead(file) else { continue }
+            let signature = OpenBurnBarCore.FileSignature(for: file, using: fm)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .aider) })
+                continue
+            }
+
+            sessionScanCount.withLock { $0 += 1 }
             let (fileUsages, fileConversations) = parseAnalyticsLog(file: file)
             usages.append(contentsOf: fileUsages)
             if options.includeConversationBodies {
                 conversations.append(contentsOf: fileConversations)
             }
+            if let signature {
+                parseCache.fileEntries[cacheKey] = OpenBurnBarCore.CachedUsageBundleEntry(
+                    signature: signature,
+                    usages: fileUsages
+                )
+                cacheMutated = true
+            }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
@@ -516,18 +661,83 @@ struct AiderSession {
 /// Token-level tracking requires the CursorConnector BYOK proxy.
 final class CursorParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .cursor
+    private let fileManager: FileManager
+    private let databasePathOverride: String?
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CachedUsageBundleEntry<OpenBurnBarCore.FileSetSignature>>
+    private let sessionScanCount = OpenBurnBarCore.Locked(0)
+    private let sessionCacheHitCount = OpenBurnBarCore.Locked(0)
+
+    init(
+        fileManager: FileManager = .default,
+        databasePathOverride: String? = nil,
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
+    ) {
+        self.fileManager = fileManager
+        self.databasePathOverride = databasePathOverride
+        let cacheURL: URL
+        if let databasePathOverride {
+            cacheURL = URL(fileURLWithPath: databasePathOverride)
+                .deletingLastPathComponent()
+                .appendingPathComponent(".obb-mac-cursor-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.macCursorParserCacheURL
+        }
+        self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "MacCursorParser"
+        )
+        ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
-        let fileManager = FileManager.default
-        let dbPath = ("~/.cursor/ai-tracking/ai-code-tracking.db" as NSString).expandingTildeInPath
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let dbPath = databasePathOverride
+            ?? ("~/.cursor/ai-tracking/ai-code-tracking.db" as NSString).expandingTildeInPath
         let dbURL = URL(fileURLWithPath: dbPath)
+        let cacheKey = dbURL.standardizedFileURL.path
 
-        guard fileManager.fileExists(atPath: dbPath),
-              try OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fileManager).shouldRead(dbURL) else {
+        guard fileManager.fileExists(atPath: dbPath) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
+        var parseCache = cacheStore.load()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
+        guard try OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fileManager).shouldRead(dbURL) else {
+            return OpenBurnBarCore.ParseResult(
+                usages: parseCache.fileEntries[cacheKey]?.sessions.map { $0.makeUsage(provider: .cursor) } ?? [],
+                conversations: []
+            )
+        }
+
+        let signature = OpenBurnBarCore.FileSetSignature(databaseURL: dbURL, using: fileManager)
+        if !options.includeConversationBodies,
+           let signature,
+           let cached = parseCache.fileEntries[cacheKey],
+           cached.signature == signature {
+            sessionCacheHitCount.withLock { $0 += 1 }
+            return OpenBurnBarCore.ParseResult(
+                usages: cached.sessions.map { $0.makeUsage(provider: .cursor) },
+                conversations: []
+            )
+        }
+
+        sessionScanCount.withLock { $0 += 1 }
         let usages = try parseCursorDatabase(dbPath: dbPath)
+        if let signature {
+            parseCache.fileEntries = [cacheKey: OpenBurnBarCore.CachedUsageBundleEntry(signature: signature, usages: usages)]
+            cacheMutated = true
+        }
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: [])
     }
 

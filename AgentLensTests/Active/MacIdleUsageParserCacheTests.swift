@@ -1,0 +1,217 @@
+import XCTest
+import GRDB
+@testable import OpenBurnBar
+@testable import OpenBurnBarCore
+
+/// Mac Copilot / Aider / Cursor / OpenCode / Pi / OpenClaw keep AgentLens
+/// parse math. These tests pin usage-only second-pass hits on that math
+/// (Copilot shutdown double-count, OpenClaw nested wrappers) rather than
+/// Core totals.
+final class MacIdleUsageParserCacheTests: XCTestCase {
+    private let fileManager = FileManager.default
+    private var temporaryDirectories: [URL] = []
+
+    override func tearDownWithError() throws {
+        for directory in temporaryDirectories {
+            try? fileManager.removeItem(at: directory)
+        }
+        temporaryDirectories.removeAll()
+        try super.tearDownWithError()
+    }
+
+    func test_macSemanticsCacheURLsAreDistinctFromCoreParserCaches() {
+        let paths = OpenBurnBarAppPaths(
+            applicationSupportRoot: URL(fileURLWithPath: "/tmp/obb-mac-semantics-cache-urls")
+        )
+        XCTAssertNotEqual(paths.macCopilotParserCacheURL, paths.copilotParserCacheURL)
+        XCTAssertNotEqual(paths.macAiderParserCacheURL, paths.aiderParserCacheURL)
+        XCTAssertNotEqual(paths.macCursorParserCacheURL, paths.cursorParserCacheURL)
+        XCTAssertNotEqual(paths.macOpenCodeParserCacheURL, paths.openCodeParserCacheURL)
+        XCTAssertNotEqual(paths.macPiAgentParserCacheURL, paths.piAgentParserCacheURL)
+        XCTAssertNotEqual(paths.macOpenClawParserCacheURL, paths.openClawParserCacheURL)
+        XCTAssertNotEqual(paths.macJunieParserCacheURL, paths.junieParserCacheURL)
+        for url in paths.macSemanticsParserCacheURLs {
+            XCTAssertTrue(url.lastPathComponent.hasPrefix("mac_"))
+        }
+    }
+
+    func test_macCopilot_skipsUnchangedEventsOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("mac-copilot")
+        let sessions = root.appendingPathComponent("session-state", isDirectory: true)
+        let logs = root.appendingPathComponent("logs", isDirectory: true)
+        let session = sessions.appendingPathComponent("session-cache", isDirectory: true)
+        try fileManager.createDirectory(at: session, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: logs, withIntermediateDirectories: true)
+        try write(
+            """
+            {"type":"assistant.usage","model":"gpt-5","usage":{"input_tokens":10,"output_tokens":4},"timestamp":"2026-07-20T10:00:01Z"}
+            {"type":"session.shutdown","usage":{"input_tokens":10,"output_tokens":4},"timestamp":"2026-07-20T10:00:02Z"}
+            """,
+            to: session.appendingPathComponent("events.jsonl")
+        )
+        let parser = CopilotParser(sessionStateURL: sessions, logsURL: logs)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 0)
+        let firstUsage = try XCTUnwrap(first.usages.first)
+        XCTAssertEqual(firstUsage.inputTokens, 20)
+        XCTAssertEqual(firstUsage.outputTokens, 8)
+
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.inputTokens, 20)
+        XCTAssertEqual(second.usages.first?.outputTokens, 8)
+        XCTAssertEqual(second.usages.first?.costUSD, firstUsage.costUSD)
+    }
+
+    func test_macAider_skipsUnchangedAnalyticsOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("mac-aider")
+        try write(
+            """
+            {"event":"launched","time":1752408000,"properties":{"main_model":"claude-sonnet-4-20250514"}}
+            {"event":"message_send","time":1752408001,"properties":{"prompt_tokens":100,"completion_tokens":50,"cost":0.01,"main_model":"claude-sonnet-4-20250514"}}
+            {"event":"exit","time":1752408002,"properties":{}}
+            """,
+            to: root.appendingPathComponent("analytics.jsonl")
+        )
+        let parser = AiderParser(rootOverride: root)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(first.usages.first?.inputTokens, 100)
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.inputTokens, 100)
+        XCTAssertEqual(second.usages.first?.outputTokens, 50)
+    }
+
+    func test_macCursor_skipsUnchangedSQLiteOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("mac-cursor")
+        let path = root.appendingPathComponent("ai-code-tracking.db").path
+        let db = try DatabaseQueue(path: path)
+        try await db.write { db in
+            try db.execute(sql: """
+                CREATE TABLE ai_code_hashes (
+                    conversationId TEXT,
+                    model TEXT,
+                    createdAt DOUBLE
+                )
+                """)
+            try db.execute(
+                sql: "INSERT INTO ai_code_hashes (conversationId, model, createdAt) VALUES (?, ?, ?)",
+                arguments: ["conversation-1", "gpt-4o", 1_750_000_000.0]
+            )
+        }
+        let parser = CursorParser(databasePathOverride: path)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(first.usages.first?.inputTokens, 500)
+        XCTAssertEqual(first.usages.first?.outputTokens, 150)
+        XCTAssertEqual(first.usages.first?.estimatorVersion, "hash-count-ratio-v1")
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.inputTokens, 500)
+        XCTAssertEqual(second.usages.first?.estimatorVersion, "hash-count-ratio-v1")
+    }
+
+    func test_macOpenCode_skipsUnchangedSQLiteOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("mac-opencode")
+        let path = root.appendingPathComponent("opencode.db").path
+        let db = try DatabaseQueue(path: path)
+        try await db.write { db in
+            try db.execute(sql: "CREATE TABLE session (id TEXT, data TEXT)")
+            try db.execute(sql: "CREATE TABLE message (id TEXT, sessionID TEXT, data TEXT)")
+            try db.execute(sql: "CREATE TABLE part (messageID TEXT, data TEXT)")
+            try db.execute(
+                sql: "INSERT INTO session (id, data) VALUES (?, ?)",
+                arguments: ["session-1", #"{"title":"Demo","directory":"/tmp/demo","id":"session-1"}"#]
+            )
+            try db.execute(
+                sql: "INSERT INTO message (id, sessionID, data) VALUES (?, ?, ?)",
+                arguments: [
+                    "message-1",
+                    "session-1",
+                    #"{"role":"assistant","model":"gpt-4o","tokens":{"input":21,"output":9},"cost":0.02}"#
+                ]
+            )
+        }
+        let parser = OpenCodeParser(databasePathOverride: path)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertFalse(first.usages.isEmpty)
+        let firstInput = try XCTUnwrap(first.usages.first?.inputTokens)
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.inputTokens, firstInput)
+    }
+
+    func test_macPi_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("mac-pi")
+        try write(
+            """
+            {"timestamp":"2026-07-01T00:00:00Z","model":"gpt-4o","role":"user","content":"hello"}
+            {"timestamp":"2026-07-01T00:00:01Z","model":"gpt-4o","role":"assistant","content":"world","usage":{"input_tokens":11,"output_tokens":7}}
+            """,
+            to: root.appendingPathComponent("pi-session.jsonl")
+        )
+        let parser = PiAgentParser(sessionsDirectoryOverride: root)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(first.usages.first?.inputTokens, 11)
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.inputTokens, 11)
+        XCTAssertEqual(second.usages.first?.outputTokens, 7)
+    }
+
+    func test_macOpenClaw_skipsUnchangedNestedWrapperOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("mac-openclaw")
+        try write(
+            """
+            {
+              "messages": [
+                {"timestamp":"2026-07-01T00:00:00Z","model":"claude-3-7-sonnet","role":"user","content":"hello","usage":{"input_tokens":13,"output_tokens":5}},
+                {"timestamp":"2026-07-01T00:00:01Z","role":"assistant","content":"world"}
+              ]
+            }
+            """,
+            to: root.appendingPathComponent("claw-session.json")
+        )
+        let parser = OpenClawParser(fileManager: fileManager, sessionsDirectory: root)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(first.usages.first?.inputTokens, 13)
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.inputTokens, 13)
+        XCTAssertEqual(second.usages.first?.outputTokens, 5)
+    }
+
+    private func makeTemporaryDirectory(_ name: String) throws -> URL {
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("obb-\(name)-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        temporaryDirectories.append(directory)
+        return directory
+    }
+
+    private func write(_ string: String, to url: URL) throws {
+        try fileManager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data(string.utf8).write(to: url, options: .atomic)
+    }
+}

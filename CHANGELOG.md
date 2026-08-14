@@ -68,6 +68,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changing totals). ModelFilter caches empty bundles for non-matching
   Factory sessions so zai/minimax ticks do not rescan every other
   provider's jsonl. Quota cache writes reuse `formatBasic`.
+- **Mac-semantics idle caches** resume Copilot / Aider / Cursor /
+  OpenCode / Pi / OpenClaw / Junie on the AgentLens parse math (not Core
+  aliases), in dedicated `mac_*_parser_cache.json` files so isomorphic
+  signatures cannot decode Mac totals as a Core hit. Daily summaries
+  use intersection membership with a dedicated equality test. Quota
+  provider / account / switcher phases overlap after Codex rollout
+  merge-on-write. Warp usage resumes append-only logs from the last
+  complete Body. Windsurf / Hermes reuse listing stats for discovery
+  and gateway signatures; Forge skips `.forge.db` probes when a home
+  child directory mtime is unchanged.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

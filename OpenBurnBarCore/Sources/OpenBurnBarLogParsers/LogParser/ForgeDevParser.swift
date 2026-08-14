@@ -9,17 +9,23 @@ public final class ForgeDevParser: LogParser, Sendable {
     public let provider: AgentProvider = .forgeDev
     private let logDirectoryOverride: String?
     private let fileManager: FileManager
+    private let homeDirectoryURL: URL
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
     private let sessionScanCount = Locked(0)
     private let sessionCacheHitCount = Locked(0)
+    private let homeChildProbeHitCount = Locked(0)
+    private let homeChildProbes = Locked<[String: ForgeHomeChildProbe]>([:])
 
     public init(
         logDirectoryOverride: String? = nil,
         fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
+        appPaths: OpenBurnBarAppPaths = .live(),
+        homeDirectoryURL: URL? = nil
     ) {
         self.logDirectoryOverride = logDirectoryOverride
         self.fileManager = fileManager
+        self.homeDirectoryURL = homeDirectoryURL
+            ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         let cacheURL: URL
         if let override = logDirectoryOverride {
             cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-forge-parser-cache.plist")
@@ -36,6 +42,7 @@ public final class ForgeDevParser: LogParser, Sendable {
 
     var lastSessionScanCount: Int { sessionScanCount.read() }
     var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    var lastHomeChildProbeHitCount: Int { homeChildProbeHitCount.read() }
 
     private static let sqliteDateFormats: [DateFormatter] = {
         let formats = [
@@ -621,26 +628,61 @@ public final class ForgeDevParser: LogParser, Sendable {
             let dbPath = (override as NSString).appendingPathComponent(".forge.db")
             return fileManager.fileExists(atPath: dbPath) ? [dbPath] : []
         }
-        let homeURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        let homeURL = homeDirectoryURL
         var candidates: [String] = []
+        var verifiedChildDatabases: [String] = []
 
-        candidates.append(((provider.logDirectory as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"))
-        candidates.append((("~/.forge" as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"))
-        candidates.append((homeURL.path as NSString).appendingPathComponent(".forge.db"))
+        let wellKnown = [
+            ((provider.logDirectory as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"),
+            (("~/.forge" as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"),
+            (homeURL.path as NSString).appendingPathComponent(".forge.db")
+        ]
 
-        if let children = try? fileManager.contentsOfDirectory(at: homeURL, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) { // try?-ok(dir listing optional)
-            for child in children {
-                let isDirectory = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(isDirectory defaults false)
-                guard isDirectory else { continue }
-                candidates.append(child.appendingPathComponent(".forge.db").path)
+        let children = (try? fileManager.contentsOfDirectory(
+            at: homeURL,
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        var seenChildren = Set<String>()
+        homeChildProbeHitCount.write(0)
+        var nextProbes: [String: ForgeHomeChildProbe] = [:]
+        let previousProbes = homeChildProbes.read()
+        for child in children {
+            let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
+            guard values?.isDirectory == true else { continue }
+            let childPath = child.standardizedFileURL.path
+            seenChildren.insert(childPath)
+            let mtime = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+            if let probe = previousProbes[childPath], probe.directoryModifiedAt == mtime {
+                homeChildProbeHitCount.withLock { $0 += 1 }
+                nextProbes[childPath] = probe
+                if probe.hasDatabase {
+                    verifiedChildDatabases.append(child.appendingPathComponent(".forge.db").path)
+                }
+                continue
+            }
+            let dbPath = child.appendingPathComponent(".forge.db").path
+            let hasDatabase = fileManager.fileExists(atPath: dbPath)
+            nextProbes[childPath] = ForgeHomeChildProbe(
+                directoryModifiedAt: mtime,
+                hasDatabase: hasDatabase
+            )
+            if hasDatabase {
+                verifiedChildDatabases.append(dbPath)
             }
         }
+        homeChildProbes.write(nextProbes.filter { seenChildren.contains($0.key) })
 
         var seen: Set<String> = []
-        return candidates.filter { path in
-            guard seen.insert(path).inserted else { return false }
-            return fileManager.fileExists(atPath: path)
+        for path in wellKnown where seen.insert(path).inserted {
+            if fileManager.fileExists(atPath: path) {
+                candidates.append(path)
+            }
         }
+        for path in verifiedChildDatabases where seen.insert(path).inserted {
+            candidates.append(path)
+        }
+        return candidates
     }
 
     private func jsonObject(from raw: String?) -> [String: Any]? {
@@ -758,4 +800,9 @@ private struct ForgeSummary {
         if !fullText.isEmpty { fullText += "\n\n" }
         fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: isAssistant, body: content)
     }
+}
+
+private struct ForgeHomeChildProbe: Equatable, Sendable {
+    var directoryModifiedAt: TimeInterval
+    var hasDatabase: Bool
 }

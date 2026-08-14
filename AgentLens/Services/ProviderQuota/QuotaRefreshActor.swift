@@ -129,19 +129,20 @@ actor QuotaRefreshActor {
             return ProviderQuotaRefreshBatch(providerSnapshots: [:], accountSnapshots: [:])
         }
         let context = await makeContext()
-        let providerSnapshots = await fetchProviderSnapshots(for: targets, context: context)
-        var accountSnapshots = await fetchAccountSnapshots(
+        async let providerSnapshots = fetchProviderSnapshots(for: targets, context: context)
+        async let accountSnapshotsTask = fetchAccountSnapshots(
             using: context,
             providers: Set(targets)
         )
-        let switcherSnapshots = await fetchSwitcherProfileSnapshots(
+        async let switcherSnapshotsTask = fetchSwitcherProfileSnapshots(
             using: context,
             providers: Set(targets),
             switcherProfileFetcher: switcherProfileFetcher
         )
-        accountSnapshots.merge(switcherSnapshots) { _, replacement in replacement }
+        var accountSnapshots = await accountSnapshotsTask
+        accountSnapshots.merge(await switcherSnapshotsTask) { _, replacement in replacement }
         return ProviderQuotaRefreshBatch(
-            providerSnapshots: providerSnapshots,
+            providerSnapshots: await providerSnapshots,
             accountSnapshots: accountSnapshots
         )
     }
@@ -215,9 +216,13 @@ actor QuotaRefreshActor {
             mimoTokenPlanBillingCycle: plan.mimoTokenPlanBillingCycle,
             codexRolloutScanCache: codexCacheBox.read(),
             updateCodexRolloutScanCache: { [codexCacheBox, snapshotStore] cache, didChange in
-                codexCacheBox.write(cache)
-                if didChange {
-                    snapshotStore.persistCodexRolloutScanCache(cache)
+                let applied = CodexRolloutScanCacheUpdate.apply(
+                    incoming: cache,
+                    didChangeIncoming: didChange,
+                    to: codexCacheBox
+                )
+                if applied.didChange {
+                    snapshotStore.persistCodexRolloutScanCache(applied.cache)
                 }
             },
             claudeCredentialsReader: claudeCredentialsReader,

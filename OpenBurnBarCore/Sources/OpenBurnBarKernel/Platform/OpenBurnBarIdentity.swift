@@ -233,6 +233,49 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("ollama_parser_cache.json")
     }
 
+    /// AgentLens Copilot / Aider / Cursor / OpenCode / Pi / OpenClaw / Junie
+    /// keep Mac parse math (shutdown double-count, `state.json`, nested
+    /// wrappers). These files must never alias the Core parser caches above.
+    public var macCopilotParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_copilot_parser_cache.json")
+    }
+
+    public var macAiderParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_aider_parser_cache.json")
+    }
+
+    public var macCursorParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_cursor_parser_cache.json")
+    }
+
+    public var macOpenCodeParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_opencode_parser_cache.json")
+    }
+
+    public var macPiAgentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_pi_agent_parser_cache.json")
+    }
+
+    public var macOpenClawParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_openclaw_parser_cache.json")
+    }
+
+    public var macJunieParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_junie_parser_cache.json")
+    }
+
+    public var macSemanticsParserCacheURLs: [URL] {
+        [
+            macCopilotParserCacheURL,
+            macAiderParserCacheURL,
+            macCursorParserCacheURL,
+            macOpenCodeParserCacheURL,
+            macPiAgentParserCacheURL,
+            macOpenClawParserCacheURL,
+            macJunieParserCacheURL
+        ]
+    }
+
     public var claudeStatuslineBridgeScriptURL: URL {
         supportDirectory.appendingPathComponent("claude_statusline_bridge.sh")
     }

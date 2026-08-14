@@ -378,6 +378,7 @@ private struct ProviderUsageAccumulator {
 
 struct DailySummaryAccumulator { // pure-move: was private
     let dayString: String
+    let dateOverride: Date?
     var providerCosts: [AgentProvider: Double] = [:]
     var totalInputTokens = 0
     var totalOutputTokens = 0
@@ -388,8 +389,9 @@ struct DailySummaryAccumulator { // pure-move: was private
     var sessionCount = 0
     var models: Set<String> = []
 
-    init(dayString: String) {
+    init(dayString: String, date: Date? = nil) {
         self.dayString = dayString
+        self.dateOverride = date
     }
 
     mutating func record(row: Row, provider: AgentProvider, model: String) {
@@ -406,7 +408,8 @@ struct DailySummaryAccumulator { // pure-move: was private
     }
 
     var summary: DailyUsageSummary? {
-        guard let date = Self.dayFormatter.date(from: dayString) else { return nil }
+        let date = dateOverride ?? Self.dayFormatter.date(from: dayString)
+        guard let date else { return nil }
         return DailyUsageSummary(
             date: date,
             provider: providerCosts.max { $0.value < $1.value }?.key ?? .factory,
@@ -417,7 +420,7 @@ struct DailySummaryAccumulator { // pure-move: was private
             totalTokens: totalTokens,
             totalCost: totalCost,
             sessionCount: sessionCount,
-            models: Array(models)
+            models: models.sorted()
         )
     }
 

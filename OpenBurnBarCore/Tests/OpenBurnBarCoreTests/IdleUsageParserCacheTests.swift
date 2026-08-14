@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarLogParsers
+import OpenBurnBarKernel
 import OpenBurnBarSQLiteReader
 
 /// Idle usage ticks do not share indexing watermarks, so `ParserFileReadGate`
@@ -16,6 +17,20 @@ final class IdleUsageParserCacheTests: XCTestCase {
         }
         temporaryDirectories.removeAll()
         try super.tearDownWithError()
+    }
+
+    func test_macSemanticsCacheURLsAreDistinctFromCoreParserCaches() {
+        let paths = OpenBurnBarAppPaths(
+            applicationSupportRoot: URL(fileURLWithPath: "/tmp/obb-mac-semantics-cache-urls")
+        )
+        XCTAssertNotEqual(paths.macCopilotParserCacheURL, paths.copilotParserCacheURL)
+        XCTAssertNotEqual(paths.macAiderParserCacheURL, paths.aiderParserCacheURL)
+        XCTAssertNotEqual(paths.macCursorParserCacheURL, paths.cursorParserCacheURL)
+        XCTAssertNotEqual(paths.macOpenCodeParserCacheURL, paths.openCodeParserCacheURL)
+        XCTAssertNotEqual(paths.macPiAgentParserCacheURL, paths.piAgentParserCacheURL)
+        XCTAssertNotEqual(paths.macOpenClawParserCacheURL, paths.openClawParserCacheURL)
+        XCTAssertNotEqual(paths.macJunieParserCacheURL, paths.junieParserCacheURL)
+        XCTAssertEqual(paths.macSemanticsParserCacheURLs.count, 7)
     }
 
     // MARK: - Cursor Agent
@@ -527,7 +542,39 @@ final class IdleUsageParserCacheTests: XCTestCase {
 
         let third = try await parser.parse(options: usageOnly)
         XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(parser.lastSessionAppendResumeCount, 1)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 0)
         XCTAssertEqual(third.usages.count, 2)
+        XCTAssertEqual(Set(third.usages.map(\.sessionId)), ["warp-session-1", "warp-session-2"])
+
+        let fourth = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionAppendResumeCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(fourth.usages.count, 2)
+    }
+
+    func test_warp_rewrittenHeadDoesNotResumeAppend() async throws {
+        let root = try makeTemporaryDirectory("warp-rewrite")
+        try write(warpExactBodyLog(), to: root.appendingPathComponent("warp_network.log"))
+        let parser = WarpParser(logDirectory: root)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        _ = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+
+        try write(
+            """
+            [rewritten-head]
+            Body { "event": "AgentResponse.Completed", "originalTimestamp": "2026-05-01T12:00:00Z", "properties": { "payload": { "session_id": "warp-rewritten", "model": "claude-sonnet-4", "usage": { "input_tokens": 9, "output_tokens": 2 } } } }
+            """,
+            to: root.appendingPathComponent("warp_network.log")
+        )
+        let rewritten = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(parser.lastSessionAppendResumeCount, 0)
+        XCTAssertEqual(rewritten.usages.count, 1)
+        XCTAssertEqual(rewritten.usages.first?.sessionId, "warp-rewritten")
+        XCTAssertEqual(rewritten.usages.first?.inputTokens, 9)
     }
 
     func test_warp_watermarkSkipDoesNotDropUsageCache() async throws {
@@ -672,6 +719,21 @@ final class IdleUsageParserCacheTests: XCTestCase {
             expectedInput: 10,
             expectedOutput: 4
         )
+    }
+
+    func test_forge_skipsChildDatabaseProbeWhenHomeChildMtimeUnchanged() async throws {
+        let home = try makeTemporaryDirectory("forge-home-probe")
+        let project = home.appendingPathComponent("project", isDirectory: true)
+        try fileManager.createDirectory(at: project, withIntermediateDirectories: true)
+        let db = project.appendingPathComponent(".forge.db")
+        try Data("not-a-real-sqlite".utf8).write(to: db)
+        let parser = ForgeDevParser(homeDirectoryURL: home)
+
+        _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(parser.lastHomeChildProbeHitCount, 0)
+
+        _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertGreaterThanOrEqual(parser.lastHomeChildProbeHitCount, 1)
     }
 
     func test_augment_skipsUnchangedJSONOnUsageOnlySecondPass() async throws {

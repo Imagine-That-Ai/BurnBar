@@ -99,6 +99,7 @@ public struct ParserConversationCacheScrubber {
             appPaths.modelFilterParserCacheURL(for: .zai),
             appPaths.modelFilterParserCacheURL(for: .minimax)
         ]
+        urls.append(contentsOf: appPaths.macSemanticsParserCacheURLs)
 
         if let dynamicURLs = try? fileManager.contentsOfDirectory( // try?-ok(optional cache directory scan)
             at: appPaths.supportDirectory,

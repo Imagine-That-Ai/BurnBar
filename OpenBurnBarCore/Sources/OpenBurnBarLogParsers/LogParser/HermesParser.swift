@@ -151,11 +151,25 @@ public final class HermesParser: LogParser, Sendable {
             }
 
             let indexURL = sessionsDir.appendingPathComponent("sessions.json")
+            let sessionFiles: [URL]
+            if fileManager.fileExists(atPath: sessionsDir.path) {
+                sessionFiles = (try? fileManager.contentsOfDirectory(
+                    at: sessionsDir,
+                    includingPropertiesForKeys: [
+                        .isRegularFileKey,
+                        .fileSizeKey,
+                        .contentModificationDateKey
+                    ]
+                )) ?? []
+            } else {
+                sessionFiles = []
+            }
+
             if fileManager.fileExists(atPath: indexURL.path) {
                 let cacheKey = indexURL.standardizedFileURL.path
                 activePaths.insert(cacheKey)
                 if try gate.shouldRead(indexURL) {
-                    let signature = gatewaySignature(indexURL: indexURL, sessionsDir: sessionsDir)
+                    let signature = gatewaySignature(indexURL: indexURL, sessionFiles: sessionFiles)
                     if !options.includeConversationBodies,
                        let signature,
                        let cached = parseCache.fileEntries[cacheKey],
@@ -188,17 +202,11 @@ public final class HermesParser: LogParser, Sendable {
                 }
             }
 
-            if fileManager.fileExists(atPath: sessionsDir.path) {
-                let contents = (try? fileManager.contentsOfDirectory(
-                    at: sessionsDir,
-                    includingPropertiesForKeys: [.isRegularFileKey]
-                )) ?? []
-
-                for file in contents where file.lastPathComponent.hasPrefix("session_") && file.pathExtension == "json" {
+            for file in sessionFiles where file.lastPathComponent.hasPrefix("session_") && file.pathExtension == "json" {
                     let cacheKey = file.standardizedFileURL.path
                     activePaths.insert(cacheKey)
                     guard try gate.shouldRead(file) else { continue }
-                    let signature = FileSetSignature(urls: [file], using: fileManager)
+                    let signature = fileSetSignature(forPrefetched: file)
                     if !options.includeConversationBodies,
                        let signature,
                        let cached = parseCache.fileEntries[cacheKey],
@@ -229,14 +237,14 @@ public final class HermesParser: LogParser, Sendable {
                     }
                 }
 
-                for file in contents where file.pathExtension == "jsonl" && file.lastPathComponent != "sessions.json" {
+                for file in sessionFiles where file.pathExtension == "jsonl" && file.lastPathComponent != "sessions.json" {
                     let cacheKey = file.standardizedFileURL.path
                     activePaths.insert(cacheKey)
                     guard try gate.shouldRead(file) else { continue }
                     let rawSessionId = file.deletingPathExtension().lastPathComponent
                     let sessionId = scope.qualify(sessionId: rawSessionId)
                     guard !seenSessionIds.contains(sessionId) else { continue }
-                    let signature = FileSetSignature(urls: [file], using: fileManager)
+                    let signature = fileSetSignature(forPrefetched: file)
                     if !options.includeConversationBodies,
                        let signature,
                        let cached = parseCache.fileEntries[cacheKey],
@@ -291,7 +299,6 @@ public final class HermesParser: LogParser, Sendable {
 
                     seenSessionIds.insert(sessionId)
                 }
-            }
         }
 
         let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
@@ -308,23 +315,26 @@ public final class HermesParser: LogParser, Sendable {
         )
     }
 
-    private func gatewaySignature(indexURL: URL, sessionsDir: URL) -> FileSetSignature? {
-        var urls = [indexURL]
-        guard let data = try? Data(contentsOf: indexURL),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return FileSetSignature(urls: urls, using: fileManager)
+    private func gatewaySignature(indexURL: URL, sessionFiles: [URL]) -> FileSetSignature? {
+        var urls: [URL] = []
+        var seen = Set<String>()
+        func append(_ url: URL) {
+            let path = url.standardizedFileURL.path
+            guard seen.insert(path).inserted else { return }
+            urls.append(url)
         }
-        for value in root.values {
-            guard let entry = value as? [String: Any],
-                  let rawSessionId = stringValue(entry, key: "session_id") else {
-                continue
-            }
-            let transcriptURL = sessionsDir.appendingPathComponent("\(rawSessionId).jsonl")
-            if fileManager.fileExists(atPath: transcriptURL.path) {
-                urls.append(transcriptURL)
+        for file in sessionFiles {
+            let name = file.lastPathComponent
+            if name == "sessions.json" || file.pathExtension.lowercased() == "jsonl" {
+                append(file)
             }
         }
-        return FileSetSignature(urls: urls, using: fileManager)
+        append(indexURL)
+        return FileSetSignature(prefetchedURLs: urls)
+    }
+
+    private func fileSetSignature(forPrefetched file: URL) -> FileSetSignature? {
+        FileSetSignature(prefetchedURLs: [file])
     }
 
     // MARK: - SQLite

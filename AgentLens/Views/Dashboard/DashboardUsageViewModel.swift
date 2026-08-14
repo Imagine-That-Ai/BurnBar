@@ -306,19 +306,17 @@ final class DashboardUsageViewModel {
         var distinctDays = Set<Date>()
         var dayCost: [Date: Double] = [:]
         var dayTokens: [Date: Int] = [:]
-        var dailyAccumulator: [Date: DailyAccumulator] = [:]
         var todayProviderCost: [AgentProvider: Double] = [:]
 
         for usage in usages {
             totalCostAllTime += usage.cost
             totalTokensAllTime += usage.totalTokens
 
-            let dayStart = calendar.startOfDay(for: usage.startTime)
-            distinctDays.insert(dayStart)
-            dayCost[dayStart, default: 0] += usage.cost
-            dayTokens[dayStart, default: 0] += usage.totalTokens
-            dailyAccumulator[dayStart, default: DailyAccumulator(date: dayStart)].record(usage)
-
+            if calendar.isDateInToday(usage.startTime) {
+                totalCostToday += usage.cost
+                totalTokensToday += usage.totalTokens
+                todayProviderCost[usage.provider, default: 0] += usage.cost
+            }
             if usage.startTime >= weekAgo {
                 totalCostThisWeek += usage.cost
                 totalTokensThisWeek += usage.totalTokens
@@ -327,10 +325,15 @@ final class DashboardUsageViewModel {
                 totalCostThisMonth += usage.cost
                 totalTokensThisMonth += usage.totalTokens
             }
-            if calendar.isDateInToday(usage.startTime) {
-                totalCostToday += usage.cost
-                totalTokensToday += usage.totalTokens
-                todayProviderCost[usage.provider, default: 0] += usage.cost
+
+            for overlappedDay in UsageDayIntersection.overlappingDayStarts(
+                startTime: usage.startTime,
+                endTime: usage.endTime,
+                calendar: calendar
+            ) {
+                distinctDays.insert(overlappedDay)
+                dayCost[overlappedDay, default: 0] += usage.cost
+                dayTokens[overlappedDay, default: 0] += usage.totalTokens
             }
         }
 
@@ -368,9 +371,7 @@ final class DashboardUsageViewModel {
             distinctUsageDayCount: distinctDays.count,
             last7DayCosts: last7DayCosts,
             last7DayTokenTotals: last7DayTokenTotals,
-            dailySummaries: dailyAccumulator.values
-                .map(\.summary)
-                .sorted { $0.date > $1.date },
+            dailySummaries: UsageDayIntersection.summaries(from: usages, calendar: calendar),
             providerSummaries: Self.makeProviderSummaries(from: usages),
             modelSummaries: Self.makeModelSummaries(from: usages),
             credentialSummaries: Self.makeCredentialSummaries(from: usages),
@@ -501,48 +502,6 @@ struct DashboardUsageSnapshot {
 private extension Date {
     var cacheBucket: Int64 {
         Int64((timeIntervalSinceReferenceDate * 10).rounded(.down))
-    }
-}
-
-private struct DailyAccumulator {
-    let date: Date
-    var provider: AgentProvider = .factory
-    var totalInputTokens = 0
-    var totalOutputTokens = 0
-    var totalCacheCreationTokens = 0
-    var totalCacheReadTokens = 0
-    var totalTokens = 0
-    var totalCost: Double = 0
-    var sessionCount = 0
-    var models: Set<String> = []
-
-    mutating func record(_ usage: TokenUsage) {
-        if sessionCount == 0 {
-            provider = usage.provider
-        }
-        totalInputTokens += usage.inputTokens
-        totalOutputTokens += usage.outputTokens
-        totalCacheCreationTokens += usage.cacheCreationTokens
-        totalCacheReadTokens += usage.cacheReadTokens
-        totalTokens += usage.totalTokens
-        totalCost += usage.cost
-        sessionCount += 1
-        models.insert(usage.model)
-    }
-
-    var summary: DailyUsageSummary {
-        DailyUsageSummary(
-            date: date,
-            provider: provider,
-            totalInputTokens: totalInputTokens,
-            totalOutputTokens: totalOutputTokens,
-            totalCacheCreationTokens: totalCacheCreationTokens,
-            totalCacheReadTokens: totalCacheReadTokens,
-            totalTokens: totalTokens,
-            totalCost: totalCost,
-            sessionCount: sessionCount,
-            models: Array(models)
-        )
     }
 }
 

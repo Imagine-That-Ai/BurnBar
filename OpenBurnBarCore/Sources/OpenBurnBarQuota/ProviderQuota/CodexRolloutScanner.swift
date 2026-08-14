@@ -21,6 +21,7 @@ public enum CodexRolloutScanner {
             }
 
         let activePaths = Set(files.map { $0.0.standardizedFileURL.path })
+        let scannedDirectoryPaths = candidateDirectories.map { $0.standardizedFileURL.path }
 
         for (file, signature) in files {
             let path = file.standardizedFileURL.path
@@ -36,7 +37,9 @@ public enum CodexRolloutScanner {
             didChangeCache = true
         }
 
-        let stalePaths = Set(updatedCache.fileEntries.keys).subtracting(activePaths)
+        let stalePaths = Set(updatedCache.fileEntries.keys).subtracting(activePaths).filter { path in
+            CodexRolloutScanCache.path(path, isUnder: scannedDirectoryPaths)
+        }
         if !stalePaths.isEmpty {
             for stalePath in stalePaths {
                 updatedCache.fileEntries.removeValue(forKey: stalePath)
@@ -55,10 +58,13 @@ public enum CodexRolloutScanner {
             didChangeCache = true
         }
 
+        updatedCache.scannedDirectoryPaths = scannedDirectoryPaths
+
         return CodexRateLimitScanResult(
             latestEvent: latestEvent,
             cache: updatedCache,
-            didChangeCache: didChangeCache
+            didChangeCache: didChangeCache,
+            scannedDirectoryPaths: scannedDirectoryPaths
         )
     }
 
