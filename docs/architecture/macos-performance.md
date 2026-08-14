@@ -1359,5 +1359,89 @@ Validation:
   changed settings reread, prompt text absent from cache)
 - `OpenBurnBarCoreTests/FactoryQuotaSessionSkipTests`
 
+## §29 — Forge home listing, SQL credential/project, named covering columns (August 2026, round 11)
 
+Round 10 left real burns on this PR's graphics / GRDB / quota / usage lanes.
+This round closes them. Leftovers below are invariants or out of lane.
 
+### Lane 1 — Skip Forge `$HOME` readdir when home mtime is unchanged
+
+`ForgeDevParser.discoverDatabasePaths()` listed every home child every tick.
+Per-child mtime already skipped `.forge.db` `fileExists`. Creating
+`~/foo/.forge.db` does not change `~` mtime; creating a new child directory
+typically does. The parser now caches `{homeModifiedAt, children URLs}`.
+On a home-mtime hit it reuses the child list and still re-stats known
+children (the existing probe path). `logDirectoryOverride` still returns
+before any home crawl. `lastHomeListingHitCount` is the listing analog of
+`lastHomeChildProbeHitCount`.
+
+### Lane 2 — Directory listings that `FileSignature` follows prefetch size
+
+Incomplete key sets still extra-stat after `contentsOfDirectory` /
+`enumerator`. Copilot event files and process logs, Warp candidate logs,
+Augment recursive JSON, Mac OpenClaw session files, Mac Copilot process
+logs (`atPath` → URL listing, and `events.jsonl` `fileExists` dropped in
+favor of `FileSetSignature`), Prime Agent, Muse recursive JSONL, and
+`LocalUsageParserSupport.files` (Pi / OpenClaw / OMP / Ollama / ModelFilter)
+now prefetch `FileSignature.directoryListingPrefetchKeys`.
+
+### Lane 3 — Kilo quota listing
+
+`KiloCodeQuotaAdapter` listed tasks with `contentsOfDirectory(atPath:)` then
+`fileExists` + `FileSignature` per `ui_messages.json`. It now uses URL
+listing and drops `fileExists` (nil signature = missing). Totals-only cache
+is unchanged. Kilo stays off `quotaSignalProviders` /
+`ProviderQuotaAdapterRegistry.standard`.
+
+### Lane 4 — OpenCode `part` named columns
+
+JSON-only `part` schemas still full-scan when any heuristic session exists
+and there is no message-id column (IN-list cannot invent that column).
+Core and Mac now `PRAGMA table_info(part)` and `SELECT` the intersection of
+`data, json, value, content, payload, messageID, message_id, messageId`.
+Conversation-body passes still need text. Heuristic totals are unchanged.
+
+### Lane 5 — Dashboard covering scan names `decodeUsage` columns
+
+`fetchUsageRows` was `SELECT * FROM token_usage … LIMIT ?`. `decodeUsage`
+only needs identity / tokens / cost / times / provenance / account /
+`billingKind`. Extra ledger columns (sync, hashes, paths) stay off the
+wire. `fetchAllUsage` / `fetchRecentUsage` / `fetchUnsynced` share this
+column list.
+
+### Lane 6 — SQL credential + project summaries
+
+`makeWindowSummary` built credential / project lists from covering
+`TokenUsage` rows. Bounded windows (and all-time when N is smaller than
+the table) missed a long-runner whose `startTime` is older than the
+newest N. Provider / model already fold from `UsageAggregateRow`.
+Identity / `GROUP BY` now include `projectName`, `providerAccountID`,
+`providerAccountLabel`, `providerAccountSource`. Empty `projectName` still
+maps to `"Unattributed"`. Window **totals** stay intersection SQL.
+Covering rows remain the session list only. `CredentialSummary.id` is a
+per-instance UUID — tests compare `stableKey` / cost / tokens /
+sessionCount, not full struct equality.
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+  **Invariant, not remaining work.**
+- OpenCode JSON-only `part` schemas still full-scan `part` when any
+  heuristic session exists and there is no message-id column. Named-column
+  SELECT still applies.
+- Aider quota adapter still full-reads analytics JSONL; Aider is not on
+  `quotaSignalProviders` / `ProviderQuotaAdapterRegistry.standard`.
+- GRDB named-column vs index decode on `ChartFactRow` (~2× per wiki;
+  brittle; dedicated unit).
+- Daemon `ISO8601DateFormatter()` per file (Pensieve etc.) is outside
+  this PR's Mac graphics / GRDB / quota / usage lanes.
+
+Validation:
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests`
+  (`test_forge_skipsChildDatabaseProbeWhenHomeChildMtimeUnchanged`)
+- `OpenBurnBarCoreTests/KiloCodeQuotaCacheTests`
+- `AgentLensTests/Active/DashboardUsageViewModelTests`
+  (named covering SELECT; long-runner credential/project via SQL;
+  TokenUsage-fold match when covering is complete)
+- `AgentLensTests/Active/RefreshTickPerfTests`

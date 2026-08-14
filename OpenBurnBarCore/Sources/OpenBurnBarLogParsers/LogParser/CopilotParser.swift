@@ -150,7 +150,7 @@ public final class CopilotParser: LogParser, Sendable {
     private func eventFiles(in directory: URL) throws -> [URL] {
         try fileManager.contentsOfDirectory(
             at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys,
             options: [.skipsHiddenFiles]
         )
         .filter { url in
@@ -426,7 +426,7 @@ public final class CopilotParser: LogParser, Sendable {
         guard fileManager.fileExists(atPath: logsURL.path) else { return [:] }
         let files = try fileManager.contentsOfDirectory(
             at: logsURL,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys,
             options: [.skipsHiddenFiles]
         )
         .filter {

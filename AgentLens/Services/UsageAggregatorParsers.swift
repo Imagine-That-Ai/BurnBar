@@ -85,27 +85,34 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             let sessionId = sessionDir.lastPathComponent
             let eventsFile = sessionDir.appendingPathComponent("events.jsonl")
             let metadataFile = sessionDir.appendingPathComponent("metadata.json")
-
-            guard fm.fileExists(atPath: eventsFile.path) else { continue }
+            guard let eventsSignature = OpenBurnBarCore.FileSignature(for: eventsFile, using: fm) else { continue }
+            var namedSignatures = [
+                OpenBurnBarCore.NamedFileSignature(
+                    name: eventsFile.lastPathComponent,
+                    signature: eventsSignature
+                )
+            ]
             var sessionFiles = [eventsFile]
-            if fm.fileExists(atPath: metadataFile.path) {
+            if let metadataSignature = OpenBurnBarCore.FileSignature(for: metadataFile, using: fm) {
+                namedSignatures.append(
+                    OpenBurnBarCore.NamedFileSignature(
+                        name: metadataFile.lastPathComponent,
+                        signature: metadataSignature
+                    )
+                )
                 sessionFiles.append(metadataFile)
             }
             let cacheKey = sessionDir.standardizedFileURL.path
             activePaths.insert(cacheKey)
+            let files = OpenBurnBarCore.FileSetSignature(files: namedSignatures)
             guard try gate.shouldRead(sessionFiles) else { continue }
-
             let fallback = tokensBySession[sessionId]
-            let files = OpenBurnBarCore.FileSetSignature(urls: sessionFiles, using: fm)
-            let signature = files.map {
-                MacCopilotCacheSignature(
-                    files: $0,
-                    fallbackInput: fallback?.input ?? 0,
-                    fallbackOutput: fallback?.output ?? 0
-                )
-            }
+            let signature = MacCopilotCacheSignature(
+                files: files,
+                fallbackInput: fallback?.input ?? 0,
+                fallbackOutput: fallback?.output ?? 0
+            )
             if !options.includeConversationBodies,
-               let signature,
                let cached = parseCache.fileEntries[cacheKey],
                cached.signature == signature {
                 sessionCacheHitCount.withLock { $0 += 1 }
@@ -124,7 +131,7 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             ) {
                 if let usage = pair.usage { usages.append(usage) }
                 if let conversation = pair.conversation { conversations.append(conversation) }
-                if let signature, let usage = pair.usage {
+                if let usage = pair.usage {
                     parseCache.fileEntries[cacheKey] = OpenBurnBarCore.CachedUsageEntry(
                         signature: signature,
                         usage: usage
@@ -354,16 +361,24 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
 
         var result: [String: (input: Int, output: Int)] = [:]
 
+        let logsURL = URL(fileURLWithPath: logsPath, isDirectory: true)
         // try?-ok(absent or unreadable fallback log directory yields no logs)
-        guard let logFiles = try? fm.contentsOfDirectory(atPath: logsPath)
-            .filter({ $0.hasPrefix("process-") && $0.hasSuffix(".log") }) else {
+        guard let logFiles = try? fm.contentsOfDirectory(
+            at: logsURL,
+            includingPropertiesForKeys: OpenBurnBarCore.FileSignature.directoryListingPrefetchKeys,
+            options: [.skipsHiddenFiles]
+        ) else {
             return [:]
         }
 
         for logFile in logFiles {
-            let fullPath = (logsPath as NSString).appendingPathComponent(logFile)
-            guard try gate.shouldRead(URL(fileURLWithPath: fullPath)),
-                  let data = fm.contents(atPath: fullPath),
+            let name = logFile.lastPathComponent
+            guard name.hasPrefix("process-") && name.hasSuffix(".log") else { continue }
+            guard (try? logFile.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+                continue
+            }
+            guard try gate.shouldRead(logFile),
+                  let data = fm.contents(atPath: logFile.path),
                   let content = String(data: data, encoding: .utf8) else { continue }
 
             var lastTokensBySession: [String: Int] = [:]

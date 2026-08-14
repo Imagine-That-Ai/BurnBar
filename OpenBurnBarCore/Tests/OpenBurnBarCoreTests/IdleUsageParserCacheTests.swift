@@ -791,9 +791,25 @@ final class IdleUsageParserCacheTests: XCTestCase {
 
         _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(parser.lastHomeChildProbeHitCount, 0)
+        XCTAssertEqual(parser.lastHomeListingHitCount, 0)
 
         _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertGreaterThanOrEqual(parser.lastHomeChildProbeHitCount, 1)
+        XCTAssertGreaterThanOrEqual(parser.lastHomeListingHitCount, 1)
+
+        let extra = home.appendingPathComponent("other", isDirectory: true)
+        try fileManager.createDirectory(at: extra, withIntermediateDirectories: true)
+        _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(
+            parser.lastHomeListingHitCount,
+            0,
+            "A new home child should change ~ mtime and force a readdir"
+        )
+        XCTAssertGreaterThanOrEqual(
+            parser.lastHomeChildProbeHitCount,
+            1,
+            "Unchanged project/ still skips the .forge.db fileExists probe"
+        )
     }
 
     func test_augment_skipsUnchangedJSONOnUsageOnlySecondPass() async throws {

@@ -96,12 +96,11 @@ extension UsageStore {
             // One covering scan (newest `loadedUsageLimit` rows, all-time).
             // Bounded windows previously each `SELECT * … LIMIT N` — five
             // full-row decodes — even though provider/model totals already
-            // come from the GROUP BY fan-out. Credential / project covering
-            // lists filter this same newest-N set; nested recent windows
-            // (today / 7d / 30d / month) are suffixes of all-time recency,
-            // so the lists match per-window LIMIT N except a long-runner
-            // whose `startTime` is older than the newest N (aggregates
-            // still use intersection SQL and stay exact).
+            // come from the GROUP BY fan-out. Session lists filter this
+            // newest-N set. Credential / project summaries fold from the
+            // same identity `GROUP BY` as provider/model (including a
+            // long-runner whose `startTime` is older than the newest N).
+            // Window **totals** still use intersection SQL and stay exact.
             let coveringUsages = try Self.fetchUsageRows(
                 db: db,
                 dateRange: nil,

@@ -168,7 +168,7 @@ public final class MuseParser: LogParser, Sendable {
 
     private func recursiveJSONLFiles(under root: URL) -> [URL] {
         var out: [URL] = []
-        guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
+        guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys, options: [.skipsHiddenFiles]) else {
             return out
         }
         for case let url as URL in enumerator {

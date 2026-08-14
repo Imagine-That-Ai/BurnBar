@@ -3,6 +3,58 @@ import GRDB
 import OpenBurnBarCore
 
 extension UsageStore {
+    /// Columns `decodeUsage` reads. Covering dashboard / session-list scans
+    /// omit ledger sync hashes, paths, and other identity that the UI does
+    /// not decode.
+    static let usageDecodeSelectColumns = [
+        "id",
+        "provider",
+        "sessionId",
+        "projectName",
+        "model",
+        "inputTokens",
+        "outputTokens",
+        "cacheCreationTokens",
+        "cacheReadTokens",
+        "reasoningTokens",
+        "cost",
+        "startTime",
+        "endTime",
+        "createdAt",
+        "usageSource",
+        "executionSourceID",
+        "executionSourceName",
+        "executionSourceKind",
+        "executionSourceConfidence",
+        "sourceDeviceId",
+        "sourceDeviceName",
+        "isRemote",
+        "providerID",
+        "providerAccountID",
+        "providerAccountLabel",
+        "providerAccountSource",
+        "provenanceMethod",
+        "provenanceConfidence",
+        "estimatorVersion",
+        "parentRequestID",
+        "billingKind"
+    ]
+
+    static let usageAggregateIdentityColumns = [
+        "provider",
+        "model",
+        "executionSourceID",
+        "executionSourceName",
+        "executionSourceKind",
+        "executionSourceConfidence",
+        "provenanceConfidence",
+        "provenanceMethod",
+        "projectName",
+        "providerAccountID",
+        "providerAccountLabel",
+        "providerAccountSource"
+    ]
+
     static func fetchUsageRows( // pure-move: was private
         db: Database,
         dateRange: ClosedRange<Date>?,
@@ -13,7 +65,11 @@ extension UsageStore {
         arguments += StatementArguments([limit])
         let rows = try Row.fetchAll(
             db,
-            sql: "SELECT * FROM token_usage\(predicate.whereSQL) ORDER BY startTime DESC LIMIT ?",
+            sql: """
+                SELECT \(usageDecodeSelectColumns.joined(separator: ", "))
+                FROM token_usage\(predicate.whereSQL)
+                ORDER BY startTime DESC LIMIT ?
+                """,
             arguments: arguments
         )
         return rows.compactMap(Self.decodeUsage)
@@ -43,8 +99,8 @@ extension UsageStore {
             activeProviderCount: Set(aggregateRows.map(\.provider)).count,
             providerSummaries: Self.makeProviderSummaries(fromAggregateRows: aggregateRows),
             modelSummaries: Self.makeModelSummaries(fromAggregateRows: aggregateRows),
-            credentialSummaries: Self.makeCredentialSummaries(from: loadedUsages),
-            projectSpendSummaries: Self.makeProjectSpendSummaries(from: loadedUsages),
+            credentialSummaries: Self.makeCredentialSummaries(fromAggregateRows: aggregateRows),
+            projectSpendSummaries: Self.makeProjectSpendSummaries(fromAggregateRows: aggregateRows),
             cacheEfficiency: CacheEfficiency(
                 inputTokens: totals.inputTokens,
                 cacheCreationTokens: totals.cacheCreationTokens,
@@ -69,6 +125,10 @@ extension UsageStore {
                        executionSourceConfidence,
                        provenanceConfidence,
                        provenanceMethod,
+                       projectName,
+                       providerAccountID,
+                       providerAccountLabel,
+                       providerAccountSource,
                        COUNT(*) AS sessionCount,
                        COALESCE(SUM(inputTokens), 0) AS inputTokens,
                        COALESCE(SUM(outputTokens), 0) AS outputTokens,
@@ -81,7 +141,9 @@ extension UsageStore {
                 \(predicate.whereSQL)
                 GROUP BY provider, model, executionSourceID, executionSourceName,
                          executionSourceKind, executionSourceConfidence,
-                         provenanceConfidence, provenanceMethod
+                         provenanceConfidence, provenanceMethod,
+                         projectName, providerAccountID, providerAccountLabel,
+                         providerAccountSource
                 """,
                 arguments: predicate.arguments
             )
@@ -97,16 +159,7 @@ extension UsageStore {
         db: Database,
         windows: [(TimeRange, ClosedRange<Date>?)]
     ) throws -> [TimeRange: [UsageAggregateRow]] {
-        let identityColumns = [
-            "provider",
-            "model",
-            "executionSourceID",
-            "executionSourceName",
-            "executionSourceKind",
-            "executionSourceConfidence",
-            "provenanceConfidence",
-            "provenanceMethod"
-        ]
+        let identityColumns = usageAggregateIdentityColumns
         let metricColumns: [(alias: String, expression: String)] = [
             ("inputTokens", "inputTokens"),
             ("outputTokens", "outputTokens"),
@@ -167,7 +220,9 @@ extension UsageStore {
                 ) AS windowed
                 GROUP BY provider, model, executionSourceID, executionSourceName,
                          executionSourceKind, executionSourceConfidence,
-                         provenanceConfidence, provenanceMethod
+                         provenanceConfidence, provenanceMethod,
+                         projectName, providerAccountID, providerAccountLabel,
+                         providerAccountSource
                 """,
             arguments: arguments
         )
@@ -207,6 +262,11 @@ extension UsageStore {
                         executionSourceConfidence: executionSourceConfidence,
                         provenanceConfidence: provenanceConfidence,
                         provenanceMethod: provenanceMethod,
+                        projectName: row["projectName"] as? String ?? "",
+                        providerAccountID: row["providerAccountID"] as? String,
+                        providerAccountLabel: row["providerAccountLabel"] as? String,
+                        providerAccountSource: (row["providerAccountSource"] as? String)
+                            .flatMap { ProviderAccountStorageScope(rawValue: $0) },
                         sessionCount: sessionCount,
                         inputTokens: intValue(row["inputTokens_\(suffix)"]),
                         outputTokens: intValue(row["outputTokens_\(suffix)"]),
@@ -539,6 +599,34 @@ extension UsageStore {
         }
         return providers.compactMap { provider, accumulator in
             accumulator.summary(for: provider)
+        }
+        .sorted { $0.totalCost > $1.totalCost }
+    }
+
+    private static func makeCredentialSummaries(fromAggregateRows rows: [UsageAggregateRow]) -> [CredentialSummary] {
+        struct Key: Hashable {
+            let provider: AgentProvider
+            let accountID: String?
+        }
+        var groups: [Key: CredentialSummaryAccumulator] = [:]
+        for row in rows {
+            let key = Key(provider: row.provider, accountID: row.providerAccountID)
+            groups[key, default: CredentialSummaryAccumulator()].record(row)
+        }
+        return groups.compactMap { key, accumulator in
+            accumulator.summary(for: key.provider, accountID: key.accountID)
+        }
+        .sorted { $0.totalCost > $1.totalCost }
+    }
+
+    private static func makeProjectSpendSummaries(fromAggregateRows rows: [UsageAggregateRow]) -> [ProjectSpendSummary] {
+        var groups: [String: ProjectSpendSummaryAccumulator] = [:]
+        for row in rows {
+            let key = row.projectName.isEmpty ? "Unattributed" : row.projectName
+            groups[key, default: ProjectSpendSummaryAccumulator()].record(row)
+        }
+        return groups.compactMap { projectName, accumulator in
+            accumulator.summary(projectName: projectName)
         }
         .sorted { $0.totalCost > $1.totalCost }
     }

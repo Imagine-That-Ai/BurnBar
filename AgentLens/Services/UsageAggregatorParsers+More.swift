@@ -861,21 +861,49 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
     }
 
     private static let partQueryChunkSize = 400
+    private static let openCodePartSelectAllowlist = [
+        "data", "json", "value", "content", "payload",
+        "messageID", "message_id", "messageId"
+    ]
+
+    private static func openCodePartSelectList(
+        existingColumns: Set<String>,
+        required: [String] = []
+    ) -> String {
+        var selected: [String] = []
+        var seen = Set<String>()
+        for column in required + openCodePartSelectAllowlist {
+            guard existingColumns.contains(column), seen.insert(column).inserted else { continue }
+            selected.append(column)
+        }
+        return selected.isEmpty ? "*" : selected.joined(separator: ", ")
+    }
 
     private func fetchOpenCodePartRows(db: Database, messageIDs: Set<String>?) throws -> [Row] {
+        let columns = Set(
+            try Row.fetchAll(db, sql: "PRAGMA table_info(part)").compactMap { $0["name"] as? String }
+        )
         let rows: [Row]
         if let messageIDs {
-            let columns = Set(
-                try Row.fetchAll(db, sql: "PRAGMA table_info(part)").compactMap { $0["name"] as? String }
-            )
             let idColumn = ["messageID", "message_id", "messageId"].first { columns.contains($0) }
             if let idColumn {
-                rows = try Self.queryOpenCodePartRows(db: db, idColumn: idColumn, messageIDs: messageIDs)
+                rows = try Self.queryOpenCodePartRows(
+                    db: db,
+                    idColumn: idColumn,
+                    messageIDs: messageIDs,
+                    selectList: Self.openCodePartSelectList(existingColumns: columns, required: [idColumn])
+                )
             } else {
-                rows = try Row.fetchAll(db, sql: "SELECT * FROM part")
+                rows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT \(Self.openCodePartSelectList(existingColumns: columns)) FROM part"
+                )
             }
         } else {
-            rows = try Row.fetchAll(db, sql: "SELECT * FROM part")
+            rows = try Row.fetchAll(
+                db,
+                sql: "SELECT \(Self.openCodePartSelectList(existingColumns: columns)) FROM part"
+            )
         }
         partReadCount.withLock { $0 += rows.count }
         return rows
@@ -884,7 +912,8 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
     private static func queryOpenCodePartRows(
         db: Database,
         idColumn: String,
-        messageIDs: Set<String>
+        messageIDs: Set<String>,
+        selectList: String
     ) throws -> [Row] {
         let allowed = Set(["messageID", "message_id", "messageId"])
         guard allowed.contains(idColumn), !messageIDs.isEmpty else { return [] }
@@ -897,7 +926,7 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
             let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
             let rows = try Row.fetchAll(
                 db,
-                sql: "SELECT * FROM part WHERE \(idColumn) IN (\(placeholders))",
+                sql: "SELECT \(selectList) FROM part WHERE \(idColumn) IN (\(placeholders))",
                 arguments: StatementArguments(chunk)
             )
             collected.append(contentsOf: rows)

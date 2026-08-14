@@ -300,7 +300,7 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
     private func sessionFiles(in directory: URL) -> [URL] {
         guard let enumerator = fileManager.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            includingPropertiesForKeys: OpenBurnBarCore.FileSignature.directoryListingPrefetchKeys,
             options: [.skipsHiddenFiles]
         ) else { return [] }
 

@@ -97,6 +97,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session date only. Goose, Gemini CLI, Claude Code, Mac Pi, Forge, Muse,
   and Factory listings prefetch size/mtime so cache signatures do not
   re-stat.
+- **Forge home discovery** reuses the `$HOME` child list when home mtime is
+  unchanged (still re-stats known children for `.forge.db`). Dashboard
+  covering scans name `decodeUsage` columns instead of `SELECT *`.
+  Credential / project summaries fold from the window `GROUP BY` so a
+  long-runner older than the newest N covering rows still appears.
+  OpenCode `part` selects payload/id columns; Kilo quota lists tasks via
+  URL `contentsOfDirectory` and drops the extra `fileExists`. Copilot,
+  Warp, Augment, Prime, Muse, Mac OpenClaw, and shared local-parser
+  listings prefetch size/mtime for `FileSignature`.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

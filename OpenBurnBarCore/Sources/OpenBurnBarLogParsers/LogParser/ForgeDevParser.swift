@@ -14,7 +14,9 @@ public final class ForgeDevParser: LogParser, Sendable {
     private let sessionScanCount = Locked(0)
     private let sessionCacheHitCount = Locked(0)
     private let homeChildProbeHitCount = Locked(0)
+    private let homeListingHitCount = Locked(0)
     private let homeChildProbes = Locked<[String: ForgeHomeChildProbe]>([:])
+    private let homeListing = Locked<ForgeHomeListing?>(nil)
 
     public init(
         logDirectoryOverride: String? = nil,
@@ -43,6 +45,7 @@ public final class ForgeDevParser: LogParser, Sendable {
     var lastSessionScanCount: Int { sessionScanCount.read() }
     var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
     var lastHomeChildProbeHitCount: Int { homeChildProbeHitCount.read() }
+    var lastHomeListingHitCount: Int { homeListingHitCount.read() }
 
     private static let sqliteDateFormats: [DateFormatter] = {
         let formats = [
@@ -627,6 +630,8 @@ public final class ForgeDevParser: LogParser, Sendable {
     // MARK: - Discovery / Utilities
 
     private func discoverDatabasePaths() -> [String] {
+        homeChildProbeHitCount.write(0)
+        homeListingHitCount.write(0)
         if let override = logDirectoryOverride {
             let dbPath = (override as NSString).appendingPathComponent(".forge.db")
             return fileManager.fileExists(atPath: dbPath) ? [dbPath] : []
@@ -641,13 +646,26 @@ public final class ForgeDevParser: LogParser, Sendable {
             (homeURL.path as NSString).appendingPathComponent(".forge.db")
         ]
 
-        let children = (try? fileManager.contentsOfDirectory(
-            at: homeURL,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
+        // Creating `~/foo/.forge.db` does not change `~` mtime; creating a
+        // new child directory typically does. Reuse the child URL list when
+        // home mtime is unchanged, then still re-stat known children.
+        let homeMtime = (try? homeURL.resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate)?.timeIntervalSince1970
+        let children: [URL]
+        if let homeMtime, let cached = homeListing.read(), cached.homeModifiedAt == homeMtime {
+            homeListingHitCount.write(1)
+            children = cached.children
+        } else {
+            children = (try? fileManager.contentsOfDirectory(
+                at: homeURL,
+                includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )) ?? []
+            if let homeMtime {
+                homeListing.write(ForgeHomeListing(homeModifiedAt: homeMtime, children: children))
+            }
+        }
         var seenChildren = Set<String>()
-        homeChildProbeHitCount.write(0)
         var nextProbes: [String: ForgeHomeChildProbe] = [:]
         let previousProbes = homeChildProbes.read()
         for child in children {
@@ -808,4 +826,9 @@ private struct ForgeSummary {
 private struct ForgeHomeChildProbe: Equatable, Sendable {
     var directoryModifiedAt: TimeInterval
     var hasDatabase: Bool
+}
+
+private struct ForgeHomeListing: Equatable, Sendable {
+    var homeModifiedAt: TimeInterval
+    var children: [URL]
 }

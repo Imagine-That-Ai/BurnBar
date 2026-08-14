@@ -28,13 +28,13 @@ private enum LocalUsageParserSupport {
         let fm = FileManager.default
         guard fm.fileExists(atPath: root.path) else { return [] }
         if !recursive {
-            return (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey]))?
+            return (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys))?
                 .filter { extensions.contains($0.pathExtension.lowercased()) }
                 .sorted { $0.path < $1.path } ?? []
         }
         guard let enumerator = fm.enumerator(
             at: root,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys,
             options: [.skipsHiddenFiles]
         ) else { return [] }
         return enumerator.compactMap { item in
@@ -658,28 +658,54 @@ public final class OpenCodeParser: LogParser, Sendable {
         db: SQLiteReading,
         messageIDs: Set<String>?
     ) throws -> [SQLiteRow] {
+        let columns = Set(try db.columnNames(ofTable: "part"))
         let rows: [SQLiteRow]
         if let messageIDs {
-            let columns = Set(try db.columnNames(ofTable: "part"))
             let idColumn = ["messageID", "message_id", "messageId"].first { columns.contains($0) }
             if let idColumn {
-                rows = try Self.queryPartRows(db: db, idColumn: idColumn, messageIDs: messageIDs)
+                rows = try Self.queryPartRows(
+                    db: db,
+                    idColumn: idColumn,
+                    messageIDs: messageIDs,
+                    selectList: Self.openCodePartSelectList(existingColumns: columns, required: [idColumn])
+                )
             } else {
-                rows = try db.query("SELECT * FROM part")
+                rows = try db.query("SELECT \(Self.openCodePartSelectList(existingColumns: columns)) FROM part")
             }
         } else {
-            rows = try db.query("SELECT * FROM part")
+            rows = try db.query("SELECT \(Self.openCodePartSelectList(existingColumns: columns)) FROM part")
         }
         partReadCount.withLock { $0 += rows.count }
         return rows
     }
 
     private static let partQueryChunkSize = 400
+    private static let openCodePartSelectAllowlist = [
+        "data", "json", "value", "content", "payload",
+        "messageID", "message_id", "messageId"
+    ]
+
+    /// JSON-only `part` schemas still need a full scan when there is no
+    /// message-id column. Selecting the payload/id intersection avoids
+    /// shipping unused `part` columns either way.
+    private static func openCodePartSelectList(
+        existingColumns: Set<String>,
+        required: [String] = []
+    ) -> String {
+        var selected: [String] = []
+        var seen = Set<String>()
+        for column in required + openCodePartSelectAllowlist {
+            guard existingColumns.contains(column), seen.insert(column).inserted else { continue }
+            selected.append(column)
+        }
+        return selected.isEmpty ? "*" : selected.joined(separator: ", ")
+    }
 
     private static func queryPartRows(
         db: SQLiteReading,
         idColumn: String,
-        messageIDs: Set<String>
+        messageIDs: Set<String>,
+        selectList: String
     ) throws -> [SQLiteRow] {
         let allowed = Set(["messageID", "message_id", "messageId"])
         guard allowed.contains(idColumn), !messageIDs.isEmpty else { return [] }
@@ -691,7 +717,7 @@ public final class OpenCodeParser: LogParser, Sendable {
             let chunk = Array(ordered[index..<end])
             let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
             let rows = try db.query(
-                "SELECT * FROM part WHERE \(idColumn) IN (\(placeholders))",
+                "SELECT \(selectList) FROM part WHERE \(idColumn) IN (\(placeholders))",
                 arguments: chunk.map { .text($0) }
             )
             collected.append(contentsOf: rows)

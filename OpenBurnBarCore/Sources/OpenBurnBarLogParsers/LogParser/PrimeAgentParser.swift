@@ -106,11 +106,11 @@ public final class PrimeAgentParser: LogParser, Sendable {
         // and the `.jsonl` filter keeps the file-watcher cheap. This fixes the flat-only
         // loophole that would silently miss nested sessions.
         var candidates: [URL] = []
-        if let enumerator = fileManager.enumerator(at: sessionsURL, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey], options: [.skipsHiddenFiles]) {
+        if let enumerator = fileManager.enumerator(at: sessionsURL, includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys, options: [.skipsHiddenFiles]) {
             for case let url as URL in enumerator where url.pathExtension == "jsonl" {
                 candidates.append(url)
             }
-        } else if let contents = try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isRegularFileKey]) {
+        } else if let contents = try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys) {
             candidates = contents.filter { $0.pathExtension == "jsonl" }
         }
         candidates.sort { $0.path < $1.path }

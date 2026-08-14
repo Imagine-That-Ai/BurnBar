@@ -70,7 +70,11 @@ public struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        guard let contents = try? fm.contentsOfDirectory(atPath: tasksDir.path) else { // try?-ok(no tasks, skip)
+        guard let taskURLs = try? fm.contentsOfDirectory(
+            at: tasksDir,
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys,
+            options: [.skipsHiddenFiles]
+        ) else { // try?-ok(no tasks, skip)
             return ProviderQuotaSnapshot(
                 provider: .kiloCode,
                 fetchedAt: Date(),
@@ -82,7 +86,7 @@ public struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
             )
         }
 
-        let taskIDs = contents.filter { !$0.hasPrefix(".") }
+        let taskIDs = taskURLs.map(\.lastPathComponent).filter { !$0.hasPrefix(".") }
         let cacheStore = ParserDiskCacheStore<KiloTaskQuotaCacheEntry>(
             cacheURL: cacheURL(context: context, tasksDir: tasksDir),
             fileManager: fm,
@@ -99,12 +103,11 @@ public struct KiloCodeQuotaAdapter: ProviderQuotaAdapter {
         var totalCacheReads: Int64 = 0
         var totalCost: Double = 0
 
-        for taskID in taskIDs {
-            let uiMessagesURL = tasksDir.appendingPathComponent(taskID).appendingPathComponent("ui_messages.json")
-            guard fm.fileExists(atPath: uiMessagesURL.path) else { continue }
+        for taskURL in taskURLs where !taskURL.lastPathComponent.hasPrefix(".") {
+            let uiMessagesURL = taskURL.appendingPathComponent("ui_messages.json")
             let cacheKey = uiMessagesURL.standardizedFileURL.path
-            activeKeys.insert(cacheKey)
             guard let signature = FileSignature(for: uiMessagesURL, using: fm) else { continue }
+            activeKeys.insert(cacheKey)
             if let cached = parseCache.fileEntries[cacheKey], cached.signature == signature {
                 totalInput += cached.totals.input
                 totalOutput += cached.totals.output

@@ -282,7 +282,7 @@ public final class WarpParser: LogParser, Sendable {
 
         let files = (try? fileManager.contentsOfDirectory( // try?-ok(empty on read fail)
             at: logDirectory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys,
             options: [.skipsHiddenFiles]
         )) ?? []
 

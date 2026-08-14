@@ -135,7 +135,7 @@ public final class AugmentParser: LogParser, Sendable {
     private func recursiveJSONFiles(in root: URL) -> [URL] {
         guard let enumerator = fileManager.enumerator(
             at: root,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys,
             options: [.skipsHiddenFiles]
         ) else {
             return []

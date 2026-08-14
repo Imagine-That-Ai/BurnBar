@@ -69,7 +69,12 @@ extension UsageStore {
         try await dbQueue.read { db -> [TokenUsage] in
             let rows = try Row.fetchAll(
                 db,
-                sql: "SELECT * FROM token_usage WHERE syncedAt IS NULL AND isRemote = 0 ORDER BY startTime ASC LIMIT 400"
+                sql: """
+                    SELECT \(Self.usageDecodeSelectColumns.joined(separator: ", "))
+                    FROM token_usage
+                    WHERE syncedAt IS NULL AND isRemote = 0
+                    ORDER BY startTime ASC LIMIT 400
+                    """
             )
             return rows.compactMap(Self.decodeUsage)
         }
