@@ -37,7 +37,7 @@ final class AiderQuotaCacheTests: XCTestCase {
         let first = try await adapter.fetch(context: context)
         XCTAssertEqual(adapter.lastContentReadCount, 1)
         XCTAssertEqual(try XCTUnwrap(dailyBucket(in: first)?.usedValue), 14.0, accuracy: 0.0001)
-        XCTAssertTrue(first.statusMessage?.contains("1 session") == true)
+        XCTAssertTrue(try XCTUnwrap(first.statusMessage).contains("1 session"))
 
         let second = try await adapter.fetch(context: context)
         XCTAssertEqual(adapter.lastContentReadCount, 0)
@@ -107,7 +107,7 @@ final class AiderQuotaCacheTests: XCTestCase {
         let third = try await adapter.fetch(context: context)
         XCTAssertEqual(adapter.lastContentReadCount, 1)
         XCTAssertEqual(try XCTUnwrap(dailyBucket(in: third)?.usedValue), 22.0, accuracy: 0.0001)
-        XCTAssertTrue(third.statusMessage?.contains("2 session") == true)
+        XCTAssertTrue(try XCTUnwrap(third.statusMessage).contains("2 session"))
     }
 
     func test_fetch_rereadsWhenHeadRewritten() async throws {

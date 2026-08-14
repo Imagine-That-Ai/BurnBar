@@ -111,6 +111,6 @@ final class GeminiCLIParserCacheTests: XCTestCase {
         XCTAssertTrue(usageOnly.conversations.isEmpty)
         XCTAssertEqual(indexed.usages.first?.inputTokens, usageOnly.usages.first?.inputTokens)
         XCTAssertEqual(indexed.usages.first?.outputTokens, usageOnly.usages.first?.outputTokens)
-        XCTAssertTrue(indexed.conversations.first?.fullText.contains("Hello there") == true)
+        XCTAssertTrue(try XCTUnwrap(indexed.conversations.first?.fullText).contains("Hello there"))
     }
 }

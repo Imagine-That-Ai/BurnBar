@@ -383,7 +383,7 @@ struct ProjectSpendSummaryAccumulator {
     }
 }
 
-fileprivate struct ModelUsageAccumulator {
+private struct ModelUsageAccumulator {
     let modelName: String
     var input = 0
     var output = 0

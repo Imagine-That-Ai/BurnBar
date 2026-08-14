@@ -328,20 +328,22 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
         return (reduced.snapshotFacts, reduced.snapshotSessionCount, entry, true)
     }
 
+    private struct AiderLineReduceResult {
+        var snapshotFacts: [AiderQuotaFact]
+        var snapshotSessionCount: Int
+        var persistedFacts: [AiderQuotaFact]
+        var persistedSessionCount: Int
+        var persistedOpenSessionTokens: Int
+        var persistedOffset: Int64
+    }
+
     private func reduceLines(
         handle: FileHandle,
         startOffset: Int64,
         facts: [AiderQuotaFact],
         sessionCount: Int,
         openSessionTokens: Int
-    ) -> (
-        snapshotFacts: [AiderQuotaFact],
-        snapshotSessionCount: Int,
-        persistedFacts: [AiderQuotaFact],
-        persistedSessionCount: Int,
-        persistedOpenSessionTokens: Int,
-        persistedOffset: Int64
-    ) {
+    ) -> AiderLineReduceResult {
         var persistedFacts = facts
         var persistedSessionCount = sessionCount
         var persistedOpenSessionTokens = openSessionTokens
@@ -376,13 +378,13 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
             }
         }
         _ = snapshotOpenSessionTokens
-        return (
-            snapshotFacts,
-            snapshotSessionCount,
-            persistedFacts,
-            persistedSessionCount,
-            persistedOpenSessionTokens,
-            persistedOffset
+        return AiderLineReduceResult(
+            snapshotFacts: snapshotFacts,
+            snapshotSessionCount: snapshotSessionCount,
+            persistedFacts: persistedFacts,
+            persistedSessionCount: persistedSessionCount,
+            persistedOpenSessionTokens: persistedOpenSessionTokens,
+            persistedOffset: persistedOffset
         )
     }
 

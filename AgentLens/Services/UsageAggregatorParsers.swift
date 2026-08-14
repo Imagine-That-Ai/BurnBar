@@ -76,10 +76,11 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
             }
         }
 
+        // try?-ok(unreadable session-state directory yields no Gemini sessions)
         let sessionDirs = (try? fm.contentsOfDirectory(
             at: sessionStateURL,
             includingPropertiesForKeys: [.isDirectoryKey]
-        ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
+        ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? [] // try?-ok(unreadable directory metadata excludes that entry)
 
         for sessionDir in sessionDirs {
             let sessionId = sessionDir.lastPathComponent
@@ -374,7 +375,7 @@ final class CopilotParser: OpenBurnBarCore.LogParser, Sendable {
         for logFile in logFiles {
             let name = logFile.lastPathComponent
             guard name.hasPrefix("process-") && name.hasSuffix(".log") else { continue }
-            guard (try? logFile.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+            guard (try? logFile.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { // try?-ok(non-file directory entries are skipped)
                 continue
             }
             guard try gate.shouldRead(logFile),

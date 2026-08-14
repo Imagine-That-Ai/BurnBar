@@ -325,7 +325,7 @@ final class IdleUsageParserCacheTests: XCTestCase {
         XCTAssertTrue(usageOnly.conversations.isEmpty)
         XCTAssertEqual(indexed.usages.first?.inputTokens, usageOnly.usages.first?.inputTokens)
         XCTAssertEqual(indexed.usages.first?.outputTokens, usageOnly.usages.first?.outputTokens)
-        XCTAssertTrue(indexed.conversations.first?.fullText.contains("Please inspect this project.") == true)
+        XCTAssertTrue(try XCTUnwrap(indexed.conversations.first?.fullText).contains("Please inspect this project."))
     }
 
     // MARK: - Goose
@@ -1228,37 +1228,39 @@ final class IdleUsageParserCacheTests: XCTestCase {
     }
 
     private func lastScan(_ parser: some LogParser) -> Int? {
-        (parser as? PrimeAgentParser)?.lastSessionScanCount
-            ?? (parser as? MuseParser)?.lastSessionScanCount
-            ?? (parser as? KimiParser)?.lastSessionScanCount
-            ?? (parser as? ForgeDevParser)?.lastSessionScanCount
-            ?? (parser as? AugmentParser)?.lastSessionScanCount
-            ?? (parser as? AiderParser)?.lastSessionScanCount
-            ?? (parser as? PiAgentParser)?.lastSessionScanCount
-            ?? (parser as? OllamaParser)?.lastSessionScanCount
-            ?? (parser as? JunieParser)?.lastSessionScanCount
-            ?? (parser as? CursorParser)?.lastSessionScanCount
-            ?? (parser as? OpenCodeParser)?.lastSessionScanCount
-            ?? (parser as? OMPParser)?.lastSessionScanCount
-            ?? (parser as? OpenClawParser)?.lastSessionScanCount
-            ?? (parser as? ModelFilterParser)?.lastSessionScanCount
+        if let parser = parser as? PrimeAgentParser { return parser.lastSessionScanCount }
+        if let parser = parser as? MuseParser { return parser.lastSessionScanCount }
+        if let parser = parser as? KimiParser { return parser.lastSessionScanCount }
+        if let parser = parser as? ForgeDevParser { return parser.lastSessionScanCount }
+        if let parser = parser as? AugmentParser { return parser.lastSessionScanCount }
+        if let parser = parser as? AiderParser { return parser.lastSessionScanCount }
+        if let parser = parser as? PiAgentParser { return parser.lastSessionScanCount }
+        if let parser = parser as? OllamaParser { return parser.lastSessionScanCount }
+        if let parser = parser as? JunieParser { return parser.lastSessionScanCount }
+        if let parser = parser as? CursorParser { return parser.lastSessionScanCount }
+        if let parser = parser as? OpenCodeParser { return parser.lastSessionScanCount }
+        if let parser = parser as? OMPParser { return parser.lastSessionScanCount }
+        if let parser = parser as? OpenClawParser { return parser.lastSessionScanCount }
+        if let parser = parser as? ModelFilterParser { return parser.lastSessionScanCount }
+        return nil
     }
 
     private func lastHits(_ parser: some LogParser) -> Int? {
-        (parser as? PrimeAgentParser)?.lastSessionCacheHitCount
-            ?? (parser as? MuseParser)?.lastSessionCacheHitCount
-            ?? (parser as? KimiParser)?.lastSessionCacheHitCount
-            ?? (parser as? ForgeDevParser)?.lastSessionCacheHitCount
-            ?? (parser as? AugmentParser)?.lastSessionCacheHitCount
-            ?? (parser as? AiderParser)?.lastSessionCacheHitCount
-            ?? (parser as? PiAgentParser)?.lastSessionCacheHitCount
-            ?? (parser as? OllamaParser)?.lastSessionCacheHitCount
-            ?? (parser as? JunieParser)?.lastSessionCacheHitCount
-            ?? (parser as? CursorParser)?.lastSessionCacheHitCount
-            ?? (parser as? OpenCodeParser)?.lastSessionCacheHitCount
-            ?? (parser as? OMPParser)?.lastSessionCacheHitCount
-            ?? (parser as? OpenClawParser)?.lastSessionCacheHitCount
-            ?? (parser as? ModelFilterParser)?.lastSessionCacheHitCount
+        if let parser = parser as? PrimeAgentParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? MuseParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? KimiParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? ForgeDevParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? AugmentParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? AiderParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? PiAgentParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? OllamaParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? JunieParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? CursorParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? OpenCodeParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? OMPParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? OpenClawParser { return parser.lastSessionCacheHitCount }
+        if let parser = parser as? ModelFilterParser { return parser.lastSessionCacheHitCount }
+        return nil
     }
 
     private func warpExactBodyLog() -> String {

@@ -91,7 +91,7 @@ internal fun ChartStudioScrollBody(
         QuickFactStrip(digest)
         InsightsGallery(digest)
         PromptCarousel(
-            suggestions = remember(digest) { ChartStudioPromptEngine.suggestedPrompts(digest) },
+            suggestions = remember(digest) { chartStudioSuggestedPrompts(digest) },
             onSelect = onSubmit,
         )
         RecentCanvasesStrip(

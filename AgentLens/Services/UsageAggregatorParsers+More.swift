@@ -1101,6 +1101,7 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
         }
 
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
+        // try?-ok(unreadable Pi sessions directory yields no JSONL files)
         let jsonlFiles = (try? fm.contentsOfDirectory(
             at: sessionsURL,
             includingPropertiesForKeys: OpenBurnBarCore.FileSignature.directoryListingPrefetchKeys

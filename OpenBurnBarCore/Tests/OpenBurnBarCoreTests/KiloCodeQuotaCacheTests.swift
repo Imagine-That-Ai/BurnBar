@@ -43,7 +43,7 @@ final class KiloCodeQuotaCacheTests: XCTestCase {
         XCTAssertEqual(adapter.lastContentReadCount, 2)
         XCTAssertEqual(try XCTUnwrap(tokenBucket(in: first)?.usedValue), 23.0, accuracy: 0.0001)
         XCTAssertEqual(try XCTUnwrap(taskBucket(in: first)?.usedValue), 2.0, accuracy: 0.0001)
-        XCTAssertTrue(first.statusMessage?.contains("2 tasks") == true)
+        XCTAssertTrue(try XCTUnwrap(first.statusMessage).contains("2 tasks"))
 
         let second = try await adapter.fetch(context: context)
         XCTAssertEqual(adapter.lastContentReadCount, 0)

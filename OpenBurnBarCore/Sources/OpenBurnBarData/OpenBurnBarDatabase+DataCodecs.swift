@@ -20,22 +20,21 @@ extension OpenBurnBarDatabase {
         sqliteDateFormatter.string(from: date)
     }
 
-    private static let iso8601Lock = NSLock()
-    private static let iso8601FractionalFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let iso8601BasicFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
+    /// Local formatters rather than `static let ISO8601DateFormatter` caches:
+    /// those stored properties are not Sendable and fail Linux / Swift
+    /// consumer-contract `#MutableGlobalVariable`. The Mac twin uses
+    /// `ThreadSafeISO8601DateFormatter` from Kernel; Data stays Foundation+GRDB
+    /// so `OpenBurnBarCore/Package.swift` (a control-plane digest artifact)
+    /// does not grow a Kernel edge for this fallback path.
     private static func parseISO8601Date(_ string: String) -> Date? {
-        iso8601Lock.lock()
-        defer { iso8601Lock.unlock() }
-        return iso8601FractionalFormatter.date(from: string) ?? iso8601BasicFormatter.date(from: string)
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: string) {
+            return date
+        }
+        let basic = ISO8601DateFormatter()
+        basic.formatOptions = [.withInternetDateTime]
+        return basic.date(from: string)
     }
 
     static func parseDateValue(_ value: Any?) -> Date? {
