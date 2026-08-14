@@ -101,7 +101,8 @@ final class IncrementalConversationIndexingTests: XCTestCase {
             limit: 20
         )
         XCTAssertEqual(jobsAfterSecond.count, 2)
-        XCTAssertNil(try await store.fetchConversation(id: doomed.id))
+        let tombstoned = try await store.fetchConversation(id: doomed.id)
+        XCTAssertNil(tombstoned)
     }
 
     // MARK: - 3. Checkpoint watermark filtering: unchanged corpus filtered
