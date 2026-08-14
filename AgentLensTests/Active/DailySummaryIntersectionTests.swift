@@ -34,6 +34,46 @@ final class DailySummaryIntersectionTests: XCTestCase {
         )
     }
 
+    func test_overlappingDayStarts_midnightEndBelongsOnlyToStartingDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let firstDay = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_776_268_800))
+        let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: firstDay))
+
+        XCTAssertEqual(
+            UsageDayIntersection.overlappingDayStarts(
+                startTime: firstDay.addingTimeInterval(23 * 3600),
+                endTime: nextDay,
+                calendar: calendar
+            ),
+            [firstDay]
+        )
+        XCTAssertEqual(
+            UsageDayIntersection.overlappingDayStarts(
+                startTime: nextDay,
+                endTime: firstDay.addingTimeInterval(23 * 3600),
+                calendar: calendar
+            ),
+            [firstDay]
+        )
+    }
+
+    func test_overlappingDayStarts_pointAtMidnightBelongsToFollowingDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let firstDay = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_776_268_800))
+        let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: firstDay))
+
+        XCTAssertEqual(
+            UsageDayIntersection.overlappingDayStarts(
+                startTime: nextDay,
+                endTime: nextDay,
+                calendar: calendar
+            ),
+            [nextDay]
+        )
+    }
+
     func test_fetchDailySummaries_matchesPerDayIntersectionSQL() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -177,6 +217,81 @@ final class DailySummaryIntersectionTests: XCTestCase {
             try UsageStore.fetchDistinctUsageDayCount(db: db, calendar: calendar)
         }
         XCTAssertEqual(distinctDays, 1)
+    }
+
+    func test_fetchDailySummaries_excludesMidnightEndFromFollowingDay() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let firstDay = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_776_268_800))
+        let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: firstDay))
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "ends-at-midnight",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 20,
+            costUSD: 2,
+            startTime: firstDay.addingTimeInterval(23 * 3600),
+            endTime: nextDay
+        ))
+
+        let summaries = try await queue.read { db in
+            try UsageStore.fetchDailySummaries(db: db, calendar: calendar)
+        }
+        XCTAssertEqual(summaries.count, 1)
+        XCTAssertEqual(calendar.startOfDay(for: try XCTUnwrap(summaries.first).date), firstDay)
+    }
+
+    func test_fetchDailySummaries_batchesDayWindowsAndNeverLoadsRawHistory() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let firstDay = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_776_268_800))
+        let distantDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 250, to: firstDay))
+
+        try await usageStore.insert([
+            ViewTestFixtures.makeUsage(
+                provider: .codex,
+                sessionId: "first-day",
+                startTime: firstDay.addingTimeInterval(3600),
+                endTime: firstDay.addingTimeInterval(7200)
+            ),
+            ViewTestFixtures.makeUsage(
+                provider: .claudeCode,
+                sessionId: "distant-day",
+                startTime: distantDay.addingTimeInterval(3600),
+                endTime: distantDay.addingTimeInterval(7200)
+            )
+        ])
+
+        tracer.resetLog()
+        let summaries = try await queue.read { db in
+            try UsageStore.fetchDailySummaries(db: db, calendar: calendar)
+        }
+
+        XCTAssertEqual(summaries.count, 2)
+        let normalizedSQL = tracer.queryLog.map {
+            $0.sql.lowercased().replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        }
+        XCTAssertEqual(
+            normalizedSQL.filter { $0.contains("with day_windows(daystart, nextday)") }.count,
+            2,
+            "251 local-day windows should use two bounded CTE batches"
+        )
+        XCTAssertFalse(
+            normalizedSQL.contains {
+                $0.contains("select starttime, endtime, provider, model")
+                    && !$0.contains("group by")
+            },
+            "Daily aggregation must not materialize one Swift row per ledger entry"
+        )
     }
 
     private func assertSummariesEqual(

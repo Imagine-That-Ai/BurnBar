@@ -467,6 +467,54 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(longCred.accountLabel, "Factory · long")
     }
 
+    func test_dashboardSnapshot_credentialSummaryUsesNewestAccountMetadata() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+        let older = TokenUsage(
+            provider: .factory,
+            sessionId: "before-rename",
+            projectName: "alpha",
+            model: "test-model",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-3600),
+            endTime: now.addingTimeInterval(-3500),
+            providerAccountID: "renamed-account",
+            providerAccountLabel: "Old account",
+            providerAccountSource: .localOnly
+        )
+        let newer = TokenUsage(
+            provider: .factory,
+            sessionId: "after-rename",
+            projectName: "alpha",
+            model: "test-model",
+            inputTokens: 20,
+            outputTokens: 10,
+            costUSD: 2,
+            startTime: now,
+            endTime: now.addingTimeInterval(100),
+            providerAccountID: "renamed-account",
+            providerAccountLabel: "Current account",
+            providerAccountSource: .deviceKeychain
+        )
+        try await usageStore.insert([older, newer])
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let allTime = try XCTUnwrap(snapshot.windowSummaries[.allTime])
+        let aggregateSummary = try XCTUnwrap(allTime.credentialSummaries.first)
+        XCTAssertEqual(aggregateSummary.accountLabel, "Current account")
+        XCTAssertEqual(aggregateSummary.accountSource, .deviceKeychain)
+
+        let inMemorySummary = try XCTUnwrap(
+            UsageStore.makeCredentialSummaries(from: [older, newer]).first
+        )
+        XCTAssertEqual(inMemorySummary.accountLabel, aggregateSummary.accountLabel)
+        XCTAssertEqual(inMemorySummary.accountSource, aggregateSummary.accountSource)
+    }
+
     func test_dashboardSnapshot_credentialAndProjectSummariesMatchTokenUsageFoldWhenCoveringIsComplete() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)

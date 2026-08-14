@@ -56,6 +56,7 @@ struct UsageAggregateRow: Equatable { // pure-move: was private
     let providerAccountID: String?
     let providerAccountLabel: String?
     let providerAccountSource: ProviderAccountStorageScope?
+    let latestStartTime: Date
     let sessionCount: Int
     let inputTokens: Int
     let outputTokens: Int
@@ -86,6 +87,7 @@ struct UsageAggregateRow: Equatable { // pure-move: was private
         providerAccountLabel = row["providerAccountLabel"] as? String
         providerAccountSource = (row["providerAccountSource"] as? String)
             .flatMap { ProviderAccountStorageScope(rawValue: $0) }
+        latestStartTime = OpenBurnBarDatabase.parseDateValue(row["latestStartTime"]) ?? .distantPast
         sessionCount = UsageStore.intValue(row["sessionCount"])
         inputTokens = UsageStore.intValue(row["inputTokens"])
         outputTokens = UsageStore.intValue(row["outputTokens"])
@@ -109,6 +111,7 @@ struct UsageAggregateRow: Equatable { // pure-move: was private
         providerAccountID: String? = nil,
         providerAccountLabel: String? = nil,
         providerAccountSource: ProviderAccountStorageScope? = nil,
+        latestStartTime: Date,
         sessionCount: Int,
         inputTokens: Int,
         outputTokens: Int,
@@ -130,6 +133,7 @@ struct UsageAggregateRow: Equatable { // pure-move: was private
         self.providerAccountID = providerAccountID
         self.providerAccountLabel = providerAccountLabel
         self.providerAccountSource = providerAccountSource
+        self.latestStartTime = latestStartTime
         self.sessionCount = sessionCount
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
@@ -207,6 +211,8 @@ struct ProviderSummaryAccumulator { // pure-move: was private
 struct CredentialSummaryAccumulator {
     var accountLabel = ""
     var accountSource: ProviderAccountStorageScope?
+    private var accountLabelTimestamp = Date.distantPast
+    private var accountSourceTimestamp = Date.distantPast
     var totalCost: Double = 0
     var totalTokens = 0
     var totalInputTokens = 0
@@ -223,11 +229,20 @@ struct CredentialSummaryAccumulator {
     init() {}
 
     mutating func record(_ row: UsageAggregateRow) {
-        if accountLabel.isEmpty, let label = row.providerAccountLabel, !label.isEmpty {
+        if let label = row.providerAccountLabel,
+           !label.isEmpty,
+           (row.latestStartTime > accountLabelTimestamp
+               || (row.latestStartTime == accountLabelTimestamp
+                   && (accountLabel.isEmpty || label < accountLabel))) {
             accountLabel = label
+            accountLabelTimestamp = row.latestStartTime
         }
-        if accountSource == nil {
-            accountSource = row.providerAccountSource
+        if let source = row.providerAccountSource,
+           (row.latestStartTime > accountSourceTimestamp
+               || (row.latestStartTime == accountSourceTimestamp
+                   && (accountSource == nil || source.rawValue < accountSource?.rawValue ?? ""))) {
+            accountSource = source
+            accountSourceTimestamp = row.latestStartTime
         }
         totalCost += row.cost
         totalTokens += row.totalTokens

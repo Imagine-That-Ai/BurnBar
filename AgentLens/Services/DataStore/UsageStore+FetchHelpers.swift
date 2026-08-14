@@ -243,6 +243,7 @@ extension UsageStore {
                        providerAccountID,
                        providerAccountLabel,
                        providerAccountSource,
+                       MAX(startTime) AS latestStartTime,
                        COUNT(*) AS sessionCount,
                        COALESCE(SUM(inputTokens), 0) AS inputTokens,
                        COALESCE(SUM(outputTokens), 0) AS outputTokens,
@@ -307,6 +308,9 @@ extension UsageStore {
         for (range, flag) in windowFlags {
             let suffix = windowSQLAlias(range)
             selectParts.append("COALESCE(SUM(\(flag)), 0) AS sessionCount_\(suffix)")
+            selectParts.append(
+                "MAX(CASE WHEN \(flag) = 1 THEN startTime END) AS latestStartTime_\(suffix)"
+            )
             for metric in metricColumns {
                 selectParts.append(
                     "COALESCE(SUM(\(flag) * \(metric.expression)), 0) AS \(metric.alias)_\(suffix)"
@@ -321,7 +325,8 @@ extension UsageStore {
             "cacheReadTokens",
             "reasoningTokens",
             "totalTokens",
-            "cost"
+            "cost",
+            "startTime"
         ] + flagParts).joined(separator: ",\n                       ")
 
         let rows = try Row.fetchAll(
@@ -381,6 +386,9 @@ extension UsageStore {
                         providerAccountLabel: row["providerAccountLabel"] as? String,
                         providerAccountSource: (row["providerAccountSource"] as? String)
                             .flatMap { ProviderAccountStorageScope(rawValue: $0) },
+                        latestStartTime: OpenBurnBarDatabase.parseDateValue(
+                            row["latestStartTime_\(suffix)"]
+                        ) ?? .distantPast,
                         sessionCount: sessionCount,
                         inputTokens: intValue(row["inputTokens_\(suffix)"]),
                         outputTokens: intValue(row["outputTokens_\(suffix)"]),
@@ -462,8 +470,8 @@ extension UsageStore {
                 continue
             }
             let flag = "in_\(offset)"
-            flagParts.append("CASE WHEN \(intersectionSQL) THEN 1 ELSE 0 END AS \(flag)")
-            arguments += intersectionArguments(day...nextDay)
+            flagParts.append("CASE WHEN \(dayIntersectionSQL) THEN 1 ELSE 0 END AS \(flag)")
+            arguments += dayIntersectionArguments(dayStart: day, nextDay: nextDay)
             selectParts.append("COALESCE(SUM(\(flag) * cost), 0) AS cost_\(offset)")
             selectParts.append("COALESCE(SUM(\(flag) * totalTokens), 0) AS tokens_\(offset)")
             includedOffsets.append(offset)
@@ -560,23 +568,7 @@ extension UsageStore {
     /// Distinct local calendar days that at least one session overlaps.
     /// Same membership as `fetchDailySummaries` / last-7-day intersection SQL.
     static func fetchDistinctUsageDayCount(db: Database, calendar: Calendar) throws -> Int {
-        let fetched = try Row.fetchAll(db, sql: "SELECT startTime, endTime FROM token_usage")
-        var days = Set<Date>()
-        days.reserveCapacity(fetched.count)
-        for row in fetched {
-            guard let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
-                  let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"]) else {
-                continue
-            }
-            for day in UsageDayIntersection.overlappingDayStarts(
-                startTime: startTime,
-                endTime: endTime,
-                calendar: calendar
-            ) {
-                days.insert(day)
-            }
-        }
-        return days.count
+        try fetchDailySummaries(db: db, calendar: calendar).count
     }
 
     static func fetchDailySummaries(db: Database) throws -> [DailyUsageSummary] { // pure-move: was private
@@ -584,41 +576,59 @@ extension UsageStore {
     }
 
     static func fetchDailySummaries(db: Database, calendar: Calendar) throws -> [DailyUsageSummary] {
-        let fetched = try Row.fetchAll(
-            db,
-            sql: """
-                SELECT startTime, endTime, provider, model,
-                       inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens,
-                       totalTokens, cost
-                FROM token_usage
-                """
-        )
-        var rows: [UsageDayIntersection.UsageRow] = []
-        rows.reserveCapacity(fetched.count)
-        for row in fetched {
-            guard let providerRaw = row["provider"] as? String,
-                  let provider = AgentProvider(rawValue: providerRaw),
-                  let model = row["model"] as? String,
-                  let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"]),
-                  let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"]) else {
-                continue
-            }
-            rows.append(
-                UsageDayIntersection.UsageRow(
-                    startTime: startTime,
-                    endTime: endTime,
-                    provider: provider,
-                    model: model,
-                    inputTokens: intValue(row["inputTokens"]),
-                    outputTokens: intValue(row["outputTokens"]),
-                    cacheCreationTokens: intValue(row["cacheCreationTokens"]),
-                    cacheReadTokens: intValue(row["cacheReadTokens"]),
-                    totalTokens: intValue(row["totalTokens"]),
-                    cost: doubleValue(row["cost"])
-                )
+        let windows = try usageDayWindows(db: db, calendar: calendar)
+        var accumulators: [Date: DailySummaryAccumulator] = [:]
+        for batchStart in stride(from: 0, to: windows.count, by: usageDayWindowBatchSize) {
+            let batchEnd = min(batchStart + usageDayWindowBatchSize, windows.count)
+            let batch = windows[batchStart..<batchEnd]
+            let placeholders = Array(repeating: "(?, ?)", count: batch.count).joined(separator: ", ")
+            let arguments = StatementArguments(batch.flatMap { window in
+                [
+                    OpenBurnBarDatabase.sqliteDateString(window.dayStart),
+                    OpenBurnBarDatabase.sqliteDateString(window.nextDay)
+                ]
+            })
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                    WITH day_windows(dayStart, nextDay) AS (
+                        VALUES \(placeholders)
+                    )
+                    SELECT day_windows.dayStart,
+                           provider,
+                           model,
+                           COUNT(*) AS sessionCount,
+                           COALESCE(SUM(inputTokens), 0) AS inputTokens,
+                           COALESCE(SUM(outputTokens), 0) AS outputTokens,
+                           COALESCE(SUM(cacheCreationTokens), 0) AS cacheCreationTokens,
+                           COALESCE(SUM(cacheReadTokens), 0) AS cacheReadTokens,
+                           COALESCE(SUM(totalTokens), 0) AS totalTokens,
+                           COALESCE(SUM(cost), 0) AS cost
+                    FROM day_windows
+                    JOIN token_usage ON \(dayWindowIntersectionSQL)
+                    GROUP BY day_windows.dayStart, provider, model
+                    """,
+                arguments: arguments
             )
+            for row in rows {
+                guard let dayStart = OpenBurnBarDatabase.parseDateValue(row["dayStart"]),
+                      let providerRaw = row["provider"] as? String,
+                      let provider = AgentProvider(rawValue: providerRaw),
+                      let model = row["model"] as? String else {
+                    continue
+                }
+                accumulators[
+                    dayStart,
+                    default: DailySummaryAccumulator(
+                        dayString: overlappingDayString(dayStart, calendar: calendar),
+                        date: dayStart
+                    )
+                ].record(row: row, provider: provider, model: model)
+            }
         }
-        return UsageDayIntersection.summaries(from: rows, calendar: calendar)
+        return accumulators.values
+            .compactMap(\.summary)
+            .sorted { $0.date > $1.date }
     }
 
     /// Per-day intersection `GROUP BY` used as the equality oracle for the
@@ -627,20 +637,9 @@ extension UsageStore {
         db: Database,
         calendar: Calendar
     ) throws -> [DailyUsageSummary] {
-        let bounds = try Row.fetchOne(
-            db,
-            sql: "SELECT MIN(startTime) AS minStart, MAX(endTime) AS maxEnd FROM token_usage"
-        )
-        guard let minStart = OpenBurnBarDatabase.parseDateValue(bounds?["minStart"]),
-              let maxEnd = OpenBurnBarDatabase.parseDateValue(bounds?["maxEnd"]) else {
-            return []
-        }
-        let firstDay = calendar.startOfDay(for: min(minStart, maxEnd))
-        let lastDay = calendar.startOfDay(for: max(minStart, maxEnd))
+        let windows = try usageDayWindows(db: db, calendar: calendar)
         var accumulators: [Date: DailySummaryAccumulator] = [:]
-        var day = firstDay
-        while day <= lastDay {
-            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+        for window in windows {
             let rows = try Row.fetchAll(
                 db,
                 sql: """
@@ -653,21 +652,25 @@ extension UsageStore {
                            COALESCE(SUM(totalTokens), 0) AS totalTokens,
                            COALESCE(SUM(cost), 0) AS cost
                     FROM token_usage
-                    WHERE \(intersectionSQL)
+                    WHERE \(dayIntersectionSQL)
                     GROUP BY provider, model
                     """,
-                arguments: intersectionArguments(day...nextDay)
+                arguments: dayIntersectionArguments(
+                    dayStart: window.dayStart,
+                    nextDay: window.nextDay
+                )
             )
-            let dayString = overlappingDayString(day, calendar: calendar)
+            let dayString = overlappingDayString(window.dayStart, calendar: calendar)
             for row in rows {
                 guard let providerRaw = row["provider"] as? String,
                       let provider = AgentProvider(rawValue: providerRaw),
                       let model = row["model"] as? String else { continue }
-                accumulators[day, default: DailySummaryAccumulator(dayString: dayString, date: day)]
+                accumulators[
+                    window.dayStart,
+                    default: DailySummaryAccumulator(dayString: dayString, date: window.dayStart)
+                ]
                     .record(row: row, provider: provider, model: model)
             }
-            if nextDay <= day { break }
-            day = nextDay
         }
         return accumulators.values
             .compactMap(\.summary)
@@ -681,6 +684,83 @@ extension UsageStore {
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: day)
+    }
+
+    private struct UsageDayWindow {
+        let dayStart: Date
+        let nextDay: Date
+    }
+
+    /// 400 bound values per statement, below SQLite's legacy 999-variable
+    /// ceiling while avoiding one table scan per historical day.
+    private static let usageDayWindowBatchSize = 200
+
+    private static func usageDayWindows(
+        db: Database,
+        calendar: Calendar
+    ) throws -> [UsageDayWindow] {
+        let bounds = try Row.fetchOne(
+            db,
+            sql: """
+                SELECT MIN(MIN(startTime, endTime)) AS lowerBound,
+                       MAX(MAX(startTime, endTime)) AS upperBound
+                FROM token_usage
+                """
+        )
+        guard let lowerBound = OpenBurnBarDatabase.parseDateValue(bounds?["lowerBound"]),
+              let upperBound = OpenBurnBarDatabase.parseDateValue(bounds?["upperBound"]) else {
+            return []
+        }
+
+        let firstDay = calendar.startOfDay(for: lowerBound)
+        let lastDay = calendar.startOfDay(for: upperBound)
+        var windows: [UsageDayWindow] = []
+        var day = firstDay
+        while day <= lastDay {
+            guard let nextDay = calendar.date(byAdding: .day, value: 1, to: day),
+                  nextDay > day else {
+                break
+            }
+            windows.append(UsageDayWindow(dayStart: day, nextDay: nextDay))
+            day = nextDay
+        }
+        return windows
+    }
+
+    private static let dayWindowIntersectionSQL = """
+        (
+            (startTime < day_windows.nextDay AND endTime > day_windows.dayStart)
+            OR (endTime < day_windows.nextDay AND startTime > day_windows.dayStart)
+            OR (
+                startTime = endTime
+                AND startTime >= day_windows.dayStart
+                AND startTime < day_windows.nextDay
+            )
+        )
+        """
+
+    static let dayIntersectionSQL = """
+        (
+            (startTime < ? AND endTime > ?)
+            OR (endTime < ? AND startTime > ?)
+            OR (startTime = endTime AND startTime >= ? AND startTime < ?)
+        )
+        """
+
+    static func dayIntersectionArguments(
+        dayStart: Date,
+        nextDay: Date
+    ) -> StatementArguments {
+        let lowerBound = OpenBurnBarDatabase.sqliteDateString(dayStart)
+        let upperBound = OpenBurnBarDatabase.sqliteDateString(nextDay)
+        return StatementArguments([
+            upperBound,
+            lowerBound,
+            upperBound,
+            lowerBound,
+            lowerBound,
+            upperBound
+        ])
     }
 
     static let intersectionSQL = "((startTime <= ? AND endTime >= ?) OR (endTime <= ? AND startTime >= ?))"

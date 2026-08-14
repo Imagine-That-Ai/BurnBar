@@ -1,11 +1,10 @@
 import Foundation
 import OpenBurnBarKernel
 
-/// Calendar-day membership for usage rows, matching `UsageStore.intersectionSQL`.
+/// Calendar-day membership for usage rows, matching `UsageStore.dayIntersectionSQL`.
 ///
-/// A session counts on every local calendar day its `[startTime, endTime]`
-/// interval overlaps. Inverted start/end is handled by the same predicate
-/// the last-7-day SQL flags use.
+/// A session counts on every local calendar day its `[startTime, endTime)`
+/// interval overlaps. Inverted start/end is normalized before comparison.
 enum UsageDayIntersection {
     static func sessionOverlapsDay(
         startTime: Date,
@@ -13,8 +12,12 @@ enum UsageDayIntersection {
         dayStart: Date,
         nextDay: Date
     ) -> Bool {
-        (startTime <= nextDay && endTime >= dayStart)
-            || (endTime <= nextDay && startTime >= dayStart)
+        let lowerBound = min(startTime, endTime)
+        let upperBound = max(startTime, endTime)
+        if lowerBound == upperBound {
+            return lowerBound >= dayStart && lowerBound < nextDay
+        }
+        return lowerBound < nextDay && upperBound > dayStart
     }
 
     static func overlappingDayStarts(

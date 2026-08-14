@@ -508,6 +508,118 @@ final class UsagePersistSkipTests: XCTestCase {
         )
     }
 
+    func test_persistContentFingerprint_includesUpsertVisibleMetadata() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        func usage(
+            executionSourceName: String = "Old CLI",
+            executionSourceKind: UsageExecutionSourceKind = .cli,
+            executionSourceConfidence: UsageProvenanceConfidence = .lowConfidenceEstimate,
+            providerAccountLabel: String = "Old account",
+            providerAccountSource: ProviderAccountStorageScope = .localOnly
+        ) -> TokenUsage {
+            TokenUsage(
+                provider: .factory,
+                sessionId: "session-1",
+                projectName: "p",
+                model: "m",
+                inputTokens: 10,
+                outputTokens: 5,
+                costUSD: 1.25,
+                startTime: start,
+                endTime: start.addingTimeInterval(60),
+                executionSourceID: "factory-cli",
+                executionSourceName: executionSourceName,
+                executionSourceKind: executionSourceKind,
+                executionSourceConfidence: executionSourceConfidence,
+                providerAccountID: "account-1",
+                providerAccountLabel: providerAccountLabel,
+                providerAccountSource: providerAccountSource
+            )
+        }
+
+        let fingerprint = UsageStore.persistContentFingerprint([usage()])
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(executionSourceName: "Current CLI")])
+        )
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(executionSourceKind: .desktopApp)])
+        )
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(executionSourceConfidence: .exact)])
+        )
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(providerAccountLabel: "Current account")])
+        )
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(providerAccountSource: .deviceKeychain)])
+        )
+    }
+
+    func test_insertChunked_persistsMetadataOnlyCorrection() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        func usage(
+            executionSourceName: String,
+            executionSourceKind: UsageExecutionSourceKind,
+            executionSourceConfidence: UsageProvenanceConfidence,
+            providerAccountLabel: String,
+            providerAccountSource: ProviderAccountStorageScope
+        ) -> TokenUsage {
+            TokenUsage(
+                provider: .factory,
+                sessionId: "metadata-correction",
+                projectName: "p",
+                model: "m",
+                inputTokens: 10,
+                outputTokens: 5,
+                costUSD: 1.25,
+                startTime: start,
+                endTime: start.addingTimeInterval(60),
+                executionSourceID: "factory-cli",
+                executionSourceName: executionSourceName,
+                executionSourceKind: executionSourceKind,
+                executionSourceConfidence: executionSourceConfidence,
+                providerAccountID: "account-1",
+                providerAccountLabel: providerAccountLabel,
+                providerAccountSource: providerAccountSource
+            )
+        }
+        let original = usage(
+            executionSourceName: "Old CLI",
+            executionSourceKind: .cli,
+            executionSourceConfidence: .lowConfidenceEstimate,
+            providerAccountLabel: "Old account",
+            providerAccountSource: .localOnly
+        )
+        let corrected = usage(
+            executionSourceName: "Current desktop",
+            executionSourceKind: .desktopApp,
+            executionSourceConfidence: .exact,
+            providerAccountLabel: "Current account",
+            providerAccountSource: .deviceKeychain
+        )
+
+        try await usageStore.insertChunked([original])
+        XCTAssertFalse(usageStore.shouldSkipUnchangedPersist([corrected]))
+        try await usageStore.insertChunked([corrected])
+
+        let persisted = try await queue.read { db in
+            try XCTUnwrap(UsageStore.fetchUsageRows(db: db, dateRange: nil, limit: 1).first)
+        }
+        XCTAssertEqual(persisted.executionSourceName, "Current desktop")
+        XCTAssertEqual(persisted.executionSourceKind, .desktopApp)
+        XCTAssertEqual(persisted.executionSourceConfidence, .exact)
+        XCTAssertEqual(persisted.providerAccountLabel, "Current account")
+        XCTAssertEqual(persisted.providerAccountSource, .deviceKeychain)
+    }
+
     func test_insertChunked_skipsUnchangedIdleBatch() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
