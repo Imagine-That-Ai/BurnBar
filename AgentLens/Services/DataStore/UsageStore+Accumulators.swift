@@ -231,16 +231,16 @@ struct CredentialSummaryAccumulator {
     mutating func record(_ row: UsageAggregateRow) {
         if let label = row.providerAccountLabel,
            !label.isEmpty,
-           (row.latestStartTime > accountLabelTimestamp
+           row.latestStartTime > accountLabelTimestamp
                || (row.latestStartTime == accountLabelTimestamp
-                   && (accountLabel.isEmpty || label < accountLabel))) {
+                   && (accountLabel.isEmpty || label < accountLabel)) {
             accountLabel = label
             accountLabelTimestamp = row.latestStartTime
         }
         if let source = row.providerAccountSource,
-           (row.latestStartTime > accountSourceTimestamp
+           row.latestStartTime > accountSourceTimestamp
                || (row.latestStartTime == accountSourceTimestamp
-                   && (accountSource == nil || source.rawValue < accountSource?.rawValue ?? ""))) {
+                   && (accountSource == nil || source.rawValue < accountSource?.rawValue ?? "")) {
             accountSource = source
             accountSourceTimestamp = row.latestStartTime
         }
