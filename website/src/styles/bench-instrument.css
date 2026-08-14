@@ -1089,6 +1089,17 @@ body:has(.ins)::before {
   align-items: center;
   gap: 6px;
 }
+.ins-prov__link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--ins-ink-3, currentColor);
+  padding-bottom: 1px;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+.ins-prov__link:hover {
+  color: var(--ins-ink-1, #fff);
+  border-bottom-color: var(--ember-core, #ff9f0a);
+}
 .ins-prov__dot {
   width: 5px;
   height: 5px;
