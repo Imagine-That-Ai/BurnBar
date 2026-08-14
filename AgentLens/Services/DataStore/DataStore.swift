@@ -121,7 +121,7 @@ actor DataStoreActor {
         now: Date
     ) async throws -> Int {
         guard items.isEmpty == false else { return 0 }
-        return try await dbQueue.write { db in
+        return try await dbQueue.write { [self] db in
             var enqueued = 0
             for item in items {
                 let isLive = try conversationStore.upsertConversation(item.record, db: db)
