@@ -33,8 +33,11 @@ ISA = re.compile(r"\bisa\s*=\s*(?P<isa>[A-Za-z0-9_]+)\s*;")
 # Hand-patched pbxproj files often insert new sources in ASCII order while
 # XcodeGen 2.45.4 uses macOS localizedStandardCompare. Membership is the
 # contract; permutation of the same IDs is not.
+# Each body line is indent + rest-of-line + newline. `[ \t]+[^\n]+\n` is linear:
+# the indent and the remainder cannot trade characters the way `[ \t]*[^\n]*`
+# can, so this cannot ReDoS on `=\(\n` + many `\t\n` repetitions.
 ID_LIST_BLOCK = re.compile(
-    r"(?P<prefix>=\s*\(\n)(?P<body>(?:[ \t]*[^\n]*\n)*)(?P<suffix>[ \t]*\))",
+    r"(?P<prefix>=\s*\(\n)(?P<body>(?:[ \t]+[^\n]+\n)*)(?P<suffix>[ \t]*\))",
 )
 ID_LIST_ENTRY = re.compile(
     rf"^(?P<indent>[ \t]*)"

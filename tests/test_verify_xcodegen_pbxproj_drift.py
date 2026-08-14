@@ -1,4 +1,6 @@
+import re
 import subprocess
+import time
 from pathlib import Path
 
 
@@ -354,3 +356,17 @@ def test_rejects_temp_package_product_semantic_drift(tmp_path: Path):
     assert result.returncode == 1
     assert "semantic drift" in result.stderr
     assert "OpenBurnBarMedia" in result.stderr
+
+
+def test_id_list_block_pattern_is_linear_on_tab_newlines():
+    """CodeQL flagged the previous `[ \\t]*[^\\n]*` body as ReDoS."""
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert r"(?:[ \t]+[^\n]+\n)*" in source
+    assert r"(?:[ \t]*[^\n]*\n)*" not in source
+    pattern = re.compile(
+        r"(?P<prefix>=\s*\(\n)(?P<body>(?:[ \t]+[^\n]+\n)*)(?P<suffix>[ \t]*\))",
+    )
+    payload = "=(\n" + ("\t\n" * 4000) + ")"
+    started = time.monotonic()
+    assert pattern.search(payload) is None
+    assert time.monotonic() - started < 1.0
