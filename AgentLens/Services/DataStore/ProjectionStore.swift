@@ -17,7 +17,7 @@ final class ProjectionStore: Sendable {
     // MARK: - Projection Jobs
 
     func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws {
-        try await dbQueue.write { db in
+        try await dbQueue.write { [self] db in
             try enqueueProjectionJob(job, db: db)
         }
     }

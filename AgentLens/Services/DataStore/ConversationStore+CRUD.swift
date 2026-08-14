@@ -8,7 +8,7 @@ extension ConversationStore {
         // MARK: - Conversation CRUD
 
         func upsertConversation(_ record: OpenBurnBarCore.ConversationRecord) async throws {
-            try await dbQueue.write { db in
+            try await dbQueue.write { [self] db in
                 _ = try upsertConversation(record, db: db)
             }
         }
