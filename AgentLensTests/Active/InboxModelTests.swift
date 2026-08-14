@@ -62,8 +62,28 @@ final class InboxModelTests: XCTestCase {
             snooze: { id, until in try await harness.record("snooze:\(id):\(until != nil)") },
             setFeedback: { id, feedback in try await harness.record("feedback:\(id):\(feedback ?? "nil")") },
             markAllRead: { try await harness.record("markAllRead") },
-            loadRuns: { await harness.runs }
+            loadRuns: { await harness.runs },
+            // A scratch shelf per model: these tests assert list behaviour, and
+            // a shelf reading the real `UserDefaults` would let one developer's
+            // pins reorder another machine's expectations.
+            shelf: InboxShelfStore(
+                defaults: UserDefaults(suiteName: "inbox.model.tests.\(UUID().uuidString)")!,
+                persistDebounce: 0
+            )
         )
+    }
+
+    /// Selection kicks mark-read off onto a detached Task; poll until the
+    /// side effect lands so tests stay deterministic without sleeping blindly.
+    private func waitUntil(
+        timeoutNanoseconds: UInt64 = 1_000_000_000,
+        _ condition: @escaping @Sendable () async -> Bool
+    ) async {
+        let deadline = DispatchTime.now().uptimeNanoseconds + timeoutNanoseconds
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            if await condition() { return }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
     }
 
     private func makeRow(
@@ -308,12 +328,11 @@ final class InboxModelTests: XCTestCase {
         await model.load()
         XCTAssertTrue(model.rows[0].isUnread)
 
-        await model.select("a")
+        model.select("a")
+        await waitUntil { await harness.events == ["read:a"] }
 
         XCTAssertEqual(model.selectedID, "a")
         XCTAssertFalse(model.rows[0].isUnread)
-        let events = await harness.events
-        XCTAssertEqual(events, ["read:a"])
         // A successful mutation invalidates the marker so the next pass re-reads.
         XCTAssertNil(model.lastMarker)
     }
@@ -324,7 +343,7 @@ final class InboxModelTests: XCTestCase {
         let model = makeModel(harness)
         await model.load()
 
-        await model.select("a")
+        model.select("a")
 
         XCTAssertEqual(model.selectedID, "a")
         let events = await harness.events
@@ -429,7 +448,8 @@ final class InboxModelTests: XCTestCase {
         await model.load()
         await harness.setMutationsFail(true)
 
-        await model.select("a")
+        model.select("a")
+        await waitUntil { await model.errorMessage == "the write failed" }
 
         XCTAssertEqual(model.errorMessage, "the write failed")
     }

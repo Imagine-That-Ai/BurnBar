@@ -61,23 +61,38 @@ test("SwiftPM compatibility rewrite runs before a warm FFI cache can return", ()
   );
 });
 
-test("single-target CodeQL Swift lanes never save the shared Signal FFI key", () => {
-  for (const workflow of [
-    ".github/workflows/codeql.yml",
-    ".github/workflows/codeql-pr.yml",
-  ]) {
-    const source = readFileSync(workflow, "utf8");
-    assert.match(
-      source,
-      /uses:\s+actions\/cache\/restore@[0-9a-f]{40}[^\n]*\n\s+with:\n\s+path:\s+Vendor\/OpenBurnBarSignalFfiMac\.xcframework/u,
-      `${workflow} must restore the Signal FFI artifact without saving it`,
-    );
-    assert.doesNotMatch(
-      source,
-      /uses:\s+actions\/cache@[0-9a-f]{40}[^\n]*\n\s+with:\n\s+path:\s+Vendor\/OpenBurnBarSignalFfiMac\.xcframework/u,
-      `${workflow} builds x86_64-only and must not save under the shared superset key`,
-    );
-  }
+test("single-target CodeQL Swift lane never saves the shared Signal FFI key", () => {
+  // Swift CodeQL runs only on nightly codeql.yml (not codeql-pr.yml).
+  const workflow = ".github/workflows/codeql.yml";
+  const source = readFileSync(workflow, "utf8");
+  assert.match(
+    source,
+    /uses:\s+actions\/cache\/restore@[0-9a-f]{40}[^\n]*\n\s+with:\n\s+path:\s+Vendor\/OpenBurnBarSignalFfiMac\.xcframework/u,
+    `${workflow} must restore the Signal FFI artifact without saving it`,
+  );
+  assert.doesNotMatch(
+    source,
+    /uses:\s+actions\/cache@[0-9a-f]{40}[^\n]*\n\s+with:\n\s+path:\s+Vendor\/OpenBurnBarSignalFfiMac\.xcframework/u,
+    `${workflow} builds x86_64-only and must not save under the shared superset key`,
+  );
+});
+
+test("CodeQL PR gate does not run Swift (nightly-only)", () => {
+  const source = readFileSync(".github/workflows/codeql-pr.yml", "utf8");
+  assert.doesNotMatch(
+    source,
+    /^\s+- language:\s*swift\s*$/mu,
+    "codeql-pr.yml must not include a Swift matrix entry; Swift stays on nightly codeql.yml",
+  );
+  assert.doesNotMatch(
+    source,
+    /prepare-signal-ffi-xcframework\.sh/u,
+    "codeql-pr.yml must not build Signal FFI after Swift demotion",
+  );
+  assert.match(source, /^\s+- language:\s*javascript-typescript\s*$/mu);
+  assert.match(source, /^\s+- language:\s*python\s*$/mu);
+  assert.match(source, /^\s+- language:\s*java-kotlin\s*$/mu);
+  assert.match(source, /^  merge_group:\s*$/mu);
 });
 
 test("Signal FFI caches never restore across builder-script changes", () => {

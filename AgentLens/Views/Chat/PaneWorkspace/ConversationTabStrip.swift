@@ -74,6 +74,7 @@ struct ConversationTabStrip: View {
                 workspace.selectTab(tab.id)
             } label: {
                 HStack(spacing: 6) {
+                    AgentMarkStack(backends: tab.distinctBackends)
                     PaneColorChip(colorToken: tab.colorToken)
                     Text(workspace.displayTitle(for: tab))
                         .font(.system(size: 11, weight: selected ? .semibold : .medium))
@@ -138,6 +139,47 @@ struct ConversationTabStrip: View {
             Button("Close Tab") { workspace.closeTab(tab.id) }
                 .disabled(workspace.tabs.count <= 1)
         }
+    }
+}
+
+/// Up to three 10pt agent marks, overlapping 4pt, `+N` beyond three.
+///
+/// This is what "the tab's agent" honestly means when `paneCount > 1`: **the
+/// marks are plural because the tab is plural** (§3.7). Tab height is unchanged
+/// at 26pt.
+struct AgentMarkStack: View {
+    var backends: [ChatBackendID]
+    var size: CGFloat = 10
+
+    private var visible: [ChatBackendID] { Array(backends.prefix(3)) }
+    private var overflow: Int { max(0, backends.count - 3) }
+
+    var body: some View {
+        if !backends.isEmpty {
+            HStack(spacing: -4) {
+                ForEach(Array(visible.enumerated()), id: \.element) { index, backend in
+                    AgentMark(backend: backend, size: size)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: size * 0.2237, style: .continuous)
+                                .strokeBorder(backend.sigilTint.opacity(0.75), lineWidth: 0.75)
+                        )
+                        .zIndex(Double(visible.count - index))
+                }
+                if overflow > 0 {
+                    Text("+\(overflow)")
+                        .font(.system(size: 8, weight: .semibold, design: .rounded))
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                        .padding(.leading, 5)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+        }
+    }
+
+    private var accessibilityLabel: String {
+        let names = backends.map(\.displayName).joined(separator: ", ")
+        return backends.count == 1 ? "Agent: \(names)" : "Agents: \(names)"
     }
 }
 

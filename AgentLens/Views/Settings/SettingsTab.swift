@@ -7,6 +7,7 @@ import OpenBurnBarCore
 enum SettingsTab: String, CaseIterable, Identifiable {
     case home
     case general
+    case aiInbox
     case updates
     case daemon
     case account
@@ -28,6 +29,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "Home"
         case .general: return "General"
+        case .aiInbox: return "AI Inbox"
         case .updates: return "Updates"
         case .daemon: return "Engine Room"
         case .account: return "Account"
@@ -53,6 +55,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
             return "Health, attention items, and quick actions"
         case .general:
             return "Appearance, dashboard defaults, refresh, indexing, summaries"
+        case .aiInbox:
+            return "Background analyst, egress, cadence, and inbox budget"
         case .updates:
             return "App version, automatic updates, release channel"
         case .daemon:
@@ -88,6 +92,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .home: return "house.fill"
         case .general: return "gearshape.fill"
+        case .aiInbox: return "tray.full.fill"
         case .updates: return "arrow.down.circle.fill"
         case .daemon: return "cpu.fill"
         case .account: return "person.crop.circle.fill"
@@ -123,6 +128,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .home: return DesignSystem.Colors.ember
         case .general: return DesignSystem.Colors.amber
+        case .aiInbox: return DesignSystem.Colors.ember
         case .updates: return DesignSystem.Colors.frost
         case .daemon: return DesignSystem.Colors.teal
         case .account: return DesignSystem.Colors.whimsy
@@ -159,7 +165,8 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .home:            return .home
         case .agents, .modelProxy:
             return .agentsAndModels
-        case .general:         return .lookAndFeel
+        case .general, .aiInbox:
+            return .lookAndFeel
         case .account, .cloud, .alerts, .notifications, .devicesAndSync:
             return .accountAndSync
         case .daemon, .updates, .dataPrivacy:
@@ -171,18 +178,25 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 }
 
 extension SettingsTab {
+    /// Tabs this build ships. The build condition itself lives in
+    /// `OpenBurnBarBuildGates`, which the Control Deck's `ControlKind.visibleKinds`
+    /// also reads, so the sidebar and the deck can never disagree about which
+    /// features exist in a given build. `ControlDeckRegistryTests` asserts they
+    /// agree.
     static var visibleTabs: [SettingsTab] {
         var tabs: [SettingsTab] = [.home]
         for section in SettingsSection.visibleSections {
-            tabs.append(contentsOf: section.tabs.filter { tab in
-                #if DISTRIBUTION_MAS
-                return tab != .computerUse && tab != .updates
-                #else
-                return true
-                #endif
-            })
+            tabs.append(contentsOf: section.tabs.filter(isAvailableInThisBuild))
         }
         return tabs
+    }
+
+    static func isAvailableInThisBuild(_ tab: SettingsTab) -> Bool {
+        switch tab {
+        case .computerUse: return OpenBurnBarBuildGates.agentControlAvailable
+        case .updates: return OpenBurnBarBuildGates.updatesAvailable
+        default: return true
+        }
     }
 }
 
@@ -219,7 +233,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .agentsAndModels:
             return [.agents, .modelProxy]
         case .lookAndFeel:
-            return [.general]
+            return [.general, .aiInbox]
         case .accountAndSync:
             return [.account, .cloud, .devicesAndSync, .alerts, .notifications]
         case .system:

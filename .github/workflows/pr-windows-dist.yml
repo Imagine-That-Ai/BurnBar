@@ -22,6 +22,7 @@ name: PR Windows Dist Gate
 # passing required status via a correct skip.
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
@@ -41,7 +42,7 @@ jobs:
   detect-dist-changes:
     name: Detect Windows dist changes
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       dist: ${{ steps.filter.outputs.dist }}
     steps:

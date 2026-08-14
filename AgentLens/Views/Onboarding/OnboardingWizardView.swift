@@ -81,7 +81,10 @@ struct OnboardingWizardView: View {
             footer
         }
         .frame(width: 520, height: 620)
-        .background(DesignSystem.Colors.background)
+        .background {
+            Color.clear
+                .liquidGlassSurface(in: Rectangle(), fallback: .ultraThinMaterial)
+        }
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .onAppear {
             Analytics.shared.track(.screenViewed, ["surface": "onboarding"])

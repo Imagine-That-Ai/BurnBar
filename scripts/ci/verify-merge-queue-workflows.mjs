@@ -83,9 +83,9 @@ for (const [name, jobName] of publicDownloadDetectors) {
     failures.push(`${name}: domain-core-pr-gate job is missing`);
   } else {
     const timeout = job.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
-    if (timeout === null || Number.parseInt(timeout[1], 10) < 60) {
+    if (timeout === null || Number.parseInt(timeout[1], 10) < 120) {
       failures.push(
-        `${name}: domain-core-pr-gate must budget at least 60 minutes for degraded full-history checkout`,
+        `${name}: domain-core-pr-gate must budget at least 120 minutes for degraded full-history checkout`,
       );
     }
     if (!/^\s+fetch-depth:\s*0\s*$/mu.test(job)) {

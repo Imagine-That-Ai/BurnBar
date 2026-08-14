@@ -37,9 +37,25 @@ class AgentProviderTest {
         assertEquals("Junie", AgentProvider.JUNIE.displayName)
         assertEquals(0xFF48E054, AgentProvider.JUNIE.brandColor)
         assertEquals(0xFF6FE87F, AgentProvider.JUNIE.accentColor)
-        // Swarm glyph roster: Junie sits right after Hermes, mirroring Swift.
+        // Swarm glyph roster: Hermes → Prime Agent → Gemini CLI → Junie (mirrors Swift).
         val swarm = AgentProvider.swarmGlyphProviders
-        assertEquals(swarm.indexOf(AgentProvider.HERMES) + 1, swarm.indexOf(AgentProvider.JUNIE))
+        assertEquals(swarm.indexOf(AgentProvider.HERMES) + 1, swarm.indexOf(AgentProvider.PRIME_AGENT))
+        assertEquals(swarm.indexOf(AgentProvider.PRIME_AGENT) + 2, swarm.indexOf(AgentProvider.JUNIE))
+    }
+
+    @Test
+    fun `devin mirrors the swift provider values`() {
+        // Regression guard: the canonical Swift enum gained `devin`, and Burn View
+        // helpers drop records whose provider key does not resolve — so a missing
+        // Kotlin case silently erases Devin usage, quota, branding and filters.
+        assertEquals(AgentProvider.DEVIN, AgentProvider.fromKey("devin"))
+        assertEquals(AgentProvider.DEVIN, AgentProvider.fromKey("devin-desktop"))
+        assertEquals(AgentProvider.DEVIN, AgentProvider.fromKey("devin-cli"))
+        assertEquals(AgentProvider.DEVIN, AgentProvider.fromKey("devin.ai"))
+        assertEquals("devin", AgentProvider.DEVIN.key)
+        assertEquals("Devin", AgentProvider.DEVIN.displayName)
+        assertEquals(0xFF0A84FF, AgentProvider.DEVIN.brandColor)
+        assertTrue(AgentProvider.swarmGlyphProviders.contains(AgentProvider.DEVIN))
     }
 
     @Test

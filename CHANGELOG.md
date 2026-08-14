@@ -7,6 +7,139 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Approved first-run + homepage copy
+- Homepage hero now uses Alberto-approved copy: **Watch your agents. Before the
+  bill.** plus the locked receipt subhead, the real `/brand/logo-*.png` mark, and
+  **Download for Mac — {shipping version}**.
+- macOS first-launch popover (`OnboardingView`) uses the real `AppLogo` brand
+  mark and the locked tip copy: **Look up. That's the app.** / menu-bar receipt /
+  Claude or Codex / **Got it**.
+
+### Added - Spend provenance: real API dollars vs subscription value
+- **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
+  across the macOS/Windows/Linux migrators with deterministic backfill): `api`
+  (per-token dollars leaving a wallet — deepseek, OpenRouter, gateway keys,
+  billing APIs), `subscription` (imputed list-price value of plan-covered
+  harness work — Claude Code on Max, Codex, Cursor, Copilot…), or an honest
+  `unknown` bucket that is never silently folded into either side.
+- **Spend Lens on the burn chart**: liquid-glass `All / Split / Overlay`
+  capsule. Split shows real dollars and plan value side by side; Overlay
+  breaks both out on one shared axis (ember = money, glacier = plan).
+  Persisted per user.
+- **The AI Inbox daily budget now guards real dollars only**: subscription-
+  routed model calls no longer consume `dailyBudgetUSD` (opt back in with the
+  new "Count subscription spend" setting). Budget/status copy stops saying
+  "no model calls" when it means "rule-based fallback".
+
+### Added - AI Inbox Founder Lens: judgment packs, replies, and compounding plans
+- **Founder Lens judgment layer** (`BurnBarFounderLens`): engOps and
+  productStrategy packs distilled from real founder/VC/engineering doctrine
+  (gstack, YC, a16z, Sequoia, Horowitz, 2026 agent-readiness practice) as
+  snapshot-tested code constants — the zero-egress rule-based path carries
+  the same judgment as the model path. Voice ban list enforced by tests;
+  `lens:vN` stamped into item provenance.
+- **NextMoveRouter** (Swift-only): every substantive item ends with exactly
+  one primary next move; refuted/unclear findings lose theirs. Models never
+  author actions.
+- **Reply threads** (`daemon.inbox.thread.get` / `daemon.inbox.reply`): keyed
+  by condition fingerprint so conversations survive item resolve/reopen
+  churn. Fail-closed gate order: feature switches → egress guard → daily
+  budget → NEW per-reply budget (`perReplyBudgetUSD`, default $0.10) → G8
+  `LLMSafeContent` fences on every untrusted surface. Refusals are stated
+  reasons, never silent drops; reply spend lands in the authoritative usage
+  ledger.
+- **Founder Plan Ledger** (migration `v59_founder_lens`): accepted
+  suggestions become durable plans/steps with lifecycle, append-only audit
+  events, and grades (terminal outcomes auto-seed; explicit grades
+  override). Accept/update/grade are human-confirmed config-capability RPCs;
+  the analyst/reply model can only propose.
+- **Execution spine reuse**: Promote to mission (`daemon.mission.create`,
+  `recommendation: review`) and follow-up creation bind `mission_id` /
+  `followup_id` back onto plan steps — no second mission system.
+- **Compounding memory**: Remember routes plan steps through the existing
+  quarantine→approve Chat Memory Authority with `ai-inbox:plan:*`
+  provenance; approved snippets are pushed to the daemon
+  (`daemon.inbox.memory.export`, full-set replacement so revocations
+  propagate by omission) and re-enter every analyst/reply prompt as fenced
+  "standing commitments". Pensieve `chat_memory` sync stays gated on
+  approved + provenance + Pro Max/Ultra.
+- **Mac UI**: Discuss section on item detail (thread, composer, refusal
+  explanations, Accept-into-plan cards with provenance badges).
+- **MCP**: read-only `burnbar_inbox_plans_list` / `burnbar_inbox_plans_get`
+  (fenced, trust-signaled; deliberately no write tool).
+- Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
+
+## [1.0.34] - 2026-08-09
+
+### Fixed - Domain-core protected signer path vs GitHub Actions API
+
+- Accept the bare workflow `path` returned by GitHub Actions run metadata
+  (`.github/workflows/domain-core-promotion-proof.yml`) when validating the
+  protected promotion signer run. The gate previously required a
+  `path@refs/heads/main` suffix that the live API does not emit, so `v1.0.33`
+  OpenBurnBar Release passed Preflight and hydrated expired Actions artifacts,
+  then failed Shared Rust verify on a false signer-path mismatch.
+
+- Bumped Google Play `versionCode` to `46` with `versionName` `1.0.34`, and Mac
+  `CURRENT_PROJECT_VERSION` to `76`.
+
+## [1.0.33] - 2026-08-09
+
+### Fixed - Domain-core release gate Actions artifact expiry
+
+- When GitHub Actions artifacts for the activated Shared Rust candidate expire
+  (org retention overrides the workflow's 90-day request), the native release
+  gate now hydrates the attested candidate bundle from committed promotion
+  evidence and regenerates the byte-identical rollback profile, then continues
+  Sigstore verification. Unblocks `v1.0.32` OpenBurnBar Release after Preflight
+  passed but Shared Rust verify failed on expired run `30754893279`.
+
+- Bumped Google Play `versionCode` to `45` with `versionName` `1.0.33`, and Mac
+  `CURRENT_PROJECT_VERSION` to `75`.
+
+## [1.0.32] - 2026-08-09
+
+### Fixed - Release preflight Lob false positives
+
+- Broadened the publishable-tree TruffleHog Lob filter so camelCase XCTest
+  identifiers (and docs/Vendor mentions) are not treated as verified Lob
+  test-mode API keys — unblocking the Mac/iOS/Android release cut after
+  `v1.0.31` failed Release Preflight.
+
+- Bumped Google Play `versionCode` to `44` with `versionName` `1.0.32`, and Mac
+  `CURRENT_PROJECT_VERSION` to `74`.
+
+## [1.0.31] - 2026-08-09
+
+### Changed - Menu bar popover liquid glass redesign
+
+- Rebuilt the macOS menu bar popover for clearer burn/quota reading in light and
+  dark Liquid Glass: stronger header copy, single primary quota bars with
+  percent-left and resets-in lines, and tighter tray chrome contrast.
+
+### Fixed - Release cut continuity
+
+- Cut `1.0.31` because repository rules forbid deleting the existing `v1.0.30`
+  tag after the first release attempt failed preflight. This build includes the
+  liquid-glass popover and the publishable-tree Lob false-positive filter.
+
+- Bumped Google Play `versionCode` to `43` with `versionName` `1.0.31`, and Mac
+  `CURRENT_PROJECT_VERSION` to `73`.
+
+## [1.0.30] - 2026-08-08
+
+### Added - Muse (Meta) first-class provider
+
+- **Muse is now a first-class provider at parity with Hermes, Codex, and Droid**: auto-detected at `~/.local/share/muse/sessions/**/*.jsonl` with no manual config; `MuseParser` extracts per-turn `input_tokens`/`output_tokens`/`cached_tokens`/`cache_read_tokens`/`reasoning_tokens`, tool calls (`tool_batch.effect.started`), and prompts (`started`/`inbox_item_queued`) from the envelope JSONL, with microsecond `recorded_at` timestamps and subagent session support (`subagent/<uuid>/session.jsonl`). Cost uses catalog pricing for `muse-spark-1.2` (standard $1.25/$4.25/$0.15) and `muse-spark-1.2-contributor` ($0.10/$0.20/$0.002) with fallback to `ModelPricing.fallback` when the model is unknown. Handles empty logs, truncated JSONL, missing fields, and multi-model sessions. Installed Muse is auto-detected with no manual config (like Droid/Hermes/Codex).
+
+### Added - Prime Agent (Prime Intellect) first-class provider
+
+- **Prime Agent is now a first-class provider at parity with Hermes, Codex, and Droid**: auto-detected at `~/.prime/agent/sessions/*.jsonl` with no manual config; `PrimeAgentParser` extracts per-turn `input`/`output`/`cacheRead`/`cacheWrite` and exact USD cost from `message.usage.cost.total` (fallback to `ModelPricing` catalog when cost is zero). Sessions appear in the meter with correct tokens and $ cost; pricing falls back gracefully when the model is unknown. Handles empty logs, truncated JSONL, and multi-model sessions.
+
+### Added - Prime Agent OpenBurnBar proxy
+
+- Added Prime Agent OpenBurnBar proxy: `node scripts/prime-agent-openburnbar-proxy.mjs` syncs the local gateway catalog into `~/.prime/agent/models.json` as `openburnbar/*` so `prime-agent /model` and `prime-agent --provider openburnbar --model claude-sonnet-4-6` route through BurnBar's loopback gateway (accounting + failover), matching the existing Claude Code / Codex / Droid / Forge / OpenCode wiring. Supports `--live` (gateway-first), `--status`, `--print`, and `--remove`; API key resolves at request time from the LaunchAgent plist → keychain → env var. Docs: `docs/PROVIDERS.md` → Prime Agent via OpenBurnBar Gateway.
+
 ### Fixed - Mercury release build reliability
 
 - **Made clean Mercury XCFramework release builds deterministic across current
@@ -214,7 +347,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   active paid subscription. Committed `droid-wiki/` pages still reconcile to
   mem0 through the post-commit hook and nightly mirror job.
 
-## [1.0.30] - 2026-07-17
+### Changed — Android Play version metadata
+
+- Bumped Google Play `versionCode` to `42` with `versionName` `1.0.30` so the
+  three-platform cut can publish a fresh AAB after `1.0.29` (`versionCode` 39).
+
 
 ### Added — Shared Rust Console release evidence
 

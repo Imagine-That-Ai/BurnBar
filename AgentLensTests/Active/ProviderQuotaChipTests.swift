@@ -140,6 +140,181 @@ final class ProviderQuotaChipTests: XCTestCase {
         XCTAssertEqual(resolved?.text, "82")
     }
 
+    // MARK: - remainingFraction (Agent Deck presence input)
+
+    func test_resolve_exposesRemainingFraction_forPresenceResolution() {
+        let snapshot = Self.makeSnapshot(provider: .codex, usedPercent: 18)
+        let resolved = ProviderQuotaChip.resolve(
+            provider: .codex,
+            style: .full,
+            displayName: nil,
+            snapshot: snapshot
+        )
+        XCTAssertEqual(resolved?.remainingFraction ?? -1, 0.82, accuracy: 0.0001)
+    }
+
+    func test_resolve_remainingFraction_isZero_whenBucketIsSpent() {
+        // `AgentPresence.exhausted` is defined as this fraction hitting 0, so it
+        // has to be reachable rather than clamped away.
+        let snapshot = Self.makeSnapshot(provider: .codex, usedPercent: 100)
+        let resolved = ProviderQuotaChip.resolve(
+            provider: .codex,
+            style: .full,
+            displayName: nil,
+            snapshot: snapshot
+        )
+        XCTAssertEqual(resolved?.remainingFraction ?? -1, 0, accuracy: 0.0001)
+        XCTAssertEqual(
+            AgentPresenceResolver.resolve(
+                AgentPresenceFacts(quotaRemainingFraction: resolved?.remainingFraction)
+            ),
+            .exhausted
+        )
+    }
+
+    func test_resolve_remainingFraction_isNil_forTheSixAgentsWithoutAQuotaSignal() {
+        // Quota honesty: only 6 of the 12 chat agents have a quota signal at
+        // all. For the rest the meter must self-hide, not fabricate a number.
+        let withoutSignal: [ChatBackendID] = [.hermes, .openclaw, .openClaude, .piAgent, .forge, .junie]
+        for backend in withoutSignal {
+            guard let provider = backend.agentProvider else {
+                XCTFail("\(backend.rawValue) lost its agentProvider mapping")
+                continue
+            }
+            XCTAssertNil(
+                ProviderQuotaChip.resolve(
+                    provider: provider,
+                    style: .full,
+                    displayName: backend.displayName,
+                    snapshot: Self.makeSnapshot(provider: provider, usedPercent: 50)
+                ),
+                "\(backend.rawValue) has no quota signal — resolve() must stay nil so the meter self-hides"
+            )
+        }
+    }
+
+    // MARK: - Cumulative-across-accounts setting
+
+    /// The chip used to unconditionally prefer the merged snapshot, so with
+    /// the (default-off) `cumulativeAcrossAccounts` toggle disabled it showed
+    /// summed-across-accounts percentages while the Quota tab and popover —
+    /// which both route through `primaryDisplaySnapshot(for:cumulative:)` —
+    /// showed per-account ones. Same provider, two different numbers on screen.
+    func test_resolve_withCumulativeOff_showsTheProviderSnapshotNotTheMerge() throws {
+        let service = Self.makeServiceWithTwoAccounts()
+
+        let perAccount = try XCTUnwrap(
+            ProviderQuotaChip.resolve(
+                provider: .claudeCode,
+                style: .full,
+                displayName: nil,
+                service: service,
+                cumulative: false
+            )
+        )
+        // Provider rollup bucket: 10% used → 90% remaining.
+        XCTAssertEqual(perAccount.text, "90%")
+    }
+
+    func test_resolve_withCumulativeOn_showsTheMergedSnapshot() throws {
+        let service = Self.makeServiceWithTwoAccounts()
+
+        let merged = try XCTUnwrap(
+            ProviderQuotaChip.resolve(
+                provider: .claudeCode,
+                style: .full,
+                displayName: nil,
+                service: service,
+                cumulative: true
+            )
+        )
+        // Accounts used 20/100 and 60/100 → 80/200 summed → 60% remaining.
+        XCTAssertEqual(merged.text, "60%")
+    }
+
+    /// The presence dot beside the chip classifies `.exhausted` off the same
+    /// quota fraction, and `AgentSigil` only recomputes presence when
+    /// `presenceRefreshKey` changes. With the setting missing from the key, a
+    /// provider whose per-account and cumulative fractions straddle zero showed
+    /// an updated chip next to a stale dot until some unrelated input moved.
+    func test_presenceRefreshKey_changesWhenTheCumulativeSettingIsToggled() {
+        func key(cumulative: Bool) -> String {
+            AgentPresenceModel.presenceRefreshKey(
+                fleet: "claude:000",
+                enabledBackends: "claude,codex",
+                gatewayAvailability: "truetruefalse",
+                authGates: "falsetruetrue",
+                usagesVersion: 7,
+                cumulativeAcrossAccounts: cumulative
+            )
+        }
+
+        XCTAssertNotEqual(key(cumulative: false), key(cumulative: true))
+    }
+
+    /// The other side of the same contract: the key is stable when nothing
+    /// moved, so presence is not recomputed on every render pass.
+    func test_presenceRefreshKey_isStableForIdenticalInputs() {
+        let inputs = {
+            AgentPresenceModel.presenceRefreshKey(
+                fleet: "claude:100",
+                enabledBackends: "claude",
+                gatewayAvailability: "truetruetrue",
+                authGates: "falsefalsefalse",
+                usagesVersion: 3,
+                cumulativeAcrossAccounts: true
+            )
+        }
+        XCTAssertEqual(inputs(), inputs())
+    }
+
+    /// Seeds a service with a provider rollup plus two account snapshots whose
+    /// merge lands on a percentage distinct from the rollup's, so the two
+    /// assertions above cannot both pass by accident.
+    private static func makeServiceWithTwoAccounts() -> ProviderQuotaService {
+        let service = ProviderQuotaService(refreshProviders: [])
+        service.snapshotsByProvider[.claudeCode] = makeSnapshot(provider: .claudeCode, usedPercent: 10)
+        for (accountID, used) in [("work", 20.0), ("personal", 60.0)] {
+            let snapshot = makeValueSnapshot(accountID: accountID, used: used, limit: 100)
+            service.snapshotsByAccountID[ProviderQuotaSnapshotStore.accountSnapshotKey(snapshot)] = snapshot
+        }
+        return service
+    }
+
+    private static func makeValueSnapshot(
+        accountID: String,
+        used: Double,
+        limit: Double
+    ) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            provider: .claudeCode,
+            providerID: AgentProvider.claudeCode.providerID,
+            accountID: accountID,
+            accountLabel: "Account \(accountID)",
+            accountStorageScope: .cloudRefreshable,
+            fetchedAt: Date(),
+            source: .officialAPI,
+            sourceId: "daemon-slot:anthropic:\(accountID)",
+            confidence: .exact,
+            managementURL: nil,
+            statusMessage: "test",
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "5h",
+                    label: "5h window",
+                    windowKind: .rollingHours,
+                    usedValue: used,
+                    limitValue: limit,
+                    remainingValue: limit - used,
+                    usedPercent: used / limit * 100,
+                    resetsAt: Date().addingTimeInterval(60 * 60),
+                    unit: .tokens,
+                    isEstimated: false
+                )
+            ]
+        )
+    }
+
     // MARK: - Backend convenience init
 
     func test_backendInit_succeeds_forEveryChatBackendID() {

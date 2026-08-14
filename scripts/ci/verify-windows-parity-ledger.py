@@ -3,6 +3,7 @@
 
 Fails closed when:
   * the ledger is missing / unparseable
+  * its declared row count or status histogram is stale
   * any row uses a forbidden status (including legacy ``Authored``)
   * any macOS primary / required route lacks a mapping row
   * any Real row lacks ≥1 existing evidence file (non-empty, marked) and
@@ -545,6 +546,32 @@ def main(argv: list[str] | None = None) -> int:
 
             for msg in collect_token_hits(repo, rels_for_scan):
                 errors.append(f"{rid}: {msg}")
+
+    # ── declared summary must match the rows ─────────────────────────────────
+    declared_row_count = data.get("declared_row_count")
+    if isinstance(declared_row_count, bool) or not isinstance(declared_row_count, int):
+        errors.append("declared_row_count must be an integer")
+    elif declared_row_count != len(rows):
+        errors.append(f"declared_row_count is stale: declared {declared_row_count}, actual {len(rows)}")
+
+    declared_histogram = data.get("declared_status_histogram")
+    if not isinstance(declared_histogram, dict):
+        errors.append("declared_status_histogram must be a mapping")
+    else:
+        declared_keys = set(declared_histogram)
+        if declared_keys != set(VALID_STATUSES):
+            errors.append(
+                "declared_status_histogram must contain exactly "
+                f"{sorted(VALID_STATUSES)}; got {sorted(str(key) for key in declared_keys)}"
+            )
+        for status in sorted(VALID_STATUSES):
+            declared = declared_histogram.get(status)
+            if isinstance(declared, bool) or not isinstance(declared, int) or declared < 0:
+                errors.append(f"declared_status_histogram.{status} must be a non-negative integer")
+                continue
+            actual = status_counts.get(status, 0)
+            if declared != actual:
+                errors.append(f"declared_status_histogram.{status} is stale: declared {declared}, actual {actual}")
 
     # ── primary / required route coverage ───────────────────────────────────
     primary = data.get("macos_primary_routes") or []

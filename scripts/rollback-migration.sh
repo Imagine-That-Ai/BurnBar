@@ -109,6 +109,8 @@ MIGRATIONS=(
   "v56_parser_checkpoint_file_manifest|atomic|unapplied-only|backup-restore|Normalized parser checkpoint file-identity manifest"
   "v57_execution_source_attribution|atomic|unapplied-only|backup-restore|Execution-source columns, index, and evidence-backed historical attribution"
   "v58_ai_inbox|atomic|unapplied-only|backup-restore|AI Inbox items, delivery state, and routing indexes"
+  "v59_founder_lens|atomic|unapplied-only|backup-restore|Founder Lens reply threads, plan ledger, and memory export"
+  "v60_billing_kind|atomic|unapplied-only|backup-restore|Billing provenance column (api vs subscription spend) with deterministic backfill"
 )
 
 # ── Commands ─────────────────────────────────────────────────────────────

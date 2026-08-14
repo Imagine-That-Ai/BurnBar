@@ -46,8 +46,8 @@ canonical registry.
 
 ## User-facing behavior
 
-Settings -> Engine Room shows a coverage summary (`29 local parsers, 4
-API-backed sources, 0 unavailable local sources`) and labels every provider
+Settings -> Engine Room shows a coverage summary (`31 local parsers, 4
+API-backed sources, 1 unavailable local sources`) and labels every provider
 path with its source state. Onboarding repeats the same count and explains that
 API-backed and unavailable sources are not local scans. This prevents a path
 row from implying that a parser exists merely because the provider is in the
@@ -87,11 +87,11 @@ open and must stay visible in the parity ledger:
 
 ## QA checklist
 
-- [x] 33 canonical provider cases have one and only one catalog row.
-- [x] 29 `ParserRegistry` registrations have `local-parser` rows.
+- [x] 36 canonical provider cases have one and only one catalog row.
+- [x] 31 `ParserRegistry` registrations have `local-parser` rows.
 - [x] API-backed providers are not shown as local parsers.
-- [x] Providers without a parser show an explicit unavailable state (none in the
-  current 33-provider catalog).
+- [x] Providers without a parser show an explicit unavailable state (`devin` in
+  the current 36-provider catalog).
 - [x] Linux conditional VS Code/Windsurf/Warp paths are checked.
 - [x] macOS and Linux discovery and parser log-directory access share one
   generated path/pattern contract.

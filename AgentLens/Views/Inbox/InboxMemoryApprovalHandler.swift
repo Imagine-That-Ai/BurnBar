@@ -25,13 +25,24 @@ struct InboxMemoryApprovalHandler {
     /// Namespace for provenance labels, so an inbox-derived memory is traceable
     /// back to the item that proposed it.
     static let provenancePrefix = "ai-inbox:item:"
+    /// Namespace for plan-derived memories (Founder Plan Ledger).
+    static let planProvenancePrefix = "ai-inbox:plan:"
 
     private let store: ControlPlaneStore
     private let scope: MemoryScope
+    /// Pushes the refreshed approved-snippet set to the daemon after a write,
+    /// so the headless tick can cite the fact (loophole L21). Optional: the
+    /// approval itself must succeed even when the daemon is down.
+    private let exporter: (@MainActor () async -> Void)?
 
-    init(store: ControlPlaneStore, scope: MemoryScope) {
+    init(
+        store: ControlPlaneStore,
+        scope: MemoryScope,
+        exporter: (@MainActor () async -> Void)? = nil
+    ) {
         self.store = store
         self.scope = scope
+        self.exporter = exporter
     }
 
     func approve(candidate: BurnBarInboxMemoryCandidate, itemFingerprint: String) async throws {
@@ -54,6 +65,46 @@ struct InboxMemoryApprovalHandler {
         // than an approved one the user never saw.
         let memory = try await store.addChatMemoryAuthorityRecord(request)
         _ = try await store.setChatMemoryReviewStatus(id: memory.id, status: .approved)
+        await exporter?()
+    }
+
+    /// "Remember" for an accepted Founder Plan step: the plan's commitment
+    /// becomes a durable approved fact through the exact same quarantine-first
+    /// route, with provenance `ai-inbox:plan:<planId>:step:<stepId>`. Returns
+    /// the memory id so the caller can link it back onto the plan row.
+    @discardableResult
+    func approvePlanStep(plan: BurnBarInboxPlan, step: BurnBarInboxPlanStep) async throws -> String {
+        let text = "\(plan.title): \(step.title). \(step.bodyMarkdown)"
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.isEmpty == false else { throw InboxMemoryApprovalError.emptyText }
+
+        let provenanceID = "\(Self.planProvenancePrefix)\(plan.id):step:\(step.id)"
+        let now = Date()
+        let request = MemoryAddRequest(
+            text: text,
+            kind: .fact,
+            scope: scope,
+            confidence: 0.9,
+            citations: [
+                MemoryCitation(
+                    id: provenanceID,
+                    threadLogicalID: provenanceID,
+                    messageID: nil,
+                    role: "assistant",
+                    authoredAt: now,
+                    contentHash: Self.hash(text),
+                    occurrence: 0,
+                    crossDeviceHMAC: Self.hash(provenanceID),
+                    citationState: .live
+                )
+            ],
+            reviewStatus: .quarantined
+        )
+
+        let memory = try await store.addChatMemoryAuthorityRecord(request)
+        _ = try await store.setChatMemoryReviewStatus(id: memory.id, status: .approved)
+        await exporter?()
+        return memory.id
     }
 
     /// Builds provenance rows pointing back at the conversations that justified

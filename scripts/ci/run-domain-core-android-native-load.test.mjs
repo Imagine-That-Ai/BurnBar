@@ -7,17 +7,22 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, win32 } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 import {
+  isDirectInvocation,
   selectCanonicalCandidateCommit,
   validateCandidateCommit,
 } from "./canonical-candidate-commit.mjs";
 
 const SCRIPT = resolve(
   new URL("./run-domain-core-android-native-load.sh", import.meta.url).pathname,
+);
+const CANONICAL_CANDIDATE_SCRIPT = fileURLToPath(
+  new URL("./canonical-candidate-commit.mjs", import.meta.url),
 );
 const CANDIDATE = "a".repeat(40);
 
@@ -342,4 +347,57 @@ test("synthetic PR merge SHA cannot substitute for the canonical PR head identit
     }),
     MERGE_SHA,
   );
+});
+
+test("canonical candidate CLI entrypoint detection handles Windows paths", () => {
+  assert.equal(
+    isDirectInvocation(
+      "C:\\a\\BurnBar\\scripts\\ci\\canonical-candidate-commit.mjs",
+      "C:\\a\\BurnBar\\scripts\\ci\\nested\\..\\canonical-candidate-commit.mjs",
+      win32.resolve,
+    ),
+    true,
+  );
+  assert.equal(
+    isDirectInvocation(
+      "C:\\a\\BurnBar\\scripts\\ci\\canonical-candidate-commit.mjs",
+      "D:\\a\\BurnBar\\scripts\\ci\\canonical-candidate-commit.mjs",
+      win32.resolve,
+    ),
+    false,
+  );
+  assert.equal(
+    isDirectInvocation(
+      "C:\\a\\BurnBar\\scripts\\ci\\canonical-candidate-commit.mjs",
+      undefined,
+      win32.resolve,
+    ),
+    false,
+  );
+});
+
+test("canonical candidate CLI writes the selected commit to GitHub output", (context) => {
+  const directory = mkdtempSync(join(tmpdir(), "canonical-candidate-cli-"));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const eventPath = join(directory, "event.json");
+  const githubOutput = join(directory, "github-output.txt");
+  writeFileSync(
+    eventPath,
+    JSON.stringify({ pull_request: { head: { sha: PR_HEAD } } }),
+  );
+
+  const result = spawnSync(process.execPath, [CANONICAL_CANDIDATE_SCRIPT], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: eventPath,
+      GITHUB_SHA: MERGE_SHA,
+      GITHUB_OUTPUT: githubOutput,
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), PR_HEAD);
+  assert.equal(readFileSync(githubOutput, "utf8"), `candidate_commit=${PR_HEAD}\n`);
 });

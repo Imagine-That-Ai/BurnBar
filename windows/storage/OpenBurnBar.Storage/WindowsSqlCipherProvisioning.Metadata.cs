@@ -68,6 +68,8 @@ public sealed partial class WindowsSqlCipherProvisioner
         "v55_search_chunks_fts_rowid",
         "v56_parser_checkpoint_file_manifest",
         "v57_execution_source_attribution",
+        "v58_ai_inbox",
+        "v59_founder_lens",
         CurrentMigrationEndpoint,
     };
 

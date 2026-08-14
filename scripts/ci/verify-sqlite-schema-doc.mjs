@@ -20,6 +20,9 @@ const sourceSpecs = [
     path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV58.swift",
   },
   {
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MigrationV59.swift",
+  },
+  {
     path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift",
   },
   {

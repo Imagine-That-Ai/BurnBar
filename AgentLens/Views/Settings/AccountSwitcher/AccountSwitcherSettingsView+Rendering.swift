@@ -542,7 +542,8 @@ extension AccountSwitcherSettingsView {
             (.gemini, "Gemini CLI", "terminal.fill", Color(hex: "4285F4")),
             (.kimi, "Kimi", "terminal.fill", Color(hex: "6366F1")),
             (.pi, "Pi", "terminal.fill", Color(hex: "7C3AED")),
-            (.junie, "Junie", "terminal.fill", Color(hex: "48E054"))
+            (.junie, "Junie", "terminal.fill", Color(hex: "48E054")),
+            (.primeAgent, "Prime Agent", "terminal.fill", Color(hex: "582CFF"))
         ]
 
         var groups: [ProfileGroup] = []
@@ -564,6 +565,7 @@ extension AccountSwitcherSettingsView {
                 case .pi: "PiAgentLogo"
                 case .junie: "JunieLogo"
                 case .omp: "OMPLogo"
+                case .primeAgent: "PrimeAgentLogo"
                 }
                 groups.append(ProfileGroup(
                     key: cliType.rawValue,
@@ -723,6 +725,9 @@ extension AccountSwitcherSettingsView {
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)
+                            if let cliType = group.cliType, let provider = cliType.agentProvider, settingsManager.visualCaptureSourceToggleEnabled {
+                                VisualCaptureToggle(provider: provider, settingsManager: settingsManager)
+                            }
                         }
                     }
 

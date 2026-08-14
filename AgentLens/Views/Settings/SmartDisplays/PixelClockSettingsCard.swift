@@ -873,6 +873,7 @@ private struct ProviderFilterChip: View {
         case .zai:          return "Z.ai"
         case .cursor:       return "Cursor"
         case .windsurf:     return "Windsurf"
+        case .devin:        return "Devin"
         case .warp:         return "Warp"
         case .ollama:       return "Ollama"
         case .kimi:         return "Kimi"
@@ -898,6 +899,8 @@ private struct ProviderFilterChip: View {
         case .mimo:         return "MiMo"
         case .cursorAgent:  return "Cursor Agent"
         case .junie:        return "Junie"
+        case .primeAgent:   return "Prime Agent"
+        case .muse:         return "Muse"
         }
     }
 }

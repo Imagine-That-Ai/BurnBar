@@ -137,6 +137,7 @@ struct SwitcherOnboardingScanAddStep: View {
                     case .pi: cliKind = .piCLI
                     case .junie: cliKind = .junieCLI
                     case .omp: cliKind = .ompCLI
+                    case .primeAgent: cliKind = .primeAgentCLI
                     }
                     guard enforceCap(for: cliKind) else { return }
                     withAnimation(DesignSystem.Animation.snappy) {
@@ -348,7 +349,7 @@ struct SwitcherOnboardingScanAddStep: View {
                     title: "Connect Grok Build",
                     subtitle: "Verify the local Grok Build CLI profile on this Mac",
                     icon: "link.badge.plus",
-                    color: Color(hex: "111111"),
+                    color: Color.adaptive(light: "111111", dark: "E8E8E8"),
                     isLoading: connectingCLIType == .grok
                 ) {
                     await connectDifferentCLI(.grok)
@@ -407,6 +408,17 @@ struct SwitcherOnboardingScanAddStep: View {
                     isLoading: connectingCLIType == .junie
                 ) {
                     await connectJunieProfile()
+                }
+
+            case .primeAgentCLI:
+                differentAccountButton(
+                    title: "Connect Prime Agent",
+                    subtitle: "Verify the local Prime Agent profile on this Mac",
+                    icon: "terminal.fill",
+                    color: Color(hex: "582CFF"),
+                    isLoading: connectingCLIType == .primeAgent
+                ) {
+                    await connectDifferentCLI(.primeAgent)
                 }
 
             case .ompCLI:
@@ -584,7 +596,7 @@ struct SwitcherOnboardingScanAddStep: View {
 
     private func signInIdentity(_ identity: DiscoveredIdentity) {
         switch identity.source {
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -603,7 +615,7 @@ struct SwitcherOnboardingScanAddStep: View {
             Task { await signInDifferentGoogle() }
         case .safari:
             Task { await signInDifferentApple() }
-        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .codex, .claudeCode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             if let cliType = identity.source.cliType {
                 Task { await connectDifferentCLI(cliType) }
             }
@@ -632,6 +644,7 @@ struct SwitcherOnboardingScanAddStep: View {
         case .pi: return .piCLI
         case .junie: return .junieCLI
         case .omp: return .ompCLI
+        case .primeAgent: return .primeAgentCLI
         }
     }
 
@@ -678,6 +691,8 @@ struct SwitcherOnboardingScanAddStep: View {
             kind = .junieCLI
         case .omp:
             kind = .ompCLI
+        case .primeAgent:
+            kind = .primeAgentCLI
         }
 
         guard enforceCap(for: kind) else { return }
@@ -794,7 +809,10 @@ private struct APIKeyEntrySheet: View {
         }
         .padding(DesignSystem.Spacing.xl)
         .frame(width: 360, height: 300)
-        .background(DesignSystem.Colors.background)
+        .background {
+            Color.clear
+                .liquidGlassSurface(in: RoundedRectangle(cornerRadius: DesignSystem.Radius.lg, style: .continuous), fallback: .ultraThinMaterial)
+        }
     }
 }
 
@@ -921,7 +939,7 @@ private struct IdentityCard: View {
             return "Signed in with a different Google account?"
         case .safari:
             return "Use a different Apple ID?"
-        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .codex, .claudeCode, .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             return "Connect another account for this provider?"
         }
     }
@@ -966,7 +984,7 @@ private struct IdentityCard: View {
         case .grok:
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color(hex: "111111"))
+                .foregroundStyle(Color.adaptive(light: "111111", dark: "E8E8E8"))
         case .cursorAgent:
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
@@ -987,6 +1005,10 @@ private struct IdentityCard: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color(hex: "48E054"))
+        case .primeAgent:
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color(hex: "582CFF"))
         case .omp:
             Image(systemName: "command")
                 .font(.system(size: 14, weight: .medium))
@@ -1282,7 +1304,7 @@ private extension DiscoveredIdentity {
                 return "Not installed"
             }
 
-        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie:
+        case .opencode, .droid, .forge, .antigravity, .grok, .cursorAgent, .gemini, .kimi, .pi, .omp, .junie, .primeAgent:
             switch authState {
             case .authenticated:
                 return "Logged in"
@@ -1317,7 +1339,8 @@ private extension DiscoveredIdentity {
              .gemini(let executablePath, let configDirectory),
              .kimi(let executablePath, let configDirectory),
              .pi(let executablePath, let configDirectory),
-             .junie(let executablePath, let configDirectory):
+             .junie(let executablePath, let configDirectory),
+              .primeAgent(let executablePath, let configDirectory):
             return normalized(executablePath) ?? normalized(configDirectory) ?? subtitle
         }
     }

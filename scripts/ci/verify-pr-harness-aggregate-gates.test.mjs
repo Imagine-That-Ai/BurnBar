@@ -29,7 +29,9 @@ const DOMAIN_CORE_WORKFLOW = ".github/workflows/domain-core.yml";
 const HEADLESS_WORKFLOW = ".github/workflows/headless-app-build.yml";
 const FAST_WORKFLOW = ".github/workflows/fast-feedback.yml";
 const NATIVE_WORKFLOW = ".github/workflows/pr-native-fast.yml";
+const SECURITY_WORKFLOW = ".github/workflows/security-pr.yml";
 const BRANCH_PROTECTION = "governance/branch-protection.main.json";
+const CHECKOUT_TIMEOUT_FLOOR_MINUTES = 15;
 const roots = [];
 
 process.on("exit", () => {
@@ -65,14 +67,40 @@ function runGate(root) {
   }
 }
 
+function workflowJobs(source) {
+  const jobs = /^jobs:\s*$/mu.exec(source);
+  assert.ok(jobs, "missing workflow jobs map");
+  const body = source.slice(jobs.index + jobs[0].length);
+  const starts = [...body.matchAll(/^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$/gmu)];
+  return starts.map((match, index) => {
+    const end = starts[index + 1]?.index ?? body.length;
+    return [match[1], body.slice(match.index, end)];
+  });
+}
+
 function workflowJob(source, name) {
-  const start = source.indexOf(`  ${name}:\n`);
-  assert.notEqual(start, -1, `missing workflow job ${name}`);
-  const remainder = source.slice(start + 2);
-  const next = remainder.search(/^  [A-Za-z0-9_-]+:\n/mu);
-  return next === -1
-    ? source.slice(start)
-    : source.slice(start, start + 2 + next);
+  const job = workflowJobs(source).find(([candidate]) => candidate === name)?.[1];
+  assert.ok(job, `missing workflow job ${name}`);
+  return job;
+}
+
+function checkoutTimeoutOffenders(root) {
+  const dir = join(root, ".github", "workflows");
+  const offenders = [];
+  for (const file of readdirSync(dir).filter((name) => /\.ya?ml$/u.test(name)).sort()) {
+    const source = readFileSync(join(dir, file), "utf8");
+    for (const [job, body] of workflowJobs(source)) {
+      const timeout = body.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
+      if (
+        timeout &&
+        Number.parseInt(timeout[1], 10) < CHECKOUT_TIMEOUT_FLOOR_MINUTES &&
+        body.includes("actions/checkout")
+      ) {
+        offenders.push(`${file}:${job}=${timeout[1]}`);
+      }
+    }
+  }
+  return offenders;
 }
 
 function workflowStep(job, name) {
@@ -445,7 +473,7 @@ check("app tests reuse the real-process build instead of compiling the product t
 });
 
 check("PR App Gate uses the bounded smoke catalog and leaves the full suite to harness", () => {
-  assert.equal(jobField(appBuildJob, "timeout-minutes"), "60");
+  assert.equal(jobField(appBuildJob, "timeout-minutes"), "90");
   const test = stepRun(appTestStep);
   assert.match(
     test,
@@ -474,7 +502,6 @@ check("PR App Gate uses the bounded smoke catalog and leaves the full suite to h
 
 const fastWorkflow = readFileSync(join(REPO_ROOT, FAST_WORKFLOW), "utf8");
 const rustJob = workflowJob(fastWorkflow, "rust-deny-fast");
-const sqlcipherJob = workflowJob(fastWorkflow, "sqlcipher-codec-policy");
 const fastGate = workflowJob(fastWorkflow, "fast-feedback-gate");
 const fastStep = workflowStep(fastGate, "Check all fast jobs passed");
 const fastScript = stepScript(fastStep);
@@ -484,29 +511,39 @@ check("every checkout-bearing CI job tolerates a slow checkout", () => {
   // A job whose budget expires during actions/checkout is reported by GitHub as
   // CANCELLED, and the CI Gate aggregator fails closed on a cancelled component
   // -- so an ordinary slow checkout ejects the whole merge-queue candidate. The
-  // pack is ~866MB and a tip checkout has been observed taking 3min+ under
-  // contention. This originally guarded one job (SQLCipher), was widened to
-  // fast-feedback.yml, and is now repo-wide: the required-context detector jobs
-  // (Detect native/dist/windows changes) live in other workflows and were the
-  // ones still ejecting candidates. Any job that runs actions/checkout must
-  // budget >= 6 minutes.
-  const dir = join(REPO_ROOT, ".github/workflows");
-  const offenders = [];
-  for (const file of readdirSync(dir).filter((f) => f.endsWith(".yml"))) {
-    const src = readFileSync(join(dir, file), "utf8");
-    for (const m of src.matchAll(/\n  ([a-z0-9_-]+):\n((?:    .*\n|\n)*)/gu)) {
-      const [, job, body] = m;
-      const t = body.match(/^    timeout-minutes: (\d+)$/mu);
-      if (t && Number.parseInt(t[1], 10) < 6 && body.includes("actions/checkout")) {
-        offenders.push(`${file}:${job}=${t[1]}`);
-      }
-    }
-  }
+  // pack is ~866MB. On 2026-08-10, required jobs were cancelled after spending
+  // their entire 8- and 10-minute budgets inside checkout, while the Firestore
+  // rules job took 10m27s and still passed under a larger cap. This originally
+  // guarded one job (SQLCipher), was widened to fast-feedback.yml, and is now
+  // repo-wide. Any job that runs actions/checkout must budget at least 15
+  // minutes so checkout can finish and the actual check still gets time to run.
+  const offenders = checkoutTimeoutOffenders(REPO_ROOT);
   assert.deepEqual(
     offenders,
     [],
-    `checkout-bearing jobs must budget >=6 min: ${JSON.stringify(offenders)}`,
+    `checkout-bearing jobs must budget >=${CHECKOUT_TIMEOUT_FLOOR_MINUTES} min: ${JSON.stringify(offenders)}`,
   );
+});
+
+check("checkout timeout guard catches a ten-minute OSV budget", () => {
+  const root = mkdtempSync(join(tmpdir(), "checkout-timeout-guard-"));
+  roots.push(root);
+  const workflows = join(root, ".github", "workflows");
+  mkdirSync(workflows, { recursive: true });
+
+  const source = readFileSync(join(REPO_ROOT, SECURITY_WORKFLOW), "utf8");
+  const osvJob = workflowJob(source, "osv-scanner");
+  const mutatedJob = osvJob.replace(
+    /^    timeout-minutes:\s*\d+\s*$/mu,
+    "    timeout-minutes: 10\n",
+  );
+  assert.notEqual(mutatedJob, osvJob, "OSV timeout mutation must change the job");
+  writeFileSync(
+    join(root, SECURITY_WORKFLOW),
+    source.replace(osvJob, mutatedJob),
+  );
+
+  assert.deepEqual(checkoutTimeoutOffenders(root), ["security-pr.yml:osv-scanner=10"]);
 });
 
 check("Rust path detector is mandatory and only a proven unchanged path may skip Rust", () => {

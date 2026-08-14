@@ -191,6 +191,116 @@ export async function collectObservations(repository, sha, token) {
   return observations;
 }
 
+// MARK: - Stalled check-run reconciliation
+//
+// A check run can freeze at `status: "in_progress"` with a null conclusion even
+// though the work behind it finished. GitHub never publishes the terminal
+// state, so the check run is *stale* rather than slow and polling it can never
+// resolve. Twice on 2026-08-11 that stranded the whole merge queue:
+// `PR Native Gate` sat non-terminal with a failed step inside it, and
+// `App build + test (AgentLens)` — a job that normally finishes in seconds —
+// sat non-terminal for four hours with every step successful. Both times the
+// gate burned its full 4.5h budget and would have fail-closed, ejecting healthy
+// candidates for a result that already existed.
+//
+// The tell in both incidents was identical: every step inside the job had
+// reached a terminal conclusion while the job envelope had not. Steps describe
+// work that demonstrably ran, so they are the more authoritative record and
+// this reconciles against them.
+//
+// Deliberately asymmetric, to stay fail-closed:
+//
+//   * A terminal *failing* step resolves immediately — the evidence is
+//     unambiguous, and waiting only delays a failure the gate must report.
+//     (Incident 1 would have failed in ~3 minutes rather than hanging 4.5h.)
+//   * An all-successful job resolves only after a grace period, so ordinary lag
+//     between the last step and the published conclusion is never mistaken for
+//     a zombie.
+//
+// Anything else — a step still running, a non-Actions check, an unreadable job
+// — reconciles to nothing and the normal polling path continues unchanged.
+
+/// Extract the Actions run/job identifiers a check run's URL points at.
+/// Returns `null` for checks not backed by an Actions job (external reporters,
+/// commit statuses), which are left to the normal path.
+export function parseActionsJobRef(url) {
+  const match = /\/actions\/runs\/(\d+)\/job\/(\d+)(?:[/?#]|$)/.exec(url ?? "");
+  return match ? { runId: match[1], jobId: match[2] } : null;
+}
+
+/// Derive the conclusion a stalled job's steps already prove, or `null` when
+/// the job is not stalled or its steps cannot settle the question.
+export function stalledJobConclusion(job, options = {}) {
+  // A job that published its own conclusion is not stalled; the check run will
+  // catch up, and second-guessing it here would be strictly less accurate.
+  if (!job || job.conclusion) return null;
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  if (steps.length === 0) return null;
+  if (!steps.every((step) => step.status === "completed")) return null;
+
+  const failing = steps.find((step) => FAILING.has(step.conclusion));
+  if (failing)
+    return { conclusion: "failure", reason: `step "${failing.name}" failed` };
+
+  if (!steps.every((step) => PASSING.has(step.conclusion))) return null;
+  const stalledSinceMs = Date.parse(
+    job.completed_at ?? job.started_at ?? options.startedAt ?? "",
+  );
+  const graceMs = options.graceMs ?? 0;
+  const now = options.now ?? Date.now();
+  if (!Number.isFinite(stalledSinceMs) || now - stalledSinceMs < graceMs)
+    return null;
+  const stalledMinutes = Math.round((now - stalledSinceMs) / 60_000);
+  return {
+    conclusion: "success",
+    reason: `every step completed successfully and no conclusion was published for ${stalledMinutes}m`,
+  };
+}
+
+/// Resolve pending contexts whose backing Actions job has already finished.
+/// Returns a Map of context name to a reconciled observation.
+export async function reconcileStalledChecks(pending, options = {}) {
+  const { repository, token, graceMs = 0, now = Date.now() } = options;
+  const fetchJob =
+    options.fetchJob ??
+    ((jobId) =>
+      githubJson(
+        `https://api.github.com/repos/${repository}/actions/jobs/${jobId}`,
+        token,
+      ));
+  const reconciled = new Map();
+  for (const item of pending) {
+    const ref = parseActionsJobRef(item.url);
+    if (!ref) continue;
+    let job = null;
+    try {
+      job = await fetchJob(ref.jobId, ref.runId);
+    } catch (error) {
+      // A job we cannot read is not evidence of anything; keep waiting.
+      console.log(
+        `Could not read job ${ref.jobId} for "${item.context}": ${error.message}`,
+      );
+      continue;
+    }
+    const resolution = stalledJobConclusion(job, {
+      graceMs,
+      now,
+      startedAt: item.startedAt,
+    });
+    if (!resolution) continue;
+    console.log(
+      `Reconciled stalled check "${item.context}" to ${resolution.conclusion}: ${resolution.reason}.`,
+    );
+    reconciled.set(item.context, {
+      status: "completed",
+      conclusion: resolution.conclusion,
+      url: item.url,
+      reconciled: true,
+    });
+  }
+  return reconciled;
+}
+
 async function main() {
   const config = JSON.parse(
     readFileSync(process.argv[2] ?? "governance/burnbar-ci-gate.json", "utf8"),
@@ -206,11 +316,26 @@ async function main() {
   const componentBudgetMs =
     Number(config.component_runtime_budget_minutes ?? 0) * 60_000;
   const componentHeadroomMs = 5 * 60_000;
+  const stalledGraceMs =
+    Number(config.stalled_check_grace_minutes ?? 10) * 60_000;
   while (true) {
-    const state = evaluateGate(
-      config.required_contexts,
-      await collectObservations(repository, sha, token),
-    );
+    const observations = await collectObservations(repository, sha, token);
+    let state = evaluateGate(config.required_contexts, observations);
+    // A pending context whose job already finished is stale, not slow. Fold the
+    // job's own verdict in before deciding to keep waiting, so a check run that
+    // will never publish a conclusion cannot burn the whole budget.
+    if (!state.ready && state.pending.length > 0) {
+      const reconciled = await reconcileStalledChecks(state.pending, {
+        repository,
+        token,
+        graceMs: stalledGraceMs,
+      });
+      if (reconciled.size > 0) {
+        for (const [context, observation] of reconciled)
+          observations.set(context, observation);
+        state = evaluateGate(config.required_contexts, observations);
+      }
+    }
     if (state.failed.length > 0) {
       console.error(JSON.stringify(state, null, 2));
       process.exitCode = 1;
@@ -248,11 +373,7 @@ async function main() {
           return;
         }
         console.error(
-          JSON.stringify(
-            { error: "CI gate timed out", ...timedOut },
-            null,
-            2,
-          ),
+          JSON.stringify({ error: "CI gate timed out", ...timedOut }, null, 2),
         );
         process.exitCode = 1;
         return;

@@ -191,6 +191,7 @@ struct ConnectionsSettingsView: View {
                                 accounts: group.accounts,
                                 externalAccounts: group.externalAccounts,
                                 routingState: quotaService.routingStatesByProviderID[group.providerID],
+                                settingsManager: settingsManager,
                                 quotaWindowsForAccount: quotaWindows(for:),
                                 quotaWindowsForExternalAccount: quotaWindows(for:),
                                 credentialNoticeForExternalAccount: credentialNotice(for:),
@@ -1205,6 +1206,8 @@ struct ConnectionsSettingsView: View {
             return AgentProvider.junie.providerID
         case .omp:
             return AgentProvider.omp.providerID
+        case .primeAgent:
+            return AgentProvider.primeAgent.providerID
         }
     }
 
@@ -1576,6 +1579,8 @@ struct ConnectionsSettingsView: View {
             return AgentProvider.junie.providerID
         case .omp:
             return AgentProvider.omp.providerID
+        case .primeAgent:
+            return AgentProvider.primeAgent.providerID
         }
     }
 

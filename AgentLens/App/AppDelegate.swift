@@ -254,8 +254,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 forName: NSApplication.didResignActiveNotification,
                 object: nil,
                 queue: .main
-            ) { _ in
+            ) { [weak self] _ in
                 Task { @MainActor in
+                    // The glass tray sits at `.statusBar` with
+                    // `hidesOnDeactivate = false`, so leaving it open when the
+                    // user clicks another app keeps BurnBar chrome glued above
+                    // everything. Close it on resign so the desktop behaves
+                    // like any other Mac app.
+                    self?.closePopoverOnResignActive()
                     Analytics.shared.track(.appBackgrounded)
                 }
             }

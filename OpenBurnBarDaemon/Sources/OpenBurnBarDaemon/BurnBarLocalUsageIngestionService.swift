@@ -98,6 +98,8 @@ public actor BurnBarLocalUsageIngestionService {
             .openClaw: { OpenClawParser() },
             .ollama: { OllamaParser() },
             .junie: { JunieParser() },
+            .primeAgent: { PrimeAgentParser() },
+            .muse: { MuseParser() },
             .zai: { ModelFilterParser(modelPattern: "zai", provider: .zai) },
             .minimax: { ModelFilterParser(modelPattern: "minimax", provider: .minimax) }
         ]

@@ -5,7 +5,12 @@ import Glibc
 #endif
 import Foundation
 import OpenBurnBarEngine
-#if canImport(SQLite3)
+// Prefer SQLCipher so open/key/schema all resolve to the same codec-backed
+// sqlite3_* symbols as `BurnBarDaemonDatabaseCipher`. Falling through to
+// system SQLite3 on a codec-less build keeps the plaintext path working.
+#if canImport(SQLCipher)
+import SQLCipher
+#elseif canImport(SQLite3)
 import SQLite3
 #else
 import CSQLite
@@ -132,6 +137,9 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
 
     func bootstrapSchema() throws {
         for statement in BurnBarAIInboxSchema.statements {
+            try execute(statement, [])
+        }
+        for statement in BurnBarAIInboxSchema.founderLensStatements {
             try execute(statement, [])
         }
     }
@@ -380,10 +388,16 @@ final class BurnBarAIInboxStore: @unchecked Sendable {
 
     func itemDetail(fingerprint: String) throws -> BurnBarInboxItemDetail? {
         try databaseSync {
+            // Open item preferred; otherwise the NEWEST row for the condition.
+            // Discuss is available on resolved/archived items too, and a reply
+            // there still needs the item's title/summary/evidence as context.
             guard let row = try queryRows(
                 """
                 SELECT id FROM ai_inbox_items
-                WHERE fingerprint = ? AND state IN ('new', 'updated') LIMIT 1
+                WHERE fingerprint = ?
+                ORDER BY CASE WHEN state IN ('new', 'updated') THEN 0 ELSE 1 END,
+                         last_seen_at DESC
+                LIMIT 1
                 """,
                 [.text(fingerprint)]
             ).first else { return nil }

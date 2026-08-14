@@ -1049,10 +1049,13 @@ final class SmartHubBridgeController {
         case .omp: return "EC4899"
         case .ollama:     return "6B7280"
         case .windsurf:   return "06B6D4"
+        case .devin:      return "0A84FF"
         case .warp:       return "DDE4EA"
         case .xAI:        return "1A1A1A"
         case .mimo:       return "FF6900"
         case .junie:      return "48E054"
+        case .primeAgent: return "582CFF"
+        case .muse:       return "582CFF"
         }
     }
 

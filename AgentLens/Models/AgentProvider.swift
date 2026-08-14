@@ -86,18 +86,19 @@ extension AgentProvider {
         case .omp: return "*.jsonl"
         case .ollama: return "server*.log"
         case .windsurf: return "state.vscdb"
+        case .devin: return "state.vscdb"
         case .warp: return "warp_network*.log"
         case .xAI: return "summary.json"
         case .mimo: return "mimo-no-local-logs"
         case .openBurnBar: return "openburnbar-no-local-logs"
-        case .junie: return "*.jsonl"
+        case .junie, .primeAgent, .muse: return "*.jsonl"
         }
     }
 
     /// How well the macOS app supports this provider's local data.
     var supportLevel: ProviderSupportLevel {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .omp, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent, .openClaude, .junie:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .xAI, .cursorAgent, .openClaude, .junie, .primeAgent, .muse:
             return .supported
         // OpenAI is supported via the official org usage endpoint — no log
         // parsing, but exact aggregate counts.
@@ -105,7 +106,7 @@ extension AgentProvider {
             return .supported
         case .mimo:
             return .supported
-        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .warp, .ollama, .piAgent:
+        case .openClaw, .copilot, .kimi, .zai, .minimax, .cursor, .windsurf, .devin, .warp, .ollama, .piAgent:
             return .partial
         case .augment:
             return .unsupported
@@ -116,7 +117,7 @@ extension AgentProvider {
     /// provider's local artifacts.
     var dataConfidence: DataConfidence {
         switch self {
-        case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude, .junie:
+        case .factory, .claudeCode, .codex, .openCode, .omp, .kimi, .aider, .cline, .kiloCode, .rooCode, .forgeDev, .hermes, .geminiCLI, .antigravity, .goose, .openClaw, .piAgent, .xAI, .cursorAgent, .openClaude, .junie, .primeAgent, .muse:
             return .exact
         // OpenAI exposes exact tokens-used per org via the usage API.
         case .openAI, .deepSeek, .openBurnBar:
@@ -125,7 +126,11 @@ extension AgentProvider {
             return .exact
         case .zai, .minimax, .copilot, .cursor, .windsurf, .warp, .ollama:
             return .estimated
-        case .augment:
+        // Devin ships `"ingestion": "unavailable"` in
+        // contracts/provider-ingestion-catalog.json — no session parser is registered, so
+        // there is no local artifact to grade. Claiming `.exact` would paint a green EXACT
+        // badge and suppress the aggregate estimated-data warning over no data at all.
+        case .augment, .devin:
             return .unavailable
         }
     }

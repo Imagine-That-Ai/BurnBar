@@ -95,8 +95,11 @@ final class SwarmLogoShapeTests: XCTestCase {
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.codex, .openCode]))
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.openClaw, .openClaude]))
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.omp, .hermes]))
-        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.geminiCLI, .junie]))
-        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.antigravity, .openAI]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.primeAgent, .geminiCLI]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.junie, .antigravity]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.openAI, .openBurnBar]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.devin, .warp]))
+        XCTAssertTrue(SwarmFormationMode.providerLogoGroups.contains([.cursorAgent, .muse]))
         XCTAssertTrue(SwarmFormationMode.providerLogoGroups.allSatisfy { $0.count <= 2 })
     }
 

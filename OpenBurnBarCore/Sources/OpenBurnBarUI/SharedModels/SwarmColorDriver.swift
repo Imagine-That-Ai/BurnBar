@@ -167,7 +167,7 @@ public struct SwarmColorDriver: Equatable, Sendable {
             return RGBA(r: 0.72, g: 0.52, b: 1.00, a: base.a)
         case .cursor, .warp, .xAI:
             return RGBA(r: 0.86, g: 0.90, b: 0.96, a: base.a)
-        case .openCode, .geminiCLI, .antigravity, .cursorAgent, .windsurf, .deepSeek, .kimi:
+        case .openCode, .geminiCLI, .antigravity, .cursorAgent, .windsurf, .devin, .deepSeek, .kimi:
             return RGBA(r: 0.36, g: 0.66, b: 1.00, a: base.a)
         case .minimax:
             return RGBA(r: 1.00, g: 0.78, b: 0.22, a: base.a)
@@ -187,6 +187,10 @@ public struct SwarmColorDriver: Equatable, Sendable {
             return RGBA(r: 0.38, g: 0.60, b: 1.00, a: base.a)
         case .ollama:
             return RGBA(r: 0.64, g: 0.68, b: 0.72, a: base.a)
+        case .primeAgent:
+            return RGBA(r: 0.45, g: 0.40, b: 1.00, a: base.a)
+        case .muse:
+            return RGBA(r: 0.02, g: 0.41, b: 0.88, a: base.a)
         }
     }
 }

@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedAt": "2026-08-09T19:00:24Z",
+  "privacy": "proof_only_no_plaintext_keys_or_user_data",
+  "candidateReleaseTag": "v1.0.33",
+  "testedSourceCommit": "cc0c6e0b273ff0ad58277ef73acd00b4a5ecb52b",
+  "artifactDigests": [
+    {
+      "path": "OpenBurnBarCore/Package.swift",
+      "sha256": "19cd6b55d0236274214e815451e83ed4da08c5f289c79dd2359635aba86ad7b0"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",
+      "sha256": "aa4436ee52271181380fee3270a207f1ac63672015984d825b2affaf04d367fa"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalInteropKatTests.swift",
+      "sha256": "ba516055ca0eea2726111143b11681ccd7dcc23c8fdb80b168ff67d9514cde36"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalProtocolStoreSessionTests.swift",
+      "sha256": "cba6167782d479352b2fd293a4d8a267b618b1310f3af6b56f05a3ba63f942df"
+    },
+    {
+      "path": "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
+      "sha256": "c4ca41657c04fb0a76d8265f306300f87c29dd71b6dbf19186acde4cb07f2e71"
+    },
+    {
+      "path": "Vendor/libsignal/rust/bridge/jni/Cargo.toml",
+      "sha256": "105dd80c03fe243066d64c5e945b25587810613e9f7ea94f76903d72bf801f79"
+    },
+    {
+      "path": "Vendor/libsignal/rust/bridge/node/Cargo.toml",
+      "sha256": "a51e3d031a9d1398c11d0bc4f9092a6a245546acb93910b6ad6ec6987e2de00f"
+    },
+    {
+      "path": "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+      "sha256": "c115d26fb97b62292a4181c415febf2e62e01c65199493fa20c43e9fd3468f8e"
+    },
+    {
+      "path": "Vendor/libsignal/swift/Package.swift",
+      "sha256": "2a4c89afa8858913554be28e3a76f42e07d6a69cedd1ce3adfcd0d8bf5f6ac48"
+    },
+    {
+      "path": "android/app/build.gradle.kts",
+      "sha256": "11dc32e749cb8dbe5a3f11a392b82551e964919a58c9f594b850fe6221c3350e"
+    },
+    {
+      "path": "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
+      "sha256": "a12a2f8bed86f42e151cdf62c19c317057aaad46fb52c56a4c74eaa8aab13b91"
+    },
+    {
+      "path": "android/app/src/test/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStoreTest.kt",
+      "sha256": "7a44a95ecbfe33811ab4742d126e223a8c91d84281e7c57e53a22bfc6aea8735"
+    },
+    {
+      "path": "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalInteropKatTest.kt",
+      "sha256": "7ff4ffcaea0e4fcafccff7e6b7278b421a737d959413c33c70c42d1da0cf5f56"
+    },
+    {
+      "path": "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionRoundTripTest.kt",
+      "sha256": "1be53e1f70cbbe4263648851d14055d00445ee0702ab012c4dbb3f3b4441ba0f"
+    },
+    {
+      "path": "packages/libsignal-bridge/package.json",
+      "sha256": "154abbf4f3681a94d701b1823d4aacd3b7a477df31bee0eadbf4a66b7bb1e5a4"
+    },
+    {
+      "path": "packages/libsignal-bridge/src/protocolHarness.test.ts",
+      "sha256": "bfa1160efdd41ccdad03bca6adbac7ef842c267874b666e117d270047cefdc0c"
+    },
+    {
+      "path": "packages/libsignal-bridge/src/protocolHarness.ts",
+      "sha256": "d674d3610e8e621afa91e063e60ddbb273c6b7b350ecb0371aacd97d7edf2b89"
+    },
+    {
+      "path": "scripts/ci/verify-libsignal-pin.sh",
+      "sha256": "d76c28b7ac8461128de9b8338c2a4331d0dcc1122a94d5d2976bfafbe9a75121"
+    },
+    {
+      "path": "scripts/ci/verify-libsignal-submodule-delta.sh",
+      "sha256": "627c3348dd111bfc67e2d7b1e9e3e1d34e3dee9489b76b6c1d41e128ee76f5ca"
+    },
+    {
+      "path": "third_party/libsignal/manifest.json",
+      "sha256": "4e6db382c37f11a83cdb1fdfefab42a5eb9e89fb5872ef306e11c4d5bcb7844c"
+    }
+  ],
+  "officialLibsignalPin": {
+    "tag": "v0.94.4",
+    "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
+    "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f"
+  },
+  "integrityProofs": [
+    {
+      "id": "pin_metadata",
+      "status": "passed",
+      "command": "bash scripts/ci/verify-libsignal-pin.sh",
+      "result": "PASS: libsignal pin metadata is internally consistent",
+      "artifactPaths": [
+        "third_party/libsignal/manifest.json",
+        "scripts/ci/verify-libsignal-pin.sh"
+      ]
+    },
+    {
+      "id": "fork_delta",
+      "status": "passed",
+      "command": "bash scripts/ci/verify-libsignal-submodule-delta.sh",
+      "result": "PASS: only the four allow-listed Swift build/integration files differ from official v0.94.4; no Rust, JNI, or Node crypto-core divergence",
+      "artifactPaths": [
+        "third_party/libsignal/manifest.json",
+        "scripts/ci/verify-libsignal-submodule-delta.sh",
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/jni/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/node/Cargo.toml"
+      ]
+    }
+  ],
+  "bindings": {
+    "swift": {
+      "status": "passed",
+      "bridge": "official libsignal Rust shared bridge through the Swift FFI package",
+      "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-release-rust-bridge-swift --disable-swift-testing --filter OpenBurnBarSignalCoreTests",
+      "result": "26 tests executed, 1 intentionally skipped fixture generator, 0 failures",
+      "artifactPaths": [
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
+        "Vendor/libsignal/swift/Package.swift",
+        "OpenBurnBarCore/Package.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalProtocolStoreSessionTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalInteropKatTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift"
+      ]
+    },
+    "kotlinAndroid": {
+      "status": "passed",
+      "bridge": "official libsignal Rust shared bridge through org.signal JNI 0.94.4",
+      "command": "cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalSession*' --tests '*AndroidSignalInteropKatTest' --tests '*AndroidCloudVaultSignalPayloadsTest' --tests '*AndroidSignalIdentityKeyStoreTest' --no-daemon",
+      "result": "BUILD SUCCESSFUL",
+      "artifactPaths": [
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/jni/Cargo.toml",
+        "android/app/build.gradle.kts",
+        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionRoundTripTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalInteropKatTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStoreTest.kt"
+      ]
+    },
+    "node": {
+      "status": "passed",
+      "bridge": "official libsignal Rust shared bridge through @signalapp/libsignal-client 0.94.4",
+      "command": "npm test --prefix packages/libsignal-bridge",
+      "result": "5 tests passed, 0 failures",
+      "artifactPaths": [
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/node/Cargo.toml",
+        "packages/libsignal-bridge/package.json",
+        "packages/libsignal-bridge/src/protocolHarness.ts",
+        "packages/libsignal-bridge/src/protocolHarness.test.ts"
+      ]
+    }
+  }
+}

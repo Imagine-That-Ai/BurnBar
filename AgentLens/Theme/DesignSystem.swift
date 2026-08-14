@@ -143,12 +143,15 @@ enum DesignSystem {
             case .omp: return Color(hex: "EC4899")
             case .ollama:     return Color(hex: "6B7280")
             case .windsurf:   return Color(hex: "06B6D4")
+            case .devin:      return Color(hex: "0A84FF")
             case .warp:       return Color(hex: "DDE4EA")
             case .xAI:        return Color(hex: "1A1A1A")
             case .mimo:       return Color(hex: "FF6900")
             case .cursorAgent: return Color(hex: "00E5FF")
             case .openBurnBar: return Colors.ember
             case .junie:      return Color(hex: "48E054")
+            case .primeAgent: return Color(hex: "582CFF")
+            case .muse:       return Color(hex: "0668E1")
             }
         }
 
@@ -181,12 +184,15 @@ enum DesignSystem {
             case .omp: return Color(hex: "F472B6")
             case .ollama:     return Color(hex: "9CA3AF")
             case .windsurf:   return Color(hex: "22D3EE")
+            case .devin:      return Color(hex: "1E293B")
             case .warp:       return Color(hex: "111111")
             case .xAI:        return Color(hex: "4A4A4A")
             case .mimo:       return Color(hex: "FF8533")
             case .cursorAgent: return Color(hex: "33ECFF")
             case .openBurnBar: return Color(hex: "FF7578")
             case .junie:      return Color(hex: "6FE87F")
+            case .primeAgent: return Color(hex: "9370FF")
+            case .muse:       return Color(hex: "3B82F6")
             }
         }
 
@@ -221,7 +227,7 @@ enum DesignSystem {
             if key.contains("minimax") || key.contains("abab") {
                 return Color(hex: "F59E0B")
             }
-            if key.contains("llama") || key.contains("meta") {
+            if key.contains("llama") || key.contains("meta") || key.contains("muse") {
                 return Color(hex: "0668E1")
             }
             if key.contains("mistral") || key.contains("mixtral") {

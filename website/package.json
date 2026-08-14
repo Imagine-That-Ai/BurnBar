@@ -18,6 +18,7 @@
     "test:pricing-copy": "node scripts/test-pricing-copy.mjs",
     "test:subscribe-flow": "node scripts/test-subscribe-flow.mjs",
     "test:launch-assets": "node scripts/test-launch-assets.mjs",
+    "test:approved-hero-copy": "node scripts/test-approved-hero-copy.mjs",
     "test:orphan-assets": "node scripts/test-orphan-assets.mjs",
     "test:crypto-claims": "node scripts/generate-crypto-claims.mjs --check",
     "test:cache-headers": "node scripts/test-cache-headers.mjs",
@@ -56,7 +57,7 @@
     "links:check": "node scripts/check-links.mjs",
     "size": "size-limit",
     "preverify": "node scripts/require-node.mjs",
-    "verify": "npm run research:test && npm run test:platform && npm run test:router-copy && npm run test:pricing-copy && npm run test:subscribe-flow && npm run test:launch-assets && npm run test:orphan-assets && npm run test:crypto-claims && npm run test:cache-headers && npm run test:security-headers && npm run test:download-provenance && npm run test:build-script && npm run test:links && npm run test:research-fallback && npm run check && npm run build && npm run test:firebase-config && npm run test:staging-firebase-config-source && npm run csp:check && npm run links:check && npm run test:trust-copy && npm run test:demo-telemetry && npm run test:inline-budget && npm run test:reduced-motion && npm run test:idle-loops && npm run test:lazy-assets && npm run test:typography",
+    "verify": "npm run research:test && npm run test:platform && npm run test:router-copy && npm run test:pricing-copy && npm run test:subscribe-flow && npm run test:launch-assets && npm run test:approved-hero-copy && npm run test:orphan-assets && npm run test:crypto-claims && npm run test:cache-headers && npm run test:security-headers && npm run test:download-provenance && npm run test:build-script && npm run test:links && npm run test:research-fallback && npm run check && npm run build && npm run test:firebase-config && npm run test:staging-firebase-config-source && npm run csp:check && npm run links:check && npm run test:trust-copy && npm run test:demo-telemetry && npm run test:inline-budget && npm run test:reduced-motion && npm run test:idle-loops && npm run test:lazy-assets && npm run test:typography",
     "pretest": "node scripts/require-node.mjs",
     "test": "vitest run",
     "pretest:integration": "node scripts/require-node.mjs",
@@ -71,7 +72,7 @@
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "astro": "^7.1.3",
-    "firebase": "12.17.0",
+    "firebase": "12.17.1",
     "typescript": "^5.9.3"
   },
   "devDependencies": {

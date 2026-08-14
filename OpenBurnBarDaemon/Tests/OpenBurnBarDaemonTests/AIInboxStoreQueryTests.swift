@@ -146,7 +146,7 @@ final class AIInboxStoreQueryTests: XCTestCase {
         XCTAssertEqual(detail.summary.state, .new)
     }
 
-    func test_itemDetailByFingerprintIgnoresResolvedRowsAndUnknownFingerprints() throws {
+    func test_itemDetailByFingerprintFallsBackToResolvedRowsButNotUnknownFingerprints() throws {
         let now = Date()
         let outcome = try store.upsertItem(
             AIInboxFixtures.itemWrite(fingerprint: "stuck_pr:done", title: "quiet PR"),
@@ -154,7 +154,12 @@ final class AIInboxStoreQueryTests: XCTestCase {
         )
         XCTAssertTrue(try store.resolveItem(id: outcome.id, note: "merged", now: now))
 
-        XCTAssertNil(try store.itemDetail(fingerprint: "stuck_pr:done"), "Resolved rows are not open")
+        // Discuss is offered on resolved items too, so a reply there still
+        // needs the item's context: the lookup falls back to the newest row
+        // for the condition when nothing is open (review fix SX).
+        let resolved = try XCTUnwrap(try store.itemDetail(fingerprint: "stuck_pr:done"))
+        XCTAssertEqual(resolved.summary.id, outcome.id)
+        XCTAssertEqual(resolved.summary.state, .resolved)
         XCTAssertNil(try store.itemDetail(fingerprint: "never-written"))
     }
 

@@ -21,3 +21,5 @@ This file is the project-level index of active and completed agent goals. It rec
 | `linux-w5-mercury-engine-2026-07-06` | active | linux-macos-parity-2026-07-05 | `.agent/runs/linux-w5-mercury-engine-2026-07-06/` | 2026-07-06T10:01:10Z |
 | `linux-parity-e2e-finish-20260802` | active — gen-3 live; RC failed AppImage abs-exec; #2155 fixing; parallel local contracts green; CDN 404; P-16 blockers recorded | linux-macos-parity-2026-07-05 | `.agent/runs/linux-parity-e2e-finish-20260802/` | 2026-08-02T19:52:00Z |
 | `sota-quality-apple-apps-2026-07-06` | active | none | `.agent/runs/sota-quality-apple-apps-2026-07-06/` | 2026-07-06T11:22:23Z |
+| `burnbar-accretive-pr-merge-2026-08-07` | complete — #2191/#2172/#2125/#2088/#2054/#2186 MERGED; main@20ec5aba4e | none | `.agent/runs/burnbar-accretive-pr-merge-2026-08-07/` | 2026-08-08T07:38:18Z |
+| `windows-macos-parity-completion-2026-08-09` | active | windows-parity-100-2026-07-06 | `.agent/runs/windows-macos-parity-completion-2026-08-09/` | 2026-08-09T21:43:11Z |

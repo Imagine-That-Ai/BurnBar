@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
@@ -11,8 +12,8 @@ namespace OpenBurnBar.Storage;
 
 public sealed partial class WindowsSqlCipherProvisioner
 {
-    public const string CurrentMigrationEndpoint = "v58_ai_inbox";
-    public const long CurrentMigrationCount = 59;
+    public const string CurrentMigrationEndpoint = "v60_billing_kind";
+    public const long CurrentMigrationCount = 61;
     public const long CurrentUserVersion = 0;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -62,7 +63,12 @@ public sealed partial class WindowsSqlCipherProvisioner
 
             using SqliteConnection connection = OpenReadWriteCreate(databasePath, passphrase);
             VerifyKeyFingerprint(databasePath, passphrase);
-            ValidateExistingSchemaBeforeMigration(connection, databasePath);
+            ValidateExistingSchemaBeforeMigration(
+                connection,
+                databasePath,
+                journalPath,
+                keyProvenance,
+                fingerprint);
             ApplySchema(connection, journalPath, databasePath, keyProvenance, fingerprint);
             SqlCipherConnection.AssertPinnedParams(connection, out string cipherVersion);
             string endpoint = SqlCipherConnection.ReadMigrationEndpoint(connection);
@@ -215,7 +221,26 @@ public sealed partial class WindowsSqlCipherProvisioner
         transaction.Commit();
     }
 
-    private static void ValidateExistingSchemaBeforeMigration(SqliteConnection connection, string databasePath)
+    /// <summary>
+    /// Decide what an EXISTING database on disk is, before <see cref="ApplySchema"/>
+    /// replays the endpoint schema over it. Three outcomes:
+    /// already at the endpoint (return), behind the endpoint by purely additive
+    /// migrations we know how to apply in place (upgrade, then return), or anything
+    /// else (<c>UnsupportedSchema</c> → the archive/reset recovery surface).
+    /// </summary>
+    /// <remarks>
+    /// The middle case is the one real users hit on every upgrade: <c>ApplySchema</c>
+    /// is an <c>IF NOT EXISTS</c> endpoint schema, so it cannot add a column to a
+    /// table that already exists. Without <see cref="TryUpgradeExistingSchemaToEndpoint"/>
+    /// every previously valid profile would be rejected and reset the first time a
+    /// migration was added.
+    /// </remarks>
+    private static void ValidateExistingSchemaBeforeMigration(
+        SqliteConnection connection,
+        string databasePath,
+        string journalPath,
+        string keyProvenance,
+        string fingerprint)
     {
         if (!TableExists(connection, "grdb_migrations"))
         {
@@ -227,38 +252,62 @@ public sealed partial class WindowsSqlCipherProvisioner
             return;
         }
 
-        long count = SqlCipherConnection.ReadMigrationCount(connection);
-        string endpoint = count == 0 ? string.Empty : SqlCipherConnection.ReadMigrationEndpoint(connection);
         long userVersion = SqlCipherConnection.ReadUserVersion(connection);
-        if (count != CurrentMigrationCount
-            || userVersion != CurrentUserVersion
-            || !string.Equals(endpoint, CurrentMigrationEndpoint, StringComparison.Ordinal)
-            || !HasExactMigrationHistory(connection)
+        if (userVersion != CurrentUserVersion
             || !TableExists(connection, "parser_checkpoints")
             || !TableExists(connection, "parser_checkpoint_files"))
         {
             throw Recovery(databasePath, WindowsStorageFailureKind.UnsupportedSchema, null);
         }
+
+        IReadOnlyList<string> applied = ReadAppliedMigrationIdentifiers(connection);
+        if (applied.Count == CurrentMigrationCount && MatchesEndpointHistory(applied))
+        {
+            return;
+        }
+
+        if (!TryUpgradeExistingSchemaToEndpoint(
+                connection,
+                applied,
+                journalPath,
+                databasePath,
+                keyProvenance,
+                fingerprint))
+        {
+            throw Recovery(databasePath, WindowsStorageFailureKind.UnsupportedSchema, null);
+        }
     }
 
-    private static bool HasExactMigrationHistory(SqliteConnection connection)
+    private static List<string> ReadAppliedMigrationIdentifiers(SqliteConnection connection)
     {
+        var identifiers = new List<string>();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT identifier FROM grdb_migrations ORDER BY rowid";
         using var reader = command.ExecuteReader();
-        int index = 0;
         while (reader.Read())
         {
-            if (index >= AppliedMigrationIdentifiers.Length
-                || !string.Equals(reader.GetString(0), AppliedMigrationIdentifiers[index], StringComparison.Ordinal))
+            identifiers.Add(reader.GetString(0));
+        }
+
+        return identifiers;
+    }
+
+    private static bool MatchesEndpointHistory(IReadOnlyList<string> applied)
+    {
+        if (applied.Count != AppliedMigrationIdentifiers.Length)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < applied.Count; index += 1)
+        {
+            if (!string.Equals(applied[index], AppliedMigrationIdentifiers[index], StringComparison.Ordinal))
             {
                 return false;
             }
-
-            index += 1;
         }
 
-        return index == AppliedMigrationIdentifiers.Length;
+        return true;
     }
 
     private static bool HasApplicationTables(SqliteConnection connection)

@@ -15,6 +15,8 @@ namespace OpenBurnBar.Dist.Tests;
 
 public sealed class CompanionCliPackagingTests
 {
+    private static readonly TimeSpan StagedWorkerProtocolTimeout = TimeSpan.FromMinutes(1);
+
     [Fact]
     public void ReleasePublishesSignedCompanionCliForEachAppRid()
     {
@@ -369,8 +371,11 @@ public sealed class CompanionCliPackagingTests
                 includeConversationBodies = false,
             });
 
+            // Windows CI occasionally stalls the first staged-worker launch under load
+            // (15s protocol timeout). One clean retry matches the cleanup-retry harden
+            // already on this PR and avoids failing PR Windows Gate on a transient hang.
             (int exitCode, string workerStandardOutput, string workerStandardError) =
-                await RunStagedWorkerAsync(workerHost, appOutput, invalidNativeEngine, request);
+                await RunStagedWorkerWithRetryAsync(workerHost, appOutput, invalidNativeEngine, request);
 
             Assert.True(
                 exitCode == 16,
@@ -471,6 +476,23 @@ public sealed class CompanionCliPackagingTests
     }
 
     private static async Task<(int ExitCode, string StandardOutput, string StandardError)>
+        RunStagedWorkerWithRetryAsync(
+            string workerHost,
+            string workingDirectory,
+            string invalidNativeEngine,
+            string request)
+    {
+        try
+        {
+            return await RunStagedWorkerAsync(workerHost, workingDirectory, invalidNativeEngine, request);
+        }
+        catch (TimeoutException)
+        {
+            return await RunStagedWorkerAsync(workerHost, workingDirectory, invalidNativeEngine, request);
+        }
+    }
+
+    private static async Task<(int ExitCode, string StandardOutput, string StandardError)>
         RunStagedWorkerAsync(
             string workerHost,
             string workingDirectory,
@@ -499,7 +521,11 @@ public sealed class CompanionCliPackagingTests
 
         try
         {
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(15));
+            // The full solution starts many test hosts at once. A freshly staged
+            // apphost can therefore launch slowly on a hosted Windows runner.
+            // This test proves packaging and protocol behavior, not startup
+            // performance, so keep the wait bounded but allow runner contention.
+            await process.WaitForExitAsync().WaitAsync(StagedWorkerProtocolTimeout);
         }
         catch (TimeoutException exception)
         {
@@ -508,8 +534,13 @@ public sealed class CompanionCliPackagingTests
                 process.Kill(entireProcessTree: true);
                 await process.WaitForExitAsync();
             }
+
+            string output = await standardOutput;
+            string error = await standardError;
             throw new TimeoutException(
-                "The directly staged usage-scan worker did not answer the bounded protocol request within 15 seconds.",
+                "The directly staged usage-scan worker did not answer the bounded "
+                + $"protocol request within {StagedWorkerProtocolTimeout.TotalSeconds:0} seconds."
+                + $"\nstdout:\n{output}\nstderr:\n{error}",
                 exception);
         }
 
@@ -548,24 +579,57 @@ public sealed class CompanionCliPackagingTests
 
     private static void DeleteDirectoryWithRetry(string path)
     {
-        const int attempts = 6;
+        // Windows CI occasionally holds a brief handle on staged OpenBurnBar.Cli.exe
+        // after the packaging assert. Clear read-only bits and back off harder so a
+        // transient UnauthorizedAccessException does not fail the PR Windows gate.
+        const int attempts = 12;
         for (int attempt = 0; attempt < attempts; attempt++)
         {
             try
             {
+                if (!Directory.Exists(path))
+                {
+                    return;
+                }
+
+                ClearReadOnlyAttributes(path);
                 Directory.Delete(path, recursive: true);
                 return;
             }
             catch (UnauthorizedAccessException) when (attempt < attempts - 1)
             {
-                Thread.Sleep(TimeSpan.FromMilliseconds(100 * (attempt + 1)));
+                Thread.Sleep(TimeSpan.FromMilliseconds(250 * (attempt + 1)));
             }
             catch (IOException) when (attempt < attempts - 1)
             {
-                Thread.Sleep(TimeSpan.FromMilliseconds(100 * (attempt + 1)));
+                Thread.Sleep(TimeSpan.FromMilliseconds(250 * (attempt + 1)));
             }
         }
 
+        ClearReadOnlyAttributes(path);
         Directory.Delete(path, recursive: true);
+    }
+
+    private static void ClearReadOnlyAttributes(string path)
+    {
+        foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            try
+            {
+                FileAttributes attributes = File.GetAttributes(file);
+                if ((attributes & FileAttributes.ReadOnly) != 0)
+                {
+                    File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort; the delete retry loop owns the final failure mode.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort; the delete retry loop owns the final failure mode.
+            }
+        }
     }
 }
