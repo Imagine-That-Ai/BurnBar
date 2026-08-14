@@ -13,8 +13,14 @@ import SwiftUI
 struct FleetView: View {
     @State private var viewModel: FleetViewModel
 
-    init(service: FleetService) {
-        _viewModel = State(initialValue: FleetViewModel(service: service))
+    init(
+        service: FleetService,
+        tokenBurnProvider: @escaping (BurnBarFleetAgentID) -> Double? = { _ in nil }
+    ) {
+        _viewModel = State(initialValue: FleetViewModel(
+            service: service,
+            tokenBurnProvider: tokenBurnProvider
+        ))
     }
 
     var body: some View {
@@ -186,8 +192,9 @@ struct FleetView: View {
         if let snapshot = viewModel.snapshot {
             providerChips(snapshot: snapshot)
             agentCards(snapshot: snapshot)
-            repoGroups(snapshot: snapshot)
-            machinePanel(snapshot: snapshot)
+            repoGroups
+            machinePanel
+            resourceConsumers
             probeHealthSection(snapshot: snapshot)
         }
     }
@@ -285,20 +292,20 @@ struct FleetView: View {
 
     // MARK: - Repo groups
 
-    private func repoGroups(snapshot: BurnBarFleetSnapshot) -> some View {
+    private var repoGroups: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             Text("Repos")
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-            if snapshot.repos.isEmpty {
+            if viewModel.repoGroupRows.isEmpty {
                 Text("No repo attribution available")
                     .font(DesignSystem.Typography.body)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
             } else {
                 VStack(spacing: DesignSystem.Spacing.sm) {
-                    ForEach(snapshot.repos, id: \.projectName) { group in
-                        FleetRepoGroupRow(group: group, viewModel: viewModel)
+                    ForEach(viewModel.repoGroupRows) { row in
+                        FleetRepoGroupRow(row: row, viewModel: viewModel)
                     }
                 }
             }
@@ -307,8 +314,17 @@ struct FleetView: View {
 
     // MARK: - Machine panel
 
-    private func machinePanel(snapshot: BurnBarFleetSnapshot) -> some View {
-        FleetMachinePanel(machine: snapshot.machine)
+    private var machinePanel: some View {
+        FleetMachinePanel(rows: viewModel.machineRows)
+    }
+
+    // MARK: - Resource consumers
+
+    private var resourceConsumers: some View {
+        FleetResourceConsumersSection(
+            consumers: viewModel.resourceConsumers,
+            viewModel: viewModel
+        )
     }
 
     // MARK: - Probe health

@@ -615,7 +615,15 @@ struct DashboardView: View {
                     iCloudMirrorService: iCloudSessionMirrorService
                 )
             case .fleet:
-                FleetView(service: fleetService)
+                FleetView(
+                    service: fleetService,
+                    tokenBurnProvider: { agentID in
+                        FleetTokenBurnEstimator.estimateTokensPerMinute(
+                            usages: dataStore.usages,
+                            agentID: agentID
+                        )
+                    }
+                )
             case .provider(let provider):
                 ProviderDashboardView(
                     provider: provider,

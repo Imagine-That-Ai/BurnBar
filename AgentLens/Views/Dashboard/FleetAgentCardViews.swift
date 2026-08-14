@@ -150,8 +150,10 @@ struct FleetAgentCard: View {
 
 /// Machine status panel: CPU, memory, load, disk free, thermal, power — with
 /// honest per-field unavailability (never fabricated values, VAL-DASH-011).
+/// Absent optional metrics render "—" with an accessible "unavailable" label
+/// (VAL-DASH-030); populated metrics render with units (VAL-DASH-022).
 struct FleetMachinePanel: View {
-    let machine: BurnBarMachineStatus
+    let rows: [FleetMachineRow]
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -161,26 +163,9 @@ struct FleetMachinePanel: View {
 
             GlassCard {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                    machineRow(
-                        label: "CPU",
-                        value: machine.cpuPercent.map { FleetFormatting.formatCPU($0) }
-                    )
-                    machineRow(
-                        label: "Memory",
-                        value: machine.memoryUsedBytes.map {
-                            FleetFormatting.formatMemory(used: $0, total: machine.memoryTotalBytes)
-                        }
-                    )
-                    machineRow(
-                        label: "Load",
-                        value: machine.loadAverage.map { FleetFormatting.formatLoadAverage($0) }
-                    )
-                    machineRow(
-                        label: "Disk free",
-                        value: machine.diskFreeBytes.map { FleetFormatting.formatDiskFree($0) }
-                    )
-                    machineRow(label: "Thermal", value: sensorText(machine.thermal))
-                    machineRow(label: "Power", value: sensorText(machine.power))
+                    ForEach(rows) { metricRow in
+                        machineRow(metricRow)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(DesignSystem.Spacing.lg)
@@ -188,31 +173,26 @@ struct FleetMachinePanel: View {
         }
     }
 
-    private func sensorText(_ state: BurnBarSensorState) -> String? {
-        switch state {
-        case .available(let value):
-            return String(format: "%.1f", value)
-        case .unavailable(let reason):
-            return "Unavailable (\(reason))"
-        }
-    }
-
-    private func machineRow(label: String, value: String?) -> some View {
+    private func machineRow(_ metricRow: FleetMachineRow) -> some View {
         HStack {
-            Text(label)
+            Text(metricRow.label)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
             Spacer()
 
-            Text(value ?? "—")
+            Text(metricRow.value ?? "—")
                 .font(DesignSystem.Typography.monoSmall)
-                .foregroundStyle(value == nil ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textPrimary)
+                .foregroundStyle(
+                    metricRow.isUnavailable
+                        ? DesignSystem.Colors.textSecondary
+                        : DesignSystem.Colors.textPrimary
+                )
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            value.map { "\(label): \($0)" } ?? "\(label): unavailable"
-        )
+        .accessibilityLabel(metricRow.accessibilityLabel)
     }
 }
 
@@ -286,29 +266,183 @@ struct FleetProbeHealthSection: View {
 
 // MARK: - Repo Group Row
 
-/// One per-repo group: project name plus the agent ids attributed to it.
+/// One per-repo group (VAL-DASH-010/019): project name, member count badge,
+/// and collapse/expand toggle. Collapse hides the member list but never the
+/// count; the count always reflects the latest snapshot. Long project names
+/// ellipsize (middle truncation) without pushing the toggle off-card
+/// (VAL-DASH-020).
 struct FleetRepoGroupRow: View {
-    let group: BurnBarFleetRepoGroup
+    let row: FleetRepoGroupRowModel
     let viewModel: FleetViewModel
 
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text(group.projectName)
-                    .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button {
+                        viewModel.toggleRepoCollapse(row.projectName)
+                    } label: {
+                        Image(systemName: row.isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .frame(width: 12)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(row.isCollapsed ? "Expand \(row.projectName)" : "Collapse \(row.projectName)")
 
-                Text(group.agents.map { viewModel.providerName(for: $0) }.joined(separator: ", "))
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .lineLimit(1)
+                    Text(row.projectName)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    Spacer(minLength: DesignSystem.Spacing.sm)
+
+                    Text("\(row.count)")
+                        .font(DesignSystem.Typography.monoSmall)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                        .padding(.vertical, DesignSystem.Spacing.xxs)
+                        .background(
+                            Capsule()
+                                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(DesignSystem.Colors.border.opacity(0.4), lineWidth: 1)
+                        )
+                        .accessibilityLabel("\(row.count) agent\(row.count == 1 ? "" : "s")")
+                }
+
+                if !row.isCollapsed {
+                    Text(row.agentIDs.map { viewModel.providerName(for: $0) }.joined(separator: ", "))
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(DesignSystem.Spacing.md)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(group.projectName): \(group.agents.count) agent\(group.agents.count == 1 ? "" : "s")")
+        .accessibilityLabel(
+            "\(row.projectName): \(row.count) agent\(row.count == 1 ? "" : "s")"
+                + (row.isCollapsed ? ", collapsed" : "")
+        )
+    }
+}
+
+// MARK: - Resource Consumers Section
+
+/// Resource consumers list (VAL-DASH-012/023): exact per-pid CPU/memory rows
+/// for agents whose snapshot rows carry `process` info, and token-burn proxy
+/// rows explicitly labeled "Proxy" — never formatted identically to exact
+/// numbers without the label. Ordering is deterministic and documented:
+/// exact rows first (CPU desc, ties by pid asc), then proxy rows (tokens/min
+/// desc, ties by agent id asc).
+struct FleetResourceConsumersSection: View {
+    let consumers: [FleetResourceConsumer]
+    let viewModel: FleetViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Resource consumers")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            if consumers.isEmpty {
+                Text("No per-process or token-burn data available")
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            } else {
+                GlassCard {
+                    VStack(spacing: DesignSystem.Spacing.xs) {
+                        ForEach(consumers) { consumer in
+                            consumerRow(consumer)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(DesignSystem.Spacing.md)
+                }
+            }
+        }
+    }
+
+    private func consumerRow(_ consumer: FleetResourceConsumer) -> some View {
+        HStack(spacing: DesignSystem.Spacing.sm) {
+            Circle()
+                .fill(viewModel.providerColor(for: consumer.agentID))
+                .frame(width: 7, height: 7)
+
+            Text(viewModel.providerName(for: consumer.agentID))
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: DesignSystem.Spacing.sm)
+
+            if consumer.isProxy {
+                Text("Proxy")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .padding(.horizontal, DesignSystem.Spacing.xs)
+                    .padding(.vertical, 1)
+                    .background(
+                        Capsule()
+                            .fill(DesignSystem.Colors.warning.opacity(0.12))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(DesignSystem.Colors.warning.opacity(0.4), lineWidth: 1)
+                    )
+            }
+
+            if let pid = consumer.pid {
+                Text("PID \(pid)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+
+            if let cpu = consumer.cpuPercent {
+                Text(FleetFormatting.formatCPU(cpu))
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+
+            if let memory = consumer.memoryBytes {
+                Text(FleetFormatting.formatBytes(memory))
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+
+            if let burn = consumer.tokensPerMinute {
+                Text(FleetFormatting.formatTokensPerMinute(burn))
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel(for: consumer))
+    }
+
+    private func accessibilityLabel(for consumer: FleetResourceConsumer) -> String {
+        let name = viewModel.providerName(for: consumer.agentID)
+        if consumer.isProxy {
+            let burn = consumer.tokensPerMinute.map { FleetFormatting.formatTokensPerMinute($0) } ?? "unavailable"
+            return "\(name), proxy, \(burn)"
+        }
+        var parts = [name, "exact"]
+        if let pid = consumer.pid {
+            parts.append("pid \(pid)")
+        }
+        if let cpu = consumer.cpuPercent {
+            parts.append("cpu \(FleetFormatting.formatCPU(cpu))")
+        }
+        if let memory = consumer.memoryBytes {
+            parts.append("memory \(FleetFormatting.formatBytes(memory))")
+        }
+        return parts.joined(separator: ", ")
     }
 }

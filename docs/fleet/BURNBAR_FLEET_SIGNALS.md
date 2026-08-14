@@ -935,6 +935,64 @@ chips) render at ≥3:1. The pinned mappings above are verified by
 `FleetConfidencePresentationTests`/`FleetStatusPresentationTests` contrast
 assertions and by the fixed-DTO view-model tests.
 
+**Per-repo grouping (VAL-DASH-010/019).** The Repos section renders one
+collapsible group per `snapshot.repos` entry, in payload order, plus an
+explicit **"No repo"** bucket holding agents with nil/empty `projectName`
+(never dropped, never misgrouped). Each group shows the project name, a
+count badge (the number of member agents), and a chevron toggle:
+- Collapse hides the member list but NEVER the count badge; expand restores
+  the member list.
+- Collapse state lives in `FleetViewModel` (per project name), so it
+  **survives snapshot polls**: a collapsed group stays collapsed across
+  ticks, and its count badge always reflects the latest snapshot
+  (VAL-DASH-019). Collapsing one repo never collapses another.
+- Long project names ellipsize (middle truncation) without pushing the
+  toggle or count badge off-card (VAL-DASH-020).
+
+**Machine status panel (VAL-DASH-011/022/030).** The Machine panel renders
+six rows — CPU, Memory, Load, Disk free, Thermal, Power — with deterministic
+formatting (fixed-DTO testable, `FleetFormatting`):
+- CPU: one decimal percent ("12.3%").
+- Memory: used/total with consistent units — MB below 1 GB total, GB (one
+  decimal) at or above ("8.0 GB / 48.0 GB").
+- Load: all three values, two decimals, joined with ", " ("1.20, 1.00,
+  0.80") — locale-stable.
+- Disk free: MB below 1 GB, GB (one decimal) at or above ("500 MB" /
+  "500.0 GB").
+- Thermal/Power: typed sensor state — `available(value)` renders the value
+  with one decimal; `unavailable(reason)` renders "Unavailable (reason)".
+  Values are never invented (pmset thermlog is empty on this machine).
+- **Per-field absence (VAL-DASH-030):** each optional metric
+  (`cpuPercent`, `memoryUsedBytes`, `loadAverage`, `diskFreeBytes`) absent
+  from the DTO renders an explicit "—" with an accessible "unavailable"
+  label — never 0, NaN, or a current-looking value. Populated metrics keep
+  their units.
+
+**Resource consumers (VAL-DASH-012/023).** The Resource consumers list
+renders one row per agent with resource data:
+- **Exact rows** — agents whose snapshot rows carry a `process` block: PID,
+  CPU %, and memory with units, all from the snapshot. Exact rows are
+  labeled "exact" in their accessibility label.
+- **Proxy rows** — agents without a process block but with a
+  usage-history-backed token-burn estimate: the estimate renders with units
+  ("1.2K tok/min") and a visible **"Proxy"** capsule. A proxy number is
+  never formatted identically to an exact number without the label. An
+  agent with a process block never also gets a proxy row (exact wins).
+- **Ordering (deterministic, documented):** exact rows first, sorted by
+  CPU desc with ties broken by pid asc; then proxy rows, sorted by
+  tokens/min desc with ties broken by agent id asc. Two identical-payload
+  renders produce identical ordering.
+- With no process info and no token-burn data the section renders an
+  explicit "No per-process or token-burn data available" state.
+
+**Layout integrity (VAL-DASH-020).** With 20+ agents, a 120+ character
+projectName, and CJK/emoji repo names: long names ellipsize (lineLimit +
+truncationMode) without overlapping or pushing controls off-card; the
+running-count header and confidence badges remain reachable at top and
+scrolled positions; no card or section overlaps another. Verified by the
+adversarial fixture (`FleetTestFixtures.makeAdversarialLayoutSnapshot`) in
+fixed-DTO tests and by desktop-control captures.
+
 ---
 
 ## Probe etiquette (binding)

@@ -61,6 +61,19 @@ enum FleetFormatting {
                       Double(totalClamped) / 1_000_000_000)
     }
 
+    /// Token-burn proxy rate with units (VAL-DASH-012): "500 tok/min",
+    /// "1.2K tok/min", "1.5M tok/min". Negative values clamp to 0.
+    static func formatTokensPerMinute(_ value: Double) -> String {
+        let clamped = max(0, value)
+        if clamped >= 1_000_000 {
+            return String(format: "%.1fM tok/min", clamped / 1_000_000)
+        }
+        if clamped >= 1_000 {
+            return String(format: "%.1fK tok/min", clamped / 1_000)
+        }
+        return String(format: "%.0f tok/min", clamped)
+    }
+
     /// Relative time: "just now" (< 60s), "Xm ago" (< 1h), "Xh ago" (< 24h),
     /// "Xd ago". Deterministic for a fixed `now`.
     static func formatRelativeTime(_ date: Date, now: Date = Date()) -> String {
