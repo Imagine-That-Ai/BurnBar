@@ -80,8 +80,10 @@ export interface BenchStack {
   score_median?: number | null;
   /** Number of graded cells behind score_median (0 when none). */
   score_n?: number;
-  /** How far runs actually got: cell counts by highest fully-cleared tier. */
-  tier_distribution?: {
+  /** How far runs actually got: cell counts by highest fully-cleared tier.
+      Exported as `score_tiers`; must match the export generator's field name
+      exactly or the ladder silently renders zeros. */
+  score_tiers?: {
     gold?: number;
     silver?: number;
     bronze?: number;
@@ -2094,7 +2096,7 @@ export function stackScores(): StackScore[] {
   for (const s of RANKED_STACKS) {
     const n = s.score_n ?? 0;
     if (!n || s.score_median == null) continue;
-    const d = s.tier_distribution ?? {};
+    const d = s.score_tiers ?? {};
     const total = (d.gold ?? 0) + (d.silver ?? 0) + (d.bronze ?? 0) + (d.none ?? 0);
     const share = (v: number | undefined): number => (total > 0 ? (v ?? 0) / total : 0);
     const shares = {
