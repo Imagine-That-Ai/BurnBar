@@ -49,7 +49,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
             """,
             to: session.appendingPathComponent("events.jsonl")
         )
-        let parser = CopilotParser(sessionStateURL: sessions, logsURL: logs)
+        let parser = OpenBurnBar.CopilotParser(sessionStateURL: sessions, logsURL: logs)
         let usageOnly = LogParseOptions(includeConversationBodies: false)
 
         let first = try await parser.parse(options: usageOnly)
@@ -77,7 +77,7 @@ final class MacIdleUsageParserCacheTests: XCTestCase {
             """,
             to: root.appendingPathComponent("analytics.jsonl")
         )
-        let parser = AiderParser(rootOverride: root)
+        let parser = OpenBurnBar.AiderParser(rootOverride: root)
         let usageOnly = LogParseOptions(includeConversationBodies: false)
         let first = try await parser.parse(options: usageOnly)
         XCTAssertEqual(parser.lastSessionScanCount, 1)
