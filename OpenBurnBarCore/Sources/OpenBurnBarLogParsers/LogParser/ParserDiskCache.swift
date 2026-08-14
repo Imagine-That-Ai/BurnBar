@@ -55,6 +55,19 @@ public struct FileSetSignature: Codable, Equatable, Sendable {
         }
         self.files = collected.sorted { $0.name < $1.name }
     }
+
+    /// SQLite appends land in `-wal`. Signing only the main db file is a false
+    /// hit while the WAL grows, so the WAL participates when present.
+    /// `-shm` is a shared-memory index: a read-only open creates or rewrites it
+    /// without changing session totals, so it must not participate.
+    public init?(databaseURL: URL, using fileManager: FileManager = .default) {
+        var urls = [databaseURL]
+        let wal = URL(fileURLWithPath: databaseURL.path + "-wal")
+        if fileManager.fileExists(atPath: wal.path) {
+            urls.append(wal)
+        }
+        self.init(urls: urls, using: fileManager)
+    }
 }
 
 /// Persist-visible usage totals for idle ticks. Never includes conversation bodies.

@@ -481,7 +481,7 @@ public struct ClaudeQuotaAdapter: ProviderQuotaAdapter {
         let parent = url.deletingLastPathComponent()
         try? context.fileManager.createDirectory(at: parent, withIntermediateDirectories: true) // try?-ok(createDirectory best-effort)
         let envelope: [String: String] = [
-            "attemptedAt": ISO8601DateFormatter().string(from: Date())
+            "attemptedAt": ThreadSafeISO8601DateFormatter.formatBasic(Date())
         ]
         if let data = try? JSONSerialization.data(withJSONObject: envelope) { // try?-ok(marker encode best-effort)
             try? data.write(to: url, options: [.atomic]) // try?-ok(marker write best-effort)

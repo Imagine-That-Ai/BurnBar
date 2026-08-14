@@ -78,9 +78,26 @@ public struct ParserConversationCacheScrubber {
             appPaths.copilotParserCacheURL,
             appPaths.antigravityParserCacheURL,
             appPaths.gooseParserCacheURL,
+            appPaths.windsurfParserCacheURL,
+            appPaths.warpParserCacheURL,
+            appPaths.primeAgentParserCacheURL,
+            appPaths.museParserCacheURL,
+            appPaths.kimiParserCacheURL,
+            appPaths.hermesParserCacheURL,
+            appPaths.forgeDevParserCacheURL,
+            appPaths.augmentParserCacheURL,
+            appPaths.aiderParserCacheURL,
+            appPaths.cursorParserCacheURL,
+            appPaths.openCodeParserCacheURL,
+            appPaths.piAgentParserCacheURL,
+            appPaths.ompParserCacheURL,
+            appPaths.openClawParserCacheURL,
+            appPaths.ollamaParserCacheURL,
             appPaths.clineFormatParserCacheURL(for: .cline),
             appPaths.clineFormatParserCacheURL(for: .kiloCode),
-            appPaths.clineFormatParserCacheURL(for: .rooCode)
+            appPaths.clineFormatParserCacheURL(for: .rooCode),
+            appPaths.modelFilterParserCacheURL(for: .zai),
+            appPaths.modelFilterParserCacheURL(for: .minimax)
         ]
 
         if let dynamicURLs = try? fileManager.contentsOfDirectory( // try?-ok(optional cache directory scan)

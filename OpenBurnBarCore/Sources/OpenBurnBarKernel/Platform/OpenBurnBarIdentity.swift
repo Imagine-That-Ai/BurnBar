@@ -157,6 +157,10 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("\(provider.persistedToken)_parser_cache.json")
     }
 
+    public func modelFilterParserCacheURL(for provider: AgentProvider) -> URL {
+        supportDirectory.appendingPathComponent("\(provider.persistedToken)_parser_cache.json")
+    }
+
     public var claudeCodeParserCacheURL: URL {
         supportDirectory.appendingPathComponent("claude_code_parser_cache.json")
     }
@@ -167,6 +171,66 @@ public struct OpenBurnBarAppPaths: Sendable {
 
     public var junieParserCacheURL: URL {
         supportDirectory.appendingPathComponent("junie_parser_cache.json")
+    }
+
+    public var windsurfParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("windsurf_parser_cache.json")
+    }
+
+    public var warpParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("warp_parser_cache.json")
+    }
+
+    public var primeAgentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("prime_agent_parser_cache.json")
+    }
+
+    public var museParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("muse_parser_cache.json")
+    }
+
+    public var kimiParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("kimi_parser_cache.json")
+    }
+
+    public var hermesParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("hermes_parser_cache.json")
+    }
+
+    public var forgeDevParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("forge_dev_parser_cache.json")
+    }
+
+    public var augmentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("augment_parser_cache.json")
+    }
+
+    public var aiderParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("aider_parser_cache.json")
+    }
+
+    public var cursorParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("cursor_parser_cache.json")
+    }
+
+    public var openCodeParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("opencode_parser_cache.json")
+    }
+
+    public var piAgentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("pi_agent_parser_cache.json")
+    }
+
+    public var ompParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("omp_parser_cache.json")
+    }
+
+    public var openClawParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("openclaw_parser_cache.json")
+    }
+
+    public var ollamaParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("ollama_parser_cache.json")
     }
 
     public var claudeStatuslineBridgeScriptURL: URL {

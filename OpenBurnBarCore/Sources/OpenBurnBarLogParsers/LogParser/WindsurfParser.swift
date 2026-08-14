@@ -18,6 +18,17 @@ import OpenBurnBarSQLiteReader
 public final class WindsurfParser: LogParser, Sendable {
     public let cascadeDirectoryOverride: String?
     public let globalStorageOverride: String?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<WindsurfCacheSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    /// Protobuf session file plus the global `state.vscdb` (including WAL)
+    /// so a model/workspace rewrite cannot reuse a cached row.
+    private struct WindsurfCacheSignature: Codable, Equatable, Sendable {
+        let protobuf: FileSignature
+        let stateDB: FileSetSignature?
+    }
 
     /// - Parameters:
     ///   - cascadeDirectoryOverride: Override for `~/.codeium/windsurf-next/cascade`.
@@ -28,10 +39,32 @@ public final class WindsurfParser: LogParser, Sendable {
     ///     `~/Library/Application Support/Windsurf - Next/User/globalStorage`.
     ///     Same rationale; the macOS-only `Library/Application Support` path has no
     ///     Windows analog so the harness injects the synthetic path explicitly.
-    public init(cascadeDirectoryOverride: String? = nil, globalStorageOverride: String? = nil) {
+    public init(
+        cascadeDirectoryOverride: String? = nil,
+        globalStorageOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.cascadeDirectoryOverride = cascadeDirectoryOverride
         self.globalStorageOverride = globalStorageOverride
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = cascadeDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-windsurf-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.windsurfParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "WindsurfParser"
+        )
     }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public let provider: AgentProvider = .windsurf
 
     // MARK: - Paths
@@ -56,26 +89,38 @@ public final class WindsurfParser: LogParser, Sendable {
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
         let stateDBURL = URL(fileURLWithPath: (globalPath as NSString).appendingPathComponent("state.vscdb"))
-        let stateDBWasCached = Self.stateDBCache.withLock { $0.entriesByDBPath[stateDBURL.path] != nil }
+        let stateDBSignature = FileSetSignature(databaseURL: stateDBURL, using: fileManager)
+        let stateDBWasCached = Self.stateDBCache.withLock {
+            $0.entriesByDBPath[stateDBURL.path]?.signature == stateDBSignature && $0.entriesByDBPath[stateDBURL.path] != nil
+        }
         let canReadStateDB: Bool
         if stateDBWasCached {
             canReadStateDB = true
-        } else if fm.fileExists(atPath: stateDBURL.path) {
+        } else if fileManager.fileExists(atPath: stateDBURL.path) {
             canReadStateDB = try gate.shouldRead(stateDBURL)
         } else {
             canReadStateDB = false
         }
 
         let cascadeDir = ((cascadeDirectoryOverride ?? Self.cascadeDirectory) as NSString).expandingTildeInPath
-        if fm.fileExists(atPath: cascadeDir) {
-            let allFiles = (try? fm.contentsOfDirectory(atPath: cascadeDir)) ?? []
+        if fileManager.fileExists(atPath: cascadeDir) {
+            let allFiles = (try? fileManager.contentsOfDirectory(atPath: cascadeDir)) ?? []
             let pbFiles = allFiles
                 .filter { $0.hasSuffix(".pb") }
                 .map { (cascadeDir as NSString).appendingPathComponent($0) }
@@ -84,16 +129,19 @@ public final class WindsurfParser: LogParser, Sendable {
                 try options.resourceGovernor?.checkpoint()
                 options.metrics?.recordCandidate()
                 options.metrics?.recordMetadataStat()
+                let pbURL = URL(fileURLWithPath: pbFile)
+                let cacheKey = pbURL.standardizedFileURL.path
+                activePaths.insert(cacheKey)
                 let sessionId = (pbFile as NSString).deletingPathExtension
                     .components(separatedBy: "/").last ?? UUID().uuidString
 
-                guard let attrs = try? fm.attributesOfItem(atPath: pbFile) else {
+                guard let attrs = try? fileManager.attributesOfItem(atPath: pbFile) else {
                     options.resourceGovernor?.recordDeferredFile()
                     options.metrics?.recordDeferred(.metadataUnavailable)
                     continue
                 }
                 let discoveredFile = ParserDiscoveredFile.capture(
-                    for: URL(fileURLWithPath: pbFile),
+                    for: pbURL,
                     attributes: attrs
                 )
                 let isNewlyDiscovered = options.fileDiscoveryTracker?.record(discoveredFile) ?? false
@@ -109,6 +157,20 @@ public final class WindsurfParser: LogParser, Sendable {
                 }
                 options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
 
+                let protobufSignature = FileSignature(for: pbURL, using: fileManager)
+                let signature = protobufSignature.map {
+                    WindsurfCacheSignature(protobuf: $0, stateDB: stateDBSignature)
+                }
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .windsurf) })
+                    continue
+                }
+
+                sessionScanCount.withLock { $0 += 1 }
                 let model = canReadStateDB ? (extractModelFromStateDB(sessionId: sessionId) ?? "unknown") : "unknown"
 
                 let estimatedTotalTokens = Int(Double(fileSize) / Self.estimatedBytesPerToken)
@@ -141,6 +203,13 @@ public final class WindsurfParser: LogParser, Sendable {
                     estimatorVersion: "windsurf-v1"
                 )
                 usages.append(usage)
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                        signature: signature,
+                        usages: [usage]
+                    )
+                    cacheMutated = true
+                }
 
                 if options.includeConversationBodies,
                    options.fileDiscoveryTracker == nil || isNewlyDiscovered {
@@ -169,6 +238,14 @@ public final class WindsurfParser: LogParser, Sendable {
             }
         }
 
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
+        }
+
         return ParseResult(usages: usages, conversations: conversations)
     }
 
@@ -176,7 +253,12 @@ public final class WindsurfParser: LogParser, Sendable {
 
     /// Cached model/workspace lookups from state.vscdb.
     private struct StateDBCache {
-        var entriesByDBPath: [String: Entry] = [:]
+        var entriesByDBPath: [String: Cached] = [:]
+
+        struct Cached {
+            var signature: FileSetSignature?
+            var entry: Entry
+        }
 
         struct Entry {
             var models: [String: String]
@@ -204,24 +286,28 @@ public final class WindsurfParser: LogParser, Sendable {
     private func ensureStateDBCache() -> StateDBCache.Entry {
         let globalPath = ((globalStorageOverride ?? Self.globalStoragePath) as NSString).expandingTildeInPath
         let dbPath = (globalPath as NSString).appendingPathComponent("state.vscdb")
-        if let cached = Self.stateDBCache.withLock({ $0.entriesByDBPath[dbPath] }) {
-            return cached
+        let dbURL = URL(fileURLWithPath: dbPath)
+        let signature = FileSetSignature(databaseURL: dbURL, using: fileManager)
+        if let cached = Self.stateDBCache.withLock({
+            $0.entriesByDBPath[dbPath]
+        }), cached.signature == signature {
+            return cached.entry
         }
 
         var models: [String: String] = [:]
         var workspaces: [String: String] = [:]
         var titles: [String: String] = [:]
 
-        if FileManager.default.fileExists(atPath: dbPath) {
+        if fileManager.fileExists(atPath: dbPath) {
             _ = readStateDBKeys(atPath: dbPath, models: &models, workspaces: &workspaces, titles: &titles)
         }
 
         let entry = StateDBCache.Entry(models: models, workspaces: workspaces, titles: titles)
         return Self.stateDBCache.withLock {
-            if let cached = $0.entriesByDBPath[dbPath] {
-                return cached
+            if let cached = $0.entriesByDBPath[dbPath], cached.signature == signature {
+                return cached.entry
             }
-            $0.entriesByDBPath[dbPath] = entry
+            $0.entriesByDBPath[dbPath] = StateDBCache.Cached(signature: signature, entry: entry)
             return entry
         }
     }

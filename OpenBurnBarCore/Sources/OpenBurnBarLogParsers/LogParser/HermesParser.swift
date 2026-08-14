@@ -20,11 +20,33 @@ public final class HermesParser: LogParser, Sendable {
     public let provider: AgentProvider = .hermes
     private let fileManager: FileManager
     private let hermesRootURL: URL?
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(fileManager: FileManager = .default, hermesRootURL: URL? = nil) {
+    public init(
+        fileManager: FileManager = .default,
+        hermesRootURL: URL? = nil,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.fileManager = fileManager
         self.hermesRootURL = hermesRootURL
+        let cacheURL: URL
+        if let override = hermesRootURL {
+            cacheURL = override.appendingPathComponent(".obb-hermes-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.hermesParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "HermesParser"
+        )
     }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     private static let sqliteDateFormats: [DateFormatter] = {
         let formats = [
@@ -50,10 +72,20 @@ public final class HermesParser: LogParser, Sendable {
     }
 
     public func parseSynchronously(options: LogParseOptions = .default) throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenSessionIds: Set<String> = []
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         for scope in resolvedHermesScopes() {
             let hermesHome = scope.homeURL
@@ -66,48 +98,94 @@ public final class HermesParser: LogParser, Sendable {
             )
             let dbFileWasKnown = options.fileDiscoveryTracker?
                 .wasKnownAtCheckpoint(dbIdentity) ?? true
-            if fileManager.fileExists(atPath: dbURL.path), fileSize(at: dbURL) > 0, try gate.shouldRead(dbURL) {
-                do {
-                    var sqliteOptions = options
-                    if !dbFileWasKnown {
-                        // A newly watched/restored database may contain only
-                        // historical session timestamps; the file-discovery
-                        // decision is authoritative for this first scan.
-                        sqliteOptions.minimumFileModificationDate = nil
+            if fileManager.fileExists(atPath: dbURL.path), fileSize(at: dbURL) > 0 {
+                let cacheKey = dbURL.standardizedFileURL.path
+                activePaths.insert(cacheKey)
+                if try gate.shouldRead(dbURL) {
+                    let signature = FileSetSignature(databaseURL: dbURL, using: fileManager)
+                    if !options.includeConversationBodies,
+                       let signature,
+                       let cached = parseCache.fileEntries[cacheKey],
+                       cached.signature == signature {
+                        sessionCacheHitCount.withLock { $0 += 1 }
+                        for session in cached.sessions where seenSessionIds.insert(session.sessionId).inserted {
+                            usages.append(session.makeUsage(provider: .hermes))
+                        }
+                    } else {
+                        sessionScanCount.withLock { $0 += 1 }
+                        do {
+                            var sqliteOptions = options
+                            if !dbFileWasKnown {
+                                // A newly watched/restored database may contain only
+                                // historical session timestamps; the file-discovery
+                                // decision is authoritative for this first scan.
+                                sqliteOptions.minimumFileModificationDate = nil
+                            }
+                            let sqliteResult = try parseSQLiteDatabase(
+                                dbURL: dbURL,
+                                scope: scope,
+                                options: sqliteOptions
+                            )
+                            usages.append(contentsOf: sqliteResult.usages)
+                            conversations.append(contentsOf: sqliteResult.conversations)
+                            seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
+                            seenSessionIds.formUnion(sqliteResult.conversations.map(\.sessionId))
+                            if let signature {
+                                parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                                    signature: signature,
+                                    usages: sqliteResult.usages
+                                )
+                                cacheMutated = true
+                            }
+                        } catch {
+                            options.resourceGovernor?.recordDeferredFile()
+                            options.fileDiscoveryTracker?.recordDeferred(dbIdentity)
+                            options.metrics?.recordDeferred(.contentReadFailed)
+                            ParserDiagnostics.silentFailure(
+                                "hermes_sqlite_scope_unreadable path=\(dbURL.path)",
+                                error: error
+                            )
+                        }
                     }
-                    let sqliteResult = try parseSQLiteDatabase(
-                        dbURL: dbURL,
-                        scope: scope,
-                        options: sqliteOptions
-                    )
-                    usages.append(contentsOf: sqliteResult.usages)
-                    conversations.append(contentsOf: sqliteResult.conversations)
-                    seenSessionIds.formUnion(sqliteResult.usages.map(\.sessionId))
-                    seenSessionIds.formUnion(sqliteResult.conversations.map(\.sessionId))
-                } catch {
-                    options.resourceGovernor?.recordDeferredFile()
-                    options.fileDiscoveryTracker?.recordDeferred(dbIdentity)
-                    options.metrics?.recordDeferred(.contentReadFailed)
-                    ParserDiagnostics.silentFailure(
-                        "hermes_sqlite_scope_unreadable path=\(dbURL.path)",
-                        error: error
-                    )
                 }
             }
 
             let indexURL = sessionsDir.appendingPathComponent("sessions.json")
-            if fileManager.fileExists(atPath: indexURL.path), try gate.shouldRead(indexURL) {
-                let gatewayResult = try parseGatewayIndex(
-                    indexURL: indexURL,
-                    sessionsDir: sessionsDir,
-                    excluding: seenSessionIds,
-                    scope: scope,
-                    options: options
-                )
-                usages.append(contentsOf: gatewayResult.usages)
-                conversations.append(contentsOf: gatewayResult.conversations)
-                seenSessionIds.formUnion(gatewayResult.usages.map(\.sessionId))
-                seenSessionIds.formUnion(gatewayResult.conversations.map(\.sessionId))
+            if fileManager.fileExists(atPath: indexURL.path) {
+                let cacheKey = indexURL.standardizedFileURL.path
+                activePaths.insert(cacheKey)
+                if try gate.shouldRead(indexURL) {
+                    let signature = gatewaySignature(indexURL: indexURL, sessionsDir: sessionsDir)
+                    if !options.includeConversationBodies,
+                       let signature,
+                       let cached = parseCache.fileEntries[cacheKey],
+                       cached.signature == signature {
+                        sessionCacheHitCount.withLock { $0 += 1 }
+                        for session in cached.sessions where seenSessionIds.insert(session.sessionId).inserted {
+                            usages.append(session.makeUsage(provider: .hermes))
+                        }
+                    } else {
+                        sessionScanCount.withLock { $0 += 1 }
+                        let gatewayResult = try parseGatewayIndex(
+                            indexURL: indexURL,
+                            sessionsDir: sessionsDir,
+                            excluding: seenSessionIds,
+                            scope: scope,
+                            options: options
+                        )
+                        usages.append(contentsOf: gatewayResult.usages)
+                        conversations.append(contentsOf: gatewayResult.conversations)
+                        seenSessionIds.formUnion(gatewayResult.usages.map(\.sessionId))
+                        seenSessionIds.formUnion(gatewayResult.conversations.map(\.sessionId))
+                        if let signature {
+                            parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                                signature: signature,
+                                usages: gatewayResult.usages
+                            )
+                            cacheMutated = true
+                        }
+                    }
+                }
             }
 
             if fileManager.fileExists(atPath: sessionsDir.path) {
@@ -117,7 +195,21 @@ public final class HermesParser: LogParser, Sendable {
                 )) ?? []
 
                 for file in contents where file.lastPathComponent.hasPrefix("session_") && file.pathExtension == "json" {
+                    let cacheKey = file.standardizedFileURL.path
+                    activePaths.insert(cacheKey)
                     guard try gate.shouldRead(file) else { continue }
+                    let signature = FileSetSignature(urls: [file], using: fileManager)
+                    if !options.includeConversationBodies,
+                       let signature,
+                       let cached = parseCache.fileEntries[cacheKey],
+                       cached.signature == signature {
+                        sessionCacheHitCount.withLock { $0 += 1 }
+                        for session in cached.sessions where seenSessionIds.insert(session.sessionId).inserted {
+                            usages.append(session.makeUsage(provider: .hermes))
+                        }
+                        continue
+                    }
+                    sessionScanCount.withLock { $0 += 1 }
                     let result = try parseCLISnapshot(
                         file: file,
                         excluding: seenSessionIds,
@@ -128,13 +220,34 @@ public final class HermesParser: LogParser, Sendable {
                     conversations.append(contentsOf: result.conversations)
                     seenSessionIds.formUnion(result.usages.map(\.sessionId))
                     seenSessionIds.formUnion(result.conversations.map(\.sessionId))
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                            signature: signature,
+                            usages: result.usages
+                        )
+                        cacheMutated = true
+                    }
                 }
 
                 for file in contents where file.pathExtension == "jsonl" && file.lastPathComponent != "sessions.json" {
+                    let cacheKey = file.standardizedFileURL.path
+                    activePaths.insert(cacheKey)
                     guard try gate.shouldRead(file) else { continue }
                     let rawSessionId = file.deletingPathExtension().lastPathComponent
                     let sessionId = scope.qualify(sessionId: rawSessionId)
                     guard !seenSessionIds.contains(sessionId) else { continue }
+                    let signature = FileSetSignature(urls: [file], using: fileManager)
+                    if !options.includeConversationBodies,
+                       let signature,
+                       let cached = parseCache.fileEntries[cacheKey],
+                       cached.signature == signature {
+                        sessionCacheHitCount.withLock { $0 += 1 }
+                        for session in cached.sessions where seenSessionIds.insert(session.sessionId).inserted {
+                            usages.append(session.makeUsage(provider: .hermes))
+                        }
+                        continue
+                    }
+                    sessionScanCount.withLock { $0 += 1 }
                     guard let summary = parseLegacyTranscript(file: file, includeConversationBody: options.includeConversationBodies) else { continue }
 
                     let projectName = scope.projectName(
@@ -155,6 +268,13 @@ public final class HermesParser: LogParser, Sendable {
                         endTime: summary.endTime ?? summary.fileModifiedAt ?? Date()
                     ) {
                         usages.append(usage)
+                        if let signature {
+                            parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                                signature: signature,
+                                usages: [usage]
+                            )
+                            cacheMutated = true
+                        }
                     }
 
                     if options.includeConversationBodies,
@@ -174,10 +294,37 @@ public final class HermesParser: LogParser, Sendable {
             }
         }
 
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
+        }
+
         return ParseResult(
             usages: deduplicate(usages),
             conversations: deduplicate(conversations)
         )
+    }
+
+    private func gatewaySignature(indexURL: URL, sessionsDir: URL) -> FileSetSignature? {
+        var urls = [indexURL]
+        guard let data = try? Data(contentsOf: indexURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return FileSetSignature(urls: urls, using: fileManager)
+        }
+        for value in root.values {
+            guard let entry = value as? [String: Any],
+                  let rawSessionId = stringValue(entry, key: "session_id") else {
+                continue
+            }
+            let transcriptURL = sessionsDir.appendingPathComponent("\(rawSessionId).jsonl")
+            if fileManager.fileExists(atPath: transcriptURL.path) {
+                urls.append(transcriptURL)
+            }
+        }
+        return FileSetSignature(urls: urls, using: fileManager)
     }
 
     // MARK: - SQLite

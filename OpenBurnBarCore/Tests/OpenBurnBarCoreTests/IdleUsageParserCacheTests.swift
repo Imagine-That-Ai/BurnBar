@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import OpenBurnBarLogParsers
+import OpenBurnBarSQLiteReader
 
 /// Idle usage ticks do not share indexing watermarks, so `ParserFileReadGate`
 /// admits every session file every 60s. These parsers now resume unchanged
@@ -407,6 +408,42 @@ final class IdleUsageParserCacheTests: XCTestCase {
         } else if let goose = parser as? GooseParser {
             XCTAssertEqual(goose.lastSessionScanCount, 0)
             XCTAssertEqual(goose.lastSessionCacheHitCount, 1)
+        } else if let warp = parser as? WarpParser {
+            XCTAssertEqual(warp.lastSessionScanCount, 0)
+            XCTAssertEqual(warp.lastSessionCacheHitCount, 1)
+        } else if let prime = parser as? PrimeAgentParser {
+            XCTAssertEqual(prime.lastSessionScanCount, 0)
+            XCTAssertEqual(prime.lastSessionCacheHitCount, 1)
+        } else if let muse = parser as? MuseParser {
+            XCTAssertEqual(muse.lastSessionScanCount, 0)
+            XCTAssertEqual(muse.lastSessionCacheHitCount, 1)
+        } else if let kimi = parser as? KimiParser {
+            XCTAssertEqual(kimi.lastSessionScanCount, 0)
+            XCTAssertEqual(kimi.lastSessionCacheHitCount, 1)
+        } else if let windsurf = parser as? WindsurfParser {
+            XCTAssertEqual(windsurf.lastSessionScanCount, 0)
+            XCTAssertEqual(windsurf.lastSessionCacheHitCount, 1)
+        } else if let hermes = parser as? HermesParser {
+            XCTAssertEqual(hermes.lastSessionScanCount, 0)
+            XCTAssertEqual(hermes.lastSessionCacheHitCount, 1)
+        } else if let forge = parser as? ForgeDevParser {
+            XCTAssertEqual(forge.lastSessionScanCount, 0)
+            XCTAssertEqual(forge.lastSessionCacheHitCount, 1)
+        } else if let augment = parser as? AugmentParser {
+            XCTAssertEqual(augment.lastSessionScanCount, 0)
+            XCTAssertEqual(augment.lastSessionCacheHitCount, 1)
+        } else if let aider = parser as? AiderParser {
+            XCTAssertEqual(aider.lastSessionScanCount, 0)
+            XCTAssertEqual(aider.lastSessionCacheHitCount, 1)
+        } else if let pi = parser as? PiAgentParser {
+            XCTAssertEqual(pi.lastSessionScanCount, 0)
+            XCTAssertEqual(pi.lastSessionCacheHitCount, 1)
+        } else if let ollama = parser as? OllamaParser {
+            XCTAssertEqual(ollama.lastSessionScanCount, 0)
+            XCTAssertEqual(ollama.lastSessionCacheHitCount, 1)
+        } else if let junie = parser as? JunieParser {
+            XCTAssertEqual(junie.lastSessionScanCount, 0)
+            XCTAssertEqual(junie.lastSessionCacheHitCount, 1)
         } else {
             XCTFail("unexpected parser type")
         }
@@ -458,6 +495,475 @@ final class IdleUsageParserCacheTests: XCTestCase {
             withIntermediateDirectories: true
         )
         try Data(string.utf8).write(to: url, options: .atomic)
+    }
+
+    // MARK: - Warp
+
+    func test_warp_skipsUnchangedNetworkLogOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("warp-cache")
+        try write(warpExactBodyLog(), to: root.appendingPathComponent("warp_network.log"))
+        let parser = WarpParser(logDirectory: root)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 0)
+        let firstUsage = try XCTUnwrap(first.usages.first)
+        XCTAssertEqual(firstUsage.inputTokens, 120)
+        XCTAssertEqual(firstUsage.outputTokens, 45)
+        XCTAssertEqual(firstUsage.sessionId, "warp-session-1")
+        XCTAssertTrue(first.conversations.isEmpty)
+
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.inputTokens, 120)
+        XCTAssertEqual(second.usages.first?.sessionId, "warp-session-1")
+        XCTAssertEqual(second.usages.first?.costUSD, firstUsage.costUSD)
+
+        let existing = try String(contentsOf: root.appendingPathComponent("warp_network.log"), encoding: .utf8)
+        try (existing + "\nBody { \"event\": \"AgentResponse.Completed\", \"originalTimestamp\": \"2026-05-01T12:00:01Z\", \"properties\": { \"payload\": { \"session_id\": \"warp-session-2\", \"model\": \"claude-sonnet-4\", \"usage\": { \"input_tokens\": 3, \"output_tokens\": 1 } } } }\n")
+            .write(to: root.appendingPathComponent("warp_network.log"), atomically: true, encoding: .utf8)
+
+        let third = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(third.usages.count, 2)
+    }
+
+    func test_warp_watermarkSkipDoesNotDropUsageCache() async throws {
+        let root = try makeTemporaryDirectory("warp-watermark")
+        try write(warpExactBodyLog(), to: root.appendingPathComponent("warp_network.log"))
+        try await assertWatermarkKeepsCache(
+            parser: WarpParser(logDirectory: root),
+            expectedInput: 120
+        )
+    }
+
+    // MARK: - Prime / Muse / Kimi / Windsurf / Hermes / Forge / Augment
+
+    func test_prime_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("prime-cache")
+        try write(
+            """
+            {"type":"session","id":"sess-cache","cwd":"/tmp/demo","timestamp":"2026-08-01T12:00:00Z"}
+            {"type":"message","timestamp":"2026-08-01T12:00:01Z","message":{"role":"assistant","model":"muse-spark-1.2","provider":"prime","content":[{"type":"text","text":"hello"}],"usage":{"input":21,"output":7,"cacheRead":2,"cacheWrite":1,"cost":{"total":0.02}}}}
+            """,
+            to: root.appendingPathComponent("session-cache.jsonl")
+        )
+        let parser = PrimeAgentParser(logDirectoryOverride: root.path)
+        try await assertUsageOnlySecondPassHit(
+            parser: parser,
+            expectedInput: 21,
+            expectedOutput: 7
+        )
+        let existing = try String(contentsOf: root.appendingPathComponent("session-cache.jsonl"), encoding: .utf8)
+        try (existing + "\n{\"type\":\"message\",\"timestamp\":\"2026-08-01T12:00:02Z\",\"message\":{\"role\":\"assistant\",\"model\":\"muse-spark-1.2\",\"usage\":{\"input\":4,\"output\":1}}}\n")
+            .write(to: root.appendingPathComponent("session-cache.jsonl"), atomically: true, encoding: .utf8)
+        let grown = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(grown.usages.first?.inputTokens, 25)
+    }
+
+    func test_muse_skipsUnchangedSessionOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("muse-cache")
+        try write(
+            #"{"stream":{"id":"sess-muse"},"recorded_at":1772323200000000,"payload_type":"runtime.session","payload":{"kind":"run","event":{"kind":"model_completed","model":"muse-spark-1.2-contributor","usage":{"input_tokens":40,"output_tokens":9,"cache_read_tokens":2}}}}"#,
+            to: root.appendingPathComponent("sess-muse/session.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: MuseParser(logDirectoryOverride: root.path),
+            expectedInput: 40,
+            expectedOutput: 9
+        )
+    }
+
+    func test_kimi_skipsUnchangedWireSessionOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("kimi-cache")
+        let session = root.appendingPathComponent("workspace/session-1", isDirectory: true)
+        try write(
+            """
+            {"role":"user","content":"Test","created_at":"2026-05-04T08:00:00Z"}
+            {"role":"assistant","content":"Done","created_at":"2026-05-04T08:00:01Z"}
+            """,
+            to: session.appendingPathComponent("context.jsonl")
+        )
+        try write(
+            #"{"message":{"type":"StatusUpdate","payload":{"message_id":"msg-1","token_usage":{"input_other":100,"output":25,"input_cache_read":10,"input_cache_creation":5}}}}"#,
+            to: session.appendingPathComponent("wire.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: KimiParser(logDirectoryOverride: root.path),
+            expectedInput: 100,
+            expectedOutput: 25
+        )
+    }
+
+    func test_windsurf_skipsUnchangedProtobufOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("windsurf-cache")
+        let cascade = root.appendingPathComponent("cascade", isDirectory: true)
+        let globalStorage = root.appendingPathComponent("globalStorage", isDirectory: true)
+        try write(String(repeating: "x", count: 512), to: cascade.appendingPathComponent("session-1.pb"))
+        let parser = WindsurfParser(
+            cascadeDirectoryOverride: cascade.path,
+            globalStorageOverride: globalStorage.path
+        )
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        let firstUsage = try XCTUnwrap(first.usages.first)
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+        XCTAssertEqual(second.usages.first?.inputTokens, firstUsage.inputTokens)
+        XCTAssertEqual(second.usages.first?.model, firstUsage.model)
+
+        try write(String(repeating: "y", count: 1024), to: cascade.appendingPathComponent("session-1.pb"))
+        let third = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertGreaterThan(try XCTUnwrap(third.usages.first?.inputTokens), firstUsage.inputTokens)
+    }
+
+    func test_hermes_skipsUnchangedGatewayAndLegacyOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("hermes-cache")
+        let sessions = root.appendingPathComponent("sessions", isDirectory: true)
+        try write(
+            #"{"gateway":{"session_id":"gateway-1","created_at":"2026-05-06T10:00:00Z","updated_at":"2026-05-06T10:01:00Z","model":"hermes-model","platform":"gateway","input_tokens":50,"output_tokens":12}}"#,
+            to: sessions.appendingPathComponent("sessions.json")
+        )
+        try write(
+            """
+            {"role":"user","content":"Gateway request","timestamp":"2026-05-06T10:00:00Z"}
+            {"role":"assistant","content":"Gateway response","timestamp":"2026-05-06T10:01:00Z","model":"hermes-model","usage":{"input_tokens":20,"output_tokens":5}}
+            """,
+            to: sessions.appendingPathComponent("gateway-1.jsonl")
+        )
+        try write(
+            """
+            {"role":"user","content":"Legacy request","timestamp":"2026-05-06T11:00:00Z"}
+            {"role":"assistant","content":"Legacy response","timestamp":"2026-05-06T11:01:00Z","model":"hermes-model","usage":{"input_tokens":8,"output_tokens":3}}
+            """,
+            to: sessions.appendingPathComponent("legacy-1.jsonl")
+        )
+        let parser = HermesParser(fileManager: fileManager, hermesRootURL: root)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(first.usages.count, 2)
+        XCTAssertGreaterThan(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 0)
+
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(second.usages.count, 2)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertGreaterThan(parser.lastSessionCacheHitCount, 0)
+        XCTAssertEqual(
+            Set(second.usages.map(\.inputTokens)),
+            Set(first.usages.map(\.inputTokens))
+        )
+    }
+
+    func test_forge_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("forge-cache")
+        try write(
+            #"{"role":"assistant","model":"forge-model","content":"hi","timestamp":"2026-05-01T00:00:00Z","usage":{"input_tokens":10,"output_tokens":4}}"#,
+            to: root.appendingPathComponent("forge-session.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: ForgeDevParser(logDirectoryOverride: root.path),
+            expectedInput: 10,
+            expectedOutput: 4
+        )
+    }
+
+    func test_augment_skipsUnchangedJSONOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("augment-cache")
+        try write(
+            #"{"role":"assistant","model":"gpt-4","content":"ok","timestamp":"2026-05-01T00:00:00Z","usage":{"input_tokens":8,"output_tokens":3}}"#,
+            to: root.appendingPathComponent("session.json")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: AugmentParser(logDirectoryOverride: root.path),
+            expectedInput: 8,
+            expectedOutput: 3
+        )
+    }
+
+    func test_aider_skipsUnchangedAnalyticsOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("aider-cache")
+        try write(
+            """
+            {"event":"launched","time":100,"properties":{"main_model":"claude-3-7-sonnet"}}
+            {"event":"message_send","time":110,"properties":{"prompt_tokens":120,"completion_tokens":30,"cost":0.12}}
+            {"event":"exit","time":120}
+            """,
+            to: root.appendingPathComponent("analytics.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: AiderParser(rootOverride: root),
+            expectedInput: 120,
+            expectedOutput: 30
+        )
+    }
+
+    func test_pi_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("pi-cache")
+        try write(
+            """
+            {"timestamp":"2026-07-01T00:00:00Z","model":"gpt-4o","role":"user","content":"hello"}
+            {"timestamp":"2026-07-01T00:00:01Z","model":"gpt-4o","role":"assistant","content":"world","usage":{"input_tokens":11,"output_tokens":7}}
+            """,
+            to: root.appendingPathComponent("pi-session.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: PiAgentParser(sessionsOverride: root),
+            expectedInput: 11,
+            expectedOutput: 7
+        )
+    }
+
+    func test_ollama_skipsUnchangedServerLogOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("ollama-cache")
+        try write(
+            #"{"time":"2026-07-01T00:00:00Z","model":"llama3.2","prompt_eval_count":44,"eval_count":9}"#,
+            to: root.appendingPathComponent("server.log")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: OllamaParser(logsOverride: root),
+            expectedInput: 44,
+            expectedOutput: 9
+        )
+    }
+
+    func test_junie_skipsUnchangedEventsOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("junie-cache")
+        let session = root.appendingPathComponent("session-cache", isDirectory: true)
+        try write(
+            #"{"timestamp":"2026-07-01T00:00:00Z","event":{"message":{"role":"assistant","content":"done","usage":{"input_tokens":15,"output_tokens":6}}}}"#,
+            to: session.appendingPathComponent("events.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: JunieParser(sessionsOverride: root),
+            expectedInput: 15,
+            expectedOutput: 6
+        )
+    }
+
+    func test_cursorSQLite_skipsUnchangedTrackingDbOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("cursor-sqlite-cache")
+        let path = root.appendingPathComponent("ai-code-tracking.db")
+        let db = try SQLiteConnection.openForWriting(creatingAt: path.path)
+        try db.execute("CREATE TABLE ai_code_hashes (conversationId TEXT, model TEXT, createdAt INTEGER)")
+        try db.execute(
+            "INSERT INTO ai_code_hashes VALUES (?, ?, ?)",
+            arguments: [.text("conversation-1"), .text("gpt-4o"), .int(1_750_000_000)]
+        )
+        db.close()
+        try await assertUsageOnlySecondPassHit(
+            parser: CursorParser(databaseOverride: path),
+            expectedInput: 500,
+            expectedOutput: 150
+        )
+    }
+
+    func test_openCode_skipsUnchangedSQLiteOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("opencode-cache")
+        let path = root.appendingPathComponent("opencode.db")
+        let db = try SQLiteConnection.openForWriting(creatingAt: path.path)
+        try db.execute("CREATE TABLE session (id TEXT, data TEXT, time_created INTEGER, time_updated INTEGER)")
+        try db.execute("CREATE TABLE message (id TEXT, sessionID TEXT, data TEXT, time_created INTEGER)")
+        try db.execute("CREATE TABLE part (messageID TEXT, data TEXT)")
+        try db.execute(
+            "INSERT INTO session VALUES (?, ?, ?, ?)",
+            arguments: [
+                .text("session-1"),
+                .text(#"{"title":"Demo","directory":"/tmp/demo","time":{"created":1750000000,"updated":1750000002}}"#),
+                .int(1_750_000_000),
+                .int(1_750_000_002)
+            ]
+        )
+        try db.execute(
+            "INSERT INTO message VALUES (?, ?, ?, ?)",
+            arguments: [
+                .text("message-1"),
+                .text("session-1"),
+                .text(#"{"role":"assistant","model":"gpt-4o","tokens":{"input":21,"output":9},"cost":0.02,"time":{"created":1750000001}}"#),
+                .int(1_750_000_001)
+            ]
+        )
+        try db.execute(
+            "INSERT INTO part VALUES (?, ?)",
+            arguments: [.text("message-1"), .text(#"{"type":"text","text":"done"}"#)]
+        )
+        db.close()
+        try await assertUsageOnlySecondPassHit(
+            parser: OpenCodeParser(databaseOverride: path),
+            expectedInput: 21,
+            expectedOutput: 9
+        )
+    }
+
+    func test_omp_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("omp-cache")
+        try write(
+            """
+            {"type":"session","version":3,"id":"omp-session","timestamp":"2026-07-01T00:00:00Z","cwd":"/tmp/omp-demo"}
+            {"type":"message","message":{"role":"user","content":[{"type":"text","text":"inspect"}],"timestamp":"2026-07-01T00:00:01Z"}}
+            {"type":"message","message":{"role":"assistant","model":"claude-3-7-sonnet","content":[{"type":"text","text":"done"}],"usage":{"input":17,"output":4,"cacheRead":2,"cacheWrite":1},"timestamp":"2026-07-01T00:00:02Z"}}
+            """,
+            to: root.appendingPathComponent("omp-session.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: OMPParser(sessionsOverride: root),
+            expectedInput: 17,
+            expectedOutput: 4
+        )
+    }
+
+    func test_openClaw_skipsUnchangedJSONLOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("openclaw-cache")
+        try write(
+            """
+            {"timestamp":"2026-07-01T00:00:00Z","model":"claude-3-7-sonnet","role":"user","content":"hello","usage":{"input_tokens":13,"output_tokens":5}}
+            {"timestamp":"2026-07-01T00:00:01Z","role":"assistant","content":"world"}
+            """,
+            to: root.appendingPathComponent("claw-session.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: OpenClawParser(sessionsOverride: root),
+            expectedInput: 13,
+            expectedOutput: 5
+        )
+    }
+
+    func test_modelFilter_skipsUnchangedMatchingSessionOnUsageOnlySecondPass() async throws {
+        let root = try makeTemporaryDirectory("model-filter-cache")
+        try write(
+            #"{"timestamp":"2026-07-01T00:00:00Z","model":"zai-glm-5","message":{"role":"assistant","content":"done","usage":{"input_tokens":8,"output_tokens":3}}}"#,
+            to: root.appendingPathComponent("project/session.jsonl")
+        )
+        try await assertUsageOnlySecondPassHit(
+            parser: ModelFilterParser(modelPattern: "zai", provider: .zai, sessionsOverride: root),
+            expectedInput: 8,
+            expectedOutput: 3
+        )
+    }
+
+    func test_modelFilter_cachesNonMatchingFactorySessions() async throws {
+        let root = try makeTemporaryDirectory("model-filter-nonmatch")
+        try write(
+            #"{"timestamp":"2026-07-01T00:00:00Z","model":"gpt-4o","message":{"role":"assistant","content":"skip","usage":{"input_tokens":8,"output_tokens":3}}}"#,
+            to: root.appendingPathComponent("project/other.jsonl")
+        )
+        let parser = ModelFilterParser(modelPattern: "zai", provider: .zai, sessionsOverride: root)
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        XCTAssertTrue(first.usages.isEmpty)
+        XCTAssertEqual(parser.lastSessionScanCount, 1)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 0)
+
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertTrue(second.usages.isEmpty)
+        XCTAssertEqual(parser.lastSessionScanCount, 0)
+        XCTAssertEqual(parser.lastSessionCacheHitCount, 1)
+    }
+
+    func test_databaseSignatureIgnoresShmAndIncludesWal() throws {
+        let root = try makeTemporaryDirectory("db-signature")
+        let db = root.appendingPathComponent("state.db")
+        try Data("sqlite".utf8).write(to: db)
+        let first = FileSetSignature(databaseURL: db, using: fileManager)
+        try Data("shm".utf8).write(to: URL(fileURLWithPath: db.path + "-shm"))
+        let withShm = FileSetSignature(databaseURL: db, using: fileManager)
+        XCTAssertEqual(first, withShm)
+
+        try Data("wal".utf8).write(to: URL(fileURLWithPath: db.path + "-wal"))
+        let withWal = FileSetSignature(databaseURL: db, using: fileManager)
+        XCTAssertNotEqual(first, withWal)
+    }
+
+    private func assertUsageOnlySecondPassHit(
+        parser: some LogParser,
+        expectedInput: Int,
+        expectedOutput: Int
+    ) async throws {
+        let usageOnly = LogParseOptions(includeConversationBodies: false)
+        let first = try await parser.parse(options: usageOnly)
+        let firstUsage = try XCTUnwrap(first.usages.first)
+        XCTAssertEqual(firstUsage.inputTokens, expectedInput)
+        XCTAssertEqual(firstUsage.outputTokens, expectedOutput)
+        XCTAssertTrue(first.conversations.isEmpty)
+
+        let second = try await parser.parse(options: usageOnly)
+        XCTAssertEqual(second.usages.first?.inputTokens, expectedInput)
+        XCTAssertEqual(second.usages.first?.outputTokens, expectedOutput)
+        XCTAssertEqual(second.usages.first?.costUSD, firstUsage.costUSD)
+        XCTAssertEqual(second.usages.first?.sessionId, firstUsage.sessionId)
+
+        if let scan = lastScan(parser), let hits = lastHits(parser) {
+            XCTAssertEqual(scan, 0)
+            XCTAssertGreaterThanOrEqual(hits, 1)
+        }
+    }
+
+    private func lastScan(_ parser: some LogParser) -> Int? {
+        (parser as? PrimeAgentParser)?.lastSessionScanCount
+            ?? (parser as? MuseParser)?.lastSessionScanCount
+            ?? (parser as? KimiParser)?.lastSessionScanCount
+            ?? (parser as? ForgeDevParser)?.lastSessionScanCount
+            ?? (parser as? AugmentParser)?.lastSessionScanCount
+            ?? (parser as? AiderParser)?.lastSessionScanCount
+            ?? (parser as? PiAgentParser)?.lastSessionScanCount
+            ?? (parser as? OllamaParser)?.lastSessionScanCount
+            ?? (parser as? JunieParser)?.lastSessionScanCount
+            ?? (parser as? CursorParser)?.lastSessionScanCount
+            ?? (parser as? OpenCodeParser)?.lastSessionScanCount
+            ?? (parser as? OMPParser)?.lastSessionScanCount
+            ?? (parser as? OpenClawParser)?.lastSessionScanCount
+            ?? (parser as? ModelFilterParser)?.lastSessionScanCount
+    }
+
+    private func lastHits(_ parser: some LogParser) -> Int? {
+        (parser as? PrimeAgentParser)?.lastSessionCacheHitCount
+            ?? (parser as? MuseParser)?.lastSessionCacheHitCount
+            ?? (parser as? KimiParser)?.lastSessionCacheHitCount
+            ?? (parser as? ForgeDevParser)?.lastSessionCacheHitCount
+            ?? (parser as? AugmentParser)?.lastSessionCacheHitCount
+            ?? (parser as? AiderParser)?.lastSessionCacheHitCount
+            ?? (parser as? PiAgentParser)?.lastSessionCacheHitCount
+            ?? (parser as? OllamaParser)?.lastSessionCacheHitCount
+            ?? (parser as? JunieParser)?.lastSessionCacheHitCount
+            ?? (parser as? CursorParser)?.lastSessionCacheHitCount
+            ?? (parser as? OpenCodeParser)?.lastSessionCacheHitCount
+            ?? (parser as? OMPParser)?.lastSessionCacheHitCount
+            ?? (parser as? OpenClawParser)?.lastSessionCacheHitCount
+            ?? (parser as? ModelFilterParser)?.lastSessionCacheHitCount
+    }
+
+    private func warpExactBodyLog() -> String {
+        """
+        [2026-05-01 12:00:00,000]: Request {}
+        Body {
+          "batch": [
+            {
+              "event": "AgentResponse.Completed",
+              "originalTimestamp": "2026-05-01T12:00:00Z",
+              "properties": {
+                "payload": {
+                  "session_id": "warp-session-1",
+                  "model": "claude-sonnet-4",
+                  "workspace": "/tmp/BurnBar",
+                  "prompt": "Summarize quota usage",
+                  "response": "Quota usage is healthy.",
+                  "usage": {
+                    "input_tokens": 120,
+                    "output_tokens": 45,
+                    "cache_read_input_tokens": 10
+                  }
+                }
+              }
+            }
+          ]
+        }
+        """
     }
 }
 

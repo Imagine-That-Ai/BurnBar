@@ -13,21 +13,55 @@ import OpenBurnBarKernel
 /// Warp does not currently expose a documented local token ledger. This parser
 /// preserves exact usage objects when present and otherwise emits conservative,
 /// low-confidence estimates for agent prompt telemetry that includes text.
+///
+/// Idle usage ticks resume unchanged `warp_network*.log` files from a
+/// mtime+size disk cache (token totals and computed session ids only —
+/// never conversation bodies). A changed log still reads in full because
+/// every Body object can contribute a usage row.
 public final class WarpParser: LogParser, Sendable {
     public let provider: AgentProvider = .warp
 
     private let logDirectory: URL
     private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
     public init(
         logDirectory: URL? = nil,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
     ) {
         self.logDirectory = logDirectory ?? URL(
             fileURLWithPath: ("~/Library/Application Support/dev.warp.Warp-Stable" as NSString).expandingTildeInPath,
             isDirectory: true
         )
         self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: Self.cacheURL(
+                logDirectory: self.logDirectory,
+                usesDirectoryOverride: logDirectory != nil,
+                appPaths: appPaths
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "WarpParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
+    private static func cacheURL(
+        logDirectory: URL,
+        usesDirectoryOverride: Bool,
+        appPaths: OpenBurnBarAppPaths
+    ) -> URL {
+        guard usesDirectoryOverride else { return appPaths.warpParserCacheURL }
+        let directory = logDirectory.pathExtension == "log"
+            ? logDirectory.deletingLastPathComponent()
+            : logDirectory
+        return directory.appendingPathComponent(".obb-warp-parser-cache.plist")
     }
 
     public func parse() async throws -> ParseResult {
@@ -35,6 +69,8 @@ public final class WarpParser: LogParser, Sendable {
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         guard fileManager.fileExists(atPath: logDirectory.path) else {
             return ParseResult(usages: [], conversations: [])
         }
@@ -49,17 +85,45 @@ public final class WarpParser: LogParser, Sendable {
         var conversations: [ConversationRecord] = []
         var seenUsageKeys = Set<String>()
         var seenConversationIDs = Set<String>()
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         for file in logFiles {
-            guard try gate.shouldRead(file),
-                  let data = try? Data(contentsOf: file),
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(file) else { continue }
+            let signature = FileSignature(for: file, using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                for session in cached.sessions {
+                    let usage = session.makeUsage(provider: .warp)
+                    let key = "\(usage.sessionId)|\(usage.model)|\(usage.startTime.timeIntervalSince1970)|\(usage.totalTokens)"
+                    guard seenUsageKeys.insert(key).inserted else { continue }
+                    usages.append(usage)
+                }
+                continue
+            }
+
+            sessionScanCount.withLock { $0 += 1 }
+            guard let data = try? Data(contentsOf: file),
                   let content = String(data: data, encoding: .utf8) else {
                 continue
             }
             let fileModifiedAt = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date
+            var fileUsages: [TokenUsage] = []
             for object in Self.extractBodyJSONObjects(from: content) {
                 let records = try parseBodyObject(object, sourceFile: file, fileModifiedAt: fileModifiedAt)
                 for usage in records.usages {
+                    fileUsages.append(usage)
                     let key = "\(usage.sessionId)|\(usage.model)|\(usage.startTime.timeIntervalSince1970)|\(usage.totalTokens)"
                     guard seenUsageKeys.insert(key).inserted else { continue }
                     usages.append(usage)
@@ -70,6 +134,21 @@ public final class WarpParser: LogParser, Sendable {
                     conversations.append(conversation)
                 }
             }
+            if let signature {
+                parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                    signature: signature,
+                    usages: fileUsages
+                )
+                cacheMutated = true
+            }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)

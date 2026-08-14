@@ -6,39 +6,105 @@ import OpenBurnBarKernel
 /// Best-effort Augment parser. Discovers likely VS Code-family storage roots, but
 /// remains conservative until a real token-bearing sample is available.
 public final class AugmentParser: LogParser, Sendable {
-    public init() {}
     public let provider: AgentProvider = .augment
+    private let logDirectoryOverride: String?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    public init(
+        logDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.logDirectoryOverride = logDirectoryOverride
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-augment-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.augmentParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "AugmentParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
-        let roots = candidateRoots().filter { fm.fileExists(atPath: $0.path) }
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
+        let roots = candidateRoots().filter { fileManager.fileExists(atPath: $0.path) }
         guard !roots.isEmpty else {
             return ParseResult(usages: [], conversations: [])
         }
 
         var usagesBySessionId: [String: TokenUsage] = [:]
         var conversationsBySessionId: [String: ConversationRecord] = [:]
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         for root in roots {
             for file in recursiveJSONFiles(in: root) {
+                let cacheKey = file.standardizedFileURL.path
+                activePaths.insert(cacheKey)
                 guard try gate.shouldRead(file) else { continue }
                 let sessionId = sessionIdentifier(for: file, root: root)
+                let signature = FileSignature(for: file, using: fileManager)
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    for session in cached.sessions {
+                        usagesBySessionId[session.sessionId] = session.makeUsage(provider: .augment)
+                    }
+                    continue
+                }
+                sessionScanCount.withLock { $0 += 1 }
                 let pair = try (file.pathExtension == "jsonl"
-                    ? parseJSONL(file: file, sessionId: sessionId)
-                    : parseJSON(file: file, sessionId: sessionId))
+                    ? parseJSONL(file: file, sessionId: sessionId, includeConversationBodies: options.includeConversationBodies)
+                    : parseJSON(file: file, sessionId: sessionId, includeConversationBodies: options.includeConversationBodies))
 
                 if let usage = pair?.usage {
                     usagesBySessionId[usage.sessionId] = usage
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                            signature: signature,
+                            usages: [usage]
+                        )
+                        cacheMutated = true
+                    }
                 }
                 if options.includeConversationBodies, let conversation = pair?.conversation {
                     conversationsBySessionId[conversation.sessionId] = conversation
                 }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(
@@ -48,6 +114,9 @@ public final class AugmentParser: LogParser, Sendable {
     }
 
     private func candidateRoots() -> [URL] {
+        if let override = logDirectoryOverride {
+            return [URL(fileURLWithPath: (override as NSString).expandingTildeInPath, isDirectory: true)]
+        }
         let candidates = [
             provider.logDirectory,
             "~/Library/Application Support/Code/User/globalStorage/augment.vscode-augment",
@@ -64,7 +133,7 @@ public final class AugmentParser: LogParser, Sendable {
     }
 
     private func recursiveJSONFiles(in root: URL) -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
+        guard let enumerator = fileManager.enumerator(
             at: root,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
@@ -95,7 +164,8 @@ public final class AugmentParser: LogParser, Sendable {
 
     private func parseJSONL(
         file: URL,
-        sessionId: String
+        sessionId: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open guard-return-nil)
         defer { try? handle.close() } // try?-ok(handle teardown)
@@ -106,15 +176,21 @@ public final class AugmentParser: LogParser, Sendable {
                   let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(skip malformed log line)
                 continue
             }
-            summary.consume(json)
+            summary.consume(json, includeConversationBodies: includeConversationBodies)
         }
 
-        return try buildPair(sessionId: sessionId, summary: summary, file: file)
+        return try buildPair(
+            sessionId: sessionId,
+            summary: summary,
+            file: file,
+            includeConversationBodies: includeConversationBodies
+        )
     }
 
     private func parseJSON(
         file: URL,
-        sessionId: String
+        sessionId: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: file), // try?-ok(log read guard-return-nil)
               let json = try? JSONSerialization.jsonObject(with: data) else { // try?-ok(malformed JSON guard-return-nil)
@@ -125,19 +201,25 @@ public final class AugmentParser: LogParser, Sendable {
         switch json {
         case let array as [Any]:
             for element in array {
-                summary.consume(element)
+                summary.consume(element, includeConversationBodies: includeConversationBodies)
             }
         default:
-            summary.consume(json)
+            summary.consume(json, includeConversationBodies: includeConversationBodies)
         }
 
-        return try buildPair(sessionId: sessionId, summary: summary, file: file)
+        return try buildPair(
+            sessionId: sessionId,
+            summary: summary,
+            file: file,
+            includeConversationBodies: includeConversationBodies
+        )
     }
 
     private func buildPair(
         sessionId: String,
         summary: AugmentSummary,
-        file: URL
+        file: URL,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard summary.hasUsage || summary.hasConversation else { return nil }
 
@@ -172,7 +254,7 @@ public final class AugmentParser: LogParser, Sendable {
             usage = nil
         }
 
-        let conversation: ConversationRecord? = summary.hasConversation ? ConversationRecord(
+        let conversation: ConversationRecord? = includeConversationBodies && summary.hasConversation ? ConversationRecord(
             id: ConversationRecord.stableId(provider: .augment, sessionId: sessionId),
             provider: .augment,
             sessionId: sessionId,
@@ -224,7 +306,7 @@ private struct AugmentSummary {
         !fullText.isEmpty || messageCount > 0
     }
 
-    mutating func consume(_ raw: Any) {
+    mutating func consume(_ raw: Any, includeConversationBodies: Bool) {
         guard let json = raw as? [String: Any] else { return }
         let message = json["message"] as? [String: Any]
 
@@ -245,6 +327,8 @@ private struct AugmentSummary {
             if startTime == nil { startTime = timestamp }
             endTime = timestamp
         }
+
+        guard includeConversationBodies else { return }
 
         let role = ((message?["role"] as? String) ?? (json["role"] as? String) ?? "").lowercased()
         let content = stringValue(message?["content"] ?? json["content"])

@@ -1011,4 +1011,96 @@ Validation:
 - `OpenBurnBarCoreTests/GeminiCLIParserCacheTests`
 - plus the §22 Warp / Gemini / Grok suites
 
+---
+
+## §24 — Remaining hot paths (August 2026, round 6)
+
+Round 5 cached Cursor Agent / Cline / Copilot / Antigravity / Goose.
+Every other Core usage parser still reread admitted session files on
+the 60s tick because usage parse does not share indexing watermarks.
+
+### Lane 1 — Remaining idle usage parser caches
+
+Warp, Prime, Muse, Kimi, Windsurf, Hermes, Forge, Augment, Aider,
+Cursor SQLite, OpenCode, Pi, OMP, OpenClaw, Ollama, Junie, and
+ModelFilter (zai / minimax / the Mac ollama Factory filter) now keep a
+mtime+size disk cache of **token totals only** (never conversation
+bodies). Session ids are stored in the bundle so Prime envelope ids
+survive a filename mismatch.
+
+Signatures fail closed:
+
+- Warp caches per `warp_network*.log` and re-applies global Body
+  dedup on a hit. A changed log still reads in full because every Body
+  object can contribute a usage row.
+- Kimi signs the session directory (`context.jsonl` + optional
+  `wire.jsonl`). CJK character fallback still runs on a miss when wire
+  has no buckets. Cache-only nil from `parseWireFile` is unchanged.
+- Windsurf signs the protobuf plus the global `state.vscdb` (and WAL)
+  so a model/workspace rewrite cannot reuse a cached row. In-memory
+  `state.vscdb` lookups are keyed on that same signature.
+- Hermes signs `state.db` + WAL, the gateway index **and** referenced
+  transcripts, CLI `session_*.json`, and leftover jsonl. Hits still
+  honor `seenSessionIds` / `profile::sessionId`.
+- Forge override reads only `{override}/.forge.db` and jsonl under
+  that directory; production home-wide `*/.forge.db` crawl is unchanged
+  when override is nil. SQLite usage-only misses skip conversation
+  assembly.
+- Aider signs `analytics.jsonl` + `.json` as one combined stream.
+- Cursor / OpenCode SQLite sign the db + WAL. OpenCode usage-only
+  skips the `part` table when every session already has explicit token
+  buckets (heuristic totals still need `part` text).
+- ModelFilter signs jsonl + settings/metadata sidecars and caches an
+  **empty** bundle for non-matching Factory sessions so a zai tick does
+  not rescan gpt-4o jsonl.
+
+Cache keys for files that still exist stay even when a watermark or
+tracker skips the content read. Goose still signs `sessions.db` only
+(do not bump its schema to WAL without a dedicated equality test).
+
+### Lane 2 — Quota ISO-8601 format leftovers
+
+xAI spend-point writes, Claude OAuth disk cache read/write, Claude
+auto-install attempt markers, and Claude `firstDate` now go through
+`formatBasic` / `parseBasic` / `parse` instead of allocating a
+default `ISO8601DateFormatter()`. Codex `last_refresh` stays on its
+throwing Codable path.
+
+### Named leftovers
+
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Overlapping
+  the phases would race the Codex rollout cache (whole-cache last-write-wins).
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Kilo Code's `KiloCodeQuotaAdapter` still `Data(contentsOf:)` task JSON
+  arrays, but it is not on the quota refresh path.
+- Warp **usage** parsing still reads a changed `warp_network*.log` in
+  full because every Body object can contribute a usage row.
+- AgentLens Mac shadows (Copilot, Aider, Cursor, OpenCode, Pi, OpenClaw,
+  Junie) still run on Mac idle ticks. They are **not** bit-identical to
+  the Core lifts (Copilot shutdown double-count, Junie `state.json`,
+  OpenClaw nested wrappers). Do not alias `ParserRegistry` to Core
+  without per-provider golden tests. Prefer a later Mac-semantics cache
+  over a second copy of Core totals.
+- Windsurf / Hermes / Forge **discovery** of home-wide session trees
+  still stats every candidate even when the content read is a cache hit.
+- OpenCode usage-only still reads `part` when any session has zero
+  explicit token buckets (needed for heuristic totals).
+
+Validation:
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests` (including Warp /
+  Prime / Muse / Kimi / Windsurf / Hermes / Forge / Augment / Aider /
+  Cursor SQLite / OpenCode / Pi / OMP / OpenClaw / Ollama / Junie /
+  ModelFilter, plus WAL-vs-shm signature)
+- `OpenBurnBarCoreTests/ThreadSafeISO8601DateFormatterStaticParseTests`
+  (`formatBasic` matches `ISO8601DateFormatter().string(from:)`)
+- plus the §23 idle-cache / quota suites
+
+
 

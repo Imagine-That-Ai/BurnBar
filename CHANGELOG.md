@@ -60,6 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Quota spend/reset parsers reuse `ThreadSafeISO8601DateFormatter`
   (`parse` for fractional-then-basic, `parseBasic` where the default
   formatter's acceptance must not widen).
+- **Remaining Core usage parsers** (Warp, Prime, Muse, Kimi, Windsurf,
+  Hermes, Forge, Augment, Aider, Cursor SQLite, OpenCode, Pi, OMP,
+  OpenClaw, Ollama, Junie, ModelFilter) resume unchanged session files
+  from the same mtime+size cache. SQLite signatures include `-wal` when
+  present and ignore `-shm` (a read-only open rewrites shm without
+  changing totals). ModelFilter caches empty bundles for non-matching
+  Factory sessions so zai/minimax ticks do not rescan every other
+  provider's jsonl. Quota cache writes reuse `formatBasic`.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored

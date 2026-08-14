@@ -601,8 +601,6 @@ public struct XAIQuotaAdapter: ProviderQuotaAdapter {
     }
 
     private func iso8601(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: date)
+        ThreadSafeISO8601DateFormatter.formatBasic(date)
     }
 }

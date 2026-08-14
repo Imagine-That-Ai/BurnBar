@@ -13,6 +13,13 @@ private enum LocalUsageParserSupport {
         let timestamp: Date?
     }
 
+    static func idleCacheURL(overrideDirectory: URL?, live: URL, fileName: String) -> URL {
+        if let overrideDirectory {
+            return overrideDirectory.appendingPathComponent(fileName)
+        }
+        return live
+    }
+
     static func expanded(_ path: String) -> URL {
         URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
     }
@@ -246,15 +253,69 @@ private struct AiderSessionAggregate {
 public final class AiderParser: LogParser, Sendable {
     public let provider: AgentProvider = .aider
     private let rootOverride: URL?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(rootOverride: URL? = nil) { self.rootOverride = rootOverride }
+    public init(
+        rootOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.rootOverride = rootOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: rootOverride,
+                live: appPaths.aiderParserCacheURL,
+                fileName: ".obb-aider-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "AiderParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let root = rootOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
         let files = [root.appendingPathComponent("analytics.jsonl"), root.appendingPathComponent("analytics.json")]
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
+            .filter { fileManager.fileExists(atPath: $0.path) }
+        guard !files.isEmpty else { return ParseResult(usages: [], conversations: []) }
+
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
+        var parseCache = cacheStore.load()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
+        let cacheKey = root.standardizedFileURL.path
+        let signature = FileSetSignature(urls: files, using: fileManager)
+        let admitted = try gate.shouldRead(files)
+        if !admitted {
+            return ParseResult(usages: [], conversations: [])
+        }
+        if !options.includeConversationBodies,
+           let signature,
+           let cached = parseCache.fileEntries[cacheKey],
+           cached.signature == signature {
+            sessionCacheHitCount.withLock { $0 += 1 }
+            return ParseResult(
+                usages: cached.sessions.map { $0.makeUsage(provider: .aider) },
+                conversations: []
+            )
+        }
+
+        sessionScanCount.withLock { $0 += 1 }
         var sessions: [AiderSessionAggregate] = []
         var current = AiderSessionAggregate()
         func flush() {
@@ -288,7 +349,10 @@ public final class AiderParser: LogParser, Sendable {
             let cost = session.cost > 0 ? session.cost : (try? ModelPricing.lookup(model: model).cost(inputTokens: session.input, outputTokens: session.output)) ?? 0
             return LocalUsageParserSupport.usage(provider: .aider, sessionID: "aider-\(index)-\(Int(start.timeIntervalSince1970))", project: "Aider", model: model, input: session.input, output: session.output, cost: cost, start: start, end: end, method: .providerLog, confidence: .exact)
         }
-        guard options.includeConversationBodies else { return ParseResult(usages: usages, conversations: []) }
+        if let signature {
+            parseCache.fileEntries = [cacheKey: CachedUsageBundleEntry(signature: signature, usages: usages)]
+            cacheMutated = true
+        }
         return ParseResult(usages: usages, conversations: [])
     }
 }
@@ -298,11 +362,56 @@ public final class AiderParser: LogParser, Sendable {
 public final class CursorParser: LogParser, Sendable {
     public let provider: AgentProvider = .cursor
     private let databaseOverride: URL?
-    public init(databaseOverride: URL? = nil) { self.databaseOverride = databaseOverride }
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    public init(
+        databaseOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.databaseOverride = databaseOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: databaseOverride?.deletingLastPathComponent(),
+                live: appPaths.cursorParserCacheURL,
+                fileName: ".obb-cursor-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "CursorParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let path = databaseOverride ?? LocalUsageParserSupport.expanded("~/.cursor/ai-tracking/ai-code-tracking.db")
-        guard FileManager.default.fileExists(atPath: path.path) else { return ParseResult(usages: [], conversations: []) }
+        guard fileManager.fileExists(atPath: path.path) else { return ParseResult(usages: [], conversations: []) }
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
+        var parseCache = cacheStore.load()
+        var cacheMutated = false
+        defer {
+            if cacheMutated { cacheStore.persist(parseCache) }
+        }
+        let cacheKey = path.standardizedFileURL.path
+        guard try gate.shouldRead(path) else { return ParseResult(usages: [], conversations: []) }
+        let signature = FileSetSignature(databaseURL: path, using: fileManager)
+        if !options.includeConversationBodies,
+           let signature,
+           let cached = parseCache.fileEntries[cacheKey],
+           cached.signature == signature {
+            sessionCacheHitCount.withLock { $0 += 1 }
+            return ParseResult(usages: cached.sessions.map { $0.makeUsage(provider: .cursor) }, conversations: [])
+        }
+        sessionScanCount.withLock { $0 += 1 }
         let db = try SQLiteConnection.openReadOnly(path: path.path)
         defer { db.close() }
         guard try db.tableNames().contains("ai_code_hashes") else { return ParseResult(usages: [], conversations: []) }
@@ -321,6 +430,10 @@ public final class CursorParser: LogParser, Sendable {
             let cost = (try? ModelPricing.lookup(model: model).cost(inputTokens: input, outputTokens: output)) ?? 0
             return LocalUsageParserSupport.usage(provider: .cursor, sessionID: session, project: "Cursor", model: model, input: input, output: output, cost: cost, start: start, end: end, method: .heuristicEstimate, confidence: .lowConfidenceEstimate, estimatorVersion: "cursor-hash-count-v1")
         }
+        if let signature {
+            parseCache.fileEntries = [cacheKey: CachedUsageBundleEntry(signature: signature, usages: usages)]
+            cacheMutated = true
+        }
         return ParseResult(usages: usages, conversations: [])
     }
 }
@@ -330,7 +443,33 @@ public final class CursorParser: LogParser, Sendable {
 public final class OpenCodeParser: LogParser, Sendable {
     public let provider: AgentProvider = .openCode
     private let databaseOverride: URL?
-    public init(databaseOverride: URL? = nil) { self.databaseOverride = databaseOverride }
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    public init(
+        databaseOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.databaseOverride = databaseOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: databaseOverride?.deletingLastPathComponent(),
+                live: appPaths.openCodeParserCacheURL,
+                fileName: ".obb-opencode-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "OpenCodeParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public static func resolvedDatabasePath(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
         if let explicit = environment["OPENCODE_DB_PATH"], !explicit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return LocalUsageParserSupport.expanded(explicit) }
         if let home = environment["OPENCODE_DATA_HOME"], !home.isEmpty { return LocalUsageParserSupport.expanded("\(home)/opencode.db") }
@@ -339,8 +478,25 @@ public final class OpenCodeParser: LogParser, Sendable {
     }
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let path = databaseOverride ?? Self.resolvedDatabasePath()
-        guard FileManager.default.fileExists(atPath: path.path) else { return ParseResult(usages: [], conversations: []) }
+        guard fileManager.fileExists(atPath: path.path) else { return ParseResult(usages: [], conversations: []) }
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
+        var parseCache = cacheStore.load()
+        var cacheMutated = false
+        defer { if cacheMutated { cacheStore.persist(parseCache) } }
+        let cacheKey = path.standardizedFileURL.path
+        guard try gate.shouldRead(path) else { return ParseResult(usages: [], conversations: []) }
+        let signature = FileSetSignature(databaseURL: path, using: fileManager)
+        if !options.includeConversationBodies,
+           let signature,
+           let cached = parseCache.fileEntries[cacheKey],
+           cached.signature == signature {
+            sessionCacheHitCount.withLock { $0 += 1 }
+            return ParseResult(usages: cached.sessions.map { $0.makeUsage(provider: .openCode) }, conversations: [])
+        }
+        sessionScanCount.withLock { $0 += 1 }
         let db = try SQLiteConnection.openReadOnly(path: path.path)
         defer { db.close() }
         let tables = try db.tableNames()
@@ -396,7 +552,11 @@ public final class OpenCodeParser: LogParser, Sendable {
                 ))
             }
         }
-        if tables.contains("part") {
+        let needsPartText = options.includeConversationBodies || messages.contains { _, raw in
+            raw.reduce(0) { $0 + $1.tokens.input } == 0
+                && raw.reduce(0) { $0 + $1.tokens.output } == 0
+        }
+        if tables.contains("part"), needsPartText {
             for row in try db.query("SELECT * FROM part") {
                 guard let json = Self.data(from: row),
                       ["text", "reasoning"].contains(
@@ -475,6 +635,10 @@ public final class OpenCodeParser: LogParser, Sendable {
                 ))
             }
         }
+        if let signature {
+            parseCache.fileEntries = [cacheKey: CachedUsageBundleEntry(signature: signature, usages: usages)]
+            cacheMutated = true
+        }
         return ParseResult(usages: usages, conversations: conversations)
     }
     private static func decode(_ value: String) -> [String: Any]? { try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any] }
@@ -492,17 +656,72 @@ public final class OpenCodeParser: LogParser, Sendable {
 public final class PiAgentParser: LogParser, Sendable {
     public let provider: AgentProvider = .piAgent
     private let sessionsOverride: URL?
-    public init(sessionsOverride: URL? = nil) { self.sessionsOverride = sessionsOverride }
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    public init(
+        sessionsOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.sessionsOverride = sessionsOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: sessionsOverride,
+                live: appPaths.piAgentParserCacheURL,
+                fileName: ".obb-pi-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "PiAgentParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let root = sessionsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []; var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer { if cacheMutated { cacheStore.persist(parseCache) } }
         for file in LocalUsageParserSupport.files(in: root, extensions: ["jsonl"]) {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(file) else { continue }
+            let signature = FileSignature(for: file, using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .piAgent) })
+                continue
+            }
+            sessionScanCount.withLock { $0 += 1 }
             let id = file.deletingPathExtension().lastPathComponent
             let parsed = Self.parse(file: file, sessionID: id, provider: .piAgent)
             guard let usage = parsed.usage else { continue }
             usages.append(usage)
+            if let signature {
+                parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(signature: signature, usages: [usage])
+                cacheMutated = true
+            }
             if options.includeConversationBodies, let conversation = parsed.conversation { conversations.append(conversation) }
+        }
+        let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stale.isEmpty {
+            for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
+            cacheMutated = true
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
@@ -578,23 +797,76 @@ public final class PiAgentParser: LogParser, Sendable {
 public final class OMPParser: LogParser, Sendable {
     public let provider: AgentProvider = .omp
     private let sessionsOverride: URL?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(sessionsOverride: URL? = nil) { self.sessionsOverride = sessionsOverride }
+    public init(
+        sessionsOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.sessionsOverride = sessionsOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: sessionsOverride,
+                live: appPaths.ompParserCacheURL,
+                fileName: ".obb-omp-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "OMPParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let root = sessionsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer { if cacheMutated { cacheStore.persist(parseCache) } }
         for file in LocalUsageParserSupport.files(in: root, extensions: ["jsonl"]) {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(file) else { continue }
+            let signature = FileSignature(for: file, using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .omp) })
+                continue
+            }
+            sessionScanCount.withLock { $0 += 1 }
             let id = file.deletingPathExtension().lastPathComponent
             let parsed = PiAgentParser.parse(file: file, sessionID: id, provider: .omp)
             guard let usage = parsed.usage else { continue }
             usages.append(usage)
+            if let signature {
+                parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(signature: signature, usages: [usage])
+                cacheMutated = true
+            }
             if options.includeConversationBodies, let conversation = parsed.conversation {
                 conversations.append(conversation)
             }
+        }
+        let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stale.isEmpty {
+            for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
+            cacheMutated = true
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
@@ -605,12 +877,58 @@ public final class OMPParser: LogParser, Sendable {
 public final class OpenClawParser: LogParser, Sendable {
     public let provider: AgentProvider = .openClaw
     private let sessionsOverride: URL?
-    public init(sessionsOverride: URL? = nil) { self.sessionsOverride = sessionsOverride }
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    public init(
+        sessionsOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.sessionsOverride = sessionsOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: sessionsOverride,
+                live: appPaths.openClawParserCacheURL,
+                fileName: ".obb-openclaw-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "OpenClawParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let root = sessionsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []; var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer { if cacheMutated { cacheStore.persist(parseCache) } }
         for file in LocalUsageParserSupport.files(in: root, extensions: ["json", "jsonl", "log"]) {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(file) else { continue }
+            let signature = FileSignature(for: file, using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .openClaw) })
+                continue
+            }
+            sessionScanCount.withLock { $0 += 1 }
             let objects = LocalUsageParserSupport.jsonObjects(at: file)
             guard !objects.isEmpty else { continue }
             var input = 0, output = 0, cacheRead = 0; var model = "openclaw"; var start: Date?, end: Date?; var turns: [LocalUsageParserSupport.Turn] = []
@@ -682,6 +1000,10 @@ public final class OpenClawParser: LogParser, Sendable {
                 estimatorVersion: estimatorVersion
             ) {
                 usages.append(usage)
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(signature: signature, usages: [usage])
+                    cacheMutated = true
+                }
             }
             if options.includeConversationBodies {
                 conversations.append(LocalUsageParserSupport.transcript(
@@ -695,6 +1017,11 @@ public final class OpenClawParser: LogParser, Sendable {
                 ))
             }
         }
+        let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stale.isEmpty {
+            for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
+            cacheMutated = true
+        }
         return ParseResult(usages: usages, conversations: conversations)
     }
 }
@@ -704,12 +1031,58 @@ public final class OpenClawParser: LogParser, Sendable {
 public final class OllamaParser: LogParser, Sendable {
     public let provider: AgentProvider = .ollama
     private let logsOverride: URL?
-    public init(logsOverride: URL? = nil) { self.logsOverride = logsOverride }
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    public init(
+        logsOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.logsOverride = logsOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: logsOverride,
+                live: appPaths.ollamaParserCacheURL,
+                fileName: ".obb-ollama-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "OllamaParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let root = logsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer { if cacheMutated { cacheStore.persist(parseCache) } }
         for file in LocalUsageParserSupport.files(in: root, extensions: ["log", "jsonl"]) {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(file) else { continue }
+            let signature = FileSignature(for: file, using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .ollama) })
+                continue
+            }
+            sessionScanCount.withLock { $0 += 1 }
             var input = 0, output = 0, model = "ollama"; var start: Date?; var end: Date?
             for object in LocalUsageParserSupport.jsonLines(at: file) {
                 model = LocalUsageParserSupport.model(in: object) ?? model
@@ -726,7 +1099,18 @@ public final class OllamaParser: LogParser, Sendable {
             let mtime = LocalUsageParserSupport.modificationDate(file) ?? Date(); let startTime = start ?? mtime; let endTime = end ?? startTime
             let cost = (try? ModelPricing.lookup(model: model).cost(inputTokens: input, outputTokens: output)) ?? 0
             let session = "ollama-\(file.deletingPathExtension().lastPathComponent)"
-            if let usage = LocalUsageParserSupport.usage(provider: .ollama, sessionID: session, project: "Ollama", model: model, input: input, output: output, cost: cost, start: startTime, end: endTime, method: .providerLog, confidence: .exact) { usages.append(usage) }
+            if let usage = LocalUsageParserSupport.usage(provider: .ollama, sessionID: session, project: "Ollama", model: model, input: input, output: output, cost: cost, start: startTime, end: endTime, method: .providerLog, confidence: .exact) {
+                usages.append(usage)
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(signature: signature, usages: [usage])
+                    cacheMutated = true
+                }
+            }
+        }
+        let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stale.isEmpty {
+            for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
+            cacheMutated = true
         }
         return ParseResult(usages: usages, conversations: [])
     }
@@ -737,11 +1121,44 @@ public final class OllamaParser: LogParser, Sendable {
 public final class JunieParser: LogParser, Sendable {
     public let provider: AgentProvider = .junie
     private let sessionsOverride: URL?
-    public init(sessionsOverride: URL? = nil) { self.sessionsOverride = sessionsOverride }
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    public init(
+        sessionsOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.sessionsOverride = sessionsOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: sessionsOverride,
+                live: appPaths.junieParserCacheURL,
+                fileName: ".obb-junie-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "JunieParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let root = sessionsOverride ?? LocalUsageParserSupport.expanded(provider.logDirectory)
-        guard FileManager.default.fileExists(atPath: root.path) else { return ParseResult(usages: [], conversations: []) }
+        guard fileManager.fileExists(atPath: root.path) else { return ParseResult(usages: [], conversations: []) }
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer { if cacheMutated { cacheStore.persist(parseCache) } }
         var projects: [String: String] = [:]
         let index = root.appendingPathComponent("index.jsonl")
         for object in LocalUsageParserSupport.jsonLines(at: index) {
@@ -753,7 +1170,7 @@ public final class JunieParser: LogParser, Sendable {
                 projects[id] = project
             }
         }
-        let dirs = (try? FileManager.default.contentsOfDirectory(
+        let dirs = (try? fileManager.contentsOfDirectory(
             at: root,
             includingPropertiesForKeys: [.isDirectoryKey]
         ))?.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true } ?? []
@@ -762,7 +1179,22 @@ public final class JunieParser: LogParser, Sendable {
         for dir in dirs {
             let id = dir.lastPathComponent
             let events = dir.appendingPathComponent("events.jsonl")
-            guard FileManager.default.fileExists(atPath: events.path) else { continue }
+            guard fileManager.fileExists(atPath: events.path) else { continue }
+            let cacheKey = events.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            var signatureURLs = [events]
+            if fileManager.fileExists(atPath: index.path) { signatureURLs.append(index) }
+            let signature = FileSetSignature(urls: signatureURLs, using: fileManager)
+            guard try gate.shouldRead(signatureURLs) else { continue }
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .junie) })
+                continue
+            }
+            sessionScanCount.withLock { $0 += 1 }
             let objects = LocalUsageParserSupport.jsonLines(at: events)
             var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, reasoning = 0
             var userChars = 0, assistantChars = 0
@@ -852,6 +1284,10 @@ public final class JunieParser: LogParser, Sendable {
                 estimatorVersion: estimatorVersion
             ) {
                 usages.append(usage)
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(signature: signature, usages: [usage])
+                    cacheMutated = true
+                }
             }
             if options.includeConversationBodies, !turns.isEmpty {
                 conversations.append(LocalUsageParserSupport.transcript(
@@ -866,6 +1302,11 @@ public final class JunieParser: LogParser, Sendable {
                 ))
             }
         }
+        let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stale.isEmpty {
+            for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
+            cacheMutated = true
+        }
         return ParseResult(usages: usages, conversations: conversations)
     }
 }
@@ -876,14 +1317,75 @@ public final class ModelFilterParser: LogParser, Sendable {
     public let provider: AgentProvider
     private let modelPattern: String
     private let sessionsOverride: URL?
-    public init(modelPattern: String, provider: AgentProvider, sessionsOverride: URL? = nil) { self.modelPattern = modelPattern.lowercased(); self.provider = provider; self.sessionsOverride = sessionsOverride }
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<CompositeFileSignature<FileSignature>>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+
+    public init(
+        modelPattern: String,
+        provider: AgentProvider,
+        sessionsOverride: URL? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.modelPattern = modelPattern.lowercased()
+        self.provider = provider
+        self.sessionsOverride = sessionsOverride
+        self.fileManager = fileManager
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: LocalUsageParserSupport.idleCacheURL(
+                overrideDirectory: sessionsOverride,
+                live: appPaths.modelFilterParserCacheURL(for: provider),
+                fileName: ".obb-\(provider.persistedToken)-parser-cache.plist"
+            ),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "ModelFilterParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public func parse() async throws -> ParseResult { try await parse(options: .default) }
     public func parse(options: LogParseOptions) async throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let root = sessionsOverride ?? LocalUsageParserSupport.expanded("~/.factory/sessions")
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []; var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer { if cacheMutated { cacheStore.persist(parseCache) } }
         for file in LocalUsageParserSupport.files(in: root, extensions: ["jsonl"]) {
-            let objects = LocalUsageParserSupport.jsonLines(at: file); var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, userChars = 0, assistantChars = 0; var model: String?; var start: Date?, end: Date?; var turns: [LocalUsageParserSupport.Turn] = []
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
             let stem = file.deletingPathExtension()
+            let settingsURL = stem.appendingPathExtension("settings.json")
+            let metadataURL = stem.appendingPathExtension("metadata.json")
+            var gateFiles = [file]
+            if fileManager.fileExists(atPath: settingsURL.path) { gateFiles.append(settingsURL) }
+            if fileManager.fileExists(atPath: metadataURL.path) { gateFiles.append(metadataURL) }
+            guard try gate.shouldRead(gateFiles) else { continue }
+            let signature = FileSignature(for: file, using: fileManager).map { primary in
+                CompositeFileSignature(
+                    primary: primary,
+                    settings: FileSignature(for: settingsURL, using: fileManager),
+                    metadata: FileSignature(for: metadataURL, using: fileManager)
+                )
+            }
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: provider) })
+                continue
+            }
+            sessionScanCount.withLock { $0 += 1 }
+            let objects = LocalUsageParserSupport.jsonLines(at: file); var input = 0, output = 0, cacheCreation = 0, cacheRead = 0, userChars = 0, assistantChars = 0; var model: String?; var start: Date?, end: Date?; var turns: [LocalUsageParserSupport.Turn] = []
             for sidecar in [stem.appendingPathExtension("settings.json"), stem.appendingPathExtension("metadata.json")] {
                 guard let sidecarData = try? Data(contentsOf: sidecar),
                       let sidecarObject = try? JSONSerialization.jsonObject(with: sidecarData) as? [String: Any]
@@ -916,13 +1418,26 @@ public final class ModelFilterParser: LogParser, Sendable {
                     }
                 }
             }
+            func persist(_ fileUsages: [TokenUsage]) {
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                        signature: signature,
+                        usages: fileUsages
+                    )
+                    cacheMutated = true
+                }
+            }
             guard let resolvedModel = model, resolvedModel.lowercased().contains(modelPattern) else {
+                persist([])
                 continue
             }
             var method: UsageProvenanceMethod = .providerLog
             var confidence: UsageProvenanceConfidence = .exact
             if input == 0 && output == 0 {
-                guard userChars + assistantChars > 0 else { continue }
+                guard userChars + assistantChars > 0 else {
+                    persist([])
+                    continue
+                }
                 let estimate = TokenExtractionUtility.estimateFallbackTokens(
                     userVisibleChars: userChars,
                     assistantVisibleChars: assistantChars,
@@ -966,6 +1481,9 @@ public final class ModelFilterParser: LogParser, Sendable {
                 estimatorVersion: estimatorVersion
             ) {
                 usages.append(usage)
+                persist([usage])
+            } else {
+                persist([])
             }
             if options.includeConversationBodies, !turns.isEmpty {
                 conversations.append(LocalUsageParserSupport.transcript(
@@ -978,6 +1496,11 @@ public final class ModelFilterParser: LogParser, Sendable {
                     fileModifiedAt: mtime
                 ))
             }
+        }
+        let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stale.isEmpty {
+            for key in stale { parseCache.fileEntries.removeValue(forKey: key) }
+            cacheMutated = true
         }
         return ParseResult(usages: usages, conversations: conversations)
     }
