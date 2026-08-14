@@ -96,13 +96,13 @@ public enum QuotaRefreshPolicy {
 
     public static func nextRefreshAfter(
         _ snapshot: QuotaRefreshPolicySnapshot,
-        now: Date = Date()
+        now _: Date = Date()
     ) -> Date {
         let ttl = adaptiveTTL(
             remainingFraction: snapshot.remainingFraction,
             windowKind: snapshot.windowKind,
             resetsAt: snapshot.resetsAt,
-            now: now
+            now: snapshot.fetchedAt
         )
         return snapshot.fetchedAt.addingTimeInterval(ttl)
     }
@@ -120,8 +120,8 @@ public enum QuotaRefreshPolicy {
                 let candidate = min(max(remaining / limit, 0), 1)
                 remainingFraction = remainingFraction.map { min($0, candidate) } ?? candidate
             }
-            if resetsAt == nil {
-                resetsAt = bucket.resetsAt
+            if let bucketReset = bucket.resetsAt {
+                resetsAt = resetsAt.map { min($0, bucketReset) } ?? bucketReset
             }
             if windowKind == .custom {
                 windowKind = bucket.windowKind

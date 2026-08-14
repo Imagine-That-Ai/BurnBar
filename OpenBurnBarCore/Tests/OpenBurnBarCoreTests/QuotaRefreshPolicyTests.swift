@@ -123,6 +123,73 @@ final class QuotaRefreshPolicyTests: XCTestCase {
         XCTAssertEqual(policy.windowKind, .weekly)
     }
 
+    func test_policySnapshot_usesEarliestBucketReset() throws {
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let earlyReset = fetchedAt.addingTimeInterval(5 * 60)
+        let snapshot = ProviderQuotaSnapshot(
+            id: "codex_default",
+            provider: AgentProvider.codex.rawValue,
+            providerID: AgentProvider.codex.providerID,
+            sourceKind: .officialAPI,
+            sourceId: "default",
+            fetchedAt: fetchedAt,
+            source: "officialAPI",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "weekly",
+                    label: "Weekly",
+                    windowKind: .weekly,
+                    usedValue: 10,
+                    limitValue: 100,
+                    remainingValue: 90,
+                    usedPercent: 10,
+                    resetsAt: fetchedAt.addingTimeInterval(7 * 24 * 60 * 60),
+                    unit: .requests,
+                    isEstimated: false
+                ),
+                ProviderQuotaBucket(
+                    key: "rolling",
+                    label: "5-hour",
+                    windowKind: .rollingHours,
+                    usedValue: 10,
+                    limitValue: 100,
+                    remainingValue: 90,
+                    usedPercent: 10,
+                    resetsAt: earlyReset,
+                    unit: .requests,
+                    isEstimated: false
+                )
+            ],
+            updatedAt: fetchedAt
+        )
+
+        let policy = QuotaRefreshPolicy.policySnapshot(from: snapshot)
+
+        XCTAssertEqual(policy.resetsAt, earlyReset)
+        XCTAssertEqual(QuotaRefreshPolicy.nextRefreshAfter(policy), earlyReset)
+    }
+
+    func test_nextRefreshAfter_anchorsResetDeadlineToFetchedAt() {
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let resetAt = fetchedAt.addingTimeInterval(20 * 60)
+        let snapshot = QuotaRefreshPolicySnapshot(
+            fetchedAt: fetchedAt,
+            remainingFraction: 0.9,
+            windowKind: .rollingHours,
+            resetsAt: resetAt
+        )
+
+        let initialDeadline = QuotaRefreshPolicy.nextRefreshAfter(snapshot, now: fetchedAt)
+        let laterDeadline = QuotaRefreshPolicy.nextRefreshAfter(
+            snapshot,
+            now: fetchedAt.addingTimeInterval(10 * 60)
+        )
+
+        XCTAssertEqual(initialDeadline, resetAt)
+        XCTAssertEqual(laterDeadline, resetAt)
+    }
+
     private func makeSnapshot(
         provider: AgentProvider,
         fetchedAt: Date,

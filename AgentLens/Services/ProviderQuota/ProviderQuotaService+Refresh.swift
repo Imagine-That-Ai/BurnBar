@@ -102,55 +102,83 @@ extension ProviderQuotaService {
         dataStore: DataStore,
         clearAllErrors: Bool
     ) async {
-        guard !providers.isEmpty else { return }
-        if clearAllErrors, let existing = inFlightRefreshAllTask {
-            await existing.value
-            return
-        }
-        let task = Task { @MainActor [self] in
-            isFetching = true
-            defer {
-                isFetching = false
-                activeProviders.removeAll()
-            }
-            if clearAllErrors {
-                errors = [:]
-            } else {
-                for provider in providers {
-                    errors.removeValue(forKey: provider)
-                }
-            }
-            refreshClaudeBridgeStatus()
+        var remainingProviders = providers.uniquedPreservingOrder()
+        guard !remainingProviders.isEmpty else { return }
 
-            activeProviders = Set(providers)
-            let switcherProfileFetcher = makeSwitcherProfileFetcher(dataStore: dataStore)
-            let batch = await quotaRefreshActor.fetchAllSnapshots(
-                switcherProfileFetcher: switcherProfileFetcher,
-                providers: providers
-            )
-            for (provider, snapshot) in batch.providerSnapshots {
-                upsertSnapshot(snapshot, for: provider)
-            }
-            replaceAccountSnapshots(
-                batch.accountSnapshots,
-                pruningManagedAccountSnapshotsFor: Set(providers)
-            )
-            await persistDaemonCredentialSlotAccounts(
-                dataStore: dataStore,
-                providers: clearAllErrors ? nil : Set(providers)
-            )
-            await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
-
-            lastFetch = Date()
-            persistSnapshots()
-        }
         if clearAllErrors {
-            inFlightRefreshAllTask = task
-            await task.value
-            inFlightRefreshAllTask = nil
-        } else {
-            await task.value
+            let providersAlreadyRefreshing = inFlightRefresh?.providers ?? []
+            errors = errors.filter { providersAlreadyRefreshing.contains($0.key) }
         }
+
+        while !remainingProviders.isEmpty {
+            if let existing = inFlightRefresh {
+                await existing.task.value
+                if inFlightRefresh?.id == existing.id {
+                    inFlightRefresh = nil
+                }
+                remainingProviders.removeAll { existing.providers.contains($0) }
+                continue
+            }
+
+            let targetProviders = remainingProviders
+            let targetProviderSet = Set(targetProviders)
+            let refreshID = UUID()
+            let task = Task { @MainActor [self] in
+                await performRefresh(
+                    targetProviders,
+                    dataStore: dataStore,
+                    persistAllCredentialSlots: clearAllErrors
+                )
+            }
+            inFlightRefresh = InFlightRefresh(
+                id: refreshID,
+                providers: targetProviderSet,
+                task: task
+            )
+            await task.value
+            if inFlightRefresh?.id == refreshID {
+                inFlightRefresh = nil
+            }
+            remainingProviders.removeAll { targetProviderSet.contains($0) }
+        }
+    }
+
+    private func performRefresh(
+        _ providers: [AgentProvider],
+        dataStore: DataStore,
+        persistAllCredentialSlots: Bool
+    ) async {
+        isFetching = true
+        defer {
+            isFetching = false
+            activeProviders.removeAll()
+        }
+        for provider in providers {
+            errors.removeValue(forKey: provider)
+        }
+        refreshClaudeBridgeStatus()
+
+        activeProviders = Set(providers)
+        let switcherProfileFetcher = makeSwitcherProfileFetcher(dataStore: dataStore)
+        let batch = await quotaRefreshActor.fetchAllSnapshots(
+            switcherProfileFetcher: switcherProfileFetcher,
+            providers: providers
+        )
+        for (provider, snapshot) in batch.providerSnapshots {
+            upsertSnapshot(snapshot, for: provider)
+        }
+        replaceAccountSnapshots(
+            batch.accountSnapshots,
+            pruningManagedAccountSnapshotsFor: Set(providers)
+        )
+        await persistDaemonCredentialSlotAccounts(
+            dataStore: dataStore,
+            providers: persistAllCredentialSlots ? nil : Set(providers)
+        )
+        await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
+
+        lastFetch = Date()
+        persistSnapshots()
     }
 
     func refresh(provider: AgentProvider, dataStore: DataStore) async {

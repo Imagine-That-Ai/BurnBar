@@ -192,6 +192,12 @@ final class ProviderQuotaPlanReaders: Sendable {
 @Observable
 @MainActor
 final class ProviderQuotaService {
+    struct InFlightRefresh {
+        let id: UUID
+        let providers: Set<AgentProvider>
+        let task: Task<Void, Never>
+    }
+
     static let shared = ProviderQuotaService()
     internal static let maxPersistedRoutingEvents = 500  // pure-move: was private
 
@@ -225,9 +231,9 @@ final class ProviderQuotaService {
     internal(set) var snapshotsByAccountID: [String: ProviderQuotaSnapshot] = [:]  // pure-move: was private
     internal(set) var errors: [AgentProvider: String] = [:]  // pure-move: was private
     internal(set) var isFetching = false  // pure-move: was private
-    /// Perf: coalesce concurrent `refreshAll` callers behind one Task instead of
-    /// dropping the second caller (old `guard !isFetching else { return }`).
-    var inFlightRefreshAllTask: Task<Void, Never>?
+    /// Coalesces overlapping adaptive and full refreshes so a provider has at
+    /// most one rate-limited probe in flight through the batch refresh path.
+    var inFlightRefresh: InFlightRefresh?
 
     var quotaHomeDirectoryURL: URL { homeDirectoryURL }
     internal(set) var activeProviders: Set<AgentProvider> = []  // pure-move: was private
