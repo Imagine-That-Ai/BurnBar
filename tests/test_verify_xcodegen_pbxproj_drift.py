@@ -1,4 +1,3 @@
-import re
 import subprocess
 import time
 from pathlib import Path
@@ -358,15 +357,68 @@ def test_rejects_temp_package_product_semantic_drift(tmp_path: Path):
     assert "OpenBurnBarMedia" in result.stderr
 
 
-def test_id_list_block_pattern_is_linear_on_tab_newlines():
-    """CodeQL flagged the previous `[ \\t]*[^\\n]*` body as ReDoS."""
+def test_id_list_sort_does_not_use_greedy_block_regex():
     source = SCRIPT.read_text(encoding="utf-8")
-    assert r"(?:[ \t]+[^\n]+\n)*" in source
+    assert "ID_LIST_OPEN" in source
+    assert "ID_LIST_BLOCK" not in source
     assert r"(?:[ \t]*[^\n]*\n)*" not in source
-    pattern = re.compile(
-        r"(?P<prefix>=\s*\(\n)(?P<body>(?:[ \t]+[^\n]+\n)*)(?P<suffix>[ \t]*\))",
-    )
-    payload = "=(\n" + ("\t\n" * 4000) + ")"
+    assert r"(?:[ \t]+[^\n]+\n)*" not in source
+
+
+def test_build_settings_list_does_not_backtrack_through_the_rest_of_the_block(tmp_path: Path):
+    settings = "\n".join(f"\t\t\t\tCLANG_WARN_{index:03d} = YES;" for index in range(120))
+    blob = f"""// !$*UTF8*$!
+{{
+  objects = {{
+    AAAAAAAAAAAAAAAAAAAAAAAA /* Debug */ = {{
+      isa = XCBuildConfiguration;
+      buildSettings = {{
+        ALWAYS_SEARCH_USER_PATHS = NO;
+        GCC_PREPROCESSOR_DEFINITIONS = (
+          "$(inherited)",
+          "DEBUG=1",
+        );
+{settings}
+      }};
+      name = Debug;
+    }};
+  }};
+}}
+"""
     started = time.monotonic()
-    assert pattern.search(payload) is None
-    assert time.monotonic() - started < 1.0
+    result = run_verifier(tmp_path, blob, blob)
+    assert result.returncode == 0
+    assert time.monotonic() - started < 2.0
+
+
+def test_object_header_scan_is_linear_when_no_object_matches(tmp_path: Path):
+    """A failed DOTALL `.*?` header match from every byte hung CI for 15m."""
+    noise = "shellScript = \"echo " + ("A" * 24 + " /* not an object */ = " * 200) + "\";\n"
+    blob = (
+        "// !$*UTF8*$!\n{\n  objects = {\n"
+        + (noise * 80)
+        + "    AAAAAAAAAAAAAAAAAAAAAAAA /* Run Script */ = {\n"
+        + "      isa = PBXShellScriptBuildPhase;\n"
+        + "      shellScript = \"swiftlint lint --strict\";\n"
+        + "    };\n"
+        + "  };\n}\n"
+    )
+    started = time.monotonic()
+    result = run_verifier(tmp_path, blob, blob)
+    assert result.returncode == 0
+    assert time.monotonic() - started < 2.0
+
+
+def test_committed_project_canonicalizes_against_itself_quickly():
+    path = ROOT / "OpenBurnBar.xcodeproj/project.pbxproj"
+    started = time.monotonic()
+    result = subprocess.run(
+        ["python3", str(SCRIPT), str(path), str(path)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    elapsed = time.monotonic() - started
+    assert result.returncode == 0, result.stderr
+    assert "PBX object ID churn ignored" in result.stdout
+    assert elapsed < 20, f"canonicalizer took {elapsed:.1f}s on committed pbxproj"
