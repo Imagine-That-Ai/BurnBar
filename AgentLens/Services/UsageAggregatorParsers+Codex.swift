@@ -428,7 +428,8 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         handler: ([String: Any]) -> Void
     ) {
         var yieldedLineObject = false
-        if let handle = try? FileHandle(forReadingFrom: file) { // try?-ok(unreadable file falls back below)
+        if file.pathExtension.lowercased() != "json",
+           let handle = try? FileHandle(forReadingFrom: file) { // try?-ok(unreadable file falls back below)
             defer { try? handle.close() } // try?-ok(handle teardown)
             for line in handle.readAllUTF8Lines() {
                 parserAutoReleasePool {

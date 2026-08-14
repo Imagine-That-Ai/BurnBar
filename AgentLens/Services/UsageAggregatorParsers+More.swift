@@ -903,11 +903,10 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
             guard let row = try Row.fetchOne(db, sql: OpenBurnBarCore.OpenCodePartQuery.jsonExtractProbeSQL) else {
                 return false
             }
-            let text: String? = row["probe"]
-            let intValue: Int64? = row["probe"]
+            let probe = Self.columnValue(row, "probe")
             return OpenBurnBarCore.OpenCodePartQuery.jsonExtractProbeSucceeded(
-                intValue: intValue,
-                textValue: text
+                intValue: probe as? Int64,
+                textValue: probe as? String
             )
         } catch {
             return false
