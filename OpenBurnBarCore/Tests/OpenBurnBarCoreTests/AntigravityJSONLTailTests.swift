@@ -28,7 +28,10 @@ final class AntigravityJSONLTailTests: XCTestCase {
         XCTAssertEqual(scan.inWindowCount, 3)
         XCTAssertTrue(scan.sawAnyEvent)
         XCTAssertLessThan(scan.bytesRead, fileSize / 2, "stale prefix must not be fully scanned")
-        XCTAssertGreaterThan(fileSize, 80_000)
+        // 2403 compact `{"timestamp":…}` lines land around 67 KiB. The
+        // contract is the half-file tail, not an 80 KiB floor that the
+        // fixture never reaches.
+        XCTAssertGreaterThan(fileSize, 50_000)
     }
 
     func testScan_oldEventsStillCountAsObserved() throws {

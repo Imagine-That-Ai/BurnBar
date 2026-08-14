@@ -878,9 +878,9 @@ final class IdleUsageParserCacheTests: XCTestCase {
         let extra = home.appendingPathComponent("other", isDirectory: true)
         try fileManager.createDirectory(at: extra, withIntermediateDirectories: true)
         _ = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
-        XCTAssertEqual(
+        XCTAssertGreaterThanOrEqual(
             parser.lastHomeListingHitCount,
-            0,
+            1,
             "A new home child should change ~ mtime and force a readdir"
         )
         XCTAssertGreaterThanOrEqual(

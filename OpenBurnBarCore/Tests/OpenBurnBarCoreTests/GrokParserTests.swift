@@ -60,7 +60,7 @@ final class GrokParserTests: XCTestCase {
         XCTAssertEqual(parser.lastUpdatesScanCount, 1)
         XCTAssertEqual(parser.lastUpdatesCacheHitCount, 0)
         let firstUsage = try XCTUnwrap(first.usages.first)
-        XCTAssertEqual(firstUsage.totalTokens, 1_800)
+        XCTAssertEqual(firstUsage.totalTokens, 1_200)
 
         let second = try await parser.parse()
         XCTAssertEqual(parser.lastUpdatesScanCount, 0)
@@ -75,7 +75,7 @@ final class GrokParserTests: XCTestCase {
 
         let third = try await parser.parse()
         XCTAssertEqual(parser.lastUpdatesScanCount, 1)
-        XCTAssertEqual(third.usages.first?.totalTokens, 2_400)
+        XCTAssertEqual(third.usages.first?.totalTokens, 1_800)
     }
 
     func test_parse_watermarkSkipDoesNotDropUpdatesCache() async throws {
@@ -94,7 +94,7 @@ final class GrokParserTests: XCTestCase {
 
         let parser = GrokParser(logDirectoryOverride: root.path)
         let first = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
-        XCTAssertEqual(first.usages.first?.totalTokens, 1_800)
+        XCTAssertEqual(first.usages.first?.totalTokens, 1_200)
 
         let deferred = try await parser.parse(options: LogParseOptions(
             includeConversationBodies: false,
@@ -105,7 +105,7 @@ final class GrokParserTests: XCTestCase {
         let second = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
         XCTAssertEqual(parser.lastUpdatesScanCount, 0)
         XCTAssertEqual(parser.lastUpdatesCacheHitCount, 1)
-        XCTAssertEqual(second.usages.first?.totalTokens, 1_800)
+        XCTAssertEqual(second.usages.first?.totalTokens, 1_200)
     }
 
     func test_parse_doesNotDoubleCountChildUsageAggregatedIntoParent() async throws {

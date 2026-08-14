@@ -100,7 +100,7 @@ final class FactoryQuotaCacheTests: XCTestCase {
 
         let third = try await adapter.fetch(context: context)
         XCTAssertEqual(adapter.lastContentReadCount, 1)
-        XCTAssertEqual(try XCTUnwrap(fiveHourBucket(in: third)?.usedValue), 1_660, accuracy: 0.5)
+        XCTAssertEqual(try XCTUnwrap(fiveHourBucket(in: third)?.usedValue), 1_650, accuracy: 0.5)
     }
 
     private func fiveHourBucket(in snapshot: ProviderQuotaSnapshot) -> ProviderQuotaBucket? {

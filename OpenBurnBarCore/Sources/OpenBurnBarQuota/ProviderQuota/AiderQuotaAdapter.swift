@@ -14,8 +14,9 @@ import OpenBurnBarLogParsers
 ///
 /// Unchanged analytics files resume from a mtime+size disk cache of **quota
 /// facts only** (`time`, tokens, cost) plus a byte offset past the last
-/// terminated line. Window membership (today / this month) is recomputed at
-/// fetch time. JSONL line text, prompts, and conversation bodies are not stored.
+/// terminated line. The first 4096 bytes are fingerprinted with SHA-256 so
+/// the cache never stores JSONL text. Window membership (today / this month)
+/// is recomputed at fetch time. Prompts and conversation bodies are not stored.
 ///
 /// Reference: `AiderParser.swift` in UsageAggregatorParsers (same data source).
 
@@ -66,7 +67,7 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
         let cacheStore = ParserDiskCacheStore<AiderQuotaCacheEntry>(
             cacheURL: cacheURL(context: context, analyticsDirectory: aiderDir),
             fileManager: fm,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "AiderQuotaAdapter"
         )
         var parseCache = cacheStore.load()
@@ -242,22 +243,24 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
         guard signature.sizeBytes >= cached.signature.sizeBytes,
               cached.byteOffset >= 0,
               cached.byteOffset <= signature.sizeBytes,
-              !cached.headPrefix.isEmpty,
-              cached.headPrefix.count <= signature.sizeBytes else {
+              cached.headPrefixLength > 0,
+              cached.headPrefixLength <= signature.sizeBytes,
+              !cached.headPrefixSHA256.isEmpty else {
             return nil
         }
         guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil } // try?-ok(append probe)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
         try? handle.seek(toOffset: 0) // try?-ok(seek 0 before head read)
-        let observedHead = handle.readData(ofLength: cached.headPrefix.count)
-        guard observedHead == cached.headPrefix else { return nil }
+        let observedHead = handle.readData(ofLength: cached.headPrefixLength)
+        guard QuotaSHA256.hexDigest(observedHead) == cached.headPrefixSHA256 else { return nil }
 
         if cached.byteOffset == signature.sizeBytes {
             let entry = AiderQuotaCacheEntry(
                 signature: signature,
                 byteOffset: cached.byteOffset,
-                headPrefix: cached.headPrefix,
+                headPrefixLength: cached.headPrefixLength,
+                headPrefixSHA256: cached.headPrefixSHA256,
                 facts: cached.facts,
                 sessionCount: cached.sessionCount,
                 openSessionTokens: cached.openSessionTokens
@@ -280,7 +283,8 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
         let entry = AiderQuotaCacheEntry(
             signature: signature,
             byteOffset: reduced.persistedOffset,
-            headPrefix: cached.headPrefix,
+            headPrefixLength: cached.headPrefixLength,
+            headPrefixSHA256: cached.headPrefixSHA256,
             facts: reduced.persistedFacts,
             sessionCount: reduced.persistedSessionCount,
             openSessionTokens: reduced.persistedOpenSessionTokens
@@ -296,7 +300,8 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
             let entry = AiderQuotaCacheEntry(
                 signature: signature,
                 byteOffset: 0,
-                headPrefix: Data(),
+                headPrefixLength: 0,
+                headPrefixSHA256: "",
                 facts: [],
                 sessionCount: 0,
                 openSessionTokens: 0
@@ -320,7 +325,8 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
         let entry = AiderQuotaCacheEntry(
             signature: signature,
             byteOffset: reduced.persistedOffset,
-            headPrefix: headPrefix,
+            headPrefixLength: headPrefix.count,
+            headPrefixSHA256: QuotaSHA256.hexDigest(headPrefix),
             facts: reduced.persistedFacts,
             sessionCount: reduced.persistedSessionCount,
             openSessionTokens: reduced.persistedOpenSessionTokens
@@ -454,7 +460,8 @@ struct AiderQuotaFact: Codable, Equatable, Sendable {
 struct AiderQuotaCacheEntry: Codable, Equatable, Sendable {
     var signature: FileSignature
     var byteOffset: Int64
-    var headPrefix: Data
+    var headPrefixLength: Int
+    var headPrefixSHA256: String
     var facts: [AiderQuotaFact]
     var sessionCount: Int
     var openSessionTokens: Int
