@@ -162,6 +162,7 @@ export const MODEL_COLOR: Record<string, string> = {
   "glm-5-2": "#7c5cff",
   "gpt-5-6-luna-max": "#10a37f",
   "muse-spark-1-2-contributor": "#ff6d3f",
+  "qwen3-7-flash": "#f5b040",
   // current export roster
   "claude-opus-4-8": "#d97757",
   "gpt-5-5": "#10a37f",
@@ -191,6 +192,7 @@ export const MODEL_LOGO: Record<string, string | null> = {
   "glm-5-2": "/brand/providers/zai.png",
   "gpt-5-6-luna-max": "/brand/providers/openai.png",
   "muse-spark-1-2-contributor": "/brand/providers/meta.svg",
+  "qwen3-7-flash": "/brand/providers/qwen.svg",
   // current export roster
   "claude-opus-4-8": "/brand/providers/anthropic.png",
   "gpt-5-5": "/brand/providers/openai.png",
@@ -219,6 +221,7 @@ export const MODEL_CLASS: Record<string, string> = {
   "glm-5-2": "glm",
   "gpt-5-6-luna-max": "gpt",
   "muse-spark-1-2-contributor": "spark",
+  "qwen3-7-flash": "qwen",
   "claude-opus-4-8": "opus",
   "gpt-5-5": "gpt5",
   "gemini-3-1-pro-preview": "gemini"
@@ -459,7 +462,8 @@ const DISPLAY_SHORT: Record<string, string> = {
   "muse-spark-1-2-contributor": "Muse Spark 1.2 CE",
   "deepseek-v4-flash-0731": "DeepSeek V4 Flash",
   "gpt-5-6-luna-max": "GPT 5.6 Luna Pro",
-  "glm-5-2": "GLM 5.2"
+  "glm-5-2": "GLM 5.2",
+  "qwen3-7-flash": "Qwen3.7 Flash"
 };
 
 export function modelDisplayShort(id: string): string {
