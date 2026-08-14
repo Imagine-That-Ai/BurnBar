@@ -317,9 +317,7 @@ final class UsageAggregator {
             var remainingSlices = UsageIngestionPolicy.maxCatchUpSlicesPerKick
             while remainingSlices > 0, !Task.isCancelled {
                 remainingSlices -= 1
-                try? await Task.sleep(
-                    nanoseconds: UsageIngestionPolicy.catchUpSliceDelayNanoseconds
-                )
+                try? await Task.sleep(nanoseconds: UsageIngestionPolicy.catchUpSliceDelayNanoseconds) // try?-ok(cancellation only)
                 guard !Task.isCancelled else { break }
                 // Never wait on the gate here: a live tick holding it must not
                 // queue a catch-up slice behind itself. Stopping instead is

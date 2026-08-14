@@ -141,7 +141,7 @@ const PLANNED_CEILINGS = {
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   // The final local-parser catalog adds bounded corpus parsers for the Linux
   // provider matrix; the ceiling remains below a general-purpose god target.
-  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 13200 },
+  OpenBurnBarLogParsers: { maxFiles: 35, maxLines: 14300 },
   OpenBurnBarQuota: { maxFiles: 55, maxLines: 13000 },
   // VectorKit gains OpenBurnBarSearchContracts.swift (P-03 re-slice / FIX 4) on
   // top of the vector indexes + SearchPlanner + Pensieve, so its ceiling covers

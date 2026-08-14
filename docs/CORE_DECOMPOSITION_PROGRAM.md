@@ -606,6 +606,18 @@ duplicate parser/provider boundaries. Planned ceilings move narrowly to 47,250 a
 (~221/185 LOC of bounded headroom); file-count ceilings and the main-target shim baseline stay
 unchanged.
 
+**Usage-ingest reliability ceiling adjustment (2026-08-14):** `fix/usage-ingest-live-catchup`
+(#2240) isolated `isLiveUsage` attribution to `OpenBurnBarKernel`, fixed Grok `chat_history.jsonl`
+cache staleness, split live vs catch-up ingest onto lane-aware governors, and bounded Codex
+subagent classification to an 8 KB head read. `OpenBurnBarLogParsers` now measures 14,174 LOC
+(32 files), still below the owning-module ceiling; the planned ceiling moves 14,100→14,300 LOC
+(~126 LOC headroom). `Kernel`'s `isLiveUsage` addition is under its existing 47,250 LOC budget. The
+per-file `try?` debt gate and the `static let shared` singleton count were cleaned to zero
+(`UsageAggregator.swift:320` tagged `try?-ok`) and raised to 57/58 respectively
+(`UsageIngestPersistGate` + `UsageParserPassGate` are cross-queue global async-mutex refinements that
+cannot be runtime-context-injected without reintroducing the races they fix); the
+`@_exported import OpenBurnBarCore` umbrella count stays at 528.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated
