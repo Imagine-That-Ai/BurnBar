@@ -123,11 +123,11 @@ export const BENCH_CHART_TYPES = ["bar", "scatter", "line", "heatmap"] as const;
 export const BENCH_CHART_DIMENSIONS = ["harness", "model", "family", "language", "platform"] as const;
 export const BENCH_CHART_METRICS = ["solution_rate", "strict_rate", "cost_usd", "wall_seconds", "tokens"] as const;
 
-export type BenchChartType = (typeof BENCH_CHART_TYPES)[number];
-export type BenchChartDimension = (typeof BENCH_CHART_DIMENSIONS)[number];
-export type BenchChartMetric = (typeof BENCH_CHART_METRICS)[number];
+type BenchChartType = (typeof BENCH_CHART_TYPES)[number];
+type BenchChartDimension = (typeof BENCH_CHART_DIMENSIONS)[number];
+type BenchChartMetric = (typeof BENCH_CHART_METRICS)[number];
 
-export interface BenchChartSpec {
+interface BenchChartSpec {
   type: BenchChartType;
   dimension: BenchChartDimension;
   metric: BenchChartMetric;
@@ -135,7 +135,7 @@ export interface BenchChartSpec {
   title?: string;
 }
 
-export interface BenchAssistantModelOutput {
+interface BenchAssistantModelOutput {
   answer: string;
   chart: BenchChartSpec | null;
   rowsUsed: string[];
@@ -550,7 +550,12 @@ export const benchAssistant = onCallProduction<BenchAssistantRequest, Record<str
           });
         }
       }
-      const finalOutput = output ?? { answer: bestEffortAnswer(rawContents), chart: null, rowsUsed: [] as string[] };
+      const fallbackOutput: BenchAssistantModelOutput = {
+        answer: bestEffortAnswer(rawContents),
+        chart: null,
+        rowsUsed: [],
+      };
+      const finalOutput = output ?? fallbackOutput;
 
       const inputPrice = parseNumericEnv(
         "BENCH_ASSISTANT_INPUT_PRICE_PER_MTOKEN",

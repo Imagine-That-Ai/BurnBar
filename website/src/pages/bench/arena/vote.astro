@@ -255,11 +255,7 @@ import "@styles/arena-variant-neural.css";
           rubric existed. Rendered server-side and static: no JS is needed to
           fill it in, and bench-arena.ts only reads it at submit time. */
       }
-      <form
-        id="arena-rubric"
-        class="bb-arena__rubric bb-arena__voteui"
-        aria-labelledby="rubric-h"
-      >
+      <form id="arena-rubric" class="bb-arena__rubric bb-arena__voteui" aria-labelledby="rubric-h">
         <div class="bb-arena__rubric-head">
           <span id="rubric-h" class="bb-arena__brief-eyebrow mono"
             >// optional rubric — skip it, your pick still counts</span
@@ -274,23 +270,23 @@ import "@styles/arena-variant-neural.css";
               {
                 key: "visual_polish",
                 label: "Visual polish",
-                hint: "craft, hierarchy, typography",
+                hint: "craft, hierarchy, typography"
               },
               {
                 key: "interaction_quality",
                 label: "Interaction quality",
-                hint: "feel, responsiveness, motion",
+                hint: "feel, responsiveness, motion"
               },
               {
                 key: "accessibility",
                 label: "Accessibility",
-                hint: "keyboard, contrast, semantics",
+                hint: "keyboard, contrast, semantics"
               },
               {
                 key: "code_quality",
                 label: "Code quality",
-                hint: "structure, restraint, no slop",
-              },
+                hint: "structure, restraint, no slop"
+              }
             ].map((dimension) => (
               // role=radiogroup rather than fieldset/legend: a rendered <legend>
               // is not a flex item, so a fieldset cannot put its label and its
@@ -311,7 +307,7 @@ import "@styles/arena-variant-neural.css";
                   {[
                     { value: "A", label: "A", name: "Artifact A" },
                     { value: "tie", label: "tie", name: "Tie" },
-                    { value: "B", label: "B", name: "Artifact B" },
+                    { value: "B", label: "B", name: "Artifact B" }
                   ].map((option) => (
                     <label
                       class={`bb-arena__rubric-opt bb-arena__rubric-opt--${option.value.toLowerCase()}`}
@@ -369,8 +365,8 @@ import "@styles/arena-variant-neural.css";
       <p class="bb-arena__note">
         Votes feed a Firth-corrected Bradley–Terry model with bootstrap confidence intervals,
         published per stack only after 30 votes. Rubric rows are rated the same way, one model per
-        dimension, and gated separately — a dimension publishes only once it has been judged
-        enough on its own. A skipped row is treated as missing, never as a tie. The method is
+        dimension, and gated separately — a dimension publishes only once it has been judged enough
+        on its own. A skipped row is treated as missing, never as a tie. The method is
         pre-registered; see the <a href="/bench#report">report</a> for the full methodology.
       </p>
     </div>

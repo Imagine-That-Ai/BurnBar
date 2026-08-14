@@ -27,30 +27,30 @@ const HARNESSES: Record<string, IdentityInfo> = {
   opencode: { name: "OpenCode", logo: "/brand/providers/opencode.png" },
   "prime-agent": {
     name: "Prime Agent",
-    logo: "/brand/providers/prime-intellect.png",
+    logo: "/brand/providers/prime-intellect.png"
   },
-  hermes: { name: "Hermes", logo: "/brand/providers/hermes.png" },
+  hermes: { name: "Hermes", logo: "/brand/providers/hermes.png" }
 };
 
 const MODELS: Record<string, IdentityInfo> = {
   "deepseek-v4-flash-0731": {
     name: "DeepSeek v4 Flash",
-    logo: "/brand/providers/deepseek.svg",
+    logo: "/brand/providers/deepseek.svg"
   },
   "gpt-5-6-luna-max": {
     name: "GPT-5.6 Luna Max",
     logo: "/brand/providers/openai.png",
-    darkGlyph: true,
+    darkGlyph: true
   },
   "glm-5-2": {
     name: "GLM-5.2",
     logo: "/brand/providers/zai.png",
-    darkGlyph: true,
+    darkGlyph: true
   },
   "muse-spark-1-2-contributor": {
     name: "Muse Spark 1.2",
-    logo: "/brand/providers/meta.svg",
-  },
+    logo: "/brand/providers/meta.svg"
+  }
 };
 
 export function harnessInfo(id: string): IdentityInfo {
@@ -64,9 +64,7 @@ export function modelInfo(id: string): IdentityInfo {
 function logoNode(info: IdentityInfo): HTMLElement {
   if (info.logo) {
     const img = document.createElement("img");
-    img.className = info.darkGlyph
-      ? "bb-id__logo bb-id__logo--dark"
-      : "bb-id__logo";
+    img.className = info.darkGlyph ? "bb-id__logo bb-id__logo--dark" : "bb-id__logo";
     img.src = info.logo;
     img.alt = "";
     img.width = 44;

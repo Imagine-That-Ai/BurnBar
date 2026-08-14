@@ -40,11 +40,25 @@
 
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { FacebookAuthProvider, getAuth, GithubAuthProvider, GoogleAuthProvider, OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, type AuthProvider, type User } from "firebase/auth";
+import {
+  FacebookAuthProvider,
+  getAuth,
+  GithubAuthProvider,
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  onAuthStateChanged,
+  signOut,
+  type AuthProvider,
+  type User
+} from "firebase/auth";
 import { firebaseConfig } from "../lib/firebaseClient";
 import { EVENT, trackEvent, type ArenaSignInProvider } from "../lib/analytics";
 import { arenaTaskBrief } from "./arena-tasks";
 import { buildIdentityCard } from "./arena-identities";
+import { at, closestFrom, query, targetAs } from "./dom.js";
 import { initArenaNet } from "./arena-net";
 
 /* The artifacts hosting origin (separate Firebase Hosting site, locked CSP).
@@ -169,13 +183,13 @@ const arenaProviders: Record<ArenaSignInProvider, AuthProvider> = {
   google: arenaGoogleProvider,
   apple: arenaAppleProvider,
   github: arenaGithubProvider,
-  facebook: arenaFacebookProvider,
+  facebook: arenaFacebookProvider
 };
 const arenaProviderLabels: Record<ArenaSignInProvider, string> = {
   google: "Google",
   apple: "Apple",
   github: "GitHub",
-  facebook: "Meta",
+  facebook: "Meta"
 };
 
 /** The currently signed-in user, or null when anonymous. */
@@ -211,7 +225,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     promise,
     new Promise<T>((_resolve, reject) => {
       setTimeout(() => reject(new CallableTimeoutError()), ms);
-    }),
+    })
   ]);
 }
 
@@ -258,7 +272,7 @@ const ARENA_DIMENSIONS = [
   "visual_polish",
   "interaction_quality",
   "accessibility",
-  "code_quality",
+  "code_quality"
 ] as const;
 type ArenaDimension = (typeof ARENA_DIMENSIONS)[number];
 type RubricChoices = Partial<Record<ArenaDimension, Choice>>;
@@ -321,7 +335,8 @@ export function servedSides<T>(pair: { left: T; right: T }): { a: T; b: T } {
  *   is not a coded callable error at all.
  */
 export function callableErrorCode(err: unknown): string {
-  const code = (err as { code?: unknown } | null | undefined)?.code;
+  if (typeof err !== "object" || err === null || !("code" in err)) return "";
+  const code: unknown = Reflect.get(err, "code");
   return typeof code === "string" ? code.replace(/^functions\//, "") : "";
 }
 
@@ -346,7 +361,7 @@ const STALE_BALLOT_CODES = new Set([
   "failed-precondition",
   "permission-denied",
   "already-exists",
-  "not-found",
+  "not-found"
 ]);
 
 /** True when the only sensible recovery is a fresh pairing. */
@@ -364,7 +379,8 @@ export function isStaleBallot(err: unknown): boolean {
  */
 function staleBallotMessage(code: string): string {
   if (code === "already-exists") return "Already judged this pairing — dealing a fresh one.";
-  if (code === "permission-denied") return "That ballot didn't match the pairing — dealing a fresh one.";
+  if (code === "permission-denied")
+    return "That ballot didn't match the pairing — dealing a fresh one.";
   if (code === "not-found") return "That pairing is no longer published — dealing a fresh one.";
   return "That ballot expired before it landed — dealing a fresh one.";
 }
@@ -392,30 +408,34 @@ export function voteFailureAction(err: unknown): VoteFailureAction {
   if (code === "resource-exhausted") {
     return {
       kind: "status",
-      status: "You've hit the vote rate limit. Thanks for the enthusiasm — try again later.",
+      status: "You've hit the vote rate limit. Thanks for the enthusiasm — try again later."
     };
   }
   if (code === "deadline-exceeded") {
-    return { kind: "status", status: "Recording your vote timed out. Nothing was counted; please retry." };
+    return {
+      kind: "status",
+      status: "Recording your vote timed out. Nothing was counted; please retry."
+    };
   }
   return {
     kind: "status",
-    status: "Your vote could not be recorded. Nothing was counted; please retry.",
+    status: "Your vote could not be recorded. Nothing was counted; please retry."
   };
 }
 
 const arenaMatchup = httpsCallable<Record<string, unknown>, MatchupResponse>(
   arenaFunctions,
-  "arenaMatchup",
+  "arenaMatchup"
 );
 const arenaVote = httpsCallable<Record<string, unknown>, VoteResponse>(arenaFunctions, "arenaVote");
 
-function el<T extends HTMLElement>(id: string): T | null {
-  return document.getElementById(id) as T | null;
+function el<T extends HTMLElement>(id: string, ctor: abstract new () => T): T | null {
+  const node = document.getElementById(id);
+  return node instanceof ctor ? node : null;
 }
 
 function setStatus(message: string): void {
-  const node = el<HTMLElement>("arena-status");
+  const node = el("arena-status", HTMLElement);
   if (node) node.textContent = message;
 }
 
@@ -423,17 +443,17 @@ function setStatus(message: string): void {
  *  on the ballot card and inside the full-screen stage. */
 function renderBrief(taskId: string): void {
   const brief = arenaTaskBrief(taskId);
-  const card = el<HTMLElement>("arena-brief");
-  const title = el<HTMLElement>("brief-title");
-  const text = el<HTMLElement>("brief-text");
-  const judge = el<HTMLElement>("brief-judge");
+  const card = el("arena-brief", HTMLElement);
+  const title = el("brief-title", HTMLElement);
+  const text = el("brief-text", HTMLElement);
+  const judge = el("brief-judge", HTMLElement);
   if (title) title.textContent = brief.title;
   if (text) text.textContent = brief.brief;
   if (judge) judge.textContent = brief.judgeOn.join(" · ");
   if (card) card.hidden = false;
-  const stageTitle = el<HTMLElement>("stage-brief-title");
-  const stageText = el<HTMLElement>("stage-brief-text");
-  const stageJudge = el<HTMLElement>("stage-brief-judge");
+  const stageTitle = el("stage-brief-title", HTMLElement);
+  const stageText = el("stage-brief-text", HTMLElement);
+  const stageJudge = el("stage-brief-judge", HTMLElement);
   if (stageTitle) stageTitle.textContent = brief.title;
   if (stageText) stageText.textContent = ` — ${brief.brief}`;
   if (stageJudge) stageJudge.textContent = brief.judgeOn.join(" · ");
@@ -462,26 +482,26 @@ let stageSide: StageSide = "a";
 const stageLoaded: Record<StageSide, boolean> = { a: false, b: false };
 
 function stageFrame(side: StageSide): HTMLIFrameElement | null {
-  return el<HTMLIFrameElement>(side === "a" ? "stage-frame-a" : "stage-frame-b");
+  return el(side === "a" ? "stage-frame-a" : "stage-frame-b", HTMLIFrameElement);
 }
 
 function stageTab(side: StageSide): HTMLButtonElement | null {
-  return el<HTMLButtonElement>(side === "a" ? "stage-tab-a" : "stage-tab-b");
+  return el(side === "a" ? "stage-tab-a" : "stage-tab-b", HTMLButtonElement);
 }
 
 function showStageSide(side: StageSide): void {
   stageSide = side;
   const other: StageSide = side === "a" ? "b" : "a";
-  el<HTMLElement>(`stage-zoomwrap-${side}`)?.removeAttribute("hidden");
-  el<HTMLElement>(`stage-zoomwrap-${other}`)?.setAttribute("hidden", "");
-  el<HTMLElement>(`stage-zoombar-${side}`)?.removeAttribute("hidden");
-  el<HTMLElement>(`stage-zoombar-${other}`)?.setAttribute("hidden", "");
+  el(`stage-zoomwrap-${side}`, HTMLElement)?.removeAttribute("hidden");
+  el(`stage-zoomwrap-${other}`, HTMLElement)?.setAttribute("hidden", "");
+  el(`stage-zoombar-${side}`, HTMLElement)?.removeAttribute("hidden");
+  el(`stage-zoombar-${other}`, HTMLElement)?.setAttribute("hidden", "");
   stageTab(side)?.setAttribute("aria-selected", "true");
   stageTab(other)?.setAttribute("aria-selected", "false");
 }
 
 function stageDialog(): HTMLDialogElement | null {
-  return el<HTMLDialogElement>("arena-stage");
+  return el("arena-stage", HTMLDialogElement);
 }
 
 function openStage(side: StageSide): void {
@@ -510,7 +530,7 @@ function openStage(side: StageSide): void {
   dialog.showModal();
   stageOpen = true;
   document.body.style.overflow = "hidden";
-  el<HTMLButtonElement>("stage-close")?.focus();
+  el("stage-close", HTMLButtonElement)?.focus();
 }
 
 function closeStage(): void {
@@ -551,11 +571,11 @@ type Side = "a" | "b";
 const played: Record<Side, boolean> = { a: false, b: false };
 
 function frameFor(side: Side): HTMLIFrameElement | null {
-  return el<HTMLIFrameElement>(`frame-${side}`);
+  return el(`frame-${side}`, HTMLIFrameElement);
 }
 
 function wrapFor(side: Side): HTMLElement | null {
-  return el<HTMLElement>(`wrap-${side}`);
+  return el(`wrap-${side}`, HTMLElement);
 }
 
 function markPlayed(side: Side): void {
@@ -563,7 +583,7 @@ function markPlayed(side: Side): void {
   played[side] = true;
   trackEvent(EVENT.arenaArtifactPlayed, {
     variant: ARENA_VARIANT,
-    side: side === "a" ? "A" : "B",
+    side: side === "a" ? "A" : "B"
   });
 }
 
@@ -576,7 +596,7 @@ function activateFrame(side: Side, focusFrame = true): void {
   if (wrap.dataset.live === "true") return;
   wrap.dataset.live = "true";
   frame.removeAttribute("tabindex");
-  const badge = el<HTMLElement>(`live-${side}`);
+  const badge = el(`live-${side}`, HTMLElement);
   // Written (not just revealed) so role="status" actually announces it.
   if (badge) badge.textContent = `live · ${side.toUpperCase()} responds to you`;
   // Focus the frame so a keyboard-driven artifact (every game here) responds
@@ -590,7 +610,7 @@ function deactivateFrame(side: Side): void {
   const frame = frameFor(side);
   if (wrap) wrap.dataset.live = "false";
   frame?.setAttribute("tabindex", "-1");
-  const badge = el<HTMLElement>(`live-${side}`);
+  const badge = el(`live-${side}`, HTMLElement);
   if (badge) badge.textContent = "";
 }
 
@@ -628,13 +648,13 @@ function zoomKey(side: Side, target: ZoomTarget): string {
 }
 function zoomWrapEl(side: Side, target: ZoomTarget): HTMLElement | null {
   return target === "stage"
-    ? el<HTMLElement>(`stage-zoomwrap-${side}`)
-    : el<HTMLElement>(`zoomwrap-${side}`);
+    ? el(`stage-zoomwrap-${side}`, HTMLElement)
+    : el(`zoomwrap-${side}`, HTMLElement);
 }
 function zoomerEl(side: Side, target: ZoomTarget): HTMLElement | null {
   return target === "stage"
-    ? el<HTMLElement>(`stage-zoomer-${side}`)
-    : el<HTMLElement>(`zoomer-${side}`);
+    ? el(`stage-zoomer-${side}`, HTMLElement)
+    : el(`zoomer-${side}`, HTMLElement);
 }
 function clampZoom(v: number): number {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v));
@@ -676,9 +696,10 @@ function applyZoom(side: Side, target: ZoomTarget): void {
   // then the scale transform shrinks it back to fit the wrap. At 0.4× the
   // iframe renders at 250% width — a true overview rather than a tiny
   // clipped version of the same narrow box.
-  const frame = target === "stage"
-    ? el<HTMLIFrameElement>(`stage-frame-${side}`)
-    : el<HTMLIFrameElement>(`frame-${side}`);
+  const frame =
+    target === "stage"
+      ? el(`stage-frame-${side}`, HTMLIFrameElement)
+      : el(`frame-${side}`, HTMLIFrameElement);
   if (frame && s.scale < 0.99) {
     const inv = 1 / s.scale;
     frame.style.width = `${inv * 100}%`;
@@ -698,23 +719,27 @@ function applyZoom(side: Side, target: ZoomTarget): void {
     wrap.classList.remove("is-zoomed");
     zoomer.classList.remove("is-zoomed");
   }
-  const label = el<HTMLElement>(target === "stage" ? `stage-zoomlevel-${side}` : `zoomlevel-${side}`);
-  const live = el<HTMLElement>(target === "stage" ? `stage-zoomlive-${side}` : `zoomlive-${side}`);
+  const label = el(
+    target === "stage" ? `stage-zoomlevel-${side}` : `zoomlevel-${side}`,
+    HTMLElement
+  );
+  const live = el(target === "stage" ? `stage-zoomlive-${side}` : `zoomlive-${side}`, HTMLElement);
   const pct = `${Math.round(s.scale * 100)}%`;
   if (label) label.textContent = pct;
   if (live) {
-    live.textContent = s.scale > ZOOM_PAN_THRESHOLD
-      ? `Zoom ${pct}. Drag to pan.`
-      : `Zoom ${pct}`;
+    live.textContent = s.scale > ZOOM_PAN_THRESHOLD ? `Zoom ${pct}. Drag to pan.` : `Zoom ${pct}`;
   }
-  const outBtn = el<HTMLButtonElement>(
+  const outBtn = el(
     target === "stage" ? `stage-zoomout-${side}` : `zoomout-${side}`,
+    HTMLButtonElement
   );
-  const inBtn = el<HTMLButtonElement>(
+  const inBtn = el(
     target === "stage" ? `stage-zoomin-${side}` : `zoomin-${side}`,
+    HTMLButtonElement
   );
-  const rstBtn = el<HTMLButtonElement>(
+  const rstBtn = el(
     target === "stage" ? `stage-zoomreset-${side}` : `zoomreset-${side}`,
+    HTMLButtonElement
   );
   if (outBtn) outBtn.disabled = s.scale <= ZOOM_MIN + 0.01;
   if (inBtn) inBtn.disabled = s.scale >= ZOOM_MAX - 0.01;
@@ -724,19 +749,14 @@ function setZoom(
   side: Side,
   target: ZoomTarget,
   next: number,
-  focalPoint?: { x: number; y: number },
+  focalPoint?: { x: number; y: number }
 ): void {
   const key = zoomKey(side, target);
   const s = (zoomState[key] ??= { scale: 1, x: 0, y: 0 });
   const oldScale = s.scale;
   const wrap = zoomWrapEl(side, target);
   const nextScale = clampZoom(next);
-  if (
-    focalPoint &&
-    wrap &&
-    oldScale > ZOOM_PAN_THRESHOLD &&
-    nextScale > ZOOM_PAN_THRESHOLD
-  ) {
+  if (focalPoint && wrap && oldScale > ZOOM_PAN_THRESHOLD && nextScale > ZOOM_PAN_THRESHOLD) {
     const rect = wrap.getBoundingClientRect();
     const localX = focalPoint.x - (rect.left + rect.width / 2);
     const localY = focalPoint.y - (rect.top + rect.height / 2);
@@ -756,10 +776,14 @@ function setZoom(
 }
 function resetZoom(side: Side, target: ZoomTarget): void {
   zoomState[zoomKey(side, target)] = { scale: 1, x: 0, y: 0 };
-  const frame = target === "stage"
-    ? el<HTMLIFrameElement>(`stage-frame-${side}`)
-    : el<HTMLIFrameElement>(`frame-${side}`);
-  if (frame) { frame.style.width = ""; frame.style.height = ""; }
+  const frame =
+    target === "stage"
+      ? el(`stage-frame-${side}`, HTMLIFrameElement)
+      : el(`frame-${side}`, HTMLIFrameElement);
+  if (frame) {
+    frame.style.width = "";
+    frame.style.height = "";
+  }
   applyZoom(side, target);
 }
 function resetAllZoom(): void {
@@ -779,13 +803,13 @@ function wireZoomControls(): void {
       const outId = target === "stage" ? `stage-zoomout-${side}` : `zoomout-${side}`;
       const inId = target === "stage" ? `stage-zoomin-${side}` : `zoomin-${side}`;
       const rstId = target === "stage" ? `stage-zoomreset-${side}` : `zoomreset-${side}`;
-      el<HTMLButtonElement>(outId)?.addEventListener("click", () =>
-        setZoom(side, target, (zoomState[key]?.scale ?? 1) - ZOOM_STEP),
+      el(outId, HTMLButtonElement)?.addEventListener("click", () =>
+        setZoom(side, target, (zoomState[key]?.scale ?? 1) - ZOOM_STEP)
       );
-      el<HTMLButtonElement>(inId)?.addEventListener("click", () =>
-        setZoom(side, target, (zoomState[key]?.scale ?? 1) + ZOOM_STEP),
+      el(inId, HTMLButtonElement)?.addEventListener("click", () =>
+        setZoom(side, target, (zoomState[key]?.scale ?? 1) + ZOOM_STEP)
       );
-      el<HTMLButtonElement>(rstId)?.addEventListener("click", () => resetZoom(side, target));
+      el(rstId, HTMLButtonElement)?.addEventListener("click", () => resetZoom(side, target));
 
       // Wheel+meta/ctrl to zoom (very common desktop expectation). Plain wheel
       // scrolls the page — only with a modifier do we take over.
@@ -799,10 +823,10 @@ function wireZoomControls(): void {
           const delta = -Math.sign(e.deltaY) * 0.075;
           setZoom(side, target, (zoomState[key]?.scale ?? 1) + delta, {
             x: e.clientX,
-            y: e.clientY,
+            y: e.clientY
           });
         },
-        { passive: false },
+        { passive: false }
       );
 
       // Double-click / double-tap to reset.
@@ -827,7 +851,13 @@ function wireZoomControls(): void {
 
       wrap.addEventListener("pointerdown", (e) => {
         // Toolbar buttons handle their own clicks.
-        if ((e.target as HTMLElement).closest(".bb-zoom-btn, .bb-arena__tool, .bb-arena__play, .bb-arena__zoombar, .bb-stage__zoombar")) return;
+        if (
+          e.target instanceof Element &&
+          e.target.closest(
+            ".bb-zoom-btn, .bb-arena__tool, .bb-arena__play, .bb-arena__zoombar, .bb-stage__zoombar"
+          )
+        )
+          return;
         const st = zoomState[key];
         if (!st) return;
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -835,20 +865,19 @@ function wireZoomControls(): void {
           wrap.setPointerCapture(e.pointerId);
         } catch {}
         if (pointers.size === 2) {
-          const pts = [...pointers.values()];
-          const dx = pts[0]!.x - pts[1]!.x;
-          const dy = pts[0]!.y - pts[1]!.y;
+          const [first, second] = [...pointers.values()];
+          if (!first || !second) return;
+          const dx = first.x - second.x;
+          const dy = first.y - second.y;
           pinchStartDist = Math.hypot(dx, dy);
           pinchStartScale = st.scale;
-          pinchStartMidX = (pts[0]!.x + pts[1]!.x) / 2;
-          pinchStartMidY = (pts[0]!.y + pts[1]!.y) / 2;
+          pinchStartMidX = (first.x + second.x) / 2;
+          pinchStartMidY = (first.y + second.y) / 2;
           const rect = wrap.getBoundingClientRect();
-          pinchContentX = (
-            pinchStartMidX - (rect.left + rect.width / 2) - st.x
-          ) / Math.max(st.scale, ZOOM_MIN);
-          pinchContentY = (
-            pinchStartMidY - (rect.top + rect.height / 2) - st.y
-          ) / Math.max(st.scale, ZOOM_MIN);
+          pinchContentX =
+            (pinchStartMidX - (rect.left + rect.width / 2) - st.x) / Math.max(st.scale, ZOOM_MIN);
+          pinchContentY =
+            (pinchStartMidY - (rect.top + rect.height / 2) - st.y) / Math.max(st.scale, ZOOM_MIN);
           dragging = false;
           zoomer.classList.remove("is-dragging");
           return;
@@ -870,20 +899,17 @@ function wireZoomControls(): void {
         const st = zoomState[key];
         if (!st) return;
         if (pointers.size === 2 && pinchStartDist > 0) {
-          const pts = [...pointers.values()];
-          const dx = pts[0]!.x - pts[1]!.x;
-          const dy = pts[0]!.y - pts[1]!.y;
+          const [first, second] = [...pointers.values()];
+          if (!first || !second) return;
+          const dx = first.x - second.x;
+          const dy = first.y - second.y;
           const d = Math.hypot(dx, dy);
           const next = clampZoom(pinchStartScale * (d / pinchStartDist));
           st.scale = next;
-          if (
-            pinchContentX !== null &&
-            pinchContentY !== null &&
-            next > ZOOM_PAN_THRESHOLD
-          ) {
+          if (pinchContentX !== null && pinchContentY !== null && next > ZOOM_PAN_THRESHOLD) {
             const rect = wrap.getBoundingClientRect();
-            const midX = (pts[0]!.x + pts[1]!.x) / 2;
-            const midY = (pts[0]!.y + pts[1]!.y) / 2;
+            const midX = (first.x + second.x) / 2;
+            const midY = (first.y + second.y) / 2;
             st.x = midX - (rect.left + rect.width / 2) - pinchContentX * next;
             st.y = midY - (rect.top + rect.height / 2) - pinchContentY * next;
           } else if (next <= ZOOM_PAN_THRESHOLD) {
@@ -965,10 +991,10 @@ async function loadMatchup(reason?: string): Promise<void> {
   played.b = false;
   deactivateFrame("a");
   deactivateFrame("b");
-  const frameA = el<HTMLIFrameElement>("frame-a");
-  const frameB = el<HTMLIFrameElement>("frame-b");
-  const reveal = el<HTMLElement>("arena-reveal");
-  const brief = el<HTMLElement>("arena-brief");
+  const frameA = el("frame-a", HTMLIFrameElement);
+  const frameB = el("frame-b", HTMLIFrameElement);
+  const reveal = el("arena-reveal", HTMLElement);
+  const brief = el("arena-brief", HTMLElement);
   if (reveal) reveal.hidden = true;
   setVoteUi(true);
   if (brief) brief.hidden = true;
@@ -1019,9 +1045,9 @@ export function matchupFailureMessage(err: unknown): string {
 }
 
 function renderReveal(revealData: VoteResponse["reveal"]): void {
-  const reveal = el<HTMLElement>("arena-reveal");
-  const cardA = el<HTMLElement>("reveal-card-a");
-  const cardB = el<HTMLElement>("reveal-card-b");
+  const reveal = el("arena-reveal", HTMLElement);
+  const cardA = el("reveal-card-a", HTMLElement);
+  const cardB = el("reveal-card-b", HTMLElement);
   const build = (sideLabel: string, c: CompetitorReveal, picked: boolean): HTMLElement =>
     buildIdentityCard({
       sideLabel,
@@ -1029,7 +1055,7 @@ function renderReveal(revealData: VoteResponse["reveal"]): void {
       model: c.model,
       task: c.task,
       trial: `trial ${c.trial}`,
-      picked,
+      picked
     });
   // Served orientation in, served orientation out: `reveal.left` is whoever
   // built the artifact the voter was looking at on the left, so it is card A.
@@ -1053,15 +1079,20 @@ function renderReveal(revealData: VoteResponse["reveal"]): void {
 
 function burstConfetti(origin: HTMLElement | null): void {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const host = origin?.closest(".bb-arena__pane, .bb-stage__shell, .bb-arena__reveal") as HTMLElement | null;
-  const rect = (host ?? document.querySelector(".bb-arena") as HTMLElement | null)?.getBoundingClientRect();
+  const host =
+    closestFrom(origin, ".bb-arena__pane, .bb-stage__shell, .bb-arena__reveal", HTMLElement) ??
+    query(document, ".bb-arena", HTMLElement);
+  const rect = host?.getBoundingClientRect();
   if (!rect) return;
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
   canvas.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:9999;";
   document.body.appendChild(canvas);
   const maybeCtx = canvas.getContext("2d");
-  if (!maybeCtx) { canvas.remove(); return; }
+  if (!maybeCtx) {
+    canvas.remove();
+    return;
+  }
   const ctx: CanvasRenderingContext2D = maybeCtx;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(innerWidth * dpr);
@@ -1071,9 +1102,10 @@ function burstConfetti(origin: HTMLElement | null): void {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height * 0.35;
-  const colors = ARENA_VARIANT === "neural"
-    ? ["#fa6b06", "#ffb020", "#2fd8c4", "#7ff5e6", "#fff6e8"]
-    : ["#fa6b06", "#ff8a3d", "#ffb020", "#fff1d6", "#c6ccd6"];
+  const colors =
+    ARENA_VARIANT === "neural"
+      ? ["#fa6b06", "#ffb020", "#2fd8c4", "#7ff5e6", "#fff6e8"]
+      : ["#fa6b06", "#ff8a3d", "#ffb020", "#fff1d6", "#c6ccd6"];
   const parts = Array.from({ length: 22 }, () => ({
     x: cx + (Math.random() - 0.5) * 30,
     y: cy + (Math.random() - 0.5) * 14,
@@ -1082,14 +1114,17 @@ function burstConfetti(origin: HTMLElement | null): void {
     r: 3 + Math.random() * 5,
     rot: Math.random() * 360,
     vr: (Math.random() - 0.5) * 520,
-    c: colors[(Math.random() * colors.length) | 0]!,
-    shape: Math.random() < 0.5 ? "rect" : "circle" as const,
+    c: at(colors, (Math.random() * colors.length) | 0),
+    shape: Math.random() < 0.5 ? "rect" : ("circle" as const)
   }));
   let start = performance.now();
   const dur = 900;
   function tick(now: number): void {
     const t = (now - start) / dur;
-    if (t >= 1) { canvas.remove(); return; }
+    if (t >= 1) {
+      canvas.remove();
+      return;
+    }
     ctx.clearRect(0, 0, innerWidth, innerHeight);
     const grav = 980;
     const dt = 1 / 60;
@@ -1104,8 +1139,11 @@ function burstConfetti(origin: HTMLElement | null): void {
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.rotate((p.rot * Math.PI) / 180);
-      if (p.shape === "circle") { ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill(); }
-      else ctx.fillRect(-p.r, -p.r * 0.55, p.r * 2, p.r * 1.1);
+      if (p.shape === "circle") {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      } else ctx.fillRect(-p.r, -p.r * 0.55, p.r * 2, p.r * 1.1);
       ctx.restore();
     }
     requestAnimationFrame(tick);
@@ -1117,11 +1155,16 @@ function wireDelight(): void {
   // VS medallion: click → little spin delight
   for (const sel of [".bb-arena__versus", ".bb-arena__vs"]) {
     document.querySelectorAll(sel).forEach((node) => {
-      (node as HTMLElement).addEventListener("click", () => {
-        const el2 = node as HTMLElement;
+      if (!(node instanceof HTMLElement)) return;
+      node.addEventListener("click", () => {
+        const el2 = node;
         el2.animate(
-          [{ rotate: "0deg", scale: "1" }, { rotate: "360deg", scale: "1.18" }, { rotate: "360deg", scale: "1" }],
-          { duration: 520, easing: "cubic-bezier(0.34,1.56,0.64,1)" },
+          [
+            { rotate: "0deg", scale: "1" },
+            { rotate: "360deg", scale: "1.18" },
+            { rotate: "360deg", scale: "1" }
+          ],
+          { duration: 520, easing: "cubic-bezier(0.34,1.56,0.64,1)" }
         );
         burstConfetti(el2);
       });
@@ -1139,40 +1182,54 @@ function wireDelight(): void {
   let ghostSeq = 0;
   let ghostTimer = 0;
   for (const side of ["a", "b"] as const) {
-    const pane = document.querySelector(`.bb-arena__pane--${side} .bb-arena__ghost`) as HTMLElement | null;
+    const pane = query(document, `.bb-arena__pane--${side} .bb-arena__ghost`, HTMLElement);
     pane?.addEventListener("click", () => {
       const now = Date.now();
       if (now - ghostTimer > 1400) ghostSeq = 0;
       ghostTimer = now;
       // Expect alternating A, B, A, B
       const expect = ghostSeq % 2 === 0 ? "a" : "b";
-      if (side !== expect) { ghostSeq = side === "a" ? 1 : 0; return; }
+      if (side !== expect) {
+        ghostSeq = side === "a" ? 1 : 0;
+        return;
+      }
       ghostSeq++;
       pane.animate(
-        [{ scale: "1", rotate: "0deg" }, { scale: "1.25", rotate: side === "a" ? "-8deg" : "8deg" }, { scale: "1", rotate: "0deg" }],
-        { duration: 420, easing: "cubic-bezier(0.34,1.56,0.64,1)" },
+        [
+          { scale: "1", rotate: "0deg" },
+          { scale: "1.25", rotate: side === "a" ? "-8deg" : "8deg" },
+          { scale: "1", rotate: "0deg" }
+        ],
+        { duration: 420, easing: "cubic-bezier(0.34,1.56,0.64,1)" }
       );
       if (ghostSeq >= 4) {
         ghostSeq = 0;
         burstConfetti(pane);
         // Extra shimmer: briefly boost filament opacity via CSS var
-        const arena = document.querySelector(".bb-arena") as HTMLElement | null;
+        const arena = query(document, ".bb-arena", HTMLElement);
         if (arena) {
           arena.style.filter = "brightness(1.18) saturate(1.15)";
-          setTimeout(() => { arena.style.filter = ""; }, 700);
+          setTimeout(() => {
+            arena.style.filter = "";
+          }, 700);
         }
       }
     });
   }
   // Trust cells: click → tiny wobble + burst
   document.querySelectorAll(".bb-arena__trust li").forEach((li) => {
-    (li as HTMLElement).style.cursor = "pointer";
+    if (!(li instanceof HTMLElement)) return;
+    li.style.cursor = "pointer";
     li.addEventListener("click", () => {
-      (li as HTMLElement).animate(
-        [{ transform: "translateY(0) rotate(0deg)" }, { transform: "translateY(-4px) rotate(0.8deg)" }, { transform: "translateY(0) rotate(0deg)" }],
-        { duration: 380, easing: "ease-out" },
+      li.animate(
+        [
+          { transform: "translateY(0) rotate(0deg)" },
+          { transform: "translateY(-4px) rotate(0.8deg)" },
+          { transform: "translateY(0) rotate(0deg)" }
+        ],
+        { duration: 380, easing: "ease-out" }
       );
-      burstConfetti(li as HTMLElement);
+      burstConfetti(li);
     });
   });
 }
@@ -1185,7 +1242,7 @@ function wireDelight(): void {
  */
 
 function rubricForm(): HTMLFormElement | null {
-  return el<HTMLFormElement>("arena-rubric");
+  return el("arena-rubric", HTMLFormElement);
 }
 
 /** The verdicts currently checked, or undefined when the voter skipped it. */
@@ -1225,14 +1282,14 @@ function clearRubric(): void {
 
 /** The clear affordance only exists once there is something to clear. */
 function syncRubricClear(): void {
-  const button = el<HTMLButtonElement>("rubric-clear");
+  const button = el("rubric-clear", HTMLButtonElement);
   if (button) button.hidden = readRubric() === undefined;
 }
 
 /** The radio for whichever rubric option an event landed in, if any. */
 function rubricOptionInput(target: EventTarget | null): HTMLInputElement | null {
-  const option = (target as HTMLElement | null)?.closest?.(".bb-arena__rubric-opt");
-  return option?.querySelector<HTMLInputElement>("input[type=radio]") ?? null;
+  const option = closestFrom(target, ".bb-arena__rubric-opt", HTMLElement);
+  return option ? query(option, "input[type=radio]", HTMLInputElement) : null;
 }
 
 function wireRubric(): void {
@@ -1279,7 +1336,7 @@ function wireRubric(): void {
   });
 
   form.addEventListener("change", syncRubricClear);
-  el<HTMLButtonElement>("rubric-clear")?.addEventListener("click", clearRubric);
+  el("rubric-clear", HTMLButtonElement)?.addEventListener("click", clearRubric);
   syncRubricClear();
 }
 
@@ -1322,7 +1379,7 @@ type VoteWirePayload = {
 export function buildVotePayload(
   matchup: { matchupId: string; serveId: string },
   choice: Choice,
-  dimensions: RubricChoices | undefined,
+  dimensions: RubricChoices | undefined
 ): VoteWirePayload {
   return {
     schemaVersion: 1,
@@ -1332,7 +1389,7 @@ export function buildVotePayload(
     // Omitted entirely when the rubric is untouched: the server treats a
     // missing field and an empty map identically, and the wire stays
     // identical to the pre-rubric request.
-    ...(dimensions ? { dimensions } : {}),
+    ...(dimensions ? { dimensions } : {})
   };
 }
 
@@ -1350,7 +1407,7 @@ async function submitVote(choice: Choice): Promise<void> {
   try {
     const res = await withTimeout(
       arenaVote(buildVotePayload(current, choice, dimensions)),
-      CALLABLE_TIMEOUT_MS,
+      CALLABLE_TIMEOUT_MS
     );
     closeStage();
     lastChoice = choice;
@@ -1360,7 +1417,7 @@ async function submitVote(choice: Choice): Promise<void> {
     trackEvent(EVENT.arenaVoteRecorded, {
       variant: ARENA_VARIANT,
       choice,
-      rubric: rubricDepth(dimensions),
+      rubric: rubricDepth(dimensions)
     });
     burstConfetti(document.getElementById("arena-reveal"));
   } catch (err) {
@@ -1391,11 +1448,11 @@ async function submitVote(choice: Choice): Promise<void> {
 /* ---------- auth gate: sign-in dialog ---------- */
 
 function authGateDialog(): HTMLDialogElement | null {
-  return el<HTMLDialogElement>("arena-authgate");
+  return el("arena-authgate", HTMLDialogElement);
 }
 
 function setAuthGateMessage(message: string): void {
-  const node = el<HTMLElement>("authgate-status");
+  const node = el("authgate-status", HTMLElement);
   if (!node) return;
   node.textContent = message;
   node.hidden = !message;
@@ -1437,7 +1494,7 @@ function parseStoredRubric(raw: string): RubricChoices | undefined {
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
   const choices: RubricChoices = {};
-  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries<unknown>({ ...parsed })) {
     if (isDimension(key) && typeof value === "string" && isChoice(value)) choices[key] = value;
   }
   return Object.keys(choices).length > 0 ? choices : undefined;
@@ -1512,7 +1569,7 @@ async function arenaSignIn(provider: ArenaSignInProvider): Promise<void> {
     await signInWithPopup(arenaAuth, authProvider);
     trackEvent(EVENT.arenaSignInCompleted, { variant: ARENA_VARIANT, provider });
   } catch (err) {
-    const code = (err as { code?: string }).code ?? "";
+    const code = callableErrorCode(err);
     // The referrer-blocked code below is synthesized from the server's message,
     // so it never matches a documented constant. Log it or it is unknowable.
     console.warn("[arena] sign-in failed", provider, code);
@@ -1534,11 +1591,11 @@ async function arenaSignIn(provider: ArenaSignInProvider): Promise<void> {
       // Provider-independent: this fires in _validateOrigin, before the chosen
       // provider is ever contacted, so "try another provider" would be a lie.
       setAuthGateMessage(
-        `Sign-in isn't authorized from ${location.host}. Open burnbar.ai to cast your vote.`,
+        `Sign-in isn't authorized from ${location.host}. Open burnbar.ai to cast your vote.`
       );
     } else if (code === "auth/account-exists-with-different-credential") {
       setAuthGateMessage(
-        "That email already has a BurnBench account. Use the provider you signed in with originally.",
+        "That email already has a BurnBench account. Use the provider you signed in with originally."
       );
     } else if (code === "auth/operation-not-allowed") {
       setAuthGateMessage("That sign-in option is not configured yet. Try Google or Apple.");
@@ -1561,7 +1618,7 @@ function arenaSignOut(): void {
 
 /** Render the signed-in chip (email + sign-out) or hide it when anonymous. */
 function renderAuthChip(): void {
-  const chip = el<HTMLElement>("arena-auth-chip");
+  const chip = el("arena-auth-chip", HTMLElement);
   if (!chip) return;
   if (arenaUser) {
     chip.hidden = false;
@@ -1572,12 +1629,12 @@ function renderAuthChip(): void {
       .replace("github", "GitHub")
       .replace("facebook", "Meta");
     chip.textContent = `judging as ${arenaUser.email ?? provider ?? arenaUser.uid.slice(0, 8)} · fresh pairings only`;
-    const signOutBtn = el<HTMLButtonElement>("arena-signout");
+    const signOutBtn = el("arena-signout", HTMLButtonElement);
     if (signOutBtn) signOutBtn.hidden = false;
   } else {
     chip.hidden = true;
     chip.textContent = "";
-    const signOutBtn = el<HTMLButtonElement>("arena-signout");
+    const signOutBtn = el("arena-signout", HTMLButtonElement);
     if (signOutBtn) signOutBtn.hidden = true;
   }
 }
@@ -1585,15 +1642,27 @@ function renderAuthChip(): void {
 /** Wire the auth gate buttons and the onAuthStateChanged listener. */
 function wireAuthGate(): void {
   restorePendingVote();
-  el<HTMLButtonElement>("authgate-google")?.addEventListener("click", () => void arenaSignIn("google"));
-  el<HTMLButtonElement>("authgate-apple")?.addEventListener("click", () => void arenaSignIn("apple"));
-  el<HTMLButtonElement>("authgate-github")?.addEventListener("click", () => void arenaSignIn("github"));
-  el<HTMLButtonElement>("authgate-meta")?.addEventListener("click", () => void arenaSignIn("facebook"));
-  el<HTMLButtonElement>("authgate-dismiss")?.addEventListener("click", () => {
+  el("authgate-google", HTMLButtonElement)?.addEventListener(
+    "click",
+    () => void arenaSignIn("google")
+  );
+  el("authgate-apple", HTMLButtonElement)?.addEventListener(
+    "click",
+    () => void arenaSignIn("apple")
+  );
+  el("authgate-github", HTMLButtonElement)?.addEventListener(
+    "click",
+    () => void arenaSignIn("github")
+  );
+  el("authgate-meta", HTMLButtonElement)?.addEventListener(
+    "click",
+    () => void arenaSignIn("facebook")
+  );
+  el("authgate-dismiss", HTMLButtonElement)?.addEventListener("click", () => {
     setPendingVote(null);
     closeAuthGate();
   });
-  el<HTMLButtonElement>("arena-signout")?.addEventListener("click", () => arenaSignOut());
+  el("arena-signout", HTMLButtonElement)?.addEventListener("click", () => arenaSignOut());
 
   // Click outside the gate panel closes it (same modal-backdrop pattern as the stage).
   authGateDialog()?.addEventListener("click", (event) => {
@@ -1614,7 +1683,7 @@ function wireAuthGate(): void {
   getRedirectResult(arenaAuth)
     .then((result) => {
       if (!result?.user) return;
-      const provider = sessionStorage.getItem(REDIRECT_PROVIDER_KEY) as ArenaSignInProvider | null;
+      const provider = sessionStorage.getItem(REDIRECT_PROVIDER_KEY);
       if (provider && provider in arenaProviders) {
         trackEvent(EVENT.arenaSignInCompleted, { variant: ARENA_VARIANT, provider });
       }
@@ -1629,28 +1698,28 @@ function wire(): void {
   // Before the auth gate: restorePendingVote() may need to repaint a rubric
   // that survived a sign-in redirect.
   wireRubric();
-  el<HTMLButtonElement>("vote-a")?.addEventListener("click", () => void submitVote("A"));
-  el<HTMLButtonElement>("vote-b")?.addEventListener("click", () => void submitVote("B"));
-  el<HTMLButtonElement>("vote-tie")?.addEventListener("click", () => void submitVote("tie"));
-  el<HTMLButtonElement>("arena-next")?.addEventListener("click", () => void loadMatchup());
+  el("vote-a", HTMLButtonElement)?.addEventListener("click", () => void submitVote("A"));
+  el("vote-b", HTMLButtonElement)?.addEventListener("click", () => void submitVote("B"));
+  el("vote-tie", HTMLButtonElement)?.addEventListener("click", () => void submitVote("tie"));
+  el("arena-next", HTMLButtonElement)?.addEventListener("click", () => void loadMatchup());
 
   // Live artifacts: the shield hands over control in place; the stage is the
   // same artifact on a bigger canvas, where it owns input until Esc.
   for (const side of ["a", "b"] as const) {
-    el<HTMLButtonElement>(`play-${side}`)?.addEventListener("click", () => activateFrame(side));
-    el<HTMLButtonElement>(`reload-${side}`)?.addEventListener("click", () => reloadFrame(side));
+    el(`play-${side}`, HTMLButtonElement)?.addEventListener("click", () => activateFrame(side));
+    el(`reload-${side}`, HTMLButtonElement)?.addEventListener("click", () => reloadFrame(side));
   }
-  el<HTMLButtonElement>("expand-a")?.addEventListener("click", () => openStage("a"));
-  el<HTMLButtonElement>("expand-b")?.addEventListener("click", () => openStage("b"));
-  el<HTMLButtonElement>("stage-tab-a")?.addEventListener("click", () => showStageSide("a"));
-  el<HTMLButtonElement>("stage-tab-b")?.addEventListener("click", () => showStageSide("b"));
-  el<HTMLButtonElement>("stage-prev")?.addEventListener("click", () =>
-    showStageSide(stageSide === "a" ? "b" : "a"),
+  el("expand-a", HTMLButtonElement)?.addEventListener("click", () => openStage("a"));
+  el("expand-b", HTMLButtonElement)?.addEventListener("click", () => openStage("b"));
+  el("stage-tab-a", HTMLButtonElement)?.addEventListener("click", () => showStageSide("a"));
+  el("stage-tab-b", HTMLButtonElement)?.addEventListener("click", () => showStageSide("b"));
+  el("stage-prev", HTMLButtonElement)?.addEventListener("click", () =>
+    showStageSide(stageSide === "a" ? "b" : "a")
   );
-  el<HTMLButtonElement>("stage-next")?.addEventListener("click", () =>
-    showStageSide(stageSide === "a" ? "b" : "a"),
+  el("stage-next", HTMLButtonElement)?.addEventListener("click", () =>
+    showStageSide(stageSide === "a" ? "b" : "a")
   );
-  el<HTMLButtonElement>("stage-close")?.addEventListener("click", closeStage);
+  el("stage-close", HTMLButtonElement)?.addEventListener("click", closeStage);
   // Click-outside: a modal dialog's own box is the backdrop area when the
   // shell doesn't fill it; clicks landing on the dialog itself close it.
   stageDialog()?.addEventListener("click", (event) => {
@@ -1661,8 +1730,8 @@ function wire(): void {
     stageOpen = false;
     document.body.style.overflow = "";
   });
-  el<HTMLButtonElement>("stage-vote-a")?.addEventListener("click", () => void submitVote("A"));
-  el<HTMLButtonElement>("stage-vote-b")?.addEventListener("click", () => void submitVote("B"));
+  el("stage-vote-a", HTMLButtonElement)?.addEventListener("click", () => void submitVote("A"));
+  el("stage-vote-b", HTMLButtonElement)?.addEventListener("click", () => void submitVote("B"));
 
   document.addEventListener("keydown", (event) => {
     if (!stageOpen) return;
@@ -1679,28 +1748,45 @@ function wire(): void {
   // Zoom keys: when a zoomwrap or stage zoomwrap has focus, +/- zoom and
   // 0 resets. The live artifact correctly keeps arrow keys; zoom keeps these.
   document.addEventListener("keydown", (event) => {
-    const t = event.target as HTMLElement | null;
-    const inZoom = !!t?.closest?.(".bb-arena__zoomwrap, .bb-stage__zoomwrap, .bb-arena__zoombar, .bb-stage__zoombar");
+    const inZoom = !!closestFrom(
+      event.target,
+      ".bb-arena__zoomwrap, .bb-stage__zoomwrap, .bb-arena__zoombar, .bb-stage__zoombar",
+      HTMLElement
+    );
+    const focused = targetAs(event.target, HTMLElement);
+    const typing = !!focused && /INPUT|TEXTAREA|SELECT/.test(focused.tagName);
     const mod = event.metaKey || event.ctrlKey;
     if (event.key === "+" || event.key === "=") {
       if (!inZoom && !mod) return;
       // Don't hijack typing in inputs.
-      if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+      if (typing) return;
       event.preventDefault();
-      const side: Side = stageOpen ? stageSide : (document.activeElement?.closest("#wrap-b, #stage-zoomwrap-b") ? "b" : "a");
+      const side: Side = stageOpen
+        ? stageSide
+        : document.activeElement?.closest("#wrap-b, #stage-zoomwrap-b")
+          ? "b"
+          : "a";
       const target: ZoomTarget = stageOpen ? "stage" : "inline";
       setZoom(side, target, (zoomState[zoomKey(side, target)]?.scale ?? 1) + ZOOM_STEP);
     } else if (event.key === "-" || event.key === "_") {
       if (!inZoom && !mod) return;
-      if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName)) return;
+      if (typing) return;
       event.preventDefault();
-      const side: Side = stageOpen ? stageSide : (document.activeElement?.closest("#wrap-b, #stage-zoomwrap-b") ? "b" : "a");
+      const side: Side = stageOpen
+        ? stageSide
+        : document.activeElement?.closest("#wrap-b, #stage-zoomwrap-b")
+          ? "b"
+          : "a";
       const target: ZoomTarget = stageOpen ? "stage" : "inline";
       setZoom(side, target, (zoomState[zoomKey(side, target)]?.scale ?? 1) - ZOOM_STEP);
     } else if (event.key === "0" && (inZoom || mod)) {
-      if (t && /INPUT|TEXTAREA|SELECT/.test(t.tagName) && !mod) return;
+      if (typing && !mod) return;
       event.preventDefault();
-      const side: Side = stageOpen ? stageSide : (document.activeElement?.closest("#wrap-b, #stage-zoomwrap-b") ? "b" : "a");
+      const side: Side = stageOpen
+        ? stageSide
+        : document.activeElement?.closest("#wrap-b, #stage-zoomwrap-b")
+          ? "b"
+          : "a";
       const target: ZoomTarget = stageOpen ? "stage" : "inline";
       resetZoom(side, target);
     } else if (event.key === "Escape" && !stageOpen) {

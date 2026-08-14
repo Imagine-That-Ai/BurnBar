@@ -1143,90 +1143,124 @@ const qMedianTies = (quality?.stacks ?? []).filter((r) => r.quality === 4.5).len
       )
     }
 
-    {/* ═══════════════ 5.4 · GRADED SCORES ═══════════════
+    {
+      /* ═══════════════ 5.4 · GRADED SCORES ═══════════════
         A weighted 0-100 score and a how-far-did-it-get ladder, for the tasks
         converted off pass/fail. Ranked on the share of cells reaching gold
         rather than on the median, which saturates and ties the field exactly
-        the way the judged-quality median did. */}
-    {scores.length > 0 && (
-      <section class="ins-section" id="graded" aria-labelledby="graded-h">
-        <div class="ins-wrap">
-          <header class="ins-section__head">
-            <p class="ins-eyebrow">Graded scoring</p>
-            <h2 id="graded-h" class="ins-h">Not whether it passed — how far it got.</h2>
-            <p class="ins-lede">
-              Converted tasks score every run out of 100 across weighted checks and report the
-              hardest tier it fully cleared: <b>bronze</b> is the requirement as written,
-              <b>silver</b> the edge cases the prompt never spells out, <b>gold</b> stress and
-              scale. Pass/fail could not separate stacks that all pass. This can.
-            </p>
-          </header>
+        the way the judged-quality median did. */
+    }
+    {
+      scores.length > 0 && (
+        <section class="ins-section" id="graded" aria-labelledby="graded-h">
+          <div class="ins-wrap">
+            <header class="ins-section__head">
+              <p class="ins-eyebrow">Graded scoring</p>
+              <h2 id="graded-h" class="ins-h">
+                Not whether it passed — how far it got.
+              </h2>
+              <p class="ins-lede">
+                Converted tasks score every run out of 100 across weighted checks and report the
+                hardest tier it fully cleared: <b>bronze</b> is the requirement as written,
+                <b>silver</b> the edge cases the prompt never spells out, <b>gold</b> stress and
+                scale. Pass/fail could not separate stacks that all pass. This can.
+              </p>
+            </header>
 
-          <div class="ins-glass ins-glass--flush ins-readkey">
-            <p class="ins-key">
-              <b>Ranked by how often a stack reaches gold</b>, not by its median score — a median
-              saturates and ties the field, which is the trap the judged-quality number fell into.
-              Each bar is one stack's graded cells split by the tier each run reached.
-            </p>
-            <div class="ins-legend">
-              <span class="ins-legend__item"><span class="ins-legend__swatch ins-band--flawless" aria-hidden="true" />gold</span>
-              <span class="ins-legend__item"><span class="ins-legend__swatch ins-band--solid" aria-hidden="true" />silver</span>
-              <span class="ins-legend__item"><span class="ins-legend__swatch ins-band--flawed" aria-hidden="true" />bronze</span>
-              <span class="ins-legend__item"><span class="ins-legend__swatch ins-band--poor" aria-hidden="true" />no tier cleared</span>
-            </div>
-          </div>
-
-          <div class="ins-glass ins-qual">
-            {scores.map((r) => (
-              <div
-                class:list={["ins-qdist", mcls(r.model), hcls(r.harness)]}
-                data-tip
-                data-tip-h={r.harness}
-                data-tip-m={r.model}
-                data-tip-lead={r.score.toFixed(1)}
-                data-tip-lead-label="median graded score"
-                data-tip-rows={[
-                  `reaches gold|${Math.round(r.shares.gold * 100)}%`,
-                  `reaches silver|${Math.round(r.shares.silver * 100)}%`,
-                  `bronze only|${Math.round(r.shares.bronze * 100)}%`,
-                  `no tier|${Math.round(r.shares.none * 100)}%`,
-                  `graded cells|${r.n}`
-                ].join(";")}
-              >
-                <span class="ins-qdist__id">
-                  <Chip id={r.harness} kind="harness" />
-                  <Chip id={r.model} kind="model" />
-                  <span class="ins-row__text">
-                    <span class="ins-row__name">
-                      <span class="ins-row__h">{harnessDisplay(r.harness)}</span>
-                      <span class="ins-pair__x" aria-hidden="true">×</span>
-                      <span class="ins-row__m">{modelDisplayShort(r.model)}</span>
-                    </span>
-                    <span class="ins-row__meta">{r.n} graded cells · median {r.score.toFixed(1)}</span>
-                  </span>
+            <div class="ins-glass ins-glass--flush ins-readkey">
+              <p class="ins-key">
+                <b>Ranked by how often a stack reaches gold</b>, not by its median score — a median
+                saturates and ties the field, which is the trap the judged-quality number fell into.
+                Each bar is one stack's graded cells split by the tier each run reached.
+              </p>
+              <div class="ins-legend">
+                <span class="ins-legend__item">
+                  <span class="ins-legend__swatch ins-band--flawless" aria-hidden="true" />
+                  gold
                 </span>
-
-                <span
-                  class="ins-qdist__bar"
-                  role="img"
-                  aria-label={`gold ${Math.round(r.shares.gold * 100)} percent, silver ${Math.round(r.shares.silver * 100)} percent, bronze ${Math.round(r.shares.bronze * 100)} percent`}
-                >
-                  <span class="ins-qdist__seg ins-band--flawless" data-w={(r.shares.gold * 100).toFixed(2)} />
-                  <span class="ins-qdist__seg ins-band--solid" data-w={(r.shares.silver * 100).toFixed(2)} />
-                  <span class="ins-qdist__seg ins-band--flawed" data-w={(r.shares.bronze * 100).toFixed(2)} />
-                  <span class="ins-qdist__seg ins-band--poor" data-w={(r.shares.none * 100).toFixed(2)} />
+                <span class="ins-legend__item">
+                  <span class="ins-legend__swatch ins-band--solid" aria-hidden="true" />
+                  silver
                 </span>
-
-                <span class="ins-qdist__val">
-                  <Num value={r.shares.gold} kind="pct" size="lg" digits={0} />
-                  <span class="ins-qdist__cap">gold</span>
+                <span class="ins-legend__item">
+                  <span class="ins-legend__swatch ins-band--flawed" aria-hidden="true" />
+                  bronze
+                </span>
+                <span class="ins-legend__item">
+                  <span class="ins-legend__swatch ins-band--poor" aria-hidden="true" />
+                  no tier cleared
                 </span>
               </div>
-            ))}
+            </div>
+
+            <div class="ins-glass ins-qual">
+              {scores.map((r) => (
+                <div
+                  class:list={["ins-qdist", mcls(r.model), hcls(r.harness)]}
+                  data-tip
+                  data-tip-h={r.harness}
+                  data-tip-m={r.model}
+                  data-tip-lead={r.score.toFixed(1)}
+                  data-tip-lead-label="median graded score"
+                  data-tip-rows={[
+                    `reaches gold|${Math.round(r.shares.gold * 100)}%`,
+                    `reaches silver|${Math.round(r.shares.silver * 100)}%`,
+                    `bronze only|${Math.round(r.shares.bronze * 100)}%`,
+                    `no tier|${Math.round(r.shares.none * 100)}%`,
+                    `graded cells|${r.n}`
+                  ].join(";")}
+                >
+                  <span class="ins-qdist__id">
+                    <Chip id={r.harness} kind="harness" />
+                    <Chip id={r.model} kind="model" />
+                    <span class="ins-row__text">
+                      <span class="ins-row__name">
+                        <span class="ins-row__h">{harnessDisplay(r.harness)}</span>
+                        <span class="ins-pair__x" aria-hidden="true">
+                          ×
+                        </span>
+                        <span class="ins-row__m">{modelDisplayShort(r.model)}</span>
+                      </span>
+                      <span class="ins-row__meta">
+                        {r.n} graded cells · median {r.score.toFixed(1)}
+                      </span>
+                    </span>
+                  </span>
+
+                  <span
+                    class="ins-qdist__bar"
+                    role="img"
+                    aria-label={`gold ${Math.round(r.shares.gold * 100)} percent, silver ${Math.round(r.shares.silver * 100)} percent, bronze ${Math.round(r.shares.bronze * 100)} percent`}
+                  >
+                    <span
+                      class="ins-qdist__seg ins-band--flawless"
+                      data-w={(r.shares.gold * 100).toFixed(2)}
+                    />
+                    <span
+                      class="ins-qdist__seg ins-band--solid"
+                      data-w={(r.shares.silver * 100).toFixed(2)}
+                    />
+                    <span
+                      class="ins-qdist__seg ins-band--flawed"
+                      data-w={(r.shares.bronze * 100).toFixed(2)}
+                    />
+                    <span
+                      class="ins-qdist__seg ins-band--poor"
+                      data-w={(r.shares.none * 100).toFixed(2)}
+                    />
+                  </span>
+
+                  <span class="ins-qdist__val">
+                    <Num value={r.shares.gold} kind="pct" size="lg" digits={0} />
+                    <span class="ins-qdist__cap">gold</span>
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
-    )}
+        </section>
+      )
+    }
 
     {
       /* ═══════════════ 5.5 · INSIGHTS ═══════════════

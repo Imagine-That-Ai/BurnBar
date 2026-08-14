@@ -81,7 +81,8 @@ async function loadDataset(): Promise<Dataset | null> {
   try {
     const res = await fetch("/data/bench-dashboard.json");
     if (!res.ok) return null;
-    return (await res.json()) as Dataset;
+    const dataset: Dataset = await res.json();
+    return dataset;
   } catch {
     return null;
   }
@@ -862,7 +863,7 @@ function initHeatLens(data: Dataset): void {
       `</div>` +
       `<div class="bb-heat-detail__meta"><span>n ${n} cells</span>` +
       (noop != null && noop > 0
-        ? `<span class="bb-noop" title="No-op runs ended with no source edits — counted as failures">${noop}/${n} no-op runs</span>`
+        ? `<span class="bb-noop" title="No-op runs ended with no source edits, so they count against the rate">${noop}/${n} no-op runs</span>`
         : "") +
       `<span>${esc(s?.hd ?? "")} harness</span><span>${esc(s?.md ?? "")} provider</span><span>${cost != null && cost < 0.01 ? "free-tier slice" : (s?.ev ?? "")}</span></div>`;
     detail.hidden = false;
@@ -1037,7 +1038,7 @@ function initLens(data: Dataset): void {
           `<span class="bb-lens__hmeta"><strong>${fmtPct(s.sol)}</strong><br>strict ${fmtPct(s.str)}</span>` +
           `<span class="bb-lens__hmeta">${fmtCost(s.cost)}/task<br>n ${s.n}` +
           (s.no
-            ? `<br><span class="bb-noop" title="No-op runs ended with no source edits — counted as failures">${s.no}/${s.n} no-op runs</span>`
+            ? `<br><span class="bb-noop" title="No-op runs ended with no source edits, so they count against the rate">${s.no}/${s.n} no-op runs</span>`
             : "") +
           `</span>` +
           `</div>`
@@ -1572,8 +1573,12 @@ function initPareto(data: Dataset): void {
     // Rich identity row: both logos large so the hovered stack is obvious
     // at a glance, then the metric strip.
     const logos =
-      (s.hl ? `<img class="bb-pareto__tiplogo" src="${esc(s.hl)}" alt="" width="30" height="30">` : "") +
-      (s.ml ? `<img class="bb-pareto__tiplogo bb-pareto__tiplogo--m" src="${esc(s.ml)}" alt="" width="30" height="30">` : "");
+      (s.hl
+        ? `<img class="bb-pareto__tiplogo" src="${esc(s.hl)}" alt="" width="30" height="30">`
+        : "") +
+      (s.ml
+        ? `<img class="bb-pareto__tiplogo bb-pareto__tiplogo--m" src="${esc(s.ml)}" alt="" width="30" height="30">`
+        : "");
     tip.innerHTML =
       `<span class="bb-pareto__tipid">${logos}<span class="bb-pareto__tipname">${esc(s.hd)} <em>×</em> ${esc(s.mds)}</span></span>` +
       `<span class="bb-pareto__tiprow"><em>${fmtPct(s.sol)}</em> sol · strict ${fmtPct(s.str)} · <em>${fmtCost(s.cost)}/task</em></span>` +
@@ -1794,8 +1799,15 @@ function initPareto(data: Dataset): void {
         for (const m of [1, 2, 5]) all.push(m * Math.pow(10, e));
       }
       ticks = all.filter(inDomain);
-      if (ticks.length > 6) ticks = ticks.filter((v) => { const m = v / Math.pow(10, Math.floor(Math.log10(v))); return m === 1 || m === 5; });
-      if (ticks.length > 6) ticks = ticks.filter((v) => Math.abs(v / Math.pow(10, Math.round(Math.log10(v))) - 1) < 1e-9);
+      if (ticks.length > 6)
+        ticks = ticks.filter((v) => {
+          const m = v / Math.pow(10, Math.floor(Math.log10(v)));
+          return m === 1 || m === 5;
+        });
+      if (ticks.length > 6)
+        ticks = ticks.filter(
+          (v) => Math.abs(v / Math.pow(10, Math.round(Math.log10(v))) - 1) < 1e-9
+        );
     }
     // Never leave an axis bare: fall back to the domain endpoints.
     if (ticks.length < 2) ticks = [min, max];
@@ -1803,7 +1815,10 @@ function initPareto(data: Dataset): void {
   };
 
   /** Log10 axis fraction with the server's free-stack gutter. */
-  const logScale = (values: number[], ax: AxisX): { frac: (v: number) => number; ticks: number[] } => {
+  const logScale = (
+    values: number[],
+    ax: AxisX
+  ): { frac: (v: number) => number; ticks: number[] } => {
     const positive = values.filter((v) => v > 0);
     const xMinPos = positive.length > 0 ? Math.min(...positive) : 0.001;
     const xMax = Math.max(...values, xMinPos * 10);
@@ -1820,7 +1835,10 @@ function initPareto(data: Dataset): void {
 
   /** Linear Y domain: rates pad to 0.05 steps like the server; quality
       pads the observed 1–5 band to half-point steps. */
-  const linDomain = (vals: number[], isQual: boolean): { min: number; max: number; ticks: number[] } => {
+  const linDomain = (
+    vals: number[],
+    isQual: boolean
+  ): { min: number; max: number; ticks: number[] } => {
     let yMin: number;
     let yMax: number;
     if (isQual) {
@@ -1850,17 +1868,20 @@ function initPareto(data: Dataset): void {
   };
 
   const applyAxes = (ax: AxisX, ay: AxisY): void => {
-    const present = pmetrics.filter((p) => xVal(p, ax) != null && yVal(p, ay) != null);
     missingAxis.clear();
+    const present: { pt: PtMetrics; x: number; y: number }[] = [];
     for (const p of pmetrics) {
-      if (xVal(p, ax) == null || yVal(p, ay) == null) missingAxis.add(p.key);
+      const x = xVal(p, ax);
+      const y = yVal(p, ay);
+      if (x == null || y == null) missingAxis.add(p.key);
+      else present.push({ pt: p, x, y });
     }
     if (present.length === 0) {
       applyFilters();
       return;
     }
-    const xs = present.map((p) => xVal(p, ax)!);
-    const ys = present.map((p) => yVal(p, ay)!);
+    const xs = present.map((p) => p.x);
+    const ys = present.map((p) => p.y);
     const scX = logScale(xs, ax);
     const dY = linDomain(ys, ay === "qual");
     const px = (v: number): number => PLOT.ml + scX.frac(v) * (PLOT.w - PLOT.ml - PLOT.mr);
@@ -1869,9 +1890,9 @@ function initPareto(data: Dataset): void {
 
     // Reposition both circles of every visible point.
     for (const p of present) {
-      const cx = px(xVal(p, ax)!).toFixed(1);
-      const cy = py(yVal(p, ay)!).toFixed(1);
-      p.el.querySelectorAll("circle").forEach((c) => {
+      const cx = px(p.x).toFixed(1);
+      const cy = py(p.y).toFixed(1);
+      p.pt.el.querySelectorAll("circle").forEach((c) => {
         c.setAttribute("cx", cx);
         c.setAttribute("cy", cy);
       });
@@ -1958,16 +1979,16 @@ function initPareto(data: Dataset): void {
 
     // Pareto frontier for the active axes: sort by x ascending, keep
     // strictly improving y (lower x is always better here).
-    const sorted = [...present].sort((a, b) => xVal(a, ax)! - xVal(b, ax)!);
+    const sorted = [...present].sort((a, b) => a.x - b.x);
     let best = -Infinity;
     const fKeys = new Set<string>();
     const fpts: string[] = [];
     for (const p of sorted) {
-      const y = yVal(p, ay)!;
+      const y = p.y;
       if (y > best + 1e-9) {
         best = y;
-        fKeys.add(p.key);
-        fpts.push(`${px(xVal(p, ax)!).toFixed(1)},${py(y).toFixed(1)}`);
+        fKeys.add(p.pt.key);
+        fpts.push(`${px(p.x).toFixed(1)},${py(y).toFixed(1)}`);
       }
     }
     if (frontier) frontier.setAttribute("points", fpts.join(" "));
@@ -1983,7 +2004,7 @@ function initPareto(data: Dataset): void {
   try {
     const raw = localStorage.getItem(AXES_KEY);
     if (raw) {
-      const saved = JSON.parse(raw) as { x?: string; y?: string };
+      const saved: { x?: string; y?: string } = JSON.parse(raw);
       if (saved.x === "cost" || saved.x === "wall" || saved.x === "tok") axisX = saved.x;
       if (saved.y === "sol" || saved.y === "str" || saved.y === "qual") axisY = saved.y;
     }

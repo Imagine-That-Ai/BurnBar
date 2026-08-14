@@ -78,7 +78,16 @@ def _bench_payload(generated_at: str) -> dict:
             _stack("droid", "model-alpha", "overall", 30, 0.45),
             _stack("droid", "model-beta", "overall", 30, 0.55),
             _stack("droid", "model-beta", "bugfix", 20, 0.60, confidence="medium", evidence="inferred"),
-            _stack("codex", "model-beta", "feature", 25, 0.50, language="typescript", platform="browser", confidence="medium"),
+            _stack(
+                "codex",
+                "model-beta",
+                "feature",
+                25,
+                0.50,
+                language="typescript",
+                platform="browser",
+                confidence="medium",
+            ),
         ],
         "frontier": [
             {

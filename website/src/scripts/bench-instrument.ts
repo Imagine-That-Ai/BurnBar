@@ -14,6 +14,7 @@
  */
 
 import { initFigures } from "./bench-figure";
+import { closestFrom } from "./dom.js";
 
 const isReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -65,6 +66,9 @@ function paintLens(): void {
 /* ── leaderboard ──────────────────────────────────────────────────────── */
 
 type Lens = "solution" | "strict" | "cost" | "speed" | "quality";
+const LENSES: readonly Lens[] = ["solution", "strict", "cost", "speed", "quality"];
+const asLens = (value: string | undefined): Lens =>
+  LENSES.find((lens) => lens === value) ?? "solution";
 
 /** Higher is better for rates and quality; lower is better for cost and time. */
 const ASCENDING: Record<Lens, boolean> = {
@@ -249,9 +253,9 @@ function initLeaderboard(): void {
   };
 
   tabs?.addEventListener("click", (ev) => {
-    const btn = (ev.target as HTMLElement).closest<HTMLElement>("[data-lens]");
+    const btn = closestFrom(ev.target, "[data-lens]", HTMLElement);
     if (!btn) return;
-    lens = (btn.dataset.lens ?? "solution") as Lens;
+    lens = asLens(btn.dataset.lens);
     tabs.querySelectorAll<HTMLElement>("[data-lens]").forEach((b) => {
       b.setAttribute("aria-selected", String(b === btn));
     });
@@ -331,6 +335,7 @@ interface Roster {
 }
 
 type Axis = "harness" | "model";
+const asAxis = (value: string | undefined): Axis => (value === "model" ? "model" : "harness");
 
 interface Pairing {
   harness: string;
@@ -344,7 +349,8 @@ function readRoster(): Roster {
   const el = document.querySelector<HTMLScriptElement>("[data-bench-roster]");
   if (!el?.textContent) return { harnesses: {}, models: {} };
   try {
-    return JSON.parse(el.textContent) as Roster;
+    const roster: Roster = JSON.parse(el.textContent);
+    return roster;
   } catch {
     return { harnesses: {}, models: {} };
   }
@@ -511,7 +517,7 @@ function initSynthesisCarousel(doc: SynthDoc, roster: Roster, body: HTMLElement)
   };
 
   const cardStep = (): number => {
-    const first = track.firstElementChild as HTMLElement | null;
+    const first = track.firstElementChild instanceof HTMLElement ? track.firstElementChild : null;
     if (!first) return track.clientWidth;
     const gap = parseFloat(getComputedStyle(track).columnGap || "0") || 0;
     return first.offsetWidth + gap;
@@ -581,9 +587,9 @@ function initSynthesisCarousel(doc: SynthDoc, roster: Roster, body: HTMLElement)
   });
 
   axisTabs?.addEventListener("click", (ev) => {
-    const btn = (ev.target as HTMLElement).closest<HTMLElement>("[data-axis]");
+    const btn = closestFrom(ev.target, "[data-axis]", HTMLElement);
     if (!btn) return;
-    axis = (btn.dataset.axis ?? "harness") as Axis;
+    axis = asAxis(btn.dataset.axis);
     axisTabs.querySelectorAll("[data-axis]").forEach((b) => {
       b.setAttribute("aria-selected", String(b === btn));
     });
@@ -606,7 +612,7 @@ async function initSynthesis(): Promise<void> {
   try {
     const res = await fetch("/data/synthesis.json", { cache: "no-cache" });
     if (!res.ok) throw new Error(`synthesis ${res.status}`);
-    const doc = (await res.json()) as SynthDoc;
+    const doc: SynthDoc = await res.json();
 
     const rendered = initSynthesisCarousel(doc, readRoster(), body);
     if (rendered === 0) throw new Error("synthesis empty");
@@ -773,7 +779,7 @@ function initTooltips(): void {
   document.addEventListener(
     "pointerdown",
     (ev) => {
-      const el = (ev.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+      const el = closestFrom(ev.target, "[data-tip]", HTMLElement);
       if (el) {
         if (ev.pointerType === "touch") show(el);
       } else if (current) {
@@ -948,7 +954,10 @@ async function initArenaLive(): Promise<void> {
   let doc: ArenaLive = {};
   try {
     const res = await fetch("/data/arena-live.json", { cache: "no-cache" });
-    if (res.ok) doc = (await res.json()) as ArenaLive;
+    if (res.ok) {
+      const live: ArenaLive = await res.json();
+      doc = live;
+    }
   } catch {
     // No live file yet — fall through to the baked numbers below.
   }

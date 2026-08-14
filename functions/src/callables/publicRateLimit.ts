@@ -166,11 +166,7 @@ const BENCH_ASSISTANT_LIMITS: Record<BenchAssistantRateLimitAction, { windowSeco
 // Ballot-box stuffing is the abuse to bound: a single identity must not be
 // able to dominate the pairwise-vote distribution, so the daily ceiling is a
 // small multiple of what a genuine human voter plausibly casts in a day.
-type ArenaVoteRateLimitAction =
-  | "arena_vote_burst"
-  | "arena_vote_daily"
-  | "arena_vote_ip_burst"
-  | "arena_vote_ip_daily";
+type ArenaVoteRateLimitAction = "arena_vote_burst" | "arena_vote_daily" | "arena_vote_ip_burst" | "arena_vote_ip_daily";
 
 const ARENA_VOTE_LIMITS: Record<ArenaVoteRateLimitAction, { windowSeconds: number; maxAttempts: number }> = {
   // Primary, per-uid. One account, this many judgments.
@@ -216,7 +212,7 @@ function rateLimitDocId(keyMaterial: string, action: string): string {
 }
 
 /** Shape of the raw HTTP request the callable runtime hands to a limiter. */
-export type RateLimitRequestLike = {
+type RateLimitRequestLike = {
   headers?: Record<string, unknown>;
   ip?: string;
   socket?: { remoteAddress?: string };
@@ -453,12 +449,11 @@ export async function checkArenaVoteRateLimit(uid: string, req?: RateLimitReques
  *      shares it.
  * Throws `resource-exhausted` when a bound is hit.
  */
-export async function checkArenaMatchupRateLimit(options: {
-  uid?: string;
-  req?: RateLimitRequestLike;
-}): Promise<void> {
+export async function checkArenaMatchupRateLimit(options: { uid?: string; req?: RateLimitRequestLike }): Promise<void> {
   const keyMaterial =
-    typeof options.uid === "string" && options.uid.length > 0 ? `uid:${options.uid}` : attributableClientIp(options.req);
+    typeof options.uid === "string" && options.uid.length > 0
+      ? `uid:${options.uid}`
+      : attributableClientIp(options.req);
   if (keyMaterial !== undefined) {
     await incrementRateLimitsAtomically([
       {

@@ -16,6 +16,14 @@
 
 // Module marker: without an import/export, tsc treats this file as a global
 // script and these helpers collide with bench-dashboard.ts's identical set.
+import { closestFrom, onlyElements } from "./dom.js";
+
+declare global {
+  interface Window {
+    /** Set by the synthesis section so the print button can await its lazy fetch. */
+    __bbSynthesisLoad?: () => Promise<void>;
+  }
+}
 export {};
 
 const fmtPct = (v: number, digits = 1): string => `${(v * 100).toFixed(digits)}%`;
@@ -52,7 +60,8 @@ function initMatrix(): void {
   let mode: "sol" | "str" | "qual" = "sol";
 
   const cellScore = (cell: Element): number => {
-    const el = cell as HTMLElement;
+    if (!(cell instanceof HTMLElement)) return NaN;
+    const el = cell;
     const raw =
       mode === "str" ? el.dataset.strnum : mode === "qual" ? el.dataset.qualnum : el.dataset.solnum;
     const v = raw == null || raw === "" ? NaN : Number(raw);
@@ -60,7 +69,7 @@ function initMatrix(): void {
   };
 
   tabs.addEventListener("click", (ev) => {
-    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-mx]");
+    const btn = closestFrom(ev.target, "[data-mx]", HTMLButtonElement);
     if (!btn) return;
     mode = btn.dataset.mx === "str" ? "str" : btn.dataset.mx === "qual" ? "qual" : "sol";
     tabs.querySelectorAll(".bb-tab").forEach((t) => {
@@ -92,14 +101,14 @@ function initMatrix(): void {
      Empty cells sink to the end. */
   if (theadRow && tbody) {
     const defaultRowOrder = [...tbody.querySelectorAll<HTMLElement>("tr[data-mxrow]")];
-    const defaultColOrder = [
-      ...theadRow.querySelectorAll<HTMLElement>("th[data-mxsort-col]")
-    ].map((th) => th.dataset.mxsortCol ?? "");
+    const defaultColOrder = [...theadRow.querySelectorAll<HTMLElement>("th[data-mxsort-col]")].map(
+      (th) => th.dataset.mxsortCol ?? ""
+    );
     let sortCol: string | null = null;
     let sortRow: string | null = null;
 
     const applyColOrder = (order: string[]): void => {
-      const headCells = [...theadRow.children] as HTMLElement[];
+      const headCells = onlyElements(theadRow.children, HTMLElement);
       const corner = headCells.find((c) => c.hasAttribute("data-mxsort-reset"));
       const byId = new Map(
         headCells.filter((c) => c.dataset.mxsortCol).map((c) => [c.dataset.mxsortCol ?? "", c])
@@ -180,22 +189,24 @@ function initMatrix(): void {
     };
 
     table.addEventListener("click", (ev) => {
-      const col = (ev.target as HTMLElement).closest<HTMLElement>("[data-mxsort-col]");
+      const col = closestFrom(ev.target, "[data-mxsort-col]", HTMLElement);
       if (col) {
         sortByCol(col.dataset.mxsortCol ?? "");
         return;
       }
-      const rowH = (ev.target as HTMLElement).closest<HTMLElement>("[data-mxsort-row]");
+      const rowH = closestFrom(ev.target, "[data-mxsort-row]", HTMLElement);
       if (rowH) {
         sortByRow(rowH.dataset.mxsortRow ?? "");
         return;
       }
-      if ((ev.target as HTMLElement).closest("[data-mxsort-reset]")) reset();
+      if (closestFrom(ev.target, "[data-mxsort-reset]", HTMLElement)) reset();
     });
     table.addEventListener("keydown", (ev) => {
       if (ev.key !== "Enter" && ev.key !== " ") return;
-      const el = (ev.target as HTMLElement).closest<HTMLElement>(
-        "[data-mxsort-col],[data-mxsort-row],[data-mxsort-reset]"
+      const el = closestFrom(
+        ev.target,
+        "[data-mxsort-col],[data-mxsort-row],[data-mxsort-reset]",
+        HTMLElement
       );
       if (!el) return;
       ev.preventDefault();
@@ -259,7 +270,7 @@ function initTaskFilter(): void {
     });
   };
   chips.addEventListener("click", (ev) => {
-    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-fam]");
+    const btn = closestFrom(ev.target, "[data-fam]", HTMLButtonElement);
     if (!btn) return;
     fam = btn.dataset.fam ?? "";
     chips.querySelectorAll(".bb-chip").forEach((c) => c.classList.toggle("is-active", c === btn));
@@ -304,7 +315,8 @@ async function fetchCells(): Promise<CellsPayload | null> {
   try {
     const res = await fetch("/data/bench-cells.json");
     if (!res.ok) return null;
-    return (await res.json()) as CellsPayload;
+    const payload: CellsPayload = await res.json();
+    return payload;
   } catch {
     return null;
   }
@@ -349,21 +361,33 @@ function initExplorer(): void {
      flips direction. Sorting happens before the ROW_CAP slice so "top 200"
      is always the top of the SORTED, filtered set. */
   type SortKey = "h" | "m" | "t" | "n" | "sol" | "str" | "cost" | "wall" | "tok";
+  const SORT_KEYS: readonly SortKey[] = ["h", "m", "t", "n", "sol", "str", "cost", "wall", "tok"];
+  const asSortKey = (value: string | undefined): SortKey | undefined =>
+    SORT_KEYS.find((key) => key === value);
   let sortKey: SortKey | null = null;
   let sortDir: 1 | -1 = 1;
   const TEXT_KEYS = new Set<SortKey>(["h", "m", "t"]);
   const cellVal = (data: CellsPayload, row: CellRow, key: SortKey): string | number | null => {
     const [hi, mi, ti, n, sp, stp, cost, wall, tok] = row;
     switch (key) {
-      case "h": return (data.hd[hi] ?? data.h[hi] ?? "").toLowerCase();
-      case "m": return (data.md[mi] ?? data.m[mi] ?? "").toLowerCase();
-      case "t": return (data.t[ti] ?? "").toLowerCase();
-      case "n": return n;
-      case "sol": return n > 0 ? sp / n : 0;
-      case "str": return n > 0 ? stp / n : 0;
-      case "cost": return cost;
-      case "wall": return wall;
-      case "tok": return tok;
+      case "h":
+        return (data.hd[hi] ?? data.h[hi] ?? "").toLowerCase();
+      case "m":
+        return (data.md[mi] ?? data.m[mi] ?? "").toLowerCase();
+      case "t":
+        return (data.t[ti] ?? "").toLowerCase();
+      case "n":
+        return n;
+      case "sol":
+        return n > 0 ? sp / n : 0;
+      case "str":
+        return n > 0 ? stp / n : 0;
+      case "cost":
+        return cost;
+      case "wall":
+        return wall;
+      case "tok":
+        return tok;
     }
   };
   const sortMatches = (data: CellsPayload, matches: { row: CellRow; idx: number }[]): void => {
@@ -392,7 +416,7 @@ function initExplorer(): void {
   };
   const thead = root.querySelector<HTMLElement>("thead");
   const onSort = (th: HTMLElement): void => {
-    const key = th.dataset.sort as SortKey | undefined;
+    const key = asSortKey(th.dataset.sort);
     if (!key) return;
     if (sortKey === key) {
       sortDir = sortDir === 1 ? -1 : 1;
@@ -406,12 +430,12 @@ function initExplorer(): void {
     });
   };
   thead?.addEventListener("click", (ev) => {
-    const th = (ev.target as HTMLElement).closest<HTMLElement>("th[data-sort]");
+    const th = closestFrom(ev.target, "th[data-sort]", HTMLElement);
     if (th) onSort(th);
   });
   thead?.addEventListener("keydown", (ev) => {
     if (ev.key !== "Enter" && ev.key !== " ") return;
-    const th = (ev.target as HTMLElement).closest<HTMLElement>("th[data-sort]");
+    const th = closestFrom(ev.target, "th[data-sort]", HTMLElement);
     if (!th) return;
     ev.preventDefault();
     onSort(th);
@@ -583,9 +607,7 @@ function setCardOpen(card: HTMLElement, btn: HTMLButtonElement | null, open: boo
 
 function initQualityCards(): void {
   document.addEventListener("click", (ev) => {
-    const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>(
-      "[data-qcard-toggle], [data-qlq-toggle]"
-    );
+    const btn = closestFrom(ev.target, "[data-qcard-toggle], [data-qlq-toggle]", HTMLButtonElement);
     if (!btn) return;
     const card = btn.closest<HTMLElement>("[data-qcard], [data-qlq]");
     if (!card) return;
@@ -728,7 +750,11 @@ function synthCard(
   return card;
 }
 
-function renderSynthGroup(root: HTMLElement, entries: Record<string, SynthEntry>, kind: "combos" | "harnesses" | "models"): void {
+function renderSynthGroup(
+  root: HTMLElement,
+  entries: Record<string, SynthEntry>,
+  kind: "combos" | "harnesses" | "models"
+): void {
   const frag = document.createDocumentFragment();
   const keys = Object.keys(entries).sort((a, b) => a.localeCompare(b));
   for (const key of keys) {
@@ -787,7 +813,10 @@ function initSynthesis(): void {
     let data: SynthPayload | null = null;
     try {
       const res = await fetch("/data/synthesis.json", { cache: "no-store" });
-      if (res.ok) data = (await res.json()) as SynthPayload;
+      if (res.ok) {
+        const payload: SynthPayload = await res.json();
+        data = payload;
+      }
     } catch {
       data = null;
     }
@@ -814,17 +843,16 @@ function initSynthesis(): void {
   };
 
   // Print preparation (Save as PDF) awaits the synthesis fetch + render.
-  (window as unknown as { __bbSynthesisLoad?: () => Promise<void> }).__bbSynthesisLoad =
-    async () => {
-      if (loaded) return;
-      if (!loading) loading = load();
-      await loading;
-    };
+  window.__bbSynthesisLoad = async () => {
+    if (loaded) return;
+    if (!loading) loading = load();
+    await loading;
+  };
 
   // A tap on any "synthesis for this combo →" link must trigger the lazy
   // fetch immediately — the anchor target doesn't exist until the render.
   document.addEventListener("click", (ev) => {
-    const a = (ev.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#synth-"]');
+    const a = closestFrom(ev.target, 'a[href^="#synth-"]', HTMLAnchorElement);
     if (!a) return;
     ensureLoaded();
   });
@@ -879,8 +907,7 @@ function initPrint(): void {
   const prepareAndPrint = async (): Promise<void> => {
     // Print CSS force-expands every collapsible; here we only need the lazy
     // synthesis section rendered before the snapshot.
-    const loader = (window as unknown as { __bbSynthesisLoad?: () => Promise<void> })
-      .__bbSynthesisLoad;
+    const loader = window.__bbSynthesisLoad;
     if (loader) await loader();
     window.print();
   };

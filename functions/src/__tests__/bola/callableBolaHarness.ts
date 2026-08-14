@@ -87,7 +87,7 @@ export function callableRequest<T extends Record<string, unknown>>(uid: string, 
   };
 }
 
-export function callableRunner(candidate: unknown): (request: unknown) => Promise<unknown> {
+export function callableRunner(candidate: unknown): <Result = unknown>(request: unknown) => Promise<Result> {
   if (
     candidate === null ||
     (typeof candidate !== "object" && typeof candidate !== "function") ||
@@ -250,7 +250,7 @@ export function pathKeyedFirestore(store: Map<string, Record<string, unknown>>) 
       create: async (data: Record<string, unknown>) => {
         if (store.has(path)) {
           const err = new Error("6 ALREADY_EXISTS: entity already exists");
-          (err as { code?: number }).code = 6;
+          Reflect.set(err, "code", 6);
           throw err;
         }
         store.set(path, data);

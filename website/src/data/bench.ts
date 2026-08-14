@@ -125,7 +125,7 @@ export interface BenchDoc {
 /* ---------- build-time read (pages are static) ---------- */
 
 const raw = readFileSync(join(process.cwd(), "public", "data", "bench.json"), "utf8");
-export const BENCH: BenchDoc = JSON.parse(raw) as BenchDoc;
+export const BENCH: BenchDoc = JSON.parse(raw);
 
 /**
  * **`source.cells_measured` is a TRIAL count, not a cell count.**
@@ -540,8 +540,13 @@ export function paretoDomain(stacks: BenchStack[]): ParetoDomain {
 export function frontierPoints(): BenchFrontierPoint[] {
   const seen = new Set<string>();
   const deduped: BenchFrontierPoint[] = [];
-  const priced = BENCH.frontier.filter((p) => p.cost_usd_median != null);
-  for (const p of [...priced].sort((a, b) => a.cost_usd_median! - b.cost_usd_median!)) {
+  const priced: (BenchFrontierPoint & { cost_usd_median: number })[] = [];
+  for (const point of BENCH.frontier) {
+    if (typeof point.cost_usd_median === "number") {
+      priced.push({ ...point, cost_usd_median: point.cost_usd_median });
+    }
+  }
+  for (const p of priced.sort((a, b) => a.cost_usd_median - b.cost_usd_median)) {
     const key = `${p.harness}|${p.model}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -998,7 +1003,7 @@ export interface EvidenceDoc {
 }
 
 const evidenceRaw = readFileSync(join(process.cwd(), "public", "data", "evidence.json"), "utf8");
-export const EVIDENCE: EvidenceDoc = JSON.parse(evidenceRaw) as EvidenceDoc;
+export const EVIDENCE: EvidenceDoc = JSON.parse(evidenceRaw);
 
 /** Measured cells only — the export never mixes inferred rows into cells. */
 export const EVIDENCE_CELLS: EvidenceCell[] = EVIDENCE.cells;

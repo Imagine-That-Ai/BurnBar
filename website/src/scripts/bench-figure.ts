@@ -1,3 +1,4 @@
+import { at } from "./dom.js";
 /**
  * Zoomable, pannable figures — one primitive for every chart, table and
  * infographic on the bench pages.
@@ -76,7 +77,12 @@ function apply(f: Figure): void {
   const inBtn = f.root.querySelector<HTMLButtonElement>("[data-fig-in]");
   if (inBtn) inBtn.disabled = f.k >= MAX - 0.001;
 
-  f.viewport.setAttribute("aria-label", zoomed ? `Figure, zoomed ${Math.round(f.k * 100)}%. Arrow keys pan, 0 resets.` : "Figure. Plus and minus zoom, arrow keys pan.");
+  f.viewport.setAttribute(
+    "aria-label",
+    zoomed
+      ? `Figure, zoomed ${Math.round(f.k * 100)}%. Arrow keys pan, 0 resets.`
+      : "Figure. Plus and minus zoom, arrow keys pan."
+  );
 }
 
 /**
@@ -249,13 +255,14 @@ function initFigure(root: HTMLElement): void {
     "touchstart",
     (ev) => {
       if (ev.touches.length === 2) {
-        const [a, b] = [ev.touches[0]!, ev.touches[1]!];
+        const [a, b] = [at(ev.touches, 0), at(ev.touches, 1)];
         pinchDist = dist(a, b);
         pinchK = f.k;
         [touchX, touchY] = local(f, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
       } else if (ev.touches.length === 1 && f.k > MIN + 0.001) {
-        touchX = ev.touches[0]!.clientX;
-        touchY = ev.touches[0]!.clientY;
+        const touch = at(ev.touches, 0);
+        touchX = touch.clientX;
+        touchY = touch.clientY;
       }
     },
     { passive: true }
@@ -266,7 +273,7 @@ function initFigure(root: HTMLElement): void {
     (ev) => {
       if (ev.touches.length === 2 && pinchDist > 0) {
         ev.preventDefault();
-        const [a, b] = [ev.touches[0]!, ev.touches[1]!];
+        const [a, b] = [at(ev.touches, 0), at(ev.touches, 1)];
         const [mx, my] = local(f, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
         // Follow the midpoint as it drifts, so a pinch can pan at the same time.
         f.tx += mx - touchX;
@@ -281,7 +288,7 @@ function initFigure(root: HTMLElement): void {
       // the page scrolls normally.
       if (ev.touches.length === 1 && f.k > MIN + 0.001) {
         ev.preventDefault();
-        const t = ev.touches[0]!;
+        const t = at(ev.touches, 0);
         f.tx += t.clientX - touchX;
         f.ty += t.clientY - touchY;
         touchX = t.clientX;
@@ -297,8 +304,9 @@ function initFigure(root: HTMLElement): void {
     (ev) => {
       if (ev.touches.length < 2) pinchDist = 0;
       if (ev.touches.length === 1) {
-        touchX = ev.touches[0]!.clientX;
-        touchY = ev.touches[0]!.clientY;
+        const touch = at(ev.touches, 0);
+        touchX = touch.clientX;
+        touchY = touch.clientY;
       }
     },
     { passive: true }

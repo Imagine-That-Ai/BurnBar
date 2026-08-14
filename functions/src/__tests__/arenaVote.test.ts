@@ -18,10 +18,10 @@ interface RegistryReadCounters {
   lastProjection: string[] | undefined;
 }
 
-const mocks = vi.hoisted(() => ({
-  store: new Map<string, Record<string, unknown>>(),
-  reads: { matchupDocs: 0, lastProjection: undefined } as RegistryReadCounters,
-}));
+const mocks = vi.hoisted(() => {
+  const reads: RegistryReadCounters = { matchupDocs: 0, lastProjection: undefined };
+  return { store: new Map<string, Record<string, unknown>>(), reads };
+});
 
 interface MatchupQuery {
   startAt: (cursor: string) => MatchupQuery;
@@ -54,7 +54,8 @@ function idOrderedMatchupQuery(
         .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes("/"))
         .map(([key, value]) => [key.slice(prefix.length), value] as const)
         .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
-      if (options.startAt !== undefined) entries = entries.filter(([id]) => id >= options.startAt!);
+      const startAt = options.startAt;
+      if (startAt !== undefined) entries = entries.filter(([id]) => id >= startAt);
       if (options.limit !== undefined) entries = entries.slice(0, options.limit);
       counters.matchupDocs += entries.length;
       counters.lastProjection = options.fields;
@@ -225,7 +226,12 @@ function anonRequest(data: Record<string, unknown>, ip?: string): unknown {
   return { rawRequest: { headers: {}, ...(ip === undefined ? {} : { ip }) }, data };
 }
 
-function castVote(data: Record<string, unknown>, uid = TEST_UID, ip = TEST_IP, xff?: string): Promise<unknown> {
+function castVote<Result = unknown>(
+  data: Record<string, unknown>,
+  uid = TEST_UID,
+  ip = TEST_IP,
+  xff?: string,
+): Promise<Result> {
   return run(voteRequest(data, uid, ip, xff));
 }
 
@@ -238,12 +244,28 @@ function voteDocs(): Array<[string, Record<string, unknown>]> {
   return [...mocks.store.entries()].filter(([key]) => key.startsWith("arena_votes/"));
 }
 
+function requireEntry<T>(entries: readonly T[], index = 0): T {
+  const entry = entries[index];
+  if (entry === undefined) throw new Error(`expected an entry at index ${index}`);
+  return entry;
+}
+
+function requireDoc(path: string): Record<string, unknown> {
+  const doc = mocks.store.get(path);
+  if (doc === undefined) throw new Error(`expected a document at ${path}`);
+  return doc;
+}
+
 function onlyVote(): Record<string, unknown> {
-  return voteDocs()[0]![1];
+  return requireEntry(voteDocs())[1];
 }
 
 function serveDoc(serveId: string): Record<string, unknown> | undefined {
   return mocks.store.get(`arena_serves/${serveId}`);
+}
+
+function requireServeDoc(serveId: string): Record<string, unknown> {
+  return requireDoc(`arena_serves/${serveId}`);
 }
 
 beforeEach(() => {
@@ -260,7 +282,7 @@ describe("arenaVote — auth", () => {
   });
 
   it("writes the vote and reveals identities only after the write", async () => {
-    const result = (await castVote(validPayload())) as VoteResult;
+    const result = await castVote<VoteResult>(validPayload());
     expect(typeof result.voteId).toBe("string");
     expect(result.voteId.length).toBeGreaterThan(0);
     expect(result.reveal.left.harness).toBe("droid");
@@ -268,7 +290,7 @@ describe("arenaVote — auth", () => {
 
     const docs = voteDocs();
     expect(docs).toHaveLength(1);
-    const [docId, vote] = docs[0]!;
+    const [docId, vote] = requireEntry(docs);
     expect(docId).toBe(`arena_votes/${TEST_UID}__${MATCHUP_ID}`);
     expect(vote.vote_id).toBe(result.voteId);
     expect(vote.voter_uid).toBe(TEST_UID);
@@ -292,10 +314,10 @@ describe("arenaVote — auth", () => {
     await castVote(validPayload({ choice: "A" }));
     await castVote(validPayload({ choice: "B" }), OTHER_UID);
     expect(voteDocs()).toHaveLength(2);
-    const ids = voteDocs().map(([id]) => id).sort();
-    expect(ids).toEqual(
-      [`arena_votes/${OTHER_UID}__${MATCHUP_ID}`, `arena_votes/${TEST_UID}__${MATCHUP_ID}`].sort(),
-    );
+    const ids = voteDocs()
+      .map(([id]) => id)
+      .sort();
+    expect(ids).toEqual([`arena_votes/${OTHER_UID}__${MATCHUP_ID}`, `arena_votes/${TEST_UID}__${MATCHUP_ID}`].sort());
   });
 
   it("rejects a matchupId containing a slash (doc-id safety)", async () => {
@@ -422,7 +444,7 @@ describe("arenaVote — server-authoritative orientation", () => {
       code: "internal",
       serve: () => {
         const serveId = seedServe();
-        mocks.store.set(`arena_serves/${serveId}`, { ...serveDoc(serveId)!, served_swap: "yes" });
+        mocks.store.set(`arena_serves/${serveId}`, { ...requireServeDoc(serveId), served_swap: "yes" });
         return serveId;
       },
     },
@@ -451,7 +473,7 @@ describe("arenaVote — server-authoritative orientation", () => {
     // End to end through the real serving path, whichever way the server's coin
     // lands: a vote for the artifact on the left must be recorded against the
     // cell whose bundle was displayed on the left.
-    const served = (await runMatchup(anonRequest({ schemaVersion: 1 }, "203.0.113.60"))) as MatchupResult;
+    const served = await runMatchup<MatchupResult>(anonRequest({ schemaVersion: 1 }, "203.0.113.60"));
     await castVote({ schemaVersion: 1, matchupId: served.matchupId, serveId: served.serveId, choice: "A" });
     const vote = onlyVote();
     const leftWasStoredLeft = served.left.bundleId === "bundle-left-sha";
@@ -464,7 +486,7 @@ describe("arenaVote — server-authoritative orientation", () => {
 /** A1 — the reveal stays a reward for judging, not a lookup API. */
 describe("arenaVote — reveal is bounded, bound, and non-enumerable", () => {
   it("reveals identities in the orientation the voter actually saw", async () => {
-    const result = (await castVote(ballot(seedServe({ servedSwap: true })))) as VoteResult;
+    const result = await castVote<VoteResult>(ballot(seedServe({ servedSwap: true })));
     // Served swapped: the stored RIGHT cell was on the voter's left.
     expect(result.reveal.left.harness).toBe("pi");
     expect(result.reveal.right.harness).toBe("droid");
@@ -491,7 +513,7 @@ describe("arenaVote — reveal is bounded, bound, and non-enumerable", () => {
     for (let i = 0; i < 12; i += 1) {
       seedExtraMatchup(`m-harvest-${i}`);
       const payload = validPayload({ matchupId: `m-harvest-${i}`, choice: "tie" });
-      const result = (await castVote(payload, TEST_UID, `198.51.100.${i + 1}`)) as VoteResult;
+      const result = await castVote<VoteResult>(payload, TEST_UID, `198.51.100.${i + 1}`);
       revealed.add(result.reveal.left.harness);
     }
     expect(revealed.size).toBe(12);
@@ -594,7 +616,7 @@ describe("arenaVote — rubric dimensions", () => {
   });
 
   it("still reveals identities only after the rubric vote commits", async () => {
-    const result = (await castVote(validPayload({ dimensions: { code_quality: "B" } }))) as VoteResult;
+    const result = await castVote<VoteResult>(validPayload({ dimensions: { code_quality: "B" } }));
     expect(result.reveal.left.harness).toBe("droid");
     expect(onlyVote().vote_id).toBe(result.voteId);
   });
@@ -657,7 +679,7 @@ describe("arenaVote — rate limiting", () => {
 
 describe("arenaMatchup — anonymous serving", () => {
   it("returns anonymized bundles and no identities without auth", async () => {
-    const result = (await runMatchup(anonRequest({ schemaVersion: 1 }, "203.0.113.99"))) as MatchupResult;
+    const result = await runMatchup<MatchupResult>(anonRequest({ schemaVersion: 1 }, "203.0.113.99"));
     expect(result.matchupId).toBe(MATCHUP_ID);
     for (const secret of ["droid", "deepseek", "trial-01"]) expect(JSON.stringify(result)).not.toContain(secret);
     expect([result.left.bundleId, result.right.bundleId].sort()).toEqual(["bundle-left-sha", "bundle-right-sha"]);
@@ -670,14 +692,15 @@ describe("arenaMatchup — anonymous serving", () => {
   });
 
   it("persists the served orientation and never discloses it to the caller", async () => {
-    const result = (await runMatchup(anonRequest({ schemaVersion: 1 }, "203.0.113.96"))) as MatchupResult &
-      Record<string, unknown>;
+    const result = await runMatchup<MatchupResult & Record<string, unknown>>(
+      anonRequest({ schemaVersion: 1 }, "203.0.113.96"),
+    );
     expect(typeof result.serveId).toBe("string");
     expect(result.serveId.length).toBeGreaterThan(0);
     expect("servedSwap" in result).toBe(false);
     expect(JSON.stringify(result)).not.toContain("servedSwap");
 
-    const serve = serveDoc(result.serveId)!;
+    const serve = requireServeDoc(result.serveId);
     expect(serve.matchup_id).toBe(MATCHUP_ID);
     expect(typeof serve.served_swap).toBe("boolean");
     expect(serve.served_to_uid).toBeNull();
@@ -688,14 +711,14 @@ describe("arenaMatchup — anonymous serving", () => {
   });
 
   it("binds the ballot to the uid it was issued to when the caller is signed in", async () => {
-    const result = (await runMatchup(voteRequest({ schemaVersion: 1 }, TEST_UID, "203.0.113.93"))) as MatchupResult;
+    const result = await runMatchup<MatchupResult>(voteRequest({ schemaVersion: 1 }, TEST_UID, "203.0.113.93"));
     expect(serveDoc(result.serveId)?.served_to_uid).toBe(TEST_UID);
   });
 
   it("reads a bounded slice of the registry rather than the whole thing", async () => {
     for (let i = 0; i < 300; i += 1) seedExtraMatchup(`m-bulk-${String(i).padStart(4, "0")}`);
     mocks.reads.matchupDocs = 0;
-    const result = (await runMatchup(anonRequest({ schemaVersion: 1 }, "203.0.113.92"))) as MatchupResult;
+    const result = await runMatchup<MatchupResult>(anonRequest({ schemaVersion: 1 }, "203.0.113.92"));
     expect(typeof result.matchupId).toBe("string");
     expect(mocks.reads.matchupDocs).toBeGreaterThan(0);
     // At most two pages of 12; the registry has 301 entries.
@@ -712,11 +735,11 @@ describe("arenaMatchup — anonymous serving", () => {
 
   it("sanitizes malformed registry entry paths to index.html", async () => {
     mocks.store.set(`arena_matchups/${MATCHUP_ID}`, {
-      ...mocks.store.get(`arena_matchups/${MATCHUP_ID}`)!,
+      ...requireDoc(`arena_matchups/${MATCHUP_ID}`),
       left_entry: "../escape.html",
       right_entry: "https://evil.com/x.html",
     });
-    const result = (await runMatchup(anonRequest({ schemaVersion: 1 }, "203.0.113.97"))) as MatchupResult;
+    const result = await runMatchup<MatchupResult>(anonRequest({ schemaVersion: 1 }, "203.0.113.97"));
     expect(result.left.entry).toBe("index.html");
     expect(result.right.entry).toBe("index.html");
   });
@@ -735,9 +758,7 @@ describe("arenaMatchup — authed exclusion", () => {
     // Vote on the first matchup as TEST_UID.
     await castVote(validPayload({ choice: "A" }));
     // Now request a matchup as TEST_UID — must get the second (unvoted) one.
-    const result = (await runMatchup(voteRequest({ schemaVersion: 1 }, TEST_UID, "203.0.113.95"))) as {
-      matchupId: string;
-    };
+    const result = await runMatchup<{ matchupId: string }>(voteRequest({ schemaVersion: 1 }, TEST_UID, "203.0.113.95"));
     expect(result.matchupId).toBe("m-def456");
   });
 

@@ -50,7 +50,7 @@ export function initArenaNet(canvas: HTMLCanvasElement): void {
       vx: (fromLeft ? 1 : -1) * (0.18 + Math.random() * 0.3),
       vy: (Math.random() - 0.5) * 0.22,
       r: 1.2 + Math.random() * 1.7,
-      life: 0,
+      life: 0
     };
   };
 

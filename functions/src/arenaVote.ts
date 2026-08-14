@@ -203,12 +203,7 @@ type ArenaChoice = (typeof ARENA_CHOICES)[number];
  *   - the rubric controls in `website/src/pages/bench/arena/vote.astro`.
  * The order here is the order the voter sees.
  */
-const ARENA_DIMENSIONS = [
-  "visual_polish",
-  "interaction_quality",
-  "accessibility",
-  "code_quality",
-] as const;
+const ARENA_DIMENSIONS = ["visual_polish", "interaction_quality", "accessibility", "code_quality"] as const;
 type ArenaDimension = (typeof ARENA_DIMENSIONS)[number];
 
 /** Sparse rubric: only the axes the voter actually judged appear. */
@@ -280,12 +275,26 @@ function optionalParsedString(value: unknown, fieldName: string): string | undef
  * `Record<string, string>`; a mismatch here would be a validator bug, not bad
  * client input, hence `internal` rather than `invalid-argument`.
  */
+function requiredParsedChoice(value: unknown, fieldName: string): ArenaChoice {
+  const choice = requiredParsedString(value, fieldName);
+  if (choice !== "A" && choice !== "B" && choice !== "tie") {
+    throw new HttpsError("internal", `Validated callable field ${fieldName} did not parse to a choice.`);
+  }
+  return choice;
+}
+
 function optionalParsedDimensions(value: unknown, fieldName: string): ArenaDimensionChoices | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new HttpsError("internal", `Validated callable field ${fieldName} did not parse to an object.`);
   }
-  return value as ArenaDimensionChoices;
+  const dimensions: ArenaDimensionChoices = {};
+  const entries: Record<string, unknown> = { ...value };
+  for (const dimension of ARENA_DIMENSIONS) {
+    const choice = entries[dimension];
+    if (choice === "A" || choice === "B" || choice === "tie") dimensions[dimension] = choice;
+  }
+  return dimensions;
 }
 
 /**
@@ -330,7 +339,7 @@ function parseArenaVoteInput(data: unknown): ArenaVoteInput {
   return {
     matchupId: requiredParsedString(parsed.matchupId, "matchupId"),
     serveId: requiredParsedString(parsed.serveId, "serveId"),
-    choice: requiredParsedString(parsed.choice, "choice") as ArenaChoice,
+    choice: requiredParsedChoice(parsed.choice, "choice"),
     why: optionalParsedString(parsed.why, "why"),
     voter: optionalParsedString(parsed.voter, "voter") ?? "anonymous",
     dimensions: optionalParsedDimensions(parsed.dimensions, "dimensions"),
@@ -521,8 +530,11 @@ async function readCandidatePage(
 ): Promise<Array<{ id: string; data: Record<string, unknown> }>> {
   const ordered = firestore.collection("arena_matchups").orderBy(FieldPath.documentId());
   const page = startAt === undefined ? ordered : ordered.startAt(startAt);
-  const snap = await page.select(...ARENA_MATCHUP_SERVE_FIELDS).limit(ARENA_MATCHUP_PAGE_SIZE).get();
-  return snap.docs.map((doc) => ({ id: doc.id, data: (doc.data() ?? {}) as Record<string, unknown> }));
+  const snap = await page
+    .select(...ARENA_MATCHUP_SERVE_FIELDS)
+    .limit(ARENA_MATCHUP_PAGE_SIZE)
+    .get();
+  return snap.docs.map((doc) => ({ id: doc.id, data: { ...doc.data() } }));
 }
 
 /**

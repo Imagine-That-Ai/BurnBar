@@ -479,7 +479,9 @@ def model_profile(name: str) -> dict[str, Any]:
             break
     rows = _match_rows(bench, "model", name)
     if model_row is None and not rows:
-        available = sorted({str(row.get("id")) for row in bench.get("models") or [] if isinstance(row, dict) and row.get("id")})
+        available = sorted(
+            {str(row.get("id")) for row in bench.get("models") or [] if isinstance(row, dict) and row.get("id")}
+        )
         return _envelope(
             False,
             None,
@@ -561,7 +563,9 @@ def frontier(scope: dict[str, Any] | None = None) -> dict[str, Any]:
         if scope and _scope_score(entry.get("scope") or {}, scope) is None:
             continue
         row = dict(entry)
-        match = _resolve_stack(bench, {"harness": entry.get("harness"), "model": entry.get("model"), "scope": entry.get("scope")})
+        match = _resolve_stack(
+            bench, {"harness": entry.get("harness"), "model": entry.get("model"), "scope": entry.get("scope")}
+        )
         if match is not None:
             stack, disclosure = match
             row["confidence"] = disclosure["effective_confidence"]
@@ -572,7 +576,9 @@ def frontier(scope: dict[str, Any] | None = None) -> dict[str, Any]:
     entries.sort(
         key=lambda row: (
             -(_coerce_rate(row.get("solution_rate")) or -1.0),
-            _coerce_float(row.get("cost_usd_median")) if _coerce_float(row.get("cost_usd_median")) is not None else float("inf"),
+            _coerce_float(row.get("cost_usd_median"))
+            if _coerce_float(row.get("cost_usd_median")) is not None
+            else float("inf"),
             str(row.get("harness") or ""),
             str(row.get("model") or ""),
         )
@@ -581,9 +587,7 @@ def frontier(scope: dict[str, Any] | None = None) -> dict[str, Any]:
     return _envelope(True, data, _evidence_meta(loaded), None)
 
 
-def _resolve_stack(
-    bench: dict[str, Any], spec: dict[str, Any]
-) -> tuple[dict[str, Any], dict[str, Any]] | None:
+def _resolve_stack(bench: dict[str, Any], spec: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]] | None:
     """Find the best stack row for a {harness, model, scope?} spec.
 
     Prefers the row whose scope best matches the requested scope, then the

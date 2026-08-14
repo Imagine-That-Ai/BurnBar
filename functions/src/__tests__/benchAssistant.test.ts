@@ -230,11 +230,11 @@ describe("benchAssistant model-output handling", () => {
       .mockResolvedValueOnce(openRouterCompletion("sorry, I cannot help with that"))
       .mockResolvedValueOnce(openRouterCompletion(VALID_MODEL_OUTPUT));
 
-    const response = (await run(benchRequest(validPayload(), TEST_IP))) as Record<string, unknown>;
+    const response = await run<Record<string, unknown>>(benchRequest(validPayload(), TEST_IP));
 
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
-    const retryInit = mocks.fetch.mock.calls[1]?.[3] as RequestInit;
-    const retryBody = JSON.parse(String(retryInit.body)) as { messages: Array<{ content: string }> };
+    const retryInit: RequestInit = mocks.fetch.mock.calls[1]?.[3];
+    const retryBody = requestBody<{ messages: Array<{ content: string }> }>(retryInit);
     expect(retryBody.messages[1]?.content).toContain("valid JSON only");
 
     expect(response).toMatchObject({
@@ -251,7 +251,7 @@ describe("benchAssistant model-output handling", () => {
       openRouterCompletion("The digest shows Terminal-Bench ahead on solution rate."),
     );
 
-    const response = (await run(benchRequest(validPayload(), TEST_IP))) as Record<string, unknown>;
+    const response = await run<Record<string, unknown>>(benchRequest(validPayload(), TEST_IP));
 
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
     expect(response).toMatchObject({
@@ -264,7 +264,7 @@ describe("benchAssistant model-output handling", () => {
   it("returns the polite fallback when both replies are JSON but contract-invalid", async () => {
     mocks.fetch.mockImplementation(async () => openRouterCompletion(JSON.stringify({ chart: { type: "pie" } })));
 
-    const response = (await run(benchRequest(validPayload(), TEST_IP))) as Record<string, unknown>;
+    const response = await run<Record<string, unknown>>(benchRequest(validPayload(), TEST_IP));
 
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
     expect(response).toMatchObject({ chart: null, rowsUsed: [] });
@@ -313,26 +313,71 @@ describe("benchAssistant upstream failure handling", () => {
   });
 });
 
+interface RecordedFetch {
+  provider: string;
+  operation: string;
+  url: string;
+  init: RequestInit;
+}
+
+function recordedFetch(index = 0): RecordedFetch {
+  const call: unknown[] = mocks.fetch.mock.calls[index] ?? [];
+  const [provider, operation, url, init] = call;
+  if (typeof provider !== "string" || typeof operation !== "string" || typeof url !== "string") {
+    throw new Error(`fetch call ${index} did not record provider/operation/url`);
+  }
+  if (typeof init !== "object" || init === null) {
+    throw new Error(`fetch call ${index} did not record a request init`);
+  }
+  return { provider, operation, url, init };
+}
+
+function requestHeaders(init: RequestInit): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const [key, value] of Object.entries({ ...init.headers })) {
+    if (typeof value === "string") headers[key] = value;
+  }
+  return headers;
+}
+
+function requestBody<T>(init: RequestInit): T {
+  const body: T = JSON.parse(String(init.body));
+  return body;
+}
+
+function tokenUsageOf(response: Record<string, unknown>): {
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUSD: number;
+} {
+  const usage = response.tokenUsage;
+  if (typeof usage !== "object" || usage === null) throw new Error("response carried no tokenUsage");
+  const inputTokens: unknown = Reflect.get(usage, "inputTokens");
+  const outputTokens: unknown = Reflect.get(usage, "outputTokens");
+  const estimatedCostUSD: unknown = Reflect.get(usage, "estimatedCostUSD");
+  if (typeof inputTokens !== "number" || typeof outputTokens !== "number" || typeof estimatedCostUSD !== "number") {
+    throw new Error("tokenUsage was not fully numeric");
+  }
+  return { inputTokens, outputTokens, estimatedCostUSD };
+}
+
 describe("benchAssistant happy path", () => {
   it("proxies to OpenRouter with the contracted request and shapes the contracted response", async () => {
     mocks.fetch.mockResolvedValue(openRouterCompletion(VALID_MODEL_OUTPUT));
 
-    const response = (await run(benchRequest(validPayload({ view: "leaderboard" }), TEST_IP))) as Record<
-      string,
-      unknown
-    >;
+    const response = await run<Record<string, unknown>>(benchRequest(validPayload({ view: "leaderboard" }), TEST_IP));
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
-    const [provider, operation, url, init] = mocks.fetch.mock.calls[0] as [string, string, string, RequestInit];
+    const { provider, operation, url, init } = recordedFetch();
     expect(provider).toBe("openrouter");
     expect(operation).toBe("bench_assistant.chat");
     expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-openrouter-key");
-    const body = JSON.parse(String(init.body)) as {
+    expect(requestHeaders(init).Authorization).toBe("Bearer test-openrouter-key");
+    const body = requestBody<{
       model: string;
       response_format: { type: string };
       messages: Array<{ role: string; content: string }>;
-    };
+    }>(init);
     expect(body.model).toBe("openai/gpt-5.6-luna-pro");
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.messages[0]?.content).toBe(BENCH_ASSISTANT_SYSTEM_PROMPT);
@@ -346,7 +391,7 @@ describe("benchAssistant happy path", () => {
       modelSlug: "openai/gpt-5.6-luna-pro",
     });
     expect(typeof response.ranAt).toBe("string");
-    const tokenUsage = response.tokenUsage as { inputTokens: number; outputTokens: number; estimatedCostUSD: number };
+    const tokenUsage = tokenUsageOf(response);
     expect(tokenUsage.inputTokens).toBe(100);
     expect(tokenUsage.outputTokens).toBe(50);
     // 100 input @ $0.10/M + 50 output @ $0.60/M = $0.00004.
@@ -358,8 +403,7 @@ describe("benchAssistant happy path", () => {
 
     await run(benchRequest(validPayload(), TEST_IP));
 
-    const init = mocks.fetch.mock.calls[0]?.[3] as RequestInit;
-    const body = JSON.parse(String(init.body)) as { messages: Array<{ content: string }> };
+    const body = requestBody<{ messages: Array<{ content: string }> }>(recordedFetch().init);
     expect(body.messages[1]?.content).toContain('"solution_rate":0.42');
 
     // The only Firestore writes a public call may produce are the IP-keyed
