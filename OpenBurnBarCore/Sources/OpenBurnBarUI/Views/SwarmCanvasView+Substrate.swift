@@ -96,14 +96,14 @@ extension SwarmSimulation {
 
     /// Same contract as `sorted()[count / 2]` (upper median for even counts)
     /// without the per-frame O(n log n) sort over ~520–1080 radii.
-    static func upperMedian(_ values: [Double]) -> Double {
+    nonisolated static func upperMedian(_ values: [Double]) -> Double {
         precondition(!values.isEmpty, "upperMedian requires a non-empty array")
         var copy = values
         let k = copy.count / 2
         return selectNth(&copy, k: k)
     }
 
-    private static func selectNth(_ values: inout [Double], k: Int) -> Double {
+    nonisolated private static func selectNth(_ values: inout [Double], k: Int) -> Double {
         var low = 0
         var high = values.count - 1
         while low < high {

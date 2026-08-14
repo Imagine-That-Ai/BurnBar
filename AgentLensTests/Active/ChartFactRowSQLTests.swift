@@ -3,6 +3,7 @@ import GRDB
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
+@MainActor
 final class ChartFactRowSQLTests: XCTestCase {
     func test_factRows_matchTokenUsageSnapshot_last7DaysCoveringScan() async throws {
         let (usageStore, now) = try await seededStore()

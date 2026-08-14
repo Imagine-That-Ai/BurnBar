@@ -467,6 +467,7 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
 
 // MARK: - Idle persist skip
 
+@MainActor
 final class UsagePersistSkipTests: XCTestCase {
     func test_persistContentFingerprint_ignoresIdentityAndCreatedAt() {
         let start = Date(timeIntervalSince1970: 1_700_000_000)

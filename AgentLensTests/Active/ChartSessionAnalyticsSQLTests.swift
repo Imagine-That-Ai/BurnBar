@@ -3,6 +3,7 @@ import GRDB
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
+@MainActor
 final class ChartSessionAnalyticsSQLTests: XCTestCase {
     func test_sqlHeatmapOutliersEntropy_matchChartsSnapshotBuild() async throws {
         let queue = try DatabaseQueue()

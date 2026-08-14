@@ -3,6 +3,7 @@ import GRDB
 @testable import OpenBurnBar
 @testable import OpenBurnBarCore
 
+@MainActor
 final class DailySummaryIntersectionTests: XCTestCase {
     func test_overlappingDayStarts_countsSpanningSessionOnBothDays() throws {
         var calendar = Calendar(identifier: .gregorian)
