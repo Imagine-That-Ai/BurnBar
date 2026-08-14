@@ -1842,17 +1842,8 @@ service cloud.firestore {
     // orientation and let a caller invert the meaning of its own ballot
     // (arena_serves), and direct writes would bypass the callables' validation,
     // single-use ticket accounting, and rate limiting.
-    match /arena_matchups/{matchupId} {
-      allow read, write: if false;
-    }
-
-    match /arena_serves/{serveId} {
-      allow read, write: if false;
-    }
-
-    match /arena_votes/{voteId} {
-      allow read, write: if false;
-    }
+    // Deliberately unmatched: an absent rule is Firestore's default deny, and
+    // it costs no source or compiler budget the way a dead allow clause does.
 
     // --- User-scoped data ---
 

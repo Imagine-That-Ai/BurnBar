@@ -411,3 +411,17 @@ export async function tier2CallableProof(
 
   expectTenantPathsUnchanged(store, victimBefore);
 }
+
+/** Read an array slot, naming the failure instead of asserting it is present. */
+export function requireEntry<T>(entries: readonly T[], index = 0): T {
+  const entry = entries[index];
+  if (entry === undefined) throw new Error(`expected an entry at index ${index}`);
+  return entry;
+}
+
+/** Read a seeded document, naming the path instead of asserting it exists. */
+export function requireDoc(store: Map<string, Record<string, unknown>>, path: string): Record<string, unknown> {
+  const doc = store.get(path);
+  if (doc === undefined) throw new Error(`expected a document at ${path}`);
+  return doc;
+}

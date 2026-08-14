@@ -236,7 +236,7 @@ type RateLimitRequestLike = {
  * attacker-controlled and must never be keyed on. A chain with fewer than two
  * hops cannot be disambiguated from a forged one, so it yields `undefined`.
  */
-export function attributableClientIp(req: RateLimitRequestLike | undefined): string | undefined {
+function attributableClientIp(req: RateLimitRequestLike | undefined): string | undefined {
   if (process.env.OPENBURNBAR_TRUST_X_FORWARDED_FOR !== "1") return undefined;
   const forwarded = req?.headers?.["x-forwarded-for"];
   const raw = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;

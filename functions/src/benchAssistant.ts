@@ -327,7 +327,7 @@ export function sanitizeBenchChartSpec(raw: unknown): BenchChartSpec | null {
  * best-effort fallback, so raw model output never reaches the client as an
  * error.
  */
-export function parseBenchAssistantModelOutput(rawContent: string): BenchAssistantModelOutput {
+function parseBenchAssistantModelOutput(rawContent: string): BenchAssistantModelOutput {
   let trimmed = rawContent.trim();
   // Some providers wrap structured-output JSON in ```json fences even when
   // asked not to. Strip them defensively.

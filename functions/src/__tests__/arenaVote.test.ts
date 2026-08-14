@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { callableRunner, pathKeyedFirestore } from "./bola/callableBolaHarness.js";
+import { callableRunner, pathKeyedFirestore, requireDoc, requireEntry } from "./bola/callableBolaHarness.js";
 
 const TEST_IP = "203.0.113.10";
 const TEST_UID = "voter-uid-001";
@@ -109,22 +109,17 @@ const MATCHUP_ID = "m-abc123";
 interface MatchupResult {
   matchupId: string;
   serveId: string;
-  task: string;
   left: { bundleId: string; entry: string };
   right: { bundleId: string; entry: string };
 }
 
 interface CompetitorReveal {
   harness: string;
-  model: string;
-  task: string;
-  trial: number;
 }
 
 interface VoteResult {
   voteId: string;
   reveal: { left: CompetitorReveal; right: CompetitorReveal };
-  ranAt: string;
 }
 
 function seedMatchup(store: Map<string, Record<string, unknown>>): void {
@@ -244,28 +239,12 @@ function voteDocs(): Array<[string, Record<string, unknown>]> {
   return [...mocks.store.entries()].filter(([key]) => key.startsWith("arena_votes/"));
 }
 
-function requireEntry<T>(entries: readonly T[], index = 0): T {
-  const entry = entries[index];
-  if (entry === undefined) throw new Error(`expected an entry at index ${index}`);
-  return entry;
-}
-
-function requireDoc(path: string): Record<string, unknown> {
-  const doc = mocks.store.get(path);
-  if (doc === undefined) throw new Error(`expected a document at ${path}`);
-  return doc;
-}
-
 function onlyVote(): Record<string, unknown> {
   return requireEntry(voteDocs())[1];
 }
 
 function serveDoc(serveId: string): Record<string, unknown> | undefined {
   return mocks.store.get(`arena_serves/${serveId}`);
-}
-
-function requireServeDoc(serveId: string): Record<string, unknown> {
-  return requireDoc(`arena_serves/${serveId}`);
 }
 
 beforeEach(() => {
@@ -444,7 +423,10 @@ describe("arenaVote — server-authoritative orientation", () => {
       code: "internal",
       serve: () => {
         const serveId = seedServe();
-        mocks.store.set(`arena_serves/${serveId}`, { ...requireServeDoc(serveId), served_swap: "yes" });
+        mocks.store.set(`arena_serves/${serveId}`, {
+          ...requireDoc(mocks.store, `arena_serves/${serveId}`),
+          served_swap: "yes",
+        });
         return serveId;
       },
     },
@@ -692,15 +674,14 @@ describe("arenaMatchup — anonymous serving", () => {
   });
 
   it("persists the served orientation and never discloses it to the caller", async () => {
-    const result = await runMatchup<MatchupResult & Record<string, unknown>>(
-      anonRequest({ schemaVersion: 1 }, "203.0.113.96"),
-    );
+    const anon96 = anonRequest({ schemaVersion: 1 }, "203.0.113.96");
+    const result = await runMatchup<MatchupResult & Record<string, unknown>>(anon96);
     expect(typeof result.serveId).toBe("string");
     expect(result.serveId.length).toBeGreaterThan(0);
     expect("servedSwap" in result).toBe(false);
     expect(JSON.stringify(result)).not.toContain("servedSwap");
 
-    const serve = requireServeDoc(result.serveId);
+    const serve = requireDoc(mocks.store, `arena_serves/${result.serveId}`);
     expect(serve.matchup_id).toBe(MATCHUP_ID);
     expect(typeof serve.served_swap).toBe("boolean");
     expect(serve.served_to_uid).toBeNull();
@@ -735,7 +716,7 @@ describe("arenaMatchup — anonymous serving", () => {
 
   it("sanitizes malformed registry entry paths to index.html", async () => {
     mocks.store.set(`arena_matchups/${MATCHUP_ID}`, {
-      ...requireDoc(`arena_matchups/${MATCHUP_ID}`),
+      ...requireDoc(mocks.store, `arena_matchups/${MATCHUP_ID}`),
       left_entry: "../escape.html",
       right_entry: "https://evil.com/x.html",
     });
