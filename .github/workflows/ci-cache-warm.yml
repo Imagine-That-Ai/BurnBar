@@ -30,7 +30,7 @@ name: CI cache warm (default branch)
 #   aarch64-apple-darwin          app-pr-gate, headless-app-build,
 #                                 computer-use-loopback-test,
 #                                 pr-native-fast (host target on hosted arm64)
-#   x86_64-apple-darwin           codeql, codeql-pr
+#   x86_64-apple-darwin           codeql (nightly Swift; codeql-pr is non-Swift)
 #
 # (burnbar-turbo intentionally does NOT restore these entries: it runs on the
 # isolated self-hosted turbo fleet, a different Xcode surface, and builds its

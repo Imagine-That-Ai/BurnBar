@@ -122,6 +122,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `token_usage_sync_pending_idx`; no covering-index migration. Production
   `DatabasePool` reader count is 8. Aider stays off `quotaSignalProviders`.
 
+### Changed - Approved first-run + homepage copy
+- Homepage hero now uses Alberto-approved copy: **Watch your agents. Before the
+  bill.** plus the locked receipt subhead, the real `/brand/logo-*.png` mark, and
+  **Download for Mac — {shipping version}**.
+- macOS first-launch popover (`OnboardingView`) uses the real `AppLogo` brand
+  mark and the locked tip copy: **Look up. That's the app.** / menu-bar receipt /
+  Claude or Codex / **Got it**.
+
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
   across the macOS/Windows/Linux migrators with deterministic backfill): `api`

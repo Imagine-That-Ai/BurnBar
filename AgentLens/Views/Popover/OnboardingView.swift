@@ -17,19 +17,25 @@ struct OnboardingView: View {
     }
 
     var body: some View {
-        VStack(spacing: DesignSystem.Spacing.lg) {
-            BurnBarLogoFormationView()
-                .frame(width: 240, height: 200)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            AppLogoView(size: 44)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .accessibilityHidden(true)
 
-            VStack(spacing: DesignSystem.Spacing.sm) {
-                Text("Welcome to OpenBurnBar")
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                Text("Look up. That's the app.")
                     .font(DesignSystem.Typography.headline)
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                Text("Track token spend across all your AI agents. Local-first, private by default.")
+                Text("No Dock icon. The receipt lives in the menu bar.")
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Run Claude or Codex once. We pick up the local logs. No account.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -46,22 +52,24 @@ struct OnboardingView: View {
 
             VStack(spacing: DesignSystem.Spacing.sm) {
                 Button {
-                    onOpenWizard()
+                    onSkip()
                 } label: {
-                    Text("Get Started")
+                    Text("Got it")
                         .font(DesignSystem.Typography.body)
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, DesignSystem.Spacing.sm)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.ember)
 
-                Button("Skip for now") {
-                    onSkip()
+                Button("Get Started") {
+                    onOpenWizard()
                 }
                 .buttonStyle(.plain)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .frame(maxWidth: .infinity)
             }
         }
         .padding(DesignSystem.Spacing.xl)

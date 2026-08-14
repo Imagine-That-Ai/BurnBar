@@ -1,8 +1,8 @@
 name: PR Security Gate
 
 # Fast (<3 min) security checks that run on every pull request.
-# Swift CodeQL still runs nightly (see codeql.yml); JS/TS + Python CodeQL runs
-# on relevant PRs in codeql-pr.yml.
+# Swift CodeQL still runs nightly (see codeql.yml); JS/TS + Python + Java/Kotlin
+# CodeQL runs on PR + merge_group in codeql-pr.yml.
 #
 # Checks:
 #   1. Secret detection via gitleaks
