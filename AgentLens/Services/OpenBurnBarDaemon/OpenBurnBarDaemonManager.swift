@@ -15,9 +15,27 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
     let socketURL: URL
     let logURL: URL
     let launchAgentPlistURL: URL
+    let socketAuthTokenFileURL: URL
 
-    var socketAuthTokenFileURL: URL {
-        supportDirectory.appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
+    init(
+        supportDirectory: URL,
+        daemonDirectory: URL,
+        frameworksDirectory: URL,
+        installedBinaryURL: URL,
+        socketURL: URL,
+        logURL: URL,
+        launchAgentPlistURL: URL,
+        socketAuthTokenFileURL: URL? = nil
+    ) {
+        self.supportDirectory = supportDirectory
+        self.daemonDirectory = daemonDirectory
+        self.frameworksDirectory = frameworksDirectory
+        self.installedBinaryURL = installedBinaryURL
+        self.socketURL = socketURL
+        self.logURL = logURL
+        self.launchAgentPlistURL = launchAgentPlistURL
+        self.socketAuthTokenFileURL = socketAuthTokenFileURL
+            ?? supportDirectory.appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
     }
 
     /// Owner-only copy of the SQLCipher key for LaunchAgent / adhoc Debug
@@ -92,6 +110,9 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
         let sharedContainer = sharedContainerRoot
             ?? OpenBurnBarCore.BurnBarSafariSharedContainer.liveRoot(fileManager: fileManager)
 
+        let tokenFileURL = (sharedContainer ?? supportDirectory)
+            .appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
+
         return OpenBurnBarDaemonRuntimePaths(
             supportDirectory: supportDirectory,
             daemonDirectory: daemonDirectory,
@@ -105,7 +126,8 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
             logURL: daemonDirectory.appendingPathComponent("openburnbar-daemon.log", isDirectory: false),
             launchAgentPlistURL: homeDirectory
                 .appendingPathComponent("Library/LaunchAgents", isDirectory: true)
-                .appendingPathComponent("\(launchAgentLabel).plist", isDirectory: false)
+                .appendingPathComponent("\(launchAgentLabel).plist", isDirectory: false),
+            socketAuthTokenFileURL: tokenFileURL
         )
     }
 }
