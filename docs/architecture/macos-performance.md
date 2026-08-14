@@ -1244,6 +1244,49 @@ Validation:
 - `AgentLensTests/Active/ChartSessionAnalyticsSQLTests` (SQL vs
   `ChartsSnapshot.build`, crossing-range clamp)
 
+## §27 — Charts covering scan uses fact rows (August 2026, round 9)
+
+Round 8 left burn / cache / provenance / histogram on the covering
+`TokenUsage` scan. `ChartsDataService.refresh` still `fetchAllUsage()`
+for all-time even after the heatmap SQL twin. This round wires a
+`ChartFactRow` projection so production Charts never decodes ledger
+identity for those cards.
+
+### Lane 1 — Chart fact-row covering scan
+
+`ChartFactRow` is the columns `ChartsSnapshot.build` actually reads:
+`startTime`, `endTime`, `cost`, `sessionId`, `projectName`, `model`,
+`provider`, `billingKind`, `usageSource`, token buckets, `totalTokens`
+(via `TokenUsage.billedTotalTokens`), `provenanceConfidence`,
+`isRemote`. `UsageStore.fetchChartFactRows` uses the same intersection
+predicate as `fetchUsage(in:)` and `ORDER BY startTime DESC`. Bounded
+ranges still cover the last 31 days in one scan; all-time covers the
+table without `SELECT *`. `ChartsSnapshot.build([TokenUsage])` stays
+the oracle (maps to fact rows). Heatmap attribution still clamps
+`startTime` into the resolved range — not exploded onto every
+overlapped day. Stamped `billingKind` is preserved (a Claude Code
+`.api` row does not reclassify to subscription).
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+  **Invariant, not remaining work.**
+
+OpenCode JSON-only `part` schemas still full-scan `part` when any
+heuristic session exists (IN-list needs a messageID column). Forge
+still `contentsOfDirectory` on home every tick (creating
+`~/foo/.forge.db` does not change `~` mtime) but already skips
+`.forge.db` `fileExists` via per-child directory mtime.
+
+Validation:
+- `AgentLensTests/Active/ChartFactRowSQLTests` (fact rows vs
+  `fetchAllUsage` / `ChartsSnapshot.build`, 31-day covering split,
+  crossing-range clamp, stamped billing kind + Spend Lens conservation)
+- `AgentLensTests/Active/ChartSessionAnalyticsSQLTests`
+- `AgentLensTests/Active/ChartsSnapshotBuilderTests`
+- `AgentLensTests/Active/SpendLensConservationTests`
+
 
 
 

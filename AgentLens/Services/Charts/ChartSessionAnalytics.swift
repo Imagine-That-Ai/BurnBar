@@ -7,7 +7,9 @@ import OpenBurnBarCore
 /// covering `GROUP BY` that feeds burn / provider / model totals. The fold is
 /// calendar-local — SQLite `strftime` is UTC — so SQL loads a narrow column
 /// projection and this type applies the same clamp + weekday/hour math as
-/// `ChartsSnapshot.build`.
+/// `ChartsSnapshot.build`. Production Charts now builds the full snapshot from
+/// `ChartFactRow`; this type remains the shared heatmap / outlier / entropy
+/// fold and the dedicated SQL twin.
 struct ChartSessionAnalytics: Equatable, Sendable {
     let hourWeekdayCost: [[Double]]
     let outlierSessions: [ChartsSnapshot.OutlierSession]
@@ -24,6 +26,14 @@ struct ChartSessionAnalytics: Equatable, Sendable {
 
     static func from(
         rows: [TokenUsage],
+        range: ClosedRange<Date>,
+        calendar: Calendar
+    ) -> ChartSessionAnalytics {
+        from(rows: rows.map(ChartFactRow.init), range: range, calendar: calendar)
+    }
+
+    static func from(
+        rows: [ChartFactRow],
         range: ClosedRange<Date>,
         calendar: Calendar
     ) -> ChartSessionAnalytics {

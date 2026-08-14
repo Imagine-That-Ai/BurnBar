@@ -49,7 +49,7 @@ final class ChartsDataService {
             ? dataStore.usages(in: nil)
             : dataStore.usages(in: recentRange)
         let fallbackWindows = Self.deriveWindows(
-            coveringRows: fallbackCovering,
+            coveringRows: fallbackCovering.map(ChartFactRow.init),
             requestedRange: requestedRange,
             recentRange: recentRange
         )
@@ -57,19 +57,17 @@ final class ChartsDataService {
         buildTask?.cancel()
         isBuilding = snapshot == nil
         buildTask = Task { [weak self] in
-            let fetchedRows: (selected: [TokenUsage], recent: [TokenUsage])
+            let fetchedRows: (selected: [ChartFactRow], recent: [ChartFactRow])
             do {
                 // Bounded TimeRange cases (today / 7d / 30d / month) all sit
                 // inside the last 31 days, so one intersection scan covers
-                // both windows. All-time still materializes covering rows for
-                // burn / cache / provenance; heatmap, outliers, and entropy
-                // have a SQL twin (`UsageStore.fetchChartSessionAnalytics`)
-                // that matches `ChartsSnapshot.build` without TokenUsage.
-                let coveringRows: [TokenUsage]
+                // both windows. All-time uses the same fact-row projection —
+                // never `SELECT *` / `decodeUsage`.
+                let coveringRows: [ChartFactRow]
                 if requestedRange == nil {
-                    coveringRows = try await dataStore.fetchAllUsage()
+                    coveringRows = try await dataStore.fetchChartFactRows(in: nil)
                 } else {
-                    coveringRows = try await dataStore.fetchUsage(in: recentRange, limit: Int.max)
+                    coveringRows = try await dataStore.fetchChartFactRows(in: recentRange)
                 }
                 fetchedRows = Self.deriveWindows(
                     coveringRows: coveringRows,
@@ -102,11 +100,11 @@ final class ChartsDataService {
 
     /// Splits one covering fetch into the selected range and the 31-day window
     /// using the same intersection predicate as `fetchUsage(in:)`.
-    nonisolated static func deriveWindows(
-        coveringRows: [TokenUsage],
+    nonisolated static func deriveWindows<Row: ChartWindowRow>(
+        coveringRows: [Row],
         requestedRange: ClosedRange<Date>?,
         recentRange: ClosedRange<Date>
-    ) -> (selected: [TokenUsage], recent: [TokenUsage]) {
+    ) -> (selected: [Row], recent: [Row]) {
         if let requestedRange {
             return (
                 coveringRows.filter { $0.intersects(dateRange: requestedRange) },
@@ -120,8 +118,8 @@ final class ChartsDataService {
     }
 
     private nonisolated static func buildDetached(
-        rows: [TokenUsage],
-        recentRows: [TokenUsage],
+        rows: [ChartFactRow],
+        recentRows: [ChartFactRow],
         timeRange: TimeRange,
         usagesVersion: Int,
         now: Date

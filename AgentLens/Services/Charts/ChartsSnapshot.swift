@@ -160,10 +160,29 @@ extension ChartsSnapshot {
 
     /// Pure builder. `rows` = usage in the selected window; `recentRows` =
     /// usage over the trailing 30 days (feeds the fixed-window charts:
-    /// week-vs-week and the forecast).
+    /// week-vs-week and the forecast). TokenUsage input stays the oracle;
+    /// production Charts uses `ChartFactRow` from the covering SQL scan.
     static func build(
         rows: [TokenUsage],
         recentRows: [TokenUsage],
+        timeRange: TimeRange,
+        usagesVersion: Int,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> ChartsSnapshot {
+        build(
+            rows: rows.map(ChartFactRow.init),
+            recentRows: recentRows.map(ChartFactRow.init),
+            timeRange: timeRange,
+            usagesVersion: usagesVersion,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    static func build(
+        rows: [ChartFactRow],
+        recentRows: [ChartFactRow],
         timeRange: TimeRange,
         usagesVersion: Int,
         now: Date = Date(),
@@ -173,7 +192,7 @@ extension ChartsSnapshot {
         let bucketComponent: Calendar.Component = timeRange == .today ? .hour : .day
 
         let costEvents = rows.map {
-            (date: attributionDate(for: $0, in: range), value: $0.cost)
+            (date: attributionDate(for: $0.startTime, in: range), value: $0.cost)
         }
         let burnSeries = ChartBucketing.dateBuckets(
             events: costEvents, range: range, component: bucketComponent, calendar: calendar
@@ -183,17 +202,17 @@ extension ChartsSnapshot {
         // a stamped kind from v60 onward; anything still unknown is classified
         // with the shared deterministic rule so the chart and the migration
         // backfill can never disagree.
-        func effectiveBillingKind(_ row: TokenUsage) -> BurnBarBillingKind {
+        func effectiveBillingKind(_ row: ChartFactRow) -> BurnBarBillingKind {
             row.billingKind == .unknown
                 ? BurnBarBillingProvenance.classify(provider: row.provider, usageSource: row.usageSource)
                 : row.billingKind
         }
-        var apiRows: [TokenUsage] = []
-        var subscriptionRows: [TokenUsage] = []
+        var apiRows: [ChartFactRow] = []
+        var subscriptionRows: [ChartFactRow] = []
         // Kept as rows, not just a running total, so Split can draw the
         // unclassified curve rather than only naming its total. A bucket the
         // lens cannot draw is a bucket the lens hides.
-        var unknownRows: [TokenUsage] = []
+        var unknownRows: [ChartFactRow] = []
         for row in rows {
             switch effectiveBillingKind(row) {
             case .api: apiRows.append(row)
@@ -202,15 +221,15 @@ extension ChartsSnapshot {
             }
         }
         let apiBurnSeries = ChartBucketing.dateBuckets(
-            events: apiRows.map { (date: attributionDate(for: $0, in: range), value: $0.cost) },
+            events: apiRows.map { (date: attributionDate(for: $0.startTime, in: range), value: $0.cost) },
             range: range, component: bucketComponent, calendar: calendar
         )
         let subscriptionBurnSeries = ChartBucketing.dateBuckets(
-            events: subscriptionRows.map { (date: attributionDate(for: $0, in: range), value: $0.cost) },
+            events: subscriptionRows.map { (date: attributionDate(for: $0.startTime, in: range), value: $0.cost) },
             range: range, component: bucketComponent, calendar: calendar
         )
         let unknownBurnSeries = ChartBucketing.dateBuckets(
-            events: unknownRows.map { (date: attributionDate(for: $0, in: range), value: $0.cost) },
+            events: unknownRows.map { (date: attributionDate(for: $0.startTime, in: range), value: $0.cost) },
             range: range, component: bucketComponent, calendar: calendar
         )
         let apiCost = apiRows.reduce(0) { $0 + $1.cost }
@@ -289,7 +308,7 @@ extension ChartsSnapshot {
         let projectSeries: [ProjectDailySeries] = topProjects.map { project in
             let events = rows
                 .filter { ($0.projectName.isEmpty ? "Unassigned" : $0.projectName) == project }
-                .map { (date: attributionDate(for: $0, in: range), value: $0.cost) }
+                .map { (date: attributionDate(for: $0.startTime, in: range), value: $0.cost) }
             let buckets = ChartBucketing.dateBuckets(
                 events: events, range: range, component: bucketComponent, calendar: calendar
             )
@@ -411,22 +430,36 @@ extension ChartsSnapshot {
         )
     }
 
+    static func resolvedRange(
+        for timeRange: TimeRange,
+        rows: [ChartFactRow],
+        now: Date,
+        calendar: Calendar
+    ) -> ClosedRange<Date> {
+        resolvedRange(
+            for: timeRange,
+            earliestStart: rows.map(\.startTime).min(),
+            now: now,
+            calendar: calendar
+        )
+    }
+
     /// Per-bucket ratio of two summed row projections (e.g. cache reads over
     /// prompt basis). Buckets with a zero denominator carry 0.
     private static func ratioSeries(
-        rows: [TokenUsage],
+        rows: [ChartFactRow],
         range: ClosedRange<Date>,
         component: Calendar.Component,
         calendar: Calendar,
-        numerator: (TokenUsage) -> Double,
-        denominator: (TokenUsage) -> Double
+        numerator: (ChartFactRow) -> Double,
+        denominator: (ChartFactRow) -> Double
     ) -> [ChartBucketing.DateBucket] {
         let num = ChartBucketing.dateBuckets(
-            events: rows.map { (date: attributionDate(for: $0, in: range), value: numerator($0)) },
+            events: rows.map { (date: attributionDate(for: $0.startTime, in: range), value: numerator($0)) },
             range: range, component: component, calendar: calendar
         )
         let den = ChartBucketing.dateBuckets(
-            events: rows.map { (date: attributionDate(for: $0, in: range), value: denominator($0)) },
+            events: rows.map { (date: attributionDate(for: $0.startTime, in: range), value: denominator($0)) },
             range: range, component: component, calendar: calendar
         )
         return zip(num, den).map { top, bottom in
@@ -457,7 +490,7 @@ extension ChartsSnapshot {
     }
 
     private static func weekPair(
-        rows: [TokenUsage],
+        rows: [ChartFactRow],
         now: Date,
         calendar: Calendar
     ) -> (thisWeek: [Double], lastWeek: [Double]) {
@@ -478,7 +511,7 @@ extension ChartsSnapshot {
     }
 
     private static func buildForecast(
-        rows: [TokenUsage],
+        rows: [ChartFactRow],
         now: Date,
         calendar: Calendar
     ) -> Forecast? {

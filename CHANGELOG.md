@@ -85,7 +85,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   query only the zero-bucket message ids. Kilo Code quota resumes unchanged
   `ui_messages.json` files from a mtime+size cache of totals only. Charts
   heatmap / outliers / entropy have a SQL twin that matches
-  `ChartsSnapshot.build` without decoding full `TokenUsage` rows.
+  `ChartsSnapshot.build` without decoding full `TokenUsage` rows. The Charts
+  page covering scan now loads `ChartFactRow` columns only (burn / cache /
+  provenance / histogram / Spend Lens included), so all-time no longer
+  `SELECT *` / `decodeUsage`. Attribution still clamps `startTime`.
 
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
