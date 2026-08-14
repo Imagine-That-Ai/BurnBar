@@ -195,6 +195,67 @@ final class GrokParserTests: XCTestCase {
         )
     }
 
+    func test_sessionSignature_includesChatHistory() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-grok-sig-chat-\(UUID().uuidString)", isDirectory: true)
+        let session = root.appendingPathComponent("sig-session", isDirectory: true)
+        try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try #"{"ok":true}"#.write(to: session.appendingPathComponent("updates.jsonl"), atomically: true, encoding: .utf8)
+        try #"{"ok":true}"#.write(to: session.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)
+        try #"{"ok":true}"#.write(to: session.appendingPathComponent("signals.json"), atomically: true, encoding: .utf8)
+        try #"{"turn":1}"#.write(to: session.appendingPathComponent("chat_history.jsonl"), atomically: true, encoding: .utf8)
+
+        let before = GrokParser.sessionSignature(sessionDir: session)
+        XCTAssertNotNil(before)
+        XCTAssertNotNil(before?.transcript)
+
+        try #"{"turn":1}\n{"turn":2}"#.write(
+            to: session.appendingPathComponent("chat_history.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let after = GrokParser.sessionSignature(sessionDir: session)
+        XCTAssertNotEqual(before, after, "chat_history.jsonl growth must bust the Grok cache signature")
+    }
+
+    func test_parse_doesNotCacheSkipWhenOnlyChatHistoryChanges() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("obb-grok-cache-chat-\(UUID().uuidString)", isDirectory: true)
+        let session = root
+            .appendingPathComponent("%2Ftmp%2Fgrok-project", isDirectory: true)
+            .appendingPathComponent("chat-session", isDirectory: true)
+        try FileManager.default.createDirectory(at: session, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try #"{"info":{"id":"chat-session","cwd":"/tmp/grok-project"},"current_model_id":"grok-4.5","created_at":"2026-07-13T01:00:00Z","updated_at":"2026-07-13T01:05:00Z"}"#
+            .write(to: session.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)
+        try #"{"method":"session/update","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"turn-1","usage":{"inputTokens":100,"outputTokens":20,"totalTokens":120,"cachedReadTokens":0,"reasoningTokens":0}}}}"#
+            .write(to: session.appendingPathComponent("updates.jsonl"), atomically: true, encoding: .utf8)
+        try #"{"role":"user","content":"hi"}"#
+            .write(to: session.appendingPathComponent("chat_history.jsonl"), atomically: true, encoding: .utf8)
+
+        let parser = GrokParser(logDirectoryOverride: root.path)
+        let first = try await parser.parse(options: LogParseOptions(includeConversationBodies: false))
+        XCTAssertEqual(first.usages.map(\.sessionId), ["chat-session"])
+
+        try #"{"role":"user","content":"hi"}\n{"role":"assistant","content":"more spend"}"#
+            .write(to: session.appendingPathComponent("chat_history.jsonl"), atomically: true, encoding: .utf8)
+
+        let metrics = ParserPassMetrics()
+        _ = try await parser.parse(options: LogParseOptions(
+            includeConversationBodies: false,
+            metrics: metrics,
+            includeCachedUnchangedUsages: false
+        ))
+        XCTAssertGreaterThan(
+            metrics.snapshot().contentReadCount,
+            0,
+            "chat_history.jsonl change must not cache-skip the Grok session"
+        )
+    }
+
     func test_parse_skipsUnchangedLeafSessionsOnTheSecondPass() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("obb-grok-cache-\(UUID().uuidString)", isDirectory: true)

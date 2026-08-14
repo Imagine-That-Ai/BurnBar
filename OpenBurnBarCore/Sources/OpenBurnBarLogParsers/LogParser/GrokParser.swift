@@ -33,7 +33,7 @@ public final class GrokParser: LogParser, Sendable {
         }
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: resolvedPaths.grokParserCacheURL,
-            schemaVersion: 1,
+            schemaVersion: 2,
             logLabel: "GrokParser"
         )
         _ = try? OpenBurnBarMigration.prepareSupportDirectory(
@@ -677,11 +677,13 @@ public final class GrokParser: LogParser, Sendable {
         let updates = FileSignature(for: sessionDir.appendingPathComponent("updates.jsonl"))
         let summary = FileSignature(for: sessionDir.appendingPathComponent("summary.json"))
         let signals = FileSignature(for: sessionDir.appendingPathComponent("signals.json"))
+        let chatHistory = FileSignature(for: sessionDir.appendingPathComponent("chat_history.jsonl"))
         guard let primary = updates ?? summary else { return nil }
         return CompositeFileSignature(
             primary: primary,
             settings: summary,
-            metadata: signals
+            metadata: signals,
+            transcript: chatHistory
         )
     }
 
