@@ -267,11 +267,29 @@ extension ProviderQuotaService {
     /// write. Deliberately does NOT bump `lastFetch`: a Claude-only refresh
     /// must not gate the next all-provider auto-refresh tick, otherwise a
     /// chatty Claude session could starve Codex/Cursor/etc. of updates.
-    /// Skipped silently while a full `refreshAll` is already in flight to
-    /// avoid stomping its outputs mid-flight.
+    /// It serializes with normal refreshes, but does not cover their routing,
+    /// credential-slot, or cadence side effects.
     func refreshClaudeFromStatuslineHook(dataStore: DataStore) async {
         guard Self.supportedProviders.contains(.claudeCode) else { return }
-        guard !isFetching else { return }
+        while let existing = inFlightRefresh {
+            await finishInFlightRefresh(existing)
+            guard !Task.isCancelled else { return }
+        }
+        guard !Task.isCancelled else { return }
+
+        let task = Task { @MainActor [self] in
+            await performClaudeStatuslineHookRefresh(dataStore: dataStore)
+        }
+        let refresh = InFlightRefresh(
+            id: UUID(),
+            providers: [],
+            task: task
+        )
+        inFlightRefresh = refresh
+        await finishInFlightRefresh(refresh)
+    }
+
+    private func performClaudeStatuslineHookRefresh(dataStore: DataStore) async {
         activeProviders.insert(.claudeCode)
         defer { activeProviders.remove(.claudeCode) }
 

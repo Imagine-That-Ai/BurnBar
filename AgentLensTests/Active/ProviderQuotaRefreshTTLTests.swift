@@ -238,6 +238,7 @@ final class ProviderQuotaRefreshTTLTests: XCTestCase {
         ),
         session: URLSession = .shared,
         miniMaxModeProvider: @escaping @MainActor () -> MiniMaxQuotaMode = { .payAsYouGo },
+        claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         refreshProviders: [AgentProvider]
     ) -> ProviderQuotaService {
         ProviderQuotaService(
@@ -254,7 +255,7 @@ final class ProviderQuotaRefreshTTLTests: XCTestCase {
             homeDirectoryURL: home,
             miniMaxModeProvider: miniMaxModeProvider,
             factoryPlanProvider: { .unknown },
-            claudeCredentialsReader: NoClaudeCredentialsReader(),
+            claudeCredentialsReader: claudeCredentialsReader,
             refreshProviders: refreshProviders
         )
     }
@@ -266,6 +267,7 @@ final class ProviderQuotaRefreshTTLTests: XCTestCase {
         apiKeys: [String: String],
         gate: QuotaRefreshRequestGate,
         keyStore suppliedKeyStore: ProviderAPIKeyStore? = nil,
+        claudeCredentialsReader: any ClaudeCredentialsReading = NoClaudeCredentialsReader(),
         responseBody: (@Sendable (URLRequest) throws -> String)? = nil
     ) throws -> ProviderQuotaService {
         let keyStore = suppliedKeyStore ?? ProviderAPIKeyStore(
@@ -322,6 +324,7 @@ final class ProviderQuotaRefreshTTLTests: XCTestCase {
             keyStore: keyStore,
             session: URLSession(configuration: configuration),
             miniMaxModeProvider: { .tokenPlan },
+            claudeCredentialsReader: claudeCredentialsReader,
             refreshProviders: providers
         )
     }
@@ -504,6 +507,105 @@ extension ProviderQuotaRefreshTTLTests {
         XCTAssertEqual(gate.requestCount(for: deepSeekPath), 0)
     }
 
+    func test_statuslineHook_waitsForDirectClaudeRefresh() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let path = "/api/oauth/usage"
+        let gate = QuotaRefreshRequestGate(blockedPath: path)
+        let credentialsReader = MutableClaudeCredentialsReader(
+            credentials: makeClaudeCredentials(accessToken: "direct-token")
+        )
+        let responseBody = claudeUsageResponseBody()
+        let service = try makeNetworkService(
+            home: home,
+            appSupportRoot: appSupport,
+            providers: [.claudeCode],
+            apiKeys: [:],
+            gate: gate,
+            claudeCredentialsReader: credentialsReader,
+            responseBody: { _ in responseBody }
+        )
+
+        let direct = Task {
+            await service.refresh(provider: .claudeCode, dataStore: dataStore)
+        }
+        try await waitForRequestCount(1, path: path, gate: gate)
+        let hook = Task {
+            await service.refreshClaudeFromStatuslineHook(dataStore: dataStore)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(
+            gate.requestCount(for: path),
+            1,
+            "The statusline hook must wait for the coordinated direct refresh."
+        )
+
+        credentialsReader.setCredentials(makeClaudeCredentials(accessToken: "hook-token"))
+        gate.open()
+        await direct.value
+        await hook.value
+
+        XCTAssertEqual(gate.requestCount(for: path), 2)
+        XCTAssertEqual(
+            gate.authorizationHeaders(for: path),
+            ["Bearer direct-token", "Bearer hook-token"]
+        )
+    }
+
+    func test_statuslineHook_startingBeforeFullRefresh_doesNotSatisfyBatchCoverage() async throws {
+        let home = try makeTemporaryDirectory()
+        let appSupport = try makeTemporaryDirectory()
+        let dataStore = try makeDataStore()
+        let path = "/api/oauth/usage"
+        let gate = QuotaRefreshRequestGate(blockedPath: path)
+        let credentialsReader = MutableClaudeCredentialsReader(
+            credentials: makeClaudeCredentials(accessToken: "hook-token")
+        )
+        let responseBody = claudeUsageResponseBody()
+        let service = try makeNetworkService(
+            home: home,
+            appSupportRoot: appSupport,
+            providers: [.claudeCode],
+            apiKeys: [:],
+            gate: gate,
+            claudeCredentialsReader: credentialsReader,
+            responseBody: { _ in responseBody }
+        )
+
+        let hook = Task {
+            await service.refreshClaudeFromStatuslineHook(dataStore: dataStore)
+        }
+        try await waitForRequestCount(1, path: path, gate: gate)
+        let full = Task {
+            await service.refreshAll(dataStore: dataStore)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(
+            gate.requestCount(for: path),
+            1,
+            "The full refresh must wait for the coordinated statusline hook."
+        )
+
+        credentialsReader.setCredentials(makeClaudeCredentials(accessToken: "full-token"))
+        gate.open()
+        await hook.value
+        await full.value
+
+        XCTAssertEqual(
+            gate.requestCount(for: path),
+            2,
+            "A hook refresh must not count as the full batch's Claude coverage."
+        )
+        XCTAssertEqual(
+            gate.authorizationHeaders(for: path),
+            ["Bearer hook-token", "Bearer full-token"]
+        )
+        XCTAssertNotNil(service.lastFetch, "The full batch must still complete its cadence side effect.")
+    }
+
     func test_credentialChangeRefresh_waitsForOldRequestThenRerunsWithNewCredential() async throws {
         let home = try makeTemporaryDirectory()
         let appSupport = try makeTemporaryDirectory()
@@ -566,11 +668,43 @@ extension ProviderQuotaRefreshTTLTests {
         await adaptive.value
         try await waitForRequestCount(2, path: path, gate: gate)
         try await waitForRemaining(80, provider: .minimax, service: service)
+        try await waitForRefreshCompletion(service)
 
         XCTAssertEqual(
             gate.authorizationHeaders(for: path),
             ["Bearer old-token", "Bearer new-token"]
         )
+    }
+
+    private func makeClaudeCredentials(accessToken: String) -> ClaudeOAuthCredentials {
+        ClaudeOAuthCredentials(
+            accessToken: accessToken,
+            refreshToken: nil,
+            expiresAt: nil,
+            subscriptionType: "pro",
+            rateLimitTier: "",
+            organizationUuid: nil
+        )
+    }
+
+    private func claudeUsageResponseBody() -> String {
+        let reset = ISO8601DateFormatter().string(from: Date().addingTimeInterval(3 * 60 * 60))
+        return """
+        {
+          "rate_limits": {
+            "five_hour": { "used_percentage": 20, "resets_at": "\(reset)" },
+            "seven_day": { "used_percentage": 30, "resets_at": "\(reset)" }
+          }
+        }
+        """
+    }
+
+    private func waitForRefreshCompletion(_ service: ProviderQuotaService) async throws {
+        let deadline = Date().addingTimeInterval(3)
+        while service.inFlightRefresh != nil, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertNil(service.inFlightRefresh)
     }
 
     private func makeSlotConfiguration(
@@ -712,5 +846,21 @@ private final class ProviderQuotaRefreshTTLKeychainBackend: KeychainStoreBackend
 
     func delete(service: String, account: String) throws {
         storage[service]?[account] = nil
+    }
+}
+
+private final class MutableClaudeCredentialsReader: ClaudeCredentialsReading, @unchecked Sendable {
+    private let credentials: Locked<ClaudeOAuthCredentials?>
+
+    init(credentials: ClaudeOAuthCredentials?) {
+        self.credentials = Locked(credentials)
+    }
+
+    func load() -> ClaudeOAuthCredentials? {
+        credentials.read()
+    }
+
+    func setCredentials(_ credentials: ClaudeOAuthCredentials?) {
+        self.credentials.write(credentials)
     }
 }

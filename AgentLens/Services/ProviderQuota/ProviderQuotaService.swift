@@ -194,6 +194,8 @@ final class ProviderQuotaPlanReaders: Sendable {
 final class ProviderQuotaService {
     struct InFlightRefresh {
         let id: UUID
+        /// Providers whose normal refresh contract this task satisfies.
+        /// Empty for specialized work that only needs serialization.
         let providers: Set<AgentProvider>
         let task: Task<Void, Never>
     }
