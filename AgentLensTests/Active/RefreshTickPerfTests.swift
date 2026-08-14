@@ -560,17 +560,14 @@ final class UsagePersistSkipTests: XCTestCase {
         )
     }
 
-    func test_insertChunked_persistsMetadataOnlyCorrection() async throws {
+    func test_insertChunked_persistsNameAndLabelOnlyCorrection() async throws {
         let queue = try DatabaseQueue()
         _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let usageStore = UsageStore(dbQueue: queue)
         let start = Date(timeIntervalSince1970: 1_700_000_000)
         func usage(
             executionSourceName: String,
-            executionSourceKind: UsageExecutionSourceKind,
-            executionSourceConfidence: UsageProvenanceConfidence,
-            providerAccountLabel: String,
-            providerAccountSource: ProviderAccountStorageScope
+            providerAccountLabel: String
         ) -> TokenUsage {
             TokenUsage(
                 provider: .factory,
@@ -584,26 +581,20 @@ final class UsagePersistSkipTests: XCTestCase {
                 endTime: start.addingTimeInterval(60),
                 executionSourceID: "factory-cli",
                 executionSourceName: executionSourceName,
-                executionSourceKind: executionSourceKind,
-                executionSourceConfidence: executionSourceConfidence,
+                executionSourceKind: .cli,
+                executionSourceConfidence: .lowConfidenceEstimate,
                 providerAccountID: "account-1",
                 providerAccountLabel: providerAccountLabel,
-                providerAccountSource: providerAccountSource
+                providerAccountSource: .localOnly
             )
         }
         let original = usage(
             executionSourceName: "Old CLI",
-            executionSourceKind: .cli,
-            executionSourceConfidence: .lowConfidenceEstimate,
-            providerAccountLabel: "Old account",
-            providerAccountSource: .localOnly
+            providerAccountLabel: "Old account"
         )
         let corrected = usage(
             executionSourceName: "Current desktop",
-            executionSourceKind: .desktopApp,
-            executionSourceConfidence: .exact,
-            providerAccountLabel: "Current account",
-            providerAccountSource: .deviceKeychain
+            providerAccountLabel: "Current account"
         )
 
         try await usageStore.insertChunked([original])
@@ -614,10 +605,15 @@ final class UsagePersistSkipTests: XCTestCase {
             try XCTUnwrap(UsageStore.fetchUsageRows(db: db, dateRange: nil, limit: 1).first)
         }
         XCTAssertEqual(persisted.executionSourceName, "Current desktop")
-        XCTAssertEqual(persisted.executionSourceKind, .desktopApp)
-        XCTAssertEqual(persisted.executionSourceConfidence, .exact)
+        XCTAssertEqual(persisted.executionSourceKind, original.executionSourceKind)
+        XCTAssertEqual(persisted.executionSourceConfidence, original.executionSourceConfidence)
         XCTAssertEqual(persisted.providerAccountLabel, "Current account")
-        XCTAssertEqual(persisted.providerAccountSource, .deviceKeychain)
+        XCTAssertEqual(persisted.providerAccountSource, original.providerAccountSource)
+        XCTAssertEqual(persisted.executionSourceID, original.executionSourceID)
+        XCTAssertEqual(persisted.totalTokens, original.totalTokens)
+        XCTAssertEqual(persisted.costUSD, original.costUSD, accuracy: 0.000_000_001)
+        XCTAssertEqual(persisted.startTime, original.startTime)
+        XCTAssertEqual(persisted.endTime, original.endTime)
     }
 
     func test_insertChunked_skipsUnchangedIdleBatch() async throws {
