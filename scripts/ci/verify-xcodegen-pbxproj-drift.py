@@ -29,7 +29,7 @@ OBJECTS_DECL = re.compile(r"\bobjects\s*=\s*\{")
 # and the drift job times out before it can report membership.
 OBJECT_ENTRY = re.compile(
     rf'"?(?P<id>{PBX_ID_PATTERN}|{TEMP_ID_PATTERN})"?'
-    rf'(?:[ \t]*/\*[ \t]*(?P<comment>[^*]*?)[ \t]*\*/)?[ \t]*=[ \t]*\{{',
+    rf"(?:[ \t]*/\*[ \t]*(?P<comment>[^*]*?)[ \t]*\*/)?[ \t]*=[ \t]*\{{",
 )
 ISA = re.compile(r"\bisa\s*=\s*(?P<isa>[A-Za-z0-9_]+)\s*;")
 # Multiline OpenStep ID lists (children / files / targets / dependencies).
