@@ -460,7 +460,12 @@ final class DashboardUsageViewModelTests: XCTestCase {
         XCTAssertEqual(marathon.totalCost, 12.5, accuracy: 0.0001)
         XCTAssertEqual(marathon.totalTokens, 75_000)
 
-        let longCred = try XCTUnwrap(today.credentialSummaries.first { $0.stableKey == "Factory#acct-long" })
+        let accountID = try XCTUnwrap(
+            TokenUsage.providerAccountIdentityPartition(from: "acct-long")
+        )
+        let longCred = try XCTUnwrap(
+            today.credentialSummaries.first { $0.stableKey == "Factory#\(accountID)" }
+        )
         XCTAssertEqual(longCred.sessionCount, 1)
         XCTAssertEqual(longCred.totalCost, 12.5, accuracy: 0.0001)
         XCTAssertEqual(longCred.totalTokens, 75_000)
