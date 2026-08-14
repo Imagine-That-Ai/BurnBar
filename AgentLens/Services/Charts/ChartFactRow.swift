@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Window membership used to split one covering Charts fetch into the selected
 /// range and the trailing 31-day heatmap / forecast window.

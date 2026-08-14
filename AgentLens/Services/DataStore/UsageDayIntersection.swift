@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Calendar-day membership for usage rows, matching `UsageStore.intersectionSQL`.
 ///

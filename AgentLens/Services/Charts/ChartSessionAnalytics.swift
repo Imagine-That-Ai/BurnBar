@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 /// Heatmap, session outliers, and project entropy for the Charts page.
 ///
