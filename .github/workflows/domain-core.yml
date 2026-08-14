@@ -1063,9 +1063,14 @@ jobs:
     name: swift-consumer-contracts
     needs: classify
     if: needs.classify.outputs.rust == 'true'
-    # Cold macos-26 runners can spend nearly an hour building the domain-core
-    # XCFramework and app-test dependency graph before the focused spool test.
-    timeout-minutes: 90
+    # PR/MQ keep DomainCore Swift contracts (~XCFramework + Core) and skip the
+    # Apple app spool that rebuilds the full OpenBurnBar graph (~47–50m measured
+    # on #2255 / prior MQ). That wall made Domain Core PR Gate start after the
+    # 45m BurnBar CI Gate fast umbrella timed out (missing aggregator).
+    # Push/dispatch still runs the spool after Core so main keeps focused
+    # coverage; the nightly openburnbar-pr-harness app-xctest also runs the
+    # full OpenBurnBarTests corpus (including DomainCoreShadowEvidenceSpoolTests).
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 90 }}
     # Routing (cost + security): pull-request and merge-queue candidates may both
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
@@ -1114,16 +1119,24 @@ jobs:
           set -o pipefail
           ./scripts/test-openburnbar-swift.sh \
             2>&1 | tee "$RUNNER_TEMP/swift-consumer-core.log"
+          # Proof emit always succeeds from the Core log alone on PR/MQ. Push
+          # and workflow_dispatch append the app spool log below.
+          cp "$RUNNER_TEMP/swift-consumer-core.log" \
+            "$RUNNER_TEMP/swift-consumer-contracts.log"
 
       - name: Run Apple shadow evidence spool contracts
+        # Keep the focused app-spool selector off pull_request + merge_group: it
+        # rebuilds the same OpenBurnBar app graph AgentLens already built in the
+        # same batch. Coverage homes: this step on push/dispatch, plus the
+        # nightly Full Harness app-xctest unfiltered OpenBurnBarTests run.
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         run: |
           set -o pipefail
           ./scripts/test-openburnbar-app.sh \
             -only-testing:OpenBurnBarTests/DomainCoreShadowEvidenceSpoolTests \
             2>&1 | tee "$RUNNER_TEMP/swift-consumer-spool.log"
-          cat "$RUNNER_TEMP/swift-consumer-core.log" \
-            "$RUNNER_TEMP/swift-consumer-spool.log" \
-            > "$RUNNER_TEMP/swift-consumer-contracts.log"
+          cat "$RUNNER_TEMP/swift-consumer-spool.log" \
+            >> "$RUNNER_TEMP/swift-consumer-contracts.log"
 
       - name: Restore tracked Swift artifacts after debug validation
         run: |

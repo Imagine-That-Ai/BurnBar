@@ -153,7 +153,7 @@ test("native consumer jobs keep their measured execution margin and emulator she
   assert.ok(androidCheckoutRef < canonicalCandidateResolution);
   assert.match(
     core,
-    /^  swift-consumer-contracts:\n(?:.*\n){0,8}    timeout-minutes: 90$/mu,
+    /^  swift-consumer-contracts:\n(?:.*\n){0,12}    timeout-minutes: \$\{\{ \(github\.event_name == 'pull_request' \|\| github\.event_name == 'merge_group'\) && 25 \|\| 90 \}\}$/mu,
   );
   assert.match(
     core,
@@ -763,6 +763,83 @@ test("swift-consumer-contracts gates libsignal out to prevent duplicate Rust run
     packageSwift,
     /linuxCoreFoundationSignalTestExcludes.*hasLibSignalSwiftPackage/,
     "Package.swift must NOT key linuxCoreFoundationSignalTestExcludes off hasLibSignalSwiftPackage (would exclude the file on Linux where hasLibSignalSwiftPackage is always false)",
+  );
+});
+
+test("swift-consumer-contracts skips Apple app spool on pull_request and merge_group", () => {
+  // Measured on #2255 head 8339a9d: Apple shadow spool alone was ~50m of a
+  // ~59m swift-consumer-contracts job, so Domain Core PR Gate stayed missing
+  // until after the 45m BurnBar CI Gate fast umbrella timed out. PR/MQ keep
+  // DomainCore Core contracts + proof emit; the focused spool selector stays
+  // on push/dispatch and in the nightly Full Harness unfiltered app-xctest.
+  const job = workflowJob(core, "swift-consumer-contracts");
+  const coreStep = job.indexOf("Run Swift domain-core consumer contracts");
+  const spoolStep = job.indexOf("Run Apple shadow evidence spool contracts");
+  const emitStep = job.indexOf("Emit Swift consumer proof fragment");
+  assert.notEqual(coreStep, -1, "DomainCore consumer contracts step must exist");
+  assert.notEqual(spoolStep, -1, "spool step must remain for push/dispatch coverage");
+  assert.notEqual(emitStep, -1, "proof emit step must exist");
+  assert.ok(coreStep < spoolStep && spoolStep < emitStep);
+
+  const coreBlock = job.slice(coreStep, spoolStep);
+  assert.match(
+    coreBlock,
+    /OPENBURNBAR_CORE_SWIFT_FILTER:\s*DomainCore/,
+    "PR/MQ DomainCore filter must stay fail-closed",
+  );
+  assert.match(
+    coreBlock,
+    /OPENBURNBAR_REQUIRE_DOMAIN_CORE_NATIVE:\s*"1"/,
+    "PR/MQ DomainCore native requirement must stay fail-closed",
+  );
+  assert.match(
+    coreBlock,
+    /cp "\$RUNNER_TEMP\/swift-consumer-core\.log"[\s\S]*"\$RUNNER_TEMP\/swift-consumer-contracts\.log"/,
+    "proof suite log must be seeded from the Core log alone so PR/MQ emit succeeds without the spool",
+  );
+
+  const spoolBlock = job.slice(spoolStep, emitStep);
+  assert.match(
+    spoolBlock,
+    /if:\s*github\.event_name != 'pull_request' && github\.event_name != 'merge_group'/,
+    "Apple app spool must skip pull_request and merge_group",
+  );
+  assert.match(
+    spoolBlock,
+    /test-openburnbar-app\.sh[\s\S]*-only-testing:OpenBurnBarTests\/DomainCoreShadowEvidenceSpoolTests/,
+    "push/dispatch must keep the focused DomainCoreShadowEvidenceSpoolTests selector",
+  );
+  assert.match(
+    spoolBlock,
+    /cat "\$RUNNER_TEMP\/swift-consumer-spool\.log"[\s\S]*>> "\$RUNNER_TEMP\/swift-consumer-contracts\.log"/,
+    "push/dispatch must append the spool log into the proof suite report",
+  );
+  assert.doesNotMatch(
+    spoolBlock,
+    /cat "\$RUNNER_TEMP\/swift-consumer-core\.log"[\s\S]*"\$RUNNER_TEMP\/swift-consumer-spool\.log"[\s\S]*> "\$RUNNER_TEMP\/swift-consumer-contracts\.log"/,
+    "proof log must not require concatenating core+spool before emit (PR/MQ has no spool file)",
+  );
+
+  assert.match(
+    job,
+    /--suite "swift-consumer-contracts=\$RUNNER_TEMP\/swift-consumer-contracts\.log"/,
+    "proof fragment suite id/path must remain swift-consumer-contracts",
+  );
+
+  const harness = readFileSync(
+    new URL("../../.github/workflows/openburnbar-pr-harness.yml", import.meta.url),
+    "utf8",
+  );
+  const harnessApp = workflowJob(harness, "app-xctest");
+  assert.match(
+    harnessApp,
+    /OPENBURNBAR_ENABLE_COVERAGE=YES \.\/scripts\/test-openburnbar-app\.sh/,
+    "nightly Full Harness app-xctest must keep an unfiltered OpenBurnBarTests run",
+  );
+  assert.doesNotMatch(
+    harnessApp,
+    /OPENBURNBAR_APP_TEST_FILTERS=/,
+    "nightly Full Harness must not bound away DomainCoreShadowEvidenceSpoolTests",
   );
 });
 
