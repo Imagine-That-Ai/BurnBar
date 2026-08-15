@@ -21,10 +21,20 @@ on:
         type: boolean
         default: false
       promote:
-        description: "Promote this release to GitHub 'latest' (repoints the update feed). Ignored for -prerelease tags."
+        description: "Publish this release to the governed R2 update channel, then promote it to GitHub 'latest'. Ignored for -prerelease tags."
         required: false
         type: boolean
         default: false
+      expected_live_macos_version:
+        description: "Exact version currently advertised by downloads.burnbar.ai, or absent for an empty host. Required when promote=true."
+        required: false
+        type: string
+        default: ""
+      expected_live_macos_commit:
+        description: "Exact full commit currently advertised by downloads.burnbar.ai, or absent for an empty host. Required when promote=true."
+        required: false
+        type: string
+        default: ""
       run_mobile_unit_tests:
         description: "Run iOS simulator mobile unit tests before publishing release artifacts. Disable only for an owner-approved manual release with independent mobile validation evidence."
         required: false
@@ -77,6 +87,11 @@ jobs:
   release-promotion:
     name: Audit and promote existing stable release
     if: github.event_name == 'workflow_dispatch' && inputs.promote
+    concurrency:
+      # GitHub's global `latest` pointer has no compare-and-swap API. Different
+      # tag workflows must never mutate it concurrently.
+      group: openburnbar-release-promotion-global
+      cancel-in-progress: false
     runs-on: macos-26
     timeout-minutes: 75
     environment: release
@@ -247,6 +262,49 @@ jobs:
           NODE
           bash scripts/ci/verify-public-macos-download-trust.sh "$site_config"
 
+      - name: Verify exact R2 publication handoff before promotion
+        env:
+          OPENBURNBAR_MAC_UPDATE_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${OPENBURNBAR_MAC_UPDATE_BASE_URL:-}" ]]; then
+            echo "::error::Repository variable OPENBURNBAR_MAC_UPDATE_BASE_URL is required before promotion."
+            exit 1
+          fi
+          node scripts/ci/macos-r2-publication.mjs preflight \
+            --asset-dir "${{ steps.release.outputs.asset_dir }}" \
+            --receipt "${{ steps.release.outputs.receipt_path }}" \
+            --version "${{ steps.release.outputs.version }}" \
+            --tag "${{ steps.release.outputs.tag_name }}" \
+            --commit "${{ steps.release.outputs.release_commit }}" \
+            --public-base-url "$OPENBURNBAR_MAC_UPDATE_BASE_URL" \
+            --output "$RUNNER_TEMP/r2-publication-preflight.json"
+
+      - name: Retain authoritative R2 publication handoff
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: macos-r2-publication-inputs-${{ steps.release.outputs.release_commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.release.outputs.asset_dir }}/
+            ${{ steps.release.outputs.receipt_path }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish and verify exact R2 candidate before activation
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENBURNBAR_R2_BUCKET: ${{ vars.OPENBURNBAR_R2_BUCKET }}
+          OPENBURNBAR_R2_PUBLIC_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
+          OPENBURNBAR_RELEASE_ASSET_DIR: ${{ steps.release.outputs.asset_dir }}
+          OPENBURNBAR_RELEASE_RECEIPT: ${{ steps.release.outputs.receipt_path }}
+          OPENBURNBAR_RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          OPENBURNBAR_RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          OPENBURNBAR_RELEASE_COMMIT: ${{ steps.release.outputs.release_commit }}
+          OPENBURNBAR_EXPECTED_LIVE_VERSION: ${{ inputs.expected_live_macos_version }}
+          OPENBURNBAR_EXPECTED_LIVE_COMMIT: ${{ inputs.expected_live_macos_commit }}
+        run: bash scripts/upload-macos-downloads-r2.sh
+
       - name: Promote only the unchanged audited release to GitHub latest
         env:
           GH_TOKEN: ${{ github.token }}
@@ -381,6 +439,30 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
+
+      - name: Require the canonical macOS update base
+        env:
+          OPENBURNBAR_MAC_UPDATE_BASE_URL: ${{ vars.OPENBURNBAR_MAC_UPDATE_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${OPENBURNBAR_MAC_UPDATE_BASE_URL:-}" ]]; then
+            echo "::error::Repository variable OPENBURNBAR_MAC_UPDATE_BASE_URL is required for release artifacts."
+            exit 1
+          fi
+          node -e '
+            const value = process.env.OPENBURNBAR_MAC_UPDATE_BASE_URL;
+            const url = new URL(value);
+            if (
+              url.protocol !== "https:" ||
+              url.username ||
+              url.password ||
+              url.search ||
+              url.hash ||
+              /\/releases\/latest\/download\/?$/u.test(url.pathname)
+            ) {
+              throw new Error("OPENBURNBAR_MAC_UPDATE_BASE_URL must be a credential-free stable HTTPS release host");
+            }
+          '
 
       - name: Resolve release tag and version
         id: version
@@ -2105,7 +2187,7 @@ jobs:
           DMG_NAME="$(basename "$DMG_PATH")"
           ZIP_NAME="$(basename "$ZIP_PATH")"
           SOURCE_NAME="$(basename "$SOURCE_PATH")"
-          BASE_URL="${OPENBURNBAR_MAC_UPDATE_BASE_URL:-https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download}"
+          BASE_URL="${OPENBURNBAR_MAC_UPDATE_BASE_URL:?OPENBURNBAR_MAC_UPDATE_BASE_URL is required}"
           APPCAST_PATH="$RUNNER_TEMP/appcast.xml"
           LATEST_PATH="$RUNNER_TEMP/latest-macos.json"
 
@@ -3287,7 +3369,7 @@ jobs:
           set -euo pipefail
           VERSION="${TAG_NAME#v}"
           export VERSION
-          BASE_URL="${OPENBURNBAR_MAC_UPDATE_BASE_URL:-https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download}"
+          BASE_URL="${OPENBURNBAR_MAC_UPDATE_BASE_URL:?OPENBURNBAR_MAC_UPDATE_BASE_URL is required}"
           BASE_URL="${BASE_URL%/}"
           WORKDIR="$(mktemp -d)"
           export WORKDIR
