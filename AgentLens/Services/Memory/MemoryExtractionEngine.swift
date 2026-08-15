@@ -148,7 +148,16 @@ final class MemoryExtractionEngine {
         usageCloudClient: any UsageCurationCloudClientProtocol = UsageCurationCloudClient(),
         usageTelemetry: UsageCurationTelemetry = UsageCurationTelemetry(),
         usageBudgetLedger: UsageMemoryBudgetLedger = UsageMemoryBudgetLedger(),
-        usageExtractionPolicy: UsageMemoryExtractionPolicy = .default
+        usageExtractionPolicy: UsageMemoryExtractionPolicy = .default,
+        // PR7: the Stage-2 semantic write funnel for the usage lane. The
+        // production default embeds with Apple NLEmbedding under the pinned
+        // usage descriptor; a nil provider (NLEmbedding unavailable) degrades
+        // to salience-seeding-only, and explicit nil restores the exact PR6
+        // write path. Tests inject a deterministic provider through here.
+        usageStage2: UsageMemoryEmbeddingService? = UsageMemoryEmbeddingService(
+            provider: NLUsageMemoryEmbeddingProvider(),
+            policy: .defaults
+        )
     ) {
         self.chatMemoryStore = chatMemoryStore
         self.settingsManager = settingsManager
@@ -251,6 +260,9 @@ final class MemoryExtractionEngine {
                     && usageAuthorityWritesKillSwitch.isAllowed()
                     && authorityWritesGoLiveEnabled
             },
+            // PR7: Stage-2 semantic dedup/corroboration on the usage write
+            // path. Registration happens lazily on the first usage drain.
+            usageStage2: usageStage2,
             extractor: { job in
                 if MemorySourceKind.usageKinds.contains(job.sourceKind) {
                     return try await usageExtractorClosure(job)
