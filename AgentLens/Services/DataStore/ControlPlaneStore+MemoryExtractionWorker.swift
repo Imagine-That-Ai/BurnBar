@@ -47,6 +47,14 @@ actor MemoryExtractionWorker {
     private let admission: MemoryExtractionAdmissionController
     private let extractor: Extractor
     private let authorityWritesEnabled: @Sendable () -> Bool
+    /// PR6: the USAGE lane's combined gate (usage extraction switch AND the
+    /// usage authority-writes fleet switch AND the production write default),
+    /// checked pre-claim for usage batch jobs and re-checked per record. The
+    /// default is `{ false }` — FAIL CLOSED: a worker constructed without
+    /// explicit usage wiring never claims (or burns an attempt on) a usage job,
+    /// which is what keeps every pre-PR6 construction byte-identical to the
+    /// chat-only behavior.
+    private let usageAuthorityWritesEnabled: @Sendable () -> Bool
     private let nowProvider: @Sendable () -> Date
 
     /// Number of candidates dropped by the G7 gate during the most recent `drainNext()` call.
@@ -61,12 +69,14 @@ actor MemoryExtractionWorker {
         authorityWritesEnabled: @escaping @Sendable () -> Bool = {
             ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
         },
+        usageAuthorityWritesEnabled: @escaping @Sendable () -> Bool = { false },
         extractor: @escaping Extractor
     ) {
         self.store = store
         self.admission = admission
         self.nowProvider = nowProvider
         self.authorityWritesEnabled = authorityWritesEnabled
+        self.usageAuthorityWritesEnabled = usageAuthorityWritesEnabled
         self.extractor = extractor
     }
 
@@ -92,17 +102,31 @@ actor MemoryExtractionWorker {
     }
 
     private func drainClaimedJob() async throws -> DrainOutcome {
-        // Authority gate checked PRE-CLAIM so a disabled fleet (or an explicit authority-off
+        // Authority gates checked PRE-CLAIM so a disabled fleet (or an explicit authority-off
         // test/runtime override) never claims (and never burns an attempt on) a job. Re-checked
         // per-record below via the `enabled:` argument. `authorityWritesEnabled` is the
         // AND of the engine's live `Sendable` kill-switch atomic AND the authority-write
         // lever (PR-D2 must-fix #2/#4 + PR-D FIX #1): the kill switch is
         // re-established at THIS worker boundary because the engine-driven path bypasses
         // the controller's `memoryServiceForExtraction == nil` gate.
-        guard authorityWritesEnabled() else { return .idle }
+        //
+        // PR6: the claim is KIND-FILTERED by which lane gates are currently open —
+        // a closed chat gate with an open usage gate claims usage batches only,
+        // and vice versa, so neither lane can burn attempts on the other's jobs.
+        let chatAllowed = authorityWritesEnabled()
+        let usageAllowed = usageAuthorityWritesEnabled()
+        guard chatAllowed || usageAllowed else { return .idle }
+        var allowedKinds: Set<MemorySourceKind> = []
+        if chatAllowed { allowedKinds.formUnion([.chat, .code]) }
+        if usageAllowed { allowedKinds.formUnion(MemorySourceKind.usageKinds) }
         let now = nowProvider()
-        guard let job = try await store.claimNextMemoryExtractionJob(now: now) else { return .idle }
+        guard let job = try await store.claimNextMemoryExtractionJob(
+            now: now,
+            allowedSourceKinds: allowedKinds
+        ) else { return .idle }
         lastDroppedCount = 0
+        let isUsageJob = MemorySourceKind.usageKinds.contains(job.sourceKind)
+        let recordAuthorityEnabled = isUsageJob ? usageAuthorityWritesEnabled : authorityWritesEnabled
         do {
             // The extractor performs the LLM round-trip. The worker actor holds NO
             // database write transaction across this call (PR-D1 must-fix:
@@ -110,12 +134,29 @@ actor MemoryExtractionWorker {
             let requests = try await extractor(job)
             let projectID = ControlPlaneStore.memoryExtractionProjectID(for: job.scope)
 
+            // PR6: for a usage batch, the spool rows are the provenance source
+            // (the usage analogue of the chat transcript). Loaded ONCE per job;
+            // the same set is flipped `extracted` after the write loop commits.
+            let usageCandidatesByID: [String: UsageMemoryCandidate]
+            if isUsageJob {
+                let rows = try await store.usageCandidates(forBatchJobID: job.id)
+                usageCandidatesByID = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            } else {
+                usageCandidatesByID = [:]
+            }
+
             for (index, request) in requests.enumerated() {
                 // G7 candidate-DROP gate (PR-D1 must-fix #4): drop a secret/PII-bearing
                 // candidate instead of failing the whole batch, so one poisoned
                 // candidate cannot starve the rest. `.reject` (fail-closed) is also what
                 // an unavailable corpus returns, so a missing corpus drops everything.
-                let verdict = MemorySecretPIIGate.evaluate(request.text, policy: .reject)
+                // Usage requests scan text + context + keywords + tags (all of it is
+                // model output over untrusted input); chat scans the text exactly as
+                // before (chat requests never carry the extra fields).
+                let verdict = MemorySecretPIIGate.evaluate(
+                    Self.gateText(for: request, isUsageJob: isUsageJob),
+                    policy: .reject
+                )
                 guard case .allow = verdict else {
                     lastDroppedCount += 1
                     // Emit a non-sensitive audit event: finding IDs/labels only,
@@ -125,7 +166,7 @@ actor MemoryExtractionWorker {
                     try await store.appendMemoryCandidateDroppedAuditEvent(
                         projectID: projectID,
                         memoryID: memoryID,
-                        sourceKind: MemorySourceKind.chat.rawValue,
+                        sourceKind: job.sourceKind.rawValue,
                         findingLabels: findingLabels,
                         candidateIndex: index,
                         now: now
@@ -137,19 +178,38 @@ actor MemoryExtractionWorker {
                 // Fast-path idempotency check. The durable write itself is idempotent
                 // (`agent_memories` INSERT is `ON CONFLICT(id) DO NOTHING`), so a race
                 // past this check is a no-op, not a crash; this only avoids redundant
-                // work on the common retry path.
-                if try await store.fetchChatMemoryAuthorityRecord(id: memoryID) != nil {
+                // work on the common retry path. Kind-guarded so lanes never read
+                // each other's rows.
+                let existing: Memory?
+                if isUsageJob {
+                    existing = try await store.fetchMemoryAuthorityRecord(
+                        id: memoryID,
+                        sourceKinds: MemorySourceKind.usageKinds
+                    )
+                } else {
+                    existing = try await store.fetchChatMemoryAuthorityRecord(id: memoryID)
+                }
+                if existing != nil {
                     continue
                 }
 
                 // Worker is the SOLE provenance authority (PR-D1 must-fix #1/#3): rebuild
-                // every citation from the fetched source message, ignoring whatever the
-                // extractor/model supplied. Unresolvable citations are dropped, never
-                // fabricated.
-                let authoritativeCitations = try await recomputeProvenance(
-                    for: request,
-                    job: job
-                )
+                // every citation from the fetched source (chat message or spool row),
+                // ignoring whatever the extractor/model supplied. Unresolvable citations
+                // are dropped, never fabricated.
+                let authoritativeCitations: [MemoryCitation]
+                if isUsageJob {
+                    authoritativeCitations = Self.recomputeUsageProvenance(
+                        for: request,
+                        candidatesByID: usageCandidatesByID,
+                        fallbackAuthoredAt: job.createdAt
+                    )
+                } else {
+                    authoritativeCitations = try await recomputeProvenance(
+                        for: request,
+                        job: job
+                    )
+                }
                 guard authoritativeCitations.isEmpty == false else {
                     continue
                 }
@@ -158,20 +218,37 @@ actor MemoryExtractionWorker {
                 quarantined.scope = job.scope
                 quarantined.reviewStatus = .quarantined
                 quarantined.citations = authoritativeCitations
-                _ = try await store.addChatMemoryAuthorityRecord(
+                _ = try await store.addMemoryAuthorityRecord(
                     quarantined,
                     id: memoryID,
+                    sourceKind: job.sourceKind,
+                    context: quarantined.context,
                     now: nowProvider(),
-                    enabled: authorityWritesEnabled()
+                    enabled: recordAuthorityEnabled()
+                )
+            }
+            // The batch's candidates are consumed by this completed pass (even the
+            // ones the model found nothing durable in) — flip them `extracted` so
+            // a finished batch never leaks `batched` rows. Runs BEFORE the job's
+            // terminal success; a crash between the two replays idempotently
+            // (memory ids are deterministic, the stamp is a no-op re-run).
+            if isUsageJob, usageCandidatesByID.isEmpty == false {
+                try await store.markUsageCandidatesExtracted(
+                    ids: usageCandidatesByID.keys.sorted(),
+                    now: nowProvider()
                 )
             }
             try await store.markMemoryExtractionJobSucceeded(job.id, now: nowProvider())
             return .drained
         } catch {
+            // PR6: typed usage-lane failures carry their own deferral windows
+            // (cloud budget exhausted +6h, server kill +24h, no route +1h);
+            // everything else keeps the 60 s transient backoff. Candidates of a
+            // deferred usage batch stay `batched` — only a SUCCESS consumes them.
             try await store.markMemoryExtractionJobFailed(
                 job.id,
                 error: Self.failureLabel(for: error),
-                retryAfter: 60,
+                retryAfter: Self.retryAfter(for: error),
                 now: nowProvider()
             )
             // Job failed but the pump must KEEP DRAINING (do NOT re-throw here): a
@@ -179,6 +256,19 @@ actor MemoryExtractionWorker {
             // and records the failure (PR-D2 must-fix #1/#3).
             return .claimedButFailed
         }
+    }
+
+    /// The text the G7 gate scans for one request. Chat: the memory body only
+    /// (byte-identical pre-PR6 behavior). Usage: body + context + keywords +
+    /// tags, because every one of those fields is model output derived from
+    /// untrusted usage data and all of them persist.
+    private static func gateText(for request: MemoryAddRequest, isUsageJob: Bool) -> String {
+        guard isUsageJob else { return request.text }
+        var parts = [request.text]
+        if let context = request.context, context.isEmpty == false { parts.append(context) }
+        parts.append(contentsOf: request.keywords)
+        parts.append(contentsOf: request.tags)
+        return parts.joined(separator: "\n")
     }
 
     /// Recompute authoritative provenance for `request` from the job + the fetched
@@ -239,11 +329,99 @@ actor MemoryExtractionWorker {
         return citations
     }
 
+    /// Usage analogue of `recomputeProvenance`: the model-echoed `candidateId`
+    /// (carried as the placeholder citation's `messageID`) is a LOOKUP KEY ONLY,
+    /// resolved against the job's OWN spool rows. An id that is not in the batch
+    /// is DROPPED, never fabricated; a request with zero resolvable ids is
+    /// skipped entirely by the caller (mirroring chat's discipline). Citation
+    /// facts come from the spool row (`thread_logical_id`, `content_hash`) and
+    /// its sealed payload (`role`, `observedAt`); `crossDeviceHMAC` reuses the
+    /// existing v1 local provenance tag — same placeholder, same cloud-sync
+    /// gate semantics as chat.
+    private static func recomputeUsageProvenance(
+        for request: MemoryAddRequest,
+        candidatesByID: [String: UsageMemoryCandidate],
+        fallbackAuthoredAt: Date
+    ) -> [MemoryCitation] {
+        var seen = Set<String>()
+        var claimedIDs: [String] = []
+        for citation in request.citations {
+            guard let candidateID = citation.messageID, candidateID.isEmpty == false else { continue }
+            if seen.insert(candidateID).inserted {
+                claimedIDs.append(candidateID)
+            }
+        }
+
+        var citations: [MemoryCitation] = []
+        for (occurrence, candidateID) in claimedIDs.enumerated() {
+            guard let candidate = candidatesByID[candidateID] else {
+                // Lookup miss: the model named a candidate that is not part of
+                // this batch. Drop the citation (never fabricate provenance).
+                continue
+            }
+            let payload = UsageMemoryCandidatePayload.decode(candidate.payloadJSON)
+            let crossDeviceHMAC = provenanceLocalTag(
+                threadLogicalID: candidate.threadLogicalID,
+                messageID: candidate.id,
+                occurrence: occurrence,
+                contentHash: candidate.contentHash
+            )
+            citations.append(
+                MemoryCitation(
+                    id: "\(candidate.id)#\(occurrence)",
+                    threadLogicalID: candidate.threadLogicalID,
+                    messageID: candidate.id,
+                    role: payload?.role ?? "",
+                    authoredAt: payload?.observedAt ?? fallbackAuthoredAt,
+                    contentHash: candidate.contentHash,
+                    occurrence: occurrence,
+                    crossDeviceHMAC: crossDeviceHMAC,
+                    citationState: .live
+                )
+            )
+        }
+        return citations
+    }
+
     private static func failureLabel(for error: Error) -> String {
         if case .secretRejected(let labels) = error as? ControlPlaneStore.ChatMemoryAuthorityError {
             return "secret_rejected:\(labels.joined(separator: ","))"
         }
+        if let cloudError = error as? UsageCurationCloudError {
+            switch cloudError {
+            case .budgetExhausted: return "usage_cloud_budget_exhausted"
+            case .serverDisabled: return "usage_cloud_server_disabled"
+            case .replayedRequest: return "usage_cloud_replayed_request"
+            case .malformedResponse: return "usage_cloud_malformed_response"
+            case .cloudUnavailable: return "usage_cloud_unavailable"
+            }
+        }
+        if let usageError = error as? UsageMemoryBatchExtractionError {
+            switch usageError {
+            case .routeUnavailable: return "usage_route_unavailable"
+            case .localModelFailed: return "usage_local_model_failed"
+            case .modelOutputUnusable: return "usage_model_output_unusable"
+            }
+        }
         return String(reflecting: type(of: error))
+    }
+
+    /// Deferral windows for typed usage-lane failures (PR6). The server's
+    /// budget window resets on a UTC boundary hours away, so +6h; a fleet kill
+    /// is an operator action, so +24h; a missing route is a local-config gap
+    /// the user may fix any time, so +1h. Everything else (including every chat
+    /// failure) keeps the pre-PR6 60 s transient backoff.
+    private static func retryAfter(for error: Error) -> TimeInterval {
+        switch error {
+        case UsageCurationCloudError.budgetExhausted:
+            return 6 * 3600
+        case UsageCurationCloudError.serverDisabled:
+            return 24 * 3600
+        case UsageMemoryBatchExtractionError.routeUnavailable:
+            return 3600
+        default:
+            return 60
+        }
     }
 
     private static func memoryID(for job: ControlPlaneStore.MemoryExtractionJob, index: Int) -> MemoryID {

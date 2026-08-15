@@ -236,6 +236,12 @@ final class OpenBurnBarRuntimeContext {
     /// allows, and the account is cloud-sync-ready. Constructing it flips nothing on.
     var memoryCloudSyncDomain: MemoryCloudSyncDomain?
 
+    /// PR6 usage-memory Stage-1 tick (miner → batch assembly → drain), assigned
+    /// via `applyMemoryServices` and registered on the `BackgroundCadenceCoordinator`
+    /// by `startMemoryExtractionIfNeeded`. DORMANT by default: the tick's first
+    /// act is the usage extraction gate check (consent OFF out of the box).
+    var usageMemoryStage1Ticker: UsageMemoryStage1Ticker?
+
     // MARK: - Mercury Phase 8 — user-facing surfaces
 
     /// Live-share / file-transfer / call brain. Mounted into the

@@ -249,6 +249,16 @@ public struct MemoryAddRequest: Sendable {
     public var confidence: Double
     public var citations: [MemoryCitation]
     public var reviewStatus: MemoryReviewStatus
+    /// Usage-memory extraction: the model's one-sentence A-MEM context for the
+    /// sealed snapshot (schemaVersion 2). Chat extraction leaves this nil, which
+    /// keeps chat snapshots byte-identical (schemaVersion 1, no `context` key).
+    public var context: String?
+    /// Usage-memory extraction: model-proposed retrieval keywords. Persisted into
+    /// `agent_memories.tags_json` as `"k:<keyword>"` entries. Empty for chat.
+    public var keywords: [String]
+    /// Usage-memory extraction: model-proposed tags. Persisted into
+    /// `agent_memories.tags_json` as `"t:<tag>"` entries. Empty for chat.
+    public var tags: [String]
 
     public init(
         text: String,
@@ -256,7 +266,10 @@ public struct MemoryAddRequest: Sendable {
         scope: MemoryScope,
         confidence: Double = 0.6,
         citations: [MemoryCitation] = [],
-        reviewStatus: MemoryReviewStatus = .quarantined
+        reviewStatus: MemoryReviewStatus = .quarantined,
+        context: String? = nil,
+        keywords: [String] = [],
+        tags: [String] = []
     ) {
         self.text = text
         self.kind = kind
@@ -264,6 +277,9 @@ public struct MemoryAddRequest: Sendable {
         self.confidence = confidence
         self.citations = citations
         self.reviewStatus = reviewStatus
+        self.context = context
+        self.keywords = keywords
+        self.tags = tags
     }
 }
 
