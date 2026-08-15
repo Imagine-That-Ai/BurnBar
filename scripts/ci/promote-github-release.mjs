@@ -2,12 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +26,7 @@ const STABLE_TAG =
 const SHA256 = /^[0-9a-f]{64}$/u;
 const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 const RECEIPT_SCHEMA_VERSION = 1;
+const ROLLBACK_TARGET_RECEIPT_KIND = "macos-rollback-target";
 
 function parseJson(text, label) {
   try {
@@ -319,21 +315,99 @@ function downloadAssets(client, expected, release, directory) {
   return downloads;
 }
 
+function rollbackTargetAssetNames(version) {
+  const source = `OpenBurnBar-${version}-corresponding-source.tar.gz`;
+  return [
+    `OpenBurnBar-${version}-macOS.dmg`,
+    `OpenBurnBar-${version}-macOS.zip`,
+    source,
+    `${source}.sha256`,
+    "appcast.xml",
+    "latest-macos.json",
+    `checksums-v${version}.txt`,
+    "release-metadata.json",
+  ];
+}
+
+function rollbackTargetRelease(raw, expected) {
+  const value = objectValue(raw, "GitHub rollback target release");
+  if (
+    !Number.isSafeInteger(value.id) ||
+    value.id <= 0 ||
+    value.tag_name !== expected.tag ||
+    value.draft !== false ||
+    value.prerelease !== false ||
+    !Array.isArray(value.assets)
+  ) {
+    throw new Error(
+      "GitHub rollback target release metadata is not an exact stable publication",
+    );
+  }
+  const assets = value.assets.map((asset, index) =>
+    releaseAsset(asset, `GitHub rollback target assets[${index}]`),
+  );
+  const byName = new Map(assets.map((asset) => [asset.name, asset]));
+  if (byName.size !== assets.length) {
+    throw new Error("GitHub rollback target assets are duplicated");
+  }
+  const required = rollbackTargetAssetNames(expected.version);
+  const missing = required.filter((name) => !byName.has(name));
+  if (missing.length > 0) {
+    throw new Error(
+      `GitHub rollback target is missing required assets: ${missing.join(",")}`,
+    );
+  }
+  const selected = required.map((name) => byName.get(name));
+  return {
+    identity: releaseIdentity(value.id, selected),
+    assets: new Map(selected.map((asset) => [asset.name, asset])),
+  };
+}
+
+function lookupRollbackTargetRelease(
+  client,
+  expected,
+  { latest = false } = {},
+) {
+  resolveTag(client, expected.tag, expected.commit);
+  const endpoint = latest
+    ? `repos/${DOMAIN_CORE_REPOSITORY}/releases/latest`
+    : `repos/${DOMAIN_CORE_REPOSITORY}/releases/tags/${expected.tag}`;
+  const result = client.run(["api", endpoint], { allowFailure: true });
+  if (result.status !== 0) {
+    const detail = `${result.stderr || ""}\n${result.stdout || ""}`.trim();
+    throw new Error(
+      `GitHub ${latest ? "latest rollback target" : "rollback target"} lookup failed: ${detail}`,
+    );
+  }
+  return rollbackTargetRelease(
+    parseJson(result.stdout, "rollback target release lookup"),
+    expected,
+  );
+}
+
 function requiredPath(downloads, name) {
   const path = downloads.get(name);
-  if (!path) throw new Error(`required downloaded release asset is missing: ${name}`);
+  if (!path)
+    throw new Error(`required downloaded release asset is missing: ${name}`);
   return path;
 }
 
-function verifyChecksums(version, downloads) {
+export function verifyChecksums(
+  version,
+  downloads,
+  { includeRollback = true } = {},
+) {
   const names = [
     `OpenBurnBar-${version}-macOS.dmg`,
     `OpenBurnBar-${version}-macOS.zip`,
     `OpenBurnBar-${version}-corresponding-source.tar.gz`,
     "appcast.xml",
     "latest-macos.json",
-    `OpenBurnBar-${version}-legacy-rollback.zip`,
   ];
+  if (includeRollback) {
+    names.push(`OpenBurnBar-${version}-legacy-rollback.zip`);
+  }
   const lines = readFileSync(
     requiredPath(downloads, `checksums-v${version}.txt`),
     "utf8",
@@ -373,64 +447,218 @@ function verifyChecksums(version, downloads) {
   }
 }
 
-function verifyUpdateMetadata(expected, downloads) {
+function exactKeys(value, keys, label) {
+  return exactObject(value, keys, label);
+}
+
+function requiredString(value, label) {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${label} must be a nonempty string`);
+  }
+  return value;
+}
+
+function canonicalHttpsBaseUrl(value, label) {
+  const raw = requiredString(value, label);
+  let url;
+  try {
+    url = new URL(raw);
+  } catch (error) {
+    throw new Error(`${label} must be a valid URL: ${error.message}`);
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new Error(`${label} must be a credential-free HTTPS base URL`);
+  }
+  url.pathname = url.pathname.replace(/\/+$/u, "");
+  return url.toString().replace(/\/$/u, "");
+}
+
+function releaseUrl(baseUrl, name) {
+  return `${baseUrl}/${encodeURIComponent(name)}`;
+}
+
+function validIsoTimestamp(value) {
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/u.test(value) &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
+function validSparkleSignature(value) {
+  if (typeof value !== "string" || value === "") return false;
+  try {
+    const decoded = Buffer.from(value, "base64");
+    return decoded.length === 64 && decoded.toString("base64") === value;
+  } catch {
+    return false;
+  }
+}
+
+function appcastItemForVersion(appcast, version) {
+  const versionMarker = `<sparkle:shortVersionString>${version}</sparkle:shortVersionString>`;
+  return (
+    appcast
+      .match(/<item\b[\s\S]*?<\/item>/gu)
+      ?.find((item) => item.includes(versionMarker)) ?? ""
+  );
+}
+
+export function verifyUpdateMetadata(
+  expected,
+  downloads,
+  { verifyIosReceipt = true } = {},
+) {
   const dmgName = `OpenBurnBar-${expected.version}-macOS.dmg`;
+  const zipName = `OpenBurnBar-${expected.version}-macOS.zip`;
+  const sourceName = `OpenBurnBar-${expected.version}-corresponding-source.tar.gz`;
   const dmgPath = requiredPath(downloads, dmgName);
   const dmg = fileRecord(dmgPath);
-  const latest = objectValue(
+  const latest = exactKeys(
     parseJson(
       readFileSync(requiredPath(downloads, "latest-macos.json"), "utf8"),
       "latest-macos.json",
     ),
+    [
+      "appcastUrl",
+      "build",
+      "bundleId",
+      "channel",
+      "commit",
+      "correspondingSource",
+      "createdAt",
+      "critical",
+      "dmg",
+      "downloadUrl",
+      "length",
+      "minimumSystemVersion",
+      "releaseNotesUrl",
+      "sha256",
+      "sparkleEdSignature",
+      "version",
+      "zip",
+    ],
     "latest-macos.json",
+  );
+  const metadata = exactKeys(
+    parseJson(
+      readFileSync(requiredPath(downloads, "release-metadata.json"), "utf8"),
+      "release-metadata.json",
+    ),
+    [
+      "appcast",
+      "build_timestamp",
+      "channel",
+      "commit",
+      "correspondingSource",
+      "latestMetadata",
+      "runner_arch",
+      "runner_name",
+      "runner_os",
+      "sparkleEdSignaturePresent",
+      "tag",
+      "updateBaseUrl",
+      "version",
+    ],
+    "release-metadata.json",
+  );
+  const updateBaseUrl = canonicalHttpsBaseUrl(
+    metadata.updateBaseUrl,
+    "release-metadata.json updateBaseUrl",
   );
   if (
     latest.version !== expected.version ||
     latest.commit !== expected.commit ||
     latest.dmg !== dmgName ||
-    latest.zip !== `OpenBurnBar-${expected.version}-macOS.zip` ||
-    latest.correspondingSource !==
-      `OpenBurnBar-${expected.version}-corresponding-source.tar.gz` ||
+    latest.zip !== zipName ||
+    latest.correspondingSource !== sourceName ||
+    latest.bundleId !== "com.openburnbar.app" ||
+    latest.channel !== "direct-download" ||
+    requiredString(latest.build, "latest-macos.json build") !== latest.build ||
+    requiredString(
+      latest.minimumSystemVersion,
+      "latest-macos.json minimumSystemVersion",
+    ) !== latest.minimumSystemVersion ||
+    !validIsoTimestamp(latest.createdAt) ||
+    typeof latest.critical !== "boolean" ||
     latest.length !== dmg.size ||
     latest.sha256 !== dmg.sha256 ||
-    typeof latest.sparkleEdSignature !== "string" ||
-    latest.sparkleEdSignature.length === 0
+    !validSparkleSignature(latest.sparkleEdSignature) ||
+    latest.downloadUrl !== releaseUrl(updateBaseUrl, dmgName) ||
+    latest.appcastUrl !== releaseUrl(updateBaseUrl, "appcast.xml") ||
+    latest.releaseNotesUrl !==
+      releaseUrl(updateBaseUrl, "release-metadata.json")
   ) {
-    throw new Error("latest-macos.json does not bind the exact audited release");
+    throw new Error(
+      "latest-macos.json does not bind the exact audited release",
+    );
   }
 
-  const appcast = readFileSync(
-    requiredPath(downloads, "appcast.xml"),
-    "utf8",
-  );
+  const appcast = readFileSync(requiredPath(downloads, "appcast.xml"), "utf8");
+  const appcastItem = appcastItemForVersion(appcast, expected.version);
   if (
-    !appcast.includes(
+    !appcast.includes(`<link>${latest.appcastUrl}</link>`) ||
+    !appcastItem.includes(
+      `<sparkle:version>${latest.build}</sparkle:version>`,
+    ) ||
+    !appcastItem.includes(
       `<sparkle:shortVersionString>${expected.version}</sparkle:shortVersionString>`,
     ) ||
-    !appcast.includes(`sparkle:edSignature="${latest.sparkleEdSignature}"`)
+    !appcastItem.includes(
+      `<sparkle:minimumSystemVersion>${latest.minimumSystemVersion}</sparkle:minimumSystemVersion>`,
+    ) ||
+    !appcastItem.includes(
+      `<sparkle:releaseNotesLink>${latest.releaseNotesUrl}</sparkle:releaseNotesLink>`,
+    ) ||
+    !appcastItem.includes(`url="${latest.downloadUrl}"`) ||
+    !appcastItem.includes(`length="${latest.length}"`) ||
+    !appcastItem.includes('type="application/x-apple-diskimage"') ||
+    !appcastItem.includes(
+      `sparkle:edSignature="${latest.sparkleEdSignature}"`,
+    ) ||
+    (latest.critical &&
+      !appcastItem.includes(
+        "<sparkle:criticalUpdate></sparkle:criticalUpdate>",
+      )) ||
+    (!latest.critical && appcastItem.includes("<sparkle:criticalUpdate"))
   ) {
-    throw new Error("appcast.xml does not match the exact signed update metadata");
+    throw new Error(
+      "appcast.xml does not match the exact signed update metadata",
+    );
   }
 
-  const metadata = objectValue(
-    parseJson(
-      readFileSync(requiredPath(downloads, "release-metadata.json"), "utf8"),
-      "release-metadata.json",
-    ),
-    "release-metadata.json",
-  );
   if (
     metadata.version !== expected.version ||
     metadata.tag !== expected.tag ||
     metadata.commit !== expected.commit ||
     metadata.channel !== "direct-download" ||
-    metadata.correspondingSource !==
-      `OpenBurnBar-${expected.version}-corresponding-source.tar.gz` ||
+    metadata.correspondingSource !== sourceName ||
     metadata.appcast !== "appcast.xml" ||
     metadata.latestMetadata !== "latest-macos.json" ||
-    metadata.sparkleEdSignaturePresent !== true
+    metadata.sparkleEdSignaturePresent !== true ||
+    !validIsoTimestamp(metadata.build_timestamp) ||
+    requiredString(metadata.runner_os, "release-metadata.json runner_os") !==
+      metadata.runner_os ||
+    requiredString(
+      metadata.runner_arch,
+      "release-metadata.json runner_arch",
+    ) !== metadata.runner_arch ||
+    requiredString(
+      metadata.runner_name,
+      "release-metadata.json runner_name",
+    ) !== metadata.runner_name
   ) {
     throw new Error("release-metadata.json does not bind the exact release");
+  }
+
+  if (!verifyIosReceipt) {
+    return { latest, metadata, dmg };
   }
 
   const iosReceiptName = `OpenBurnBar-${expected.version}-iOS-app-store-connect-receipt.json`;
@@ -442,7 +670,7 @@ function verifyUpdateMetadata(expected, downloads) {
   ) {
     // A governed rollback release has no App Store iOS lane; when neither iOS
     // asset was published there is nothing to bind.
-    return;
+    return { latest, metadata, dmg };
   }
   const iosReceipt = objectValue(
     parseJson(
@@ -464,9 +692,16 @@ function verifyUpdateMetadata(expected, downloads) {
       "App Store Connect receipt does not bind the exact processed iOS archive",
     );
   }
+  return { latest, metadata, dmg };
 }
 
-function verifiedPredicates(client, expected, consumer, artifactPath, bundlePath) {
+function verifiedPredicates(
+  client,
+  expected,
+  consumer,
+  artifactPath,
+  bundlePath,
+) {
   const contract = RELEASE_CONSUMERS[consumer];
   const result = client.run([
     "attestation",
@@ -632,6 +867,103 @@ function writeReceipt(path, receipt) {
   return output;
 }
 
+export function auditRollbackTargetRelease(
+  { tag, commit, assetDirectory, receiptPath },
+  { client = createGhClient() } = {},
+) {
+  const match = typeof tag === "string" ? STABLE_TAG.exec(tag) : null;
+  if (!match || typeof commit !== "string" || !COMMIT.test(commit)) {
+    throw new Error(
+      "rollback target requires a stable tag and full lowercase commit",
+    );
+  }
+  const expected = {
+    repository: DOMAIN_CORE_REPOSITORY,
+    tag,
+    version: match[1],
+    commit,
+  };
+  const directory = resolve(assetDirectory);
+  prepareAssetDirectory(directory);
+  const release = lookupRollbackTargetRelease(client, expected);
+  const downloads = downloadAssets(client, expected, release, directory);
+  verifyChecksums(expected.version, downloads, { includeRollback: false });
+  verifyUpdateMetadata(expected, downloads, { verifyIosReceipt: false });
+
+  const final = lookupRollbackTargetRelease(client, expected);
+  if (!sameIdentity(release.identity, final.identity)) {
+    throw new Error("rollback target release changed during its audit");
+  }
+  const output = writeReceipt(receiptPath, {
+    schemaVersion: RECEIPT_SCHEMA_VERSION,
+    kind: ROLLBACK_TARGET_RECEIPT_KIND,
+    repository: DOMAIN_CORE_REPOSITORY,
+    tag,
+    version: expected.version,
+    commit,
+    releaseIdentity: final.identity,
+  });
+  return { expected, release: final, downloads, receiptPath: output };
+}
+
+export function validateRollbackTargetReceipt(raw) {
+  const value = exactObject(
+    raw,
+    [
+      "schemaVersion",
+      "kind",
+      "repository",
+      "tag",
+      "version",
+      "commit",
+      "releaseIdentity",
+    ],
+    "rollback target receipt",
+  );
+  if (
+    value.schemaVersion !== RECEIPT_SCHEMA_VERSION ||
+    value.kind !== ROLLBACK_TARGET_RECEIPT_KIND ||
+    value.repository !== DOMAIN_CORE_REPOSITORY ||
+    value.tag !== `v${value.version}` ||
+    !STABLE_TAG.test(value.tag) ||
+    !COMMIT.test(value.commit)
+  ) {
+    throw new Error("rollback target receipt coordinates are invalid");
+  }
+  const identity = objectValue(
+    value.releaseIdentity,
+    "rollback target receipt identity",
+  );
+  if (
+    !Number.isSafeInteger(identity.releaseID) ||
+    identity.releaseID <= 0 ||
+    !Array.isArray(identity.assets)
+  ) {
+    throw new Error("rollback target receipt identity is invalid");
+  }
+  const assets = identity.assets.map((asset, index) =>
+    releaseAsset(asset, `rollback target receipt assets[${index}]`),
+  );
+  const expectedNames = rollbackTargetAssetNames(value.version);
+  if (
+    JSON.stringify(assets.map((asset) => asset.name)) !==
+    JSON.stringify(
+      [...expectedNames].sort((left, right) => left.localeCompare(right)),
+    )
+  ) {
+    throw new Error(
+      "rollback target receipt must contain the exact required asset set",
+    );
+  }
+  return {
+    repository: DOMAIN_CORE_REPOSITORY,
+    tag: value.tag,
+    version: value.version,
+    commit: value.commit,
+    identity: releaseIdentity(identity.releaseID, assets),
+  };
+}
+
 export function auditExistingRelease(
   { tag, commit, notesPath, assetDirectory, receiptPath, domainCoreProfile },
   {
@@ -672,14 +1004,11 @@ export function auditExistingRelease(
   if (!sameIdentity(release.identity, final.identity)) {
     throw new Error("release changed during the promotion audit");
   }
-  const output = writeReceipt(
-    receiptPath,
-    receiptContents(expected, final),
-  );
+  const output = writeReceipt(receiptPath, receiptContents(expected, final));
   return { expected, release: final, downloads, receiptPath: output };
 }
 
-function validateReceipt(raw) {
+export function validatePromotionReceipt(raw) {
   const value = exactObject(
     raw,
     [
@@ -727,7 +1056,9 @@ function validateReceipt(raw) {
         [...assets].sort((left, right) => left.name.localeCompare(right.name)),
       )
   ) {
-    throw new Error("release promotion receipt assets must be unique and sorted");
+    throw new Error(
+      "release promotion receipt assets must be unique and sorted",
+    );
   }
   requireExactAssetSet(
     value.version,
@@ -749,7 +1080,7 @@ export function promoteAuditedRelease(
   receiptPath,
   { client = createGhClient() } = {},
 ) {
-  const receipt = validateReceipt(
+  const receipt = validatePromotionReceipt(
     parseJson(
       readFileSync(
         regularFile(resolve(receiptPath), "release promotion receipt"),
@@ -788,16 +1119,82 @@ export function promoteAuditedRelease(
     latest = lookupRelease(client, receipt, { latest: true });
   } catch (error) {
     if (result.status !== 0) {
-      const detail = (result.stderr || result.stdout || "unknown failure").trim();
-      throw new Error(
-        `latest promotion failed: ${detail}; ${error.message}`,
-      );
+      const detail = (
+        result.stderr ||
+        result.stdout ||
+        "unknown failure"
+      ).trim();
+      throw new Error(`latest promotion failed: ${detail}; ${error.message}`);
     }
     throw error;
   }
   if (!sameIdentity(receipt.identity, latest.identity)) {
     throw new Error(
       "GitHub latest release is not the unchanged audited release",
+    );
+  }
+  return { promoted: true, promotionApplied: result.status === 0 };
+}
+
+export function promoteAuditedRollbackTarget(
+  receiptPath,
+  { client = createGhClient() } = {},
+) {
+  const receipt = validateRollbackTargetReceipt(
+    parseJson(
+      readFileSync(
+        regularFile(resolve(receiptPath), "rollback target receipt"),
+        "utf8",
+      ),
+      "rollback target receipt",
+    ),
+  );
+  const current = lookupRollbackTargetRelease(client, receipt);
+  if (!sameIdentity(receipt.identity, current.identity)) {
+    throw new Error("rollback target changed after its audit");
+  }
+
+  try {
+    const latest = lookupRollbackTargetRelease(client, receipt, {
+      latest: true,
+    });
+    if (sameIdentity(receipt.identity, latest.identity)) {
+      return { promoted: true, promotionApplied: false };
+    }
+  } catch {
+    // The audited rollback target is not latest yet.
+  }
+
+  const result = client.run(
+    [
+      "release",
+      "edit",
+      receipt.tag,
+      "--repo",
+      DOMAIN_CORE_REPOSITORY,
+      "--latest",
+    ],
+    { allowFailure: true },
+  );
+  let latest;
+  try {
+    latest = lookupRollbackTargetRelease(client, receipt, { latest: true });
+  } catch (error) {
+    if (result.status !== 0) {
+      const detail = (
+        result.stderr ||
+        result.stdout ||
+        "unknown failure"
+      ).trim();
+      throw new Error(
+        `rollback latest promotion failed: ${detail}; ${error.message}`,
+      );
+    }
+    throw error;
+  }
+  if (!sameIdentity(receipt.identity, latest.identity)) {
+    throw new Error(
+      "GitHub latest release is not the unchanged audited rollback target",
     );
   }
   return { promoted: true, promotionApplied: result.status === 0 };
@@ -817,10 +1214,14 @@ function parseArguments(argv) {
         ]
       : command === "promote"
         ? ["--receipt"]
-        : null;
+        : command === "promote-rollback-target"
+          ? ["--receipt"]
+          : command === "audit-rollback-target"
+            ? ["--tag", "--commit", "--asset-dir", "--receipt"]
+            : null;
   if (!required || argv.length !== 1 + required.length * 2) {
     throw new Error(
-      "usage: audit --tag TAG --commit SHA --notes PATH --asset-dir DIR --receipt PATH --domain-core-profile PROFILE | promote --receipt PATH",
+      "usage: audit --tag TAG --commit SHA --notes PATH --asset-dir DIR --receipt PATH --domain-core-profile PROFILE | promote --receipt PATH | audit-rollback-target --tag TAG --commit SHA --asset-dir DIR --receipt PATH | promote-rollback-target --receipt PATH",
     );
   }
   const values = new Map();
@@ -847,9 +1248,18 @@ export function run(argv) {
           receiptPath: values.get("--receipt"),
           domainCoreProfile: values.get("--domain-core-profile"),
         })
-      : promoteAuditedRelease(values.get("--receipt"));
+      : command === "promote"
+        ? promoteAuditedRelease(values.get("--receipt"))
+        : command === "promote-rollback-target"
+          ? promoteAuditedRollbackTarget(values.get("--receipt"))
+          : auditRollbackTargetRelease({
+              tag: values.get("--tag"),
+              commit: values.get("--commit"),
+              assetDirectory: values.get("--asset-dir"),
+              receiptPath: values.get("--receipt"),
+            });
   const printable =
-    command === "audit"
+    command === "audit" || command === "audit-rollback-target"
       ? { audited: true, receiptPath: result.receiptPath }
       : result;
   process.stdout.write(`${JSON.stringify({ ok: true, ...printable })}\n`);

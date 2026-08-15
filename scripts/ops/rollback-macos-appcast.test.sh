@@ -102,9 +102,7 @@ recent_old="$(rfc822_days_ago 2)"
 downloads="${TMP_DIR}/downloads"
 mkdir -p "${downloads}"
 arm_feed="${downloads}/appcast.xml"
-intel_feed="${downloads}/appcast-x86_64.xml"
 write_feed "${arm_feed}" "${recent_latest}" "${recent_target}" "${recent_old}"
-write_feed "${intel_feed}" "${recent_latest}" "${recent_target}" "${recent_old}"
 
 cp "${arm_feed}" "${TMP_DIR}/arm.before"
 
@@ -136,12 +134,12 @@ OPENBURNBAR_DOWNLOADS_DIR="${downloads}" \
 OPENBURNBAR_R2_PUBLIC_BASE_URL="https://downloads.example.test/openburnbar" \
   run_appcast_rollback --to-version 1.0.1 --yes >"${TMP_DIR}/apply.out"
 assert_contains "${TMP_DIR}/apply.out" "Pinned latest: 1.0.1"
-assert_contains "${TMP_DIR}/apply.out" "scripts/upload-macos-downloads-r2.sh"
+assert_contains "${TMP_DIR}/apply.out" "scripts/publish-macos-appcast-rollback-r2.sh"
+assert_contains "${TMP_DIR}/apply.out" "OPENBURNBAR_ROLLBACK_CONFIRM=publish-appcast-rollback"
+assert_contains "${TMP_DIR}/apply.out" "OPENBURNBAR_EXPECTED_LIVE_VERSION=<bad-live-version>"
 assert_contains "${TMP_DIR}/apply.out" "https://downloads.example.test/openburnbar/appcast.xml"
 assert_not_contains "${arm_feed}" "1.0.2"
-assert_not_contains "${intel_feed}" "1.0.2"
 assert_contains "${arm_feed}" "known-good-signature"
-assert_contains "${intel_feed}" "known-good-signature"
 assert_contains "${arm_feed}" "1.0.0"
 assert_order "${arm_feed}" "1.0.1" "1.0.0"
 

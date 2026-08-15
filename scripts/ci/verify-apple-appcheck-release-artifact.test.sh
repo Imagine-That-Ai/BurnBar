@@ -38,6 +38,8 @@ make_app() {
   mkdir -p "$app/Contents/Resources"
   write_plist "$app/Contents/Info.plist" \
     CFBundleIdentifier com.openburnbar.app \
+    OpenBurnBarDirectUpdateFeedURL https://downloads.burnbar.ai/latest-macos.json \
+    SUFeedURL https://downloads.burnbar.ai/appcast.xml \
     OpenBurnBarUseDebugAppCheck __FALSE__
 }
 
@@ -78,6 +80,8 @@ flag_app="$tmpdir/TruthyFlag/OpenBurnBar.app"
 make_app "$flag_app"
 write_plist "$flag_app/Contents/Info.plist" \
   CFBundleIdentifier com.openburnbar.app \
+  OpenBurnBarDirectUpdateFeedURL https://downloads.burnbar.ai/latest-macos.json \
+  SUFeedURL https://downloads.burnbar.ai/appcast.xml \
   OpenBurnBarUseDebugAppCheck YES
 expect_fail_redacted OpenBurnBarUseDebugAppCheck YES "$flag_app"
 
@@ -117,7 +121,18 @@ export_app="$export_path/OpenBurnBar.app"
 make_app "$export_app"
 write_plist "$export_app/Contents/Info.plist" \
   CFBundleIdentifier com.openburnbar.app \
+  OpenBurnBarDirectUpdateFeedURL https://downloads.burnbar.ai/latest-macos.json \
+  SUFeedURL https://downloads.burnbar.ai/appcast.xml \
   OpenBurnBarUseDebugAppCheck __TRUE__
 expect_fail_redacted OpenBurnBarUseDebugAppCheck "" "$export_path"
+
+legacy_feed_app="$tmpdir/LegacyFeed/OpenBurnBar.app"
+make_app "$legacy_feed_app"
+write_plist "$legacy_feed_app/Contents/Info.plist" \
+  CFBundleIdentifier com.openburnbar.app \
+  OpenBurnBarDirectUpdateFeedURL https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json \
+  SUFeedURL https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/appcast.xml \
+  OpenBurnBarUseDebugAppCheck __FALSE__
+expect_fail_redacted OpenBurnBarDirectUpdateFeedURL "" "$legacy_feed_app"
 
 echo "PASS: Apple App Check release artifact scanner positive controls"
