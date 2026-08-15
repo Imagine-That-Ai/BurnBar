@@ -183,7 +183,7 @@
     "scripts/ci/verify-domain-core-release-gate.mjs": ["ebd3b8c2cdc089b5","859f17190500fa6d","b912fa8b94e42370","53630929090da9ed"],
     "scripts/ci/verify-domain-core-release-gate.test.mjs": ["3e734df76c169177","56ad3d9c2b6a4994","4a2646b4842ab35a","442b9af9b29a32c7"],
     "scripts/ci/verify-domain-core-rollback.mjs": ["8e9fb5d8cad66355","b20f83ebdc2fe8e2","af48085259ad0a72","da2fc8ddf988a499"],
-    "scripts/ci/verify-domain-core-workflows.test.mjs": ["631024752d346260","87aacbdfeeb8a3f5","2634f61631f51cd8","720d4354f1519e7b"],
+    "scripts/ci/verify-domain-core-workflows.test.mjs": ["7d06701e10f7aa0f","024fb0d089c6aa01","23cbdb5f825adc73","9bc32ffa463e55c7"],
     "scripts/ci/verify-existing-domain-core-deployment.mjs": ["0a66d2189fe4d32a","1245abf3af4eb9aa","8d3fdaff7b155a85","1b3d58909907a0ac"],
     "scripts/ci/verify-existing-domain-core-deployment.test.mjs": ["c5b57e42092e4172","c72f649bd4cde9d0","88945440d10eaddd","157b939f37986938"],
     "scripts/ci/verify-firebase-tools-runtime.mjs": ["367ef53fb2d681f7","48b25069af232eb2","38edfff1ff3930ac","74f189baa208f0a2"],
