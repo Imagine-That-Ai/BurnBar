@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const read = (path) => readFileSync(path, "utf8");
 
@@ -26,6 +35,7 @@ for (const include of ['--include="*.mjs"', '--include="*.js"', '--include="*.sh
 
 const versionConsistency = read("scripts/verify-version-consistency.sh");
 const homebrewUpdater = read("scripts/update-homebrew.sh");
+const macosR2Uploader = read("scripts/upload-macos-downloads-r2.sh");
 const homebrewCask = read("homebrew/burnbar.rb");
 const projectVersion = read("project.yml").match(/^\s+MARKETING_VERSION:\s*["']?([^\s"']+)/m)?.[1];
 assert.ok(projectVersion, "project.yml must expose a MARKETING_VERSION");
@@ -66,6 +76,105 @@ assert.match(
   /canonical_repository="Imagine-That-Ai\/BurnBar"/,
   "version consistency must fail closed on Homebrew repository-owner drift",
 );
+assert.match(
+  macosR2Uploader,
+  /OPENBURNBAR_RELEASE_VERSION:-\$\(/,
+  "the R2 uploader must accept an exact release version independent of the public website pointer",
+);
+assert.match(
+  macosR2Uploader,
+  /MARKETING_VERSION:/,
+  "the R2 uploader must default to the prepared project marketing version",
+);
+assert.doesNotMatch(
+  macosR2Uploader,
+  /website\/src\/data\/site\.ts/,
+  "the R2 uploader must not derive release artifacts from the previously published website version",
+);
+assert.match(
+  macosR2Uploader,
+  /latest\.version !== expectedVersion \|\| latest\.dmg !== expectedDmg/,
+  "the R2 uploader must reject latest metadata from another release",
+);
+assert.match(
+  macosR2Uploader,
+  /releaseMetadata\.tag !== `v\$\{expectedVersion\}`/,
+  "the R2 uploader must reject release metadata from another tag",
+);
+
+const r2TestRoot = mkdtempSync(join(tmpdir(), "openburnbar-r2-release-"));
+try {
+  const downloads = join(r2TestRoot, "downloads");
+  const bin = join(r2TestRoot, "bin");
+  mkdirSync(downloads);
+  mkdirSync(bin);
+  const releaseVersion = "1.0.34";
+  const releaseFile = `OpenBurnBar-${releaseVersion}-macOS.dmg`;
+  for (const name of [
+    releaseFile,
+    releaseFile.replace(/\.dmg$/, ".zip"),
+    "appcast.xml",
+    "checksums-v1.0.34.txt",
+    "sbom-v1.0.34.spdx.json",
+    "OpenBurnBar-1.0.34-corresponding-source.tar.gz",
+    "OpenBurnBar-1.0.34-corresponding-source.tar.gz.sha256",
+  ]) {
+    writeFileSync(join(downloads, name), "fixture\n");
+  }
+  writeFileSync(
+    join(downloads, "latest-macos.json"),
+    `${JSON.stringify({
+      version: releaseVersion,
+      dmg: releaseFile,
+      downloadUrl: `https://downloads.burnbar.ai/${releaseFile}`,
+    })}\n`,
+  );
+  writeFileSync(
+    join(downloads, "release-metadata.json"),
+    `${JSON.stringify({ version: releaseVersion, tag: `v${releaseVersion}` })}\n`,
+  );
+  const wrangler = join(bin, "wrangler");
+  writeFileSync(wrangler, "#!/usr/bin/env bash\nexit 0\n");
+  chmodSync(wrangler, 0o755);
+  const curl = join(bin, "curl");
+  writeFileSync(
+    curl,
+    [
+      "#!/usr/bin/env bash",
+      'case "$*" in',
+      '  *appcast.xml*) echo "<sparkle:version>76</sparkle:version>" ;;',
+      '  *latest-macos.json*) echo \'{"downloadUrl":"https://downloads.burnbar.ai/fixture"}\' ;;',
+      "esac",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(curl, 0o755);
+  const uploaderEnv = {
+    ...process.env,
+    OPENBURNBAR_DOWNLOADS_DIR: downloads,
+    OPENBURNBAR_RELEASE_VERSION: releaseVersion,
+    PATH: `${bin}:${process.env.PATH}`,
+    WRANGLER_BIN: wrangler,
+  };
+  const matchingUpload = spawnSync("bash", ["scripts/upload-macos-downloads-r2.sh"], {
+    encoding: "utf8",
+    env: uploaderEnv,
+  });
+  assert.equal(matchingUpload.status, 0, matchingUpload.stderr || matchingUpload.stdout);
+
+  writeFileSync(
+    join(downloads, "latest-macos.json"),
+    `${JSON.stringify({ version: "1.0.29", dmg: "OpenBurnBar-1.0.29-macOS.dmg" })}\n`,
+  );
+  const staleUpload = spawnSync("bash", ["scripts/upload-macos-downloads-r2.sh"], {
+    encoding: "utf8",
+    env: uploaderEnv,
+  });
+  assert.notEqual(staleUpload.status, 0, "stale R2 release metadata must fail closed");
+  assert.match(staleUpload.stderr, /must bind version 1\.0\.34/);
+} finally {
+  rmSync(r2TestRoot, { recursive: true, force: true });
+}
 
 const windowsManifest = read("windows/app/OpenBurnBar.App/app.manifest");
 const expectedWindowsAssemblyVersion = "1.0.39.0";

@@ -60,10 +60,16 @@ scripts/setup-macos-downloads-r2.sh
 scripts/upload-macos-downloads-r2.sh
 ```
 
-The setup script creates the R2 bucket and can bind the branded custom domain. The
-upload script reads the current macOS release file/version from `website/src/data/site.ts`,
-uploads the DMG, ZIP, `appcast.xml`, `latest-macos.json`, checksums, SBOM, and release metadata from
-`website/public/downloads/`, and verifies the public DMG, appcast, and latest-metadata URLs. Defaults:
+The setup script creates the R2 bucket and can bind the branded custom domain.
+The upload script derives the candidate version from `project.yml` (or the
+explicit `OPENBURNBAR_RELEASE_VERSION` override), validates that
+`latest-macos.json` and `release-metadata.json` bind that exact version/tag,
+uploads the DMG, ZIP, `appcast.xml`, `latest-macos.json`, checksums, SBOM, and
+release metadata from `website/public/downloads/`, and verifies the public DMG,
+appcast, and latest-metadata URLs. It intentionally does not read
+`website/src/data/site.ts`: that file describes the already-published public
+release and may remain on the previous version until the replacement artifact
+has passed public trust verification. Defaults:
 
 - R2 bucket: `openburnbar-downloads`
 - Public download URL: `https://downloads.burnbar.ai`

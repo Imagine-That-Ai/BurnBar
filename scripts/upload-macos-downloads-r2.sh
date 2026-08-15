@@ -13,6 +13,7 @@ Environment:
   OPENBURNBAR_R2_BUCKET           R2 bucket name. Default: openburnbar-downloads
   OPENBURNBAR_R2_PUBLIC_BASE_URL Public download base URL to verify after upload.
   OPENBURNBAR_DOWNLOADS_DIR       Local artifact directory. Default: website/public/downloads
+  OPENBURNBAR_RELEASE_VERSION     Exact release version. Default: project.yml MARKETING_VERSION
   WRANGLER_BIN                    Optional Wrangler binary path.
 EOF
   exit 0
@@ -21,6 +22,17 @@ fi
 bucket="${OPENBURNBAR_R2_BUCKET:-openburnbar-downloads}"
 downloads_dir="${OPENBURNBAR_DOWNLOADS_DIR:-website/public/downloads}"
 public_base_url="${OPENBURNBAR_R2_PUBLIC_BASE_URL:-https://downloads.burnbar.ai}"
+release_version="${OPENBURNBAR_RELEASE_VERSION:-$(
+  grep -E '^[[:space:]]+MARKETING_VERSION:' project.yml \
+    | head -1 \
+    | sed 's/.*: *//' \
+    | tr -d ' "'
+)}"
+
+if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+  echo "Invalid OpenBurnBar release version: ${release_version:-<empty>}" >&2
+  exit 1
+fi
 
 if [[ -d "$HOME/.homebrew/opt/node@22/bin" ]]; then
   export PATH="$HOME/.homebrew/opt/node@22/bin:$PATH"
@@ -39,18 +51,9 @@ else
   wrangler=(npm exec --yes wrangler@latest --)
 fi
 
-release_file="$(
-  node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const match=source.match(/macReleaseFile:\s*"([^"]+)"/); if(!match) process.exit(1); console.log(match[1]);'
-)"
-release_version="$(
-  node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const match=source.match(/macReleaseLatest:\s*"([^"]+)"/); if(!match) process.exit(1); console.log(match[1]);'
-)"
-appcast_file="$(
-  node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const match=source.match(/macAppcastFile:\s*"([^"]+)"/); console.log(match?.[1] ?? "appcast.xml");'
-)"
-latest_file="$(
-  node -e 'const fs=require("fs"); const source=fs.readFileSync("website/src/data/site.ts","utf8"); const match=source.match(/macUpdateFeedFile:\s*"([^"]+)"/); console.log(match?.[1] ?? "latest-macos.json");'
-)"
+release_file="OpenBurnBar-${release_version}-macOS.dmg"
+appcast_file="appcast.xml"
+latest_file="latest-macos.json"
 
 files=(
   "$release_file"
@@ -63,6 +66,30 @@ files=(
   "OpenBurnBar-${release_version}-corresponding-source.tar.gz"
   "OpenBurnBar-${release_version}-corresponding-source.tar.gz.sha256"
 )
+
+node --input-type=module - \
+  "$downloads_dir/$latest_file" \
+  "$downloads_dir/release-metadata.json" \
+  "$release_version" \
+  "$release_file" <<'NODE'
+import { readFileSync } from "node:fs";
+
+const [latestPath, releaseMetadataPath, expectedVersion, expectedDmg] = process.argv.slice(2);
+const latest = JSON.parse(readFileSync(latestPath, "utf8"));
+const releaseMetadata = JSON.parse(readFileSync(releaseMetadataPath, "utf8"));
+
+if (latest.version !== expectedVersion || latest.dmg !== expectedDmg) {
+  throw new Error(`${latestPath} must bind version ${expectedVersion} and DMG ${expectedDmg}`);
+}
+if (
+  releaseMetadata.version !== expectedVersion ||
+  releaseMetadata.tag !== `v${expectedVersion}`
+) {
+  throw new Error(
+    `${releaseMetadataPath} must bind version ${expectedVersion} and tag v${expectedVersion}`,
+  );
+}
+NODE
 
 content_type_for() {
   case "$1" in
