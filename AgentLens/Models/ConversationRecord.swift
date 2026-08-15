@@ -108,6 +108,14 @@ enum ChatMessageRole: String, Codable {
     case system
 }
 
+/// The human decision on a directive proposal (M4). Persisted as its raw
+/// value (`"approved"`/`"dismissed"`) so a pending proposal survives app
+/// relaunch and is re-presented — never auto-approved (VAL-ORCH-032).
+enum ChatProposalDecision: String, Codable {
+    case approved
+    case dismissed
+}
+
 /// Ordered segments for assistant messages (text interleaved with tool calls). User messages use `content` only.
 struct ChatTranscriptPiece: Codable, Identifiable, Hashable {
     enum Kind: String, Codable {
@@ -137,6 +145,18 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
     let cliUsed: String?
     /// Populated for assistant streams that emit tool events; empty means treat `content` as plain text.
     let transcriptPieces: [ChatTranscriptPiece]
+    /// True when the assistant stream was cancelled mid-generation (M4,
+    /// VAL-ORCH-023): the partial message is marked cancelled honestly and
+    /// the thread stays consistent.
+    let cancelled: Bool
+    /// Canonical directive-proposal JSON carried by this assistant message
+    /// (M4). When non-nil, the message renders a proposal card with
+    /// approve/dismiss actions (VAL-ORCH-011).
+    let proposalJSON: String?
+    /// The human decision on the proposal, or nil while pending
+    /// (VAL-ORCH-012/013). Persisted so a pending proposal survives app
+    /// relaunch and is re-presented — never auto-approved (VAL-ORCH-032).
+    let proposalDecision: ChatProposalDecision?
 
     init(
         id: String = UUID().uuidString,
@@ -144,7 +164,10 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         content: String,
         timestamp: Date = Date(),
         cliUsed: String? = nil,
-        transcriptPieces: [ChatTranscriptPiece] = []
+        transcriptPieces: [ChatTranscriptPiece] = [],
+        cancelled: Bool = false,
+        proposalJSON: String? = nil,
+        proposalDecision: ChatProposalDecision? = nil
     ) {
         self.id = id
         self.role = role
@@ -152,6 +175,9 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         self.timestamp = timestamp
         self.cliUsed = cliUsed
         self.transcriptPieces = transcriptPieces
+        self.cancelled = cancelled
+        self.proposalJSON = proposalJSON
+        self.proposalDecision = proposalDecision
     }
 
     /// Pieces for display (legacy rows use a single synthetic text piece from `content`).
@@ -164,6 +190,40 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
     /// Joined text segments for persistence / search parity.
     static func joinedText(from pieces: [ChatTranscriptPiece]) -> String {
         pieces.filter { $0.kind == .text }.map(\.value).joined()
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, role, content, timestamp, cliUsed, transcriptPieces,
+             cancelled, proposalJSON, proposalDecision
+    }
+
+    /// Tolerant decoding: the M4 fields (`cancelled`, `proposalJSON`,
+    /// `proposalDecision`) default when absent so pre-M4 persisted payloads
+    /// still decode.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        role = try container.decode(ChatMessageRole.self, forKey: .role)
+        content = try container.decode(String.self, forKey: .content)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        cliUsed = try container.decodeIfPresent(String.self, forKey: .cliUsed)
+        transcriptPieces = try container.decodeIfPresent([ChatTranscriptPiece].self, forKey: .transcriptPieces) ?? []
+        cancelled = try container.decodeIfPresent(Bool.self, forKey: .cancelled) ?? false
+        proposalJSON = try container.decodeIfPresent(String.self, forKey: .proposalJSON)
+        proposalDecision = try container.decodeIfPresent(ChatProposalDecision.self, forKey: .proposalDecision)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(role, forKey: .role)
+        try container.encode(content, forKey: .content)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(cliUsed, forKey: .cliUsed)
+        try container.encode(transcriptPieces, forKey: .transcriptPieces)
+        try container.encode(cancelled, forKey: .cancelled)
+        try container.encodeIfPresent(proposalJSON, forKey: .proposalJSON)
+        try container.encodeIfPresent(proposalDecision, forKey: .proposalDecision)
     }
 }
 

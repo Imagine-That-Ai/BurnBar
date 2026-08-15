@@ -1700,6 +1700,20 @@ final class DataStore {
                 END
                 """)
         }
+        /// M4 orchestrator chat: per-message cancellation + proposal state.
+        /// `cancelled` marks a partial assistant stream that was cancelled
+        /// mid-generation (VAL-ORCH-023); `proposalJSON` carries the canonical
+        /// directive proposal so a pending proposal survives app relaunch and
+        /// is re-presented — never auto-approved (VAL-ORCH-032);
+        /// `proposalDecision` records the human decision (approved/dismissed,
+        /// VAL-ORCH-012/013).
+        migrator.registerMigration("v22_chat_proposal_state") { db in
+            try db.alter(table: "chat_messages") { t in
+                t.add(column: "cancelled", .boolean).notNull().defaults(to: false)
+                t.add(column: "proposalJSON", .text)
+                t.add(column: "proposalDecision", .text)
+            }
+        }
 
         return migrator
     }
@@ -2272,8 +2286,8 @@ final class DataStore {
             try upsertChatThread(threadID, at: message.timestamp, db: db)
             try db.execute(
                 sql: """
-                INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON, cancelled, proposalJSON, proposalDecision)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     message.id,
@@ -2282,7 +2296,10 @@ final class DataStore {
                     message.content,
                     message.timestamp,
                     message.cliUsed,
-                    piecesJSON
+                    piecesJSON,
+                    message.cancelled,
+                    message.proposalJSON,
+                    message.proposalDecision?.rawValue
                 ]
             )
         }
@@ -2453,8 +2470,21 @@ final class DataStore {
             content: content,
             timestamp: ts,
             cliUsed: row["cliUsed"] as? String,
-            transcriptPieces: pieces
+            transcriptPieces: pieces,
+            cancelled: Self.boolValue(row["cancelled"]),
+            proposalJSON: row["proposalJSON"] as? String,
+            proposalDecision: (row["proposalDecision"] as? String).flatMap(ChatProposalDecision.init(rawValue:))
         )
+    }
+
+    /// Reads a boolean column tolerantly (GRDB may surface SQLite integers as
+    /// Int/Int64/NSNumber depending on the query path).
+    private static func boolValue(_ value: Any?) -> Bool {
+        if let bool = value as? Bool { return bool }
+        if let int = value as? Int { return int != 0 }
+        if let int64 = value as? Int64 { return int64 != 0 }
+        if let number = value as? NSNumber { return number.boolValue }
+        return false
     }
 
     private func upsertChatThread(_ threadID: String, at timestamp: Date, db: Database) throws {

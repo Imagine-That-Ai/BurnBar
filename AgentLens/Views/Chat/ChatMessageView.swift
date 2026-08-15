@@ -41,6 +41,9 @@ struct ChatMessageView: View {
     let message: ChatMessageRecord
     var isStreaming: Bool
     var showViaBadge: Bool
+    /// Approve/dismiss callbacks for a proposal card (M4). Keyed by message id.
+    var onApproveProposal: ((String) -> Void)?
+    var onDismissProposal: ((String) -> Void)?
 
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript
@@ -82,6 +85,22 @@ struct ChatMessageView: View {
                     .foregroundStyle(DesignSystem.Colors.textMuted)
             }
 
+            if message.cancelled {
+                Text("Generation cancelled")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.warning)
+                    .padding(.horizontal, DesignSystem.Spacing.sm)
+                    .padding(.vertical, DesignSystem.Spacing.xs)
+                    .background(
+                        RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                            .fill(DesignSystem.Colors.warning.opacity(0.08))
+                    )
+            }
+
+            if let proposal = message.proposalJSON {
+                proposalCard(proposalJSON: proposal)
+            }
+
             ForEach(transcript) { piece in
                 switch piece.kind {
                 case .toolUse:
@@ -95,6 +114,95 @@ struct ChatMessageView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Proposal card (M4)
+
+    /// Renders a directive proposal with explicit approve/dismiss actions
+    /// (VAL-ORCH-011). A decided proposal shows its outcome and has no second
+    /// approve action (VAL-ORCH-012/013).
+    @ViewBuilder
+    private func proposalCard(proposalJSON: String) -> some View {
+        let proposal = BurnBarFleetProposalWire.decode(json: proposalJSON)
+        let decision = message.proposalDecision
+
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.whimsy)
+                Text("Directive proposal")
+                    .font(DesignSystem.Typography.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+            }
+
+            if let proposal {
+                Text("\(proposal.kind.rawValue) · \(proposal.targetAgent?.wireValue ?? "any")")
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                Text(proposal.payload)
+                    .font(DesignSystem.Typography.body)
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("id: \(proposal.id)")
+                    .font(DesignSystem.Typography.monoTiny)
+                    .foregroundStyle(DesignSystem.Colors.textMuted)
+            } else {
+                Text("Malformed proposal payload")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.error)
+            }
+
+            if let decision {
+                let isApproved = decision == .approved
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: isApproved ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
+                    Text(isApproved ? "Approved" : "Dismissed")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
+                }
+            } else if let onApproveProposal, let onDismissProposal {
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button("Approve") {
+                        onApproveProposal(message.id)
+                    }
+                    .font(DesignSystem.Typography.caption)
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.success)
+
+                    Button("Dismiss") {
+                        onDismissProposal(message.id)
+                    }
+                    .font(DesignSystem.Typography.caption)
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .frame(maxWidth: 300, alignment: .leading)
+        .padding(DesignSystem.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Radius.md, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            DesignSystem.Colors.whimsy.opacity(0.5),
+                            DesignSystem.Colors.border.opacity(0.3)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Directive proposal")
     }
 
     @ViewBuilder

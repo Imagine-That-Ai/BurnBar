@@ -26,6 +26,7 @@ struct ChatPanel: View {
         VStack(spacing: 0) {
             header
             Divider().opacity(0.35)
+            orchestratorStatusRibbon
             content
             if showInlineAgentContext {
                 inlineAgentContextRibbon
@@ -192,6 +193,8 @@ struct ChatPanel: View {
                     }
             )
 
+            modePicker
+
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -257,6 +260,75 @@ struct ChatPanel: View {
         .background(Color.white.opacity(0.02))
     }
 
+    // MARK: - Mode picker (M4)
+
+    /// The analyst/orchestrator mode switch lives in the EXISTING chat panel
+    /// header — no parallel messenger surface (VAL-ORCH-006). The same input
+    /// box, streaming placeholder, and history thread are used in both modes.
+    private var modePicker: some View {
+        Picker("Mode", selection: Binding(
+            get: { controller.mode },
+            set: { controller.setMode($0) }
+        )) {
+            ForEach(ChatMode.allCases, id: \.self) { mode in
+                Label(mode.label, systemImage: mode.iconName)
+                    .tag(mode)
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .font(DesignSystem.Typography.tiny)
+        .frame(width: 118)
+        .help("Chat mode: Analyst (local index) or Orchestrator (fleet)")
+    }
+
+    /// Orchestrator-mode status ribbon: daemon designation + snapshot
+    /// freshness. Typed degraded states are shown honestly — never a
+    /// fabricated live channel (VAL-ORCH-025/035).
+    @ViewBuilder
+    private var orchestratorStatusRibbon: some View {
+        if controller.mode == .orchestrator {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "network")
+                    .font(.system(size: 10))
+                    .foregroundStyle(DesignSystem.Colors.whimsy)
+
+                if let state = controller.orchestratorState {
+                    switch state.designation {
+                    case .none:
+                        Text("No orchestrator designated")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.warning)
+                    case .burnBarManaged:
+                        Text("Orchestrator: BurnBar-managed")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    case .agent(let id, _):
+                        Text("Orchestrator: \(id.wireValue)")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                } else if let error = controller.orchestratorStateError {
+                    Text("Orchestrator unavailable: \(error)")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.error)
+                        .lineLimit(1)
+                } else {
+                    Text("Checking orchestrator…")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textMuted)
+                }
+            }
+            .padding(.horizontal, DesignSystem.Spacing.md)
+            .padding(.vertical, DesignSystem.Spacing.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.whimsy.opacity(0.06))
+            )
+        }
+    }
+
     private var content: some View {
         Group {
             if !controller.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -309,7 +381,13 @@ struct ChatPanel: View {
                                 ChatMessageView(
                                     message: msg,
                                     isStreaming: controller.isStreaming && msg.id == controller.activeStreamMessageId && msg.role == .assistant,
-                                    showViaBadge: msg.cliUsed != nil
+                                    showViaBadge: msg.cliUsed != nil,
+                                    onApproveProposal: { messageID in
+                                        controller.approveProposal(messageID: messageID)
+                                    },
+                                    onDismissProposal: { messageID in
+                                        controller.dismissProposal(messageID: messageID)
+                                    }
                                 )
                                 .id(msg.id)
                             }

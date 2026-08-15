@@ -75,7 +75,7 @@ extension BurnBarDaemonSocketClient {
     /// - `-32601` (unknown method) or `-32001` (protocol mismatch) →
     ///   `.protocolMismatch` (old daemon vs new app, VAL-CROSS-007)
     /// - everything else → `.rpcError(code:message:)`
-    private static func classifyFleetError(_ error: BurnBarRPCError) -> BurnBarFleetClientError {
+    static func classifyFleetError(_ error: BurnBarRPCError) -> BurnBarFleetClientError {
         if error.code == BurnBarFleetClientErrorCode.internalError,
            error.message.contains("not ready") {
             return .notReady
@@ -85,5 +85,82 @@ extension BurnBarDaemonSocketClient {
             return .protocolMismatch(reason: error.message)
         }
         return .rpcError(code: error.code, message: error.message)
+    }
+}
+
+// MARK: - Orchestrator + Directive Client (M4)
+
+extension BurnBarDaemonSocketClient {
+    /// Fetches the daemon-owned orchestrator state (designation + pending
+    /// directive count). Typed failures mirror `fleetSnapshot` (M4).
+    static func fleetOrchestratorGet(at socketURL: URL) throws -> BurnBarOrchestratorState {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetOrchestratorGetResponse> = try send(
+            BurnBarRPCRequestEnvelope(method: .fleetOrchestratorGet),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw Self.classifyFleetError(error)
+        }
+
+        guard let result = envelope.result else {
+            throw BurnBarFleetClientError.emptyResponse
+        }
+
+        return result.state
+    }
+
+    /// Sets the daemon-owned orchestrator designation. The daemon stamps
+    /// `setAt` and recomputes `pendingDirectives`; the response is the updated
+    /// state (M4).
+    static func fleetOrchestratorSet(
+        _ designation: BurnBarOrchestratorDesignation,
+        at socketURL: URL
+    ) throws -> BurnBarOrchestratorState {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetOrchestratorSetResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .fleetOrchestratorSet,
+                params: BurnBarFleetOrchestratorSetRequest(
+                    state: BurnBarOrchestratorState(designation: designation)
+                )
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw Self.classifyFleetError(error)
+        }
+
+        guard let result = envelope.result else {
+            throw BurnBarFleetClientError.emptyResponse
+        }
+
+        return result.state
+    }
+
+    /// Records a directive (approval/dismissal) via `daemon.fleet.directive.record`.
+    /// The daemon upserts by `directive_id` (idempotent) and returns the exact
+    /// persisted record (M4).
+    static func fleetDirectiveRecord(
+        _ directive: BurnBarFleetDirective,
+        at socketURL: URL
+    ) throws -> BurnBarFleetDirective {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetDirectiveRecordResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .fleetDirectiveRecord,
+                params: BurnBarFleetDirectiveRecordRequest(directive: directive)
+            ),
+            socketURL: socketURL
+        )
+
+        if let error = envelope.error {
+            throw Self.classifyFleetError(error)
+        }
+
+        guard let result = envelope.result else {
+            throw BurnBarFleetClientError.emptyResponse
+        }
+
+        return result.directive
     }
 }

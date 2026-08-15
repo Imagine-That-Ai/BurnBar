@@ -11,15 +11,41 @@ enum CLIChatStreamEvent: Hashable {
 // MARK: - CLI Bridge
 
 @MainActor
-final class CLIBridge: ObservableObject {
+class CLIBridge: ObservableObject {
     enum Backend: Equatable {
         case claudeCode(path: String)
         case codex(path: String)
     }
 
-    private(set) var detectedBackend: Backend?
+    var detectedBackend: Backend?
 
     private var runningProcess: Process?
+
+    /// The environment used for executable resolution and child-process
+    /// launches. Injectable so hermetic tests can shim `PATH` and sandbox
+    /// `HOME` (M4 deterministic proposal fixture pattern); defaults to the
+    /// live process environment.
+    private let environment: [String: String]
+    /// The home directory used for executable resolution. Injectable for
+    /// sandboxed-HOME tests; defaults to the real home.
+    private let homeDirectory: String
+    /// When non-nil, `detect()` searches EXACTLY these directories (in
+    /// order) and skips the login-shell and user-managed fallbacks. This is
+    /// the hermetic seam for the M4 PATH-shim fixture: the host machine has
+    /// real `claude`/`codex` binaries under `~/.local/bin` and
+    /// `/usr/local/bin`, so a shimmed PATH alone cannot guarantee that the
+    /// fake CLI is the one resolved.
+    private let executableSearchDirectories: [String]?
+
+    init(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: String = NSHomeDirectory(),
+        executableSearchDirectories: [String]? = nil
+    ) {
+        self.environment = environment
+        self.homeDirectory = homeDirectory
+        self.executableSearchDirectories = executableSearchDirectories
+    }
 
     func detect() async {
         // Prefer Codex when both are installed so chat remains available if Claude CLI auth/config is broken.
@@ -86,7 +112,11 @@ final class CLIBridge: ObservableObject {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = Self.claudeArguments(prompt: prompt)
-        process.environment = Self.enrichedProcessEnvironment(executablePath: executable)
+        process.environment = Self.enrichedProcessEnvironment(
+            executablePath: executable,
+            environment: environment,
+            homeDirectory: homeDirectory
+        )
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -133,8 +163,12 @@ final class CLIBridge: ObservableObject {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = Self.codexArguments(prompt: prompt)
-        process.environment = Self.enrichedProcessEnvironment(executablePath: executable)
-        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.environment = Self.enrichedProcessEnvironment(
+            executablePath: executable,
+            environment: environment,
+            homeDirectory: homeDirectory
+        )
+        process.currentDirectoryURL = URL(fileURLWithPath: homeDirectory)
 
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -304,15 +338,22 @@ final class CLIBridge: ObservableObject {
     }
 
     private func resolveExecutable(named name: String) async -> String? {
-        await Task.detached {
-            let env = ProcessInfo.processInfo.environment
+        await Task.detached { [environment, homeDirectory, executableSearchDirectories] in
             let fileManager = FileManager.default
-            let homeDirectory = fileManager.homeDirectoryForCurrentUser.path
+
+            if let executableSearchDirectories {
+                // Hermetic seam: search exactly the injected directories.
+                return Self.resolveExecutable(
+                    named: name,
+                    searchDirectories: executableSearchDirectories,
+                    fileManager: fileManager
+                )
+            }
 
             if let path = Self.resolveExecutable(
                 named: name,
                 searchDirectories: Self.baseExecutableSearchDirectories(
-                    environment: env,
+                    environment: environment,
                     homeDirectory: homeDirectory
                 ),
                 fileManager: fileManager
@@ -322,7 +363,7 @@ final class CLIBridge: ObservableObject {
 
             if let path = Self.resolveExecutableFromLoginShell(
                 named: name,
-                environment: env,
+                environment: environment,
                 fileManager: fileManager
             ) {
                 return path
@@ -467,9 +508,12 @@ final class CLIBridge: ObservableObject {
     }
 
     /// GUI apps often have a minimal `PATH`; CLIs frequently invoke `node`/`python` via the shebang.
-    nonisolated private static func enrichedProcessEnvironment(executablePath: String? = nil) -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
-        let homeDirectory = NSHomeDirectory()
+    nonisolated private static func enrichedProcessEnvironment(
+        executablePath: String? = nil,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        homeDirectory: String = NSHomeDirectory()
+    ) -> [String: String] {
+        var env = environment
         var extra = [
             "/opt/homebrew/bin",
             "/usr/local/bin",
