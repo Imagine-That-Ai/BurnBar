@@ -18,6 +18,17 @@ test("documentation and ordinary workflow changes skip product suites", () => {
   for (const lane of LANES) assert.equal(result[lane], false);
 });
 
+test("launch-evidence attestation JSON is no-product (honest skip/require)", () => {
+  for (const path of [
+    "launch-evidence/libsignal-rust-core-bridge-v1.0.34.json",
+    "launch-evidence/latest-agpl-store-legal-packet.json",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    for (const lane of LANES) assert.equal(result[lane], false, `${path}:${lane}`);
+  }
+});
+
 test("isolated tests select only their owning product", () => {
   const app = classifyPaths(["AgentLensTests/QuotaTests.swift"]);
   assert.equal(app.macos, true);
@@ -130,6 +141,8 @@ test("push diffs retain governed deletions alongside safe changes", (context) =>
   execFileSync("git", ["config", "user.email", "ci@example.invalid"], {
     cwd: repo,
   });
+  // Temp fixture commits must not inherit the agent's global commit.gpgsign.
+  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repo });
   const governed =
     "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift";
   mkdirSync(

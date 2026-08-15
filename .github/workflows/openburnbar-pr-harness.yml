@@ -494,6 +494,10 @@ jobs:
         run: echo "Firebase CI secrets are unavailable; running tests without injected auth config."
 
       - name: Run OpenBurnBar app tests
+        # Unfiltered OpenBurnBarTests corpus — includes DomainCoreShadowEvidenceSpoolTests.
+        # That focused spool selector is skipped from domain-core swift-consumer-contracts
+        # on pull_request/merge_group (app-graph rebuild cost); this nightly/dispatch lane
+        # plus domain-core push/dispatch remain the coverage homes.
         env:
           XCODEBUILD_RETRY_ON_FAILURE: "YES"
           XCODEBUILD_TEST_ITERATIONS: "3"
