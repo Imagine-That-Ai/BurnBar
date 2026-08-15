@@ -21,7 +21,6 @@
     "Detect Windows dist changes",
     "Detect native changes",
     "Domain Core Trusted Deletion Guard",
-    "Domain Core PR Gate",
     "Extension (lint + types + unit tests)",
     "Fast Feedback Gate",
     "Firestore Security Rules Tests",
