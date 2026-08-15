@@ -566,6 +566,10 @@ struct PrivacyIndexingSettingsView: View {
                 }
                 showUsageMemoryConsentSheet = false
             }
+            // U3: while this consent sheet is up, ITS presenter owns the
+            // setup wizard (stacked on top); the usage section's presenter
+            // below stands down (`isActive`) to avoid a queued double-present.
+            .usageMemoryLocalSetupPresenter(settingsManager: settingsManager)
             .presentationBackground(Material.ultraThinMaterial)
         }
         .sheet(item: $usageMemoryCloudUpgradePlacement) { placement in
@@ -622,6 +626,22 @@ struct PrivacyIndexingSettingsView: View {
                         usageMemoryPlacementRow(placement)
                     }
 
+                    if settingsManager.usageMemoryModelPlacement == .local {
+                        // Same affordance (and notification) as the consent
+                        // sheet's placement step; the presenter attached to
+                        // this subsection shows the U3 wizard.
+                        Button {
+                            NotificationCenter.default.post(
+                                name: .usageMemoryLocalModelSetupRequested,
+                                object: nil
+                            )
+                        } label: {
+                            Label("Set up local model…", systemImage: "arrow.down.circle")
+                                .font(DesignSystem.Typography.caption)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
                     Divider().background(DesignSystem.Colors.border)
 
                     SettingsToggle(
@@ -657,6 +677,14 @@ struct PrivacyIndexingSettingsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
             }
         }
+        // U3: presents the setup wizard for this section's own "Set up local
+        // model…" button. Stands down while the consent sheet is up — the
+        // presenter attached to that sheet's content owns those posts, and a
+        // second observer here would queue a stray duplicate sheet.
+        .usageMemoryLocalSetupPresenter(
+            settingsManager: settingsManager,
+            isActive: !showUsageMemoryConsentSheet && usageMemoryCloudUpgradePlacement == nil
+        )
     }
 
     /// One selectable placement row. Selecting a cloud placement without the

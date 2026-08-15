@@ -626,6 +626,10 @@ struct DashboardView: View {
                 consentCoordinator?.confirmUsageMemoryConsent(grant: grant)
                 consentCoordinator?.showUsageMemoryConsent = false
             }
+            // U3: "Set up local model…" on the placement step posts the setup
+            // notification; presenting from the sheet content stacks the
+            // wizard on top of the consent sheet.
+            .usageMemoryLocalSetupPresenter(settingsManager: settingsManager)
             .presentationBackground(Material.ultraThinMaterial)
         }
         .sheet(isPresented: $showAnalyticsConsent) {

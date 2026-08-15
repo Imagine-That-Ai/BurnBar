@@ -2,11 +2,10 @@ import SwiftUI
 
 // MARK: - Usage-memory consent (first-run, U2)
 
-/// U3 mount point: posted by the "Set up local model…" affordance so the local
-/// curation-model setup wizard (U3) can present itself once it exists. Until U3
-/// lands, posting this is intentionally a no-op — nothing observes it yet.
-// TODO(U3): observe this notification from the local-model setup wizard and
-// present the download/verify flow (Ollama model pull + capability probe).
+/// U3 mount point: posted by the "Set up local model…" affordances (this
+/// sheet's placement step and Settings → Privacy's usage section) and observed
+/// by `UsageMemoryLocalSetupPresenter`, which presents the U3 setup wizard
+/// (`UsageMemoryLocalSetupSheet`: Ollama detection + model pull + verify).
 extension Notification.Name {
     static let usageMemoryLocalModelSetupRequested =
         Notification.Name("UsageMemoryLocalModelSetupRequested")
@@ -24,6 +23,13 @@ extension UsageMemoryModelPlacement: Identifiable {
 /// consent sheet and the Settings → Privacy picker can never drift apart on
 /// what each option claims about egress.
 enum UsageMemoryPlacementCopy {
+    /// System requirements for the fully-local placement, shared verbatim
+    /// between the consent sheet's placement row and the U3 setup wizard so
+    /// the two surfaces can never drift on the promised numbers.
+    static let localSystemRequirements =
+        "Requires ~6 GB download / 8 GB+ unified memory; image understanding "
+            + "needs ~9 GB (Apple silicon recommended)."
+
     static func title(_ placement: UsageMemoryModelPlacement) -> String {
         switch placement {
         case .local: "Fully local"
@@ -39,8 +45,7 @@ enum UsageMemoryPlacementCopy {
         switch placement {
         case .local:
             "Candidate text never leaves this Mac. Uses your local model (Ollama). "
-                + "Requires ~6 GB download / 8 GB+ unified memory; image understanding "
-                + "needs ~9 GB (Apple silicon recommended)."
+                + localSystemRequirements
         case .cloudText:
             "Candidate text (never page content, never screenshots) is sent to "
                 + "BurnBar's curation service, pinned to a US provider (CoreWeave via "
@@ -176,8 +181,8 @@ final class UsageMemoryConsentFlowModel {
         complete(granted: false)
     }
 
-    /// Stub affordance for U3's local-model setup wizard (see the
-    /// `usageMemoryLocalModelSetupRequested` mount point above).
+    /// Asks the host surface to present U3's local-model setup wizard (see
+    /// the `usageMemoryLocalModelSetupRequested` mount point above).
     func requestLocalModelSetup() {
         NotificationCenter.default.post(name: .usageMemoryLocalModelSetupRequested, object: nil)
     }
