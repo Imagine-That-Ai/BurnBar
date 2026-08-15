@@ -72,7 +72,10 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
-            let files = try fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
+            let files = try fileManager.contentsOfDirectory(
+                at: projectDir,
+                includingPropertiesForKeys: OpenBurnBarCore.FileSignature.directoryListingPrefetchKeys
+            )
                 .filter { $0.pathExtension == "jsonl" }
 
             for jsonlFile in files {
@@ -529,23 +532,87 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
     /// discovering it from the environment / default install locations. Keeps
     /// tests hermetic and supports non-default OpenCode data homes.
     private let databasePathOverride: String?
+    private let fileManager: FileManager
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CachedUsageBundleEntry<OpenBurnBarCore.FileSetSignature>>
+    private let sessionScanCount = OpenBurnBarCore.Locked(0)
+    private let sessionCacheHitCount = OpenBurnBarCore.Locked(0)
+    private let partReadCount = OpenBurnBarCore.Locked(0)
 
-    init(databasePathOverride: String? = nil) {
+    init(
+        databasePathOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
+    ) {
         self.databasePathOverride = databasePathOverride
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let databasePathOverride {
+            cacheURL = URL(fileURLWithPath: databasePathOverride)
+                .deletingLastPathComponent()
+                .appendingPathComponent(".obb-mac-opencode-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.macOpenCodeParserCacheURL
+        }
+        self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "MacOpenCodeParser"
+        )
+        ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
     }
 
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    var lastPartReadCount: Int { partReadCount.read() }
+
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
-        let fm = FileManager.default
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        partReadCount.write(0)
+        let fm = fileManager
         let resolved = databasePathOverride.map { ($0 as NSString).expandingTildeInPath }
             ?? Self.resolvedDatabasePath()
         guard let dbPath = resolved, fm.fileExists(atPath: dbPath) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
         let dbURL = URL(fileURLWithPath: dbPath)
-        guard try OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm).shouldRead(dbURL) else {
-            return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
+        let cacheKey = dbURL.standardizedFileURL.path
+        var parseCache = cacheStore.load()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
         }
-        let result = try parseDatabase(dbPath: dbPath)
+        guard try OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm).shouldRead(dbURL) else {
+            return OpenBurnBarCore.ParseResult(
+                usages: parseCache.fileEntries[cacheKey]?.sessions.map { $0.makeUsage(provider: .openCode) } ?? [],
+                conversations: []
+            )
+        }
+        let signature = OpenBurnBarCore.FileSetSignature(databaseURL: dbURL, using: fm)
+        if !options.includeConversationBodies,
+           let signature,
+           let cached = parseCache.fileEntries[cacheKey],
+           cached.signature == signature {
+            sessionCacheHitCount.withLock { $0 += 1 }
+            return OpenBurnBarCore.ParseResult(
+                usages: cached.sessions.map { $0.makeUsage(provider: .openCode) },
+                conversations: []
+            )
+        }
+        sessionScanCount.withLock { $0 += 1 }
+        let result = try parseDatabase(
+            dbPath: dbPath,
+            includeConversationBodies: options.includeConversationBodies
+        )
+        if let signature {
+            parseCache.fileEntries = [
+                cacheKey: OpenBurnBarCore.CachedUsageBundleEntry(signature: signature, usages: result.usages)
+            ]
+            cacheMutated = true
+        }
         return options.includeConversationBodies
             ? result
             : OpenBurnBarCore.ParseResult(usages: result.usages, conversations: [])
@@ -584,7 +651,7 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
         var cost: Double?
     }
 
-    private func parseDatabase(dbPath: String) throws -> OpenBurnBarCore.ParseResult {
+    private func parseDatabase(dbPath: String, includeConversationBodies: Bool) throws -> OpenBurnBarCore.ParseResult {
         var config = Configuration()
         config.readonly = true
         let db = try DatabaseQueue(path: dbPath, configuration: config)
@@ -635,19 +702,33 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
             }
 
             if tables.contains("part") {
-                for row in try Row.fetchAll(db, sql: "SELECT * FROM part") {
-                    guard let json = Self.dataJSON(row) else { continue }
-                    let type = (json["type"] as? String ?? "text").lowercased()
-                    guard type == "text" || type == "reasoning" else { continue }
-                    guard let messageID = Self.identifier(row, json, keys: ["messageID", "message_id", "messageId"]) else { continue }
-                    let text = (json["text"] as? String ?? json["content"] as? String ?? "")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { continue }
-                    if var existing = textByMessage[messageID] {
-                        existing += "\n\n" + text
-                        textByMessage[messageID] = existing
-                    } else {
-                        textByMessage[messageID] = text
+                let heuristicMessageIDs = Set(messagesBySession.flatMap { _, raw -> [String] in
+                    let input = raw.reduce(0) { $0 + $1.input }
+                    let output = raw.reduce(0) { $0 + $1.output }
+                    let cacheCreation = raw.reduce(0) { $0 + $1.cacheCreation }
+                    let cacheRead = raw.reduce(0) { $0 + $1.cacheRead }
+                    guard input == 0 && output == 0 && cacheCreation == 0 && cacheRead == 0 else {
+                        return []
+                    }
+                    return raw.map(\.messageID)
+                })
+                let scopedIDs: Set<String>? = includeConversationBodies ? nil : heuristicMessageIDs
+                if includeConversationBodies || !heuristicMessageIDs.isEmpty {
+                    for row in try fetchOpenCodePartRows(db: db, messageIDs: scopedIDs) {
+                        guard let json = Self.dataJSON(row) else { continue }
+                        let type = (json["type"] as? String ?? "text").lowercased()
+                        guard type == "text" || type == "reasoning" else { continue }
+                        guard let messageID = Self.identifier(row, json, keys: ["messageID", "message_id", "messageId"]) else { continue }
+                        if let scopedIDs, !scopedIDs.contains(messageID) { continue }
+                        let text = (json["text"] as? String ?? json["content"] as? String ?? "")
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !text.isEmpty else { continue }
+                        if var existing = textByMessage[messageID] {
+                            existing += "\n\n" + text
+                            textByMessage[messageID] = existing
+                        } else {
+                            textByMessage[messageID] = text
+                        }
                     }
                 }
             }
@@ -779,6 +860,84 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
     }
 
+    private func fetchOpenCodePartRows(db: Database, messageIDs: Set<String>?) throws -> [Row] {
+        let columns = Set(
+            try Row.fetchAll(db, sql: "PRAGMA table_info(part)").compactMap { $0["name"] as? String }
+        )
+        let selectList = OpenBurnBarCore.OpenCodePartQuery.selectList(existingColumns: columns)
+        let rows: [Row]
+        if let messageIDs {
+            if let idColumn = OpenBurnBarCore.OpenCodePartQuery.idColumn(in: columns) {
+                rows = try Self.queryBoundedOpenCodePartRows(
+                    db: db,
+                    whereSQL: { OpenBurnBarCore.OpenCodePartQuery.idColumnWhereSQL(idColumn: idColumn, placeholderCount: $0) },
+                    messageIDs: messageIDs,
+                    selectList: OpenBurnBarCore.OpenCodePartQuery.selectList(
+                        existingColumns: columns,
+                        required: [idColumn]
+                    )
+                )
+            } else if let payloadColumn = OpenBurnBarCore.OpenCodePartQuery.payloadColumn(in: columns),
+                      Self.sqliteSupportsJSONExtract(db) {
+                let bounded = try Self.queryBoundedOpenCodePartRows(
+                    db: db,
+                    whereSQL: { OpenBurnBarCore.OpenCodePartQuery.jsonExtractWhereSQL(payloadColumn: payloadColumn, placeholderCount: $0) },
+                    messageIDs: messageIDs,
+                    selectList: selectList
+                )
+                rows = bounded.isEmpty
+                    ? try Row.fetchAll(db, sql: "SELECT \(selectList) FROM part")
+                    : bounded
+            } else {
+                rows = try Row.fetchAll(db, sql: "SELECT \(selectList) FROM part")
+            }
+        } else {
+            rows = try Row.fetchAll(db, sql: "SELECT \(selectList) FROM part")
+        }
+        partReadCount.withLock { $0 += rows.count }
+        return rows
+    }
+
+    private static func sqliteSupportsJSONExtract(_ db: Database) -> Bool {
+        do {
+            guard let row = try Row.fetchOne(db, sql: OpenBurnBarCore.OpenCodePartQuery.jsonExtractProbeSQL) else {
+                return false
+            }
+            let probe = Self.columnValue(row, "probe")
+            return OpenBurnBarCore.OpenCodePartQuery.jsonExtractProbeSucceeded(
+                intValue: probe as? Int64,
+                textValue: probe as? String
+            )
+        } catch {
+            return false
+        }
+    }
+
+    private static func queryBoundedOpenCodePartRows(
+        db: Database,
+        whereSQL: (Int) -> String?,
+        messageIDs: Set<String>,
+        selectList: String
+    ) throws -> [Row] {
+        guard !messageIDs.isEmpty else { return [] }
+        var collected: [Row] = []
+        let ordered = Array(messageIDs)
+        var index = 0
+        while index < ordered.count {
+            let end = min(index + OpenBurnBarCore.OpenCodePartQuery.chunkSize, ordered.count)
+            let chunk = Array(ordered[index..<end])
+            guard let clause = whereSQL(chunk.count) else { return [] }
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT \(selectList) FROM part WHERE \(clause)",
+                arguments: StatementArguments(chunk)
+            )
+            collected.append(contentsOf: rows)
+            index = end
+        }
+        return collected
+    }
+
     // MARK: - JSON / column helpers
 
     private static func dataJSON(_ row: Row) -> [String: Any]? {
@@ -898,32 +1057,103 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
 /// search alongside every other agent.
 final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .piAgent
+    private let fileManager: FileManager
+    private let sessionsDirectoryOverride: URL?
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CachedUsageBundleEntry<OpenBurnBarCore.FileSignature>>
+    private let sessionScanCount = OpenBurnBarCore.Locked(0)
+    private let sessionCacheHitCount = OpenBurnBarCore.Locked(0)
+
+    init(
+        fileManager: FileManager = .default,
+        sessionsDirectoryOverride: URL? = nil,
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
+    ) {
+        self.fileManager = fileManager
+        self.sessionsDirectoryOverride = sessionsDirectoryOverride
+        let cacheURL: URL
+        if let sessionsDirectoryOverride {
+            cacheURL = sessionsDirectoryOverride.appendingPathComponent(".obb-mac-pi-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.macPiAgentParserCacheURL
+        }
+        self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "MacPiAgentParser"
+        )
+        ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
-        let fm = FileManager.default
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let fm = fileManager
         let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm)
-        let sessionsPath = (provider.logDirectory as NSString).expandingTildeInPath
+        let sessionsPath = sessionsDirectoryOverride?.path
+            ?? (provider.logDirectory as NSString).expandingTildeInPath
         guard fm.fileExists(atPath: sessionsPath) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
 
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
-        // try?-ok(absent or unreadable session root yields no sessions)
-        let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?
+        // try?-ok(unreadable Pi sessions directory yields no JSONL files)
+        let jsonlFiles = (try? fm.contentsOfDirectory(
+            at: sessionsURL,
+            includingPropertiesForKeys: OpenBurnBarCore.FileSignature.directoryListingPrefetchKeys
+        ))?
             .filter { $0.pathExtension == "jsonl" } ?? []
 
         var usages: [TokenUsage] = []
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         for file in jsonlFiles {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
             guard try gate.shouldRead(file) else { continue }
+            let signature = OpenBurnBarCore.FileSignature(for: file, using: fm)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .piAgent) })
+                continue
+            }
+            sessionScanCount.withLock { $0 += 1 }
             let sessionId = file.deletingPathExtension().lastPathComponent
             if let pair = parseSession(file: file, sessionId: sessionId) {
                 if let usage = pair.usage { usages.append(usage) }
                 if options.includeConversationBodies, let conversation = pair.conversation {
                     conversations.append(conversation)
                 }
+                if let signature, let usage = pair.usage {
+                    parseCache.fileEntries[cacheKey] = OpenBurnBarCore.CachedUsageBundleEntry(
+                        signature: signature,
+                        usages: [usage]
+                    )
+                    cacheMutated = true
+                }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)

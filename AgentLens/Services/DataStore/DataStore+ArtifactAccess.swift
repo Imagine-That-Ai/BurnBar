@@ -93,6 +93,16 @@ extension DataStore {
         )
     }
 
+    func countSharedArtifactSyncStatesByStatus(
+        workspaceID: String? = nil,
+        teamID: String? = nil
+    ) async throws -> [SharedArtifactSyncStatus: Int] {
+        try await actor.artifactStore.countSharedArtifactSyncStatesByStatus(
+            workspaceID: workspaceID,
+            teamID: teamID
+        )
+    }
+
     func upsertSharedArtifactPermission(_ permission: SharedArtifactPermissionRecord) async throws -> SharedArtifactPermissionWriteDisposition {
         try await actor.artifactStore.upsertSharedArtifactPermission(permission)
     }

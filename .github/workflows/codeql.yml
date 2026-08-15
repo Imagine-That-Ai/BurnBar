@@ -7,9 +7,10 @@ name: CodeQL
 #   - Python (CI helpers, build scripts)
 #
 # Swift is NOT on pull_request — Swift CodeQL takes 60-90 min and kills PR
-# velocity. Lightweight JavaScript/TypeScript + Python CodeQL runs on relevant
-# PRs in .github/workflows/codeql-pr.yml. Other fast PR security gates live in
-# .github/workflows/security-pr.yml (gitleaks, npm audit, dependency review).
+# velocity. Non-Swift CodeQL (JS/TS, Python, Java/Kotlin) runs on PR +
+# merge_group via .github/workflows/codeql-pr.yml. Other fast PR security gates
+# live in .github/workflows/security-pr.yml (gitleaks, npm audit, dependency
+# review).
 #
 # Swift is built with xcodebuild before analysis to ensure full symbol resolution.
 # To activate this workflow, switch the repo's code-scanning configuration from

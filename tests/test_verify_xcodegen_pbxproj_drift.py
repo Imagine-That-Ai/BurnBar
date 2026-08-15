@@ -1,4 +1,5 @@
 import subprocess
+import time
 from pathlib import Path
 
 
@@ -196,6 +197,129 @@ def test_allows_xcodegen_temp_package_product_id_churn(tmp_path: Path):
     assert "PBX object ID churn ignored" in result.stdout
 
 
+def test_allows_source_membership_list_reordering(tmp_path: Path):
+    committed = """// !$*UTF8*$!
+{
+  objects = {
+    AAAAAAAAAAAAAAAAAAAAAAAA /* Foo.swift */ = {
+      isa = PBXFileReference;
+      path = Foo.swift;
+    };
+    BBBBBBBBBBBBBBBBBBBBBBBB /* Bar.swift */ = {
+      isa = PBXFileReference;
+      path = Bar.swift;
+    };
+    CCCCCCCCCCCCCCCCCCCCCCCC /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      files = (
+        DDDDDDDDDDDDDDDDDDDDDDDD /* Foo.swift in Sources */,
+        EEEEEEEEEEEEEEEEEEEEEEEE /* Bar.swift in Sources */,
+      );
+    };
+    DDDDDDDDDDDDDDDDDDDDDDDD /* Foo.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = AAAAAAAAAAAAAAAAAAAAAAAA /* Foo.swift */;
+    };
+    EEEEEEEEEEEEEEEEEEEEEEEE /* Bar.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = BBBBBBBBBBBBBBBBBBBBBBBB /* Bar.swift */;
+    };
+  };
+}
+"""
+    generated = """// !$*UTF8*$!
+{
+  objects = {
+    111111111111111111111111 /* Foo.swift */ = {
+      isa = PBXFileReference;
+      path = Foo.swift;
+    };
+    222222222222222222222222 /* Bar.swift */ = {
+      isa = PBXFileReference;
+      path = Bar.swift;
+    };
+    333333333333333333333333 /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      files = (
+        555555555555555555555555 /* Bar.swift in Sources */,
+        444444444444444444444444 /* Foo.swift in Sources */,
+      );
+    };
+    444444444444444444444444 /* Foo.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = 111111111111111111111111 /* Foo.swift */;
+    };
+    555555555555555555555555 /* Bar.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = 222222222222222222222222 /* Bar.swift */;
+    };
+  };
+}
+"""
+
+    result = run_verifier(tmp_path, committed, generated)
+
+    assert result.returncode == 0
+
+
+def test_rejects_dropped_source_even_when_lists_are_reordered(tmp_path: Path):
+    committed = """// !$*UTF8*$!
+{
+  objects = {
+    AAAAAAAAAAAAAAAAAAAAAAAA /* Foo.swift */ = {
+      isa = PBXFileReference;
+      path = Foo.swift;
+    };
+    BBBBBBBBBBBBBBBBBBBBBBBB /* Bar.swift */ = {
+      isa = PBXFileReference;
+      path = Bar.swift;
+    };
+    CCCCCCCCCCCCCCCCCCCCCCCC /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      files = (
+        EEEEEEEEEEEEEEEEEEEEEEEE /* Bar.swift in Sources */,
+        DDDDDDDDDDDDDDDDDDDDDDDD /* Foo.swift in Sources */,
+      );
+    };
+    DDDDDDDDDDDDDDDDDDDDDDDD /* Foo.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = AAAAAAAAAAAAAAAAAAAAAAAA /* Foo.swift */;
+    };
+    EEEEEEEEEEEEEEEEEEEEEEEE /* Bar.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = BBBBBBBBBBBBBBBBBBBBBBBB /* Bar.swift */;
+    };
+  };
+}
+"""
+    generated = """// !$*UTF8*$!
+{
+  objects = {
+    111111111111111111111111 /* Foo.swift */ = {
+      isa = PBXFileReference;
+      path = Foo.swift;
+    };
+    333333333333333333333333 /* Sources */ = {
+      isa = PBXSourcesBuildPhase;
+      files = (
+        444444444444444444444444 /* Foo.swift in Sources */,
+      );
+    };
+    444444444444444444444444 /* Foo.swift in Sources */ = {
+      isa = PBXBuildFile;
+      fileRef = 111111111111111111111111 /* Foo.swift */;
+    };
+  };
+}
+"""
+
+    result = run_verifier(tmp_path, committed, generated)
+
+    assert result.returncode == 1
+    assert "semantic drift" in result.stderr
+    assert "Bar.swift" in result.stderr
+
+
 def test_rejects_temp_package_product_semantic_drift(tmp_path: Path):
     committed = """// !$*UTF8*$!
 {
@@ -231,3 +355,70 @@ def test_rejects_temp_package_product_semantic_drift(tmp_path: Path):
     assert result.returncode == 1
     assert "semantic drift" in result.stderr
     assert "OpenBurnBarMedia" in result.stderr
+
+
+def test_id_list_sort_does_not_use_greedy_block_regex():
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "ID_LIST_OPEN" in source
+    assert "ID_LIST_BLOCK" not in source
+    assert r"(?:[ \t]*[^\n]*\n)*" not in source
+    assert r"(?:[ \t]+[^\n]+\n)*" not in source
+
+
+def test_build_settings_list_does_not_backtrack_through_the_rest_of_the_block(tmp_path: Path):
+    settings = "\n".join(f"\t\t\t\tCLANG_WARN_{index:03d} = YES;" for index in range(120))
+    blob = f"""// !$*UTF8*$!
+{{
+  objects = {{
+    AAAAAAAAAAAAAAAAAAAAAAAA /* Debug */ = {{
+      isa = XCBuildConfiguration;
+      buildSettings = {{
+        ALWAYS_SEARCH_USER_PATHS = NO;
+        GCC_PREPROCESSOR_DEFINITIONS = (
+          "$(inherited)",
+          "DEBUG=1",
+        );
+{settings}
+      }};
+      name = Debug;
+    }};
+  }};
+}}
+"""
+    started = time.monotonic()
+    result = run_verifier(tmp_path, blob, blob)
+    assert result.returncode == 0
+    assert time.monotonic() - started < 2.0
+
+
+def test_object_header_scan_is_linear_when_no_object_matches(tmp_path: Path):
+    """A failed DOTALL `.*?` header match from every byte hung CI for 15m."""
+    noise = "shellScript = \"echo " + ("A" * 24 + " /* not an object */ = " * 200) + "\";\n"
+    blob = (
+        "// !$*UTF8*$!\n{\n  objects = {\n"
+        + (noise * 80)
+        + "    AAAAAAAAAAAAAAAAAAAAAAAA /* Run Script */ = {\n"
+        + "      isa = PBXShellScriptBuildPhase;\n"
+        + "      shellScript = \"swiftlint lint --strict\";\n"
+        + "    };\n"
+        + "  };\n}\n"
+    )
+    started = time.monotonic()
+    result = run_verifier(tmp_path, blob, blob)
+    assert result.returncode == 0
+    assert time.monotonic() - started < 2.0
+
+
+def test_committed_project_canonicalizes_against_itself_quickly():
+    path = ROOT / "OpenBurnBar.xcodeproj/project.pbxproj"
+    started = time.monotonic()
+    result = subprocess.run(
+        ["python3", str(SCRIPT), str(path), str(path)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    elapsed = time.monotonic() - started
+    assert result.returncode == 0, result.stderr
+    assert "PBX object ID churn ignored" in result.stdout
+    assert elapsed < 20, f"canonicalizer took {elapsed:.1f}s on committed pbxproj"

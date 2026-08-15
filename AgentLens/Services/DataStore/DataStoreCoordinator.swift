@@ -448,7 +448,7 @@ final class DataStoreCoordinator {
     }
 
     /// No-change short-circuit shared by BOTH replace paths (the periodic
-    /// cadence tick lands in `replaceUsages` via `reloadUsagesIfChanged`
+    /// cadence tick lands in `replaceUsageSnapshot` via `reloadUsagesIfChanged`
     /// when the usage write marker advanced, while init/deleteAll land in
     /// `replaceUsageSnapshot`). A content-identical replacement before the
     /// next time-window boundary only refreshes `lastRefresh`; everything
@@ -492,7 +492,7 @@ final class DataStoreCoordinator {
         await refresh()
     }
 
-    /// Periodic-tick apply: reloads the full usage set ONLY when the usage
+    /// Periodic-tick apply: reloads the dashboard snapshot ONLY when the usage
     /// table content changed since the last reload (write marker advanced)
     /// or a rendered time-window boundary passed (midnight / rolling 7d/30d
     /// decay — the same boundary contract as `UsageReplaceGate`).
@@ -501,9 +501,11 @@ final class DataStoreCoordinator {
     /// O(total-history): an idle tick previously refetched + re-sorted +
     /// re-aggregated every `token_usage` row before the fingerprint gate
     /// could discard the result; now it performs one actor hop to read an
-    /// integer and returns. When content DID change, the reload runs the
-    /// exact same full `fetchAllUsage` → `replaceUsages` path as before, so
-    /// displayed numbers are bit-identical to the previous architecture.
+    /// integer and returns. When content DID change, the reload uses the
+    /// same `fetchDashboardUsageSnapshot` path as init (`GROUP BY` window
+    /// totals + `quickHydrationLimit` covering rows) — not `SELECT *` /
+    /// `fetchAllUsage` — so displayed numbers stay SQL-accurate without
+    /// decoding the entire ledger.
     func reloadUsagesIfChanged() async {
         let marker = await actor.usageTableWriteMarker
         let now = nowProvider()
@@ -518,9 +520,11 @@ final class DataStoreCoordinator {
             // may already be visible in the rows, and the next tick then
             // reloads once more. Never the reverse (stale rows recorded
             // under a newer marker).
-            let allUsages = try await actor.usageStore.fetchAllUsage()
+            let snapshot = try await actor.fetchDashboardUsageSnapshot(
+                loadedUsageLimit: Self.quickHydrationLimit
+            )
             lastReloadedUsageWriteMarker = marker
-            replaceUsages(allUsages)
+            replaceUsageSnapshot(snapshot)
         } catch {
             AppLogger.dataStore.silentFailure("reload_usages_if_changed_failed", error: error)
         }

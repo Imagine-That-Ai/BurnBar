@@ -12,12 +12,51 @@ import OpenBurnBarKernel
 /// Prefers `transcript_full.jsonl` (untruncated) over `transcript.jsonl` when available.
 /// Extracts per-session model name from `USER_SETTINGS_CHANGE` metadata and workspace
 /// project name from `user_information` blocks embedded in the transcript.
+///
+/// Idle usage ticks resume unchanged transcripts from a mtime+size disk cache
+/// (token totals only — never conversation bodies). The configured fallback
+/// model from `settings.json` participates in the signature so a selector
+/// change cannot reuse a cached row that still carried the previous model.
 public final class AntigravityParser: LogParser, Sendable {
     public let logDirectoryOverride: String?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageEntry<AntigravityCacheSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(logDirectoryOverride: String? = nil) {
-        self.logDirectoryOverride = logDirectoryOverride
+    /// Transcript identity plus the settings.json fallback model. Session-level
+    /// model extracted from the transcript is already in the cached totals;
+    /// including the fallback string still busts hits when a session has no
+    /// embedded model and the user changes the selector.
+    private struct AntigravityCacheSignature: Codable, Equatable, Sendable {
+        var transcript: FileSignature
+        var fallbackModel: String
     }
+
+    public init(
+        logDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
+        self.logDirectoryOverride = logDirectoryOverride
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-antigravity-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.antigravityParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "AntigravityParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     public let provider: AgentProvider = .antigravity
 
     struct SettingsFile: Decodable {
@@ -45,12 +84,13 @@ public final class AntigravityParser: LogParser, Sendable {
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let basePath = ((logDirectoryOverride ?? "~/.gemini/antigravity-cli") as NSString).expandingTildeInPath
         let brainPath = (basePath as NSString).appendingPathComponent("brain")
 
-        guard fm.fileExists(atPath: brainPath) else {
+        guard fileManager.fileExists(atPath: brainPath) else {
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -58,15 +98,23 @@ public final class AntigravityParser: LogParser, Sendable {
         let fallbackModelName = try configuredFallbackModel(
             at: settingsURL,
             options: options,
-            fileManager: fm,
+            fileManager: fileManager,
             readGate: gate
         )
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         let brainURL = URL(fileURLWithPath: brainPath)
-        let conversationDirs = (try? fm.contentsOfDirectory(at: brainURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
+        let conversationDirs = (try? fileManager.contentsOfDirectory(at: brainURL, includingPropertiesForKeys: [.isDirectoryKey]))?.filter {
             (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         } ?? []
 
@@ -78,17 +126,40 @@ public final class AntigravityParser: LogParser, Sendable {
 
             let fullTranscript = logsDir.appendingPathComponent("transcript_full.jsonl")
             let truncatedTranscript = logsDir.appendingPathComponent("transcript.jsonl")
-            let transcriptFile = fm.fileExists(atPath: fullTranscript.path) ? fullTranscript : truncatedTranscript
+            let transcriptFile = fileManager.fileExists(atPath: fullTranscript.path) ? fullTranscript : truncatedTranscript
 
-            guard fm.fileExists(atPath: transcriptFile.path), try gate.shouldRead(transcriptFile) else { continue }
+            guard fileManager.fileExists(atPath: transcriptFile.path) else { continue }
+            let cacheKey = transcriptFile.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(transcriptFile) else { continue }
 
+            let signature = FileSignature(for: transcriptFile, using: fileManager).map {
+                AntigravityCacheSignature(transcript: $0, fallbackModel: fallbackModelName)
+            }
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(cached.totals.makeUsage(provider: .antigravity, sessionId: sessionId))
+                continue
+            }
+
+            sessionScanCount.withLock { $0 += 1 }
             do {
                 if let pair = try parseSession(
                     transcriptFile: transcriptFile,
                     sessionId: sessionId,
-                    fallbackModel: fallbackModelName
+                    fallbackModel: fallbackModelName,
+                    includeConversationBodies: options.includeConversationBodies
                 ) {
-                    if let usage = pair.usage { usages.append(usage) }
+                    if let usage = pair.usage {
+                        usages.append(usage)
+                        if let signature {
+                            parseCache.fileEntries[cacheKey] = CachedUsageEntry(signature: signature, usage: usage)
+                            cacheMutated = true
+                        }
+                    }
                     if options.includeConversationBodies, let conv = pair.conversation {
                         conversations.append(conv)
                     }
@@ -100,6 +171,14 @@ public final class AntigravityParser: LogParser, Sendable {
                     error: error.underlying
                 )
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -187,7 +266,8 @@ public final class AntigravityParser: LogParser, Sendable {
     public func parseSession(
         transcriptFile: URL,
         sessionId: String,
-        fallbackModel: String
+        fallbackModel: String,
+        includeConversationBodies: Bool = true
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         let handle: FileHandle
         do {
@@ -203,7 +283,7 @@ public final class AntigravityParser: LogParser, Sendable {
             throw SessionContentReadError(underlying: error)
         }
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: transcriptFile.path)[.modificationDate]) as? Date // try?-ok(mtime read, Date() fallback)
+        let mtime = (try? fileManager.attributesOfItem(atPath: transcriptFile.path)[.modificationDate]) as? Date // try?-ok(mtime read, Date() fallback)
 
         var acc = AntigravitySessionAccumulator()
 
@@ -224,12 +304,6 @@ public final class AntigravityParser: LogParser, Sendable {
         var calculatedCacheCreationTokens = 0
         var calculatedOutputTokens = 0
 
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        let fallbackDateFormatter = ISO8601DateFormatter()
-        fallbackDateFormatter.formatOptions = [.withInternetDateTime]
-
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip malformed)
@@ -245,7 +319,7 @@ public final class AntigravityParser: LogParser, Sendable {
 
             // Timestamps
             if let createdAtStr,
-               let date = dateFormatter.date(from: createdAtStr) ?? fallbackDateFormatter.date(from: createdAtStr) {
+               let date = ThreadSafeISO8601DateFormatter.parse(createdAtStr) {
                 if acc.startTime == nil { acc.startTime = date }
                 acc.endTime = date
             }
@@ -260,15 +334,17 @@ public final class AntigravityParser: LogParser, Sendable {
                 acc.userMessageCount += 1
 
                 if !content.isEmpty {
-                    acc.userWords += wordCount(content)
-                    if acc.firstUserText == nil {
-                        // Strip metadata tags to get the actual user prompt for the title
-                        let cleanedPrompt = stripMetadataTags(content)
-                        if !cleanedPrompt.isEmpty {
-                            acc.firstUserText = String(cleanedPrompt.prefix(120))
+                    if includeConversationBodies {
+                        acc.userWords += wordCount(content)
+                        if acc.firstUserText == nil {
+                            // Strip metadata tags to get the actual user prompt for the title
+                            let cleanedPrompt = stripMetadataTags(content)
+                            if !cleanedPrompt.isEmpty {
+                                acc.firstUserText = String(cleanedPrompt.prefix(120))
+                            }
                         }
+                        appendText(&acc.fullText, content, isAssistant: false)
                     }
-                    appendText(&acc.fullText, content, isAssistant: false)
                 }
 
                 // Extract per-session model from USER_SETTINGS_CHANGE metadata
@@ -303,7 +379,8 @@ public final class AntigravityParser: LogParser, Sendable {
                         }
                     }
                     // Extract tool names for keyTools
-                    if let toolName = toolCall["name"] as? String, !toolName.isEmpty {
+                    if includeConversationBodies,
+                       let toolName = toolCall["name"] as? String, !toolName.isEmpty {
                         acc.toolNames.insert(toolName)
                     }
                 }
@@ -343,10 +420,12 @@ public final class AntigravityParser: LogParser, Sendable {
 
                 // 5. Update overall session metadata
                 if !content.isEmpty {
-                    acc.lastAssistantText = content
+                    if includeConversationBodies {
+                        acc.lastAssistantText = content
+                        acc.assistantWords += wordCount(content)
+                        appendText(&acc.fullText, content, isAssistant: true)
+                    }
                     acc.assistantMessageCount += 1
-                    acc.assistantWords += wordCount(content)
-                    appendText(&acc.fullText, content, isAssistant: true)
                 }
                 if !thinking.isEmpty {
                     acc.thinkingChars += thinking.count
@@ -361,7 +440,7 @@ public final class AntigravityParser: LogParser, Sendable {
                 acc.toolOutputChars += content.count
 
                 // Extract file paths from VIEW_FILE results for keyFiles
-                if type == "VIEW_FILE" {
+                if includeConversationBodies, type == "VIEW_FILE" {
                     if let filePath = extractFilePath(from: content) {
                         acc.filePaths.insert(filePath)
                     }
@@ -437,6 +516,8 @@ public final class AntigravityParser: LogParser, Sendable {
             provenanceConfidence: .highConfidenceEstimate,
             estimatorVersion: TokenExtractionUtility.currentEstimatorVersion
         )
+
+        guard includeConversationBodies else { return (usage, nil) }
 
         let sortedFiles = Array(acc.filePaths.sorted().prefix(20))
         let sortedTools = Array(acc.toolNames.sorted().prefix(20))

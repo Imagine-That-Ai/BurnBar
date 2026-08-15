@@ -43,7 +43,7 @@ extension SwarmSimulation {
         var distSum = 0.0
         for d in dots { distSum += hypot(d.x - cx, d.y - cy) }
         let cloudRadius = dots.isEmpty ? min(size.width, size.height) * 0.3 : distSum / Double(n)
-        let sizePx = radii.isEmpty ? 1.6 : radii.sorted()[radii.count / 2]
+        let sizePx = radii.isEmpty ? 1.6 : Self.upperMedian(radii)
 
         let accentRGBA = RGBA(substrateAccent, fallback: RGBA(r: 0.96, g: 0.31, b: 0.36))
         let stage = SubstrateStage(
@@ -92,5 +92,41 @@ extension SwarmSimulation {
         let frame = makeSubstrateFrame(size: size, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
         let handled = substrate.paint(frame, into: ctx)
         return (handled, handled && substrate.suppressesGlyphs)
+    }
+
+    /// Same contract as `sorted()[count / 2]` (upper median for even counts)
+    /// without the per-frame O(n log n) sort over ~520–1080 radii.
+    nonisolated static func upperMedian(_ values: [Double]) -> Double {
+        precondition(!values.isEmpty, "upperMedian requires a non-empty array")
+        var copy = values
+        let k = copy.count / 2
+        return selectNth(&copy, k: k)
+    }
+
+    nonisolated private static func selectNth(_ values: inout [Double], k: Int) -> Double {
+        var low = 0
+        var high = values.count - 1
+        while low < high {
+            let pivot = values[(low + high) / 2]
+            var i = low
+            var j = high
+            while i <= j {
+                while values[i] < pivot { i += 1 }
+                while values[j] > pivot { j -= 1 }
+                if i <= j {
+                    values.swapAt(i, j)
+                    i += 1
+                    j -= 1
+                }
+            }
+            if k <= j {
+                high = j
+            } else if k >= i {
+                low = i
+            } else {
+                return values[k]
+            }
+        }
+        return values[k]
     }
 }

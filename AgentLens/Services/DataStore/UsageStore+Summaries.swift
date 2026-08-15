@@ -142,9 +142,15 @@ extension UsageStore {
             let totalInputTokens = rows.reduce(0) { $0 + $1.inputTokens }
             let totalOutputTokens = rows.reduce(0) { $0 + $1.outputTokens }
 
-            // Derive the best display label and storage scope across rows.
-            // Some rows may have richer metadata than others; prefer the most informative.
-            let nonEmptyLabel = rows.first(where: { ($0.providerAccountLabel ?? "").isEmpty == false })?.providerAccountLabel
+            // Derive current metadata from the newest informative row. The SQL
+            // aggregate path applies the same recency + lexical tie-break.
+            let nonEmptyLabel = rows
+                .filter { ($0.providerAccountLabel ?? "").isEmpty == false }
+                .max {
+                    if $0.startTime != $1.startTime { return $0.startTime < $1.startTime }
+                    return ($0.providerAccountLabel ?? "") > ($1.providerAccountLabel ?? "")
+                }?
+                .providerAccountLabel
             let accountLabel: String = {
                 if let label = nonEmptyLabel, !label.isEmpty { return label }
                 if let id = key.accountID, !id.isEmpty {
@@ -153,7 +159,14 @@ extension UsageStore {
                 }
                 return "\(key.provider.displayName) · default"
             }()
-            let accountSource = rows.compactMap { $0.providerAccountSource }.first
+            let accountSource = rows
+                .filter { $0.providerAccountSource != nil }
+                .max {
+                    if $0.startTime != $1.startTime { return $0.startTime < $1.startTime }
+                    return ($0.providerAccountSource?.rawValue ?? "")
+                        > ($1.providerAccountSource?.rawValue ?? "")
+                }?
+                .providerAccountSource
 
             // Per-model rollup (same shape as makeProviderSummaries).
             var modelData: [String: ModelRollup] = [:]

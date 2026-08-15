@@ -895,13 +895,7 @@ public struct BurnBarCLIRunner {
             if let double = Double(string) {
                 return double
             }
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = formatter.date(from: string) {
-                return date.timeIntervalSince1970 * 1_000
-            }
-            formatter.formatOptions = [.withInternetDateTime]
-            if let date = formatter.date(from: string) {
+            if let date = ThreadSafeISO8601DateFormatter.parse(string) {
                 return date.timeIntervalSince1970 * 1_000
             }
         }
@@ -1546,7 +1540,7 @@ public struct BurnBarCLIRunner {
     }
 
     private static func formatDate(_ date: Date) -> String {
-        ISO8601DateFormatter().string(from: date)
+        ThreadSafeISO8601DateFormatter.formatBasic(date)
     }
 
     private func requiredOption(_ name: String, in arguments: [String]) throws -> String {

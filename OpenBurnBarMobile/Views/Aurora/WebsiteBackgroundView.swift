@@ -85,7 +85,7 @@ struct WebsiteBackgroundView: View {
                     isBrandTextEnabled: prefs.isBrandTextEnabled,
                     enableSwarmSparkles: false,
                     excludeBrandShapesFromSwarm: prefs.excludeBrandShapes || !prefs.selectedGlyphs.isEmpty,
-                    maxFrameRate: streamingThrottledFrameRate(nil),
+                    maxFrameRate: streamingThrottledFrameRate(30),
                     rendersAsynchronously: true,
                     substrate: substrate
                 )
@@ -216,8 +216,8 @@ struct WebsiteBackgroundView: View {
 
     /// While a Hermes reply is streaming, cap the swarm at ~20 fps so its
     /// per-frame particle advance stops competing with the chat's streaming
-    /// text for the frame budget. A nil plan rate means "use the canvas
-    /// default" (60 fps), so streaming substitutes the cap directly.
+    /// text for the frame budget. Editorial wallpaper is cinematic (30 fps);
+    /// a nil plan rate means "use the canvas default".
     private func streamingThrottledFrameRate(_ planRate: Double?) -> Double? {
         Self.throttledFrameRate(planRate: planRate, streamingActive: hermesStreamingActive)
     }

@@ -194,6 +194,39 @@ export function resetProviderApiPoliciesForTests(): void {
   providerPolicies.clear();
 }
 
+// ── Model inference (paid LLM completions) ────────────────────────────────────
+
+/**
+ * Paid model-inference calls (OpenRouter usage curation): a single attempt
+ * with a 60 s cap and a provider-isolated breaker.
+ *
+ * Deliberately NO retry wrap: a completion is paid, non-idempotent work, and a
+ * timed-out attempt may still finish (and bill) upstream, so replaying it
+ * could double-spend — callers release their reservation on failure instead.
+ * The longer timeout exists because multimodal completions legitimately exceed
+ * the generic 20 s external-API cap. The breaker is per provider key so an
+ * inference outage cannot short-circuit unrelated external integrations.
+ */
+const MODEL_INFERENCE_TIMEOUT_MS = 60_000;
+const modelInferencePolicies = new Map<string, IPolicy>();
+
+export function modelInferencePolicy(providerKey: string): IPolicy {
+  const normalized = normalizeProviderPolicyKey(providerKey);
+  const existing = modelInferencePolicies.get(normalized);
+  if (existing) return existing;
+
+  const policy = wrap(
+    timeout(MODEL_INFERENCE_TIMEOUT_MS, TimeoutStrategy.Aggressive),
+    makeExternalApiBreaker(`model_inference:${normalized}`),
+  );
+  modelInferencePolicies.set(normalized, policy);
+  return policy;
+}
+
+export function resetModelInferencePoliciesForTests(): void {
+  modelInferencePolicies.clear();
+}
+
 // ── Firestore circuit breaker ─────────────────────────────────────────────────
 
 /**

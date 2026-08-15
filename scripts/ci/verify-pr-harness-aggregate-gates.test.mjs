@@ -711,6 +711,34 @@ check("desired main branch protection keeps immutable security checks beside the
   assert.equal(protection.required_pull_request_reviews.dismiss_stale_reviews, true);
   assert.equal(protection.required_pull_request_reviews.require_last_push_approval, true);
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
+  assert.ok(
+    gate.required_contexts.includes("Domain Core PR Gate"),
+    "merge_group full set must keep Domain Core PR Gate",
+  );
+
+  const fastGate = JSON.parse(
+    readFileSync(join(REPO_ROOT, "governance/burnbar-ci-gate.fast.json"), "utf8"),
+  );
+  // Fast PR eligibility (#2230) drops the slow walls. Domain Core PR Gate is a
+  // wall when rust=true (~60m with Apple app spool); keep it on merge_group /
+  // classic BP, not the 45m PR umbrella.
+  for (const slowWall of [
+    "App build + test (AgentLens)",
+    "Mobile build + unit test",
+    "Daemon PR Gate",
+    "Android PR Gate",
+    "PR Windows Full Gate",
+    "Domain Core PR Gate",
+  ]) {
+    assert.ok(
+      !fastGate.required_contexts.includes(slowWall),
+      `fast gate must not require slow wall: ${slowWall}`,
+    );
+  }
+  assert.ok(
+    fastGate.required_contexts.includes("Domain Core Trusted Deletion Guard"),
+    "fast gate must keep the always-on trusted deletion guard",
+  );
 
   const umbrella = readFileSync(join(REPO_ROOT, ".github/workflows/burnbar-ci-gate.yml"), "utf8");
   assert.match(

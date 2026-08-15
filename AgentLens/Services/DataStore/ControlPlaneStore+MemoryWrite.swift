@@ -5,7 +5,17 @@ import OpenBurnBarCore
 
 extension ControlPlaneStore {
     func updateChatMemoryAuthorityRecord(id: MemoryID, patch: MemoryPatch, now: Date = Date()) async throws -> Bool {
-        guard let existing = try await fetchChatMemoryAuthorityRecord(id: id) else { return false }
+        try await updateMemoryAuthorityRecord(id: id, patch: patch, sourceKinds: [.chat], now: now)
+    }
+
+    func updateMemoryAuthorityRecord(
+        id: MemoryID,
+        patch: MemoryPatch,
+        sourceKinds: Set<MemorySourceKind>,
+        now: Date = Date()
+    ) async throws -> Bool {
+        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        let partition = MemoryStoragePartition(existing.sourceKind)
         let patchedBody = patch.text?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let patchedBody {
             guard patchedBody.isEmpty == false else { throw ChatMemoryAuthorityError.emptyBody }
@@ -13,11 +23,11 @@ extension ControlPlaneStore {
             if secretLabels.isEmpty == false {
                 try await appendMemoryAuditEvent(
                     action: "memory.secret_rejected",
-                    projectID: Self.memoryStorageProjectID(for: existing.scope),
+                    projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
                     subjectID: id,
                     labels: [
                         "memory_id": id,
-                        "source_kind": MemorySourceKind.chat.rawValue,
+                        "source_kind": existing.sourceKind.rawValue,
                         "labels": secretLabels.joined(separator: ",")
                     ],
                     now: now
@@ -29,7 +39,7 @@ extension ControlPlaneStore {
         let snapshotSlug = Self.memorySnapshotSlug(id)
         let auditLabels = [
             "memory_id:\(id)",
-            "source_kind:\(MemorySourceKind.chat.rawValue)"
+            "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
@@ -41,7 +51,8 @@ extension ControlPlaneStore {
                     body: patchedBody,
                     bodyHash: bodyHash,
                     citations: existing.citations,
-                    createdAt: existing.createdAt
+                    createdAt: existing.createdAt,
+                    sourceKind: existing.sourceKind
                 )
                 try db.execute(
                     sql: """
@@ -61,7 +72,7 @@ extension ControlPlaneStore {
                         bodyRef,
                         snapshotJSON,
                         bodyHash,
-                        MemorySourceKind.chat.rawValue,
+                        existing.sourceKind.rawValue,
                         existing.createdAt,
                         now
                     ]
@@ -81,13 +92,13 @@ extension ControlPlaneStore {
                     patch.confidence,
                     now,
                     id,
-                    MemorySourceKind.chat.rawValue
+                    existing.sourceKind.rawValue
                 ]
             )
             try Self.insertMemoryAuditEvent(
                 db: db,
                 action: "memory.update",
-                projectID: Self.memoryStorageProjectID(for: existing.scope),
+                projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
                 subjectID: id,
                 labels: auditLabels,
                 nowString: nowString
@@ -97,11 +108,21 @@ extension ControlPlaneStore {
     }
 
     func setChatMemoryReviewStatus(id: MemoryID, status: MemoryReviewStatus, now: Date = Date()) async throws -> Bool {
-        guard let existing = try await fetchChatMemoryAuthorityRecord(id: id) else { return false }
+        try await setMemoryReviewStatus(id: id, status: status, sourceKinds: [.chat], now: now)
+    }
+
+    func setMemoryReviewStatus(
+        id: MemoryID,
+        status: MemoryReviewStatus,
+        sourceKinds: Set<MemorySourceKind>,
+        now: Date = Date()
+    ) async throws -> Bool {
+        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        let partition = MemoryStoragePartition(existing.sourceKind)
         let auditLabels = [
             "memory_id:\(id)",
             "review_status:\(status.rawValue)",
-            "source_kind:\(MemorySourceKind.chat.rawValue)"
+            "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
@@ -136,12 +157,12 @@ extension ControlPlaneStore {
                 WHERE id = ?
                   AND source_kind = ?
                 """,
-                arguments: [status.rawValue, now, id, MemorySourceKind.chat.rawValue]
+                arguments: [status.rawValue, now, id, existing.sourceKind.rawValue]
             )
             try Self.insertMemoryAuditEvent(
                 db: db,
                 action: status == .approved ? "memory.approve" : "memory.reject",
-                projectID: Self.memoryStorageProjectID(for: existing.scope),
+                projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
                 subjectID: id,
                 labels: auditLabels,
                 nowString: nowString
@@ -151,10 +172,19 @@ extension ControlPlaneStore {
     }
 
     func deleteChatMemoryAuthorityRecord(id: MemoryID, now: Date = Date()) async throws -> Bool {
-        guard let existing = try await fetchChatMemoryAuthorityRecord(id: id) else { return false }
+        try await deleteMemoryAuthorityRecord(id: id, sourceKinds: [.chat], now: now)
+    }
+
+    func deleteMemoryAuthorityRecord(
+        id: MemoryID,
+        sourceKinds: Set<MemorySourceKind>,
+        now: Date = Date()
+    ) async throws -> Bool {
+        guard let existing = try await fetchMemoryAuthorityRecord(id: id, sourceKinds: sourceKinds) else { return false }
+        let partition = MemoryStoragePartition(existing.sourceKind)
         let auditLabels = [
             "memory_id:\(id)",
-            "source_kind:\(MemorySourceKind.chat.rawValue)"
+            "source_kind:\(existing.sourceKind.rawValue)"
         ]
         let nowString = Self.iso8601String(now)
         try await dbQueue.write { db in
@@ -169,12 +199,12 @@ extension ControlPlaneStore {
             }
             try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
-            try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, MemorySourceKind.chat.rawValue])
+            try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, existing.sourceKind.rawValue])
             try db.execute(sql: "DELETE FROM memory_body_snapshots WHERE memory_id = ?", arguments: [id])
             try Self.insertMemoryAuditEvent(
                 db: db,
                 action: "memory.delete",
-                projectID: Self.memoryStorageProjectID(for: existing.scope),
+                projectID: Self.memoryStorageProjectID(for: existing.scope, partition: partition),
                 subjectID: id,
                 labels: auditLabels,
                 nowString: nowString

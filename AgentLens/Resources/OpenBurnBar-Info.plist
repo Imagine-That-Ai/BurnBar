@@ -105,9 +105,9 @@
 		<string>legacy</string>
 	</dict>
 	<key>OpenBurnBarDirectUpdateFeedURL</key>
-	<string>https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json</string>
+	<string>https://downloads.burnbar.ai/latest-macos.json</string>
 	<key>SUFeedURL</key>
-	<string>https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/appcast.xml</string>
+	<string>https://downloads.burnbar.ai/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=</string>
 	<key>NSAppleEventsUsageDescription</key>

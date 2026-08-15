@@ -38,6 +38,7 @@ on:
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
       - "scripts/ci/verify-libsignal-toolchain-preflight.mjs"
       - "scripts/ci/verify-libsignal-toolchain-preflight.test.mjs"
+      - "scripts/ci/verify-ci-cache-warm.test.mjs"
       - ".github/actions/ensure-libsignal-toolchain/action.yml"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
@@ -115,6 +116,19 @@ on:
       - "scripts/ci/publish-apple-android-release.test.mjs"
       - "scripts/ci/promote-github-release.mjs"
       - "scripts/ci/promote-github-release.test.mjs"
+      - "scripts/ci/macos-r2-publication.mjs"
+      - "scripts/ci/macos-r2-publication.test.mjs"
+      - "scripts/ci/verify-apple-appcheck-release-artifact.sh"
+      - "scripts/ci/verify-apple-appcheck-release-artifact.test.sh"
+      - "scripts/upload-macos-downloads-r2.sh"
+      - "scripts/publish-macos-appcast-rollback-r2.sh"
+      - "scripts/ops/rollback-macos-appcast.sh"
+      - "scripts/ops/rollback-macos-appcast.test.sh"
+      - "project.yml"
+      - "AgentLens/Resources/OpenBurnBar-Info.plist"
+      - "AgentLens/Services/DirectDownloadUpdateService.swift"
+      - "docs/MACOS_APPCAST_ROLLBACK.md"
+      - "docs/RELEASE_MACOS.md"
       - "scripts/ci/verify-release-promotion-workflow.test.mjs"
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
@@ -238,6 +252,19 @@ on:
       - "scripts/ci/publish-apple-android-release.test.mjs"
       - "scripts/ci/promote-github-release.mjs"
       - "scripts/ci/promote-github-release.test.mjs"
+      - "scripts/ci/macos-r2-publication.mjs"
+      - "scripts/ci/macos-r2-publication.test.mjs"
+      - "scripts/ci/verify-apple-appcheck-release-artifact.sh"
+      - "scripts/ci/verify-apple-appcheck-release-artifact.test.sh"
+      - "scripts/upload-macos-downloads-r2.sh"
+      - "scripts/publish-macos-appcast-rollback-r2.sh"
+      - "scripts/ops/rollback-macos-appcast.sh"
+      - "scripts/ops/rollback-macos-appcast.test.sh"
+      - "project.yml"
+      - "AgentLens/Resources/OpenBurnBar-Info.plist"
+      - "AgentLens/Services/DirectDownloadUpdateService.swift"
+      - "docs/MACOS_APPCAST_ROLLBACK.md"
+      - "docs/RELEASE_MACOS.md"
       - "scripts/ci/verify-release-promotion-workflow.test.mjs"
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
@@ -304,6 +331,9 @@ jobs:
           node scripts/ci/verify-libsignal-toolchain-preflight.mjs
           node scripts/ci/verify-libsignal-toolchain-preflight.test.mjs
 
+      - name: Verify CI cache warm contract (Signal FFI + SPM on main)
+        run: node --test scripts/ci/verify-ci-cache-warm.test.mjs
+
       - name: Verify GitHub Actions pins
         run: |
           node scripts/ci/verify-github-action-pins.mjs
@@ -345,7 +375,11 @@ jobs:
             scripts/ci/create-apple-android-release-publication.test.mjs \
             scripts/ci/publish-apple-android-release.test.mjs \
             scripts/ci/promote-github-release.test.mjs \
+            scripts/ci/macos-r2-publication.test.mjs \
             scripts/ci/verify-release-promotion-workflow.test.mjs
+
+      - name: Self-test packaged macOS release feed contract
+        run: bash scripts/ci/verify-apple-appcheck-release-artifact.test.sh
 
       - name: Self-test Firestore restore drill env validation
         run: bash scripts/ops/run-firestore-restore-drill.test.sh
