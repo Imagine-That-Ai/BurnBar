@@ -40,6 +40,7 @@ enum class HostedQuotaStoreProductRole {
     CLOUD_PRO_SUBSCRIPTION,
     CLOUD_ULTRA_SUBSCRIPTION,
     CLOUD_PRO_TOP_UP,
+    MEMORY_BOOST,
 }
 
 data class HostedQuotaStoreProduct(
@@ -92,6 +93,9 @@ class HostedQuotaSubscriptionStore(
         const val FLOO_RELAY_TOP_UP_PRODUCT_ID = "com.openburnbar.floo.relay50gb"
         const val FUSION_SEARCH_100_TOP_UP_PRODUCT_ID = "com.openburnbar.elderwand.searches100"
         const val FUSION_SEARCH_500_TOP_UP_PRODUCT_ID = "com.openburnbar.elderwand.searches500"
+        const val MEMORY_BOOST_TEXT_1M_PRODUCT_ID = "com.openburnbar.memory.boost.text.1m"
+        const val MEMORY_BOOST_TEXT_5M_PRODUCT_ID = "com.openburnbar.memory.boost.text.5m"
+        const val MEMORY_BOOST_VISION_1M_PRODUCT_ID = "com.openburnbar.memory.boost.vision.1m"
 
         val STORE_PRODUCTS =
             listOf(
@@ -156,6 +160,24 @@ class HostedQuotaSubscriptionStore(
                     HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP,
                     "$19.99",
                 ),
+                HostedQuotaStoreProduct(
+                    MEMORY_BOOST_TEXT_1M_PRODUCT_ID,
+                    BillingClient.ProductType.INAPP,
+                    HostedQuotaStoreProductRole.MEMORY_BOOST,
+                    "$2.99",
+                ),
+                HostedQuotaStoreProduct(
+                    MEMORY_BOOST_TEXT_5M_PRODUCT_ID,
+                    BillingClient.ProductType.INAPP,
+                    HostedQuotaStoreProductRole.MEMORY_BOOST,
+                    "$9.99",
+                ),
+                HostedQuotaStoreProduct(
+                    MEMORY_BOOST_VISION_1M_PRODUCT_ID,
+                    BillingClient.ProductType.INAPP,
+                    HostedQuotaStoreProductRole.MEMORY_BOOST,
+                    "$6.99",
+                ),
             )
         private val STORE_PRODUCT_BY_ID = STORE_PRODUCTS.associateBy { it.id }
         private val SUBSCRIPTION_PRODUCT_IDS =
@@ -165,7 +187,12 @@ class HostedQuotaSubscriptionStore(
                 .toSet()
         private val TOP_UP_PRODUCT_IDS =
             STORE_PRODUCTS
-                .filter { it.productType == BillingClient.ProductType.INAPP }
+                .filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP }
+                .map { it.id }
+                .toSet()
+        private val MEMORY_BOOST_PRODUCT_IDS =
+            STORE_PRODUCTS
+                .filter { it.role == HostedQuotaStoreProductRole.MEMORY_BOOST }
                 .map { it.id }
                 .toSet()
         internal val CANONICAL_ENTITLEMENT_DOCUMENTS =
@@ -248,6 +275,7 @@ class HostedQuotaSubscriptionStore(
             HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> CloudTier.PRO
             HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> CloudTier.CLOUD
             HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP -> null
+            HostedQuotaStoreProductRole.MEMORY_BOOST -> null
         }
 
         private fun fallbackTierForProductID(id: String): CloudTier {
@@ -303,6 +331,9 @@ class HostedQuotaSubscriptionStore(
 
     private val _lastTopUpCredit = MutableStateFlow<Map<String, Any>?>(null)
     val lastTopUpCredit: StateFlow<Map<String, Any>?> = _lastTopUpCredit.asStateFlow()
+
+    private val _lastMemoryPackNotice = MutableStateFlow<String?>(null)
+    val lastMemoryPackNotice: StateFlow<String?> = _lastMemoryPackNotice.asStateFlow()
 
     private val _expirationDate = MutableStateFlow<Long?>(null)
     val expirationDate: StateFlow<Long?> = _expirationDate.asStateFlow()
@@ -602,7 +633,24 @@ class HostedQuotaSubscriptionStore(
     }
 
     private suspend fun handlePurchases(purchases: List<Purchase>): Boolean {
-        verifyHostedQuotaTopUpPurchases(purchases, TOP_UP_PRODUCT_IDS, functions).lastOrNull()?.let { _lastTopUpCredit.value = it }
+        try {
+            verifyHostedQuotaTopUpPurchases(purchases, TOP_UP_PRODUCT_IDS, functions).lastOrNull()?.let {
+                _lastTopUpCredit.value = it
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            Log.w(LOG_TAG, "verifyTopUp failed: ${error.localizedMessage}")
+            _error.value = error.localizedMessage ?: "Could not credit Cloud Pro top-up."
+        }
+        try {
+            verifyMemoryBoostPurchases(purchases, MEMORY_BOOST_PRODUCT_IDS, functions).lastOrNull()?.let {
+                _lastMemoryPackNotice.value = memoryPackNotice(it)
+            }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            Log.w(LOG_TAG, "verifyMemoryBoost failed: ${error.localizedMessage}")
+            _error.value = error.localizedMessage ?: "Could not credit Memory Boost."
+        }
 
         var lastInactiveSubscription: VerifiedSubscription? = null
         var lastVerificationError: Throwable? = null
@@ -816,6 +864,37 @@ private suspend fun verifyHostedQuotaTopUpPurchases(
                 }
         }
     return credits
+}
+
+private suspend fun verifyMemoryBoostPurchases(purchases: List<Purchase>, productIds: Set<String>, functions: FunctionsRepository): List<Map<String, Any>> {
+    val results = mutableListOf<Map<String, Any>>()
+    purchases
+        .filter { purchase ->
+            purchase.purchaseState == Purchase.PurchaseState.PURCHASED &&
+                purchase.products.any { productID -> productID in productIds }
+        }
+        .forEach { purchase ->
+            purchase.products
+                .filter { it in productIds }
+                .forEach { productID ->
+                    results +=
+                        functions.redeemPlayMemoryPack(
+                            purchaseToken = purchase.purchaseToken,
+                            productID = productID,
+                        )
+                }
+        }
+    return results
+}
+
+private fun memoryPackNotice(result: Map<String, Any>): String {
+    if (result["pending"] == true) {
+        return "Vision pack is waiting for Cloud Pro or Ultra before tokens are released."
+    }
+    if (result["alreadyGranted"] == true) {
+        return "Memory Boost already credited."
+    }
+    return "Memory Boost credited."
 }
 
 private fun billingFlowParams(

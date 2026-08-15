@@ -15,6 +15,7 @@ struct CloudStoreSettingsView: View {
     @StateObject private var remoteMCPClients = MacRemoteMCPClientStore()
     @StateObject private var entitlement = MacCloudEntitlementStore.shared
     @StateObject private var purchaseStore = MacHostedQuotaPurchaseStore()
+    @StateObject private var memoryWallet = MacMemoryWalletStore()
     @State private var showBadgePicker = false
     @State private var billingPeriod: MacCloudBillingPeriod = .monthly
 
@@ -65,6 +66,8 @@ struct CloudStoreSettingsView: View {
                     if entitlement.isActive {
                         auroraMemberCard
                             .padding(.horizontal, 28)
+                        memoryBoostCard
+                            .padding(.horizontal, 28)
                     }
 
                     // The full four-tier pricing lineup — matches the marketing
@@ -102,8 +105,13 @@ struct CloudStoreSettingsView: View {
             guard startsLiveServicesOnAppear else { return }
             Analytics.shared.track(.screenViewed, ["surface": "cloud_sync"])
             entitlement.start()
+            memoryWallet.start()
             Task { await purchaseStore.load() }
             refreshBackupState(startAutomaticCatchUp: true)
+        }
+        .onDisappear {
+            guard startsLiveServicesOnAppear else { return }
+            memoryWallet.stop()
         }
     }
 
@@ -858,6 +866,74 @@ struct CloudStoreSettingsView: View {
     }()
 
     // MARK: - Hero
+
+    @ViewBuilder
+    private var memoryBoostCard: some View {
+        let showVision = entitlement.cloudTier.satisfies(.pro)
+        let packs = MacHostedQuotaPurchaseStore.memoryBoostPacks.filter { pack in
+            !pack.requiresVision || showVision
+        }
+        AuroraGlassCardMac {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("MEMORY BOOST")
+                    .font(.system(size: 11, weight: .black))
+                    .tracking(2.4)
+                    .foregroundStyle(DesignSystem.Colors.ember)
+                Text(memoryWalletSummary(memoryWallet))
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(packs) { pack in
+                    Button {
+                        Task { await purchaseStore.purchaseMemoryBoost(pack) }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pack.title)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                Text(pack.detail)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            }
+                            Spacer()
+                            Text(purchaseStore.displayPrice(for: pack))
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(DesignSystem.Colors.amber)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(purchaseStore.isPurchasing)
+                }
+                if let notice = purchaseStore.lastMemoryPackNotice {
+                    Text(notice)
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignSystem.Colors.ember)
+                }
+                if let error = purchaseStore.error {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(DesignSystem.Colors.blaze)
+                }
+            }
+            .padding(18)
+        }
+        .accessibilityIdentifier("cloudStore.memoryBoost")
+    }
+
+    private func memoryWalletSummary(_ wallet: MacMemoryWalletStore) -> String {
+        if wallet.loadFailed {
+            return "Could not load your Memory Boost wallet. Reopen this screen to try again."
+        }
+        var lines = ["Wallet: \(wallet.textTokens.formatted()) text · \(wallet.multimodalTokens.formatted()) vision"]
+        if wallet.pendingTextTokens > 0 || wallet.pendingMultimodalTokens > 0 {
+            lines.append(
+                "Waiting: \(wallet.pendingTextTokens.formatted()) text · \(wallet.pendingMultimodalTokens.formatted()) vision until Cloud Pro or Ultra is active."
+            )
+        }
+        lines.append("Credits expire 12 months after purchase.")
+        return lines.joined(separator: "\n")
+    }
 
     private var hero: some View {
         VStack(spacing: 14) {

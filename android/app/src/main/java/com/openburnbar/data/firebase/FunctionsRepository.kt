@@ -212,6 +212,11 @@ class FunctionsRepository {
         mapOf("purchaseToken" to purchaseToken, "productID" to productID),
     )
 
+    suspend fun redeemPlayMemoryPack(purchaseToken: String, productID: String): Map<String, Any> = callMap(
+        "redeemPlayMemoryPack",
+        mapOf("purchaseToken" to purchaseToken, "productID" to productID),
+    )
+
     suspend fun rebuildUsageRollups() {
         functions.getHttpsCallable("rebuildUsageRollups").call().await()
     }

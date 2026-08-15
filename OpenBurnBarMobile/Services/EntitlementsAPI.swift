@@ -105,6 +105,32 @@ final class EntitlementsAPI: HostedQuotaEntitlementServicing {
         return try decodeCloudProTopUpCredit(result.data)
     }
 
+    @discardableResult
+    func redeemAppleMemoryPack(
+        signedTransactionJWS: String,
+        productID: String
+    ) async throws -> MemoryPackRedeemResponse {
+        let callable = try functionsClient().httpsCallable("redeemAppleMemoryPack")
+        let result = try await callable.call([
+            "signedTransactionJWS": signedTransactionJWS,
+            "productID": productID
+        ])
+        return try decodeMemoryPackRedeem(result.data)
+    }
+
+    private func decodeMemoryPackRedeem(_ raw: Any?) throws -> MemoryPackRedeemResponse {
+        guard let dict = raw as? [String: Any],
+              let packId = dict["packId"] as? String else {
+            throw FunctionsError.decodingFailed
+        }
+        return MemoryPackRedeemResponse(
+            granted: dict["granted"] as? Bool ?? false,
+            pending: dict["pending"] as? Bool ?? false,
+            alreadyGranted: dict["alreadyGranted"] as? Bool ?? false,
+            packId: packId
+        )
+    }
+
     private func decodeHostedQuotaEntitlement(_ raw: Any?) throws -> HostedQuotaEntitlementResponse {
         guard let dict = raw as? [String: Any] else {
             throw FunctionsError.decodingFailed

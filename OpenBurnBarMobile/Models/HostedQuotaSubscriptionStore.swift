@@ -28,6 +28,11 @@ protocol HostedQuotaEntitlementServicing: AnyObject {
         signedTransactionJWS: String,
         productID: String
     ) async throws -> CloudProTopUpCreditResponse
+
+    func redeemAppleMemoryPack(
+        signedTransactionJWS: String,
+        productID: String
+    ) async throws -> MemoryPackRedeemResponse
 }
 
 extension FunctionsRepository: HostedQuotaEntitlementServicing {}
@@ -56,6 +61,7 @@ enum HostedQuotaPurchaseOutcome {
 enum OpenBurnBarStoreProductRole: String, Sendable {
     case subscription
     case topUp
+    case memoryBoost
 }
 
 struct OpenBurnBarStoreProduct: Identifiable, Equatable, Sendable {
@@ -207,7 +213,47 @@ enum OpenBurnBarProductCatalog {
         )
     ]
 
-    static let visibleProducts = subscriptions + topUps
+    static let memoryBoostText1mProductID = "com.openburnbar.memory.boost.text.1m"
+    static let memoryBoostText5mProductID = "com.openburnbar.memory.boost.text.5m"
+    static let memoryBoostVision1mProductID = "com.openburnbar.memory.boost.vision.1m"
+
+    static let memoryBoosts: [OpenBurnBarStoreProduct] = [
+        OpenBurnBarStoreProduct(
+            id: memoryBoostText1mProductID,
+            title: "1M text",
+            cadence: "Prepaid · 12-month expiry",
+            fallbackDisplayPrice: "$2.99",
+            entitlementID: nil,
+            role: .memoryBoost,
+            included: "Adds 1 million prepaid text tokens to your Memory Boost wallet. Monthly allowance is used first.",
+            disclosure: "Consumable. Requires an active BurnBar Cloud, Cloud Pro, or Ultra subscription. Credits expire 12 months after purchase.",
+            topUpKind: "text_1m"
+        ),
+        OpenBurnBarStoreProduct(
+            id: memoryBoostText5mProductID,
+            title: "5M text",
+            cadence: "Prepaid · 12-month expiry",
+            fallbackDisplayPrice: "$9.99",
+            entitlementID: nil,
+            role: .memoryBoost,
+            included: "Adds 5 million prepaid text tokens to your Memory Boost wallet. Monthly allowance is used first.",
+            disclosure: "Consumable. Requires an active BurnBar Cloud, Cloud Pro, or Ultra subscription. Credits expire 12 months after purchase.",
+            topUpKind: "text_5m"
+        ),
+        OpenBurnBarStoreProduct(
+            id: memoryBoostVision1mProductID,
+            title: "1M vision",
+            cadence: "Cloud Pro or Ultra · 12-month expiry",
+            fallbackDisplayPrice: "$6.99",
+            entitlementID: nil,
+            role: .memoryBoost,
+            included: "Adds 1 million prepaid multimodal tokens for screenshot and image memory extraction.",
+            disclosure: "Consumable. Requires an active BurnBar Cloud Pro or Ultra subscription. Credits expire 12 months after purchase.",
+            topUpKind: "vision_1m"
+        )
+    ]
+
+    static let visibleProducts = subscriptions + topUps + memoryBoosts
     static let visibleProductIDs = visibleProducts.map(\.id)
     static let entitlementProductIDs: Set<String> = Set(subscriptions.map(\.id)).union([
         googlePlayCloudProMonthlyProductID,
@@ -231,6 +277,13 @@ struct CloudProTopUpCreditResponse: Equatable, Sendable {
     let monthKey: String
     let units: Int
     let kind: String
+}
+
+struct MemoryPackRedeemResponse: Equatable, Sendable {
+    let granted: Bool
+    let pending: Bool
+    let alreadyGranted: Bool
+    let packId: String
 }
 
 struct HostedQuotaStoreProduct: Identifiable, Sendable {
@@ -340,8 +393,10 @@ final class HostedQuotaSubscriptionStore {
     /// trust decision.
     private(set) var latestTransactionID: UInt64?
     private(set) var lastTopUpCredit: CloudProTopUpCreditResponse?
+    private(set) var lastMemoryPackRedeem: MemoryPackRedeemResponse?
 
     @ObservationIgnored private nonisolated(unsafe) var transactionUpdatesTask: Task<Void, Never>?
+    @ObservationIgnored private nonisolated(unsafe) var unfinishedTransactionsTask: Task<Void, Never>?
 
     /// Serializes inbound `verifyOnServer` calls. StoreKit can race a
     /// `purchase()`-emitted `verifyOnServer` against a near-simultaneous
@@ -377,6 +432,7 @@ final class HostedQuotaSubscriptionStore {
 
     deinit {
         transactionUpdatesTask?.cancel()
+        unfinishedTransactionsTask?.cancel()
     }
 
     private func clearEntitlementState() {
@@ -417,13 +473,13 @@ final class HostedQuotaSubscriptionStore {
     func purchase(productID: String = HostedQuotaSubscriptionStore.productID) async {
         guard !isPurchasing else { return }
         let catalogProduct = OpenBurnBarProductCatalog.product(for: productID)
-        let isTopUp = catalogProduct?.role == .topUp
+        let isConsumable = catalogProduct?.role == .topUp || catalogProduct?.role == .memoryBoost
         let signedIn = isSignedIn()
-        if isTopUp, !signedIn {
+        if isConsumable, !signedIn {
             error = HostedQuotaSubscriptionError.signedOutConsumablePurchase.localizedDescription
             return
         }
-        guard isTopUp || signedIn else {
+        guard isConsumable || signedIn else {
             error = HostedQuotaSubscriptionError.signedOutSubscriptionPurchase.localizedDescription
             return
         }
@@ -440,7 +496,15 @@ final class HostedQuotaSubscriptionStore {
             let result = try await purchaseProduct(product, purchaseOptions)
             switch result {
             case .success(let signedTransactionJWS, let finish):
-                if isTopUp {
+                if catalogProduct?.role == .memoryBoost {
+                    lastMemoryPackRedeem = try await functions.redeemAppleMemoryPack(
+                        signedTransactionJWS: signedTransactionJWS,
+                        productID: productID
+                    )
+                    await finish()
+                    return
+                }
+                if catalogProduct?.role == .topUp {
                     try await verifyTopUpOnServer(jws: signedTransactionJWS, productID: productID)
                     await finish()
                     return
@@ -455,11 +519,14 @@ final class HostedQuotaSubscriptionStore {
                         throw error
                     }
                 }
-            case .pending, .userCancelled:
+            case .pending:
+                error = "Apple is still processing this purchase. If this is Ask to Buy, OpenBurnBar will credit the pack when it is approved."
+            case .userCancelled:
                 break
             }
-        } catch {
-            if !isTopUp, await recoverExistingEntitlementAfterStoreKitFailure() {
+            } catch {
+            if catalogProduct?.role != .topUp, catalogProduct?.role != .memoryBoost,
+               await recoverExistingEntitlementAfterStoreKitFailure() {
                 return
             }
             self.error = error.localizedDescription
@@ -760,11 +827,31 @@ final class HostedQuotaSubscriptionStore {
                 await self.handleTransactionUpdate(update)
             }
         }
+        guard unfinishedTransactionsTask == nil else { return }
+        unfinishedTransactionsTask = Task.detached { [weak self] in
+            for await update in Transaction.unfinished {
+                guard let self else { return }
+                await self.handleTransactionUpdate(update)
+            }
+        }
     }
 
     private func handleTransactionUpdate(_ update: VerificationResult<Transaction>) async {
         do {
             let transaction = try Self.checked(update)
+            if OpenBurnBarProductCatalog.product(for: transaction.productID)?.role == .memoryBoost {
+                lastMemoryPackRedeem = try await functions.redeemAppleMemoryPack(
+                    signedTransactionJWS: update.jwsRepresentation,
+                    productID: transaction.productID
+                )
+                await transaction.finish()
+                return
+            }
+            if OpenBurnBarProductCatalog.product(for: transaction.productID)?.role == .topUp {
+                try await verifyTopUpOnServer(jws: update.jwsRepresentation, productID: transaction.productID)
+                await transaction.finish()
+                return
+            }
             guard Self.entitlementProductIDs.contains(transaction.productID) else { return }
             await reconcileTransactionUpdate(
                 signedTransactionJWS: update.jwsRepresentation,
@@ -1215,7 +1302,7 @@ enum HostedQuotaSubscriptionError: Error, LocalizedError {
         case .purchasePresentationUnavailable:
             return "Could not open the App Store purchase sheet. Please keep OpenBurnBar in the foreground and tap Subscribe again."
         case .signedOutConsumablePurchase:
-            return "Sign in to OpenBurnBar before buying Cloud Pro top-ups so the prepaid allowance can be credited to your account."
+            return "Sign in to OpenBurnBar before buying Cloud Pro top-ups or Memory Boost packs so the prepaid credits can be added to your account."
         case .signedOutSubscriptionPurchase:
             return "Sign in to OpenBurnBar before subscribing so Apple can link OpenBurnBar Cloud to your account."
         case .entitlementStoreReleased:

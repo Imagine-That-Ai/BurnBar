@@ -227,9 +227,17 @@ export {
   verifyHostedQuotaEntitlement,
   verifyCloudProTopUp,
   restoreHostedQuotaEntitlement,
+  redeemAppleMemoryPack,
   appStoreServerNotificationsV2,
   reconcileHostedEntitlementsDaily,
 } from "./appstore/index.js";
+
+export {
+  listMemoryPacks,
+  createMemoryPackCheckoutSession,
+  redeemPlayMemoryPack,
+  settlePendingMemoryPacks,
+} from "./callables/memoryPacks.js";
 
 export { startCliLink, pollCliLink, completeCliLink } from "./callables/cliLink.js";
 export { getProfileAvatarDownloadUrl } from "./callables/profileAvatar.js";

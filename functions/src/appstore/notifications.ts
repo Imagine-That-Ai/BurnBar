@@ -33,6 +33,7 @@ import { VerificationStatus } from "@apple/app-store-server-library";
 import { APP_STORE_SECRETS, loadAppStoreRuntimeConfig } from "./config.js";
 import { EntitlementReconcileError, reconcileEntitlement } from "./reconciler.js";
 import { getAppleJWSVerifier, JWSVerificationFailure } from "./verifier.js";
+import { applyAppleMemoryPackNotification } from "../usageCuration/appleRail.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 
 const REGION = FUNCTIONS_REGION;
@@ -249,6 +250,26 @@ export const appStoreServerNotificationsV2 = onRequest(
 
     const db = getFirestore();
     try {
+      const decodedTransaction = await verifier.verifyTransaction(signedTransactionJWS);
+      const handledPack = await applyAppleMemoryPackNotification({
+        db,
+        productID: String(decodedTransaction.payload.productId ?? ""),
+        transactionId: String(decodedTransaction.payload.transactionId ?? ""),
+        originalTransactionId:
+          typeof decodedTransaction.payload.originalTransactionId === "string"
+            ? decodedTransaction.payload.originalTransactionId
+            : undefined,
+        appAccountToken:
+          typeof decodedTransaction.payload.appAccountToken === "string"
+            ? decodedTransaction.payload.appAccountToken
+            : undefined,
+        notificationType:
+          typeof notification.payload.notificationType === "string" ? notification.payload.notificationType : undefined,
+      });
+      if (handledPack) {
+        res.status(200).send();
+        return;
+      }
       await reconcileEntitlement(db, cfg, {
         signedTransactionJWS,
         signedRenewalInfoJWS:

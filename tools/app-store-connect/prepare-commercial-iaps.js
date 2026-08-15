@@ -104,6 +104,30 @@ const TOP_UPS = [
     reviewNote:
       'Consumable top-up for BurnBar Cloud Pro or Ultra subscribers. Adds 500 hosted web_search credits for Elder Wand Fusion to the signed-in user allowance ledger. In app: You tab -> Settings -> OpenBurnBar Cloud Pro -> Elder Wand Search top-ups.',
   },
+  {
+    productId: 'com.openburnbar.memory.boost.text.1m',
+    name: 'Memory Boost 1M',
+    description: 'Adds 1 million prepaid text tokens.',
+    priceUSD: '2.99',
+    reviewNote:
+      'Consumable Memory Boost pack for BurnBar Cloud, Cloud Pro, or Ultra subscribers. Credits 1 million prepaid text tokens to the signed-in user Memory Boost wallet for usage-memory extraction. It does not unlock a membership. In app: You tab -> Settings -> OpenBurnBar Cloud -> Memory Boost.',
+  },
+  {
+    productId: 'com.openburnbar.memory.boost.text.5m',
+    name: 'Memory Boost 5M',
+    description: 'Adds 5 million prepaid text tokens.',
+    priceUSD: '9.99',
+    reviewNote:
+      'Consumable Memory Boost pack for BurnBar Cloud, Cloud Pro, or Ultra subscribers. Credits 5 million prepaid text tokens to the signed-in user Memory Boost wallet for usage-memory extraction. It does not unlock a membership. In app: You tab -> Settings -> OpenBurnBar Cloud -> Memory Boost.',
+  },
+  {
+    productId: 'com.openburnbar.memory.boost.vision.1m',
+    name: 'Vision Memory Boost 1M',
+    description: 'Adds 1 million prepaid multimodal tokens.',
+    priceUSD: '6.99',
+    reviewNote:
+      'Consumable Vision Memory Boost pack for BurnBar Cloud Pro or Ultra subscribers. Credits 1 million prepaid multimodal tokens to the signed-in user Memory Boost wallet. It does not unlock a membership. Hidden unless Cloud Pro or Ultra is active. In app: You tab -> Settings -> OpenBurnBar Cloud -> Memory Boost.',
+  },
 ];
 
 function b64u(value) {

@@ -66,7 +66,19 @@ export interface ProviderAdapter {
 // Runtime configuration shapes
 // ---------------------------------------------------------------------------
 
-export interface EnvConfig {
+interface MemoryBoostCommerceIds {
+  memoryBoostText1mProductID: string;
+  memoryBoostText5mProductID: string;
+  memoryBoostVision1mProductID: string;
+  stripeMemoryBoostText1mPriceID: string;
+  stripeMemoryBoostText5mPriceID: string;
+  stripeMemoryBoostVision1mPriceID: string;
+  googlePlayMemoryBoostText1mProductID: string;
+  googlePlayMemoryBoostText5mProductID: string;
+  googlePlayMemoryBoostVision1mProductID: string;
+}
+
+export interface EnvConfig extends MemoryBoostCommerceIds {
   /** GCP project id. */
   projectId: string;
 

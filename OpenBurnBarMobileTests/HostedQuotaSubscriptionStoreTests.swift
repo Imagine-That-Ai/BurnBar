@@ -75,6 +75,12 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             "elder_wand_searches_100",
             "elder_wand_searches_500"
         ])
+        XCTAssertEqual(OpenBurnBarProductCatalog.memoryBoosts.map(\.id), [
+            "com.openburnbar.memory.boost.text.1m",
+            "com.openburnbar.memory.boost.text.5m",
+            "com.openburnbar.memory.boost.vision.1m"
+        ])
+        XCTAssertEqual(OpenBurnBarProductCatalog.memoryBoosts.map(\.fallbackDisplayPrice), ["$2.99", "$9.99", "$6.99"])
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.monthly"))
@@ -1254,6 +1260,13 @@ private final class FakeHostedQuotaEntitlementService: HostedQuotaEntitlementSer
     ) async throws -> CloudProTopUpCreditResponse {
         topUpRequests.append(TopUpRequest(signedTransactionJWS: signedTransactionJWS, productID: productID))
         return topUpResponse
+    }
+
+    func redeemAppleMemoryPack(
+        signedTransactionJWS: String,
+        productID: String
+    ) async throws -> MemoryPackRedeemResponse {
+        MemoryPackRedeemResponse(granted: true, pending: false, alreadyGranted: false, packId: "text_1m")
     }
 }
 

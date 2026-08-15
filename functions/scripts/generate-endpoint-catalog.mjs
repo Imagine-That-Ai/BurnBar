@@ -52,6 +52,7 @@ const CATALOG_OVERRIDES = {
       },
     ],
     highRiskComputerUse: false,
+    publicJustification: undefined,
   },
   reconcileGooglePlayVoidedPurchasesDaily: {
     trigger: "scheduled",
@@ -773,27 +774,6 @@ const CATALOG_OVERRIDES = {
       },
     ],
   },
-  googlePlayDeveloperNotifications: {
-    trigger: "provider-webhook",
-    authMethod: "Google Play RTDN delivered over an owned Pub/Sub topic (not client-callable)",
-    appCheck: "not-applicable",
-    tenantSource: "purchase-token claim resolved server-side to a uid",
-    objectIdsFromClient: [],
-    ownershipCheck:
-      "handler maps the Play-signed purchase token to an existing server-owned claim before touching any uid-scoped document",
-    handlerModule: "googlePlayRtdn.ts",
-    bolaCoverage: [
-      {
-        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
-        test: "platform triggers are not client-callable",
-        kind: "platform-trigger",
-        covers: ["googlePlayDeveloperNotifications"],
-      },
-    ],
-    publicJustification:
-      "Provider notification endpoint authenticated by Google Play's signed RTDN payload on a project-owned Pub/Sub topic; it accepts no client-supplied object ids.",
-    highRiskComputerUse: false,
-  },
   onAIInboxItemNotification: {
     trigger: "firestore-trigger",
     authMethod: "Firebase Functions event trigger (not client-callable)",
@@ -944,6 +924,37 @@ for (const exportedName of SIGNAL_MIGRATION_TRIGGER_NAMES) {
   };
 }
 
+const MEMORY_PACK_AUTH_ONLY_CALLABLES = [
+  ["listMemoryPacks", "callables/memoryPacks.ts"],
+  ["createMemoryPackCheckoutSession", "callables/memoryPacks.ts"],
+  ["redeemPlayMemoryPack", "callables/memoryPacks.ts"],
+  ["settlePendingMemoryPacks", "callables/memoryPacks.ts"],
+  ["redeemAppleMemoryPack", "appstore/callable.ts"],
+];
+
+for (const [exportedName, handlerModule] of MEMORY_PACK_AUTH_ONLY_CALLABLES) {
+  CATALOG_OVERRIDES[exportedName] = {
+    trigger: "callable",
+    authMethod: "Firebase Auth with callable-level ownership checks",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck: "handler derives uid from request.auth.uid only",
+    handlerModule,
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: [exportedName],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  };
+}
+
 CATALOG_OVERRIDES.writeSignalAtRestDocument = {
   authMethod: "Firebase Auth with callable-level user-path and Signal-envelope validation",
   appCheck: "required",
@@ -963,6 +974,20 @@ CATALOG_OVERRIDES.writeSignalAtRestDocument = {
   ],
   highRiskComputerUse: false,
 };
+
+function assertUniqueCatalogOverrideKeys() {
+  const source = readFileSync(resolve(import.meta.dirname, "generate-endpoint-catalog.mjs"), "utf8");
+  const keys = [...source.matchAll(/^  ([A-Za-z0-9_]+): \{/gm)].map((match) => match[1]);
+  const seen = new Set();
+  for (const key of keys) {
+    if (seen.has(key)) {
+      throw new Error(
+        `Duplicate CATALOG_OVERRIDES key ${key}; later assignment silently wins and can reclassify the endpoint.`,
+      );
+    }
+    seen.add(key);
+  }
+}
 
 function defaultEntry(exportedName) {
   return {
@@ -1040,6 +1065,7 @@ ${indent(level)}}`;
 }
 
 const names = exportedNames();
+assertUniqueCatalogOverrideKeys();
 const existing = readFileSync(outPath, "utf8");
 const existingJson = existing.match(
   /export const endpointAuthorizationCatalog:\s*EndpointAuthorizationEntry\[\]\s*=\s*(\[[\s\S]*\])\s*as\s*EndpointAuthorizationEntry\[\];/u,

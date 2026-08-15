@@ -407,6 +407,9 @@ describe("Stripe lifecycle reconciliation", () => {
     const stripe = stripeStub<Stripe>({
       subscriptions: { list },
       charges: { retrieve: chargeRetrieve },
+      paymentIntents: {
+        retrieve: vi.fn(async () => ({ id: charge.payment_intent, metadata: {} })),
+      },
       checkout: { sessions: { list: checkoutList } },
       invoicePayments: { list: vi.fn(async () => ({ data: [], has_more: false })) },
     });

@@ -106,4 +106,23 @@ describe("googlePlayTokenClaims", () => {
       code: "failed-precondition",
     } satisfies Partial<HttpsError>);
   });
+
+  it("rejects reuse of a token across memory-pack and top-up claim kinds", async () => {
+    const alreadyExists = Object.assign(new Error("exists"), { code: 6 });
+    mockCreate.mockRejectedValueOnce(alreadyExists);
+    mockGet.mockResolvedValueOnce({
+      get: (field: string) => (field === "uid" ? "uid-same" : field === "kind" ? "memory_pack" : undefined),
+    });
+
+    await expect(
+      claimGooglePlayPurchaseToken({
+        uid: "uid-same",
+        purchaseTokenHash: "hash-5",
+        productID: "com.openburnbar.agentcontrol.actions100",
+        kind: "topup",
+      }),
+    ).rejects.toMatchObject({
+      code: "failed-precondition",
+    } satisfies Partial<HttpsError>);
+  });
 });

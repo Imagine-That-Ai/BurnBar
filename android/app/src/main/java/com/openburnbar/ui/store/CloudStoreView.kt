@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
+import com.openburnbar.data.stores.MemoryWalletStore
 import com.openburnbar.data.stores.RemoteMcpClientStore
 import com.openburnbar.ui.components.AuroraBackdrop
 
@@ -29,9 +30,11 @@ fun CloudStoreView(
     onClose: () -> Unit = {},
     subscriptionStore: HostedQuotaSubscriptionStore = viewModel(),
     remoteMcpClientStore: RemoteMcpClientStore = viewModel(),
+    memoryWalletStore: MemoryWalletStore = viewModel(),
 ) {
     val context = LocalContext.current
     val isActive by subscriptionStore.isActive.collectAsState()
+    val currentTier by subscriptionStore.currentTier.collectAsState()
     val isLoading by subscriptionStore.isLoading.collectAsState()
     val error by subscriptionStore.error.collectAsState()
     val productDetails by subscriptionStore.productDetails.collectAsState()
@@ -42,10 +45,17 @@ fun CloudStoreView(
     val remoteMcpLoading by remoteMcpClientStore.isLoading.collectAsState()
     val remoteMcpError by remoteMcpClientStore.error.collectAsState()
     val revokingRemoteMcpClientId by remoteMcpClientStore.revokingClientId.collectAsState()
+    val memoryTextTokens by memoryWalletStore.textTokens.collectAsState()
+    val memoryVisionTokens by memoryWalletStore.multimodalTokens.collectAsState()
+    val memoryPendingTextTokens by memoryWalletStore.pendingTextTokens.collectAsState()
+    val memoryPendingVisionTokens by memoryWalletStore.pendingMultimodalTokens.collectAsState()
+    val memoryWalletLoadFailed by memoryWalletStore.loadFailed.collectAsState()
+    val memoryPackNotice by subscriptionStore.lastMemoryPackNotice.collectAsState()
 
     LaunchedEffect(context) {
         subscriptionStore.initialize(context)
         subscriptionStore.load()
+        memoryWalletStore.start()
     }
 
     DisposableEffect(isActive) {
@@ -72,6 +82,15 @@ fun CloudStoreView(
                 remoteMcpLoading = remoteMcpLoading,
                 remoteMcpError = remoteMcpError,
                 revokingRemoteMcpClientId = revokingRemoteMcpClientId,
+                isCloudPro = currentTier.satisfies(com.openburnbar.ui.pro.CloudTier.PRO),
+                memoryWallet = MemoryBoostWalletUi(
+                    textTokens = memoryTextTokens,
+                    visionTokens = memoryVisionTokens,
+                    pendingTextTokens = memoryPendingTextTokens,
+                    pendingVisionTokens = memoryPendingVisionTokens,
+                    loadFailed = memoryWalletLoadFailed,
+                    notice = memoryPackNotice,
+                ),
             ),
             actions =
             CloudStoreScreenActions(

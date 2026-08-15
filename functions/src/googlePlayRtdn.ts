@@ -17,6 +17,8 @@ import { externalApiWithResilience } from "./resilienceHelpers.js";
 import { FUNCTIONS_REGION, GOOGLE_PLAY_RTDN_TOPIC } from "./runtimeOptions.js";
 import { googlePlayBillingRecordPath } from "./callables/googlePlayBillingPaths.js";
 import { GOOGLE_PLAY_TOKEN_CLAIMS_COLLECTION } from "./callables/googlePlayTokenClaims.js";
+import { reverseVoidedMemoryPack } from "./usageCuration/playRail.js";
+import { memoryPackFromPlayProductID } from "./usageCuration/catalog.js";
 import {
   GOOGLE_PLAY_ACTIVE_STATES,
   reconcileCloudProTopUpReversal,
@@ -68,7 +70,7 @@ interface GooglePlayRtdnEventMeta {
 interface GooglePlayTokenClaim {
   uid: string;
   productID: string;
-  kind: "subscription" | "topup";
+  kind: "subscription" | "topup" | "memory_pack";
 }
 
 type GooglePlayNotificationKind = "test" | "subscription" | "one_time_product" | "voided_purchase" | "unknown";
@@ -193,10 +195,104 @@ async function readTokenClaim(tokenHash: string): Promise<GooglePlayTokenClaim |
   const uid = snap.get("uid");
   const productID = snap.get("productID");
   const kind = snap.get("kind");
-  if (typeof uid !== "string" || typeof productID !== "string" || (kind !== "subscription" && kind !== "topup")) {
+  if (
+    typeof uid !== "string" ||
+    typeof productID !== "string" ||
+    (kind !== "subscription" && kind !== "topup" && kind !== "memory_pack")
+  ) {
     return undefined;
   }
   return { uid, productID, kind };
+}
+
+function oneTimeProductSku(payload: GooglePlayDeveloperNotification): string | undefined {
+  const sku = payload.oneTimeProductNotification?.sku;
+  return typeof sku === "string" && sku.length > 0 ? sku : undefined;
+}
+
+function voidedPurchaseOrderId(payload: GooglePlayDeveloperNotification): string | undefined {
+  const orderId = payload.voidedPurchaseNotification?.orderId;
+  return typeof orderId === "string" && orderId.length > 0 ? orderId : undefined;
+}
+
+function voidedPurchaseIsOneTime(payload: GooglePlayDeveloperNotification): boolean {
+  return payload.voidedPurchaseNotification?.productType === 2;
+}
+
+function isOneTimeVoidOrCancel(kind: GooglePlayNotificationKind, payload: GooglePlayDeveloperNotification): boolean {
+  if (kind === "one_time_product" && notificationType(payload) === 2) return true;
+  return kind === "voided_purchase" && voidedPurchaseIsOneTime(payload);
+}
+
+async function processUnclaimedGooglePlayToken(
+  payload: GooglePlayDeveloperNotification,
+  meta: GooglePlayRtdnEventMeta,
+  kind: GooglePlayNotificationKind,
+  tokenHash: string,
+): Promise<void> {
+  const ref = rtdnEventRef(meta.eventID);
+  const sku = oneTimeProductSku(payload);
+  const knownMemoryPack = Boolean(sku && memoryPackFromPlayProductID(sku));
+  if (isOneTimeVoidOrCancel(kind, payload) && (knownMemoryPack || kind === "voided_purchase")) {
+    await ref.set(
+      rtdnEventBase(payload, meta, {
+        status: "failed",
+        leaseExpiresAt: Timestamp.now(),
+        purchaseTokenHash: tokenHash,
+        errorCode: "memory_pack_grant_missing",
+      }),
+      { merge: true },
+    );
+    throw new Error("memory_pack_grant_missing");
+  }
+  // The client verification path reads current state directly from Google.
+  // Therefore an RTDN that races ahead of the first client claim can be
+  // acknowledged safely without persisting the raw purchase token.
+  await ref.set(
+    rtdnEventBase(payload, meta, {
+      status: "ignored",
+      reason: "unclaimed_purchase_token",
+      purchaseTokenHash: tokenHash,
+    }),
+    { merge: true },
+  );
+}
+
+async function reverseClaimedGooglePlayOneTime(
+  kind: GooglePlayNotificationKind,
+  payload: GooglePlayDeveloperNotification,
+  meta: GooglePlayRtdnEventMeta,
+  token: string,
+  tokenHash: string,
+  claim: GooglePlayTokenClaim,
+): Promise<void> {
+  if (kind === "voided_purchase") {
+    if (claim.kind === "subscription") {
+      await reconcileSubscription(payload, meta, token, tokenHash, claim, true);
+      return;
+    }
+    if (claim.kind === "memory_pack") {
+      await reverseVoidedMemoryPack({
+        uid: claim.uid,
+        tokenHash,
+        orderId: voidedPurchaseOrderId(payload),
+      });
+      return;
+    }
+    await reverseVoidedTopUp(payload, meta, tokenHash, claim);
+    return;
+  }
+  if (kind === "one_time_product" && notificationType(payload) === 2) {
+    if (claim.kind === "memory_pack") {
+      await reverseVoidedMemoryPack({
+        uid: claim.uid,
+        tokenHash,
+        orderId: voidedPurchaseOrderId(payload),
+      });
+      return;
+    }
+    await reverseVoidedTopUp(payload, meta, tokenHash, claim);
+  }
 }
 
 async function googlePlayPublisher() {
@@ -355,17 +451,7 @@ export async function processGooglePlayDeveloperNotification(
   const tokenHash = sha256Hex(token);
   const claim = await readTokenClaim(tokenHash);
   if (!claim) {
-    // The client verification path reads current state directly from Google.
-    // Therefore an RTDN that races ahead of the first client claim can be
-    // acknowledged safely without persisting the raw purchase token.
-    await ref.set(
-      rtdnEventBase(payload, meta, {
-        status: "ignored",
-        reason: "unclaimed_purchase_token",
-        purchaseTokenHash: tokenHash,
-      }),
-      { merge: true },
-    );
+    await processUnclaimedGooglePlayToken(payload, meta, kind, tokenHash);
     return;
   }
 
@@ -380,7 +466,7 @@ export async function processGooglePlayDeveloperNotification(
     );
     return;
   }
-  if (kind === "one_time_product" && claim.kind !== "topup") {
+  if (kind === "one_time_product" && claim.kind !== "topup" && claim.kind !== "memory_pack") {
     await ref.set(
       rtdnEventBase(payload, meta, {
         status: "rejected",
@@ -395,14 +481,8 @@ export async function processGooglePlayDeveloperNotification(
   try {
     if (kind === "subscription") {
       await reconcileSubscription(payload, meta, token, tokenHash, claim, false);
-    } else if (kind === "voided_purchase") {
-      if (claim.kind === "subscription") {
-        await reconcileSubscription(payload, meta, token, tokenHash, claim, true);
-      } else {
-        await reverseVoidedTopUp(payload, meta, tokenHash, claim);
-      }
-    } else if (kind === "one_time_product" && notificationType(payload) === 2) {
-      await reverseVoidedTopUp(payload, meta, tokenHash, claim);
+    } else {
+      await reverseClaimedGooglePlayOneTime(kind, payload, meta, token, tokenHash, claim);
     }
     await ref.set(
       rtdnEventBase(payload, meta, {

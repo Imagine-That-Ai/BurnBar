@@ -170,6 +170,9 @@ describe("Stripe subscription payment reversal", () => {
     const stripe = stripeStub<Stripe>({
       subscriptions: { list: vi.fn(async () => ({ data: [subscription], has_more: false })) },
       charges: { retrieve: vi.fn(async () => charge) },
+      paymentIntents: {
+        retrieve: vi.fn(async () => ({ id: charge.payment_intent, metadata: {} })),
+      },
       checkout: { sessions: { list: vi.fn(async () => ({ data: [], has_more: false })) } },
       invoicePayments: {
         list: vi.fn(async () => ({ data: [{ id: "inpay_1", invoice: "in_reversal_1" }], has_more: false })),

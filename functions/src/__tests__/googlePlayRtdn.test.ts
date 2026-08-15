@@ -13,6 +13,7 @@ const state = vi.hoisted(() => {
     reconcileTopUp: vi.fn(),
     logInfo: vi.fn(),
     logError: vi.fn(),
+    reverseVoidedMemoryPack: vi.fn(),
   };
 });
 
@@ -161,6 +162,10 @@ vi.mock("../callables/shared.js", async () => {
   };
 });
 
+vi.mock("../usageCuration/playRail.js", () => ({
+  reverseVoidedMemoryPack: (...args: unknown[]) => state.reverseVoidedMemoryPack(...args),
+}));
+
 import { processGooglePlayDeveloperNotification } from "../googlePlayRtdn.js";
 
 const FUTURE_EXPIRY = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -186,6 +191,7 @@ describe("Google Play RTDN", () => {
       monthKey: "2026-07",
     });
     state.writeEntitlement.mockResolvedValue({});
+    state.reverseVoidedMemoryPack.mockResolvedValue(undefined);
     state.subscriptionsGet.mockResolvedValue({
       data: {
         subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
@@ -332,6 +338,96 @@ describe("Google Play RTDN", () => {
     expect(state.documents.get(eventPath("event-voided-topup"))).toMatchObject({
       status: "processed",
       claimKind: "topup",
+    });
+  });
+
+  it("reverses a claimed Memory Boost void instead of a Cloud Pro top-up", async () => {
+    const token = "voided-memory-pack-token";
+    const hash = tokenHash(token);
+    state.documents.set(`google_play_token_claims/${hash}`, {
+      uid: "user-memory",
+      productID: "com.openburnbar.memory.boost.text.1m",
+      kind: "memory_pack",
+    });
+
+    await processGooglePlayDeveloperNotification(
+      {
+        packageName: "com.openburnbar",
+        eventTimeMillis: String(Date.now()),
+        voidedPurchaseNotification: {
+          purchaseToken: token,
+          orderId: "GPA.memory-order",
+          productType: 2,
+          refundType: 1,
+        },
+      },
+      { eventID: "event-voided-memory-pack" },
+    );
+
+    expect(state.reconcileTopUp).not.toHaveBeenCalled();
+    expect(state.reverseVoidedMemoryPack).toHaveBeenCalledWith({
+      uid: "user-memory",
+      tokenHash: hash,
+      orderId: "GPA.memory-order",
+    });
+    expect(state.documents.get(eventPath("event-voided-memory-pack"))).toMatchObject({
+      status: "processed",
+      claimKind: "memory_pack",
+    });
+  });
+
+  it("retries an unclaimed one-time void so a refund cannot beat redeem", async () => {
+    await expect(
+      processGooglePlayDeveloperNotification(
+        {
+          packageName: "com.openburnbar",
+          eventTimeMillis: String(Date.now()),
+          voidedPurchaseNotification: {
+            purchaseToken: "unclaimed-memory-void-token",
+            orderId: "GPA.unclaimed",
+            productType: 2,
+            refundType: 1,
+          },
+        },
+        { eventID: "event-unclaimed-memory-void" },
+      ),
+    ).rejects.toThrow(/memory_pack_grant_missing/);
+    expect(state.reverseVoidedMemoryPack).not.toHaveBeenCalled();
+  });
+
+  it("retries an unclaimed Memory Boost cancel notification", async () => {
+    await expect(
+      processGooglePlayDeveloperNotification(
+        {
+          packageName: "com.openburnbar",
+          eventTimeMillis: String(Date.now()),
+          oneTimeProductNotification: {
+            notificationType: 2,
+            purchaseToken: "unclaimed-memory-cancel-token",
+            sku: "com.openburnbar.memory.boost.text.1m",
+          },
+        },
+        { eventID: "event-unclaimed-memory-cancel" },
+      ),
+    ).rejects.toThrow(/memory_pack_grant_missing/);
+  });
+
+  it("does not retry an unclaimed subscription void as a memory pack", async () => {
+    await processGooglePlayDeveloperNotification(
+      {
+        packageName: "com.openburnbar",
+        eventTimeMillis: String(Date.now()),
+        voidedPurchaseNotification: {
+          purchaseToken: "unclaimed-sub-void-token",
+          productType: 1,
+          refundType: 1,
+        },
+      },
+      { eventID: "event-unclaimed-sub-void" },
+    );
+    expect(state.documents.get(eventPath("event-unclaimed-sub-void"))).toMatchObject({
+      status: "ignored",
+      reason: "unclaimed_purchase_token",
     });
   });
 

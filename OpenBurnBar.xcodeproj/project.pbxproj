@@ -268,6 +268,7 @@
 		16B7C23167BF8E81A0B6B2CE /* ChartSpecAccessibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECA84782CCB568A27136DA9 /* ChartSpecAccessibility.swift */; };
 		16E0A796E97A5E6D78F652AD /* LocalNetworkDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE89F151122803B616B8E591 /* LocalNetworkDiscoveryTests.swift */; };
 		170CC34025AE83AB3B8D0055 /* MacCloudEntitlementStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FCCDEBCD24F0B202BC15E42 /* MacCloudEntitlementStore.swift */; };
+		9B4D2F7E1C536A08D4E9F1B3 /* MacMemoryWalletStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A3C1E6D0B425F97C3D8E0A2 /* MacMemoryWalletStore.swift */; };
 		171696B72CF59991014FCA16 /* ConversationBundleExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570F6BA82C41832940624F70 /* ConversationBundleExporterTests.swift */; };
 		17288FCBF17468775A49C5CF /* SystemPermissionToolFailureWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA46D77ABD07FD81643F2B1F /* SystemPermissionToolFailureWatcher.swift */; };
 		1746641704378EE99340D4D5 /* PowerSourceMonitoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086FC1D44A7F5C4A3F4F9B75 /* PowerSourceMonitoringTests.swift */; };
@@ -1953,6 +1954,7 @@
 		C00D334D5FDF8993249D42D7 /* MacEscrowCredentialProducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57F78D75C5E22708F89015DD /* MacEscrowCredentialProducer.swift */; };
 		C01D2774F4ED538869E9D517 /* claude-code-project-path-fixtures.json in Resources */ = {isa = PBXBuildFile; fileRef = FC116FCB1D9E845372B6D364 /* claude-code-project-path-fixtures.json */; };
 		C040235BD6CA3B683743175A /* EntitlementsAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF22E7C8640ED2B3A110383 /* EntitlementsAPI.swift */; };
+		7F2B0D5C9A314E86B2C7D9F1 /* MemoryWalletStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1A9C4B8F203D75A1B6C8E0 /* MemoryWalletStore.swift */; };
 		C0C0BE646B5DA18CEF0F1FAF /* EasterEggOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB7B0BB3CEEE98916D1BE4A5 /* EasterEggOverlay.swift */; };
 		C0C288565010AACF13A2EF3B /* CrossEncoderReranker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5B7C80CC3B22F5224E40157 /* CrossEncoderReranker.swift */; };
 		C0DCEA8AEF3E8D10EEE25AF1 /* DebugBridgeUI in Frameworks */ = {isa = PBXBuildFile; productRef = CE5D7ECDA62BF299FA8FC01E /* DebugBridgeUI */; };
@@ -3185,6 +3187,7 @@
 		2F4AABAF25991FAFCBB802CF /* ComputerUseCloudMeteringService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseCloudMeteringService.swift; sourceTree = "<group>"; };
 		2F814AEC4F62540ED385090D /* DashboardToolbarTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardToolbarTests.swift; sourceTree = "<group>"; };
 		2FCCDEBCD24F0B202BC15E42 /* MacCloudEntitlementStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacCloudEntitlementStore.swift; sourceTree = "<group>"; };
+		8A3C1E6D0B425F97C3D8E0A2 /* MacMemoryWalletStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacMemoryWalletStore.swift; sourceTree = "<group>"; };
 		3033380274C7EF9D6C765ED8 /* DaemonComputerUseApprovalReplayCounterStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonComputerUseApprovalReplayCounterStore.swift; sourceTree = "<group>"; };
 		3053A34F3EBF085B3A4D86AE /* pc-claude-subagent.jsonl */ = {isa = PBXFileReference; path = "pc-claude-subagent.jsonl"; sourceTree = "<group>"; };
 		3054097A9E023D08D0A1FCDB /* HermesTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesTabView.swift; sourceTree = "<group>"; };
@@ -3923,6 +3926,7 @@
 		7BD88A379B71CDE4353E0B86 /* AmplitudeTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmplitudeTransport.swift; sourceTree = "<group>"; };
 		7BDFEA98E1613A271E679C72 /* PrivilegedInputDispatchHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedInputDispatchHandler.swift; sourceTree = "<group>"; };
 		7BF22E7C8640ED2B3A110383 /* EntitlementsAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementsAPI.swift; sourceTree = "<group>"; };
+		6E1A9C4B8F203D75A1B6C8E0 /* MemoryWalletStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryWalletStore.swift; sourceTree = "<group>"; };
 		7BF7133FCAFB0D4853FEB59A /* OpenBurnBarDatabase+MigrationV55.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OpenBurnBarDatabase+MigrationV55.swift"; sourceTree = "<group>"; };
 		7BFEC9F4A72CAF655B2BAD1B /* ChatTilesSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTilesSettingsView.swift; sourceTree = "<group>"; };
 		7C1239D91C79E0EED5BB3810 /* OpenBurnBarWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OpenBurnBarWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -8289,6 +8293,7 @@
 				5E3B3028589510FDF7BB317C /* LiveAuthGateway.swift */,
 				8C78E7F27C72A21B1A5C967B /* LiveCloudReader.swift */,
 				E56B0F0B3CAEF4D802A81721 /* LiveUsageAccumulator.swift */,
+				6E1A9C4B8F203D75A1B6C8E0 /* MemoryWalletStore.swift */,
 				E31C7935DA33313B5F85EFD2 /* MissionFABResurrectionController.swift */,
 				E466AA9780947467C8E9A836 /* MissionGroupObserver.swift */,
 				24CF913A5FD698CF0027DAC6 /* MobileChatHistoryStore.swift */,
@@ -8889,6 +8894,7 @@
 				FBFB7FE795BCD0E4705649DB /* InsightEngine.swift */,
 				DED248DDFB578CD7B88CC8DE /* LocalMetricsAggregator.swift */,
 				2FCCDEBCD24F0B202BC15E42 /* MacCloudEntitlementStore.swift */,
+				8A3C1E6D0B425F97C3D8E0A2 /* MacMemoryWalletStore.swift */,
 				DD04FC25A71156676C374D51 /* MacCloudVaultSignalPayloads.swift */,
 				32857AF7C8C5AF0BEE828F5B /* NavigationCoordinator.swift */,
 				27A2C20E79A5C06CC4C3AAAE /* OpenBurnBarAppCheckProviderFactory.swift */,
@@ -11490,6 +11496,7 @@
 				35E883897B9CB35E83FE45DB /* LiveAuthGateway.swift in Sources */,
 				831EAD5345CDCF7CB16CC3C4 /* LiveCloudReader.swift in Sources */,
 				B6A84985CC79BA14C5FA06E3 /* LiveUsageAccumulator.swift in Sources */,
+				7F2B0D5C9A314E86B2C7D9F1 /* MemoryWalletStore.swift in Sources */,
 				5B475198FF5E99EFD07FFA53 /* LivingThemeDeepLink.swift in Sources */,
 				344D79C5069EF76307101DD1 /* LivingThemesView.swift in Sources */,
 				15C50026FE3B39047774F27E /* LockedFeatureVeil.swift in Sources */,
@@ -12661,6 +12668,7 @@
 				BDFC5F22E3A1188FB134BBBC /* MacAgentReplyNotificationListener.swift in Sources */,
 				E9A293ACB648F47E93AACF4A /* MacAppCheckAttestationReader.swift in Sources */,
 				170CC34025AE83AB3B8D0055 /* MacCloudEntitlementStore.swift in Sources */,
+				9B4D2F7E1C536A08D4E9F1B3 /* MacMemoryWalletStore.swift in Sources */,
 				E1588A4EF5BBBA8A25D40FDE /* MacCloudPublisher.swift in Sources */,
 				79961E0A5C653E7A48180386 /* MacCloudStoreLegalLinks.swift in Sources */,
 				A2E6D43859F26D4998013F24 /* MacCloudVaultSignalPayloads.swift in Sources */,

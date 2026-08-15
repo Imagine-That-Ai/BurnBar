@@ -53,6 +53,24 @@ export const GOOGLE_PLAY_TOP_UPS = Object.freeze([
     description: "Adds 500 hosted Elder Wand Fusion web_search credits.",
     priceUSD: "19.99",
   },
+  {
+    productId: "com.openburnbar.memory.boost.text.1m",
+    name: "Memory Boost · 1M text",
+    description: "Prepaid 1 million text tokens for usage-memory extraction.",
+    priceUSD: "2.99",
+  },
+  {
+    productId: "com.openburnbar.memory.boost.text.5m",
+    name: "Memory Boost · 5M text",
+    description: "Prepaid 5 million text tokens for usage-memory extraction.",
+    priceUSD: "9.99",
+  },
+  {
+    productId: "com.openburnbar.memory.boost.vision.1m",
+    name: "Vision Memory Boost · 1M",
+    description: "Prepaid 1 million multimodal tokens for usage-memory extraction.",
+    priceUSD: "6.99",
+  },
 ]);
 
 export function priceUSDMicros(priceUSD) {

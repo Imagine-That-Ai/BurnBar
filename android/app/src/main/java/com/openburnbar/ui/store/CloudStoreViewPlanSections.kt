@@ -57,6 +57,7 @@ import com.openburnbar.data.stores.HostedQuotaStoreProduct
 import com.openburnbar.data.stores.HostedQuotaStoreProductRole
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.ui.theme.LocalAuroraReduceMotion
+import java.text.NumberFormat
 
 // ── Plan tile (free users) ──
 
@@ -132,23 +133,33 @@ internal fun CloudPlanPriceRow(priceText: String) {
 }
 
 @Composable
-internal fun CloudPaidTierCard(isActive: Boolean, prices: Map<String, HostedQuotaProductDetails>, isLoading: Boolean, onPurchase: (String) -> Unit) {
+internal fun CloudPaidTierCard(
+    isActive: Boolean,
+    isCloudPro: Boolean,
+    prices: Map<String, HostedQuotaProductDetails>,
+    isLoading: Boolean,
+    memoryWallet: MemoryBoostWalletUi = MemoryBoostWalletUi(),
+    onPurchase: (String) -> Unit,
+) {
     CloudPaidTierColumn(
-        sections = cloudPaidTierSections(),
+        sections = cloudPaidTierSections(isCloudPro),
         prices = prices,
         isActive = isActive,
         isLoading = isLoading,
+        memoryWallet = memoryWallet,
         onPurchase = onPurchase,
     )
 }
 
 internal fun LazyListScope.cloudPaidTierLazyItems(
     isActive: Boolean,
+    isCloudPro: Boolean,
     prices: Map<String, HostedQuotaProductDetails>,
     isLoading: Boolean,
+    memoryWallet: MemoryBoostWalletUi = MemoryBoostWalletUi(),
     onPurchase: (String) -> Unit,
 ) {
-    val sections = cloudPaidTierSections()
+    val sections = cloudPaidTierSections(isCloudPro)
     item { CloudPaidTierHeaderCard(hasPlayPrices = prices.isNotEmpty()) }
     if (sections.cloud.isNotEmpty()) {
         item {
@@ -183,6 +194,17 @@ internal fun LazyListScope.cloudPaidTierLazyItems(
             )
         }
     }
+    if (isActive && sections.memoryBoosts.isNotEmpty()) {
+        item {
+            MemoryBoostPlanCard(
+                products = sections.memoryBoosts,
+                prices = prices,
+                enabled = !isLoading,
+                wallet = memoryWallet,
+                onPurchase = onPurchase,
+            )
+        }
+    }
     if (isActive && sections.topUps.isNotEmpty()) {
         item {
             CloudTopUpPlanCard(
@@ -197,20 +219,54 @@ internal fun LazyListScope.cloudPaidTierLazyItems(
 
 internal fun cloudStorePurchaseTag(productID: String): String = "cloud-store.purchase.$productID"
 
+internal data class MemoryBoostWalletUi(
+    val textTokens: Long = 0,
+    val visionTokens: Long = 0,
+    val pendingTextTokens: Long = 0,
+    val pendingVisionTokens: Long = 0,
+    val loadFailed: Boolean = false,
+    val notice: String? = null,
+)
+
+internal fun formatMemoryTokenCount(value: Long): String = NumberFormat.getIntegerInstance().format(value)
+
+internal fun memoryBoostWalletLines(wallet: MemoryBoostWalletUi): List<String> {
+    if (wallet.loadFailed) {
+        return listOf("Could not load your Memory Boost wallet. Reopen this screen to try again.")
+    }
+    val spendable =
+        "Wallet: ${formatMemoryTokenCount(wallet.textTokens)} text · " +
+            "${formatMemoryTokenCount(wallet.visionTokens)} vision"
+    val lines = mutableListOf(spendable)
+    if (wallet.pendingTextTokens > 0L || wallet.pendingVisionTokens > 0L) {
+        lines +=
+            "Waiting: ${formatMemoryTokenCount(wallet.pendingTextTokens)} text · " +
+            "${formatMemoryTokenCount(wallet.pendingVisionTokens)} vision until Cloud Pro or Ultra is active."
+    }
+    lines += "Credits expire 12 months after purchase."
+    wallet.notice?.takeIf { it.isNotBlank() }?.let { lines += it }
+    return lines
+}
+
 private data class CloudPaidTierSections(
     val cloud: List<HostedQuotaStoreProduct>,
     val cloudPro: List<HostedQuotaStoreProduct>,
     val cloudUltra: List<HostedQuotaStoreProduct>,
     val topUps: List<HostedQuotaStoreProduct>,
+    val memoryBoosts: List<HostedQuotaStoreProduct>,
 )
 
-private fun cloudPaidTierSections(): CloudPaidTierSections {
+private fun cloudPaidTierSections(isCloudPro: Boolean): CloudPaidTierSections {
     val products = HostedQuotaSubscriptionStore.STORE_PRODUCTS
     return CloudPaidTierSections(
         cloud = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION },
         cloudPro = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION },
         cloudUltra = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION },
         topUps = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP },
+        memoryBoosts = products.filter { product ->
+            product.role == HostedQuotaStoreProductRole.MEMORY_BOOST &&
+                (isCloudPro || product.id != HostedQuotaSubscriptionStore.MEMORY_BOOST_VISION_1M_PRODUCT_ID)
+        },
     )
 }
 
@@ -228,6 +284,7 @@ private fun CloudPaidTierColumn(
     prices: Map<String, HostedQuotaProductDetails>,
     isActive: Boolean,
     isLoading: Boolean,
+    memoryWallet: MemoryBoostWalletUi,
     onPurchase: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -254,6 +311,13 @@ private fun CloudPaidTierColumn(
             onPurchase = onPurchase,
         )
         if (isActive) {
+            MemoryBoostPlanCard(
+                products = sections.memoryBoosts,
+                prices = prices,
+                enabled = !isLoading,
+                wallet = memoryWallet,
+                onPurchase = onPurchase,
+            )
             CloudTopUpPlanCard(
                 products = sections.topUps,
                 prices = prices,
@@ -316,6 +380,28 @@ private fun CloudTopUpPlanCard(
                 products = products,
                 prices = prices,
                 enabled = enabled,
+                onPurchase = onPurchase,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MemoryBoostPlanCard(
+    products: List<HostedQuotaStoreProduct>,
+    prices: Map<String, HostedQuotaProductDetails>,
+    enabled: Boolean,
+    wallet: MemoryBoostWalletUi,
+    onPurchase: (String) -> Unit,
+) {
+    if (products.isEmpty()) return
+    AuroraGlassCard(cornerRadius = 18) {
+        Box(modifier = Modifier.padding(16.dp)) {
+            MemoryBoostPlanRail(
+                products = products,
+                prices = prices,
+                enabled = enabled,
+                wallet = wallet,
                 onPurchase = onPurchase,
             )
         }
@@ -769,6 +855,45 @@ internal fun TopUpPlanRail(
     }
 }
 
+@Composable
+internal fun MemoryBoostPlanRail(
+    products: List<HostedQuotaStoreProduct>,
+    prices: Map<String, HostedQuotaProductDetails>,
+    enabled: Boolean,
+    wallet: MemoryBoostWalletUi,
+    onPurchase: (String) -> Unit,
+) {
+    if (products.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Text(
+            "MEMORY BOOST",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 1.6.sp,
+            color = CloudStorePal.textMuted,
+        )
+        memoryBoostWalletLines(wallet).forEach { line ->
+            Text(
+                line,
+                fontSize = 12.sp,
+                color = CloudStorePal.textSecondary,
+            )
+        }
+        products.forEach { product ->
+            val metadata = memoryBoostPresentation(product.id)
+            TopUpPurchaseRow(
+                title = metadata.title,
+                detail = metadata.detail,
+                drawableRes = metadata.drawableRes,
+                price = prices[product.id]?.formattedPrice ?: product.fallbackPrice,
+                enabled = enabled,
+                purchaseTestTag = cloudStorePurchaseTag(product.id),
+                onClick = { onPurchase(product.id) },
+            )
+        }
+    }
+}
+
 private data class TopUpPresentation(
     val title: String,
     val detail: String,
@@ -804,6 +929,33 @@ private fun topUpPresentation(productID: String): TopUpPresentation = when (prod
         TopUpPresentation(
             title = "Cloud Pro top-up",
             detail = "One-time Cloud Pro top-up",
+            drawableRes = R.drawable.cloud_badge_brass_coin,
+        )
+}
+
+private fun memoryBoostPresentation(productID: String): TopUpPresentation = when (productID) {
+    HostedQuotaSubscriptionStore.MEMORY_BOOST_TEXT_1M_PRODUCT_ID ->
+        TopUpPresentation(
+            title = "1M text tokens",
+            detail = "Prepaid Memory Boost. Monthly allowance is used first. Credits expire 12 months after purchase.",
+            drawableRes = R.drawable.cloud_badge_brass_coin,
+        )
+    HostedQuotaSubscriptionStore.MEMORY_BOOST_TEXT_5M_PRODUCT_ID ->
+        TopUpPresentation(
+            title = "5M text tokens",
+            detail = "Prepaid Memory Boost. Monthly allowance is used first. Credits expire 12 months after purchase.",
+            drawableRes = R.drawable.cloud_badge_brass_coin,
+        )
+    HostedQuotaSubscriptionStore.MEMORY_BOOST_VISION_1M_PRODUCT_ID ->
+        TopUpPresentation(
+            title = "1M vision tokens",
+            detail = "Cloud Pro or Ultra. Screenshot and image memory. Credits expire 12 months after purchase.",
+            drawableRes = R.drawable.cloud_badge_brass_coin,
+        )
+    else ->
+        TopUpPresentation(
+            title = "Memory Boost",
+            detail = "Prepaid memory tokens",
             drawableRes = R.drawable.cloud_badge_brass_coin,
         )
 }

@@ -45,11 +45,22 @@ assert.deepEqual([...topUpByProduct.keys()], [
   'com.openburnbar.floo.relay50gb',
   'com.openburnbar.elderWand.searches100',
   'com.openburnbar.elderWand.searches500',
+  'com.openburnbar.memory.boost.text.1m',
+  'com.openburnbar.memory.boost.text.5m',
+  'com.openburnbar.memory.boost.vision.1m',
 ]);
 assert.equal(topUpByProduct.get('com.openburnbar.agentControl.actions100').priceUSD, '4.99');
 assert.equal(topUpByProduct.get('com.openburnbar.floo.relay50gb').priceUSD, '4.99');
 assert.equal(topUpByProduct.get('com.openburnbar.elderWand.searches100').priceUSD, '4.99');
 assert.equal(topUpByProduct.get('com.openburnbar.elderWand.searches500').priceUSD, '19.99');
+assert.equal(topUpByProduct.get('com.openburnbar.memory.boost.text.1m').priceUSD, '2.99');
+assert.equal(topUpByProduct.get('com.openburnbar.memory.boost.text.5m').priceUSD, '9.99');
+assert.equal(topUpByProduct.get('com.openburnbar.memory.boost.vision.1m').priceUSD, '6.99');
+
+for (const topUp of TOP_UPS) {
+  assert.ok(topUp.name.length > 0 && topUp.name.length <= 30, `${topUp.productId} ASC display name fits 30 chars`);
+  assert.ok(topUp.reviewNote.includes('BurnBar'), `${topUp.productId} has a review note`);
+}
 
 const source = readFileSync(new URL('./prepare-commercial-iaps.js', import.meta.url), 'utf8');
 assert.doesNotMatch(

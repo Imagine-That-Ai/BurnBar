@@ -787,6 +787,17 @@ final class FunctionsRepository: HermesGatewayRepository {
             productID: productID
         )
     }
+
+    @discardableResult
+    func redeemAppleMemoryPack(
+        signedTransactionJWS: String,
+        productID: String
+    ) async throws -> MemoryPackRedeemResponse {
+        try await entitlements.redeemAppleMemoryPack(
+            signedTransactionJWS: signedTransactionJWS,
+            productID: productID
+        )
+    }
 }
 
 // MARK: - Functions Error

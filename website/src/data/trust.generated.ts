@@ -299,14 +299,15 @@ export const TRUST_DOMAINS: readonly TrustDomain[] = [
     "id": "entitlements_billing",
     "title": "Plan & Billing",
     "tier": "server_readable",
-    "blurb": "Your subscription entitlements (Cloud Pro, Ultra) and their change history.",
+    "blurb": "Your subscription entitlements (Cloud Pro, Ultra), prepaid Memory Boost token packs, and their change history.",
     "caveat": null,
     "serverSees": [
       "entitlement ids",
       "product ids",
       "active state",
       "expiry",
-      "purchase source"
+      "purchase source",
+      "prepaid Memory Boost balances and grant metadata"
     ],
     "deviceOnly": []
   },

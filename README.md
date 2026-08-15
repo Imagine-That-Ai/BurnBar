@@ -56,6 +56,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - [Tech debt strategy & metrics](docs/TECH_DEBT_STRATEGY.md) · [live snapshot](docs/TECH_DEBT_METRICS.md)
 - [Observability contract](docs/OBSERVABILITY.md) · [SLO runbook](docs/runbooks/slos.md)
 - [Architecture ADRs](docs/ARCHITECTURE/README.md)
+- [Memory Power-Up packs](docs/MEMORY_POWER_UP_PACKS.md)
 
 ---
 

@@ -131,9 +131,9 @@ public enum DataDomains {
         ),
         DataDomain(
             id: "entitlements_billing", title: "Plan & Billing", icon: "creditcard.fill",
-            encryptionTier: .serverReadable, summary: "Your subscription entitlements (Cloud Pro, Ultra) and their change history.",
-            serverSees: ["entitlement ids", "product ids", "active state", "expiry", "purchase source"], deviceOnly: [],
-            firestorePaths: ["entitlements", "entitlement_events", "entitlement_bindings", "billing"], storagePaths: [],
+            encryptionTier: .serverReadable, summary: "Your subscription entitlements (Cloud Pro, Ultra), prepaid Memory Boost token packs, and their change history.",
+            serverSees: ["entitlement ids", "product ids", "active state", "expiry", "purchase source", "prepaid Memory Boost balances and grant metadata"], deviceOnly: [],
+            firestorePaths: ["entitlements", "entitlement_events", "entitlement_bindings", "billing", "memoryWallet", "memoryWalletLedger"], storagePaths: [],
             countSource: "entitlements", byteSource: nil,
             retention: "permanent", actions: ["view"],
             entitlementGate: nil, suspensionSurface: nil,
