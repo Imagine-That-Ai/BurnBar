@@ -41,16 +41,6 @@ public struct BurnBarSafariDaemonRuntimePaths: Hashable, Sendable {
         )
     }
 
-    private static func canonicalLoginHomeDirectory() -> URL {
-        #if canImport(Darwin) || canImport(Glibc)
-        if let entry = getpwuid(getuid()),
-           let path = String(validatingCString: entry.pointee.pw_dir),
-           !path.isEmpty {
-            return URL(fileURLWithPath: path, isDirectory: true)
-        }
-        #endif
-        return FileManager.default.homeDirectoryForCurrentUser
-    }
 }
 
 public enum BurnBarSafariDaemonTokenSource: String, Codable, Hashable, Sendable {

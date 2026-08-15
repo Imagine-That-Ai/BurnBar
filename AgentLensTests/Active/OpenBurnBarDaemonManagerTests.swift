@@ -1686,7 +1686,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
         )
     }
 
-    func test_liveRuntimePaths_resolveAroundTheCanonicalSupportDirectory() {
+    func test_liveRuntimePaths_resolveAroundTheCanonicalSupportDirectory() throws {
         // `.live()` must keep producing a coherent, daemon-rooted path tree even
         // when nothing is injected — the hardening seam must not change the shape
         // of the runtime paths it returns.
@@ -1697,7 +1697,7 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
             paths.supportDirectory.standardizedFileURL
         )
         XCTAssertEqual(paths.daemonDirectory.lastPathComponent, "daemon")
-        let expectedSharedRoot = try! XCTUnwrap(
+        let expectedSharedRoot = try XCTUnwrap(
             OpenBurnBarCore.BurnBarSafariSharedContainer.liveRoot()
         )
         XCTAssertEqual(

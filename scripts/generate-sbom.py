@@ -54,10 +54,18 @@ def run(cmd: list[str], cwd: str | None = None) -> str:
 
 
 def validate_git_authority(repo_root: Path) -> str:
-    """Require Git to resolve exactly the requested candidate work tree."""
+    """Require Git to resolve exactly the requested candidate work tree.
+
+    Both sides are canonicalized so macOS symlinked temp roots (/var/folders vs
+    /private/var/folders) compare as the same work tree without weakening the
+    fail-closed mismatch check.
+    """
     observed_root = Path(run(["git", "rev-parse", "--show-toplevel"], cwd=str(repo_root))).resolve()
-    if observed_root != repo_root:
-        raise CommandError(f"Git authority resolved work tree {observed_root} instead of requested {repo_root}")
+    requested_root = repo_root.resolve()
+    if observed_root != requested_root:
+        raise CommandError(
+            f"Git authority resolved work tree {observed_root} instead of requested {requested_root}"
+        )
     return run(["git", "rev-parse", "HEAD"], cwd=str(repo_root))
 
 

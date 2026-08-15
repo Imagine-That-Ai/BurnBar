@@ -47,7 +47,10 @@ function installCanvasHarness(open: boolean): CanvasHarness {
     })),
     putImageData: vi.fn()
   };
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
+  // The suite's beforeEach stubs the CanvasRenderingContext2D global, so a real
+  // instance can carry the mocked drawing surface without any type assertion.
+  const context2D = Object.assign(new CanvasRenderingContext2D(), context);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context2D);
   return { context, root, fire, knob, fallback };
 }
 

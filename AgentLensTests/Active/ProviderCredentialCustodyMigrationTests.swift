@@ -496,8 +496,7 @@ private final class CredentialServiceRecordingBackend: KeychainStoreBackend, @un
 
 private final class ProviderCredentialCustodyStoreSpy:
     ProviderCredentialCustodyStoring,
-    @unchecked Sendable
-{
+    @unchecked Sendable {
     enum Event: Equatable {
         case currentRead(String)
         case interactiveRead(String)

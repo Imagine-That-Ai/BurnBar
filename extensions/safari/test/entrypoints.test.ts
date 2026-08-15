@@ -606,11 +606,10 @@ describe('WebExtension runtime entrypoints', () => {
     });
     const authorizationMessageOrder = vi
       .mocked(browser.runtime.sendMessage)
-      .mock.invocationCallOrder.find(
-        (_, index) =>
-          (vi.mocked(browser.runtime.sendMessage).mock.calls[index]?.[0] as PopupRequest | undefined)?.type ===
-          'popup.authorizePage'
-      );
+      .mock.invocationCallOrder.find((_, index) => {
+        const message: unknown = vi.mocked(browser.runtime.sendMessage).mock.calls[index]?.[0];
+        return isPopupRequest(message) && message.type === 'popup.authorizePage';
+      });
     expect(permissionRequest.mock.invocationCallOrder[0]).toBeLessThan(
       requireValue(authorizationMessageOrder, 'authorization message invocation order')
     );
