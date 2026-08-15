@@ -65,6 +65,82 @@ final class MemorySettings {
         didSet { persistence.set(consentShown, forKey: "memoryConsentShown") }
     }
 
+    // MARK: Usage memory (passive memory from Safari asks + agent session logs)
+
+    /// User consent to usage-memory extraction (default OFF). This is the sibling
+    /// of chat's `consentGranted` for the usage-memory feature: until the user
+    /// affirmatively opts in, no Safari ask or agent session log is read and no
+    /// usage memory is derived — it is ANDed into `UsageMemoryExtractionGate`, so
+    /// the whole usage loop is dormant out of the box. Granting consent implies
+    /// the prompt has been shown.
+    var usageMemoryConsentGranted: Bool = false {
+        didSet {
+            persistence.set(usageMemoryConsentGranted, forKey: "usageMemoryConsentGranted")
+            if usageMemoryConsentGranted { usageMemoryConsentShown = true }
+            propagateUsageGates()
+        }
+    }
+
+    /// Whether the usage-memory consent prompt has been presented (so it is not
+    /// shown again). Set when consent is granted, or when the user declines.
+    var usageMemoryConsentShown: Bool = false {
+        didSet { persistence.set(usageMemoryConsentShown, forKey: "usageMemoryConsentShown") }
+    }
+
+    /// Separate opt-in for CLOUD curation of usage memory (default OFF). Local
+    /// extraction consent does not imply consent to send usage-derived material
+    /// to a cloud model; this is ANDed into `UsageMemoryCloudGate` together with
+    /// a cloud model placement, so cloud curation stays off unless the user both
+    /// consents and points placement at a cloud model.
+    var usageMemoryCloudCurationConsentGranted: Bool = false {
+        didSet {
+            persistence.set(
+                usageMemoryCloudCurationConsentGranted,
+                forKey: "usageMemoryCloudCurationConsentGranted"
+            )
+        }
+    }
+
+    /// Where the usage-memory curation model runs (default `.local`). Only a
+    /// cloud placement (`.cloudText` / `.burnbarCloud`) can satisfy
+    /// `UsageMemoryCloudGate`; the default keeps curation fully on-device.
+    var usageMemoryModelPlacement: UsageMemoryModelPlacement = .local {
+        didSet { persistence.set(usageMemoryModelPlacement, forKey: "usageMemoryModelPlacement") }
+    }
+
+    /// Source toggle: derive usage memory from Safari asks (default ON — inert
+    /// until the consent gate opens).
+    var usageMemorySourceSafariAsksEnabled: Bool = true {
+        didSet {
+            persistence.set(usageMemorySourceSafariAsksEnabled, forKey: "usageMemorySourceSafariAsksEnabled")
+        }
+    }
+
+    /// Source toggle: derive usage memory from agent session logs (default ON —
+    /// inert until the consent gate opens).
+    var usageMemorySourceAgentSessionsEnabled: Bool = true {
+        didSet {
+            persistence.set(usageMemorySourceAgentSessionsEnabled, forKey: "usageMemorySourceAgentSessionsEnabled")
+        }
+    }
+
+    /// Firebase Remote Config `memory_usage_extraction_enabled` (default true).
+    /// Not user-settable and not persisted; the fleet kill switch sets this false
+    /// to halt usage extraction instantly. Same transport posture as the chat
+    /// switch: fetch errors preserve extraction only when the active cached
+    /// config is not already false.
+    var remoteConfigUsageExtractionEnabled: Bool = true {
+        didSet { propagateUsageGates() }
+    }
+
+    /// Firebase Remote Config `memory_usage_authority_writes_enabled` (default
+    /// true). Not user-settable and not persisted; a fleet flip to false halts
+    /// durable authority writes from the usage pipeline while leaving extraction
+    /// gating untouched.
+    var remoteConfigUsageAuthorityWritesEnabled: Bool = true {
+        didSet { propagateUsageGates() }
+    }
+
     init(persistence: SettingsPersistenceCoordinator) {
         self.persistence = persistence
         if persistence.objectExists(forKey: "memoryAutomaticExtraction") {
@@ -84,7 +160,34 @@ final class MemorySettings {
         if persistence.objectExists(forKey: "memoryConsentGranted") {
             self.consentGranted = persistence.bool(forKey: "memoryConsentGranted")
         }
+        // Usage memory. Load `usageMemoryConsentShown` before
+        // `usageMemoryConsentGranted` for the same shown/granted ordering reason
+        // as chat consent above.
+        if persistence.objectExists(forKey: "usageMemoryConsentShown") {
+            self.usageMemoryConsentShown = persistence.bool(forKey: "usageMemoryConsentShown")
+        }
+        if persistence.objectExists(forKey: "usageMemoryConsentGranted") {
+            self.usageMemoryConsentGranted = persistence.bool(forKey: "usageMemoryConsentGranted")
+        }
+        if persistence.objectExists(forKey: "usageMemoryCloudCurationConsentGranted") {
+            self.usageMemoryCloudCurationConsentGranted = persistence.bool(
+                forKey: "usageMemoryCloudCurationConsentGranted"
+            )
+        }
+        self.usageMemoryModelPlacement = persistence.rawRepresentable(
+            forKey: "usageMemoryModelPlacement",
+            defaultValue: .local
+        )
+        if persistence.objectExists(forKey: "usageMemorySourceSafariAsksEnabled") {
+            self.usageMemorySourceSafariAsksEnabled = persistence.bool(forKey: "usageMemorySourceSafariAsksEnabled")
+        }
+        if persistence.objectExists(forKey: "usageMemorySourceAgentSessionsEnabled") {
+            self.usageMemorySourceAgentSessionsEnabled = persistence.bool(
+                forKey: "usageMemorySourceAgentSessionsEnabled"
+            )
+        }
         propagateExtractionGate()
+        propagateUsageGates()
     }
 
     private func propagateExtractionGate() {
@@ -95,6 +198,16 @@ final class MemorySettings {
                 remoteConfigEnabled: remoteConfigExtractionEnabled
             )
         )
+    }
+
+    private func propagateUsageGates() {
+        UsageMemoryKillSwitchRegistry.setExtraction(
+            UsageMemoryExtractionGate.isEnabled(
+                usageConsentGranted: usageMemoryConsentGranted,
+                remoteConfigEnabled: remoteConfigUsageExtractionEnabled
+            )
+        )
+        UsageMemoryKillSwitchRegistry.setAuthorityWrites(remoteConfigUsageAuthorityWritesEnabled)
     }
 }
 
@@ -112,6 +225,54 @@ enum MemoryExtractionGate {
         remoteConfigEnabled: Bool
     ) -> Bool {
         consentGranted && automaticExtraction && remoteConfigEnabled
+    }
+}
+
+// MARK: - Usage memory model placement
+
+/// Where the usage-memory curation model runs. Only the cloud placements can
+/// ever satisfy `UsageMemoryCloudGate`; `.local` (the default) keeps the whole
+/// pipeline on-device.
+enum UsageMemoryModelPlacement: String, CaseIterable, Sendable {
+    /// On-device model. Default: nothing usage-derived leaves the machine.
+    case local
+    /// A user-configured cloud text model.
+    case cloudText
+    /// The BurnBar-hosted cloud curation service.
+    case burnbarCloud
+
+    /// True for any placement that sends usage-derived material off-device.
+    var isCloud: Bool { self != .local }
+}
+
+// MARK: - Usage memory gates (pure)
+
+/// Pure gate: usage-memory extraction is enabled only when the user has
+/// CONSENTED **and** the fleet Remote Config kill switch has not disabled it.
+/// Either lever off -> extraction halted (fail-closed). Consent defaults OFF,
+/// so the usage loop is dormant out of the box. Kept pure so the gate logic is
+/// testable without Firebase or a SettingsManager.
+enum UsageMemoryExtractionGate {
+    static func isEnabled(
+        usageConsentGranted: Bool,
+        remoteConfigEnabled: Bool
+    ) -> Bool {
+        usageConsentGranted && remoteConfigEnabled
+    }
+}
+
+/// Pure gate: cloud curation of usage memory requires the extraction gate to be
+/// open **and** the separate cloud-curation consent **and** a cloud model
+/// placement. Any lever off -> zero cloud egress (fail-closed). Both consents
+/// default OFF and placement defaults `.local`, so this gate is triply dormant
+/// out of the box.
+enum UsageMemoryCloudGate {
+    static func isEnabled(
+        extractionEnabled: Bool,
+        cloudConsentGranted: Bool,
+        placementIsCloud: Bool
+    ) -> Bool {
+        extractionEnabled && cloudConsentGranted && placementIsCloud
     }
 }
 
