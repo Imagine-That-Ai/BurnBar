@@ -150,4 +150,73 @@ struct MemoryExtractionLLMClient: Sendable {
         }
         return (text, false)
     }
+
+    // MARK: - Ollama (vision)
+
+    /// Calls a local Ollama `/api/generate` endpoint with image attachments
+    /// (the native `images` base64 array — for vision-language models like
+    /// qwen3-vl) and returns the raw response text plus a cooldown hint, or
+    /// `(nil, shouldCooldown)` on failure. Mirrors `callOllama`: JSON format
+    /// mode, same error posture, cooldown bookkeeping stays in the caller.
+    func callOllamaWithImages(
+        prompt: String,
+        imagesBase64: [String],
+        model: String,
+        baseURL: String,
+        timeout: Double
+    ) async -> (text: String?, shouldCooldown: Bool) {
+        let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let endpoint = URL(string: base)?.appendingPathComponent("api/generate"),
+              model.isEmpty == false,
+              imagesBase64.isEmpty == false
+        else {
+            return (nil, false)
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.timeoutInterval = timeout
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "model": model,
+            "prompt": prompt,
+            "images": imagesBase64,
+            "stream": false,
+            "format": "json",
+            "options": [
+                "temperature": 0.1,
+                "num_predict": MemoryExtractionPolicy.maxOutputTokens
+            ]
+        ]
+
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { // try?-ok(encode request, skip)
+            return (nil, false)
+        }
+        request.httpBody = body
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            let nsError = error as NSError
+            let cooldown = nsError.domain == NSURLErrorDomain
+            return (nil, cooldown)
+        }
+
+        guard let http = response as? HTTPURLResponse else { return (nil, false) }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            let cooldown = http.statusCode == 404 || http.statusCode == 408
+                || http.statusCode == 429 || http.statusCode >= 500
+            return (nil, cooldown)
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(decode LLM JSON)
+              let text = json["response"] as? String
+        else {
+            return (nil, false)
+        }
+        return (text, false)
+    }
 }
