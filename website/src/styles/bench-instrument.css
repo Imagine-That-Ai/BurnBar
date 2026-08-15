@@ -1094,7 +1094,9 @@ body:has(.ins)::before {
   text-decoration: none;
   border-bottom: 1px dotted var(--ins-ink-3, currentColor);
   padding-bottom: 1px;
-  transition: color 160ms ease, border-color 160ms ease;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease;
 }
 .ins-prov__link:hover {
   color: var(--ins-ink-1, #fff);
