@@ -31,6 +31,10 @@ export interface LearningState {
   items: LearningItem[];
 }
 
+export interface UsageMemoryState {
+  optedIn: boolean;
+}
+
 export interface LearningItem {
   id: string;
   version: number;
@@ -79,6 +83,7 @@ export interface PopupSnapshot {
   };
   trust: TrustSettings;
   learning: LearningState;
+  usageMemory: UsageMemoryState;
   transcript: TranscriptEntry[];
   approvals: ApprovalPreview[];
   activity: ActivityEvent[];
@@ -118,10 +123,15 @@ export type PopupRequest =
     }
   | { type: 'popup.setLearning'; optedIn: boolean }
   | { type: 'popup.teachCorrection'; correction: string }
-  | { type: 'popup.learningReview'; itemId: string; decision: 'approve' | 'reject' | 'forget' };
+  | { type: 'popup.learningReview'; itemId: string; decision: 'approve' | 'reject' | 'forget' }
+  | { type: 'popup.setUsageMemory'; enabled: boolean };
 
 const MAX_LEARNING_CORRECTION_BYTES = 4 * 1024;
 const MIN_LEARNING_CORRECTION_BYTES = 8;
+const MIN_USAGE_OBSERVATION_PROMPT_BYTES = 8;
+export const MAX_USAGE_OBSERVATION_PROMPT_BYTES = 4 * 1024;
+export const MAX_USAGE_OBSERVATION_TITLE_BYTES = 512;
+export const MAX_USAGE_OBSERVATION_ANSWER_PREVIEW_BYTES = 512;
 const TRUST_PATCH_KEYS: readonly (keyof TrustSettings)[] = [
   'globalKillSwitch',
   'onlyCurrentTab',
@@ -150,12 +160,27 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 function isBoundedLearningCorrection(value: unknown): value is string {
   if (typeof value !== 'string') {
     return false;
   }
-  const byteLength = new TextEncoder().encode(value.trim()).byteLength;
+  const byteLength = utf8ByteLength(value.trim());
   return byteLength >= MIN_LEARNING_CORRECTION_BYTES && byteLength <= MAX_LEARNING_CORRECTION_BYTES;
+}
+
+function isWebURLString(value: unknown): value is string {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -249,6 +274,8 @@ export function isPopupRequest(value: unknown): value is PopupRequest {
         isNonEmptyString(value.itemId) &&
         (value.decision === 'approve' || value.decision === 'reject' || value.decision === 'forget')
       );
+    case 'popup.setUsageMemory':
+      return hasExactKeys(value, ['type', 'enabled']) && typeof value.enabled === 'boolean';
     default:
       return false;
   }
@@ -329,6 +356,10 @@ function isLearningState(value: unknown): value is LearningState {
   );
 }
 
+function isUsageMemoryState(value: unknown): value is UsageMemoryState {
+  return isRecord(value) && typeof value.optedIn === 'boolean';
+}
+
 function isTranscriptEntry(value: unknown): value is TranscriptEntry {
   return (
     isRecord(value) &&
@@ -389,6 +420,7 @@ function isPopupSnapshot(value: unknown): value is PopupSnapshot {
     isPageSnapshot(value.page) &&
     isTrustSettings(value.trust) &&
     isLearningState(value.learning) &&
+    isUsageMemoryState(value.usageMemory) &&
     Array.isArray(value.transcript) &&
     value.transcript.every(isTranscriptEntry) &&
     Array.isArray(value.approvals) &&
@@ -649,9 +681,59 @@ export interface PopupActionPayloads {
     tabId: number;
     url: string;
   };
+  'popup.setUsageMemory': Record<string, unknown> & {
+    enabled: boolean;
+  };
+  'usage.observe': Record<string, unknown> & {
+    observationId: string;
+    prompt: string;
+    url: string;
+    title: string;
+    answerSha256: string;
+    answerPreview: string;
+    tabId: number;
+  };
 }
 
 export type PopupActionName = keyof PopupActionPayloads;
+
+/**
+ * Strict shape-and-bounds gate for the fire-and-forget `usage.observe` popup
+ * action. Mirrors the learning payload discipline: exact keys only, bounded
+ * UTF-8 fields, and a lowercase hex SHA-256 answer digest. The native bridge
+ * and daemon re-validate everything; this keeps malformed observations from
+ * ever leaving the extension.
+ */
+export function isUsageObservationPayload(value: unknown): value is PopupActionPayloads['usage.observe'] {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ['observationId', 'prompt', 'url', 'title', 'answerSha256', 'answerPreview', 'tabId'])
+  ) {
+    return false;
+  }
+  if (!isNonEmptyString(value.observationId) || utf8ByteLength(value.observationId) > 128) {
+    return false;
+  }
+  if (typeof value.prompt !== 'string') {
+    return false;
+  }
+  const promptBytes = utf8ByteLength(value.prompt.trim());
+  if (promptBytes < MIN_USAGE_OBSERVATION_PROMPT_BYTES || promptBytes > MAX_USAGE_OBSERVATION_PROMPT_BYTES) {
+    return false;
+  }
+  return (
+    isWebURLString(value.url) &&
+    typeof value.title === 'string' &&
+    utf8ByteLength(value.title) <= MAX_USAGE_OBSERVATION_TITLE_BYTES &&
+    typeof value.answerSha256 === 'string' &&
+    /^[0-9a-f]{64}$/.test(value.answerSha256) &&
+    typeof value.answerPreview === 'string' &&
+    utf8ByteLength(value.answerPreview) <= MAX_USAGE_OBSERVATION_ANSWER_PREVIEW_BYTES &&
+    typeof value.tabId === 'number' &&
+    Number.isSafeInteger(value.tabId) &&
+    value.tabId >= 0
+  );
+}
 
 export function agentsForMode(agents: BridgeAgentOption[], mode: SafariMode): BridgeAgentOption[] {
   if (mode === 'handoff') {

@@ -1859,7 +1859,9 @@ public actor BurnBarDaemonServer {
                 )
             case .learningPropose, .learningRecall, .learningList, .learningOptIn,
                  .learningUpdate, .learningApprove, .learningReject, .learningForget,
-                 .learningRollback, .learningTimeline, .learningOptOut:
+                 .learningRollback, .learningTimeline, .learningOptOut,
+                 .usageObservationIngest, .usageObservationsList,
+                 .usageObservationsAck, .usageObservationsSetEnabled:
                 return try await handleLearningRPC(
                     method: method,
                     decoder: decoder,

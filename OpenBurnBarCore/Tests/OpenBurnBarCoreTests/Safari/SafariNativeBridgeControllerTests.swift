@@ -840,6 +840,256 @@ final class SafariNativeBridgeControllerTests: XCTestCase {
         )
     }
 
+    func test_usageObserveUsesLiveAttachedPageAndTypedIngestRPC() throws {
+        let digest = String(repeating: "ab", count: 32)
+        let recorder = SafariRPCRecorder { method, params in
+            switch method {
+            case .safariSessionStatus:
+                return try BurnBarSafariNativeBridgeCodec.daemonJSONValue(
+                    self.attachedLearningStatus()
+                )
+
+            case .usageObservationIngest:
+                let request = try BurnBarSafariNativeBridgeCodec.decodeDaemonValue(
+                    BurnBarSafariUsageObservationIngestRequest.self,
+                    from: params
+                )
+                let observation = request.observation
+                XCTAssertEqual(
+                    observation.observationId,
+                    "safari-usage:usage-1"
+                )
+                XCTAssertEqual(
+                    observation.sourceURL,
+                    "https://example.com/products"
+                )
+                XCTAssertEqual(observation.sourceTitle, "Example products")
+                XCTAssertEqual(
+                    observation.prompt,
+                    "What color is the call to action?"
+                )
+                XCTAssertEqual(observation.answerSha256, digest)
+                XCTAssertEqual(
+                    observation.answerPreview,
+                    "The CTA is orange."
+                )
+                return try BurnBarSafariNativeBridgeCodec.daemonJSONValue(
+                    BurnBarSafariUsageObservationIngestResponse(
+                        accepted: true,
+                        stored: true,
+                        droppedCount: 0
+                    )
+                )
+
+            default:
+                XCTFail("unexpected usage observe method \(method.rawValue)")
+                throw SafariTestFailure.unexpected(method.rawValue)
+            }
+        }
+        let controller = try makeController(recorder: recorder)
+
+        let response = try responseObject(
+            controller.handle(
+                propertyList: popupRequest(
+                    id: "popup-usage-observe",
+                    action: "usage.observe",
+                    payload: [
+                        "safariSessionId": "session-1",
+                        "observationId": "usage-1",
+                        "prompt": "  What color is the call to action?  ",
+                        "url": "https://example.com/products",
+                        "title": "Example products",
+                        "answerSha256": digest,
+                        "answerPreview": "The CTA is orange.",
+                        "tabId": 4
+                    ]
+                )
+            )
+        )
+
+        XCTAssertNil(response["error"])
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let output = try XCTUnwrap(result["output"] as? [String: Any])
+        XCTAssertEqual(output["accepted"] as? Bool, true)
+        XCTAssertEqual(output["stored"] as? Bool, true)
+        XCTAssertEqual(
+            recorder.methods,
+            [.safariSessionStatus, .usageObservationIngest]
+        )
+    }
+
+    func test_usageObserveRejectsStalePageBadDigestAndMethodSmugglingBeforeWrite()
+        throws {
+        let digest = String(repeating: "ab", count: 32)
+        func payload(
+            digest: String,
+            url: String = "https://example.com/products"
+        ) -> [String: Any] {
+            [
+                "safariSessionId": "session-1",
+                "observationId": "usage-guard",
+                "prompt": "What color is the call to action?",
+                "url": url,
+                "title": "Example products",
+                "answerSha256": digest,
+                "answerPreview": "The CTA is orange.",
+                "tabId": 4
+            ]
+        }
+
+        let staleRecorder = SafariRPCRecorder { method, _ in
+            XCTAssertEqual(method, .safariSessionStatus)
+            return try BurnBarSafariNativeBridgeCodec.daemonJSONValue(
+                self.attachedLearningStatus(
+                    url: "https://example.com/another-page"
+                )
+            )
+        }
+        let staleController = try makeController(recorder: staleRecorder)
+        let staleResponse = try responseObject(
+            staleController.handle(
+                propertyList: popupRequest(
+                    id: "popup-usage-stale",
+                    action: "usage.observe",
+                    payload: payload(digest: digest)
+                )
+            )
+        )
+        XCTAssertEqual(
+            (staleResponse["error"] as? [String: Any])?["code"] as? String,
+            "invalid_usage_observation"
+        )
+        XCTAssertEqual(staleRecorder.methods, [.safariSessionStatus])
+
+        let digestRecorder = SafariRPCRecorder { method, _ in
+            XCTAssertEqual(method, .safariSessionStatus)
+            return try BurnBarSafariNativeBridgeCodec.daemonJSONValue(
+                self.attachedLearningStatus()
+            )
+        }
+        let digestController = try makeController(recorder: digestRecorder)
+        for invalidDigest in [
+            String(repeating: "AB", count: 32),
+            String(repeating: "ab", count: 31),
+            String(repeating: "zz", count: 32)
+        ] {
+            let digestResponse = try responseObject(
+                digestController.handle(
+                    propertyList: popupRequest(
+                        id: "popup-usage-digest",
+                        action: "usage.observe",
+                        payload: payload(digest: invalidDigest)
+                    )
+                )
+            )
+            XCTAssertEqual(
+                (digestResponse["error"] as? [String: Any])?["code"] as? String,
+                "invalid_usage_observation"
+            )
+        }
+        XCTAssertEqual(
+            digestRecorder.methods,
+            [.safariSessionStatus, .safariSessionStatus, .safariSessionStatus]
+        )
+
+        let smugglingRecorder = SafariRPCRecorder { method, _ in
+            XCTFail("smuggled usage request reached \(method.rawValue)")
+            return .null
+        }
+        let smugglingController = try makeController(
+            recorder: smugglingRecorder
+        )
+        var smuggled = payload(digest: digest)
+        smuggled["method"] = "daemon.config.update"
+        let smuggledResponse = try responseObject(
+            smugglingController.handle(
+                propertyList: popupRequest(
+                    id: "popup-usage-smuggled",
+                    action: "usage.observe",
+                    payload: smuggled
+                )
+            )
+        )
+        XCTAssertEqual(
+            (smuggledResponse["error"] as? [String: Any])?["code"] as? String,
+            "invalid_bridge_schema"
+        )
+        XCTAssertTrue(smugglingRecorder.calls.isEmpty)
+    }
+
+    func test_setUsageMemoryForwardsTypedSpoolGateToggle() throws {
+        let recorder = SafariRPCRecorder { method, params in
+            switch method {
+            case .safariSessionStatus:
+                return try BurnBarSafariNativeBridgeCodec.daemonJSONValue(
+                    self.attachedLearningStatus()
+                )
+
+            case .usageObservationsSetEnabled:
+                let request = try BurnBarSafariNativeBridgeCodec.decodeDaemonValue(
+                    BurnBarSafariUsageMemoryStateRequest.self,
+                    from: params
+                )
+                XCTAssertTrue(request.enabled)
+                return try BurnBarSafariNativeBridgeCodec.daemonJSONValue(
+                    BurnBarSafariUsageMemoryStateResponse(enabled: true)
+                )
+
+            default:
+                XCTFail("unexpected usage memory method \(method.rawValue)")
+                throw SafariTestFailure.unexpected(method.rawValue)
+            }
+        }
+        let controller = try makeController(recorder: recorder)
+
+        let response = try responseObject(
+            controller.handle(
+                propertyList: popupRequest(
+                    id: "popup-usage-set",
+                    action: "popup.setUsageMemory",
+                    payload: [
+                        "safariSessionId": "session-1",
+                        "enabled": true
+                    ]
+                )
+            )
+        )
+        XCTAssertNil(response["error"])
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let output = try XCTUnwrap(result["output"] as? [String: Any])
+        XCTAssertEqual(output["enabled"] as? Bool, true)
+        XCTAssertEqual(
+            recorder.methods,
+            [.safariSessionStatus, .usageObservationsSetEnabled]
+        )
+
+        let smugglingRecorder = SafariRPCRecorder { method, _ in
+            XCTFail("smuggled usage toggle reached \(method.rawValue)")
+            return .null
+        }
+        let smugglingController = try makeController(
+            recorder: smugglingRecorder
+        )
+        let smuggledResponse = try responseObject(
+            smugglingController.handle(
+                propertyList: popupRequest(
+                    id: "popup-usage-set-smuggled",
+                    action: "popup.setUsageMemory",
+                    payload: [
+                        "safariSessionId": "session-1",
+                        "enabled": true,
+                        "method": "daemon.config.update"
+                    ]
+                )
+            )
+        )
+        XCTAssertEqual(
+            (smuggledResponse["error"] as? [String: Any])?["code"] as? String,
+            "invalid_bridge_schema"
+        )
+        XCTAssertTrue(smugglingRecorder.calls.isEmpty)
+    }
+
     func test_handoffRejectsPathsMethodsFullPageCaptureAndMalformedJPEGBeforeRPC() throws {
         let recorder = SafariRPCRecorder { method, _ in
             XCTFail("invalid hand-off must not reach daemon method \(method.rawValue)")

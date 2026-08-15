@@ -110,6 +110,8 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
         case learningReject = "learning.reject"
         case learningForget = "learning.forget"
         case learningRollback = "learning.rollback"
+        case setUsageMemory = "popup.setUsageMemory"
+        case usageObserve = "usage.observe"
     }
 
     private struct BridgePageContext: Codable, Hashable, Sendable {
@@ -267,6 +269,22 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
         let safariSessionId: String
         let proposalId: String
         let targetVersion: Int
+    }
+
+    private struct UsageMemoryStatePayload: Codable, Hashable, Sendable {
+        let safariSessionId: String
+        let enabled: Bool
+    }
+
+    private struct UsageObservationPayload: Codable, Hashable, Sendable {
+        let safariSessionId: String
+        let observationId: String
+        let prompt: String
+        let url: String
+        let title: String
+        let answerSha256: String
+        let answerPreview: String
+        let tabId: Int
     }
 
     private let daemon: BurnBarSafariDaemonRPCTransport
@@ -898,6 +916,74 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
                 response: BurnBarSafariLearningProposalResponse.self
             )
             output = try BurnBarSafariNativeBridgeCodec.encodeWebValue(response)
+
+        case .setUsageMemory:
+            let decoded: UsageMemoryStatePayload = try decodeExactWebPayload(
+                payload,
+                required: ["safariSessionId", "enabled"],
+                allowed: ["safariSessionId", "enabled"]
+            )
+            _ = try requireAttachedLearningSession(decoded.safariSessionId)
+            let response: BurnBarSafariUsageMemoryStateResponse = try sendTyped(
+                method: .usageObservationsSetEnabled,
+                request: BurnBarSafariUsageMemoryStateRequest(
+                    enabled: decoded.enabled
+                ),
+                response: BurnBarSafariUsageMemoryStateResponse.self
+            )
+            output = try BurnBarSafariNativeBridgeCodec.encodeWebValue(response)
+
+        case .usageObserve:
+            let decoded: UsageObservationPayload = try decodeExactWebPayload(
+                payload,
+                required: [
+                    "safariSessionId", "observationId", "prompt", "url",
+                    "title", "answerSha256", "answerPreview", "tabId"
+                ],
+                allowed: [
+                    "safariSessionId", "observationId", "prompt", "url",
+                    "title", "answerSha256", "answerPreview", "tabId"
+                ]
+            )
+            let session = try requireAttachedLearningSession(
+                decoded.safariSessionId
+            )
+            let prompt = decoded.prompt.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            guard Self.validLearningIdentifier(decoded.observationId),
+                  prompt.utf8.count >= 8,
+                  prompt.utf8.count <= 4 * 1_024,
+                  decoded.title.utf8.count <= 512,
+                  Self.validAnswerDigest(decoded.answerSha256),
+                  decoded.answerPreview.utf8.count <= 512,
+                  decoded.tabId >= 0,
+                  Self.validWebURL(decoded.url),
+                  let activePage = session.activePage,
+                  activePage.isActive,
+                  activePage.isTopFrame,
+                  activePage.tabId == decoded.tabId,
+                  activePage.url == decoded.url else {
+                throw BurnBarSafariBridgeFailure(
+                    code: "invalid_usage_observation",
+                    message: "Safari usage observations must describe the currently attached page."
+                )
+            }
+            let response: BurnBarSafariUsageObservationIngestResponse = try sendTyped(
+                method: .usageObservationIngest,
+                request: BurnBarSafariUsageObservationIngestRequest(
+                    observation: BurnBarSafariUsageObservation(
+                        observationId: "safari-usage:\(decoded.observationId)",
+                        sourceURL: activePage.url,
+                        sourceTitle: decoded.title,
+                        prompt: prompt,
+                        answerSha256: decoded.answerSha256,
+                        answerPreview: decoded.answerPreview
+                    )
+                ),
+                response: BurnBarSafariUsageObservationIngestResponse.self
+            )
+            output = try BurnBarSafariNativeBridgeCodec.encodeWebValue(response)
         }
 
         return try BurnBarSafariNativeBridgeCodec.encodeWebValue(
@@ -1356,6 +1442,12 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
                 || $0 == "-"
                 || $0 == "_"
                 || $0 == ":"
+        }
+    }
+
+    private static func validAnswerDigest(_ value: String) -> Bool {
+        value.utf8.count == 64 && value.unicodeScalars.allSatisfy {
+            CharacterSet(charactersIn: "0123456789abcdef").contains($0)
         }
     }
 

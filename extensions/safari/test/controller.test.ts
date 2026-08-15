@@ -42,6 +42,7 @@ interface ControllerHarness {
   helloCount(): number;
   setHelloObserver(observer: ((sessionId: string, helloCount: number) => void | Promise<void>) | undefined): void;
   setUISnapshot(value: Record<string, unknown>): void;
+  setPageSensitive(value: boolean): void;
 }
 
 const screenshot = {
@@ -180,6 +181,7 @@ function createControllerHarness(): ControllerHarness {
   let helloObserver: ((sessionId: string, helloCount: number) => void | Promise<void>) | undefined;
   let nativeBootstrap = bootstrap;
   let uiSnapshot = defaultUISnapshot();
+  let pageSensitive = false;
 
   controls.setContentHandler((tabId, message) => {
     const tab = controls.tabs.get(tabId) ?? {};
@@ -212,7 +214,7 @@ function createControllerHarness(): ControllerHarness {
             snapshot: '[ref=obb-1] [role=button] [name="Buy"] [box=40,80,120,44]',
             nodes: [],
             truncated: false,
-            sensitive: false,
+            sensitive: pageSensitive,
             capturedAt: pageState.capturedAt
           },
           pageState
@@ -462,6 +464,9 @@ function createControllerHarness(): ControllerHarness {
     },
     setUISnapshot(value) {
       uiSnapshot = value;
+    },
+    setPageSensitive(value) {
+      pageSensitive = value;
     }
   };
 }
@@ -1136,6 +1141,151 @@ describe('Safari background controller integration', () => {
       const user = requireRecord(messages[1], 'user message').content;
       expect(Array.isArray(user) ? user[0]?.text : '').not.toContain('<untrusted_learned_context');
     }
+  });
+
+  it('spools one bounded usage observation after Ask completes when usage memory is on', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
+    await authorizeCloudScreenshots(harness);
+
+    const enabled = await harness.controller.handlePopupRequest({
+      type: 'popup.setUsageMemory',
+      enabled: true
+    });
+    expectSuccess(enabled);
+    expect(enabled.snapshot.usageMemory.optedIn).toBe(true);
+    expect(harness.popupCalls.find((call) => call.action === 'popup.setUsageMemory')?.payload).toMatchObject({
+      safariSessionId: 'safari-session-1',
+      enabled: true
+    });
+
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.ask',
+        prompt: 'What color is the call to action?'
+      })
+    );
+    await vi.waitFor(() => {
+      expect(harness.popupCalls.some((call) => call.action === 'usage.observe')).toBe(true);
+    });
+
+    const observe = harness.popupCalls.find((call) => call.action === 'usage.observe');
+    expect(Object.keys(observe?.payload ?? {}).sort()).toEqual(
+      ['answerPreview', 'answerSha256', 'observationId', 'prompt', 'safariSessionId', 'tabId', 'title', 'url'].sort()
+    );
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('The CTA is orange.'));
+    const expectedAnswerSha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    expect(observe?.payload).toMatchObject({
+      safariSessionId: 'safari-session-1',
+      prompt: 'What color is the call to action?',
+      url: 'https://example.com/',
+      title: 'Example',
+      tabId: 1,
+      answerSha256: expectedAnswerSha256,
+      answerPreview: 'The CTA is orange.'
+    });
+    expect(observe?.payload.observationId).toEqual(expect.any(String));
+  });
+
+  it('never fires usage.observe when usage memory is off or the page is sensitive, and swallows spool failures', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+    expectSuccess(await harness.controller.handlePopupRequest({ type: 'popup.requestSitePermission' }));
+    await authorizeCloudScreenshots(harness);
+
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.ask',
+        prompt: 'Answer while usage memory is off.'
+      })
+    );
+    expect(harness.popupCalls.some((call) => call.action === 'usage.observe')).toBe(false);
+
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.setUsageMemory',
+        enabled: true
+      })
+    );
+    harness.setPageSensitive(true);
+    expectSuccess(
+      await harness.controller.handlePopupRequest({
+        type: 'popup.ask',
+        prompt: 'Answer on a sensitive page.'
+      })
+    );
+    expect(harness.popupCalls.some((call) => call.action === 'usage.observe')).toBe(false);
+
+    harness.setPageSensitive(false);
+    harness.setPopupActionError('usage.observe', new Error('usage spool unavailable'));
+    const answer = await harness.controller.handlePopupRequest({
+      type: 'popup.ask',
+      prompt: 'Answer while the spool is broken.'
+    });
+    expectSuccess(answer);
+    expect(answer.snapshot.transcript.at(-1)).toMatchObject({
+      role: 'assistant',
+      text: 'The CTA is orange.',
+      streaming: false
+    });
+    expect(answer.snapshot.lastError).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(harness.popupCalls.some((call) => call.action === 'usage.observe')).toBe(true);
+    });
+  });
+
+  it('persists the usage-memory pref, requires native acceptance, and gates enable on eligibility', async () => {
+    const harness = createControllerHarness();
+    await harness.controller.initialize();
+
+    harness.setPopupActionResult('popup.setUsageMemory', { accepted: false });
+    const rejected = await harness.controller.handlePopupRequest({
+      type: 'popup.setUsageMemory',
+      enabled: true
+    });
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: { code: 'usage_memory_change_rejected' },
+      snapshot: { usageMemory: { optedIn: false } }
+    });
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      usageMemoryOptedIn: false
+    });
+
+    harness.setPopupActionResult('popup.setUsageMemory', { accepted: true, output: {} });
+    const enabled = await harness.controller.handlePopupRequest({
+      type: 'popup.setUsageMemory',
+      enabled: true
+    });
+    expectSuccess(enabled);
+    expect(enabled.snapshot.usageMemory.optedIn).toBe(true);
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      usageMemoryOptedIn: true
+    });
+
+    const disabled = await harness.controller.handlePopupRequest({
+      type: 'popup.setUsageMemory',
+      enabled: false
+    });
+    expectSuccess(disabled);
+    expect(disabled.snapshot.usageMemory.optedIn).toBe(false);
+    expect(harness.controls.storage.get('openburnbar.safari.preferences.v1')).toMatchObject({
+      usageMemoryOptedIn: false
+    });
+
+    const gated = createControllerHarness();
+    gated.setNativeBootstrap({ ...bootstrap, learningAvailable: false });
+    await gated.controller.initialize();
+    const gatedResult = await gated.controller.handlePopupRequest({
+      type: 'popup.setUsageMemory',
+      enabled: true
+    });
+    expect(gatedResult).toMatchObject({
+      ok: false,
+      error: { code: 'usage_memory_requires_pro' }
+    });
+    expect(gated.popupCalls.some((call) => call.action === 'popup.setUsageMemory')).toBe(false);
   });
 
   it('keeps Ask available while the Computer Use kill switch blocks agentic runs', async () => {
@@ -1911,6 +2061,7 @@ describe('Safari background controller integration', () => {
       cloudScreenshotDisclosureAcknowledged: false,
       learningOptedIn: false,
       learningConsentSeen: false,
+      usageMemoryOptedIn: false,
       sites: {
         'https://example.com': {
           allowed: true,

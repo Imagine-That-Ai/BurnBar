@@ -95,6 +95,9 @@ function snapshot(overrides: Partial<PopupSnapshot> = {}): PopupSnapshot {
         }
       ]
     },
+    usageMemory: {
+      optedIn: false
+    },
     transcript: [
       {
         id: 'message-1',

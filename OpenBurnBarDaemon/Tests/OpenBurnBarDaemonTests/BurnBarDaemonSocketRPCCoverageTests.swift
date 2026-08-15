@@ -107,5 +107,25 @@ final class BurnBarDaemonSocketRPCCoverageTests: XCTestCase {
                 .learningUpdate
             )
         )
+        XCTAssertEqual(
+            BurnBarDaemonSocketRPCCoverage.domain(for: .usageObservationIngest),
+            "learning"
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .usageObservationIngest),
+            .memoryWrite
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .usageObservationsAck),
+            .memoryWrite
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .usageObservationsSetEnabled),
+            .memoryWrite
+        )
+        XCTAssertEqual(
+            BurnBarRPCCapability.capability(for: .usageObservationsList),
+            .memoryRead
+        )
     }
 }

@@ -64,6 +64,7 @@ describe('background permission, storage, ownership, page, and capture adapters'
       cloudScreenshotDisclosureAcknowledged: false,
       learningOptedIn: true,
       learningConsentSeen: true,
+      usageMemoryOptedIn: false,
       sites: {
         'https://example.com': { allowed: true, sensitiveOverride: false }
       }
@@ -77,6 +78,7 @@ describe('background permission, storage, ownership, page, and capture adapters'
       cloudScreenshotDisclosureAcknowledged: true,
       learningOptedIn: false,
       learningConsentSeen: true,
+      usageMemoryOptedIn: false,
       sites: {
         'https://example.com': { allowed: true, sensitiveOverride: true }
       }

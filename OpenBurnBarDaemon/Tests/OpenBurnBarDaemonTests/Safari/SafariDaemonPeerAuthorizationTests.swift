@@ -47,7 +47,9 @@ final class SafariDaemonPeerAuthorizationTests: XCTestCase {
             .learningForget,
             .learningRollback,
             .learningTimeline,
-            .learningOptOut
+            .learningOptOut,
+            .usageObservationIngest,
+            .usageObservationsSetEnabled
         ]
         for method in requiredMethods {
             XCTAssertTrue(
@@ -102,7 +104,11 @@ final class SafariDaemonPeerAuthorizationTests: XCTestCase {
             .workspaceExecuteTool,
             .workspaceToolResult,
             .memoryRemember,
-            .memoryForget
+            .memoryForget,
+            // The appex feeds the usage spool; only the app-side drain client
+            // may read or destroy spooled observations.
+            .usageObservationsList,
+            .usageObservationsAck
         ]
 
         for method in forbiddenMethods {

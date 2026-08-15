@@ -1982,6 +1982,46 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.usage_observations.ack",
+    "caseName": "usageObservationsAck",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.usage_observations.ack",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.usage_observations.ingest",
+    "caseName": "usageObservationIngest",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.usage_observations.ingest",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.usage_observations.list",
+    "caseName": "usageObservationsList",
+    "domain": "learning",
+    "capability": "memory_read",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.usage_observations",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.usage_observations.set_enabled",
+    "caseName": "usageObservationsSetEnabled",
+    "domain": "learning",
+    "capability": "memory_write",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.usage_observations.set_enabled",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.usage.history",
     "caseName": "usageHistory",
     "domain": "usage",

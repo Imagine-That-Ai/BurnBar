@@ -1013,3 +1013,111 @@ public struct BurnBarSafariLearningStateResponse: Codable, Hashable, Sendable {
         self.deletedEntryCount = deletedEntryCount
     }
 }
+
+/// One bounded Safari Ask usage observation: the prompt, the page identity, and
+/// an answer digest. Observation state ONLY — the spool that stores these never
+/// promotes, reviews, or activates anything; a later Stage-0 gate drains them.
+public struct BurnBarSafariUsageObservation: Codable, Hashable, Sendable {
+    public let observationId: String
+    public let sourceURL: String
+    public let sourceTitle: String
+    public let prompt: String
+    public let answerSha256: String
+    public let answerPreview: String
+    public let observedAt: Date
+
+    public init(
+        observationId: String = UUID().uuidString,
+        sourceURL: String,
+        sourceTitle: String,
+        prompt: String,
+        answerSha256: String,
+        answerPreview: String,
+        observedAt: Date = Date()
+    ) {
+        self.observationId = observationId
+        self.sourceURL = sourceURL
+        self.sourceTitle = sourceTitle
+        self.prompt = prompt
+        self.answerSha256 = answerSha256
+        self.answerPreview = answerPreview
+        self.observedAt = observedAt
+    }
+}
+
+public struct BurnBarSafariUsageObservationIngestRequest: Codable, Hashable, Sendable {
+    public let observation: BurnBarSafariUsageObservation
+
+    public init(observation: BurnBarSafariUsageObservation) {
+        self.observation = observation
+    }
+}
+
+public struct BurnBarSafariUsageObservationIngestResponse: Codable, Hashable, Sendable {
+    public let accepted: Bool
+    /// Whether the observation is in the spool after this call. A disabled
+    /// spool accepts the request and drops silently (`stored == false`).
+    public let stored: Bool
+    public let droppedCount: Int
+
+    public init(accepted: Bool, stored: Bool, droppedCount: Int) {
+        self.accepted = accepted
+        self.stored = stored
+        self.droppedCount = droppedCount
+    }
+}
+
+public struct BurnBarSafariUsageMemoryStateRequest: Codable, Hashable, Sendable {
+    public let enabled: Bool
+
+    public init(enabled: Bool) {
+        self.enabled = enabled
+    }
+}
+
+public struct BurnBarSafariUsageMemoryStateResponse: Codable, Hashable, Sendable {
+    public let enabled: Bool
+
+    public init(enabled: Bool) {
+        self.enabled = enabled
+    }
+}
+
+public struct BurnBarSafariUsageObservationListRequest: Codable, Hashable, Sendable {
+    public let limit: Int
+
+    public init(limit: Int = 100) {
+        self.limit = limit
+    }
+}
+
+public struct BurnBarSafariUsageObservationListResponse: Codable, Hashable, Sendable {
+    /// Oldest first — the drain order. Listing never removes entries; the
+    /// drain acknowledges exact identifiers afterwards so a crash mid-drain
+    /// loses nothing.
+    public let observations: [BurnBarSafariUsageObservation]
+    public let droppedCount: Int
+
+    public init(observations: [BurnBarSafariUsageObservation], droppedCount: Int) {
+        self.observations = observations
+        self.droppedCount = droppedCount
+    }
+}
+
+public struct BurnBarSafariUsageObservationAckRequest: Codable, Hashable, Sendable {
+    public let observationIds: [String]
+
+    public init(observationIds: [String]) {
+        self.observationIds = observationIds
+    }
+}
+
+public struct BurnBarSafariUsageObservationAckResponse: Codable, Hashable, Sendable {
+    public let removedCount: Int
+    public let remainingCount: Int
+
+    public init(removedCount: Int, remainingCount: Int) {
+        self.removedCount = removedCount
+        self.remainingCount = remainingCount
+    }
+}

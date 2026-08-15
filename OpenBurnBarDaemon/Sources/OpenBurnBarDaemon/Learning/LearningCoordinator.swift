@@ -99,6 +99,7 @@ public actor LearningCoordinator {
     private let memoryForgetter: ApprovedMemoryForgetter?
     private let memoryRecaller: PersonalMemoryRecaller?
     private let skillStore: SafariLearningSkillStore
+    private let usageSpool: UsageObservationSpool
 
     private var loaded = false
     private var state = SafariLearningStoreEnvelope(
@@ -142,6 +143,16 @@ public actor LearningCoordinator {
         self.skillStore = SafariLearningSkillStore(
             rootURL: skillsRootURL,
             fileManager: fileManager
+        )
+        self.usageSpool = UsageObservationSpool(
+            stateURL: stateURL.standardizedFileURL
+                .deletingLastPathComponent()
+                .appendingPathComponent(
+                    "usage-observations-v1.json",
+                    isDirectory: false
+                ),
+            fileManager: fileManager,
+            now: now
         )
     }
 
@@ -248,6 +259,9 @@ public actor LearningCoordinator {
 
         let deletedCount = state.proposals.count
         try skillStore.wipe()
+        // The usage-observation spool holds browser-derived observation state
+        // keyed to the same learned profile; it must die with the profile.
+        try await usageSpool.deleteAll()
         state = SafariLearningStoreEnvelope(
             schemaVersion: Self.schemaVersion,
             consent: nil,
@@ -1039,6 +1053,51 @@ public actor LearningCoordinator {
         state.updatedAt = now()
         try persist()
         return BurnBarSafariLearningProposalResponse(proposal: rolledBackProposal)
+    }
+
+    // MARK: - Usage observation spool (observation state only)
+
+    /// Appends one bounded Safari Ask usage observation to the spool.
+    /// Observation state ONLY: nothing here reviews, promotes, or activates
+    /// learning. A disabled spool (the dark-ship default) accepts and drops
+    /// silently, counting the drop.
+    public func usageObserve(
+        _ request: BurnBarSafariUsageObservationIngestRequest
+    ) async throws -> BurnBarSafariUsageObservationIngestResponse {
+        let result = try await usageSpool.append(request.observation)
+        return BurnBarSafariUsageObservationIngestResponse(
+            accepted: true,
+            stored: result.stored,
+            droppedCount: result.droppedCount
+        )
+    }
+
+    public func usageMemorySetEnabled(
+        _ request: BurnBarSafariUsageMemoryStateRequest
+    ) async throws -> BurnBarSafariUsageMemoryStateResponse {
+        BurnBarSafariUsageMemoryStateResponse(
+            enabled: try await usageSpool.setEnabled(request.enabled)
+        )
+    }
+
+    public func usageObservationsList(
+        _ request: BurnBarSafariUsageObservationListRequest
+    ) async throws -> BurnBarSafariUsageObservationListResponse {
+        let result = try await usageSpool.list(limit: request.limit)
+        return BurnBarSafariUsageObservationListResponse(
+            observations: result.observations,
+            droppedCount: result.droppedCount
+        )
+    }
+
+    public func usageObservationsAck(
+        _ request: BurnBarSafariUsageObservationAckRequest
+    ) async throws -> BurnBarSafariUsageObservationAckResponse {
+        let result = try await usageSpool.ack(ids: request.observationIds)
+        return BurnBarSafariUsageObservationAckResponse(
+            removedCount: result.removedCount,
+            remainingCount: result.remainingCount
+        )
     }
 
     // MARK: - Recall

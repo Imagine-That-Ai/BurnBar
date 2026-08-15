@@ -16,6 +16,7 @@ export interface SafariPreferences {
   cloudScreenshotDisclosureAcknowledged: boolean;
   learningOptedIn: boolean;
   learningConsentSeen: boolean;
+  usageMemoryOptedIn: boolean;
   sites: Record<string, StoredSiteTrust>;
 }
 
@@ -26,6 +27,7 @@ const DEFAULT_PREFERENCES: SafariPreferences = {
   cloudScreenshotDisclosureAcknowledged: false,
   learningOptedIn: false,
   learningConsentSeen: false,
+  usageMemoryOptedIn: false,
   sites: {}
 };
 
@@ -79,6 +81,10 @@ export function parsePreferences(value: unknown): SafariPreferences {
       typeof record.learningConsentSeen === 'boolean'
         ? record.learningConsentSeen
         : DEFAULT_PREFERENCES.learningConsentSeen,
+    usageMemoryOptedIn:
+      typeof record.usageMemoryOptedIn === 'boolean'
+        ? record.usageMemoryOptedIn
+        : DEFAULT_PREFERENCES.usageMemoryOptedIn,
     sites,
     ...(typeof record.selectedAgentId === 'string' && record.selectedAgentId
       ? { selectedAgentId: record.selectedAgentId }
