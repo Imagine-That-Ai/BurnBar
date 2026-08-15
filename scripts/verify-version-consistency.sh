@@ -59,6 +59,9 @@ homebrew_file="$repo_root/homebrew/burnbar.rb"
 homebrew_version="$(sed -nE 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 homebrew_sha="$(sed -nE 's/^[[:space:]]*sha256 "([^"]+)".*/\1/p' "$homebrew_file" | head -1 || true)"
 placeholder_sha="0000000000000000000000000000000000000000000000000000000000000000"
+canonical_repository="Imagine-That-Ai/BurnBar"
+canonical_homebrew_url="https://github.com/${canonical_repository}/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"
+canonical_homebrew_homepage="https://github.com/${canonical_repository}"
 require_current_homebrew="${OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK:-0}"
 tag_name=""
 if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
@@ -93,6 +96,32 @@ elif [[ "$homebrew_version" != "$expected_version" ]]; then
   fi
 else
   echo "PASS: Homebrew cask"
+fi
+
+if ! grep -Fqx "  url \"$canonical_homebrew_url\"" "$homebrew_file"; then
+  echo "FAIL: Homebrew cask — release URL must use canonical repository '$canonical_repository'" >&2
+  fail=1
+else
+  echo "PASS: Homebrew cask release repository"
+fi
+
+if ! grep -Fqx "  homepage \"$canonical_homebrew_homepage\"" "$homebrew_file"; then
+  echo "FAIL: Homebrew cask — homepage must use canonical repository '$canonical_repository'" >&2
+  fail=1
+else
+  echo "PASS: Homebrew cask homepage repository"
+fi
+
+homebrew_updater="$repo_root/scripts/update-homebrew.sh"
+if [[ ! -f "$homebrew_updater" ]]; then
+  echo "FAIL: Homebrew updater — file not found at $homebrew_updater" >&2
+  fail=1
+elif ! grep -Fqx 'OWNER="Imagine-That-Ai"' "$homebrew_updater" \
+  || ! grep -Fqx 'REPO="BurnBar"' "$homebrew_updater"; then
+  echo "FAIL: Homebrew updater — release downloads must use canonical repository '$canonical_repository'" >&2
+  fail=1
+else
+  echo "PASS: Homebrew updater release repository"
 fi
 
 check "$repo_root/OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift" '.*current = "([^"]+)".*' "Daemon version enum"
