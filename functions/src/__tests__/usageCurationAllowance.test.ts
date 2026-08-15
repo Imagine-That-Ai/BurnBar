@@ -7,10 +7,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ALICE_UID, pathKeyedFirestore, seedDoc } from "./bola/callableBolaHarness.js";
 
-const mocks = vi.hoisted(() => ({
-  rcParameters: {} as Record<string, { defaultValue?: { value?: string } }>,
-  store: new Map<string, Record<string, unknown>>(),
-}));
+const mocks = vi.hoisted(() => {
+  const rcParameters: Record<string, { defaultValue?: { value?: string } }> = {};
+  return {
+    rcParameters,
+    store: new Map<string, Record<string, unknown>>(),
+  };
+});
 
 vi.mock("firebase-admin/remote-config", () => ({
   getRemoteConfig: () => ({

@@ -10,29 +10,32 @@ import { ALICE_UID, callableRequest, callableRunner, pathKeyedFirestore, seedDoc
 
 const FAR_FUTURE = "2099-01-01T00:00:00.000Z";
 
-const mocks = vi.hoisted(() => ({
-  config: {
-    enforceAppCheck: true,
-    hostedQuotaProductID: "com.openburnbar.hostedQuotaSync.cloud.monthly",
-    burnBarProProductID: "com.openburnbar.pro.monthly",
-    burnBarProAnnualProductID: "com.openburnbar.pro.annual",
-    burnBarProMaxProductID: "com.openburnbar.proMax.v2.monthly",
-    burnBarProMaxAnnualProductID: "com.openburnbar.proMax.annual",
-    burnBarUltraProductID: "com.openburnbar.ultra.monthly",
-    burnBarUltraAnnualProductID: "com.openburnbar.ultra.annual.v2",
-    googlePlaySubscriptionProductID: "com.openburnbar.pro.monthly",
-    googlePlayCloudMonthlyProductID: "com.openburnbar.pro.monthly",
-    googlePlayCloudAnnualProductID: "com.openburnbar.pro.annual",
-    googlePlayCloudProMonthlyProductID: "com.openburnbar.promax.v2.monthly",
-    googlePlayCloudProAnnualProductID: "com.openburnbar.promax.annual",
-    googlePlayUltraMonthlyProductID: "com.openburnbar.ultra.monthly",
-    googlePlayUltraAnnualProductID: "com.openburnbar.ultra.annual",
-  },
-  fetch: vi.fn(),
-  rcParameters: {} as Record<string, { defaultValue?: { value?: string } }>,
-  secretValues: new Map<string, string>(),
-  store: new Map<string, Record<string, unknown>>(),
-}));
+const mocks = vi.hoisted(() => {
+  const rcParameters: Record<string, { defaultValue?: { value?: string } }> = {};
+  return {
+    config: {
+      enforceAppCheck: true,
+      hostedQuotaProductID: "com.openburnbar.hostedQuotaSync.cloud.monthly",
+      burnBarProProductID: "com.openburnbar.pro.monthly",
+      burnBarProAnnualProductID: "com.openburnbar.pro.annual",
+      burnBarProMaxProductID: "com.openburnbar.proMax.v2.monthly",
+      burnBarProMaxAnnualProductID: "com.openburnbar.proMax.annual",
+      burnBarUltraProductID: "com.openburnbar.ultra.monthly",
+      burnBarUltraAnnualProductID: "com.openburnbar.ultra.annual.v2",
+      googlePlaySubscriptionProductID: "com.openburnbar.pro.monthly",
+      googlePlayCloudMonthlyProductID: "com.openburnbar.pro.monthly",
+      googlePlayCloudAnnualProductID: "com.openburnbar.pro.annual",
+      googlePlayCloudProMonthlyProductID: "com.openburnbar.promax.v2.monthly",
+      googlePlayCloudProAnnualProductID: "com.openburnbar.promax.annual",
+      googlePlayUltraMonthlyProductID: "com.openburnbar.ultra.monthly",
+      googlePlayUltraAnnualProductID: "com.openburnbar.ultra.annual",
+    },
+    fetch: vi.fn(),
+    rcParameters,
+    secretValues: new Map<string, string>(),
+    store: new Map<string, Record<string, unknown>>(),
+  };
+});
 
 vi.mock("firebase-functions/params", () => ({
   defineInt: (_name: string, options: { default?: number } = {}) => ({
@@ -142,10 +145,26 @@ function openRouterResponse(overrides: Record<string, unknown> = {}): {
   return { ok: true, status: 200, text: async () => JSON.stringify(payload) };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  throw new Error(`${label} must be an object`);
+}
+
+function requireArray(value: unknown, label: string): unknown[] {
+  if (Array.isArray(value)) return value;
+  throw new Error(`${label} must be an array`);
+}
+
 function lastFetchBody(): Record<string, unknown> {
   const call = mocks.fetch.mock.calls.at(-1);
-  expect(call).toBeTruthy();
-  return JSON.parse((call![2] as { body: string }).body) as Record<string, unknown>;
+  if (!call) throw new Error("expected an OpenRouter fetch call");
+  const init = requireRecord(call[2], "fetch init");
+  if (typeof init.body !== "string") throw new Error("fetch init body must be a string");
+  return requireRecord(JSON.parse(init.body), "OpenRouter request body");
 }
 
 beforeEach(() => {
@@ -268,17 +287,18 @@ describe("curateUsageMemoryBatch", () => {
     seedProUser();
     mocks.fetch.mockResolvedValueOnce(openRouterResponse());
 
-    const response = (await run()(callableRequest(ALICE_UID, textBatch({ requestId: "req-1" })))) as Record<
-      string,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      any
-    >;
+    const response = requireRecord(
+      await run()(callableRequest(ALICE_UID, textBatch({ requestId: "req-1" }))),
+      "curation response",
+    );
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
-    const [label, url, init] = mocks.fetch.mock.calls[0] as [string, string, { headers: Record<string, string> }];
+    const firstCall: unknown[] = mocks.fetch.mock.calls[0];
+    const [label, url, init] = firstCall;
     expect(label).toBe("usage_curation.openrouter.chat");
     expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
-    expect(init.headers.Authorization).toBe("Bearer test-openrouter-key");
+    const headers = requireRecord(requireRecord(init, "fetch init").headers, "fetch request headers");
+    expect(headers.Authorization).toBe("Bearer test-openrouter-key");
 
     const body = lastFetchBody();
     expect(body.model).toBe(USAGE_CURATION_TEXT_MODEL);
@@ -289,9 +309,9 @@ describe("curateUsageMemoryBatch", () => {
       data_collection: "deny",
       zdr: true,
     });
-    const messages = body.messages as Array<{ role: string; content: string }>;
+    const messages = requireArray(body.messages, "request messages");
     expect(messages[0]).toEqual({ role: "system", content: USAGE_CURATION_PROMPT_PREFIX });
-    expect(messages[1].content).toContain(USAGE_CURATION_FENCE_BEGIN);
+    expect(requireRecord(messages[1], "user message").content).toContain(USAGE_CURATION_FENCE_BEGIN);
 
     expect(response.results).toEqual([
       {
@@ -306,9 +326,11 @@ describe("curateUsageMemoryBatch", () => {
     ]);
     expect(response.promptVersion).toBe(USAGE_CURATION_PROMPT_VERSION);
     expect(response.usage).toEqual({ promptTokens: 800, outputTokens: 100, cachedTokens: 0, lane: "text" });
-    expect(response.allowance.textRemainingMonth).toBe(1_000_000 - 900);
-    expect(response.allowance.multimodalRemainingMonth).toBe(0);
-    expect(response.allowance.resetsAt).toBe(nextMonthlyResetISO(new Date()));
+    expect(response.allowance).toEqual({
+      textRemainingMonth: 1_000_000 - 900,
+      multimodalRemainingMonth: 0,
+      resetsAt: nextMonthlyResetISO(new Date()),
+    });
 
     // The ledger settled to ACTUAL usage (900), not the estimate.
     const monthKey = monthKeyForDate(new Date());
@@ -323,32 +345,37 @@ describe("curateUsageMemoryBatch", () => {
     seedProMaxUser();
     mocks.fetch.mockResolvedValueOnce(openRouterResponse());
 
-    const response = (await run()(
-      callableRequest(ALICE_UID, {
-        lane: "multimodal",
-        candidates: [{ id: "c1", sourceKind: "screenshot", text: "chart", imageRefs: ["data:image/png;base64,AAAA"] }],
-      }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    )) as Record<string, any>;
+    const response = requireRecord(
+      await run()(
+        callableRequest(ALICE_UID, {
+          lane: "multimodal",
+          candidates: [
+            { id: "c1", sourceKind: "screenshot", text: "chart", imageRefs: ["data:image/png;base64,AAAA"] },
+          ],
+        }),
+      ),
+      "curation response",
+    );
 
     const body = lastFetchBody();
     expect(body.model).toBe(USAGE_CURATION_MULTIMODAL_MODEL);
     expect(body.provider).toMatchObject({ order: ["CoreWeave"], allow_fallbacks: false });
-    const messages = body.messages as Array<{ role: string; content: unknown }>;
-    const parts = messages[1].content as Array<Record<string, unknown>>;
+    const messages = requireArray(body.messages, "request messages");
+    const parts = requireArray(requireRecord(messages[1], "user message").content, "user content parts");
     expect(parts[0]).toMatchObject({ type: "text" });
     expect(parts[1]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } });
-    expect(response.usage.lane).toBe("multimodal");
-    expect(response.allowance.multimodalRemainingMonth).toBe(2_000_000 - 900);
+    expect(response.usage).toMatchObject({ lane: "multimodal" });
+    expect(response.allowance).toMatchObject({ multimodalRemainingMonth: 2_000_000 - 900 });
   });
 
   it("gives ultra members the multiplied allowance headroom", async () => {
     seedUltraUser();
     mocks.fetch.mockResolvedValueOnce(openRouterResponse());
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = (await run()(callableRequest(ALICE_UID, textBatch()))) as Record<string, any>;
-    expect(response.allowance.textRemainingMonth).toBe(50_000_000 - 900);
-    expect(response.allowance.multimodalRemainingMonth).toBe(20_000_000);
+    const response = requireRecord(await run()(callableRequest(ALICE_UID, textBatch())), "curation response");
+    expect(response.allowance).toMatchObject({
+      textRemainingMonth: 50_000_000 - 900,
+      multimodalRemainingMonth: 20_000_000,
+    });
   });
 
   it("refuses to re-run a requestId whose reservation already settled", async () => {

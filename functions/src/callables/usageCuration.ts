@@ -77,7 +77,6 @@ const MAX_OUTPUT_TOKENS = 512;
 /** Flat per-image token estimate reserved up front (settled to actual after the call). */
 const IMAGE_TOKEN_ESTIMATE = 1_024;
 
-const LANES = new Set<UsageCurationLane>(["text", "multimodal"]);
 const MEMORY_KINDS = new Set(["fact", "decision", "preference", "pattern", "entity"]);
 
 interface CurateUsageMemoryBatchRequest {
@@ -87,11 +86,9 @@ interface CurateUsageMemoryBatchRequest {
 }
 
 function requireLane(raw: unknown): UsageCurationLane {
-  const value = boundedTrimmedString(raw, "lane", 32, true) as UsageCurationLane;
-  if (!LANES.has(value)) {
-    throw new HttpsError("invalid-argument", `lane must be one of: ${[...LANES].join(", ")}.`);
-  }
-  return value;
+  const value = boundedTrimmedString(raw, "lane", 32, true);
+  if (value === "text" || value === "multimodal") return value;
+  throw new HttpsError("invalid-argument", "lane must be one of: text, multimodal.");
 }
 
 function requireImageRef(raw: unknown, fieldName: string): string {
