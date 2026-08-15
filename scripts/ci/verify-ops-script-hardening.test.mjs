@@ -25,6 +25,8 @@ for (const include of ['--include="*.mjs"', '--include="*.js"', '--include="*.sh
 }
 
 const versionConsistency = read("scripts/verify-version-consistency.sh");
+const homebrewUpdater = read("scripts/update-homebrew.sh");
+const homebrewCask = read("homebrew/burnbar.rb");
 const projectVersion = read("project.yml").match(/^\s+MARKETING_VERSION:\s*["']?([^\s"']+)/m)?.[1];
 assert.ok(projectVersion, "project.yml must expose a MARKETING_VERSION");
 assert.ok(
@@ -43,6 +45,26 @@ assert.ok(
 assert.ok(
   versionConsistency.includes("OPENBURNBAR_EXPECTED_WINDOWS_VERSION"),
   "version consistency must support an independently requested Windows release version",
+);
+assert.match(
+  homebrewUpdater,
+  /^OWNER="Imagine-That-Ai"$/m,
+  "the Homebrew updater must download releases from the canonical organization repository",
+);
+assert.match(
+  homebrewCask,
+  /url "https:\/\/github\.com\/Imagine-That-Ai\/BurnBar\/releases\/download\/v#\{version\}\/OpenBurnBar-#\{version\}-macOS\.dmg"/,
+  "the Homebrew cask must download the canonical organization release artifact",
+);
+assert.match(
+  homebrewCask,
+  /homepage "https:\/\/github\.com\/Imagine-That-Ai\/BurnBar"/,
+  "the Homebrew cask homepage must use the canonical organization repository",
+);
+assert.match(
+  versionConsistency,
+  /canonical_repository="Imagine-That-Ai\/BurnBar"/,
+  "version consistency must fail closed on Homebrew repository-owner drift",
 );
 
 const windowsManifest = read("windows/app/OpenBurnBar.App/app.manifest");
