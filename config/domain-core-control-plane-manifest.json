@@ -211,7 +211,7 @@
     "scripts/create-corresponding-source.sh": ["ed332e788b41b50f","700e88e51d8e63da","70bf9c9de9c39881","06c791318dc6a2dc"],
     "scripts/deploy-hosted-mcp.sh": ["33669729ad8bed29","cc6095800033f95e","c7dfbfd4cc048237","16b59212c81ee9b6"],
     "scripts/generate-macos-appcast.mjs": ["723942761d0f97b8","6e004219c76b3416","f6735a70e28c4c85","6ac3943c51811ddd"],
-    "scripts/generate-sbom.py": ["f66d8cfda870dd2b","ceea2df47e6f9ca8","0d36d3308332d533","a937efc043dd101b"],
+    "scripts/generate-sbom.py": ["6ecd48a67bea51b7","2a2cda47e886736d","31625e9428fc886a","0380cd04a3a3bcd0"],
     "scripts/lib/atomic-regular-file.mjs": ["d8e2a4bc8d331da9","ef5ed02c8e534ea7","2d600d4bc9f8630d","750cdb1250d33ca2"],
     "scripts/lib/branch-protection-drift.mjs": ["19d3737d14cc9c5d","978b5b0f6113e4a8","619a33b6e0dfd519","18256af12bf6ddc5"],
     "scripts/lib/curl-bearer.sh": ["8f75dd66be14129b","5c2d39ca21231f2f","8448cc892af799a9","bdba5b39b1307230"],

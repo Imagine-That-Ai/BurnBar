@@ -63,9 +63,7 @@ def validate_git_authority(repo_root: Path) -> str:
     observed_root = Path(run(["git", "rev-parse", "--show-toplevel"], cwd=str(repo_root))).resolve()
     requested_root = repo_root.resolve()
     if observed_root != requested_root:
-        raise CommandError(
-            f"Git authority resolved work tree {observed_root} instead of requested {requested_root}"
-        )
+        raise CommandError(f"Git authority resolved work tree {observed_root} instead of requested {requested_root}")
     return run(["git", "rev-parse", "HEAD"], cwd=str(repo_root))
 
 
