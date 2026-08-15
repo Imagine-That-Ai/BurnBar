@@ -1,11 +1,15 @@
 # Memory Activation — end-to-end flow, kill levers, and the human GO-LIVE runbook
 
-**Status:** The semantic-memory subsystem is **fully wired and dormant.** Every
-component named below is built, tested, and committed on the `memory/activation`
-branch. **Nothing in this document is turned on.** The feature does not write a
-single durable memory row out of the box, and it does not ship a byte of derived
-memory off the device. Flipping it on is a deliberate, human-owned decision,
-gated on the residual list in [§7](#7-residual-go-live-decisions-a-human-must-make).
+**Status:** The semantic-memory subsystem is **fully wired and live behind
+consent.** Every component named below is built, tested, and merged to `main`.
+The go-live flag (G2) was flipped to **true** in `fbce28fce6`
+("fix(memory): enable chat memory authority writes (#1156)"), so the feature
+activates as soon as the user grants consent (G0) with extraction enabled (G1).
+Out of the box it is still dormant **by G0 alone**: consent defaults OFF, so no
+transcript is read, no LLM round-trip runs, no durable row is written, and no
+derived memory leaves the device until the user accepts the consent sheet. The
+residual list in [§7](#7-residual-go-live-decisions-a-human-must-make) records
+the decisions that were still open when the flag flipped.
 
 This is the closing doc for the memory-activation build (Waves A–E of
 [`2026-06-19-memory-activation-integrated-build-plan.md`](../../.gstack/projects/Ajnunezg-LaHormigaDormida/ceo-plans/2026-06-19-memory-activation-integrated-build-plan.md)).
@@ -55,7 +59,11 @@ and no memory row is written, even before the go-live flag matters.
     **default ON** (only meaningful once consent is granted).
   - `MemorySettings.remoteConfigExtractionEnabled` — the Remote Config
     `memory_extraction_enabled` fleet switch, **default true, not user-settable,
-    fail-closed** (a fetch error flips it false).
+    fail-open on transport error**: a fetch error does NOT flip it false — the
+    switch only turns off when a fetched (or previously cached) config value
+    says `false` (`SettingsManager.refreshComputerUseRemoteConfigOnce`). The
+    fleet kill therefore requires the config to actually reach the client at
+    least once.
 - **What it gates:** whether the LLM round-trip runs **at all**. It is the
   instant fleet kill: one Remote Config flip to false halts extraction across
   the fleet on the next pump tick.
@@ -71,10 +79,15 @@ and no memory row is written, even before the go-live flag matters.
   independent dormancy guarantee in isolation.** Dormancy for the full system is
   provided by G0 (outermost) combined with G2.
 
-### Gate 2 (G2) — `chatMemoryAuthorityWritesEnabledByDefault` (the go-live flag, DEFAULT **FALSE**)
+### Gate 2 (G2) — `chatMemoryAuthorityWritesEnabledByDefault` (the go-live flag, DEFAULT **TRUE** since `fbce28fce6`)
 
-- **What it is:** a static Boolean — the **human-owned go-live switch**.
-- **Where it is defined:** `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault = false`
+- **What it is:** a static Boolean — the **human-owned go-live switch**. It was
+  flipped to `true` in `fbce28fce6` (#1156); since then dormancy rests on G0
+  alone. Note this is compile-time state: there is **no runtime kill for durable
+  writes** in the chat lane (only extraction has the Remote Config kill) — the
+  usage-memory lane adds `memory_usage_authority_writes_enabled` to close that
+  gap for its own writes.
+- **Where it is defined:** `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault = true`
   (`AgentLens/Services/DataStore/ControlPlaneStore.swift:10`).
 - **What it gates:** the **durable write AND the LLM call**. The worker gates
   `authorityWritesEnabled()` — which is the kill-switch atomic AND the go-live
@@ -100,11 +113,12 @@ and no memory row is written, even before the go-live flag matters.
 |---|---|---|---|
 | **false (default)** | (any) | (any) | **Fully dormant** — no LLM egress, zero writes. |
 | true | **false** | (any) | No LLM egress, zero writes. |
-| true | true | **false (default)** | **LLM never called** — worker returns `.idle` at pre-claim guard; zero writes. |
-| true | true | true | Extraction is **live**: LLM runs, clean facts persist as `quarantined`. |
+| true | true | **false** | **LLM never called** — worker returns `.idle` at pre-claim guard; zero writes. |
+| true | true | **true (default since `fbce28fce6`)** | Extraction is **live**: LLM runs, clean facts persist as `quarantined`. |
 
-The default ship state is the top row: **fully dormant by G0**. The end-to-end
-test asserts the gate matrix — extraction ON + authority OFF ⇒ 0 writes — in
+The default ship state is the top row: **dormant by G0** (consent OFF). With G2
+now defaulting true, G0 is the load-bearing dormancy gate. The end-to-end test
+asserts the gate matrix — extraction ON + authority OFF ⇒ 0 writes — in
 `MemoryActivationEndToEndTests`.
 
 ### A fourth, independent lever for cloud egress
@@ -396,7 +410,7 @@ See [§5](#5-optional-cloud-sync-lane-pr-e2).
 |---|---|---|
 | **Gate 0 — consent** | `AgentLens/Services/Settings/Stores/MemorySettings.swift` (`consentGranted`, key `"memoryConsentGranted"`) + `SettingsManager.memoryConsentGranted` | outermost AND; default OFF; granted via `MemoryConsentSheet` |
 | **Gate 1** (combined G4 gate) | `AgentLens/Services/SettingsManager.swift:724` + `Settings/Stores/MemorySettings.swift:61` | `isEnabled(consentGranted:automaticExtraction:remoteConfigEnabled:)` — consent ∧ user toggle ∧ Remote Config fleet switch |
-| **Gate 2** (go-live flag) | `AgentLens/Services/DataStore/ControlPlaneStore.swift:10` | static, default false, human-owned |
+| **Gate 2** (go-live flag) | `AgentLens/Services/DataStore/ControlPlaneStore.swift:10` | static, default **true** since `fbce28fce6`, human-owned |
 | Live kill-switch atomic | `AgentLens/Services/Memory/MemoryExtractionPolicy.swift:79` (`MemoryExtractionKillSwitch`) | MainActor→worker bridge for L1 |
 | Settings snapshot + box | `MemoryExtractionSettingsSnapshot.swift`, `MemoryExtractionPolicy.swift:118` | off-main per-drain settings |
 | Policy / safety rails | `AgentLens/Services/Memory/MemoryExtractionPolicy.swift` | caps, deadlines, daily cap |
@@ -488,9 +502,10 @@ is the **last** lane to enable and is itself a residual product decision (§7.5)
    `"memoryConsentGranted"`). G0 — the outermost gate — is OFF by default until
    the user accepts `MemoryConsentSheet`. If this is somehow `true` without a
    user action, investigate before proceeding.
-2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault == false`
-   (`ControlPlaneStore.swift:10`). G2 — the go-live flag. If this is ever `true`,
-   the feature is live once G0 and G1 also allow.
+2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault == true`
+   (`ControlPlaneStore.swift:10`). G2 — the go-live flag — has shipped `true`
+   since `fbce28fce6`; the feature is live once G0 and G1 allow. Dormancy is
+   therefore G0's job: check #1 is the load-bearing one.
 3. `MemorySettings.approvedCloudBackupEnabled` default `false`
    (`MemorySettings.swift:32`). No cloud egress.
 4. The engine's worker closure is the **AND** of the live atomic and the go-live
