@@ -275,6 +275,7 @@ class HostedQuotaSubscriptionStore(
             HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION -> CloudTier.PRO
             HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION -> CloudTier.CLOUD
             HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP -> null
+            HostedQuotaStoreProductRole.MEMORY_BOOST -> null
         }
 
         private fun fallbackTierForProductID(id: String): CloudTier {
