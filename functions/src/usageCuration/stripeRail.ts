@@ -209,8 +209,10 @@ async function lookupStripeMemoryPackMappingFromStripe(
   paymentIntentID: string | undefined,
 ): Promise<{ uid: string; packId: MemoryPackId; checkoutSessionID: string } | undefined> {
   if (!paymentIntentID) return undefined;
+  const retrieve = stripe.paymentIntents?.retrieve;
+  if (typeof retrieve !== "function") return undefined;
   const paymentIntent = await stripeWithResilience("payment_intents.retrieve.memory_pack_refund", () =>
-    stripe.paymentIntents.retrieve(paymentIntentID),
+    retrieve.call(stripe.paymentIntents, paymentIntentID),
   );
   if (paymentIntent.metadata?.kind !== "memory_pack") return undefined;
   const sessions = await stripeWithResilience("checkout.sessions.list.memory_pack_refund", () =>
