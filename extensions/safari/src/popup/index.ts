@@ -424,6 +424,9 @@ appRoot.addEventListener('change', (event) => {
     case 'learning-opt-in':
       void send({ type: 'popup.setLearning', optedIn: input.checked });
       break;
+    case 'usage-memory-opt-in':
+      void send({ type: 'popup.setUsageMemory', enabled: input.checked });
+      break;
   }
 });
 

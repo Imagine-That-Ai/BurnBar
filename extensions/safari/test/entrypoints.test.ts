@@ -378,6 +378,12 @@ describe('WebExtension runtime entrypoints', () => {
             learning: { ...currentSnapshot.learning, optedIn: request.optedIn }
           };
           break;
+        case 'popup.setUsageMemory':
+          currentSnapshot = {
+            ...currentSnapshot,
+            usageMemory: { ...currentSnapshot.usageMemory, optedIn: request.enabled }
+          };
+          break;
         case 'popup.clearPerformance':
           currentSnapshot = {
             ...currentSnapshot,
@@ -654,6 +660,13 @@ describe('WebExtension runtime entrypoints', () => {
     });
     expect(root.querySelector<HTMLTextAreaElement>('[data-input="correction-draft"]')?.value).toBe('');
 
+    const usageMemoryToggle = requireElement(
+      root.querySelector<HTMLInputElement>('[data-input="usage-memory-opt-in"]'),
+      'usage-memory opt-in'
+    );
+    usageMemoryToggle.checked = true;
+    usageMemoryToggle.dispatchEvent(new Event('change', { bubbles: true }));
+
     const learningToggle = requireElement(
       root.querySelector<HTMLInputElement>('[data-input="learning-opt-in"]'),
       'learning opt-in'
@@ -713,6 +726,7 @@ describe('WebExtension runtime entrypoints', () => {
         },
         { type: 'popup.learningReview', itemId: 'proposal-1', decision: 'approve' },
         { type: 'popup.setLearning', optedIn: false },
+        { type: 'popup.setUsageMemory', enabled: true },
         {
           type: 'popup.authorizePage',
           expectedStateVersion: 2,
