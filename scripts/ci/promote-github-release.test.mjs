@@ -1,19 +1,17 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import {
   auditExistingRelease,
+  auditRollbackTargetRelease,
   expectedReleaseAssets,
   promoteAuditedRelease,
+  promoteAuditedRollbackTarget,
+  validateRollbackTargetReceipt,
   verifyDomainCoreBundles,
 } from "./promote-github-release.mjs";
 
@@ -58,19 +56,30 @@ function fixture(domainCoreProfile = PUBLIC_PROFILE) {
   put(`openburnbar-v${VERSION}.vex.json`, "{}\n");
   put(`NOTICES-v${VERSION}.txt`, "notices\n");
 
-  const sparkle = "sparkle-signature";
+  const sparkle = Buffer.alloc(64, 7).toString("base64");
+  const updateBaseUrl =
+    "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download";
   put(
     "latest-macos.json",
     `${JSON.stringify(
       {
-        version: VERSION,
+        appcastUrl: `${updateBaseUrl}/appcast.xml`,
+        build: "123",
+        bundleId: "com.openburnbar.app",
+        channel: "direct-download",
         commit: COMMIT,
-        dmg,
-        zip,
         correspondingSource: source,
+        createdAt: "2026-08-15T00:00:00Z",
+        critical: false,
+        dmg,
+        downloadUrl: `${updateBaseUrl}/${dmg}`,
         length: assets.get(dmg).length,
+        minimumSystemVersion: "14.0",
+        releaseNotesUrl: `${updateBaseUrl}/release-metadata.json`,
         sha256: hash("sha256", assets.get(dmg)),
         sparkleEdSignature: sparkle,
+        version: VERSION,
+        zip,
       },
       null,
       2,
@@ -78,19 +87,33 @@ function fixture(domainCoreProfile = PUBLIC_PROFILE) {
   );
   put(
     "appcast.xml",
-    `<sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString><enclosure sparkle:edSignature="${sparkle}" />`,
+    [
+      `<link>${updateBaseUrl}/appcast.xml</link>`,
+      "<item>",
+      "<sparkle:version>123</sparkle:version>",
+      `<sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>`,
+      "<sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>",
+      `<sparkle:releaseNotesLink>${updateBaseUrl}/release-metadata.json</sparkle:releaseNotesLink>`,
+      `<enclosure url="${updateBaseUrl}/${dmg}" length="${assets.get(dmg).length}" type="application/x-apple-diskimage" sparkle:edSignature="${sparkle}" />`,
+      "</item>",
+    ].join(""),
   );
   put(
     "release-metadata.json",
     `${JSON.stringify({
-      version: VERSION,
-      tag: TAG,
-      commit: COMMIT,
-      channel: "direct-download",
-      correspondingSource: source,
       appcast: "appcast.xml",
+      build_timestamp: "2026-08-15T00:00:00Z",
+      channel: "direct-download",
+      commit: COMMIT,
+      correspondingSource: source,
       latestMetadata: "latest-macos.json",
+      runner_arch: "ARM64",
+      runner_name: "fixture-runner",
+      runner_os: "macOS",
       sparkleEdSignaturePresent: true,
+      tag: TAG,
+      updateBaseUrl,
+      version: VERSION,
     })}\n`,
   );
   if (domainCoreProfile === PUBLIC_PROFILE) {
@@ -109,7 +132,14 @@ function fixture(domainCoreProfile = PUBLIC_PROFILE) {
     `${hash("sha256", assets.get(source))}  /tmp/${source}\n`,
   );
 
-  const checksummed = [dmg, zip, source, "appcast.xml", "latest-macos.json", rollback];
+  const checksummed = [
+    dmg,
+    zip,
+    source,
+    "appcast.xml",
+    "latest-macos.json",
+    rollback,
+  ];
   put(
     `checksums-v${VERSION}.txt`,
     `${checksummed
@@ -141,9 +171,7 @@ class FakeClient {
     this.files = files;
     this.assets = new Map(files.assets);
     this.assetIDs = new Map(
-      [...this.assets.keys()]
-        .sort()
-        .map((name, index) => [name, 1000 + index]),
+      [...this.assets.keys()].sort().map((name, index) => [name, 1000 + index]),
     );
     this.latest = false;
     this.calls = [];
@@ -249,18 +277,108 @@ test("audits the exact complete remote release and writes an immutable receipt",
     });
     assert.equal(domainVerificationCalls, 1);
     assert.equal(result.release.identity.assets.length, files.assets.size);
-    assert.equal(readFileSync(files.receiptPath, "utf8").includes(COMMIT), true);
+    assert.equal(
+      readFileSync(files.receiptPath, "utf8").includes(COMMIT),
+      true,
+    );
     assert.equal(mutations(client).length, 0);
     assert.deepEqual(
       new Set(
         client.calls
-          .filter(
-            (args) => args[0] === "release" && args[1] === "download",
-          )
+          .filter((args) => args[0] === "release" && args[1] === "download")
           .map((args) => args[args.indexOf("--pattern") + 1]),
       ),
       new Set(files.assets.keys()),
     );
+  });
+});
+
+test("audits a legacy previous-good release into a rollback-only receipt", () => {
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    const assetDirectory = join(files.directory, "rollback-assets");
+    const receiptPath = join(files.directory, "rollback-receipt.json");
+    const result = auditRollbackTargetRelease(
+      {
+        tag: TAG,
+        commit: COMMIT,
+        assetDirectory,
+        receiptPath,
+      },
+      { client },
+    );
+    const receipt = validateRollbackTargetReceipt(
+      JSON.parse(readFileSync(receiptPath, "utf8")),
+    );
+    assert.equal(result.receiptPath, receiptPath);
+    assert.equal(receipt.version, VERSION);
+    assert.equal(receipt.commit, COMMIT);
+    assert.deepEqual(
+      receipt.identity.assets.map((asset) => asset.name),
+      [
+        `OpenBurnBar-${VERSION}-corresponding-source.tar.gz`,
+        `OpenBurnBar-${VERSION}-corresponding-source.tar.gz.sha256`,
+        `OpenBurnBar-${VERSION}-macOS.dmg`,
+        `OpenBurnBar-${VERSION}-macOS.zip`,
+        "appcast.xml",
+        `checksums-v${VERSION}.txt`,
+        "latest-macos.json",
+        "release-metadata.json",
+      ].sort((left, right) => left.localeCompare(right)),
+    );
+    assert.equal(mutations(client).length, 0);
+  });
+});
+
+test("restores GitHub latest only from the unchanged audited rollback target", () => {
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    const assetDirectory = join(files.directory, "rollback-assets");
+    const receiptPath = join(files.directory, "rollback-receipt.json");
+    auditRollbackTargetRelease(
+      {
+        tag: TAG,
+        commit: COMMIT,
+        assetDirectory,
+        receiptPath,
+      },
+      { client },
+    );
+    client.calls.length = 0;
+    assert.deepEqual(promoteAuditedRollbackTarget(receiptPath, { client }), {
+      promoted: true,
+      promotionApplied: true,
+    });
+    assert.deepEqual(mutations(client), [
+      ["release", "edit", TAG, "--repo", REPOSITORY, "--latest"],
+    ]);
+  });
+});
+
+test("rollback-target drift blocks GitHub latest restoration", () => {
+  withFixture((files) => {
+    const client = new FakeClient(files);
+    const assetDirectory = join(files.directory, "rollback-assets");
+    const receiptPath = join(files.directory, "rollback-receipt.json");
+    auditRollbackTargetRelease(
+      {
+        tag: TAG,
+        commit: COMMIT,
+        assetDirectory,
+        receiptPath,
+      },
+      { client },
+    );
+    client.calls.length = 0;
+    client.assets.set(
+      `OpenBurnBar-${VERSION}-macOS.dmg`,
+      Buffer.from("changed-after-rollback-audit"),
+    );
+    assert.throws(
+      () => promoteAuditedRollbackTarget(receiptPath, { client }),
+      /rollback target changed after its audit/u,
+    );
+    assert.deepEqual(mutations(client), []);
   });
 });
 
@@ -312,14 +430,7 @@ test("promotes only the unchanged audited release with one latest-only edit", ()
       promotionApplied: true,
     });
     assert.deepEqual(mutations(client), [
-      [
-        "release",
-        "edit",
-        TAG,
-        "--repo",
-        REPOSITORY,
-        "--latest",
-      ],
+      ["release", "edit", TAG, "--repo", REPOSITORY, "--latest"],
     ]);
     assert.equal(
       client.calls.some(
