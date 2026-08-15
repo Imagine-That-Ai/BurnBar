@@ -22,6 +22,23 @@ from scripts.ci.check_libsignal_runtime_readiness import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUST_CORE_BRIDGE_EVIDENCE = Path("launch-evidence/libsignal-rust-core-bridge-v1.0.34.json")
 
+# Directories whose every source file the matching binding's verified command
+# compiles and drives. Swept rather than listed so adding an implementation file
+# to an exercised target fails this gate until the evidence is regenerated.
+EXERCISED_IMPLEMENTATION_DIRS = {
+    "swift": ("OpenBurnBarCore/Sources/OpenBurnBarSignalCore", "*.swift"),
+    "kotlinAndroid": ("android/app/src/main/java/com/openburnbar/data/cloud/signalsession", "*.kt"),
+    "node": ("packages/libsignal-bridge/src", "*.ts"),
+}
+
+# Bridge implementation the Kotlin tests drive from outside the signalsession
+# package, which the directory sweep above would otherwise miss.
+EXERCISED_KOTLIN_IMPLEMENTATION_FILES = (
+    "android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloads.kt",
+    "android/app/src/main/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStore.kt",
+    "android/app/src/main/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeypair.kt",
+)
+
 
 def _valid_manifest(*, status: str = "not_ready", complete_ids: tuple[str, ...] = ()) -> dict:
     gates = [
@@ -164,6 +181,41 @@ def test_tracked_rust_core_bridge_gate_has_cross_platform_evidence() -> None:
     #
     # The launch-blocking rationale is also spent: counsel sign-off on the AGPL
     # posture has been obtained, which is the gate this binding existed to defend.
+
+
+def test_rust_core_bridge_evidence_covers_the_exercised_implementation() -> None:
+    """Each binding must hash the implementation it runs, not only its tests.
+
+    The recorded set once held test files and build manifests alone, so editing
+    OBBSignalProtocolStore.swift or AndroidSignalSessionManager.kt left a
+    ``passed`` gate and every digest intact. Sweeping the exercised source
+    directories — rather than re-listing files — keeps the coverage boundary
+    from silently narrowing when new implementation lands in those targets.
+    """
+    evidence = json.loads((REPO_ROOT / RUST_CORE_BRIDGE_EVIDENCE).read_text(encoding="utf-8"))
+    recorded = set(_recorded_digests(evidence))
+
+    for binding_id, (directory, pattern) in EXERCISED_IMPLEMENTATION_DIRS.items():
+        sources = {
+            source.relative_to(REPO_ROOT).as_posix()
+            for source in (REPO_ROOT / directory).glob(pattern)
+        }
+        assert sources, f"no implementation sources found under {directory}"
+        if binding_id == "kotlinAndroid":
+            sources |= set(EXERCISED_KOTLIN_IMPLEMENTATION_FILES)
+
+        unbound = sorted(source for source in sources if source not in recorded)
+        assert not unbound, (
+            f"{binding_id} evidence records no digest for implementation it exercises: {unbound}"
+        )
+
+        # Attribution matters as much as coverage: a digest parked under another
+        # binding would not show which verified command actually ran this code.
+        unattributed = sorted(sources - set(evidence["bindings"][binding_id]["artifactPaths"]))
+        assert not unattributed, (
+            f"{binding_id} exercises implementation not listed among its own "
+            f"artifactPaths: {unattributed}"
+        )
 
 
 def test_rust_core_bridge_evidence_detects_artifact_drift() -> None:

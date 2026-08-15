@@ -1,18 +1,78 @@
 {
   "schemaVersion": 1,
   "status": "passed",
-  "generatedAt": "2026-08-15T05:18:28Z",
+  "generatedAt": "2026-08-15T20:38:00Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
   "candidateReleaseTag": "v1.0.34",
-  "testedSourceCommit": "84f20390ff52d7dd7bd2588f6b3b4384bab951a5",
+  "testedSourceCommit": "4244eba754ef36c52df21c49896b821cc6c988ef",
   "artifactDigests": [
     {
       "path": "OpenBurnBarCore/Package.swift",
       "sha256": "45d6471d6de4030f4068ac81f1c1169ed3aa70b82db858d6fd99322897b9de35"
     },
     {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/CloudVaultDeviceTrustChain.swift",
+      "sha256": "817fe0da52feb4360baec9f24fb9cd3643e0adf6eda6c1a323d3749b20615522"
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalPreKeyGenerator.swift",
+      "sha256": "111e077813864fea8bcdd610a54d43c955284bd369c1d198f87dadfff79ea8a0"
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",
+      "sha256": "e31431462fa29039554c9f8dc2d48877fc947bea1dc4d73f6eaf39b7795ee329"
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalSessionPeer.swift",
+      "sha256": "3cf7621b0d28c6e3ee19daac9f0df34936d9d1d451e6f3b2848ccccc5d7070cb"
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalCoreUnavailable.swift",
+      "sha256": "1f6ae30d1a4356b324fbc71072efe76e64d5465b7156c6d829674926dde73184"
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestFallbackPolicy.swift",
+      "sha256": "9c710fc32108238e20246bcda6c56385c966aa18dbe4587fa9446e03d1c3d35f"
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift",
+      "sha256": "b87ff70823edc81cb90b91fd0a8aff824682f81461bb183196a74b980ec1fd8e"
+    },
+    {
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift",
+      "sha256": "23898de2f96b2d52a70be99cc2848359ea3cfe2a6a16c5c0902e0d56992c6d9c"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CloudVaultDeviceTrustChainTests.swift",
+      "sha256": "140f5366453b5f4ac1126d6fe6e10173c6959b1a207784e728a6cfacce9e71c8"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CloudVaultRotationHandoffKATTests.swift",
+      "sha256": "d384f370a4503ffea02dd6fc1265bb31e45ba15b00b2a21232abfc573bfdfa05"
+    },
+    {
       "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",
       "sha256": "aa4436ee52271181380fee3270a207f1ac63672015984d825b2affaf04d367fa"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/CryptoKitAtRestInteropVector.json",
+      "sha256": "1d7391c2230d4b74f5e974a99d8ba40b02bf2fa617b3b5dc5b2d5aad744926eb"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/SignalEnvelopeV1Vector.json",
+      "sha256": "f8dc9d668846378d65d91b3cbd80f983d3a8086a6d70d594216d0ebcf10a01c6"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/android-alice-to-swift-bob.json",
+      "sha256": "901579da64571ac91b95ebb384dc3865da207b8fe2a24324305c17624f95dced"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalIdentityPinTests.swift",
+      "sha256": "3b9caf40a29d3589b0a848eee2a26c8ee86a406cdf688811dd7aa0d269c1d8a2"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalInteropFixtureGen.swift",
+      "sha256": "1f550152521b8911a815aea49be396e34cdc3ae1f7ca9c076129a200cf323ed0"
     },
     {
       "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalInteropKatTests.swift",
@@ -21,6 +81,18 @@
     {
       "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalProtocolStoreSessionTests.swift",
       "sha256": "cba6167782d479352b2fd293a4d8a267b618b1310f3af6b56f05a3ba63f942df"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OpenBurnBarSignalCoreUnavailableTests.swift",
+      "sha256": "fc07a0ef719d5a0eb0783813c4453a2846c123744b6b1a1ed8dd3b10c4b99932"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalAtRestFallbackPolicyTests.swift",
+      "sha256": "9e83dc17f22b2e6f2b26e0f3cee144c6da542ef55bdcee97a588d9d0195e97ea"
+    },
+    {
+      "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalAtRestSealerTests.swift",
+      "sha256": "98a82db9dbe87986f25f0fb7a501520a26d75ab0b7324580763ebd83f719f492"
     },
     {
       "path": "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
@@ -47,6 +119,38 @@
       "sha256": "8bb2ff6cf865fd8a18fe4d3c07dc4876ce3b50c55569711be827ecc756c8d4b4"
     },
     {
+      "path": "android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloads.kt",
+      "sha256": "c738c65cc7e98b2bf4497f43ebd2cb3fb4d6423c77b0d260f7287e801612d73e"
+    },
+    {
+      "path": "android/app/src/main/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStore.kt",
+      "sha256": "33d98cd586b6c79a2ff87afad5443d815e94d4715cad56a6a0d241edb708f54d"
+    },
+    {
+      "path": "android/app/src/main/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeypair.kt",
+      "sha256": "ddc2852c0719eb9eb0596b5df885dca301b7ce77042883f4a305cdee59ff7762"
+    },
+    {
+      "path": "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalPreKeyGenerator.kt",
+      "sha256": "b4033330c7da0e468a47e0eeb06825cbdae6280a47c383e5d7e1523bd87992f9"
+    },
+    {
+      "path": "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalProtocolStore.kt",
+      "sha256": "607ac86f0823e40b4888be955001b47853eb71c69568f688551f4896ade04889"
+    },
+    {
+      "path": "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalRemoteBundleDecoder.kt",
+      "sha256": "6d640caf227625a53d183c8130191b421b2251dadb20c39471afdffddff153c5"
+    },
+    {
+      "path": "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionManager.kt",
+      "sha256": "4922064109a7058f60d1c4dc82a8ba9dddd831fe901a6b4a7febb50a6aed36ac"
+    },
+    {
+      "path": "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/SignalRecordVault.kt",
+      "sha256": "6c1a5a6ee52a5a2973f1c40eef2f5709c3013c7d21aeff5fd8b7122a959d6ee7"
+    },
+    {
       "path": "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
       "sha256": "3a913a6c7b3970d40301f950c7eb71bfab0a3c7ba97ef4b5a38ee238fed297b2"
     },
@@ -59,12 +163,28 @@
       "sha256": "7ff4ffcaea0e4fcafccff7e6b7278b421a737d959413c33c70c42d1da0cf5f56"
     },
     {
+      "path": "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionOverIrohTest.kt",
+      "sha256": "72762df88e8699d87b9c7c5729ab2b93a112b2989f213b7847c50a219e6a1f72"
+    },
+    {
       "path": "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionRoundTripTest.kt",
       "sha256": "1be53e1f70cbbe4263648851d14055d00445ee0702ab012c4dbb3f3b4441ba0f"
     },
     {
+      "path": "packages/libsignal-bridge/package-lock.json",
+      "sha256": "395613010ac78356a981a0384b241bea3411852f8de2ddfb59f4f4ecbe962783"
+    },
+    {
       "path": "packages/libsignal-bridge/package.json",
       "sha256": "154abbf4f3681a94d701b1823d4aacd3b7a477df31bee0eadbf4a66b7bb1e5a4"
+    },
+    {
+      "path": "packages/libsignal-bridge/src/index.test.ts",
+      "sha256": "dda5f720cd9ddbaadc2bca595c67d5474f5e00f5b9ccd88f5b2e218f93261862"
+    },
+    {
+      "path": "packages/libsignal-bridge/src/index.ts",
+      "sha256": "0e40df4a7055adc048e6eb3cb1fb19a7f6ae4c6c54601cb314fac4f5240b9f47"
     },
     {
       "path": "packages/libsignal-bridge/src/protocolHarness.test.ts",
@@ -73,6 +193,10 @@
     {
       "path": "packages/libsignal-bridge/src/protocolHarness.ts",
       "sha256": "d674d3610e8e621afa91e063e60ddbb273c6b7b350ecb0371aacd97d7edf2b89"
+    },
+    {
+      "path": "packages/libsignal-bridge/tsconfig.json",
+      "sha256": "f29a47449fef7c94e5bfb518fdac8e2d592a5ea7ef4979793b4a58e7149e0438"
     },
     {
       "path": "scripts/ci/verify-libsignal-pin.sh",
@@ -99,22 +223,22 @@
       "command": "bash scripts/ci/verify-libsignal-pin.sh",
       "result": "PASS: libsignal pin metadata is internally consistent",
       "artifactPaths": [
-        "third_party/libsignal/manifest.json",
-        "scripts/ci/verify-libsignal-pin.sh"
+        "scripts/ci/verify-libsignal-pin.sh",
+        "third_party/libsignal/manifest.json"
       ]
     },
     {
       "id": "fork_delta",
       "status": "passed",
       "command": "bash scripts/ci/verify-libsignal-submodule-delta.sh",
-      "result": "PASS: only the four allow-listed Swift build/integration files differ from official v0.94.4; no Rust, JNI, or Node crypto-core divergence",
+      "result": "OK: Vendor/libsignal fork delta vs official 46d867c986f66201e34e7ae20ce423eec742bf3f is allow-listed (build-only): swift/Package.swift, swift/Sources/LibSignalClient/AsyncUtils.swift, swift/Sources/LibSignalClient/TokioAsyncContext.swift, swift/Sources/LibSignalClient/chat/UnauthUsernamesService.swift. No Rust, JNI, or Node crypto-core divergence.",
       "artifactPaths": [
-        "third_party/libsignal/manifest.json",
-        "scripts/ci/verify-libsignal-submodule-delta.sh",
-        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
         "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
         "Vendor/libsignal/rust/bridge/jni/Cargo.toml",
-        "Vendor/libsignal/rust/bridge/node/Cargo.toml"
+        "Vendor/libsignal/rust/bridge/node/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "scripts/ci/verify-libsignal-submodule-delta.sh",
+        "third_party/libsignal/manifest.json"
       ]
     }
   ],
@@ -122,31 +246,58 @@
     "swift": {
       "status": "passed",
       "bridge": "official libsignal Rust shared bridge through the Swift FFI package",
-      "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-release-rust-bridge-swift --disable-swift-testing --filter OpenBurnBarSignalCoreTests",
-      "result": "26 tests executed, 1 intentionally skipped fixture generator, 0 failures",
+      "command": "SIGNAL_FFI_BUILD_TARGETS=aarch64-apple-darwin SIGNAL_FFI_BUILD_PROFILE=debug bash scripts/lib/prepare-signal-ffi-xcframework.sh && swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-release-rust-bridge-swift --manifest-cache none --disable-swift-testing --filter OpenBurnBarSignalCoreTests",
+      "result": "26 tests executed, 1 intentionally skipped fixture generator, 0 failures. The Signal FFI XCFramework must be prepared before the first swift invocation and the manifest cache bypassed, because Package.swift probes for Vendor/OpenBurnBarSignalFfiMac.xcframework at manifest-evaluation time; a cached manifest from an unprepared tree links no libsignal_ffi and fails.",
       "artifactPaths": [
-        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
-        "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
-        "Vendor/libsignal/swift/Package.swift",
         "OpenBurnBarCore/Package.swift",
-        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalProtocolStoreSessionTests.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/CloudVaultDeviceTrustChain.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalPreKeyGenerator.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalProtocolStore.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OBBSignalSessionPeer.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/OpenBurnBarSignalCoreUnavailable.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestFallbackPolicy.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalAtRestSealer.swift",
+        "OpenBurnBarCore/Sources/OpenBurnBarSignalCore/SignalIdentityKeyStore.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CloudVaultDeviceTrustChainTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CloudVaultRotationHandoffKATTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/CryptoKitAtRestInteropVector.json",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/SignalEnvelopeV1Vector.json",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/Fixtures/android-alice-to-swift-bob.json",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalIdentityPinTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalInteropFixtureGen.swift",
         "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalInteropKatTests.swift",
-        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift"
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OBBSignalProtocolStoreSessionTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/OpenBurnBarSignalCoreUnavailableTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalAtRestFallbackPolicyTests.swift",
+        "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/SignalAtRestSealerTests.swift",
+        "Vendor/libsignal/rust/bridge/ffi/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "Vendor/libsignal/swift/Package.swift"
       ]
     },
     "kotlinAndroid": {
       "status": "passed",
       "bridge": "official libsignal Rust shared bridge through org.signal JNI 0.94.4",
-      "command": "cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalSession*' --tests '*AndroidSignalInteropKatTest' --tests '*AndroidCloudVaultSignalPayloadsTest' --tests '*AndroidSignalIdentityKeyStoreTest' --no-daemon",
-      "result": "BUILD SUCCESSFUL",
+      "command": "cd android && ANDROID_HOME=\"$HOME/Library/Android/sdk\" ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalSession*' --tests '*AndroidSignalInteropKatTest' --tests '*AndroidCloudVaultSignalPayloadsTest' --tests '*AndroidSignalIdentityKeyStoreTest' --no-daemon",
+      "result": "BUILD SUCCESSFUL; 5 selected classes executed 25 tests with 0 skipped, 0 failures, 0 errors (AndroidCloudVaultSignalPayloadsTest 17, AndroidSignalInteropKatTest 2, AndroidSignalIdentityKeyStoreTest 2, AndroidSignalSessionOverIrohTest 2, AndroidSignalSessionRoundTripTest 2)",
       "artifactPaths": [
-        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
         "Vendor/libsignal/rust/bridge/jni/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
         "android/app/build.gradle.kts",
-        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionRoundTripTest.kt",
-        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalInteropKatTest.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloads.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStore.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeypair.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalPreKeyGenerator.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalProtocolStore.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalRemoteBundleDecoder.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionManager.kt",
+        "android/app/src/main/java/com/openburnbar/data/cloud/signalsession/SignalRecordVault.kt",
         "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
-        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStoreTest.kt"
+        "android/app/src/test/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStoreTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalInteropKatTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionOverIrohTest.kt",
+        "android/app/src/test/java/com/openburnbar/data/cloud/signalsession/AndroidSignalSessionRoundTripTest.kt"
       ]
     },
     "node": {
@@ -155,11 +306,15 @@
       "command": "npm test --prefix packages/libsignal-bridge",
       "result": "5 tests passed, 0 failures",
       "artifactPaths": [
-        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
         "Vendor/libsignal/rust/bridge/node/Cargo.toml",
+        "Vendor/libsignal/rust/bridge/shared/Cargo.toml",
+        "packages/libsignal-bridge/package-lock.json",
         "packages/libsignal-bridge/package.json",
+        "packages/libsignal-bridge/src/index.test.ts",
+        "packages/libsignal-bridge/src/index.ts",
+        "packages/libsignal-bridge/src/protocolHarness.test.ts",
         "packages/libsignal-bridge/src/protocolHarness.ts",
-        "packages/libsignal-bridge/src/protocolHarness.test.ts"
+        "packages/libsignal-bridge/tsconfig.json"
       ]
     }
   }
