@@ -55,7 +55,13 @@ if [[ ! -d "$created_release" || -L "$created_release" ]]; then
   echo "FAIL: Atomic release-root creation did not create a real directory." >&2
   exit 1
 fi
-created_release_mode="$(stat -f '%Lp' "$created_release" 2>/dev/null || stat -c '%a' "$created_release")"
+# GNU stat (-c) vs BSD stat (-f): probe the GNU form first because feeding the
+# BSD argument order to GNU stat partially succeeds and pollutes the capture.
+if stat -c '%a' "$created_release" >/dev/null 2>&1; then
+  created_release_mode="$(stat -c '%a' "$created_release")"
+else
+  created_release_mode="$(stat -f '%Lp' "$created_release")"
+fi
 if [[ "$created_release_mode" != "700" ]]; then
   echo "FAIL: Atomic release-root creation did not preserve mode 0700." >&2
   exit 1
