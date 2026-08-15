@@ -10,7 +10,6 @@ import { db } from "../adminRuntime.js";
 import { stripeWithResilience } from "../resilienceHelpers.js";
 import { requiredIdentifier } from "../callables/shared/validators.js";
 import {
-  DEFAULT_MEMORY_PACKS,
   isMemoryPackId,
   memoryPackFromStripePriceID,
   memoryPackRuntimeIds,
@@ -247,5 +246,3 @@ export function stripeMemoryPackIdempotencyKey(uid: string, packId: MemoryPackId
   const attempt = attemptId?.trim() || String(Math.floor(Date.now() / (10 * 60 * 1000)));
   return requiredIdentifier(`memory_pack_checkout_${uid}_${packId}_${attempt}`, "idempotencyKey");
 }
-
-export { DEFAULT_MEMORY_PACKS };

@@ -86,7 +86,7 @@ export function defaultMemoryPack(packId: MemoryPackId): MemoryPackDefinition {
   return DEFAULT_MEMORY_PACKS[packId];
 }
 
-export interface MemoryPackRuntimeIds {
+interface MemoryPackRuntimeIds {
   appleProductID: string;
   playProductID: string;
   stripePriceID: string;

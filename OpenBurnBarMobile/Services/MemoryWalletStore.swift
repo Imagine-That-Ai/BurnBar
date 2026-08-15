@@ -46,7 +46,7 @@ final class MemoryWalletStore {
             loadFailed = false
             return
         }
-        listener = Firestore.firestore()
+        listener = FirestoreRepository.database
             .document("users/\(uid)/memoryWallet/current")
             .addSnapshotListener { [weak self] snap, error in
                 Task { @MainActor in

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.openburnbar.data.firebase.FirestoreRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,7 +17,7 @@ class MemoryWalletStore(
     initialFirestore: FirebaseFirestore? = null,
     initialFirebaseAuth: FirebaseAuth? = null,
 ) : ViewModel() {
-    private val firestore = initialFirestore ?: FirebaseFirestore.getInstance()
+    private val firestore = initialFirestore ?: FirestoreRepository.database()
     private val firebaseAuth = initialFirebaseAuth ?: FirebaseAuth.getInstance()
 
     private val _textTokens = MutableStateFlow(0L)

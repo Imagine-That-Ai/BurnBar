@@ -341,6 +341,14 @@ function buildAppleProductIds(
       process.env.ELDER_WAND_SEARCHES_500_PRODUCT_ID ??
       configString(openburnbar, "elder_wand_searches_500_product_id") ??
       "com.openburnbar.elderWand.searches500",
+    ...buildAppleMemoryBoostProductIds(openburnbar),
+  };
+}
+
+function buildAppleMemoryBoostProductIds(
+  openburnbar: Record<string, unknown>,
+): Pick<EnvConfig, "memoryBoostText1mProductID" | "memoryBoostText5mProductID" | "memoryBoostVision1mProductID"> {
+  return {
     memoryBoostText1mProductID:
       process.env.MEMORY_BOOST_TEXT_1M_PRODUCT_ID ??
       configString(openburnbar, "memory_boost_text_1m_product_id") ??
@@ -525,6 +533,20 @@ function buildGooglePlaySettings(
       process.env.GOOGLE_PLAY_ELDER_WAND_SEARCHES_100_PRODUCT_ID ??
       configString(googleplay, "elder_wand_searches_100_product_id") ??
       "com.openburnbar.elderwand.searches100",
+    ...buildGooglePlayConsumableProductIds(googleplay),
+  };
+}
+
+function buildGooglePlayConsumableProductIds(
+  googleplay: Record<string, unknown>,
+): Pick<
+  EnvConfig,
+  | "googlePlayElderWandSearches500ProductID"
+  | "googlePlayMemoryBoostText1mProductID"
+  | "googlePlayMemoryBoostText5mProductID"
+  | "googlePlayMemoryBoostVision1mProductID"
+> {
+  return {
     googlePlayElderWandSearches500ProductID:
       process.env.GOOGLE_PLAY_ELDER_WAND_SEARCHES_500_PRODUCT_ID ??
       configString(googleplay, "elder_wand_searches_500_product_id") ??

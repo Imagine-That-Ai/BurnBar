@@ -18,7 +18,7 @@ import {
   type MemoryPackId,
 } from "./catalog.js";
 
-export interface MemoryPackCatalogSnapshot {
+interface MemoryPackCatalogSnapshot {
   packs: Record<MemoryPackId, MemoryPackDefinition>;
 }
 

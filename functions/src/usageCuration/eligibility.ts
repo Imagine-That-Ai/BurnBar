@@ -22,7 +22,7 @@ import {
 } from "../callables/shared/entitlements.js";
 import { DEFAULT_MEMORY_PACKS, type MemoryPackId } from "./catalog.js";
 
-export async function hasActiveMemoryPackTextEntitlement(uid: string): Promise<boolean> {
+async function hasActiveMemoryPackTextEntitlement(uid: string): Promise<boolean> {
   const [proSnap, hostedSnap, proMaxSnap, ultraSnap] = await Promise.all([
     db.doc(`users/${uid}/entitlements/${BURNBAR_PRO_ENTITLEMENT_ID}`).get(),
     db.doc(`users/${uid}/entitlements/hosted_quota_sync`).get(),

@@ -50,7 +50,7 @@ final class MacMemoryWalletStore: ObservableObject {
             loadFailed = false
             return
         }
-        listener = Firestore.firestore()
+        listener = CloudSyncFirestoreLiveGateway.sdkHandle
             .document("users/\(uid)/memoryWallet/current")
             .addSnapshotListener { [weak self] snap, error in
                 let data = snap?.data()

@@ -228,18 +228,20 @@ internal data class MemoryBoostWalletUi(
     val notice: String? = null,
 )
 
-internal fun formatMemoryTokenCount(value: Long): String =
-    NumberFormat.getIntegerInstance().format(value)
+internal fun formatMemoryTokenCount(value: Long): String = NumberFormat.getIntegerInstance().format(value)
 
 internal fun memoryBoostWalletLines(wallet: MemoryBoostWalletUi): List<String> {
     if (wallet.loadFailed) {
         return listOf("Could not load your Memory Boost wallet. Reopen this screen to try again.")
     }
-    val lines = mutableListOf(
-        "Wallet: ${formatMemoryTokenCount(wallet.textTokens)} text · ${formatMemoryTokenCount(wallet.visionTokens)} vision",
-    )
+    val spendable =
+        "Wallet: ${formatMemoryTokenCount(wallet.textTokens)} text · " +
+            "${formatMemoryTokenCount(wallet.visionTokens)} vision"
+    val lines = mutableListOf(spendable)
     if (wallet.pendingTextTokens > 0L || wallet.pendingVisionTokens > 0L) {
-        lines += "Waiting: ${formatMemoryTokenCount(wallet.pendingTextTokens)} text · ${formatMemoryTokenCount(wallet.pendingVisionTokens)} vision until Cloud Pro or Ultra is active."
+        lines +=
+            "Waiting: ${formatMemoryTokenCount(wallet.pendingTextTokens)} text · " +
+            "${formatMemoryTokenCount(wallet.pendingVisionTokens)} vision until Cloud Pro or Ultra is active."
     }
     lines += "Credits expire 12 months after purchase."
     wallet.notice?.takeIf { it.isNotBlank() }?.let { lines += it }
@@ -261,11 +263,10 @@ private fun cloudPaidTierSections(isCloudPro: Boolean): CloudPaidTierSections {
         cloudPro = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION },
         cloudUltra = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION },
         topUps = products.filter { it.role == HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP },
-        memoryBoosts =
-            products.filter { product ->
-                product.role == HostedQuotaStoreProductRole.MEMORY_BOOST &&
-                    (isCloudPro || product.id != HostedQuotaSubscriptionStore.MEMORY_BOOST_VISION_1M_PRODUCT_ID)
-            },
+        memoryBoosts = products.filter { product ->
+            product.role == HostedQuotaStoreProductRole.MEMORY_BOOST &&
+                (isCloudPro || product.id != HostedQuotaSubscriptionStore.MEMORY_BOOST_VISION_1M_PRODUCT_ID)
+        },
     )
 }
 

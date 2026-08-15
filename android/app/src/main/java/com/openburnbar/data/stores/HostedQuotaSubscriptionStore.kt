@@ -865,11 +865,7 @@ private suspend fun verifyHostedQuotaTopUpPurchases(
     return credits
 }
 
-private suspend fun verifyMemoryBoostPurchases(
-    purchases: List<Purchase>,
-    productIds: Set<String>,
-    functions: FunctionsRepository,
-): List<Map<String, Any>> {
+private suspend fun verifyMemoryBoostPurchases(purchases: List<Purchase>, productIds: Set<String>, functions: FunctionsRepository): List<Map<String, Any>> {
     val results = mutableListOf<Map<String, Any>>()
     purchases
         .filter { purchase ->

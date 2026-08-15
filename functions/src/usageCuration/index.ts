@@ -18,10 +18,13 @@ export {
   memoryPackFromPlayProductID,
   memoryPackFromStripePriceID,
   memoryPackRuntimeIds,
-  type MemoryLane,
-  type MemoryPackDefinition,
-  type MemoryPackId,
-  type MemoryPackSource,
+} from "./catalog.js";
+
+export type {
+  MemoryLane,
+  MemoryPackDefinition,
+  MemoryPackId,
+  MemoryPackSource,
 } from "./catalog.js";
 
 export {
@@ -33,7 +36,10 @@ export {
   revokeGrant,
   reverseMemoryPackGrant,
   settlePendingMemoryPacks,
-  type GrantMemoryPackResult,
-  type MemoryGrantStatus,
-  type MemoryWalletBalances,
 } from "./wallet.js";
+
+export type {
+  GrantMemoryPackResult,
+  MemoryGrantStatus,
+  MemoryWalletBalances,
+} from "./walletTypes.js";
