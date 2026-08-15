@@ -14,14 +14,18 @@ import OpenBurnBarCore
 // untouched.
 
 extension ControlPlaneStore {
-    /// Typed `memory_links.link_kind` vocabulary (mirrors the v61 DDL comment:
-    /// near_duplicate | contradicts | supports | promoted_from). Stage-2 writes
-    /// only `near_duplicate`; the rest belong to Stage-3 consolidation.
+    /// Typed `memory_links.link_kind` vocabulary (the v61 DDL comment's
+    /// near_duplicate | contradicts | supports | promoted_from, plus PR9's
+    /// `unrelated` marker). Stage-2 writes only `near_duplicate`; the rest
+    /// belong to Stage-3 consolidation. `unrelated` is the self-heal pass's
+    /// "asked and answered" tombstone — it exists solely so a classified pair
+    /// is never re-asked, and carries no recall semantics.
     enum MemoryLinkKind: String, Sendable {
         case nearDuplicate = "near_duplicate"
         case contradicts
         case supports
         case promotedFrom = "promoted_from"
+        case unrelated
     }
 
     /// Corroboration bump: the same durable fact was independently observed
@@ -57,13 +61,16 @@ extension ControlPlaneStore {
     }
 
     /// Seed the salience sidecar row for a freshly inserted memory:
-    /// {salience: Stage-0 hint, hit_count 0, corroboration 1, source trust
-    /// from policy}. `ON CONFLICT DO NOTHING` — a replay (deterministic memory
-    /// ids) must never reset corroboration/hits a live row has accumulated.
+    /// {salience: Stage-0 hint, hit_count 0, corroboration (default 1 = the
+    /// base observation; PR9's promote pass seeds the canonical note with the
+    /// cluster's member count), source trust from policy}. `ON CONFLICT DO
+    /// NOTHING` — a replay (deterministic memory ids) must never reset
+    /// corroboration/hits a live row has accumulated.
     func seedMemorySalience(
         memoryID: MemoryID,
         salience: Double,
         sourceTrust: Double,
+        corroboration: Int = 1,
         now: Date = Date()
     ) async throws {
         try await dbQueue.write { db in
@@ -72,10 +79,10 @@ extension ControlPlaneStore {
                 INSERT INTO memory_salience (
                     memory_id, salience, hit_count, last_reinforced_at,
                     corroboration, source_trust, computed_at, updated_at
-                ) VALUES (?, ?, 0, NULL, 1, ?, ?, ?)
+                ) VALUES (?, ?, 0, NULL, ?, ?, ?, ?)
                 ON CONFLICT(memory_id) DO NOTHING
                 """,
-                arguments: [memoryID, salience, sourceTrust, now, now]
+                arguments: [memoryID, salience, max(1, corroboration), sourceTrust, now, now]
             )
         }
     }

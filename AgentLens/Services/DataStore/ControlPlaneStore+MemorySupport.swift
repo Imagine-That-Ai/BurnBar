@@ -446,7 +446,11 @@ extension ControlPlaneStore {
         )
     }
 
-    private static func copyMemoryProvenance(
+    /// Union-copy `loserID`'s provenance rows onto `winnerID`, deduplicated by
+    /// (xdevice_hmac, occurrence). Internal (not private) because PR9's
+    /// consolidation supersede path reuses it for the promote pass's citation
+    /// union and the self-heal pass's supersedes.
+    static func copyMemoryProvenance(
         db: Database,
         from loserID: MemoryID,
         to winnerID: MemoryID,
