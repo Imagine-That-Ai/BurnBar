@@ -325,6 +325,27 @@ final class MemoryExtractionEngine {
         }
     }
 
+    // MARK: - Reinforce-on-use (PR8)
+
+    /// Fire-and-forget salience reinforcement for the memory ids that were
+    /// actually injected into a committed turn's prompt (the terminal-commit
+    /// hook calls this next to `launchDrain()`). Zero LLM, zero blocking: one
+    /// small `memory_salience` write on a utility task, failures logged and
+    /// swallowed. Not gated — recall itself already ran behind the combined
+    /// kill switch, so a non-empty id list is proof the feature was on when
+    /// the memories were used; recording that use is pure local bookkeeping.
+    func reinforceRecalledMemories(ids: [MemoryID], now: Date = Date()) {
+        guard ids.isEmpty == false else { return }
+        let store = chatMemoryStore
+        Task(priority: .utility) {
+            do {
+                try await store.reinforceMemories(ids: ids, now: now)
+            } catch {
+                AppLogger.dataStore.silentFailure("memory_reinforce_on_use_failed", error: error)
+            }
+        }
+    }
+
     // MARK: - Pump
 
     /// Drain the extraction backlog, bounded by `maxJobsPerPump` AND a wall-clock

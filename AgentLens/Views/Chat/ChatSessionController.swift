@@ -190,6 +190,13 @@ final class ChatSessionController {
     /// section; the chat UI retains citations only.
     var lastRecalledMemoryCitations: [MemoryCitation] = []
 
+    /// PR8 reinforce-on-use: the memory ids actually injected into the current
+    /// turn's prompt, recorded alongside the citation bookkeeping above. The
+    /// terminal-commit path (`scheduleMemoryDrainAfterCommit`) drains them into
+    /// a fire-and-forget salience reinforcement, then clears — so only ids
+    /// whose turn actually committed count as "used".
+    var lastRecalledMemoryIDs: [MemoryID] = []
+
     /// E1 (citation jump): a `chat_messages.id` the stream should scroll to once it
     /// is present in `messages`. Recall is app-wide, so tapping a citation may first
     /// open the owning thread; the actual `proxy.scrollTo` happens in the

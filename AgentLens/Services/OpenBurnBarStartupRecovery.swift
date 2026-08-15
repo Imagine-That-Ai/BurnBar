@@ -242,6 +242,13 @@ final class OpenBurnBarRuntimeContext {
     /// act is the usage extraction gate check (consent OFF out of the box).
     var usageMemoryStage1Ticker: UsageMemoryStage1Ticker?
 
+    /// PR8 Stage-3 zero-LLM consolidation worker (decay recompute → evict →
+    /// candidate TTL → orphan purge) over the SAME shared store, assigned via
+    /// `applyMemoryServices` and registered on the `BackgroundCadenceCoordinator`
+    /// by `startMemoryExtractionIfNeeded`. DORMANT by default behind the same
+    /// usage gate box as the Stage-1 ticker.
+    var memoryConsolidationWorker: MemoryConsolidationWorker?
+
     // MARK: - Mercury Phase 8 — user-facing surfaces
 
     /// Live-share / file-transfer / call brain. Mounted into the

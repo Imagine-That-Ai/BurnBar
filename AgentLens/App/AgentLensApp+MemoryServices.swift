@@ -50,6 +50,11 @@ extension OpenBurnBarApp {
         /// (consent OFF out of the box), and the miner + worker re-check the
         /// same gate boxes independently.
         let usageStage1Ticker: UsageMemoryStage1Ticker
+        /// PR8: the Stage-3 zero-LLM consolidation worker (decay recompute →
+        /// evict → candidate TTL → orphan purge) over the SAME store. DORMANT
+        /// by default behind the same usage gate box as the Stage-1 ticker;
+        /// its tick gate-checks FIRST, so a disabled feature does zero work.
+        let consolidationWorker: MemoryConsolidationWorker
     }
 
     /// Construct the shared-store memory services (PR-D3 must-fix #1 + #4; PR-E2 domain).
@@ -125,12 +130,21 @@ extension OpenBurnBarApp {
             mineAgentSessions: { settingsManager.usageMemorySourceAgentSessionsEnabled }
         )
 
+        // PR8: the Stage-3 consolidation worker over the SAME store, behind the
+        // SAME usage gate box as the Stage-1 ticker. Constructing it flips
+        // nothing on — the tick's first act is this gate check.
+        let consolidationWorker = MemoryConsolidationWorker(
+            store: store,
+            isEnabled: { usageExtractionSwitch.isAllowed() }
+        )
+
         return MemoryServices(
             store: store,
             service: service,
             engine: engine,
             cloudSyncDomain: cloudSyncDomain,
-            usageStage1Ticker: usageStage1Ticker
+            usageStage1Ticker: usageStage1Ticker,
+            consolidationWorker: consolidationWorker
         )
     }
 
@@ -153,6 +167,16 @@ extension OpenBurnBarApp {
         // is the coordinator's timer.
         if let ticker = context.usageMemoryStage1Ticker {
             Self.registerUsageMemoryStage1Cadence(ticker: ticker)
+        }
+        // PR8: register the Stage-3 consolidation cadence. Registration alone
+        // is inert for the same reason as Stage-1 — the gate box stays closed
+        // until the user grants usage consent, and the worker's tick checks it
+        // FIRST before touching the database.
+        if let worker = context.memoryConsolidationWorker {
+            Self.registerUsageMemoryConsolidationCadence(
+                worker: worker,
+                usageSwitch: engine.usageExtractionKillSwitch
+            )
         }
     }
 
@@ -178,6 +202,31 @@ extension OpenBurnBarApp {
                 fireImmediately: false,
                 work: {
                     await ticker.tick()
+                }
+            )
+        )
+    }
+
+    /// PR8: register the Stage-3 zero-LLM consolidation loop on the canonical
+    /// timer surface. Intervals per the Stage-3 plan: display-asleep 6 h,
+    /// app-background 12 h, foreground 24 h; no eager first fire. The gate is
+    /// the SAME usage gate box as the Stage-1 cadence, and the worker's tick
+    /// re-checks it before any database work.
+    @MainActor
+    static func registerUsageMemoryConsolidationCadence(
+        worker: MemoryConsolidationWorker,
+        usageSwitch: MemoryExtractionKillSwitch
+    ) {
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: "usage-memory-consolidation",
+                activeInterval: 24 * 3600,
+                backgroundInterval: 12 * 3600,
+                sleepInterval: 6 * 3600,
+                isEnabled: { usageSwitch.isAllowed() },
+                fireImmediately: false,
+                work: {
+                    await worker.consolidationTick()
                 }
             )
         )
@@ -272,6 +321,7 @@ extension OpenBurnBarRuntimeContext {
         memoryExtractionEngine = services.engine
         memoryCloudSyncDomain = services.cloudSyncDomain
         usageMemoryStage1Ticker = services.usageStage1Ticker
+        memoryConsolidationWorker = services.consolidationWorker
         services.engine.launchDrain()
     }
 }
