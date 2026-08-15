@@ -8,6 +8,7 @@ import {
   firestorePolicy,
   googlePlayConsumePolicy,
   isGooglePlayPurchaseNotOwnedError,
+  modelInferencePolicy,
   providerApiPolicy,
   pushPolicy,
   stripePolicy,
@@ -57,6 +58,21 @@ export async function resilientFetch(
   // hosts unless explicitly opted in (the GCP metadata identity fetch).
   await assertOutboundFetchTargetResolved(url, options?.allowPrivateHosts ?? false);
   return externalApiWithResilience(label, () => fetch(url, init));
+}
+
+/**
+ * Outbound paid model-inference HTTP (usage curation): 60 s single attempt,
+ * provider-isolated breaker, no retry (see modelInferencePolicy).
+ */
+export async function modelInferenceFetch(
+  provider: string,
+  label: string,
+  url: string | URL,
+  init?: RequestInit,
+  options?: ResilientFetchOptions,
+): Promise<Response> {
+  await assertOutboundFetchTargetResolved(url, options?.allowPrivateHosts ?? false);
+  return withResilience(modelInferencePolicy(provider), `provider:${provider}:${label}`, () => fetch(url, init));
 }
 
 /** Outbound HTTP from provider quota adapters. */
