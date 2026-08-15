@@ -169,11 +169,54 @@ final class FleetViewModelTests: XCTestCase {
             fetchOrchestratorState: { _ in state }
         )
         let viewModel = FleetViewModel(service: service)
-        XCTAssertEqual(viewModel.designationKind, .none, "no optimistic state before the daemon read")
+        XCTAssertNil(viewModel.designationKind, "unread daemon state must be explicit unavailable, not None")
         viewModel.refreshOrchestratorState()
         XCTAssertEqual(viewModel.designationKind, state.designation)
         XCTAssertTrue(viewModel.isDesignatedAgent(.claudeCode))
         XCTAssertFalse(viewModel.isDesignatedAgent(.hermes))
+    }
+
+    func test_refreshFailureRetainsAcknowledgedDesignationAndDoesNotFabricateNone() {
+        let acknowledged = BurnBarOrchestratorState(
+            designation: .agent(id: .claudeCode, sessionRef: .absent),
+            setAt: Date(timeIntervalSince1970: 1_752_000_000),
+            pendingDirectives: 1
+        )
+        var shouldFail = false
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in
+                if shouldFail {
+                    throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+                }
+                return acknowledged
+            }
+        )
+        let viewModel = FleetViewModel(service: service)
+        viewModel.refreshOrchestratorState()
+        shouldFail = true
+        viewModel.refreshOrchestratorState()
+
+        XCTAssertEqual(viewModel.designationKind, acknowledged.designation)
+        XCTAssertFalse(viewModel.isDesignatedAgent(.claudeCode), "badge is suppressed while refresh is unavailable")
+        XCTAssertNotNil(viewModel.orchestratorStateError)
+    }
+
+    func test_unavailableDesignationHasNoControlStateOrAgentBadge() {
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in
+                throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+            }
+        )
+        let viewModel = FleetViewModel(service: service)
+        viewModel.refreshOrchestratorState()
+
+        XCTAssertNil(viewModel.designationKind)
+        XCTAssertFalse(viewModel.isDesignatedAgent(.claudeCode))
+        XCTAssertTrue(viewModel.isDesignationUnavailable)
     }
 
     func test_burnBarManagedDesignationHasNoAgentBadge() {
@@ -207,7 +250,7 @@ final class FleetViewModelTests: XCTestCase {
         )
         let viewModel = FleetViewModel(service: service)
         viewModel.refreshOrchestratorState()
-        XCTAssertEqual(viewModel.designationKind, .none)
+        XCTAssertEqual(viewModel.designationKind, BurnBarOrchestratorDesignation.none)
         XCTAssertFalse(viewModel.isDesignatedAgent(.claudeCode))
     }
 
@@ -239,7 +282,7 @@ final class FleetViewModelTests: XCTestCase {
         )
         let viewModel = FleetViewModel(service: service)
         viewModel.refreshOrchestratorState()
-        XCTAssertEqual(viewModel.designationKind, .none)
+        XCTAssertEqual(viewModel.designationKind, BurnBarOrchestratorDesignation.none)
 
         await viewModel.setDesignation(.burnBarManaged)
         XCTAssertEqual(viewModel.designationKind, .burnBarManaged)

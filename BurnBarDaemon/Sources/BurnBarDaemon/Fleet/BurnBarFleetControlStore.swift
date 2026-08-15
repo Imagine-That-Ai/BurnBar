@@ -184,6 +184,20 @@ public actor BurnBarFleetControlStore {
     @discardableResult
     public func recordDirective(_ directive: BurnBarFleetDirective) throws -> BurnBarFleetDirective {
         try Self.validateDirective(directive)
+        // Recovery reads use the same idempotent record surface with an
+        // `approved` candidate. A terminal daemon record is authoritative:
+        // do not downgrade delivered, failed, or dismissed history back to
+        // an intermediate decision, which would permit a relaunch to
+        // redeliver a directive whose outcome is already known.
+        switch directive.state {
+        case .approved, .dismissed:
+            if let existing = try existingDirective(id: directive.id),
+               !Self.isPending(existing.state) {
+                return existing
+            }
+        case .proposed, .delivered, .failed:
+            break
+        }
         if let store {
             guard store.isOpen else {
                 throw BurnBarFleetControlError.storeUnavailable("fleet.sqlite is not open")
@@ -258,6 +272,13 @@ public actor BurnBarFleetControlStore {
             return try store.directiveRecords().filter { Self.isPending($0.state) }.count
         }
         return inMemoryRecords.filter { Self.isPending($0.state) }.count
+    }
+
+    private func existingDirective(id: String) throws -> BurnBarFleetDirective? {
+        if let store, store.isOpen {
+            return try store.directiveRecord(id: id)
+        }
+        return inMemoryRecords.first { $0.id == id }
     }
 
     /// The documented `pendingDirectives` definition (ORCH-038): non-terminal

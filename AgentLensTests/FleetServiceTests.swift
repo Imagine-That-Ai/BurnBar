@@ -221,15 +221,31 @@ final class FleetServiceTests: XCTestCase {
     }
 
     func test_refreshOrchestratorStateFailureIsTyped() {
+        let acknowledged = BurnBarOrchestratorState(
+            designation: .agent(id: .claudeCode, sessionRef: .absent),
+            setAt: Date(timeIntervalSince1970: 1_752_000_000),
+            pendingDirectives: 1
+        )
+        var shouldFail = false
         let service = FleetService(
             socketURL: socketURL,
             fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
             fetchOrchestratorState: { _ in
+                if !shouldFail {
+                    return acknowledged
+                }
                 throw BurnBarFleetClientError.daemonUnavailable("connect failed")
             }
         )
         service.refreshOrchestratorState()
-        XCTAssertNil(service.orchestratorState)
+        XCTAssertEqual(service.orchestratorState, acknowledged)
+        shouldFail = true
+        service.refreshOrchestratorState()
+        XCTAssertEqual(
+            service.orchestratorState,
+            acknowledged,
+            "a refresh failure must retain the last daemon-acknowledged state"
+        )
         XCTAssertNotNil(service.orchestratorStateError)
         XCTAssertTrue(service.orchestratorStateError?.contains("unreachable") == true)
     }

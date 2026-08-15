@@ -454,6 +454,25 @@ public final class BurnBarFleetStore {
         }
     }
 
+    /// Returns one directive record by its stable directive id without
+    /// decoding the full directive history.
+    public func directiveRecord(id: String) throws -> BurnBarFleetDirective? {
+        guard let queue else { return nil }
+        return try queue.read { db in
+            guard let payload = try String.fetchOne(
+                db,
+                sql: "SELECT payload FROM fleet_directives WHERE directive_id = ?",
+                arguments: [id]
+            ) else {
+                return nil
+            }
+            guard let data = payload.data(using: .utf8) else {
+                throw BurnBarFleetPersistenceError.payloadDecodingFailed
+            }
+            return try JSONDecoder().decode(BurnBarFleetDirective.self, from: data)
+        }
+    }
+
     /// Upserts one directive record keyed by `directive_id` (UNIQUE). The M4
     /// idempotency rule: re-recording an existing id updates the record in
     /// place — a retry never creates a duplicate row.

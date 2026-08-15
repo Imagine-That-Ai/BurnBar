@@ -59,15 +59,39 @@ protocol BurnBarFleetDirectiveChannel: Sendable {
 /// implements this contract for validation; the real gateway is the same
 /// documented endpoint.
 final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, @unchecked Sendable {
+    private static let defaultGatewayURL = URL(string: "http://127.0.0.1:8642")!
+
     /// The default gateway base URL. Overridable via
     /// `BURNBAR_HERMES_GATEWAY_URL` so hermetic validation can point the app
-    /// at the fixture gateway on a scratch port (never the live gateway).
+    /// at a loopback fixture gateway on a scratch port. Non-loopback
+    /// overrides are ignored unless the explicit `BURNBAR_HERMES_ALLOW_REMOTE`
+    /// opt-in is set.
     static func defaultBaseURL() -> URL {
         if let raw = ProcessInfo.processInfo.environment["BURNBAR_HERMES_GATEWAY_URL"],
-           let url = URL(string: raw) {
+           let url = URL(string: raw),
+           isAllowedEndpoint(url) {
             return url
         }
-        return URL(string: "http://127.0.0.1:8642")!
+        return defaultGatewayURL
+    }
+
+    /// Returns true only for the documented local Hermes endpoints, unless a
+    /// deliberate remote opt-in is present. This guard protects the real
+    /// `API_SERVER_KEY` from accidental transmission to an arbitrary URL.
+    static func isAllowedEndpoint(_ url: URL) -> Bool {
+        guard let rawHost = url.host?.lowercased(), !rawHost.isEmpty else { return false }
+        let host = rawHost.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if ["127.0.0.1", "localhost", "::1"].contains(host) {
+            return true
+        }
+        return remoteDeliveryOptedIn
+    }
+
+    private static var remoteDeliveryOptedIn: Bool {
+        let value = ProcessInfo.processInfo.environment["BURNBAR_HERMES_ALLOW_REMOTE"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return value == "1" || value == "true" || value == "yes"
     }
 
     /// Resolves the gateway API key: `BURNBAR_HERMES_API_KEY` env first,
@@ -125,6 +149,12 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, @unchecked Sen
     }
 
     func deliver(_ directive: BurnBarFleetDirective) async -> BurnBarFleetDeliveryOutcome {
+        guard Self.isAllowedEndpoint(baseURL) else {
+            return .failed(
+                reason: "hermes gateway URL rejected: non-loopback endpoint requires "
+                    + "BURNBAR_HERMES_ALLOW_REMOTE=true"
+            )
+        }
         let endpoint = baseURL.appendingPathComponent("v1/chat/completions")
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"

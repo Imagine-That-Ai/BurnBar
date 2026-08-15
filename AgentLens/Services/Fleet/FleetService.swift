@@ -82,7 +82,8 @@ final class FleetService {
     private(set) var loadState: FleetLoadState = .loading
     /// The daemon-owned orchestrator state (designation + pending count),
     /// fetched on demand (M4). nil while never fetched or while the daemon
-    /// is unreachable.
+    /// has never acknowledged a state. Once acknowledged, refresh failures
+    /// retain the last state and expose the typed error separately.
     private(set) var orchestratorState: BurnBarOrchestratorState?
     /// Typed reason when the orchestrator state could not be fetched.
     private(set) var orchestratorStateError: String?
@@ -209,7 +210,6 @@ final class FleetService {
             orchestratorState = try fetchOrchestratorState(socketURL)
             orchestratorStateError = nil
         } catch {
-            orchestratorState = nil
             orchestratorStateError = error.localizedDescription
         }
     }

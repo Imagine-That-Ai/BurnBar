@@ -74,6 +74,46 @@ final class BurnBarFleetOrchestratorDirectiveRPCTests: BurnBarFleetOrchestratorR
         XCTAssertEqual(rows.directives[0], retry)
     }
 
+    func testDirectiveRecord_reconciliationDoesNotDowngradeTerminalRecord() async throws {
+        let (server, configuration) = try await makeServer(name: "record-reconcile")
+        let socketPath = configuration.socketPath
+        defer { Task { await server.stop() } }
+
+        let delivered = makeDirective(
+            id: "dir-reconcile",
+            state: .delivered,
+            decidedAt: Date(timeIntervalSince1970: 1_752_000_200)
+        )
+        _ = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "reconcile-terminal",
+                method: .fleetDirectiveRecord,
+                params: BurnBarFleetDirectiveRecordRequest(directive: delivered)
+            ),
+            socketPath: socketPath
+        ) as BurnBarRPCResponseEnvelope<BurnBarFleetDirectiveRecordResponse>
+
+        let recoveryCandidate = makeDirective(
+            id: "dir-reconcile",
+            state: .approved,
+            decidedAt: delivered.decidedAt
+        )
+        let response: BurnBarRPCResponseEnvelope<BurnBarFleetDirectiveRecordResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelopeWithParams(
+                id: "reconcile-approved",
+                method: .fleetDirectiveRecord,
+                params: BurnBarFleetDirectiveRecordRequest(directive: recoveryCandidate)
+            ),
+            socketPath: socketPath
+        )
+
+        XCTAssertNil(response.error)
+        XCTAssertEqual(response.result?.directive, delivered)
+        let rows = try readStoreRows(databasePath: configuration.fleetStorePath)
+        XCTAssertEqual(rows.directives.count, 1)
+        XCTAssertEqual(rows.directives.first?.state, .delivered)
+    }
+
     // MARK: - VAL-ORCH-029 / directive.record validation over RPC
 
     func testDirectiveRecord_unknownKind_rejectedTyped_noRecord() async throws {

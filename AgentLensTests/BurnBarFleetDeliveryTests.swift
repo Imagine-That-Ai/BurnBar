@@ -132,6 +132,28 @@ final class HermesDirectiveChannelTests: XCTestCase {
         XCTAssertTrue(userContent.contains("m4-proposal-001"))
     }
 
+    func test_gatewayEndpointAllowsOnlyLoopbackWithoutRemoteOptIn() {
+        XCTAssertTrue(HermesDirectiveChannel.isAllowedEndpoint(URL(string: "http://127.0.0.1:18643")!))
+        XCTAssertTrue(HermesDirectiveChannel.isAllowedEndpoint(URL(string: "http://localhost:18643")!))
+        XCTAssertTrue(HermesDirectiveChannel.isAllowedEndpoint(URL(string: "http://[::1]:18643")!))
+        XCTAssertFalse(HermesDirectiveChannel.isAllowedEndpoint(URL(string: "http://192.0.2.10:18643")!))
+        XCTAssertFalse(HermesDirectiveChannel.isAllowedEndpoint(URL(string: "https://example.com")!))
+    }
+
+    func test_nonLoopbackDeliveryFailsBeforeSendingCredentials() async {
+        let channel = HermesDirectiveChannel(
+            baseURL: URL(string: "http://192.0.2.10:18643")!,
+            apiKey: "must-not-leave-process",
+            timeout: 1,
+            session: session
+        )
+        let outcome = await channel.deliver(makeDirective())
+        XCTAssertEqual(
+            outcome,
+            .failed(reason: "hermes gateway URL rejected: non-loopback endpoint requires BURNBAR_HERMES_ALLOW_REMOTE=true")
+        )
+    }
+
     // MARK: - Malformed acks fail closed (VAL-ORCH-036)
 
     func test_invalidJSONAckFailsClosed() async {

@@ -308,6 +308,12 @@ struct ChatPanel: View {
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                     }
+                    if let error = controller.orchestratorStateError {
+                        Text(" (last acknowledged; refresh unavailable: \(error))")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.error)
+                            .lineLimit(1)
+                    }
                 } else if let error = controller.orchestratorStateError {
                     Text("Orchestrator unavailable: \(error)")
                         .font(DesignSystem.Typography.tiny)
@@ -344,6 +350,27 @@ struct ChatPanel: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                            if let persistenceError = controller.persistenceError, !persistenceError.isEmpty {
+                                HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                                    Image(systemName: "externaldrive.badge.exclamationmark")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(DesignSystem.Colors.error)
+                                        .padding(.top, 1)
+                                    Text(persistenceError)
+                                        .font(DesignSystem.Typography.tiny)
+                                        .foregroundStyle(DesignSystem.Colors.error)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(DesignSystem.Spacing.sm)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                                        .fill(DesignSystem.Colors.error.opacity(0.08))
+                                )
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Chat persistence error: \(persistenceError)")
+                            }
+
                             if !controller.retrievalHealthSnapshot.degradedModes.isEmpty {
                                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
                                     ForEach(controller.retrievalHealthSnapshot.degradedModes) { state in
@@ -390,6 +417,9 @@ struct ChatPanel: View {
                                     },
                                     onRetryDelivery: { messageID in
                                         controller.retryDelivery(messageID: messageID)
+                                    },
+                                    onReconcileDelivery: { messageID in
+                                        controller.reconcileDelivery(messageID: messageID)
                                     }
                                 )
                                 .id(msg.id)

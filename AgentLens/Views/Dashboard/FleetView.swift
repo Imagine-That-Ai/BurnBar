@@ -234,18 +234,20 @@ struct FleetView: View {
                         }
                     }
 
-                    Picker("Designation", selection: designationBinding) {
-                        Text("BurnBar-managed").tag(DesignationChoice.burnBarManaged)
-                        ForEach(BurnBarFleetAgentID.declaredRoster, id: \.self) { agentID in
-                            Text(viewModel.providerName(for: agentID))
-                                .tag(DesignationChoice.agent(agentID))
+                    if !viewModel.isDesignationUnavailable {
+                        Picker("Designation", selection: designationBinding) {
+                            Text("BurnBar-managed").tag(DesignationChoice.burnBarManaged)
+                            ForEach(BurnBarFleetAgentID.declaredRoster, id: \.self) { agentID in
+                                Text(viewModel.providerName(for: agentID))
+                                    .tag(DesignationChoice.agent(agentID))
+                            }
+                            Text("None").tag(DesignationChoice.none)
                         }
-                        Text("None").tag(DesignationChoice.none)
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .disabled(viewModel.isSettingDesignation)
+                        .accessibilityLabel("Orchestrator designation")
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .disabled(viewModel.isSettingDesignation || viewModel.orchestratorState == nil)
-                    .accessibilityLabel("Orchestrator designation")
 
                     if viewModel.orchestratorState == nil, viewModel.orchestratorStateError == nil {
                         HStack(spacing: DesignSystem.Spacing.xs) {
@@ -264,17 +266,21 @@ struct FleetView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 10))
                                 .foregroundStyle(DesignSystem.Colors.error)
-                            Text("Designation update failed: \(error)")
+                            Text("Designation unavailable: \(error)")
                                 .font(DesignSystem.Typography.tiny)
                                 .foregroundStyle(DesignSystem.Colors.error)
                                 .lineLimit(2)
                         }
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Designation update failed: \(error)")
+                        .accessibilityLabel("Designation unavailable: \(error)")
                     }
 
                     if let state = viewModel.orchestratorState, let setAt = state.setAt {
-                        Text("Set \(FleetFormatting.formatRelativeTime(setAt)) · \(state.pendingDirectives) pending directive\(state.pendingDirectives == 1 ? "" : "s")")
+                        Text(
+                            "\(viewModel.orchestratorStateError == nil ? "Set" : "Last acknowledged") "
+                                + "\(FleetFormatting.formatRelativeTime(setAt)) · "
+                                + "\(state.pendingDirectives) pending directive\(state.pendingDirectives == 1 ? "" : "s")"
+                        )
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
                     }
@@ -296,20 +302,29 @@ struct FleetView: View {
     }
 
     private var designationTitle: String {
-        switch viewModel.designationKind {
+        guard let designation = viewModel.designationKind else {
+            return viewModel.orchestratorStateError == nil
+                ? "Checking orchestrator…"
+                : "Orchestrator unavailable"
+        }
+        let prefix = viewModel.orchestratorStateError == nil ? "" : "Last acknowledged: "
+        switch designation {
         case .burnBarManaged:
-            return "BurnBar-managed"
+            return prefix + "BurnBar-managed"
         case .agent(let id, _):
-            return "Designated: \(viewModel.providerName(for: id))"
+            return prefix + "Designated: \(viewModel.providerName(for: id))"
         case .none:
-            return "No orchestrator designated"
+            return prefix + "No orchestrator designated"
         }
     }
 
     private var designationBinding: Binding<DesignationChoice> {
         Binding(
             get: {
-                switch viewModel.designationKind {
+                guard let designation = viewModel.designationKind else {
+                    return .none
+                }
+                switch designation {
                 case .burnBarManaged:
                     return .burnBarManaged
                 case .agent(let id, _):

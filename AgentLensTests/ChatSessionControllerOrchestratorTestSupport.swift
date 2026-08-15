@@ -97,7 +97,8 @@ class ChatSessionControllerOrchestratorTestCase: XCTestCase {
         cliBridge: CLIBridge? = nil,
         cliAllowed: Bool = true,
         now: @escaping () -> Date = { Date() },
-        deliveryChannelProvider: @escaping (BurnBarFleetAgentID?) -> BurnBarFleetDirectiveChannel? = { _ in nil }
+        deliveryChannelProvider: @escaping (BurnBarFleetAgentID?) -> BurnBarFleetDirectiveChannel? = { _ in nil },
+        saveChatMessage: ((ChatMessageRecord, String) throws -> Void)? = nil
     ) -> ChatSessionController {
         let fleetService = FleetService(
             socketURL: socketURL,
@@ -118,7 +119,8 @@ class ChatSessionControllerOrchestratorTestCase: XCTestCase {
                 return directive
             },
             deliveryChannelProvider: deliveryChannelProvider,
-            cliAssistantAllowedProvider: { cliAllowed }
+            cliAssistantAllowedProvider: { cliAllowed },
+            saveChatMessageProvider: saveChatMessage
         )
     }
 

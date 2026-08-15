@@ -168,6 +168,11 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
     /// (VAL-ORCH-014/030/037). Persisted so the card's outcome survives app
     /// relaunch.
     let deliveryState: ChatDeliveryState?
+    /// True when local persistence failed while an approved directive was
+    /// being delivered, or when a relaunch interrupted an in-flight attempt.
+    /// The app must reconcile the daemon-owned record before offering another
+    /// delivery attempt; this marker is never treated as delivery success.
+    let deliveryRecoveryRequired: Bool
     /// A visible card-level typed error (M4 scrutiny round 1): set when an
     /// Approve/Dismiss decision could not be recorded (daemon down), when
     /// the decision/delivery state could not be persisted locally, or when a
@@ -187,6 +192,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         proposalDecision: ChatProposalDecision? = nil,
         proposalDecidedAt: Date? = nil,
         deliveryState: ChatDeliveryState? = nil,
+        deliveryRecoveryRequired: Bool = false,
         proposalError: String? = nil
     ) {
         self.id = id
@@ -200,6 +206,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         self.proposalDecision = proposalDecision
         self.proposalDecidedAt = proposalDecidedAt
         self.deliveryState = deliveryState
+        self.deliveryRecoveryRequired = deliveryRecoveryRequired
         self.proposalError = proposalError
     }
 
@@ -218,7 +225,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case id, role, content, timestamp, cliUsed, transcriptPieces,
              cancelled, proposalJSON, proposalDecision, proposalDecidedAt,
-             deliveryState, proposalError
+             deliveryState, deliveryRecoveryRequired, proposalError
     }
 
     /// Tolerant decoding: the M4 fields (`cancelled`, `proposalJSON`,
@@ -238,6 +245,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         proposalDecision = try container.decodeIfPresent(ChatProposalDecision.self, forKey: .proposalDecision)
         proposalDecidedAt = try container.decodeIfPresent(Date.self, forKey: .proposalDecidedAt)
         deliveryState = try container.decodeIfPresent(ChatDeliveryState.self, forKey: .deliveryState)
+        deliveryRecoveryRequired = try container.decodeIfPresent(Bool.self, forKey: .deliveryRecoveryRequired) ?? false
         proposalError = try container.decodeIfPresent(String.self, forKey: .proposalError)
     }
 
@@ -254,6 +262,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         try container.encodeIfPresent(proposalDecision, forKey: .proposalDecision)
         try container.encodeIfPresent(proposalDecidedAt, forKey: .proposalDecidedAt)
         try container.encodeIfPresent(deliveryState, forKey: .deliveryState)
+        try container.encode(deliveryRecoveryRequired, forKey: .deliveryRecoveryRequired)
         try container.encodeIfPresent(proposalError, forKey: .proposalError)
     }
 }

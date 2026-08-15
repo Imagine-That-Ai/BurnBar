@@ -37,7 +37,10 @@ external consumers (any local agent/CLI) and for the BurnBar app itself.
   stored state stays unchanged.
 - `daemon.fleet.directive.record` — records a directive (idempotent upsert
   by `directive_id`). Validation (unknown kind, empty id/payload,
-  non-roster `targetAgent`) rejects typed with no record created.
+  non-roster `targetAgent`) rejects typed with no record created. An
+  `approved` record request used for app-relaunch reconciliation never
+  downgrades an existing terminal (`dismissed`, `delivered`, or `failed`)
+  record; the authoritative terminal record is returned unchanged.
 
 Directive records are read via read-only `sqlite3` inspection of the
 daemon-owned `fleet.sqlite` (`fleet_directives` table) — there is no
@@ -76,6 +79,12 @@ human-approved directives targeting `hermes` through that endpoint.
    user-action Retry on the card. There is no silent background retry loop.
    A retry restarts the delivery flow from the approved directive and
    preserves the original `decidedAt`.
+   If the app is relaunched while the card says `delivering`, it first
+   reconciles the directive record with the daemon. A known terminal outcome
+   is adopted without another gateway request; an interrupted but still
+   `approved` record becomes a typed retryable failure. If the daemon is
+   unavailable, the card remains visibly blocked until reconciliation
+   succeeds, so a duplicate delivery cannot be started.
 6. **Unsupported agents:** an approved directive targeting an agent with no
    documented writable channel (any agent other than `hermes`) honest-
    degrades: the record stays `approved`, no side effects occur, and the
@@ -100,10 +109,15 @@ delivery validation. Modes via `BURNBAR_FAKE_HERMES_MODE` (`ack`, `hold`,
 `malformed-json`, `malformed-id`, `malformed-status`, `fail`); receipts are
 appended to `$BURNBAR_FAKE_HERMES_SCRATCH/receipts.jsonl`. The app points at
 the fixture via `BURNBAR_HERMES_GATEWAY_URL` (default
-`http://127.0.0.1:8642`) and authenticates via `BURNBAR_HERMES_API_KEY` or
+`http://127.0.0.1:8642`). URL overrides are restricted to `127.0.0.1`,
+`localhost`, and `::1` unless `BURNBAR_HERMES_ALLOW_REMOTE=true` is set
+explicitly. The app authenticates via `BURNBAR_HERMES_API_KEY` or
 the `API_SERVER_KEY` line of `~/.hermes/.env` (structural parse of that one
 key only; the key is never logged, persisted, or copied into fixtures).
 
+The fake gateway expects `Authorization: Bearer test-key` by default
+(override with `BURNBAR_FAKE_HERMES_API_KEY`) and returns HTTP 401 for a
+missing or incorrect header.
 ### Designation control (FleetView)
 
 FleetView exposes the daemon-authoritative designation control:

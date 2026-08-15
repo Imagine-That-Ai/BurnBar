@@ -1736,6 +1736,14 @@ final class DataStore {
                 t.add(column: "proposalError", .text)
             }
         }
+        /// M4 recovery hardening: marks a local chat row whose approved
+        /// directive outcome could not be durably reconciled. A relaunch must
+        /// not redeliver such a row until the daemon-owned record is checked.
+        migrator.registerMigration("v25_chat_delivery_recovery") { db in
+            try db.alter(table: "chat_messages") { t in
+                t.add(column: "deliveryRecoveryRequired", .boolean).notNull().defaults(to: false)
+            }
+        }
 
         return migrator
     }
@@ -2312,9 +2320,9 @@ final class DataStore {
                     id, threadId, role, content, timestamp, cliUsed,
                     transcriptPiecesJSON, cancelled, proposalJSON,
                     proposalDecision, proposalDecidedAt, deliveryState,
-                    proposalError
+                    deliveryRecoveryRequired, proposalError
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     message.id,
@@ -2329,6 +2337,7 @@ final class DataStore {
                     message.proposalDecision?.rawValue,
                     message.proposalDecidedAt,
                     message.deliveryState?.rawValue,
+                    message.deliveryRecoveryRequired,
                     message.proposalError
                 ]
             )
@@ -2506,6 +2515,7 @@ final class DataStore {
             proposalDecision: (row["proposalDecision"] as? String).flatMap(ChatProposalDecision.init(rawValue:)),
             proposalDecidedAt: parseDate(row["proposalDecidedAt"]),
             deliveryState: (row["deliveryState"] as? String).flatMap(ChatDeliveryState.init(rawValue:)),
+            deliveryRecoveryRequired: Self.boolValue(row["deliveryRecoveryRequired"]),
             proposalError: row["proposalError"] as? String
         )
     }

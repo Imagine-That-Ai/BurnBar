@@ -310,8 +310,9 @@ final class FleetViewModel {
     var snapshot: BurnBarFleetSnapshot? { service.loadState.snapshot }
 
     /// The daemon-owned orchestrator state (designation + pending count),
-    /// fetched on demand (M4). nil while never fetched or while the daemon
-    /// is unreachable.
+    /// fetched on demand (M4). A previously acknowledged value is retained
+    /// across refresh failures; nil means no authoritative state has ever
+    /// been received.
     var orchestratorState: BurnBarOrchestratorState? { service.orchestratorState }
 
     /// Typed reason when the orchestrator state could not be fetched.
@@ -321,17 +322,24 @@ final class FleetViewModel {
     /// changes only after daemon acknowledgement — VAL-ORCH-034).
     var isSettingDesignation: Bool { service.isSettingDesignation }
 
-    /// The current designation kind for the control (VAL-ORCH-034):
-    /// `burnBarManaged`, `agent(id)`, or `none`. Derives from the daemon
-    /// state — never optimistic local state.
-    var designationKind: BurnBarOrchestratorDesignation {
-        orchestratorState?.designation ?? .none
+    /// The current designation kind for the control (VAL-ORCH-034). An
+    /// unavailable daemon is represented by nil, never fabricated as the
+    /// authoritative `.none` designation.
+    var designationKind: BurnBarOrchestratorDesignation? {
+        orchestratorState?.designation
+    }
+
+    /// True when the designation control has no authoritative state or its
+    /// last refresh failed. The Fleet view suppresses the picker and badge
+    /// in this state rather than presenting "No orchestrator designated".
+    var isDesignationUnavailable: Bool {
+        orchestratorState == nil || orchestratorStateError != nil
     }
 
     /// True when the given agent is the designated orchestrator (the badge
     /// on the agent's card, VAL-ORCH-005). Derives from daemon state.
     func isDesignatedAgent(_ agentID: BurnBarFleetAgentID) -> Bool {
-        if case .agent(let id, _) = designationKind {
+        if case .agent(let id, _) = designationKind, orchestratorStateError == nil {
             return id == agentID
         }
         return false

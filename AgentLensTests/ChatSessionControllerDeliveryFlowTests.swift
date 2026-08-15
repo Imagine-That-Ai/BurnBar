@@ -183,4 +183,131 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         XCTAssertTrue(channel.deliveredDirectives.isEmpty, "a dismissed directive is never delivered")
         XCTAssertNil(lastAssistantMessage(controller)?.deliveryState, "no delivery state on a dismissed card")
     }
+
+    func test_relaunchConvertsStrandedDeliveryToRetryableFailurePreservingDecisionTime() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+
+        let pending = try XCTUnwrap(lastAssistantMessage(controller))
+        let decidedAt = Date(timeIntervalSince1970: 1_752_000_123)
+        let stranded = ChatMessageRecord(
+            id: pending.id,
+            role: pending.role,
+            content: pending.content,
+            timestamp: pending.timestamp,
+            cliUsed: pending.cliUsed,
+            transcriptPieces: pending.transcriptPieces,
+            cancelled: pending.cancelled,
+            proposalJSON: pending.proposalJSON,
+            proposalDecision: .approved,
+            proposalDecidedAt: decidedAt,
+            deliveryState: .delivering
+        )
+        try store.saveChatMessage(stranded, threadID: controller.activeThreadID)
+
+        let relaunched = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
+        relaunched.loadPersistedMessages()
+
+        let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
+        guard case .failed(let reason) = restored.deliveryState else {
+            return XCTFail("a restored delivering state must become a typed failure")
+        }
+        XCTAssertTrue(reason.contains("interrupted"), "got: \(reason)")
+        XCTAssertTrue(restored.deliveryState?.isRetryable == true)
+        XCTAssertEqual(restored.proposalDecidedAt, decidedAt)
+        XCTAssertFalse(restored.deliveryRecoveryRequired, "successful daemon reconciliation clears the recovery marker")
+        XCTAssertEqual(directiveRecordCalls, 1, "reconciliation must not deliver or duplicate approval")
+    }
+
+    func test_relaunchKeepsUncertainDeliveryBlockedUntilDaemonReconciles() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+
+        let pending = try XCTUnwrap(lastAssistantMessage(controller))
+        let decidedAt = Date(timeIntervalSince1970: 1_752_000_124)
+        let stranded = ChatMessageRecord(
+            id: pending.id,
+            role: pending.role,
+            content: pending.content,
+            timestamp: pending.timestamp,
+            cliUsed: pending.cliUsed,
+            transcriptPieces: pending.transcriptPieces,
+            cancelled: pending.cancelled,
+            proposalJSON: pending.proposalJSON,
+            proposalDecision: .approved,
+            proposalDecidedAt: decidedAt,
+            deliveryState: .delivering
+        )
+        try store.saveChatMessage(stranded, threadID: controller.activeThreadID)
+
+        let relaunched = ChatSessionController(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            fleetService: FleetService(socketURL: socketURL) { _ in snapshot },
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            orchestratorStateProvider: { _ in
+                BurnBarOrchestratorState(designation: .burnBarManaged)
+            },
+            directiveRecordProvider: { _, _ in
+                throw BurnBarFleetClientError.daemonUnavailable("daemon went away during reconciliation")
+            },
+            deliveryChannelProvider: { _ in
+                XCTFail("uncertain delivery must not start a duplicate channel call")
+                return nil
+            },
+            cliAssistantAllowedProvider: { true }
+        )
+        relaunched.loadPersistedMessages()
+
+        let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
+        XCTAssertTrue(restored.deliveryRecoveryRequired)
+        XCTAssertTrue(restored.proposalError?.contains("reconcile") == true)
+        XCTAssertEqual(restored.proposalDecidedAt, decidedAt)
+        XCTAssertTrue(restored.deliveryState?.isRetryable == true, "the failure is typed retryable once reconciliation can complete")
+        XCTAssertEqual(directiveRecordCalls, 0, "a failed reconciliation must not create a phantom record")
+    }
+
+    func test_localDecisionPersistenceFailureIsVisibleAndJournaled() async throws {
+        let snapshot = freshSnapshot()
+        var failSaves = true
+        var controllerThreadID = DataStore.legacyChatThreadID
+        let controller = makeController(
+            snapshot: snapshot,
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            saveChatMessage: { message, _ in
+                if failSaves, message.proposalDecision != nil || message.deliveryState != nil {
+                    throw NSError(domain: "ChatPersistence", code: 7, userInfo: [
+                        NSLocalizedDescriptionKey: "sandbox database is read-only"
+                    ])
+                }
+                try self.store.saveChatMessage(message, threadID: controllerThreadID)
+            }
+        )
+        controller.startNewChatThread()
+        controllerThreadID = controller.activeThreadID
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+        let pending = try XCTUnwrap(lastAssistantMessage(controller))
+
+        controller.approveProposal(messageID: pending.id)
+
+        let approved = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertEqual(approved.proposalDecision, .approved)
+        XCTAssertTrue(approved.proposalError?.contains("saving it locally failed") == true)
+        XCTAssertTrue(approved.deliveryRecoveryRequired)
+        XCTAssertNotNil(approved.proposalDecidedAt)
+        failSaves = false
+    }
 }

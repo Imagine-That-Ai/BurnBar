@@ -23,6 +23,9 @@ Usage (all modes are selected by env, never by live-gateway state):
   BURNBAR_FAKE_HERMES_MODE=fail              respond HTTP 500
   BURNBAR_FAKE_HERMES_SCRATCH=<dir>          receipts/request log dir
                                              (default $HOME/.burnbar-fake-hermes)
+  BURNBAR_FAKE_HERMES_API_KEY=<key>          expected fixture key (default
+                                             "test-key"). Requests must carry
+                                             Authorization: Bearer <key>.
 
 Receipt contract: every request is appended to $SCRATCH/receipts.jsonl with
 the directive id, mode, and response status, so validators can assert receipt
@@ -108,6 +111,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/v1/chat/completions":
             log_receipt(directive_id, 404, note="unexpected path %s" % self.path)
             self._respond(404, {"error": {"message": "not found"}})
+            return
+
+        expected_key = os.environ.get("BURNBAR_FAKE_HERMES_API_KEY", "test-key")
+        expected_auth = "Bearer " + expected_key
+        if self.headers.get("Authorization") != expected_auth:
+            log_receipt(directive_id, 401, note="invalid authorization")
+            self._respond(401, {"error": {"message": "invalid bearer authorization"}})
             return
 
         current_mode = mode()

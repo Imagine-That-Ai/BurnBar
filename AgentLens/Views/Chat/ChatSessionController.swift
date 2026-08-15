@@ -11,6 +11,10 @@ final class ChatSessionController {
     var inputText = ""
     var isStreaming = false
     var streamError: String?
+    /// Typed local persistence failure shown above the transcript. Proposal
+    /// cards additionally carry their own `proposalError` so an actionable
+    /// card never hides a save failure.
+    var persistenceError: String?
     var searchQuery = ""
     var searchResults: [SearchResult] = []
     var isSearching = false
@@ -43,8 +47,8 @@ final class ChatSessionController {
     /// mid-thread mode switch survives app relaunch (VAL-ORCH-024).
     private(set) var mode: ChatMode = .analyst
     /// The daemon-owned orchestrator state (designation + pending count),
-    /// fetched on demand (M4). nil while never fetched or while the daemon
-    /// is unreachable.
+    /// fetched on demand (M4). nil until the daemon has acknowledged a
+    /// state; a later refresh failure retains the last acknowledged value.
     private(set) var orchestratorState: BurnBarOrchestratorState?
     /// Typed reason when the orchestrator state could not be fetched.
     private(set) var orchestratorStateError: String?
@@ -68,6 +72,9 @@ final class ChatSessionController {
     /// Injectable delivery-channel resolver (M4). Defaults to the Hermes
     /// gateway channel (branch A); tests inject a stub channel.
     let deliveryChannelProvider: (BurnBarFleetAgentID?) -> BurnBarFleetDirectiveChannel?
+    /// Injectable local chat-message persistence seam. Tests use it to
+    /// exercise the typed failure path without corrupting a database.
+    let saveChatMessageProvider: (ChatMessageRecord, String) throws -> Void
     /// Injectable privacy-consent gate (VAL-ORCH-010). Defaults to the
     /// SettingsManager flag shared with analyst mode.
     private let cliAssistantAllowedProvider: () -> Bool
@@ -90,7 +97,8 @@ final class ChatSessionController {
             guard targetAgent == .hermes else { return nil }
             return HermesDirectiveChannel()
         },
-        cliAssistantAllowedProvider: @escaping () -> Bool = { SettingsManager.shared.cliAssistantAllowed }
+        cliAssistantAllowedProvider: @escaping () -> Bool = { SettingsManager.shared.cliAssistantAllowed },
+        saveChatMessageProvider: ((ChatMessageRecord, String) throws -> Void)? = nil
     ) {
         self.dataStore = dataStore
         self.settingsManager = settingsManager
@@ -106,6 +114,9 @@ final class ChatSessionController {
         self.orchestratorStateProvider = orchestratorStateProvider
         self.directiveRecordProvider = directiveRecordProvider
         self.deliveryChannelProvider = deliveryChannelProvider
+        self.saveChatMessageProvider = saveChatMessageProvider ?? { message, threadID in
+            try dataStore.saveChatMessage(message, threadID: threadID)
+        }
         self.cliAssistantAllowedProvider = cliAssistantAllowedProvider
 
         let w = UserDefaults.standard.double(forKey: Self.udPanelW)
@@ -177,7 +188,6 @@ final class ChatSessionController {
             orchestratorState = try orchestratorStateProvider(fleetService.socketURL)
             orchestratorStateError = nil
         } catch {
-            orchestratorState = nil
             orchestratorStateError = error.localizedDescription
         }
         fleetService.fetchOnce()
@@ -188,20 +198,34 @@ final class ChatSessionController {
     func loadPersistedMessages() {
         let savedThreadID = UserDefaults.standard.string(forKey: Self.udActiveThreadID)
         let chosenThreadID: String
-
-        if let savedThreadID,
-           (try? dataStore.chatThreadExists(id: savedThreadID)) == true {
-            chosenThreadID = savedThreadID
-        } else if let mostRecent = try? dataStore.fetchMostRecentChatThreadID() {
-            chosenThreadID = mostRecent
-        } else {
-            chosenThreadID = (try? dataStore.createChatThread()) ?? DataStore.legacyChatThreadID
+        var threadSelectionError: String?
+        do {
+            if let savedThreadID, try dataStore.chatThreadExists(id: savedThreadID) {
+                chosenThreadID = savedThreadID
+            } else if let mostRecent = try dataStore.fetchMostRecentChatThreadID() {
+                chosenThreadID = mostRecent
+            } else {
+                chosenThreadID = try dataStore.createChatThread()
+            }
+        } catch {
+            chosenThreadID = savedThreadID ?? DataStore.legacyChatThreadID
+            threadSelectionError = "Chat thread state could not be loaded locally: \(error.localizedDescription)"
+            persistenceError = threadSelectionError
         }
 
         activeThreadID = chosenThreadID
         UserDefaults.standard.set(chosenThreadID, forKey: Self.udActiveThreadID)
         mode = ChatMode.persistedMode(threadID: chosenThreadID)
-        messages = (try? dataStore.fetchChatMessages(threadID: chosenThreadID)) ?? []
+        do {
+            messages = try dataStore.fetchChatMessages(threadID: chosenThreadID)
+            if threadSelectionError == nil {
+                persistenceError = nil
+            }
+        } catch {
+            messages = []
+            persistenceError = "Chat history could not be loaded locally: \(error.localizedDescription)"
+        }
+        reconcileRecoveredMessages()
         firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
         refreshHistory()
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
@@ -220,6 +244,7 @@ final class ChatSessionController {
         messages = []
         inputText = ""
         streamError = nil
+        persistenceError = nil
         selectedContext = nil
         firstAssistantBadgeShown = false
         lastRetrievalHadNoEvidence = false
@@ -228,7 +253,12 @@ final class ChatSessionController {
 
     func startNewChatThread() {
         let newID = UUID().uuidString
-        activeThreadID = (try? dataStore.createChatThread(id: newID)) ?? DataStore.legacyChatThreadID
+        do {
+            activeThreadID = try dataStore.createChatThread(id: newID)
+        } catch {
+            activeThreadID = DataStore.legacyChatThreadID
+            persistenceError = "New chat thread could not be saved locally: \(error.localizedDescription)"
+        }
         UserDefaults.standard.set(activeThreadID, forKey: Self.udActiveThreadID)
         mode = ChatMode.persistedMode(threadID: activeThreadID)
         messages = []
@@ -236,7 +266,12 @@ final class ChatSessionController {
     }
 
     func refreshHistory() {
-        historyThreads = (try? dataStore.fetchChatThreadSummaries(searchQuery: historyQuery)) ?? []
+        do {
+            historyThreads = try dataStore.fetchChatThreadSummaries(searchQuery: historyQuery)
+        } catch {
+            historyThreads = []
+            persistenceError = "Chat history could not be refreshed locally: \(error.localizedDescription)"
+        }
     }
 
     func openHistoryThread(_ threadID: String) {
@@ -254,7 +289,14 @@ final class ChatSessionController {
         activeThreadID = threadID
         UserDefaults.standard.set(threadID, forKey: Self.udActiveThreadID)
         mode = ChatMode.persistedMode(threadID: threadID)
-        messages = (try? dataStore.fetchChatMessages(threadID: threadID)) ?? []
+        do {
+            messages = try dataStore.fetchChatMessages(threadID: threadID)
+            persistenceError = nil
+        } catch {
+            messages = []
+            persistenceError = "Chat history could not be loaded locally: \(error.localizedDescription)"
+        }
+        reconcileRecoveredMessages()
         firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
         if mode == .orchestrator {
             refreshOrchestratorState()
@@ -336,7 +378,11 @@ final class ChatSessionController {
         streamError = nil
         let userMsg = ChatMessageRecord(role: .user, content: trimmed)
         messages.append(userMsg)
-        try? dataStore.saveChatMessage(userMsg, threadID: activeThreadID)
+        do {
+            try saveChatMessageProvider(userMsg, activeThreadID)
+        } catch {
+            persistenceError = "Chat message could not be saved locally: \(error.localizedDescription)"
+        }
         refreshHistory()
         inputText = ""
 
@@ -461,7 +507,6 @@ extension ChatSessionController {
             orchestratorState = state
             orchestratorStateError = nil
         } catch {
-            orchestratorState = nil
             orchestratorStateError = error.localizedDescription
             appendTypedAssistantMessage(Self.orchestratorUnavailableMessage)
             return
@@ -612,6 +657,7 @@ extension ChatSessionController {
                                 proposalDecision: old.proposalDecision,
                                 proposalDecidedAt: old.proposalDecidedAt,
                                 deliveryState: old.deliveryState,
+                                deliveryRecoveryRequired: old.deliveryRecoveryRequired,
                                 proposalError: old.proposalError
                             )
                         }
@@ -687,6 +733,7 @@ extension ChatSessionController {
                 proposalDecision: old.proposalDecision,
                 proposalDecidedAt: old.proposalDecidedAt,
                 deliveryState: old.deliveryState,
+                deliveryRecoveryRequired: old.deliveryRecoveryRequired,
                 proposalError: old.proposalError
             )
             messages[idx] = final
@@ -695,12 +742,27 @@ extension ChatSessionController {
             // visible error; the card keeps the in-memory proposal and shows
             // the persistence failure.
             do {
-                try dataStore.saveChatMessage(final, threadID: activeThreadID)
+                try saveChatMessageProvider(final, activeThreadID)
             } catch {
-                setProposalError(
-                    messageID: assistantId,
-                    error: "Proposal could not be saved locally: " + error.localizedDescription
+                let message = "Proposal could not be saved locally: " + error.localizedDescription
+                let failed = ChatMessageRecord(
+                    id: final.id,
+                    role: final.role,
+                    content: final.content,
+                    timestamp: final.timestamp,
+                    cliUsed: final.cliUsed,
+                    transcriptPieces: final.transcriptPieces,
+                    cancelled: final.cancelled,
+                    proposalJSON: final.proposalJSON,
+                    proposalDecision: final.proposalDecision,
+                    proposalDecidedAt: final.proposalDecidedAt,
+                    deliveryState: final.deliveryState,
+                    deliveryRecoveryRequired: final.deliveryRecoveryRequired,
+                    proposalError: message
                 )
+                messages[idx] = failed
+                persistenceError = message
+                persistRecoveryJournal(failed)
             }
             refreshHistory()
         }
@@ -801,8 +863,36 @@ extension ChatSessionController {
         )
 
         do {
-            _ = try directiveRecordProvider(directive, fleetService.socketURL)
-            let decision: ChatProposalDecision = state == .approved ? .approved : .dismissed
+            let recorded = try directiveRecordProvider(directive, fleetService.socketURL)
+            let decision: ChatProposalDecision
+            let deliveryState: ChatDeliveryState?
+            let shouldDeliver: Bool
+            switch recorded.state {
+            case .approved:
+                decision = .approved
+                deliveryState = nil
+                shouldDeliver = state == .approved
+            case .delivered:
+                // A relaunch or another client may already have completed
+                // this directive. Adopt the daemon-authoritative terminal
+                // state and never call the gateway a second time.
+                decision = .approved
+                deliveryState = .delivered
+                shouldDeliver = false
+            case .failed(let reason):
+                decision = .approved
+                deliveryState = .failed(reason: reason)
+                shouldDeliver = false
+            case .dismissed:
+                decision = .dismissed
+                deliveryState = nil
+                shouldDeliver = false
+            case .proposed:
+                let message = "Directive decision was not accepted by the daemon: it remains proposed."
+                streamError = message
+                setProposalError(messageID: messageID, error: message)
+                return
+            }
             let old = messages[idx]
             let updated = ChatMessageRecord(
                 id: old.id,
@@ -814,8 +904,9 @@ extension ChatSessionController {
                 cancelled: old.cancelled,
                 proposalJSON: old.proposalJSON,
                 proposalDecision: decision,
-                proposalDecidedAt: directive.decidedAt,
-                deliveryState: old.deliveryState,
+                proposalDecidedAt: recorded.decidedAt ?? directive.decidedAt,
+                deliveryState: deliveryState ?? old.deliveryState,
+                deliveryRecoveryRequired: old.deliveryRecoveryRequired,
                 proposalError: nil
             )
             messages[idx] = updated
@@ -824,14 +915,28 @@ extension ChatSessionController {
             // card must show a typed, retryable error instead of silently
             // dropping the decision on relaunch.
             do {
-                try dataStore.saveChatMessage(updated, threadID: activeThreadID)
-                setProposalError(messageID: messageID, error: nil)
+                try saveChatMessageProvider(updated, activeThreadID)
             } catch {
-                setProposalError(
-                    messageID: messageID,
-                    error: "Decision recorded on the daemon, but saving it locally failed: "
-                        + error.localizedDescription
+                let message = "Decision recorded on the daemon, but saving it locally failed: "
+                    + error.localizedDescription
+                let failed = ChatMessageRecord(
+                    id: updated.id,
+                    role: updated.role,
+                    content: updated.content,
+                    timestamp: updated.timestamp,
+                    cliUsed: updated.cliUsed,
+                    transcriptPieces: updated.transcriptPieces,
+                    cancelled: updated.cancelled,
+                    proposalJSON: updated.proposalJSON,
+                    proposalDecision: updated.proposalDecision,
+                    proposalDecidedAt: updated.proposalDecidedAt,
+                    deliveryState: updated.deliveryState,
+                    deliveryRecoveryRequired: true,
+                    proposalError: message
                 )
+                messages[idx] = failed
+                persistenceError = message
+                persistRecoveryJournal(failed)
             }
             refreshHistory()
 
@@ -841,8 +946,17 @@ extension ChatSessionController {
             // observable before any terminal delivery outcome
             // (VAL-ORCH-012). A dismissed directive is never delivered
             // (VAL-ORCH-013).
-            if state == .approved {
-                startDelivery(messageID: messageID, directive: directive)
+            if shouldDeliver {
+                let approvedDirective = BurnBarFleetDirective(
+                    id: recorded.id,
+                    kind: recorded.kind,
+                    targetAgent: recorded.targetAgent,
+                    payload: recorded.payload,
+                    state: .approved,
+                    createdAt: recorded.createdAt,
+                    decidedAt: recorded.decidedAt ?? directive.decidedAt
+                )
+                startDelivery(messageID: messageID, directive: approvedDirective)
             }
         } catch {
             // A daemon failure is a visible CARD-LEVEL typed error
@@ -874,12 +988,22 @@ extension ChatSessionController {
             proposalDecision: old.proposalDecision,
             proposalDecidedAt: old.proposalDecidedAt,
             deliveryState: old.deliveryState,
+            deliveryRecoveryRequired: old.deliveryRecoveryRequired,
             proposalError: error
         )
         messages[idx] = updated
-        // Persistence of the error itself is best-effort: the in-memory card
-        // already shows it, and the error is only transient context.
-        try? dataStore.saveChatMessage(updated, threadID: activeThreadID)
+        do {
+            try saveChatMessageProvider(updated, activeThreadID)
+            if error == nil {
+                persistenceError = nil
+            }
+            clearRecoveryJournal(for: updated.id)
+        } catch {
+            let saveError = error
+            let message = "Proposal error could not be saved locally: \(saveError.localizedDescription)"
+            persistenceError = message
+            persistRecoveryJournal(updated)
+        }
     }
 
     // MARK: - Cancellation (M4)
@@ -900,7 +1024,11 @@ extension ChatSessionController {
     private func appendTypedAssistantMessage(_ content: String) {
         let msg = ChatMessageRecord(role: .assistant, content: content)
         messages.append(msg)
-        try? dataStore.saveChatMessage(msg, threadID: activeThreadID)
+        do {
+            try saveChatMessageProvider(msg, activeThreadID)
+        } catch {
+            persistenceError = "Assistant state could not be saved locally: \(error.localizedDescription)"
+        }
         refreshHistory()
     }
 

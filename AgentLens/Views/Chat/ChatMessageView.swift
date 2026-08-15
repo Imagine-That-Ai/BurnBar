@@ -46,6 +46,9 @@ struct ChatMessageView: View {
     var onDismissProposal: ((String) -> Void)?
     /// Retry callback for a failed/unsupported delivery (M4, VAL-ORCH-030/037).
     var onRetryDelivery: ((String) -> Void)?
+    /// Reconciles an uncertain delivery with daemon state before another
+    /// gateway attempt can be offered.
+    var onReconcileDelivery: ((String) -> Void)?
 
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript
@@ -224,6 +227,18 @@ struct ChatMessageView: View {
             )
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Proposal error: \(proposalError)")
+
+            if message.deliveryRecoveryRequired, message.deliveryState == nil,
+               message.proposalDecision == .approved,
+               let onReconcileDelivery {
+                Button("Reconcile with daemon") {
+                    onReconcileDelivery(message.id)
+                }
+                .font(DesignSystem.Typography.tiny)
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.whimsy)
+                .accessibilityLabel("Reconcile delivery with BurnBar daemon")
+            }
         }
     }
 
@@ -249,17 +264,18 @@ struct ChatMessageView: View {
             if isApproved, let deliveryState = message.deliveryState {
                 deliveryStateRow(deliveryState)
             }
-        } else if let proposal, let onApproveProposal, let onDismissProposal {
+        } else if proposal != nil, let onApproveProposal, let onDismissProposal {
             // Only a DECODED proposal offers live consent controls: a
             // malformed persisted payload renders visibly non-actionable
             // above (scrutiny round 1).
             HStack(spacing: DesignSystem.Spacing.sm) {
-                Button("Approve") {
+                Button(message.proposalError == nil ? "Approve" : "Retry approval") {
                     onApproveProposal(message.id)
                 }
                 .font(DesignSystem.Typography.caption)
                 .buttonStyle(.borderedProminent)
                 .tint(DesignSystem.Colors.success)
+                .accessibilityLabel(message.proposalError == nil ? "Approve proposal" : "Retry proposal approval")
 
                 Button("Dismiss") {
                     onDismissProposal(message.id)
@@ -346,7 +362,14 @@ struct ChatMessageView: View {
                 .font(DesignSystem.Typography.tiny)
                 .buttonStyle(.bordered)
 
-                if let onRetryDelivery {
+                if message.deliveryRecoveryRequired, let onReconcileDelivery {
+                    Button("Reconcile") {
+                        onReconcileDelivery(message.id)
+                    }
+                    .font(DesignSystem.Typography.tiny)
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.whimsy)
+                } else if let onRetryDelivery {
                     Button("Retry") {
                         onRetryDelivery(message.id)
                     }

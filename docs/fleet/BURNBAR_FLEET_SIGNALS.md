@@ -470,6 +470,21 @@ delivered") never produces a proposal, a record, or a delivery.
 - **Pending proposal survives app quit** (ORCH-032): the proposal JSON is
   persisted on the chat message; after relaunch the card is re-presented
   pending — never auto-approved/recorded/delivered.
+
+If local chat persistence fails after daemon acceptance, the app keeps the
+complete card in a recovery journal and shows a typed persistence error. A
+relaunch reconciles any approved `delivering` row against the daemon before
+offering another delivery attempt. A known terminal daemon record is adopted
+without redelivery; an approved record becomes a typed retryable interrupted
+failure; if the daemon is unavailable, the card remains visibly blocked until
+reconciliation succeeds. The original `decidedAt` is preserved in all cases.
+
+The app's FleetView designation state follows the same authority rule:
+refresh failure retains the last acknowledged designation while showing an
+explicit unavailable error, and a first-ever unavailable read has no
+designation value. It never fabricates `none` or shows an orchestrator badge
+until authoritative state is available again.
+
 ### Directive delivery (M4, branch A — writable Hermes channel)
 The Hermes gateway exposes a documented writable input channel: its
 `api_server` platform (`POST /v1/chat/completions` on
@@ -510,8 +525,12 @@ Delivery semantics (validators depend on these):
   implements the documented acknowledgement contract for validation
   (`BURNBAR_FAKE_HERMES_MODE` = `ack`/`hold`/`malformed-json`/
   `malformed-id`/`malformed-status`/`fail`; receipts in
-  `$BURNBAR_FAKE_HERMES_SCRATCH/receipts.jsonl`). The app points at the
-  fixture via `BURNBAR_HERMES_GATEWAY_URL` and authenticates via
+  `$BURNBAR_FAKE_HERMES_SCRATCH/receipts.jsonl`). The fixture requires
+  `Authorization: Bearer test-key` by default (`BURNBAR_FAKE_HERMES_API_KEY`
+  overrides it), rejecting missing or incorrect headers with HTTP 401. The
+  app points at the fixture via `BURNBAR_HERMES_GATEWAY_URL`, which is
+  restricted to `127.0.0.1`, `localhost`, or `::1` unless
+  `BURNBAR_HERMES_ALLOW_REMOTE=true` is explicitly set, and authenticates via
   `BURNBAR_HERMES_API_KEY` or the `API_SERVER_KEY` line of `~/.hermes/.env`
   (structural parse of that one key only; never logged or copied into
   fixtures).
