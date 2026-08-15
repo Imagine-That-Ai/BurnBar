@@ -52,7 +52,16 @@ function builtRoutes(dir) {
 
 function hasAsset(href) {
   // /favicon.svg, /og/default.svg, /robots.txt, /sitemap.xml, /_assets/*
-  return existsSync(join(DIST, href.replace(/^\//, "")));
+  // href arrives URL-encoded (e.g. "/downloads/My%20Report.pdf") while the
+  // dist/ tree holds the decoded filename, so decode before joining. A
+  // malformed percent sequence falls back to the raw href (it won't exist).
+  let rel = href.replace(/^\//, "");
+  try {
+    rel = decodeURIComponent(rel);
+  } catch {
+    /* keep raw */
+  }
+  return existsSync(join(DIST, rel));
 }
 
 function* hrefs(html) {
