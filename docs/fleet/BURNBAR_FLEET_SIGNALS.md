@@ -276,7 +276,10 @@ control store that serves `orchestrator.get` (VAL-ORCH-038).
 - **Clear:** setting `none` clears an existing designation; `get` returns
   `none` with the clear-time `setAt` (VAL-ORCH-003). **Clearing when none is
   set is a typed success no-op:** no phantom `setAt` is stamped and no state
-  row is created (VAL-ORCH-018).
+  row is created (VAL-ORCH-018). The no-op response is the UNCHANGED current
+  state — after a prior clear (or after restart with a persisted `none` row)
+  it carries the retained clear-time `setAt`, so the set response and the
+  immediately following `get` always agree (set/get coherence).
 - **Overwrite semantics:** setting while set replaces the designation and
   advances `setAt`; exactly ONE `orchestrator_state` row ever exists
   (`id = 1`, `SELECT COUNT(*)` is always 1 after the first accepted set;
@@ -317,10 +320,14 @@ updates the record in place (upsert) — a retry never creates a duplicate row,
 and the response always describes the single persisted record.
 
 **Payload validation (the canonical home of ORCH-029):** a directive with an
-unknown `kind`, an empty id, an empty (whitespace-only) payload, or a
-`targetAgent` outside the declared ten-ID roster is rejected with a typed
+unknown `kind`, an empty id, an empty (whitespace-only) payload, a
+`targetAgent` outside the declared ten-ID roster, or a `failed(reason:)`
+state whose reason is empty (whitespace-only) is rejected with a typed
 `-32603` error and NO record is created (history unchanged). Validation
-failures never persist partial records.
+failures never persist partial records. Directive **state invariants are
+validated before the persistence path is chosen** — the store-less/in-memory
+mode rejects exactly the same invalid records as the wired mode, so
+validation never depends on the backing store.
 
 **Terminal outcomes survive restart (ORCH-039):** `delivered` and
 `failed(reason)` records (with their reasons, delivery channels, and decision

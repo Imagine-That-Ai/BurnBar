@@ -933,38 +933,4 @@ extension BurnBarDaemonServer {
             return encode(response)
         }
     }
-
-    /// Encodes a typed `-32603` validation error for orchestrator-set and
-    /// directive-record rejections. The message names the failing surface and
-    /// the reason; `details` carries the method and the typed reason — never
-    /// payload content. A rejected mutation leaves the stored state and the
-    /// directive history unchanged (VAL-RPC-009 / ORCH-029).
-    private static func controlValidationError(id: String, error: Error, method: String) -> Data {
-        BurnBarRPCErrorEnvelope.encodeErrorResponse(
-            id: id,
-            code: BurnBarRPCErrorCode.internalError,
-            message: "BurnBar RPC method '\(method)' rejected the payload: \(error.localizedDescription)",
-            details: "method=\(method); reason=\(error.localizedDescription)"
-        )
-    }
-
-    /// Optional-params validation for methods whose params are optional (a
-    /// request with NO `params` key is accepted); a request whose `params` is
-    /// present but fails to decode as the method's typed params throws, which
-    /// the caller maps to the typed invalid-params error (-32602, VAL-RPC-011)
-    /// — a wrong-typed params payload is never silently accepted.
-    private static func validateOptionalParams<Params: Codable & Sendable>(
-        requestData: Data,
-        decoder: JSONDecoder,
-        paramsType: Params.Type
-    ) throws {
-        guard let object = try? JSONSerialization.jsonObject(with: requestData) as? [String: Any],
-              object["params"] != nil else {
-            return
-        }
-        _ = try decoder.decode(
-            BurnBarRPCRequestEnvelopeWithParams<Params>.self,
-            from: requestData
-        )
-    }
 }

@@ -15,6 +15,9 @@ public enum BurnBarFleetControlError: Error, LocalizedError, Equatable, Sendable
     /// A directive record whose `targetAgent` is outside the declared
     /// ten-ID roster.
     case invalidDirectiveTargetAgent(String)
+    /// A directive record in the `failed(reason:)` state whose reason is
+    /// empty (whitespace-only).
+    case emptyDirectiveStateReason
     /// The fleet store is unavailable (not open) and the mutation cannot be
     /// persisted — the mutation is rejected rather than silently lost.
     case storeUnavailable(String)
@@ -31,6 +34,8 @@ public enum BurnBarFleetControlError: Error, LocalizedError, Equatable, Sendable
             return "Directive payload must be a non-empty string."
         case .invalidDirectiveTargetAgent(let id):
             return "Directive target agent '\(id)' is not in the declared fleet roster."
+        case .emptyDirectiveStateReason:
+            return "Directive state failed(reason:) requires a non-empty reason."
         case .storeUnavailable(let detail):
             return "Fleet store is unavailable: \(detail)"
         case .payloadEncodingFailed:
@@ -136,10 +141,18 @@ public actor BurnBarFleetControlStore {
         let current = loadIfNeeded()
 
         // Idempotent clear: none → none is a typed success no-op (ORCH-018).
-        // No phantom setAt is stamped and no state row is created.
+        // No phantom setAt is stamped and no state row is created. The
+        // response is the UNCHANGED current state — including a retained
+        // clear timestamp when the state was previously cleared (or restored
+        // after restart) — so the set response and the immediately following
+        // get always agree (set/get coherence; scrutiny round 1).
         if current.designation == .none, requested.designation == .none {
-            let pending = (try? pendingDirectivesCount()) ?? 0
-            return BurnBarOrchestratorState(designation: .none, setAt: nil, pendingDirectives: pending)
+            let pending = (try? pendingDirectivesCount()) ?? current.pendingDirectives
+            return BurnBarOrchestratorState(
+                designation: .none,
+                setAt: current.setAt,
+                pendingDirectives: pending
+            )
         }
 
         // Any real set overwrites the designation and stamps the daemon-owned
@@ -198,14 +211,25 @@ public actor BurnBarFleetControlStore {
     }
 
     /// Directive payload validation (the canonical home of ORCH-029): a
-    /// non-empty id, a non-empty payload, and a `targetAgent` in the declared
-    /// roster when present.
+    /// non-empty id, a non-empty payload, a `targetAgent` in the declared
+    /// roster when present, and a well-formed directive state — a
+    /// `failed(reason:)` state must carry a non-empty reason (the contract
+    /// invariant; an empty reason is rejected typed). The state invariants
+    /// are validated here — BEFORE the persistence path is chosen — so
+    /// validation never depends on the backing store: the store-less/in-
+    /// memory mode rejects exactly the same invalid records as the wired
+    /// mode (scrutiny round 1).
     static func validateDirective(_ directive: BurnBarFleetDirective) throws {
         guard !directive.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw BurnBarFleetControlError.emptyDirectiveID
         }
         guard !directive.payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw BurnBarFleetControlError.emptyDirectivePayload
+        }
+        if case .failed(let reason) = directive.state {
+            guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw BurnBarFleetControlError.emptyDirectiveStateReason
+            }
         }
         if let targetAgent = directive.targetAgent {
             guard BurnBarFleetAgentID(wireValue: targetAgent.wireValue) != nil else {
