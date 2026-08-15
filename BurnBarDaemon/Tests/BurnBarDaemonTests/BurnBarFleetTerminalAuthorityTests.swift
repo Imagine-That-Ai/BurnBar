@@ -170,6 +170,15 @@ final class BurnBarFleetTerminalAuthorityTests: XCTestCase {
             attempt,
             "a competing approved attempt must not replace the durable fence"
         )
+
+        let proposedRerecord = makeDirective(id: attempt.id, state: .proposed)
+        let proposedResult = try await control.recordDirective(proposedRerecord)
+        XCTAssertEqual(
+            proposedResult,
+            attempt,
+            "a proposed re-record must not erase the durable handoff fence"
+        )
+        XCTAssertEqual(try store.directiveRecord(id: attempt.id), attempt)
     }
 
     func testFailedRecordRequiresFreshAttemptForApprovedRetry() async throws {

@@ -46,10 +46,11 @@ external consumers (any local agent/CLI) and for the BurnBar app itself.
   new external attempt after failure.
   An approved candidate with `deliveryChannel` and a unique
   `deliveryAttemptID` is a durable external-delivery handoff. Once present,
-  later approved reconciliation candidates cannot replace or erase that
-  handoff; a new approved attempt is allowed only after an existing failed
-  outcome and must carry its own attempt id. The authoritative record is
-  returned unchanged whenever a candidate is rejected by these rules.
+  later proposed re-records and approved reconciliation candidates cannot
+  replace or erase that handoff; a new approved attempt is allowed only after
+  an existing failed outcome and must carry its own attempt id. Terminal
+  callbacks may complete the handoff. The authoritative record is returned
+  unchanged whenever a candidate is rejected by these rules.
 
 Directive records are read via read-only `sqlite3` inspection of the
 daemon-owned `fleet.sqlite` (`fleet_directives` table) — there is no

@@ -17,7 +17,10 @@ import XCTest
 /// The deterministic PATH-shim fake CLI (`tools/burnbar-fake-cli.py`) is the
 /// required M4 fixture — no live model anywhere.
 @MainActor
-final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchestratorTestCase {
+final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchestratorTestCase {}
+
+@MainActor
+extension ChatSessionControllerDeliveryFlowTests {
 
     /// A stub channel that records deliveries and returns a scripted outcome.
     final class StubDeliveryChannel: BurnBarFleetDirectiveChannel, @unchecked Sendable {
@@ -214,7 +217,25 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         )
         try store.saveChatMessage(stranded, threadID: controller.activeThreadID)
 
-        let relaunched = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
+        let daemonAttempt = BurnBarFleetDirective(
+            id: "m4-proposal-001",
+            kind: .askStatus,
+            targetAgent: .hermes,
+            payload: "Report current status",
+            state: .approved,
+            createdAt: pending.timestamp,
+            decidedAt: decidedAt,
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-relaunch"
+        )
+        let relaunched = makeController(
+            snapshot: snapshot,
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            directiveRecordProvider: { _, _ in
+                self.directiveRecordCalls += 1
+                return daemonAttempt
+            }
+        )
         relaunched.loadPersistedMessages()
 
         let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
@@ -230,8 +251,9 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
 
     /// Crash-window regression: the approved daemon decision and local
     /// recovery marker are durable, but the process exits after journal
-    /// removal and before the `delivering` row is saved. Relaunch must
-    /// reconcile the typed marker rather than strand an approved card.
+    /// removal and before the `delivering` row is saved. The daemon therefore
+    /// has no delivery handoff. Relaunch must reconcile that authoritative
+    /// no-side-effect state to a retryable interrupted card.
     func test_crashAfterJournalRemovalBeforeDeliveringSaveRequiresExplicitReconcile() async throws {
         let snapshot = freshSnapshot()
         let controller = makeController(snapshot: snapshot)
@@ -267,34 +289,30 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         )
         try store.saveChatMessage(approved, threadID: controller.activeThreadID)
 
-        let daemonAttempt = BurnBarFleetDirective(
+        let daemonApprovedWithoutHandoff = BurnBarFleetDirective(
             id: wire.id,
             kind: wire.kind,
             targetAgent: wire.targetAgent,
             payload: wire.payload,
             state: .approved,
             createdAt: pending.timestamp,
-            decidedAt: approved.proposalDecidedAt,
-            deliveryChannel: "hermes",
-            deliveryAttemptID: "attempt-before-delivering"
+            decidedAt: approved.proposalDecidedAt
         )
-        let channel = ChatSessionControllerDeliveryFlowTests.StubDeliveryChannel(outcome: .delivered)
         let relaunched = makeController(
             snapshot: snapshot,
             deliveryChannelProvider: { _ in
-                XCTFail("a recovery marker must block a new Hermes call")
-                return channel
+                XCTFail("reconciliation must not auto-deliver")
+                return nil
             },
-            directiveRecordProvider: { _, _ in daemonAttempt }
+            directiveRecordProvider: { _, _ in daemonApprovedWithoutHandoff }
         )
         relaunched.loadPersistedMessages()
 
         let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
         XCTAssertEqual(restored.proposalDecision, .approved)
-        XCTAssertTrue(restored.deliveryRecoveryRequired)
+        XCTAssertFalse(restored.deliveryRecoveryRequired)
         XCTAssertTrue(restored.deliveryState?.isRetryable == true)
-        XCTAssertTrue(restored.proposalError?.contains("uncertain") == true)
-        XCTAssertEqual(channel.deliveredDirectives.count, 0)
+        XCTAssertTrue(restored.proposalError?.contains("interrupted") == true)
     }
 
     /// Crash-window regression: Hermes already acknowledged the side effect,

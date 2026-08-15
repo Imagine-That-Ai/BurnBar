@@ -149,7 +149,8 @@ extension ChatSessionController {
     /// terminal daemon record is adopted locally; a dismissed record becomes
     /// terminal locally with no delivery state; an approved record that
     /// carries a durable delivery attempt becomes an uncertain, retry-blocked
-    /// state; an unavailable daemon keeps the card blocked and visibly typed.
+    /// state, while an approved record without a handoff becomes retryable;
+    /// an unavailable daemon keeps the card blocked and visibly typed.
     func reconcileRecoveredMessages() {
         restoreJournaledMessages()
         let messageIDs = messages.compactMap { message -> String? in
@@ -191,9 +192,7 @@ extension ChatSessionController {
             let update = recoveredMessageUpdate(
                 for: authoritative,
                 currentMessage: message,
-                refreshHistory: refreshHistory,
-                nonTerminalRequiresReconciliation: message.deliveryRecoveryRequired
-                    || message.deliveryState == .delivering
+                refreshHistory: refreshHistory
             )
             replaceRecoveredMessage(messageID: messageID, update: update)
         } catch {
@@ -367,8 +366,7 @@ extension ChatSessionController {
         let update = recoveredMessageUpdate(
             for: recorded,
             currentMessage: message,
-            refreshHistory: true,
-            nonTerminalRequiresReconciliation: true
+            refreshHistory: true
         )
         replaceRecoveredMessage(messageID: messageID, update: update)
     }
@@ -376,10 +374,13 @@ extension ChatSessionController {
     private func recoveredMessageUpdate(
         for directive: BurnBarFleetDirective,
         currentMessage: ChatMessageRecord,
-        refreshHistory: Bool,
-        nonTerminalRequiresReconciliation: Bool
+        refreshHistory: Bool
     ) -> RecoveredMessageUpdate {
         let decisionAt = directive.decidedAt ?? currentMessage.proposalDecidedAt
+        // The daemon record is authoritative for whether an external channel
+        // could have started. Local recovery flags only prove that the app
+        // was interrupted, not that the handoff crossed the daemon boundary.
+        let nonTerminalRequiresReconciliation = directive.deliveryAttemptID != nil
         switch directive.state {
         case .delivered:
             return RecoveredMessageUpdate(

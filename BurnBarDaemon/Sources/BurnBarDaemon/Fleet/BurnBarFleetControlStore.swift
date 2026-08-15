@@ -333,18 +333,26 @@ public actor BurnBarFleetControlStore {
             case .proposed, .dismissed:
                 return true
             }
-        case .proposed, .approved:
-            guard case .approved = existing.state,
-                  case .approved = candidate.state
-            else {
+        case .proposed:
+            // A proposed re-record is not a new delivery decision. It must
+            // not erase an approved handoff fence before the app reconciles
+            // the possible external side effect.
+            return false
+        case .approved:
+            // An approved record with a delivery channel + attempt id is a
+            // durable handoff. Any later proposed or approved candidate must
+            // not erase or replace the fence before the app reconciles the
+            // external side effect. Terminal callbacks remain eligible to
+            // complete the handoff.
+            guard Self.hasUsableDeliveryHandoff(existing) else {
                 return false
             }
-            // An approved record with a delivery channel + attempt id is a
-            // durable handoff. Any later approved candidate, whether it has
-            // no usable attempt id or proposes a different one, must not
-            // erase or replace the fence before the app reconciles the
-            // external side effect.
-            return Self.hasUsableDeliveryHandoff(existing)
+            switch candidate.state {
+            case .proposed, .approved:
+                return true
+            case .dismissed, .delivered, .failed:
+                return false
+            }
         }
     }
 

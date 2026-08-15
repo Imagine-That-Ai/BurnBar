@@ -496,13 +496,16 @@ If local chat persistence fails after daemon acceptance, the app keeps the
 complete card in a recovery journal and shows a typed persistence error; it
 does not start delivery. Before Hermes is called, the app records an approved
 delivery handoff containing `deliveryChannel` and a unique
-`deliveryAttemptID`. A relaunch reconciles any approved row carrying that
-handoff, including the crash window where the journal was removed before the
-local `delivering` state was saved. A known terminal daemon record is adopted
-without redelivery; an approved record with an attempt handoff is an uncertain,
-retry-blocked typed state that requires explicit daemon reconciliation. If the
-daemon is unavailable, the card remains visibly blocked until reconciliation
-succeeds. The original `decidedAt` is preserved in all cases.
+`deliveryAttemptID`. A relaunch reconciles approved rows marked by the local
+recovery state, including the crash window where the journal was removed before
+the local `delivering` state was saved. A known terminal daemon record is
+adopted without redelivery; an approved record with an attempt handoff is an
+uncertain, retry-blocked typed state that requires explicit daemon
+reconciliation. An approved daemon record without an attempt handoff proves
+that no external channel call began, so reconciliation clears the recovery
+block and returns a retryable interrupted state. If the daemon is unavailable,
+the card remains visibly blocked until reconciliation succeeds. The original
+`decidedAt` is preserved in all cases.
 Recovery-journal entries carry the message id and decision timestamp they
 belong to. Journal restoration is monotonic: a durable row with a newer (or
 equal) terminal decision is never overwritten by an older journal, and a
