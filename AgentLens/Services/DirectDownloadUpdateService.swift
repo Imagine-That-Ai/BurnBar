@@ -54,7 +54,7 @@ final class DirectDownloadUpdateChecker {
     /// on start so previously muted machines are prompted again.
     private static let legacyPromptedBuildKey = "OpenBurnBarLastPromptedDirectUpdateBuild"
     private static let defaultFeedURL =
-        URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json")!
+        URL(string: "https://downloads.burnbar.ai/latest-macos.json")!
     private static let releasesPageURL =
         URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest")!
     private static let recheckInterval: TimeInterval = 24 * 60 * 60

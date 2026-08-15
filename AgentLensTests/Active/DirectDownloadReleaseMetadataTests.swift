@@ -9,13 +9,13 @@ import XCTest
 final class DirectDownloadReleaseMetadataTests: XCTestCase {
 
     private static let feedURL =
-        URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json")!
+        URL(string: "https://downloads.burnbar.ai/latest-macos.json")!
 
     private func makeRelease(
         version: String = "2.0.0",
         build: String = "200",
-        downloadUrl: URL = URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/OpenBurnBar-2.0.0.dmg")!,
-        appcastUrl: URL? = URL(string: "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/appcast.xml"),
+        downloadUrl: URL = URL(string: "https://downloads.burnbar.ai/OpenBurnBar-2.0.0.dmg")!,
+        appcastUrl: URL? = URL(string: "https://downloads.burnbar.ai/appcast.xml"),
         length: Int = 1024,
         sha256: String = String(repeating: "ab", count: 32),
         sparkleEdSignature: String? = "c2lnbmF0dXJl",
@@ -59,11 +59,11 @@ final class DirectDownloadReleaseMetadataTests: XCTestCase {
         // feeds in the wild won't carry the key at all).
         let json = """
         {
-          "appcastUrl": "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/appcast.xml",
+          "appcastUrl": "https://downloads.burnbar.ai/appcast.xml",
           "build": "200",
           "bundleId": "ai.burnbar.OpenBurnBar",
           "channel": "direct-download",
-          "downloadUrl": "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/OpenBurnBar-2.0.0.dmg",
+          "downloadUrl": "https://downloads.burnbar.ai/OpenBurnBar-2.0.0.dmg",
           "length": 52428800,
           "sha256": "\(String(repeating: "ab", count: 32))",
           "sparkleEdSignature": "c2lnbmF0dXJl",
@@ -81,7 +81,7 @@ final class DirectDownloadReleaseMetadataTests: XCTestCase {
         {
           "build": "201",
           "critical": true,
-          "downloadUrl": "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/OpenBurnBar-2.0.1.dmg",
+          "downloadUrl": "https://downloads.burnbar.ai/OpenBurnBar-2.0.1.dmg",
           "length": 52428800,
           "sha256": "\(String(repeating: "ab", count: 32))",
           "sparkleEdSignature": "c2lnbmF0dXJl",
