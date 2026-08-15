@@ -48,6 +48,8 @@ export interface TranscriptEntry {
   createdAt: string;
   streaming?: boolean;
   error?: boolean;
+  /** Short human explanation shown under the message when an answer stopped early or was cut short. */
+  note?: string;
 }
 
 export interface ApprovalPreview {
@@ -337,7 +339,8 @@ function isTranscriptEntry(value: unknown): value is TranscriptEntry {
     typeof value.text === 'string' &&
     typeof value.createdAt === 'string' &&
     (value.streaming === undefined || typeof value.streaming === 'boolean') &&
-    (value.error === undefined || typeof value.error === 'boolean')
+    (value.error === undefined || typeof value.error === 'boolean') &&
+    (value.note === undefined || typeof value.note === 'string')
   );
 }
 

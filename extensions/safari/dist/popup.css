@@ -1133,6 +1133,22 @@ select:disabled {
   overflow-wrap: anywhere;
 }
 
+.message-note {
+  margin: 6px 0 0;
+  padding-top: 5px;
+  border-top: 1px dashed var(--warning);
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.message-note--error {
+  border-top-color: var(--danger);
+  color: var(--danger);
+}
+
 .typing-indicator {
   display: inline-flex;
   align-items: center;

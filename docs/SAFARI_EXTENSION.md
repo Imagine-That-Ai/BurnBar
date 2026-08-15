@@ -183,6 +183,8 @@ or injected instructions.
 | Tab navigated/replaced | Run pauses and requires fresh page state/scope | Re-hand the tab to the run |
 | Page structure changed | Stale selector/box is rejected | Re-capture context and retry |
 | Chunk integrity/expiry failure | Payload is discarded; no partial parse | Retry capture; inspect daemon/app logs if repeated |
+| Ask stream ends early | Partial text stays visible, the message is marked in error, and a note under it says why (`gateway_stream_incomplete`, silence watchdog `gateway_timeout`, or `ask_stream_consumer_failed`); the upstream request is released | Retry the question; if repeated, inspect gateway/provider logs |
+| Ask answer hits the model output limit | The full received text is shown with a "reached its output limit" note; nothing is silently trimmed | Ask a narrower question or choose a model with a larger output budget |
 | Panic halt | Run, pending actions, and bridge waits stop; late completions are ignored. JavaScript and page effects already executed are not undone. | Start a new run only after reviewing the cause and resulting page state |
 
 ## Performance evidence
@@ -251,6 +253,19 @@ Run the canonical package gate:
 That command performs a locked `npm ci`, then runs type checking, lint,
 formatting, dependency checks, tests with coverage, production build, manifest
 validation, and bundle-size limits through the package's `test:ci` script.
+
+The MV3 background is a **service worker**, so `window`, `document`, and other
+DOM-only globals do not exist there. Three independent guards keep them out of
+`src/background/**` and `src/shared/**`:
+
+- `npm run typecheck:background` compiles those directories against the
+  WebWorker lib (`tsconfig.background.json`);
+- ESLint `no-restricted-globals` rejects the DOM globals in the same paths;
+- `test/controller.serviceWorker.test.ts` drives the real controller and gateway
+  client through a multi-frame Ask stream under `@vitest-environment node`,
+  where no DOM exists. Every other suite runs under jsdom, which silently
+  provides `window`; only this suite reproduces the Safari runtime for the Ask
+  path.
 
 Other focused checks:
 

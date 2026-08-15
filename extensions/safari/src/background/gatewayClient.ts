@@ -6,7 +6,14 @@ const MAX_GATEWAY_ANSWER_CHARACTERS = 200_000;
 const MAX_GATEWAY_PROMPT_CHARACTERS = 32_000;
 const MAX_GATEWAY_CONTEXT_CHARACTERS = 96_000;
 const MAX_LEARNED_CONTEXT_BYTES = 16 * 1024;
+// A stream is considered stalled after this long with no bytes: no response
+// head, then no further SSE frames. Long answers keep the stream alive as long
+// as the provider keeps writing; only silence trips this.
 const DEFAULT_GATEWAY_TIMEOUT_MS = 120_000;
+// Absolute ceiling for one Ask stream regardless of progress. Generous enough
+// for reasoning models writing long answers, small enough that a runaway
+// upstream cannot pin the popup forever.
+const DEFAULT_GATEWAY_MAX_STREAM_DURATION_MS = 15 * 60_000;
 const DEFAULT_ATTRIBUTION_RENEWAL_WINDOW_MS = 30_000;
 const DEFAULT_ATTRIBUTION_RENEWAL_TIMEOUT_MS = 15_000;
 const SAFARI_GATEWAY_CLIENT_MARKER = 'openburnbar-safari-extension';
@@ -43,7 +50,25 @@ interface SafariGatewayConfiguration {
 
 interface ActiveGatewayRequest {
   controller: AbortController;
-  abortKind?: 'timeout' | 'user';
+  abortKind?: 'stall' | 'timeout' | 'user' | 'failure';
+}
+
+interface SafariGatewayAskResult {
+  answer: string;
+  /** Provider-reported `finish_reason` when the stream carried one (for example `stop` or `length`). */
+  finishReason?: string;
+}
+
+/**
+ * How the assistant answer for one streamed frame changed. `finishReason` is
+ * surfaced separately from `done` because OpenAI-compatible providers signal
+ * completion two ways: a `finish_reason` on the last choice and/or a trailing
+ * `[DONE]` sentinel. Either one proves the answer is complete.
+ */
+interface GatewaySSEFrame {
+  delta?: string;
+  done: boolean;
+  finishReason?: string;
 }
 
 type GatewayFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -235,13 +260,18 @@ function firstChoice(value: unknown): Record<string, unknown> | undefined {
   return Array.isArray(choices) ? recordValue(choices[0]) : undefined;
 }
 
+function choiceFinishReason(choice: Record<string, unknown> | undefined): string | undefined {
+  const finishReason = choice?.finish_reason;
+  return typeof finishReason === 'string' && finishReason.length > 0 ? finishReason : undefined;
+}
+
 function gatewayErrorMessage(value: unknown): string | undefined {
   const error = recordValue(recordValue(value)?.error);
   const message = error?.message;
   return typeof message === 'string' && message.trim() ? message.trim().slice(0, 2_000) : undefined;
 }
 
-export function parseGatewaySSEPayload(payload: string): { delta?: string; done: boolean } {
+export function parseGatewaySSEPayload(payload: string): GatewaySSEFrame {
   const trimmed = payload.trim();
   if (trimmed === '[DONE]') {
     return { done: true };
@@ -256,19 +286,23 @@ export function parseGatewaySSEPayload(payload: string): { delta?: string; done:
   if (gatewayError) {
     throw new SafariExtensionError('gateway_request_failed', gatewayError, { retryable: true });
   }
-  const delta = recordValue(firstChoice(value)?.delta)?.content;
+  const choice = firstChoice(value);
+  const delta = recordValue(choice?.delta)?.content;
+  const finishReason = choiceFinishReason(choice);
   return {
     done: false,
-    ...(typeof delta === 'string' && delta.length > 0 ? { delta } : {})
+    ...(typeof delta === 'string' && delta.length > 0 ? { delta } : {}),
+    ...(finishReason === undefined ? {} : { finishReason })
   };
 }
 
-export function parseGatewayJSONResponse(value: unknown): string {
+export function parseGatewayJSONResponse(value: unknown): SafariGatewayAskResult {
   const gatewayError = gatewayErrorMessage(value);
   if (gatewayError) {
     throw new SafariExtensionError('gateway_request_failed', gatewayError, { retryable: true });
   }
-  const content = recordValue(firstChoice(value)?.message)?.content;
+  const choice = firstChoice(value);
+  const content = recordValue(choice?.message)?.content;
   if (typeof content !== 'string' || !content.trim()) {
     throw new SafariExtensionError(
       'gateway_response_invalid',
@@ -278,7 +312,8 @@ export function parseGatewayJSONResponse(value: unknown): string {
   if (content.length > MAX_GATEWAY_ANSWER_CHARACTERS) {
     throw new SafariExtensionError('gateway_response_too_large', 'OpenBurnBar’s gateway answer exceeded its limit.');
   }
-  return content;
+  const finishReason = choiceFinishReason(choice);
+  return { answer: content, ...(finishReason === undefined ? {} : { finishReason }) };
 }
 
 async function readBoundedResponseText(response: Response, limit = MAX_GATEWAY_RESPONSE_BYTES): Promise<string> {
@@ -331,7 +366,8 @@ export class SafariGatewayClient {
     private readonly timeoutMs = DEFAULT_GATEWAY_TIMEOUT_MS,
     private readonly correlationIDFactory: CorrelationIDFactory = () => globalThis.crypto.randomUUID(),
     private readonly attributionRenewalWindowMs = DEFAULT_ATTRIBUTION_RENEWAL_WINDOW_MS,
-    private readonly attributionRenewalTimeoutMs = DEFAULT_ATTRIBUTION_RENEWAL_TIMEOUT_MS
+    private readonly attributionRenewalTimeoutMs = DEFAULT_ATTRIBUTION_RENEWAL_TIMEOUT_MS,
+    private readonly maxStreamDurationMs = DEFAULT_GATEWAY_MAX_STREAM_DURATION_MS
   ) {}
 
   setConfigurationRenewer(renewer: GatewayConfigurationRenewer): void {
@@ -412,7 +448,7 @@ export class SafariGatewayClient {
     return true;
   }
 
-  async ask(request: SafariGatewayAskRequest, onDelta: (delta: string) => void): Promise<string> {
+  async ask(request: SafariGatewayAskRequest, onDelta: (delta: string) => void): Promise<SafariGatewayAskResult> {
     this.requireNoActiveRequest();
     await this.ensureProviderConfiguration();
     const configuration = this.configuration;
@@ -428,12 +464,38 @@ export class SafariGatewayClient {
       controller: new AbortController()
     };
     this.activeRequest = activeRequest;
-    const timeout = setTimeout(() => {
+    const abortFor = (kind: 'stall' | 'timeout'): void => {
       if (this.activeRequest === activeRequest && !activeRequest.controller.signal.aborted) {
-        activeRequest.abortKind = 'timeout';
+        activeRequest.abortKind = kind;
         activeRequest.controller.abort();
       }
-    }, this.timeoutMs);
+    };
+    // Silence watchdog: re-armed on every byte, so a slow-but-alive stream is
+    // never cut, while a gateway that stops talking mid-answer fails loudly
+    // instead of leaving the popup "typing" forever.
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    const armStallTimer = (): void => {
+      if (stallTimer !== undefined) {
+        clearTimeout(stallTimer);
+      }
+      stallTimer = setTimeout(() => abortFor('stall'), this.timeoutMs);
+    };
+    armStallTimer();
+    const deadlineTimer = setTimeout(() => abortFor('timeout'), Math.max(this.timeoutMs, this.maxStreamDurationMs));
+    // Any failure to consume the answer (render bug, storage error) must be
+    // reported as such, not disguised as a network failure, and must release
+    // the upstream stream instead of leaving it flowing to nobody.
+    const deliverDelta = (delta: string): void => {
+      try {
+        onDelta(delta);
+      } catch (error) {
+        throw new SafariExtensionError(
+          'ask_stream_consumer_failed',
+          'OpenBurnBar received the answer but could not render it in the popup.',
+          { retryable: true, details: error }
+        );
+      }
+    };
     try {
       const body = JSON.stringify(buildSafariAskBody(request));
       const correlationID = validatedCorrelationID(this.correlationIDFactory());
@@ -471,9 +533,9 @@ export class SafariGatewayClient {
         } catch {
           throw new SafariExtensionError('gateway_response_invalid', 'OpenBurnBar’s gateway returned invalid JSON.');
         }
-        const answer = parseGatewayJSONResponse(value);
-        onDelta(answer);
-        return answer;
+        const result = parseGatewayJSONResponse(value);
+        deliverDelta(result.answer);
+        return result;
       }
       if (!response.body) {
         throw new SafariExtensionError('gateway_stream_invalid', 'OpenBurnBar’s gateway stream is unavailable.');
@@ -485,12 +547,14 @@ export class SafariGatewayClient {
       let byteLength = 0;
       let answer = '';
       let done = false;
+      let finishReason: string | undefined;
       const consumeLine = (line: string): void => {
         if (!line.startsWith('data:')) {
           return;
         }
         const parsed = parseGatewaySSEPayload(line.slice('data:'.length));
         done ||= parsed.done;
+        finishReason ??= parsed.finishReason;
         if (parsed.delta) {
           answer += parsed.delta;
           if (answer.length > MAX_GATEWAY_ANSWER_CHARACTERS) {
@@ -499,7 +563,7 @@ export class SafariGatewayClient {
               'OpenBurnBar’s gateway answer exceeded its limit.'
             );
           }
-          onDelta(parsed.delta);
+          deliverDelta(parsed.delta);
         }
       };
 
@@ -508,6 +572,7 @@ export class SafariGatewayClient {
         if (next.done) {
           break;
         }
+        armStallTimer();
         byteLength += next.value.byteLength;
         if (byteLength > MAX_GATEWAY_RESPONSE_BYTES) {
           throw new SafariExtensionError(
@@ -538,16 +603,34 @@ export class SafariGatewayClient {
           'OpenBurnBar’s gateway stream completed without an assistant answer.'
         );
       }
-      return answer;
+      if (!done && finishReason === undefined) {
+        // The connection closed before the provider said it was finished. The
+        // partial text stays visible in the transcript, but the user must not
+        // mistake it for the whole answer.
+        throw new SafariExtensionError(
+          'gateway_stream_incomplete',
+          'OpenBurnBar’s gateway stream ended before the answer was complete.',
+          { retryable: true }
+        );
+      }
+      return { answer, ...(finishReason === undefined ? {} : { finishReason }) };
     } catch (error) {
       if (activeRequest.controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
         if (activeRequest.abortKind === 'user') {
           throw new SafariExtensionError('gateway_aborted', 'Stopped.');
         }
-        throw new SafariExtensionError('gateway_timeout', 'OpenBurnBar’s gateway request timed out.', {
-          retryable: true
-        });
+        throw new SafariExtensionError(
+          'gateway_timeout',
+          activeRequest.abortKind === 'stall'
+            ? 'OpenBurnBar’s gateway stopped sending the answer.'
+            : 'OpenBurnBar’s gateway request timed out.',
+          { retryable: true }
+        );
       }
+      // Release the upstream stream so the daemon and provider stop spending
+      // on an answer nobody is reading anymore.
+      activeRequest.abortKind = 'failure';
+      activeRequest.controller.abort();
       if (error instanceof SafariExtensionError) {
         throw error;
       }
@@ -556,7 +639,10 @@ export class SafariGatewayClient {
         details: error
       });
     } finally {
-      clearTimeout(timeout);
+      if (stallTimer !== undefined) {
+        clearTimeout(stallTimer);
+      }
+      clearTimeout(deadlineTimer);
       if (this.activeRequest === activeRequest) {
         this.activeRequest = undefined;
       }

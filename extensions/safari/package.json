@@ -19,7 +19,8 @@
     "test:ci": "npm run typecheck && npm run lint && npm run format:check && npm run knip && npm run deps && npm run test:coverage && npm run build && npm run size",
     "test:coverage": "vitest run --coverage",
     "test:unit": "vitest run --coverage.enabled false",
-    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json && npm run typecheck:background",
+    "typecheck:background": "tsc --noEmit -p ./tsconfig.background.json",
     "validate:manifest": "node ./scripts/validate-manifest.mjs"
   },
   "devDependencies": {

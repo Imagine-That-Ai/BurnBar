@@ -50,6 +50,48 @@ export default [
     }
   },
   {
+    // src/background runs as the MV3 service worker and src/shared is imported
+    // by it. Neither may touch DOM-only globals: `window.setTimeout` in the Ask
+    // stream flush once threw ReferenceError on the first delta and silently
+    // truncated every streamed answer. tsconfig.background.json is the
+    // compile-time twin of this rule.
+    files: ['src/background/**/*.ts', 'src/shared/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.serviceworker,
+        ...globals.webextensions,
+        browser: 'readonly'
+      }
+    },
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...[
+          'window',
+          'document',
+          'localStorage',
+          'sessionStorage',
+          'history',
+          'location',
+          'alert',
+          'confirm',
+          'prompt',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+          'XMLHttpRequest',
+          'DOMParser',
+          'Image',
+          'HTMLElement',
+          'Node',
+          'Element'
+        ].map((name) => ({
+          name,
+          message: `${name} does not exist in the background service worker. Use worker-safe globals (setTimeout, fetch, OffscreenCanvas, createImageBitmap) or move the code to the popup/content surface.`
+        }))
+      ]
+    }
+  },
+  {
     files: ['test/**/*.ts'],
     languageOptions: {
       globals: {

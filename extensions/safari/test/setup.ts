@@ -7,7 +7,12 @@ Object.defineProperty(globalThis, 'crypto', {
   value: webcrypto
 });
 
-if (typeof globalThis.PointerEvent === 'undefined') {
+// Most suites run under jsdom. Suites that mirror the MV3 background service
+// worker opt into `@vitest-environment node`, where none of the DOM globals
+// below exist — that absence is exactly what those suites are proving.
+const hasDOM = typeof document !== 'undefined' && typeof window !== 'undefined';
+
+if (hasDOM && typeof globalThis.PointerEvent === 'undefined') {
   Object.defineProperty(globalThis, 'PointerEvent', {
     configurable: true,
     value: MouseEvent
@@ -15,6 +20,9 @@ if (typeof globalThis.PointerEvent === 'undefined') {
 }
 
 beforeEach(() => {
+  if (!hasDOM) {
+    return;
+  }
   document.documentElement.removeAttribute('data-openburnbar-page-world');
   document.head.replaceChildren();
   document.body.replaceChildren();

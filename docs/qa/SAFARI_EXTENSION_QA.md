@@ -123,6 +123,13 @@ imagery leaves the Mac.
 - [ ] Choosing a local model keeps the screenshot/page context local.
 - [ ] Cancelling during capture/model streaming stops promptly and leaves the
       popup reusable.
+- [ ] A long answer (ask for a step-by-step list of at least 150 words) streams
+      to completion for every model family tested: the text keeps growing until
+      the typing indicator disappears, the last sentence is complete, and no
+      "Answer interrupted" note appears under the message.
+- [ ] Killing the gateway mid-answer (or a provider that closes early) leaves
+      the partial text visible with a red "Answer interrupted" note and a
+      retryable error banner instead of a silently truncated answer.
 
 ## Agentic actions
 

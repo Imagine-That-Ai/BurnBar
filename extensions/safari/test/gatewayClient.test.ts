@@ -180,10 +180,21 @@ describe('Safari loopback gateway client', () => {
     expect(parseGatewaySSEPayload('{"choices":[{"delta":{"role":"assistant"}}]}')).toEqual({
       done: false
     });
+    expect(parseGatewaySSEPayload('{"choices":[{"delta":{},"finish_reason":"stop"}]}')).toEqual({
+      done: false,
+      finishReason: 'stop'
+    });
+    expect(parseGatewaySSEPayload('{"choices":[{"delta":{"content":"…"},"finish_reason":null}]}')).toEqual({
+      delta: '…',
+      done: false
+    });
     expect(() => parseGatewaySSEPayload('not-json')).toThrow(/invalid gateway stream/u);
-    expect(parseGatewayJSONResponse({ choices: [{ message: { content: 'The CTA is orange.' } }] })).toBe(
-      'The CTA is orange.'
-    );
+    expect(parseGatewayJSONResponse({ choices: [{ message: { content: 'The CTA is orange.' } }] })).toEqual({
+      answer: 'The CTA is orange.'
+    });
+    expect(
+      parseGatewayJSONResponse({ choices: [{ message: { content: 'Cut short' }, finish_reason: 'length' }] })
+    ).toEqual({ answer: 'Cut short', finishReason: 'length' });
     expect(() =>
       parseGatewayJSONResponse({
         choices: [{ message: { content: 'x'.repeat(200_001) } }]
@@ -235,7 +246,7 @@ describe('Safari loopback gateway client', () => {
           },
           (delta) => deltas.push(delta)
         )
-      ).resolves.toBe('The CTA is orange.');
+      ).resolves.toEqual({ answer: 'The CTA is orange.' });
     }
     expect(deltas).toEqual(['The CTA ', 'is orange.', 'The CTA ', 'is orange.']);
     expect(correlationIDFactory).toHaveBeenCalledTimes(2);
@@ -310,7 +321,7 @@ describe('Safari loopback gateway client', () => {
         },
         () => undefined
       )
-    ).resolves.toBe('Fresh answer');
+    ).resolves.toEqual({ answer: 'Fresh answer' });
 
     expect(renewer).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -565,7 +576,7 @@ describe('Safari loopback gateway client', () => {
         },
         (delta) => deltas.push(delta)
       )
-    ).resolves.toBe('Fallback answer');
+    ).resolves.toEqual({ answer: 'Fallback answer' });
     expect(deltas).toEqual(['Fallback answer']);
 
     for (const unsafeURL of [
@@ -631,5 +642,158 @@ describe('Safari loopback gateway client', () => {
         () => undefined
       )
     ).rejects.toMatchObject({ code: 'gateway_response_invalid' });
+  });
+
+  describe('answer completeness', () => {
+    const askRequest = {
+      agentId: 'vision-model',
+      prompt: 'Summarize this page.',
+      pageContext,
+      screenshot
+    };
+
+    it('delivers every delta of a long multi-frame stream and reports the provider finish reason', async () => {
+      const words = Array.from({ length: 120 }, (_, index) => `word${index} `);
+      const frames = words.map((word) => `data: ${JSON.stringify({ choices: [{ delta: { content: word } }] })}\n\n`);
+      const client = new SafariGatewayClient(
+        vi.fn(async () =>
+          streamResponse([
+            'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n',
+            ...frames,
+            'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+            'data: {"choices":[],"usage":{"completion_tokens":120}}\n\n',
+            'data: [DONE]\n\n'
+          ])
+        )
+      );
+      client.configure(bootstrap());
+      const deltas: string[] = [];
+      await expect(client.ask(askRequest, (delta) => deltas.push(delta))).resolves.toEqual({
+        answer: words.join(''),
+        finishReason: 'stop'
+      });
+      expect(deltas).toEqual(words);
+    });
+
+    it('treats a provider finish_reason as completion even when the [DONE] sentinel is missing', async () => {
+      const client = new SafariGatewayClient(
+        vi.fn(async () =>
+          streamResponse([
+            'data: {"choices":[{"delta":{"content":"Complete "}}]}\n\n',
+            'data: {"choices":[{"delta":{"content":"answer."},"finish_reason":"stop"}]}\n\n'
+          ])
+        )
+      );
+      client.configure(bootstrap());
+      await expect(client.ask(askRequest, () => undefined)).resolves.toEqual({
+        answer: 'Complete answer.',
+        finishReason: 'stop'
+      });
+    });
+
+    it('surfaces a length-limited answer instead of presenting it as complete', async () => {
+      const client = new SafariGatewayClient(
+        vi.fn(async () =>
+          streamResponse([
+            'data: {"choices":[{"delta":{"content":"Here is the first"}}]}\n\n',
+            'data: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\n',
+            'data: [DONE]\n\n'
+          ])
+        )
+      );
+      client.configure(bootstrap());
+      await expect(client.ask(askRequest, () => undefined)).resolves.toEqual({
+        answer: 'Here is the first',
+        finishReason: 'length'
+      });
+    });
+
+    it('fails loudly when the stream closes before the provider finished', async () => {
+      const client = new SafariGatewayClient(
+        vi.fn(async () => streamResponse(['data: {"choices":[{"delta":{"content":"Here"}}]}\n\n']))
+      );
+      client.configure(bootstrap());
+      const deltas: string[] = [];
+      await expect(client.ask(askRequest, (delta) => deltas.push(delta))).rejects.toMatchObject({
+        code: 'gateway_stream_incomplete',
+        retryable: true
+      });
+      expect(deltas).toEqual(['Here']);
+    });
+
+    it('reports a consumer failure honestly and releases the upstream request', async () => {
+      let requestSignal: AbortSignal | undefined;
+      const client = new SafariGatewayClient(
+        vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+          requestSignal = init?.signal ?? undefined;
+          return streamResponse([
+            'data: {"choices":[{"delta":{"content":"Here"}}]}\n\n',
+            'data: {"choices":[{"delta":{"content":" is more"}}]}\n\n',
+            'data: [DONE]\n\n'
+          ]);
+        })
+      );
+      client.configure(bootstrap());
+      const consumerFailure = new ReferenceError("Can't find variable: window");
+      await expect(
+        client.ask(askRequest, () => {
+          throw consumerFailure;
+        })
+      ).rejects.toMatchObject({
+        code: 'ask_stream_consumer_failed',
+        retryable: true,
+        details: consumerFailure
+      });
+      expect(requestSignal?.aborted).toBe(true);
+      expect(client.abortActiveRequest()).toBe(false);
+    });
+
+    it('keeps a slow but live stream alive past the stall window and only trips on silence', async () => {
+      const encoder = new TextEncoder();
+      const stallWindowMs = 40;
+      const liveClient = new SafariGatewayClient(
+        vi.fn(
+          async () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                async start(controller) {
+                  for (let index = 0; index < 8; index += 1) {
+                    await new Promise((resolve) => setTimeout(resolve, stallWindowMs / 2));
+                    controller.enqueue(
+                      encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: `${index} ` } }] })}\n\n`)
+                    );
+                  }
+                  controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                  controller.close();
+                }
+              }),
+              { status: 200, headers: { 'Content-Type': 'text/event-stream' } }
+            )
+        ),
+        stallWindowMs
+      );
+      liveClient.configure(bootstrap());
+      await expect(liveClient.ask(askRequest, () => undefined)).resolves.toEqual({
+        answer: '0 1 2 3 4 5 6 7 '
+      });
+
+      const silentClient = new SafariGatewayClient(
+        vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+          if (!init?.signal) {
+            throw new Error('Expected the gateway request to carry an AbortSignal.');
+          }
+          return abortableStreamResponse(init.signal, 'data: {"choices":[{"delta":{"content":"Here"}}]}\n\n');
+        }),
+        stallWindowMs
+      );
+      silentClient.configure(bootstrap());
+      const deltas: string[] = [];
+      await expect(silentClient.ask(askRequest, (delta) => deltas.push(delta))).rejects.toMatchObject({
+        code: 'gateway_timeout',
+        message: 'OpenBurnBar’s gateway stopped sending the answer.',
+        retryable: true
+      });
+      expect(deltas).toEqual(['Here']);
+    });
   });
 });
