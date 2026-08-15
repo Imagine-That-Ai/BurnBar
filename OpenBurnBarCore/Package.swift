@@ -1376,6 +1376,18 @@ let firstPartyTargetsBase: [Target] = [
                 .copy("Fixtures/claude-code-project-path-fixtures.json")
             ]
         ),
+        // Usage-memory Stage-0 drop-rate harness: replays a recorded agent-
+        // session corpus (~/.codex/sessions) through UsageMemoryCandidateGate
+        // and prints the accept/drop histogram + projected candidates/day —
+        // the offline proof artifact for the usage-memory funnel's cost story.
+        // Same never-referenced-leaf shape as the parity gates above: NO
+        // product in `packageProducts`, absent from the app's `project.yml`;
+        // `swift run OpenBurnBarUsageMemoryStage0Harness` only.
+        .executableTarget(
+            name: "OpenBurnBarUsageMemoryStage0Harness",
+            dependencies: ["OpenBurnBarCore"],
+            path: "Sources/OpenBurnBarUsageMemoryStage0Harness"
+        ),
         // Windows-port Phase-2 G2 parser-OUTPUT parity gate. A Foundation-only
         // executable that runs the LIFTED parsers (ClaudeCode + FactoryDroid today;
         // Codex + Hermes ride the SQLite reader seam) over the committed
