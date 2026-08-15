@@ -201,6 +201,51 @@ final class FleetServiceTests: XCTestCase {
         }
     }
 
+    func test_daemonDownThenPollRecoveryReauthorizesDesignationFromSnapshot() {
+        let acknowledged = BurnBarOrchestratorState(
+            designation: .agent(id: .hermes, sessionRef: .absent),
+            setAt: Date(timeIntervalSince1970: 1_752_000_000),
+            pendingDirectives: 1
+        )
+        let recoveredSnapshot = FleetTestFixtures.makeSnapshot()
+        var daemonUp = true
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in
+                guard daemonUp else {
+                    throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+                }
+                return recoveredSnapshot
+            },
+            fetchOrchestratorState: { _ in
+                guard daemonUp else {
+                    throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+                }
+                return acknowledged
+            }
+        )
+        let viewModel = FleetViewModel(service: service)
+
+        service.refreshOrchestratorState()
+        XCTAssertEqual(service.orchestratorState, acknowledged)
+
+        daemonUp = false
+        service.refreshOrchestratorState()
+        XCTAssertEqual(service.orchestratorState, acknowledged)
+        XCTAssertNotNil(service.orchestratorStateError)
+
+        daemonUp = true
+        service.fetchOnce()
+
+        XCTAssertEqual(service.orchestratorState, recoveredSnapshot.orchestrator)
+        XCTAssertNil(service.orchestratorStateError)
+        XCTAssertFalse(
+            service.orchestratorState == acknowledged,
+            "a recovered authoritative poll must not retain the stale designation"
+        )
+        XCTAssertFalse(viewModel.isDesignationUnavailable)
+    }
+
     // MARK: - Orchestrator designation (VAL-ORCH-034)
 
     func test_refreshOrchestratorStateFetchesDaemonState() {

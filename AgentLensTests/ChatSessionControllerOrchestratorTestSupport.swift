@@ -98,6 +98,7 @@ class ChatSessionControllerOrchestratorTestCase: XCTestCase {
         cliAllowed: Bool = true,
         now: @escaping () -> Date = { Date() },
         deliveryChannelProvider: @escaping (BurnBarFleetAgentID?) -> BurnBarFleetDirectiveChannel? = { _ in nil },
+        directiveRecordProvider: ((BurnBarFleetDirective, URL) throws -> BurnBarFleetDirective)? = nil,
         saveChatMessage: ((ChatMessageRecord, String) throws -> Void)? = nil
     ) -> ChatSessionController {
         let fleetService = FleetService(
@@ -113,7 +114,7 @@ class ChatSessionControllerOrchestratorTestCase: XCTestCase {
             orchestratorStateProvider: { _ in
                 BurnBarOrchestratorState(designation: designation, setAt: Date(), pendingDirectives: 0)
             },
-            directiveRecordProvider: { [weak self] directive, _ in
+            directiveRecordProvider: directiveRecordProvider ?? { [weak self] directive, _ in
                 self?.recordedDirectives.append(directive)
                 self?.directiveRecordCalls += 1
                 return directive
@@ -213,5 +214,119 @@ class ChatSessionControllerOrchestratorTestCase: XCTestCase {
             }
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+    }
+}
+
+// MARK: - M4 Delivery Recovery Repair Tests
+
+extension ChatSessionControllerDeliveryFlowTests {
+    func test_successfulDecisionClearsEarlierRecoveryJournalBeforeRelaunch() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot)
+        controller.startNewChatThread()
+        let wire = BurnBarFleetProposalWire(
+            id: "journaled-decision",
+            kind: .askStatus,
+            targetAgent: .hermes,
+            payload: "Report current status"
+        )
+        let pending = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            proposalJSON: try XCTUnwrap(wire.encode()),
+            proposalError: "Earlier local proposal save failed"
+        )
+        try store.saveChatMessage(pending, threadID: controller.activeThreadID)
+        controller.messages = [pending]
+        controller.persistRecoveryJournal(pending)
+        controller.dismissProposal(messageID: pending.id)
+        let saved = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertEqual(saved.proposalDecision, .dismissed)
+        XCTAssertFalse(saved.deliveryRecoveryRequired)
+
+        let relaunched = makeController(snapshot: snapshot)
+        relaunched.loadPersistedMessages()
+        let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
+        XCTAssertEqual(restored.proposalDecision, .dismissed)
+        XCTAssertNil(restored.deliveryState)
+        XCTAssertFalse(restored.deliveryRecoveryRequired)
+        XCTAssertNil(restored.proposalError)
+    }
+
+    func test_relaunchAdoptsDaemonDismissedDecisionAndNeverOffersDelivery() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+
+        let pending = try XCTUnwrap(lastAssistantMessage(controller))
+        let stranded = ChatMessageRecord(
+            id: pending.id,
+            role: pending.role,
+            content: pending.content,
+            timestamp: pending.timestamp,
+            cliUsed: pending.cliUsed,
+            transcriptPieces: pending.transcriptPieces,
+            cancelled: pending.cancelled,
+            proposalJSON: pending.proposalJSON,
+            proposalDecision: .approved,
+            proposalDecidedAt: Date(timeIntervalSince1970: 1_752_000_125),
+            deliveryState: .delivering,
+            deliveryRecoveryRequired: true
+        )
+        try store.saveChatMessage(stranded, threadID: controller.activeThreadID)
+        controller.persistRecoveryJournal(stranded)
+
+        let authoritativeDismissalDate = Date(timeIntervalSince1970: 1_752_000_126)
+        var deliveryCalls = 0
+        var reconcileCalls = 0
+        let authoritativeDismissal: (BurnBarFleetDirective, URL) throws -> BurnBarFleetDirective = { directive, _ in
+            BurnBarFleetDirective(
+                id: directive.id,
+                kind: directive.kind,
+                targetAgent: directive.targetAgent,
+                payload: directive.payload,
+                state: .dismissed,
+                createdAt: directive.createdAt,
+                decidedAt: authoritativeDismissalDate
+            )
+        }
+        let relaunched = makeController(
+            snapshot: snapshot,
+            deliveryChannelProvider: { _ in
+                deliveryCalls += 1
+                return nil
+            },
+            directiveRecordProvider: { directive, url in
+                reconcileCalls += 1
+                return try authoritativeDismissal(directive, url)
+            }
+        )
+        relaunched.loadPersistedMessages()
+
+        let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
+        XCTAssertEqual(restored.proposalDecision, ChatProposalDecision.dismissed)
+        XCTAssertEqual(restored.proposalDecidedAt, authoritativeDismissalDate)
+        XCTAssertNil(restored.deliveryState)
+        XCTAssertFalse(restored.deliveryRecoveryRequired)
+        XCTAssertNil(restored.proposalError)
+        XCTAssertEqual(deliveryCalls, 0)
+
+        let secondLaunch = makeController(
+            snapshot: snapshot,
+            directiveRecordProvider: { directive, url in
+                reconcileCalls += 1
+                return try authoritativeDismissal(directive, url)
+            }
+        )
+        secondLaunch.loadPersistedMessages()
+        let stable = try XCTUnwrap(secondLaunch.messages.first { $0.id == pending.id })
+        XCTAssertEqual(stable.proposalDecision, ChatProposalDecision.dismissed)
+        XCTAssertNil(stable.deliveryState)
+        XCTAssertFalse(stable.deliveryRecoveryRequired)
+        XCTAssertEqual(reconcileCalls, 1, "a terminal dismissal must not reconcile again on relaunch")
     }
 }

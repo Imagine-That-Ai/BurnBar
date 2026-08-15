@@ -164,6 +164,16 @@ final class FleetService {
             loadState = snapshot.runningCount > 0
                 ? .ready(snapshot)
                 : .empty(snapshot)
+            // A successful fleet snapshot carries the daemon-authoritative
+            // orchestrator state as well. Re-authorize the retained
+            // designation on recovery so a prior orchestrator RPC failure
+            // cannot leave the Fleet control and badge suppressed forever.
+            if orchestratorState != snapshot.orchestrator {
+                orchestratorState = snapshot.orchestrator
+            }
+            if orchestratorStateError != nil {
+                orchestratorStateError = nil
+            }
         } catch let error as BurnBarFleetClientError {
             switch error {
             case .notReady:

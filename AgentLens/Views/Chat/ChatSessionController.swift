@@ -913,6 +913,11 @@ extension ChatSessionController {
             // dropping the decision on relaunch.
             do {
                 try saveChatMessageProvider(updated, activeThreadID)
+                // A journal may describe the pre-decision save failure. Only
+                // remove it after this authoritative local decision write has
+                // succeeded, otherwise relaunch would restore the stale card
+                // over the durable database row.
+                clearRecoveryJournal(for: updated.id)
             } catch {
                 let message = "Decision recorded on the daemon, but saving it locally failed: "
                     + error.localizedDescription

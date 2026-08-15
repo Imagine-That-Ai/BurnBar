@@ -10,6 +10,15 @@ extension ChatSessionController {
         let message: ChatMessageRecord
     }
 
+    private struct RecoveredMessageUpdate {
+        let proposalDecision: ChatProposalDecision
+        let proposalDecidedAt: Date?
+        let deliveryState: ChatDeliveryState?
+        let recoveryRequired: Bool
+        let proposalError: String?
+        let refreshHistory: Bool
+    }
+
     private static let recoveryJournalPrefix = "burnbar.chat.delivery-recovery."
 
     /// Restores rows whose local save failed before attempting any new
@@ -66,8 +75,9 @@ extension ChatSessionController {
 
     /// Loads a recovered approved directive and asks the daemon for the
     /// authoritative record before allowing another delivery attempt. A
-    /// terminal daemon record is adopted locally; an approved record becomes
-    /// a retryable interrupted failure; an unavailable daemon keeps the card
+    /// terminal daemon record is adopted locally; a dismissed record becomes
+    /// terminal locally with no delivery state; an approved record becomes a
+    /// retryable interrupted failure; an unavailable daemon keeps the card
     /// blocked and visibly typed.
     func reconcileRecoveredMessages() {
         restoreJournaledMessages()
@@ -78,14 +88,17 @@ extension ChatSessionController {
             return message.id
         }
         for messageID in messageIDs {
-            reconcileDelivery(messageID: messageID)
+            reconcileDelivery(messageID: messageID, refreshHistory: false)
+        }
+        if !messageIDs.isEmpty {
+            refreshHistory()
         }
     }
 
     /// Reconciles one uncertain delivery. This is also the explicit action
     /// behind the card's "Reconcile" affordance when the daemon was down
     /// during relaunch.
-    func reconcileDelivery(messageID: String) {
+    func reconcileDelivery(messageID: String, refreshHistory: Bool = true) {
         guard let message = messages.first(where: { $0.id == messageID }),
               message.proposalDecision == .approved,
               let proposalJSON = message.proposalJSON,
@@ -104,44 +117,56 @@ extension ChatSessionController {
 
         do {
             let authoritative = try directiveRecordProvider(directive, fleetService.socketURL)
-            let state: ChatDeliveryState
+            let state: ChatDeliveryState?
+            let decision: ChatProposalDecision
             let recoveryRequired: Bool
             switch authoritative.state {
             case .delivered:
                 state = .delivered
+                decision = .approved
                 recoveryRequired = false
             case .failed(let failure):
                 state = .failed(reason: failure)
+                decision = .approved
                 recoveryRequired = false
             case .approved, .proposed:
                 state = .failed(reason: "Delivery was interrupted before its outcome was saved; retry when ready.")
+                decision = .approved
                 recoveryRequired = false
             case .dismissed:
-                state = .failed(reason: "Daemon reconciliation found the directive dismissed; no delivery was replayed.")
-                recoveryRequired = true
+                // Dismissal is terminal authority. Adopt it locally with no
+                // delivery state so the card cannot offer Reconcile or
+                // replay delivery on the next relaunch.
+                state = nil
+                decision = .dismissed
+                recoveryRequired = false
             }
-            replaceRecoveredMessage(
-                messageID: messageID,
+            let update = RecoveredMessageUpdate(
+                proposalDecision: decision,
+                proposalDecidedAt: authoritative.decidedAt ?? message.proposalDecidedAt,
                 deliveryState: state,
                 recoveryRequired: recoveryRequired,
-                proposalError: recoveryRequired ? "Daemon reconciliation found a terminal dismissed record; delivery is blocked." : nil
+                proposalError: nil,
+                refreshHistory: refreshHistory
             )
+            replaceRecoveredMessage(messageID: messageID, update: update)
         } catch {
             let messageText = "Delivery recovery could not reconcile with the daemon: \(error.localizedDescription)"
-            replaceRecoveredMessage(
-                messageID: messageID,
+            let update = RecoveredMessageUpdate(
+                proposalDecision: .approved,
+                proposalDecidedAt: message.proposalDecidedAt,
                 deliveryState: .failed(reason: messageText),
                 recoveryRequired: true,
-                proposalError: messageText
+                proposalError: messageText,
+                refreshHistory: refreshHistory
             )
+            replaceRecoveredMessage(messageID: messageID, update: update)
         }
     }
 
     private func replaceRecoveredMessage(
         messageID: String,
-        deliveryState: ChatDeliveryState,
-        recoveryRequired: Bool,
-        proposalError: String?
+        update: RecoveredMessageUpdate
     ) {
         guard let index = messages.firstIndex(where: { $0.id == messageID }) else { return }
         let old = messages[index]
@@ -154,16 +179,16 @@ extension ChatSessionController {
             transcriptPieces: old.transcriptPieces,
             cancelled: old.cancelled,
             proposalJSON: old.proposalJSON,
-            proposalDecision: old.proposalDecision,
-            proposalDecidedAt: old.proposalDecidedAt,
-            deliveryState: deliveryState,
-            deliveryRecoveryRequired: recoveryRequired,
-            proposalError: proposalError
+            proposalDecision: update.proposalDecision,
+            proposalDecidedAt: update.proposalDecidedAt,
+            deliveryState: update.deliveryState,
+            deliveryRecoveryRequired: update.recoveryRequired,
+            proposalError: update.proposalError
         )
         messages[index] = updated
         do {
             try saveChatMessageProvider(updated, activeThreadID)
-            if !recoveryRequired {
+            if !update.recoveryRequired {
                 clearRecoveryJournal(for: messageID)
                 persistenceError = nil
             }
@@ -188,7 +213,9 @@ extension ChatSessionController {
             persistenceError = saveMessage
             persistRecoveryJournal(failed)
         }
-        refreshHistory()
+        if update.refreshHistory {
+            self.refreshHistory()
+        }
     }
 
     /// Starts the delivery flow for an approved directive. The card shows
