@@ -42,6 +42,15 @@ The macOS app test driver reuses the exact DerivedData produced by the preceding
 real-process CPU build on the same runner, so the test action compiles the test
 bundle without rebuilding the entire product and dependency graph from scratch.
 
+Default-branch warming lives in
+[`.github/workflows/ci-cache-warm.yml`](../.github/workflows/ci-cache-warm.yml).
+GitHub scopes cache writes to the writing ref: PR/merge-queue entries are
+invisible to other refs, so cold MQ candidates used to rebuild Signal FFI and
+re-resolve SwiftPM every time. The warm workflow writes Signal FFI xcframeworks
+and the App PR Gate `app-spm` / `mobile-spm` keys on `main` (hosted `macos-26`,
+same image as consumers) so every PR and merge-queue restore can hit. SPM warm
+prefers `xcodebuild -resolvePackageDependencies` over a full app compile.
+
 ## Runner policy
 
 BurnBar uses standard GitHub-hosted runners by default. The public repository
