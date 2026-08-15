@@ -27,6 +27,28 @@ public typealias MemoryEventID = String
 public enum MemorySourceKind: String, Codable, Sendable {
     case chat
     case code
+    /// Usage-memory lane: a durable fact inferred from a Safari ask the member
+    /// volunteered (prompt + page identity + answer digest). Consent-gated
+    /// separately from chat memory; always quarantined on write.
+    case safariAsk = "safari_ask"
+    /// Usage-memory lane: a durable fact mined from a recorded agent session
+    /// rollout (user turns and repeated workflows). Same consent + review
+    /// posture as `safariAsk`.
+    case agentSession = "agent_session"
+
+    /// The passive usage-memory kinds. They share one storage partition
+    /// (`usage:` project-id prefix) so exact dedup and corroboration work
+    /// across sources; chat and code stay in their own partitions.
+    public static var usageKinds: Set<MemorySourceKind> { [.safariAsk, .agentSession] }
+}
+
+/// Vocabulary for `memory_provenance.source_kind`. This is a per-citation
+/// namespace and deliberately distinct from the authority table's
+/// `MemorySourceKind` (the existing chat rows store `chat_message`, not `chat`).
+public enum MemoryProvenanceSourceKind: String, Codable, Sendable {
+    case chatMessage = "chat_message"
+    case safariAsk = "safari_ask"
+    case agentSessionEvent = "agent_session_event"
 }
 
 public enum MemoryKind: String, Codable, Sendable {
