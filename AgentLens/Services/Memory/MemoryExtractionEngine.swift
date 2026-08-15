@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Memory Extraction Engine
 //
@@ -85,11 +86,31 @@ final class MemoryExtractionEngine {
     /// writes it (`refreshKillSwitch()` / construction); the worker reads it off-main.
     private let killSwitch: MemoryExtractionKillSwitch
 
+    /// PR6: the USAGE lane's extraction gate box (usage consent AND the usage
+    /// fleet switch), registered on `UsageMemoryKillSwitchRegistry`'s extraction
+    /// lane so `MemorySettings.propagateUsageGates()` pushes every change in.
+    /// Exposed (read-only via `isAllowed()`) because the session miner and the
+    /// Stage-1 cadence share this exact box as their dormancy gate.
+    let usageExtractionKillSwitch: MemoryExtractionKillSwitch
+
+    /// PR6: the USAGE authority-writes fleet switch box, registered on the
+    /// registry's authorityWrites lane. ANDed with the extraction box and the
+    /// production write default inside the worker's usage authority closure.
+    private let usageAuthorityWritesKillSwitch: MemoryExtractionKillSwitch
+
     /// The live settings snapshot the extractor reads off-main. The MainActor refreshes
     /// it before each drain; the extractor's `@Sendable` provider pulls from it. This is
     /// what lets per-drain settings stay fresh WITHOUT reading the `@MainActor`
     /// `SettingsManager` across an isolation boundary (which would crash).
     private let settingsBox: MemoryExtractionSettingsBox
+
+    /// PR6: the live router snapshot the usage batch extractor reads off-main.
+    /// Rebuilt on the MainActor alongside `settingsBox` on every refresh.
+    private let usageRouterSnapshotBox: UsageMemoryRouterSnapshotBox
+
+    /// PR6: client-side daily USD belt for the usage cloud lane; feeds the
+    /// router snapshot's `cloudBudgetOK`.
+    private let usageBudgetLedger: UsageMemoryBudgetLedger
 
     /// The worker that actually claims + processes jobs. Constructed once with the
     /// extractor closure and the kill-switch-backed authority gate.
@@ -123,7 +144,11 @@ final class MemoryExtractionEngine {
         settingsManager: SettingsManager,
         providerAPIKeyStore: ProviderAPIKeyStore = .shared,
         llmClient: MemoryExtractionLLMClient = MemoryExtractionLLMClient(),
-        authorityWritesGoLiveEnabled: Bool = ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
+        authorityWritesGoLiveEnabled: Bool = ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault,
+        usageCloudClient: any UsageCurationCloudClientProtocol = UsageCurationCloudClient(),
+        usageTelemetry: UsageCurationTelemetry = UsageCurationTelemetry(),
+        usageBudgetLedger: UsageMemoryBudgetLedger = UsageMemoryBudgetLedger(),
+        usageExtractionPolicy: UsageMemoryExtractionPolicy = .default
     ) {
         self.chatMemoryStore = chatMemoryStore
         self.settingsManager = settingsManager
@@ -139,12 +164,39 @@ final class MemoryExtractionEngine {
         )
         self.killSwitch = killSwitch
 
+        // PR6: the usage lane's two gate boxes, seeded from the live gates and
+        // registered on the U1 registry lanes so `propagateUsageGates()` keeps
+        // them current. Both start from the current (default-dormant) values.
+        let usageExtractionKillSwitch = MemoryExtractionKillSwitch(
+            initiallyAllowed: settingsManager.usageMemoryExtractionEnabled
+        )
+        UsageMemoryKillSwitchRegistry.registerExtraction(
+            usageExtractionKillSwitch,
+            initiallyAllowed: settingsManager.usageMemoryExtractionEnabled
+        )
+        self.usageExtractionKillSwitch = usageExtractionKillSwitch
+        let usageAuthorityWritesKillSwitch = MemoryExtractionKillSwitch(
+            initiallyAllowed: settingsManager.usageMemoryAuthorityWritesRemoteConfigEnabled
+        )
+        UsageMemoryKillSwitchRegistry.registerAuthorityWrites(
+            usageAuthorityWritesKillSwitch,
+            initiallyAllowed: settingsManager.usageMemoryAuthorityWritesRemoteConfigEnabled
+        )
+        self.usageAuthorityWritesKillSwitch = usageAuthorityWritesKillSwitch
+        self.usageBudgetLedger = usageBudgetLedger
+
         // Seed the settings box on the MainActor (legal here). The off-main extractor
         // provider reads THIS box, never the `@MainActor` SettingsManager directly.
         let settingsBox = MemoryExtractionSettingsBox(
             Self.makeSettingsSnapshot(settingsManager: settingsManager)
         )
         self.settingsBox = settingsBox
+
+        // PR6: seed the router snapshot box the usage extractor reads off-main.
+        let usageRouterSnapshotBox = UsageMemoryRouterSnapshotBox(
+            Self.makeUsageRouterSnapshot(settingsManager: settingsManager, ledger: usageBudgetLedger)
+        )
+        self.usageRouterSnapshotBox = usageRouterSnapshotBox
 
         // Build the extractor closure (run off-main per drain). The spend source is
         // injected for the future cloud-egress path; local-only v1 never reads it.
@@ -157,6 +209,27 @@ final class MemoryExtractionEngine {
             settingsProvider: { settingsBox.current() }
         )
 
+        // PR6: the usage batch extractor over the SAME store, sharing the chat
+        // lane's LLM client and settings box (its `.local` endpoint config).
+        let usageExtractor = UsageMemoryBatchExtractor(
+            candidateReader: chatMemoryStore,
+            llmClient: llmClient,
+            cloudClient: usageCloudClient,
+            telemetry: usageTelemetry,
+            budgetLedger: usageBudgetLedger,
+            policy: usageExtractionPolicy,
+            settingsProvider: { settingsBox.current() },
+            routerSnapshotProvider: { usageRouterSnapshotBox.current() }
+        )
+
+        // The single worker extractor seam ROUTES on the job's source kind:
+        // chat jobs take the existing transcript path byte-identically; usage
+        // batch jobs take the Stage-1 batch extractor. The worker's discipline
+        // (admission, lease, G7, provenance recompute, idempotent ids) is
+        // shared — that is the whole point of not forking the worker.
+        let chatExtractorClosure = extractor.makeExtractor()
+        let usageExtractorClosure = usageExtractor.makeExtractor()
+
         self.worker = MemoryExtractionWorker(
             store: chatMemoryStore,
             // Re-establish the kill switch at the WORKER boundary (PR-D2 must-fix #4): the
@@ -168,7 +241,22 @@ final class MemoryExtractionEngine {
             // default or test override, not a per-tick toggle, so it does not need the
             // live-atomic treatment the fleet kill needs.
             authorityWritesEnabled: { killSwitch.isAllowed() && authorityWritesGoLiveEnabled },
-            extractor: extractor.makeExtractor()
+            // PR6: the USAGE lane's gate — the same shape as chat's (live
+            // extraction atomic AND live authority atomic AND the write
+            // default), built from the usage boxes. Fail-closed by default:
+            // usage consent is OFF out of the box, so this evaluates false and
+            // the worker never claims a usage batch.
+            usageAuthorityWritesEnabled: {
+                usageExtractionKillSwitch.isAllowed()
+                    && usageAuthorityWritesKillSwitch.isAllowed()
+                    && authorityWritesGoLiveEnabled
+            },
+            extractor: { job in
+                if MemorySourceKind.usageKinds.contains(job.sourceKind) {
+                    return try await usageExtractorClosure(job)
+                }
+                return try await chatExtractorClosure(job)
+            }
         )
         // If consent, the user toggle, or Remote Config opens the combined gate after app
         // startup, immediately kick any persisted backlog instead of waiting for a future
@@ -178,13 +266,27 @@ final class MemoryExtractionEngine {
 
     // MARK: - Kill switch + settings propagation
 
-    /// Push the current combined gate AND the latest settings snapshot into the
+    /// Push the current combined gates AND the latest settings snapshot into the
     /// worker-visible boxes. Call this on the MainActor whenever the user toggle, the
     /// Remote Config fleet switch, or any extraction setting changes, so the next drain
-    /// tick sees the new values (nothing is cached — must-fix #2).
+    /// tick sees the new values (nothing is cached — must-fix #2). PR6 refreshes the
+    /// usage lane's boxes and the router snapshot on the same cadence.
     func refreshKillSwitch() {
         killSwitch.set(settingsManager.memoryExtractionEnabled)
+        usageExtractionKillSwitch.set(settingsManager.usageMemoryExtractionEnabled)
+        usageAuthorityWritesKillSwitch.set(settingsManager.usageMemoryAuthorityWritesRemoteConfigEnabled)
         settingsBox.set(Self.makeSettingsSnapshot(settingsManager: settingsManager))
+        usageRouterSnapshotBox.set(
+            Self.makeUsageRouterSnapshot(settingsManager: settingsManager, ledger: usageBudgetLedger)
+        )
+    }
+
+    /// PR6: whether ANY lane may pump. Chat keeps its combined gate; the usage
+    /// lane's extraction gate joins with OR so a chat-off/usage-on member still
+    /// drains usage batches. The worker's per-lane pre-claim gates remain the
+    /// deeper backstop — an open pump with both lanes closed claims nothing.
+    private var anyExtractionLaneEnabled: Bool {
+        settingsManager.memoryExtractionEnabled || settingsManager.usageMemoryExtractionEnabled
     }
 
     // MARK: - Launch
@@ -193,7 +295,7 @@ final class MemoryExtractionEngine {
     /// `AutoSummaryEngine.launchAutoSummarySweep`. No-op when the gate is off.
     func launchDrain() {
         refreshKillSwitch()
-        let gateEnabled = settingsManager.memoryExtractionEnabled
+        let gateEnabled = anyExtractionLaneEnabled
         if !gateEnabled || isExtracting {
             AppLogger.dataStore.notice(
                 "memory_extraction_launch_skipped",
@@ -219,10 +321,11 @@ final class MemoryExtractionEngine {
     /// against concurrent invocation via `isExtracting`.
     @discardableResult
     func runDrain() async -> MemoryExtractionPumpReport {
-        // Re-read the gate at entry on the MainActor (must-fix #2): if it is off, do not
-        // even construct a pump. The worker's pre-claim guard is the deeper backstop.
+        // Re-read the gates at entry on the MainActor (must-fix #2): if every lane is
+        // off, do not even construct a pump. The worker's per-lane pre-claim guards are
+        // the deeper backstop.
         refreshKillSwitch()
-        guard settingsManager.memoryExtractionEnabled else {
+        guard anyExtractionLaneEnabled else {
             let report = MemoryExtractionPumpReport(stoppedReason: .killSwitchOff)
             lastPumpReport = report
             AppLogger.dataStore.notice(
@@ -254,9 +357,9 @@ final class MemoryExtractionEngine {
                 report.stoppedReason = .reachedDeadline
                 break
             }
-            // Re-check the live gate every tick so a mid-drain fleet kill halts promptly.
+            // Re-check the live gates every tick so a mid-drain fleet kill halts promptly.
             refreshKillSwitch()
-            guard settingsManager.memoryExtractionEnabled else {
+            guard anyExtractionLaneEnabled else {
                 report.stoppedReason = .killSwitchOff
                 break
             }
@@ -322,7 +425,7 @@ final class MemoryExtractionEngine {
             return
         }
         refreshKillSwitch()
-        guard settingsManager.memoryExtractionEnabled else { return }
+        guard anyExtractionLaneEnabled else { return }
         AppLogger.dataStore.notice(
             "memory_extraction_continuation_scheduled",
             metadata: diagnosticReportMetadata(report)
@@ -409,6 +512,36 @@ final class MemoryExtractionEngine {
             retryCount: max(settingsManager.summaryRetryCount, 0),
             maxCandidatesPerJob: MemoryExtractionPolicy.maxCandidatesPerJob,
             promptVersion: ChatSessionController.memoryPromptVersion
+        )
+    }
+
+    /// PR6: build the usage-memory router snapshot on the MainActor (settings
+    /// reads are legal here); the off-main usage extractor pulls it from the
+    /// Sendable box. Every field degrades toward `.queueOnly`:
+    ///   * gates come from the pure U1 gate lattice on `SettingsManager`;
+    ///   * local text availability = the same loopback-sanitized `.local`
+    ///     endpoint the chat extractor uses, with a non-empty model;
+    ///   * no local VL model setting exists yet, so `localVLModelAvailable` is
+    ///     false (images arrive with PR5's Safari payloads);
+    ///   * `cloudBudgetOK` is the client-side daily USD belt (U5 ledger);
+    ///   * server exhaustion flags stay false — a live `resource-exhausted`
+    ///     answer defers the JOB itself (+6h via the worker), which is the
+    ///     stronger backpressure until a persisted allowance cache exists.
+    static func makeUsageRouterSnapshot(
+        settingsManager: SettingsManager,
+        ledger: UsageMemoryBudgetLedger
+    ) -> UsageMemoryModelRouter.Snapshot {
+        UsageMemoryModelRouter.Snapshot(
+            placement: settingsManager.usageMemoryModelPlacement,
+            extractionEnabled: settingsManager.usageMemoryExtractionEnabled,
+            cloudCurationEnabled: settingsManager.usageMemoryCloudCurationEnabled,
+            localTextModelAvailable:
+                LocalLLMEndpointPolicy.sanitizedLoopbackBaseURL(settingsManager.summaryLocalBaseURL) != nil
+                && settingsManager.summaryLocalModel.isEmpty == false,
+            localVLModelAvailable: false,
+            cloudBudgetOK: ledger.cloudBudgetOK(),
+            serverTextExhausted: false,
+            serverMultimodalExhausted: false
         )
     }
 

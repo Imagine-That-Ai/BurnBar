@@ -36,6 +36,33 @@ struct UsageMemoryCandidate: Equatable, Sendable {
     }
 }
 
+/// The `payload_json` body of one spool row: ONLY the gated text plus
+/// role/thread/time metadata — never raw line content. Shared by the writers
+/// (the PR4 session miner, PR5's Safari intake) and the Stage-1 readers (the
+/// prompt builder and the worker's provenance recompute), so both sides agree
+/// on one shape. Encoding is pinned (sortedKeys, no escaped slashes, ISO-8601
+/// dates) because the spool id is content-derived and replays must collapse.
+struct UsageMemoryCandidatePayload: Codable, Equatable, Sendable {
+    var schemaVersion: Int
+    var text: String
+    var role: String
+    var threadLogicalID: String
+    var observedAt: Date
+
+    static func encoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
+    static func decode(_ json: String) -> UsageMemoryCandidatePayload? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(UsageMemoryCandidatePayload.self, from: Data(json.utf8)) // try?-ok(malformed payload row yields nil; callers degrade)
+    }
+}
+
 extension ControlPlaneStore {
     /// `controller_runtime_cache` key holding the session miner's JSON cursor
     /// map. The plan named an `app_state` table for this row, but on macOS no
@@ -161,5 +188,156 @@ extension ControlPlaneStore {
                 arguments: [Self.usageSessionMinerCursorKey]
             )
         }
+    }
+
+    // MARK: - Stage-1 batch assembly (PR6)
+
+    /// One assembled batch: the enqueued job id plus the candidate rows it
+    /// covers (already stamped `batched` in the same transaction).
+    struct UsageExtractionBatch: Equatable, Sendable {
+        let jobID: String
+        let sourceKind: MemorySourceKind
+        let candidates: [UsageMemoryCandidate]
+    }
+
+    /// Assemble at most one Stage-1 batch job PER usage source kind (bounded by
+    /// `policy.maxJobsPerTick` overall) from the pending spool, atomically:
+    /// the job INSERT and the `{status: batched, batch_job_id}` candidate stamp
+    /// commit in ONE write transaction per tick.
+    ///
+    /// Batch rule (per kind): take the TOP-SALIENCE pending candidates up to
+    /// `policy.maxBatch`. A batch forms when either
+    ///   * at least `policy.minBatch` pending candidates exist, OR
+    ///   * ANY pending candidate is older than `policy.staleBatchAge`
+    ///     (then whatever exists — >= 1 — batches, so a trickle is never
+    ///     stranded).
+    /// Kinds are NEVER mixed in one batch (provenance clarity): a batch job's
+    /// `source_kind` is the kind of every candidate in it.
+    func assembleUsageExtractionBatch(
+        policy: UsageMemoryExtractionPolicy = .default,
+        promptVersion: String,
+        scope: MemoryScope,
+        now: Date = Date()
+    ) async throws -> [UsageExtractionBatch] {
+        let maxJobs = max(0, policy.maxJobsPerTick)
+        guard maxJobs > 0 else { return [] }
+        let staleCutoff = now.addingTimeInterval(-max(0, policy.staleBatchAge))
+        // Deterministic kind order (sorted raw values) for stable behavior/tests.
+        let kinds = MemorySourceKind.usageKinds.sorted { $0.rawValue < $1.rawValue }
+
+        return try await dbQueue.write { db in
+            var batches: [UsageExtractionBatch] = []
+            for kind in kinds where batches.count < maxJobs {
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT *
+                    FROM memory_usage_candidates
+                    WHERE status = 'pending' AND source_kind = ?
+                    ORDER BY salience_hint DESC, created_at ASC, id ASC
+                    LIMIT ?
+                    """,
+                    arguments: [kind.rawValue, max(1, policy.maxBatch)]
+                )
+                let candidates = rows.compactMap(Self.usageMemoryCandidate(from:))
+                guard candidates.isEmpty == false else { continue }
+
+                if candidates.count < policy.minBatch {
+                    // Below the batch floor: only a stale spool flushes early.
+                    let oldestPending = try Date.fetchOne(
+                        db,
+                        sql: """
+                        SELECT MIN(created_at)
+                        FROM memory_usage_candidates
+                        WHERE status = 'pending' AND source_kind = ?
+                        """,
+                        arguments: [kind.rawValue]
+                    )
+                    guard let oldestPending, oldestPending <= staleCutoff else { continue }
+                }
+
+                let jobID = try self.enqueueUsageExtractionJob(
+                    candidateIDs: candidates.map(\.id),
+                    sourceKind: kind,
+                    promptVersion: promptVersion,
+                    scope: scope,
+                    in: db,
+                    now: now
+                )
+                batches.append(
+                    UsageExtractionBatch(jobID: jobID, sourceKind: kind, candidates: candidates)
+                )
+            }
+            return batches
+        }
+    }
+
+    /// The candidate rows stamped onto one batch job, top-salience first (the
+    /// same order the batch was assembled in). The Stage-1 extractor builds the
+    /// prompt from these; the worker resolves model-echoed candidate ids
+    /// against them when recomputing provenance.
+    func usageCandidates(forBatchJobID jobID: String) async throws -> [UsageMemoryCandidate] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT *
+                FROM memory_usage_candidates
+                WHERE batch_job_id = ?
+                ORDER BY salience_hint DESC, created_at ASC, id ASC
+                """,
+                arguments: [jobID]
+            )
+            return rows.compactMap(Self.usageMemoryCandidate(from:))
+        }
+    }
+
+    /// Flip candidates to `extracted` after their batch job committed a
+    /// terminal SUCCESS. One write transaction for the whole id set.
+    /// "Extracted" means "consumed by a completed extraction pass" — including
+    /// candidates the model found nothing durable in — so a completed batch
+    /// never leaks `batched` rows. Deferred/failed jobs never call this, which
+    /// is what keeps their candidates `batched` for the retry.
+    func markUsageCandidatesExtracted(ids: [String], now: Date = Date()) async throws {
+        guard ids.isEmpty == false else { return }
+        try await dbQueue.write { db in
+            for id in ids {
+                try db.execute(
+                    sql: """
+                    UPDATE memory_usage_candidates
+                    SET status = 'extracted', updated_at = ?
+                    WHERE id = ?
+                    """,
+                    arguments: [now, id]
+                )
+            }
+        }
+    }
+
+    /// Row → value mapping for spool reads. Lifecycle columns (`status`,
+    /// `batch_job_id`) stay out of `UsageMemoryCandidate` by design.
+    private static func usageMemoryCandidate(from row: Row) -> UsageMemoryCandidate? {
+        guard let id: String = row["id"],
+              let kindRaw: String = row["source_kind"],
+              let sourceKind = MemorySourceKind(rawValue: kindRaw),
+              let sourceRef: String = row["source_ref"],
+              let threadLogicalID: String = row["thread_logical_id"],
+              let payloadJSON: String = row["payload_json"],
+              let contentHash: String = row["content_hash"],
+              let simhash: Int64 = row["simhash"],
+              let salienceHint: Double = row["salience_hint"]
+        else {
+            return nil
+        }
+        return UsageMemoryCandidate(
+            id: id,
+            sourceKind: sourceKind,
+            sourceRef: sourceRef,
+            threadLogicalID: threadLogicalID,
+            payloadJSON: payloadJSON,
+            contentHash: contentHash,
+            simhash: simhash,
+            salienceHint: salienceHint
+        )
     }
 }

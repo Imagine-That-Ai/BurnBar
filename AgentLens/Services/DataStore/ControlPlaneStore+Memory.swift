@@ -74,6 +74,11 @@ extension ControlPlaneStore {
         let messageID: String
         let promptVersion: String
         let scope: MemoryScope
+        /// v61 `source_kind` discriminator. Chat jobs (and every pre-v61 row via
+        /// the column default) carry `.chat`; usage batch jobs carry their usage
+        /// kind and route to `UsageMemoryBatchExtractor` instead of the chat
+        /// transcript extractor.
+        let sourceKind: MemorySourceKind
         let status: MemoryEventStatus
         let attempts: Int
         let lastError: String?
@@ -81,6 +86,40 @@ extension ControlPlaneStore {
         let leaseExpiresAt: Date?
         let createdAt: Date
         let updatedAt: Date
+
+        init(
+            id: String,
+            idempotencyKey: String,
+            threadID: String,
+            threadLogicalID: String,
+            messageID: String,
+            promptVersion: String,
+            scope: MemoryScope,
+            sourceKind: MemorySourceKind = .chat,
+            status: MemoryEventStatus,
+            attempts: Int,
+            lastError: String?,
+            notBefore: Date?,
+            leaseExpiresAt: Date?,
+            createdAt: Date,
+            updatedAt: Date
+        ) {
+            self.id = id
+            self.idempotencyKey = idempotencyKey
+            self.threadID = threadID
+            self.threadLogicalID = threadLogicalID
+            self.messageID = messageID
+            self.promptVersion = promptVersion
+            self.scope = scope
+            self.sourceKind = sourceKind
+            self.status = status
+            self.attempts = attempts
+            self.lastError = lastError
+            self.notBefore = notBefore
+            self.leaseExpiresAt = leaseExpiresAt
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+        }
     }
 
     // Chat-memory secret/PII gating is delegated to the shared, fail-closed
@@ -170,6 +209,7 @@ extension ControlPlaneStore {
             "review_status:\(request.reviewStatus.rawValue)",
             "source_kind:\(sourceKind.rawValue)"
         ].sorted()
+        let tagsJSON = try Self.memoryTagsJSON(keywords: request.keywords, tags: request.tags)
 
         let dedupState = try await dbQueue.write { db -> (validTo: Date?, supersededBy: MemoryID?) in
             let duplicateRows = try Self.memoryDuplicateCandidates(
@@ -237,7 +277,7 @@ extension ControlPlaneStore {
                     request.confidence,
                     bodyRef,
                     bodyRef,
-                    "[]",
+                    tagsJSON,
                     nil,
                     now,
                     newValidTo,
@@ -313,6 +353,24 @@ extension ControlPlaneStore {
             createdAt: now,
             updatedAt: now
         )
+    }
+
+    /// `agent_memories.tags_json` encoding for extraction keywords/tags.
+    ///
+    /// CONTRACT (PR6): a single flat JSON array of prefixed strings —
+    /// `"k:<keyword>"` entries first (model order), then `"t:<tag>"` entries —
+    /// e.g. `["k:grdb","k:migrations","t:workflow"]`. Chosen over the
+    /// `{"keywords":[],"tags":[]}` object shape so the column stays a JSON
+    /// ARRAY, byte-identical `"[]"` for every pre-PR6 (chat) row and for any
+    /// request without keywords/tags. Prefixes keep the two vocabularies
+    /// distinguishable without a schema change. Pinned by
+    /// `UsageMemoryStage1Tests`.
+    static func memoryTagsJSON(keywords: [String], tags: [String]) throws -> String {
+        let entries = keywords.map { "k:\($0)" } + tags.map { "t:\($0)" }
+        guard entries.isEmpty == false else { return "[]" }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        return String(decoding: try encoder.encode(entries), as: UTF8.self)
     }
 
 }

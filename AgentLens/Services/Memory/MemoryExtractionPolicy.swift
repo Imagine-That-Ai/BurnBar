@@ -41,8 +41,10 @@ enum MemoryExtractionPolicy {
     /// separately and far more tightly by `ChatTranscriptExtractor.maxWallClock`.
     static let maxPumpDuration: TimeInterval = 4 * 60
 
-    /// Reserved daily USD cap for a future explicit cloud-egress gate. Local-only v1
-    /// does not send transcripts to cloud providers.
+    /// Daily USD cap for cloud egress. Chat-memory extraction remains local-only
+    /// and never consults it; the usage-memory cloud lane (U5) realizes it
+    /// client-side as the default cap of `UsageMemoryBudgetLedger.cloudBudgetOK`,
+    /// the belt-and-braces second gate under the server's token metering.
     static let defaultDailyCapUSD: Double = 0.50
 
     /// Default per-request timeout (seconds) for the extraction LLM round-trip when no
@@ -144,6 +146,56 @@ enum MemoryExtractionKillSwitchRegistry {
         drainLaunchers.removeAll { $0.value == nil }
         for entry in drainLaunchers {
             entry.value?.launchDrain()
+        }
+    }
+}
+
+// MARK: - Usage Memory Kill Switch Registry (two lanes)
+
+/// Registry for the usage-memory pipeline's kill switches, sibling of
+/// `MemoryExtractionKillSwitchRegistry` and built from the same
+/// `MemoryExtractionKillSwitch` box. Two independent lanes:
+///
+/// - **extraction** — the combined `UsageMemoryExtractionGate` value (usage
+///   consent AND the `memory_usage_extraction_enabled` fleet switch). Future
+///   usage-memory workers read this before touching any Safari ask or agent
+///   session log.
+/// - **authorityWrites** — the `memory_usage_authority_writes_enabled` fleet
+///   switch. Gates durable authority writes from the usage pipeline
+///   independently of extraction, so a fleet flip can quarantine writes while
+///   leaving read-side behavior untouched.
+///
+/// `MemorySettings.propagateUsageGates()` pushes recomputed values into both
+/// lanes on every relevant didSet, mirroring the chat registry's push/pull
+/// discipline (switches start CLOSED and are never cached by readers).
+@MainActor
+enum UsageMemoryKillSwitchRegistry {
+    private static var extractionSwitches: [WeakMemoryExtractionKillSwitch] = []
+    private static var authorityWriteSwitches: [WeakMemoryExtractionKillSwitch] = []
+
+    static func registerExtraction(_ killSwitch: MemoryExtractionKillSwitch, initiallyAllowed: Bool) {
+        extractionSwitches.removeAll { $0.value == nil }
+        extractionSwitches.append(WeakMemoryExtractionKillSwitch(killSwitch))
+        killSwitch.set(initiallyAllowed)
+    }
+
+    static func registerAuthorityWrites(_ killSwitch: MemoryExtractionKillSwitch, initiallyAllowed: Bool) {
+        authorityWriteSwitches.removeAll { $0.value == nil }
+        authorityWriteSwitches.append(WeakMemoryExtractionKillSwitch(killSwitch))
+        killSwitch.set(initiallyAllowed)
+    }
+
+    static func setExtraction(_ allowed: Bool) {
+        extractionSwitches.removeAll { $0.value == nil }
+        for entry in extractionSwitches {
+            entry.value?.set(allowed)
+        }
+    }
+
+    static func setAuthorityWrites(_ allowed: Bool) {
+        authorityWriteSwitches.removeAll { $0.value == nil }
+        for entry in authorityWriteSwitches {
+            entry.value?.set(allowed)
         }
     }
 }

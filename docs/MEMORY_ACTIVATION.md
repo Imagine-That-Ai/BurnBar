@@ -227,6 +227,29 @@ All heavy work lives **off** the MainActor in the worker + extractor; the engine
 stays MainActor-isolated so SwiftUI can observe it and the kill switch is updated
 synchronously from the UI.
 
+**Usage-memory lane (PR6).** The same engine + worker also drain the usage-memory
+Stage-1 batch jobs (`memory_extraction_jobs.source_kind` ∈ `safari_ask` /
+`agent_session`), so two gate points generalized WITHOUT changing chat behavior:
+
+- The pump's entry/mid-loop gate is now `memoryExtractionEnabled` **OR**
+  `usageMemoryExtractionEnabled` — with both lattices closed it still
+  short-circuits to `.killSwitchOff` exactly as before (usage consent defaults
+  OFF, so a chat-only reading of this doc stays true out of the box).
+- The worker's pre-claim authority gate is per-lane and the claim is
+  **kind-filtered** (`claimNextMemoryExtractionJob(allowedSourceKinds:)`): chat's
+  closure gates `chat`/`code` jobs; the usage closure (usage extraction switch ∧
+  usage authority-writes switch ∧ the G2 write default, default-closed) gates
+  usage batches. Neither lane can claim — or burn attempts on — the other's jobs.
+
+Usage jobs route to `UsageMemoryBatchExtractor` (same extractor seam as
+`ChatTranscriptExtractor`); provenance recomputes from the job's own
+`memory_usage_candidates` rows (model-echoed `candidateId` is a lookup key only),
+the G7 gate scans body + context + keywords + tags for usage requests (chat still
+scans the body exactly as below), and writes land through the same
+`addMemoryAuthorityRecord` choke point in the `usage:` partition, quarantined.
+The loop is driven by the `usage-memory-extraction` `BackgroundCadenceCoordinator`
+cadence (display-asleep / user-idle only), never a request hot path.
+
 ### 2.4 LLM extract (the untrusted producer)
 
 `ChatTranscriptExtractor` (`AgentLens/Services/Memory/ChatTranscriptExtractor.swift`)

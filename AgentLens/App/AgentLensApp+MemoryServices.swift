@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarCore
 
 // MARK: - Memory services wiring (PR-D3 app wiring)
 //
@@ -43,6 +44,12 @@ extension OpenBurnBarApp {
         /// Ships DORMANT (default OFF); only constructed here so the refresh
         /// orchestrator can schedule it in the post-persistence cadence.
         let cloudSyncDomain: MemoryCloudSyncDomain
+        /// PR6: the usage-memory Stage-1 sleep-time tick (session-log miner →
+        /// batch assembly → engine drain) over the SAME store + engine. DORMANT
+        /// by default — the tick's first act is the usage extraction gate check
+        /// (consent OFF out of the box), and the miner + worker re-check the
+        /// same gate boxes independently.
+        let usageStage1Ticker: UsageMemoryStage1Ticker
     }
 
     /// Construct the shared-store memory services (PR-D3 must-fix #1 + #4; PR-E2 domain).
@@ -97,7 +104,34 @@ extension OpenBurnBarApp {
             settingsManager: settingsManager
         )
 
-        return MemoryServices(store: store, service: service, engine: engine, cloudSyncDomain: cloudSyncDomain)
+        // PR6: the Stage-0 session-log miner + the Stage-1 tick over the SAME
+        // store/engine. The miner's dormancy gate is the engine's usage
+        // extraction gate BOX (a Sendable atomic MemorySettings keeps current
+        // via `UsageMemoryKillSwitchRegistry`), so a disabled miner performs
+        // ZERO file and ZERO database work. Constructing it flips nothing on.
+        let usageExtractionSwitch = engine.usageExtractionKillSwitch
+        let miner = UsageSessionLogMiner(
+            store: store,
+            sessionsRootURL: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".codex", isDirectory: true)
+                .appendingPathComponent("sessions", isDirectory: true),
+            isEnabled: { usageExtractionSwitch.isAllowed() }
+        )
+        let usageStage1Ticker = UsageMemoryStage1Ticker(
+            store: store,
+            miner: miner,
+            engine: engine,
+            isEnabled: { usageExtractionSwitch.isAllowed() },
+            mineAgentSessions: { settingsManager.usageMemorySourceAgentSessionsEnabled }
+        )
+
+        return MemoryServices(
+            store: store,
+            service: service,
+            engine: engine,
+            cloudSyncDomain: cloudSyncDomain,
+            usageStage1Ticker: usageStage1Ticker
+        )
     }
 
     /// Start the memory-extraction drain loop, if the gate currently allows. Called from
@@ -111,6 +145,115 @@ extension OpenBurnBarApp {
         // Mirror the latest gate + settings into the worker-visible boxes, then kick a
         // foreground drain. If the gate is off this returns without scheduling any work and
         // without any LLM egress or spend.
+        engine.launchDrain()
+        // PR6: register the usage-memory Stage-1 cadence. Registration alone is
+        // inert — `isEnabled` stays false until the user grants usage consent,
+        // and even then the tick only runs while the display sleeps or the user
+        // has been idle ≥5 min. NEVER on any request hot path: the only trigger
+        // is the coordinator's timer.
+        if let ticker = context.usageMemoryStage1Ticker {
+            Self.registerUsageMemoryStage1Cadence(ticker: ticker)
+        }
+    }
+
+    /// Register the sleep-time Stage-1 loop on the canonical timer surface
+    /// (`docs/architecture/background-cadence.md`). Intervals per the Stage-1
+    /// plan: display-asleep 45 min, app-background 2 h, foreground 4 h; no
+    /// eager first fire. The idle predicate keeps foreground/background fires
+    /// off active working sessions.
+    @MainActor
+    static func registerUsageMemoryStage1Cadence(ticker: UsageMemoryStage1Ticker) {
+        let usageSwitch = ticker.usageExtractionSwitchForCadence
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: "usage-memory-extraction",
+                activeInterval: 4 * 3600,
+                backgroundInterval: 2 * 3600,
+                sleepInterval: 45 * 60,
+                isEnabled: {
+                    usageSwitch.isAllowed()
+                        && (BackgroundCadenceCoordinator.shared.displayIsAwake == false
+                            || UserIdleService.idleSeconds() >= 300)
+                },
+                fireImmediately: false,
+                work: {
+                    await ticker.tick()
+                }
+            )
+        )
+    }
+}
+
+// MARK: - Usage-memory Stage-1 tick (PR6)
+
+/// One sleep-time Stage-1 pass: mine session logs into the candidate spool,
+/// assemble at most `policy.maxJobsPerTick` batch jobs from it, then kick the
+/// extraction engine's drain. Every stage re-checks its own gate, but the tick
+/// guards the usage extraction gate FIRST so a dormant feature performs zero
+/// work (and tests can prove "gates off ⇒ the tick does nothing").
+@MainActor
+struct UsageMemoryStage1Ticker {
+    private let store: ControlPlaneStore
+    private let miner: UsageSessionLogMiner
+    private let engine: MemoryExtractionEngine
+    private let policy: UsageMemoryExtractionPolicy
+    private let promptVersion: String
+    private let scope: MemoryScope
+    private let isEnabled: () -> Bool
+    /// Source toggle (U1): mining agent-session logs is separately opt-out.
+    /// Batch assembly + drain still run — PR5's Safari source spools through
+    /// the same funnel.
+    private let mineAgentSessions: () -> Bool
+
+    init(
+        store: ControlPlaneStore,
+        miner: UsageSessionLogMiner,
+        engine: MemoryExtractionEngine,
+        policy: UsageMemoryExtractionPolicy = .default,
+        promptVersion: String = UsageMemoryCurationPolicy.defaults.extractionPromptVersion,
+        // The same user scope the chat extraction path stamps on its jobs
+        // (`ChatSessionController.makeMemoryExtractionContext`).
+        scope: MemoryScope = MemoryScope(appID: "openburnbar"),
+        isEnabled: @escaping () -> Bool,
+        mineAgentSessions: @escaping () -> Bool = { true }
+    ) {
+        self.store = store
+        self.miner = miner
+        self.engine = engine
+        self.policy = policy
+        self.promptVersion = promptVersion
+        self.scope = scope
+        self.isEnabled = isEnabled
+        self.mineAgentSessions = mineAgentSessions
+    }
+
+    /// The cadence's `isEnabled` reads the same gate box the tick guards on.
+    var usageExtractionSwitchForCadence: MemoryExtractionKillSwitch {
+        engine.usageExtractionKillSwitch
+    }
+
+    /// Run one Stage-1 pass. Mining and assembly failures are logged and
+    /// swallowed (the next tick retries from durable state); nothing here may
+    /// fail a caller or block a request path.
+    func tick(now: Date = Date()) async {
+        guard isEnabled() else { return }
+        if mineAgentSessions() {
+            do {
+                _ = try await miner.mineTick(now: now)
+            } catch {
+                AppLogger.dataStore.silentFailure("usage_memory_stage1_mine_failed", error: error, context: [:])
+            }
+        }
+        do {
+            _ = try await store.assembleUsageExtractionBatch(
+                policy: policy,
+                promptVersion: promptVersion,
+                scope: scope,
+                now: now
+            )
+        } catch {
+            AppLogger.dataStore.silentFailure("usage_memory_stage1_assembly_failed", error: error, context: [:])
+        }
         engine.launchDrain()
     }
 }
@@ -128,6 +271,7 @@ extension OpenBurnBarRuntimeContext {
         chatMemoryStore = services.store
         memoryExtractionEngine = services.engine
         memoryCloudSyncDomain = services.cloudSyncDomain
+        usageMemoryStage1Ticker = services.usageStage1Ticker
         services.engine.launchDrain()
     }
 }

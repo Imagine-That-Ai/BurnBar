@@ -262,6 +262,12 @@ final class SettingsManager {
         // errors keep any active cached false authoritative while avoiding
         // stranding opted-in local extraction when no kill is cached.
         "memory_extraction_enabled": NSNumber(value: true),
+        // Usage-memory fleet kill switches. Same posture as memory_extraction_enabled:
+        // default true (allowed); Remote Config sets false to halt usage-memory
+        // extraction / durable authority writes instantly. Fetch transport errors
+        // keep any active cached false authoritative.
+        "memory_usage_extraction_enabled": NSNumber(value: true),
+        "memory_usage_authority_writes_enabled": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
         "media_normal_file_gb_per_day": NSNumber(value: 5),
@@ -296,6 +302,10 @@ final class SettingsManager {
             }
         }
         let activeMemoryExtractionEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
+        let activeUsageExtractionEnabled = remoteConfig.configValue(forKey: "memory_usage_extraction_enabled").boolValue
+        let activeUsageAuthorityWritesEnabled = remoteConfig.configValue(
+            forKey: "memory_usage_authority_writes_enabled"
+        ).boolValue
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
             hasResolvedComputerUseRemoteConfig = true
@@ -306,6 +316,15 @@ final class SettingsManager {
             if !activeMemoryExtractionEnabled {
                 memoryExtractionRemoteConfigEnabled = false
                 NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
+            }
+            // Same fail-open posture for the usage-memory switches: a transport
+            // error never strands opted-in local usage extraction, but an active
+            // cached false (fleet kill) remains authoritative.
+            if !activeUsageExtractionEnabled {
+                usageMemoryExtractionRemoteConfigEnabled = false
+            }
+            if !activeUsageAuthorityWritesEnabled {
+                usageMemoryAuthorityWritesRemoteConfigEnabled = false
             }
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
             return
@@ -339,6 +358,9 @@ final class SettingsManager {
         if !memoryRCEnabled {
             NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
         }
+
+        usageMemoryExtractionRemoteConfigEnabled = activeUsageExtractionEnabled
+        usageMemoryAuthorityWritesRemoteConfigEnabled = activeUsageAuthorityWritesEnabled
     }
 
     // MARK: - Backward Compatibility (Computed Properties)
@@ -794,6 +816,85 @@ final class SettingsManager {
     /// false), so `MemoryCloudSyncDomain` performs zero egress out of the box.
     var memoryApprovedCloudBackupEnabled: Bool {
         memory.approvedCloudBackupEnabled && memory.remoteConfigExtractionEnabled
+    }
+
+    // MARK: Usage Memory (passive memory from Safari asks + agent session logs)
+
+    /// User consent to usage-memory extraction (default OFF). Setting this true
+    /// also marks the consent prompt as shown. Until granted, the whole usage
+    /// loop is dormant (see `usageMemoryExtractionEnabled`).
+    var usageMemoryConsentGranted: Bool {
+        get { memory.usageMemoryConsentGranted }
+        set { memory.usageMemoryConsentGranted = newValue }
+    }
+
+    /// Whether the usage-memory consent prompt has already been presented.
+    var usageMemoryConsentShown: Bool {
+        get { memory.usageMemoryConsentShown }
+        set { memory.usageMemoryConsentShown = newValue }
+    }
+
+    /// Separate opt-in to CLOUD curation of usage memory (default OFF). Only
+    /// effective when the extraction gate is open AND placement is a cloud model
+    /// (see `usageMemoryCloudCurationEnabled`).
+    var usageMemoryCloudCurationConsentGranted: Bool {
+        get { memory.usageMemoryCloudCurationConsentGranted }
+        set { memory.usageMemoryCloudCurationConsentGranted = newValue }
+    }
+
+    /// Where the usage-memory curation model runs (default `.local`).
+    var usageMemoryModelPlacement: UsageMemoryModelPlacement {
+        get { memory.usageMemoryModelPlacement }
+        set { memory.usageMemoryModelPlacement = newValue }
+    }
+
+    /// Source toggle: Safari asks feed usage memory (default ON, inert until consent).
+    var usageMemorySourceSafariAsksEnabled: Bool {
+        get { memory.usageMemorySourceSafariAsksEnabled }
+        set { memory.usageMemorySourceSafariAsksEnabled = newValue }
+    }
+
+    /// Source toggle: agent session logs feed usage memory (default ON, inert until consent).
+    var usageMemorySourceAgentSessionsEnabled: Bool {
+        get { memory.usageMemorySourceAgentSessionsEnabled }
+        set { memory.usageMemorySourceAgentSessionsEnabled = newValue }
+    }
+
+    /// Remote Config `memory_usage_extraction_enabled`. Not user-settable;
+    /// written by RC refreshes with the same fail-open-on-transport posture as
+    /// `memoryExtractionRemoteConfigEnabled`.
+    var usageMemoryExtractionRemoteConfigEnabled: Bool {
+        get { memory.remoteConfigUsageExtractionEnabled }
+        set { memory.remoteConfigUsageExtractionEnabled = newValue }
+    }
+
+    /// Remote Config `memory_usage_authority_writes_enabled`. Not user-settable;
+    /// written by RC refreshes with the same fail-open-on-transport posture.
+    var usageMemoryAuthorityWritesRemoteConfigEnabled: Bool {
+        get { memory.remoteConfigUsageAuthorityWritesEnabled }
+        set { memory.remoteConfigUsageAuthorityWritesEnabled = newValue }
+    }
+
+    /// Combined usage-memory extraction gate: user consent AND the fleet kill
+    /// switch. With consent default OFF the whole usage loop is dormant out of
+    /// the box.
+    var usageMemoryExtractionEnabled: Bool {
+        UsageMemoryExtractionGate.isEnabled(
+            usageConsentGranted: memory.usageMemoryConsentGranted,
+            remoteConfigEnabled: memory.remoteConfigUsageExtractionEnabled
+        )
+    }
+
+    /// Combined cloud-curation gate for usage memory: the extraction gate AND
+    /// the separate cloud consent AND a cloud model placement. Triply dormant by
+    /// default (no consent, no cloud consent, placement `.local`), so there is
+    /// zero usage-derived cloud egress out of the box.
+    var usageMemoryCloudCurationEnabled: Bool {
+        UsageMemoryCloudGate.isEnabled(
+            extractionEnabled: usageMemoryExtractionEnabled,
+            cloudConsentGranted: memory.usageMemoryCloudCurationConsentGranted,
+            placementIsCloud: memory.usageMemoryModelPlacement.isCloud
+        )
     }
 
     // MARK: Chat Backend

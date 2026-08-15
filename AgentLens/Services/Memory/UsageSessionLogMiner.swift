@@ -395,16 +395,10 @@ actor UsageSessionLogMiner {
         }
     }
 
-    private struct CandidatePayload: Codable {
-        let schemaVersion: Int
-        let text: String
-        let role: String
-        let threadLogicalID: String
-        let observedAt: Date
-    }
-
     /// Builds the spool row. `payload_json` carries ONLY the gated text plus
-    /// role/thread/time metadata — never raw line content.
+    /// role/thread/time metadata — never raw line content. The payload shape +
+    /// encoder are the shared `UsageMemoryCandidatePayload` (PR6), so Stage-1
+    /// readers decode exactly what this writer encodes.
     private func makeCandidate(
         text: String,
         role: String,
@@ -413,16 +407,14 @@ actor UsageSessionLogMiner {
         simhash: Int64,
         now: Date
     ) -> UsageMemoryCandidate? {
-        let payload = CandidatePayload(
+        let payload = UsageMemoryCandidatePayload(
             schemaVersion: 1,
             text: text,
             role: role,
             threadLogicalID: sourceRef,
             observedAt: now
         )
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        encoder.dateEncodingStrategy = .iso8601
+        let encoder = UsageMemoryCandidatePayload.encoder()
         guard let payloadData = try? encoder.encode(payload) else { return nil } // try?-ok(unencodable payload drops the candidate)
         let contentHash = UsageMemoryCandidate.contentHash(ofText: text)
         return UsageMemoryCandidate(

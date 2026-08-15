@@ -1079,12 +1079,7 @@ final class PetCompanionController: ObservableObject {
     }
 
     private func userIdleSeconds() -> TimeInterval {
-        let state = CGEventSourceStateID.combinedSessionState
-        let key = CGEventSource.secondsSinceLastEventType(state, eventType: .keyDown)
-        let move = CGEventSource.secondsSinceLastEventType(state, eventType: .mouseMoved)
-        let click = CGEventSource.secondsSinceLastEventType(state, eventType: .leftMouseDown)
-        let values = [key, move, click].filter { $0.isFinite && $0 >= 0 }
-        return values.min() ?? 0
+        UserIdleService.idleSeconds()
     }
 
     private func settleControllerStateIfNeeded() {
