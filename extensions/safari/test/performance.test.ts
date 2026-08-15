@@ -33,6 +33,9 @@ function popupSnapshot(): PopupSnapshot {
       sensitiveSiteOverride: false,
       cloudScreenshotAcknowledged: false
     },
+    usageMemory: {
+      optedIn: false
+    },
     learning: {
       eligible: false,
       optedIn: false,

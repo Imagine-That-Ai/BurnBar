@@ -77,6 +77,9 @@ function popupSnapshot(overrides: Partial<PopupSnapshot> = {}): PopupSnapshot {
         }
       ]
     },
+    usageMemory: {
+      optedIn: false
+    },
     transcript: [],
     approvals: [
       {

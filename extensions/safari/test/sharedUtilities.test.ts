@@ -5,6 +5,7 @@ import {
   agentsForMode,
   isContentRequest,
   isPopupRequest,
+  isUsageObservationPayload,
   type ContentRequest,
   type PopupRequest
 } from '../src/shared/messages';
@@ -146,7 +147,9 @@ describe('shared utilities', () => {
       },
       { type: 'popup.setLearning', optedIn: true },
       { type: 'popup.teachCorrection', correction: 'Prefer annual totals.' },
-      { type: 'popup.learningReview', itemId: 'proposal-1', decision: 'approve' }
+      { type: 'popup.learningReview', itemId: 'proposal-1', decision: 'approve' },
+      { type: 'popup.setUsageMemory', enabled: true },
+      { type: 'popup.setUsageMemory', enabled: false }
     ];
     for (const request of validRequests) {
       expect(isPopupRequest(request)).toBe(true);
@@ -204,10 +207,57 @@ describe('shared utilities', () => {
       { type: 'popup.teachCorrection', correction: 'short' },
       { type: 'popup.teachCorrection', correction: 'x'.repeat(4 * 1024 + 1) },
       { type: 'popup.teachCorrection', correction: 'Prefer annual totals.', method: 'daemon.config.update' },
-      { type: 'popup.learningReview', itemId: 'proposal-1', decision: 'archive' }
+      { type: 'popup.learningReview', itemId: 'proposal-1', decision: 'archive' },
+      { type: 'popup.setUsageMemory' },
+      { type: 'popup.setUsageMemory', enabled: 'yes' },
+      { type: 'popup.setUsageMemory', enabled: true, extra: true }
     ];
     for (const request of invalidRequests) {
       expect(isPopupRequest(request)).toBe(false);
+    }
+  });
+
+  it('accepts only exact, bounded usage-observation payloads', () => {
+    const payload = {
+      observationId: 'b6f9c33e-9f5f-4e58-8b62-1f6a3a1c2d4e',
+      prompt: 'What color is the call to action?',
+      url: 'https://example.com/products',
+      title: 'Example products',
+      answerSha256: 'a'.repeat(64),
+      answerPreview: 'The CTA is orange.',
+      tabId: 4
+    };
+    expect(isUsageObservationPayload(payload)).toBe(true);
+    expect(isUsageObservationPayload({ ...payload, prompt: 'x'.repeat(8) })).toBe(true);
+    expect(isUsageObservationPayload({ ...payload, prompt: 'x'.repeat(4 * 1024) })).toBe(true);
+    expect(isUsageObservationPayload({ ...payload, title: '', answerPreview: '' })).toBe(true);
+
+    const invalidPayloads: unknown[] = [
+      null,
+      'observation',
+      { ...payload, extra: true },
+      (() => {
+        const { tabId: _tabId, ...missingTab } = payload;
+        return missingTab;
+      })(),
+      { ...payload, observationId: '' },
+      { ...payload, observationId: 'x'.repeat(129) },
+      { ...payload, prompt: 'short.' },
+      { ...payload, prompt: '   too short after trimming   '.slice(0, 3) },
+      { ...payload, prompt: 'x'.repeat(4 * 1024 + 1) },
+      { ...payload, prompt: 42 },
+      { ...payload, url: 'file:///etc/passwd' },
+      { ...payload, url: 'not a url' },
+      { ...payload, title: 'x'.repeat(513) },
+      { ...payload, answerSha256: 'A'.repeat(64) },
+      { ...payload, answerSha256: 'a'.repeat(63) },
+      { ...payload, answerSha256: 'g'.repeat(64) },
+      { ...payload, answerPreview: 'x'.repeat(513) },
+      { ...payload, tabId: -1 },
+      { ...payload, tabId: 1.5 }
+    ];
+    for (const invalid of invalidPayloads) {
+      expect(isUsageObservationPayload(invalid), JSON.stringify(invalid).slice(0, 80)).toBe(false);
     }
   });
 

@@ -209,6 +209,14 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case learningRollback = "daemon.learning.rollback"
     case learningTimeline = "daemon.learning.timeline"
     case learningOptOut = "daemon.learning.opt_out"
+    /// Safari usage-memory observation spool (usage-memory PR5). Ingest appends
+    /// one bounded Ask observation; list/ack are the app drain client's
+    /// two-phase destructive read; set_enabled is the daemon-side spool gate.
+    /// Observation state only — nothing here promotes or activates learning.
+    case usageObservationIngest = "daemon.usage_observations.ingest"
+    case usageObservationsList = "daemon.usage_observations.list"
+    case usageObservationsAck = "daemon.usage_observations.ack"
+    case usageObservationsSetEnabled = "daemon.usage_observations.set_enabled"
     case codeIndexProject = "daemon.code.index_project"
     case codeSearch = "daemon.code.search"
     case codeContextPack = "daemon.code.context_pack"

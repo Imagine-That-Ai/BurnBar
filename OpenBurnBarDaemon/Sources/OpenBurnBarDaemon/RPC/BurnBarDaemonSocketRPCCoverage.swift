@@ -153,7 +153,11 @@ enum BurnBarDaemonSocketRPCCoverage {
         .learningForget,
         .learningRollback,
         .learningTimeline,
-        .learningOptOut
+        .learningOptOut,
+        .usageObservationIngest,
+        .usageObservationsList,
+        .usageObservationsAck,
+        .usageObservationsSetEnabled
     ]
 
     static let media: Set<BurnBarRPCMethod> = [

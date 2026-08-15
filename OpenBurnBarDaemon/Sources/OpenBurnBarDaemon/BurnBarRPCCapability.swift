@@ -171,10 +171,16 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
         case .memoryRemember, .memoryReviewStatus, .memoryForget,
              .learningPropose, .learningOptIn, .learningUpdate, .learningApprove,
              .learningReject, .learningForget, .learningRollback,
-             .learningOptOut:
+             .learningOptOut,
+             // Usage-observation spool mutations: ingest appends browser
+             // content, ack destroys drained entries, set_enabled changes the
+             // spool gate. All writes to the learned-profile plane.
+             .usageObservationIngest, .usageObservationsAck,
+             .usageObservationsSetEnabled:
             return .memoryWrite
         case .memoryRecall, .memoryAuditTrail, .memoryAnalytics,
-             .learningRecall, .learningList, .learningTimeline:
+             .learningRecall, .learningList, .learningTimeline,
+             .usageObservationsList:
             return .memoryRead
         case .codeIndexProject, .codeWatchProject:
             return .codeWrite
@@ -287,7 +293,12 @@ public struct BurnBarPeerCapabilityProfile: Hashable, Sendable, Codable {
         .learningForget,
         .learningRollback,
         .learningTimeline,
-        .learningOptOut
+        .learningOptOut,
+        // Usage-memory spool: the appex may only feed the spool and toggle its
+        // gate. The two-phase drain (list/ack) belongs to the app-side drain
+        // client and is deliberately absent from this profile.
+        .usageObservationIngest,
+        .usageObservationsSetEnabled
     ])
 
     /// Signed CLI support posture. Keep this as an exact method allowlist, not

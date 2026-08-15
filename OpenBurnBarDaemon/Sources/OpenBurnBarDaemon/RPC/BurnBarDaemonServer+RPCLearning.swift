@@ -145,6 +145,50 @@ extension BurnBarDaemonServer {
                     result: try await learningCoordinator.optOut(params)
                 )
 
+            case .usageObservationIngest:
+                let params = try decodeSafariBridgeRPCParams(
+                    BurnBarSafariUsageObservationIngestRequest.self,
+                    request: request,
+                    decoder: decoder
+                )
+                return learningRPCSuccess(
+                    id: request.id,
+                    result: try await learningCoordinator.usageObserve(params)
+                )
+
+            case .usageObservationsSetEnabled:
+                let params = try decodeSafariBridgeRPCParams(
+                    BurnBarSafariUsageMemoryStateRequest.self,
+                    request: request,
+                    decoder: decoder
+                )
+                return learningRPCSuccess(
+                    id: request.id,
+                    result: try await learningCoordinator.usageMemorySetEnabled(params)
+                )
+
+            case .usageObservationsList:
+                let params = try decodeSafariBridgeRPCParams(
+                    BurnBarSafariUsageObservationListRequest.self,
+                    request: request,
+                    decoder: decoder
+                )
+                return learningRPCSuccess(
+                    id: request.id,
+                    result: try await learningCoordinator.usageObservationsList(params)
+                )
+
+            case .usageObservationsAck:
+                let params = try decodeSafariBridgeRPCParams(
+                    BurnBarSafariUsageObservationAckRequest.self,
+                    request: request,
+                    decoder: decoder
+                )
+                return learningRPCSuccess(
+                    id: request.id,
+                    result: try await learningCoordinator.usageObservationsAck(params)
+                )
+
             default:
                 preconditionFailure("Unhandled learning RPC method: \(method.rawValue)")
             }
@@ -181,6 +225,18 @@ extension BurnBarDaemonServer {
 
         case BurnBarSafariRPCHandlerError.unavailable:
             code = BurnBarRPCErrorCode.unavailable
+
+        case let spool as UsageObservationSpoolError:
+            switch spool {
+            case .invalidObservation:
+                code = BurnBarRPCErrorCode.invalidParams
+
+            case .storeTooLarge:
+                code = BurnBarRPCErrorCode.conflict
+
+            case .malformedStore, .unsafePath, .insecurePermissions:
+                code = BurnBarRPCErrorCode.internalError
+            }
 
         case let learning as SafariLearningCoordinatorError:
             switch learning {

@@ -10,6 +10,10 @@ import { activeTab, type BrowserAPI, type BrowserTab } from '../shared/browser';
 import { SafariExtensionError, serializeError } from '../shared/errors';
 import {
   agentsForMode,
+  isUsageObservationPayload,
+  MAX_USAGE_OBSERVATION_ANSWER_PREVIEW_BYTES,
+  MAX_USAGE_OBSERVATION_PROMPT_BYTES,
+  MAX_USAGE_OBSERVATION_TITLE_BYTES,
   type ActivityEvent,
   type ApprovalPreview,
   type BackgroundPush,
@@ -132,6 +136,11 @@ function boundedUTF8Prefix(value: string, maximumBytes: number): string {
     bytes += characterBytes;
   }
   return result;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', UTF8_ENCODER.encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function pageTitleForTab(tab: BrowserTab): string {
@@ -268,6 +277,7 @@ export class SafariBackgroundController {
     cloudScreenshotDisclosureAcknowledged: false,
     learningOptedIn: false,
     learningConsentSeen: false,
+    usageMemoryOptedIn: false,
     sites: {}
   };
   private snapshot: PopupSnapshot = {
@@ -286,6 +296,9 @@ export class SafariBackgroundController {
       optedIn: false,
       consentSeen: false,
       items: []
+    },
+    usageMemory: {
+      optedIn: false
     },
     transcript: [],
     approvals: [],
@@ -427,6 +440,9 @@ export class SafariBackgroundController {
             this.reviewLearning(request.itemId, request.decision)
           );
           break;
+        case 'popup.setUsageMemory':
+          await this.setUsageMemory(request.enabled);
+          break;
       }
       this.clearError(errorAtStart);
       return { ok: true, snapshot: this.copySnapshot() };
@@ -458,6 +474,7 @@ export class SafariBackgroundController {
       state.trust.cloudScreenshotAcknowledged = this.preferences.cloudScreenshotDisclosureAcknowledged;
       state.learning.optedIn = this.preferences.learningOptedIn;
       state.learning.consentSeen = this.preferences.learningConsentSeen;
+      state.usageMemory.optedIn = this.preferences.usageMemoryOptedIn;
       state.busy = true;
     });
 
@@ -1139,6 +1156,7 @@ export class SafariBackgroundController {
         state.running = false;
         this.appendActivityTo(state, 'Answered with page structure and the visible Safari viewport.', 'success');
       });
+      void this.recordUsageObservation(prompt, context, completedAnswer);
     } catch (error) {
       flush();
       if (this.localWorkWasStopped(workGeneration, error)) {
@@ -1171,6 +1189,32 @@ export class SafariBackgroundController {
       if (flushTimer !== undefined) {
         clearTimeout(flushTimer);
       }
+    }
+  }
+
+  private async recordUsageObservation(prompt: string, context: PageContext, completedAnswer: string): Promise<void> {
+    try {
+      if (!this.snapshot.usageMemory.optedIn || context.sensitive) {
+        return;
+      }
+      const boundedPrompt = boundedUTF8Prefix(prompt.trim(), MAX_USAGE_OBSERVATION_PROMPT_BYTES);
+      const payload: PopupActionPayloads['usage.observe'] = {
+        observationId: crypto.randomUUID(),
+        prompt: boundedPrompt,
+        url: context.pageState.url,
+        title: boundedUTF8Prefix(context.pageState.title.trim(), MAX_USAGE_OBSERVATION_TITLE_BYTES),
+        answerSha256: await sha256Hex(completedAnswer),
+        answerPreview: boundedUTF8Prefix(completedAnswer.trim(), MAX_USAGE_OBSERVATION_ANSWER_PREVIEW_BYTES),
+        tabId: context.pageState.tabId
+      };
+      if (!isUsageObservationPayload(payload)) {
+        return;
+      }
+      await this.popupAction('usage.observe', payload);
+    } catch {
+      // Usage memory must never make Ask unavailable. The native bridge and
+      // daemon still enforce session, page identity, and size bounds; a lost
+      // observation is strictly preferable to a broken answer.
     }
   }
 
@@ -1677,6 +1721,27 @@ export class SafariBackgroundController {
       if (!optedIn) {
         state.learning.items = [];
       }
+    });
+  }
+
+  private async setUsageMemory(enabled: boolean): Promise<void> {
+    if (enabled && !this.snapshot.learning.eligible) {
+      throw new SafariExtensionError(
+        'usage_memory_requires_pro',
+        'Usage memory is available on Pro, Pro Max, and Ultra.'
+      );
+    }
+    const response = await this.popupAction('popup.setUsageMemory', { enabled });
+    if (!response.accepted) {
+      throw new SafariExtensionError(
+        'usage_memory_change_rejected',
+        'OpenBurnBar did not accept the usage-memory change.'
+      );
+    }
+    this.preferences.usageMemoryOptedIn = enabled;
+    await this.store.save(this.preferences);
+    this.mutate((state) => {
+      state.usageMemory.optedIn = enabled;
     });
   }
 
