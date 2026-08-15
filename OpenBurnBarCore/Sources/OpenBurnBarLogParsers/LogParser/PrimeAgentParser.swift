@@ -47,10 +47,34 @@ import OpenBurnBarParserSupport
 public final class PrimeAgentParser: LogParser, Sendable {
     public let provider: AgentProvider = .primeAgent
     let logDirectoryOverride: String?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(logDirectoryOverride: String? = nil) {
+    public init(
+        logDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.logDirectoryOverride = logDirectoryOverride
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-prime-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.primeAgentParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "PrimeAgentParser"
+        )
     }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try parseSynchronously(options: .default)
@@ -61,17 +85,18 @@ public final class PrimeAgentParser: LogParser, Sendable {
     }
 
     public func parseSynchronously(options: LogParseOptions = .default) throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var sessionsPath = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         // BurnBar convention `~/.prime/agent/sessions` is not vendor-documented
         // (Prime docs only cover the HTTP API). If the vendor later ships
         // `~/.prime/sessions`, fall back to it rather than silently showing 0.
-        if logDirectoryOverride == nil, !fm.fileExists(atPath: sessionsPath) {
+        if logDirectoryOverride == nil, !fileManager.fileExists(atPath: sessionsPath) {
             let alt = ("~/.prime/sessions" as NSString).expandingTildeInPath
-            if fm.fileExists(atPath: alt) { sessionsPath = alt }
+            if fileManager.fileExists(atPath: alt) { sessionsPath = alt }
         }
-        guard fm.fileExists(atPath: sessionsPath) else {
+        guard fileManager.fileExists(atPath: sessionsPath) else {
             return ParseResult(usages: [], conversations: [])
         }
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
@@ -81,31 +106,75 @@ public final class PrimeAgentParser: LogParser, Sendable {
         // and the `.jsonl` filter keeps the file-watcher cheap. This fixes the flat-only
         // loophole that would silently miss nested sessions.
         var candidates: [URL] = []
-        if let enumerator = fm.enumerator(at: sessionsURL, includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey], options: [.skipsHiddenFiles]) {
+        if let enumerator = fileManager.enumerator(at: sessionsURL, includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys, options: [.skipsHiddenFiles]) {
             for case let url as URL in enumerator where url.pathExtension == "jsonl" {
                 candidates.append(url)
             }
-        } else if let contents = try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isRegularFileKey]) {
+        } else if let contents = try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys) {
             candidates = contents.filter { $0.pathExtension == "jsonl" }
         }
         candidates.sort { $0.path < $1.path }
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
-
-        for file in candidates {
-            guard try gate.shouldRead(file) else { continue }
-            if let pair = try parseFile(file: file) {
-                if let usage = pair.usage { usages.append(usage) }
-                if options.includeConversationBodies, let conv = pair.conversation { conversations.append(conv) }
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
             }
         }
+
+        for file in candidates {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(file) else { continue }
+            let signature = FileSignature(for: file, using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .primeAgent) })
+                continue
+            }
+
+            sessionScanCount.withLock { $0 += 1 }
+            if let pair = try parseFile(file: file, includeConversationBodies: options.includeConversationBodies) {
+                if let usage = pair.usage {
+                    usages.append(usage)
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                            signature: signature,
+                            usages: [usage]
+                        )
+                        cacheMutated = true
+                    }
+                }
+                if options.includeConversationBodies, let conv = pair.conversation {
+                    conversations.append(conv)
+                }
+            }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
+        }
+
         return ParseResult(usages: usages, conversations: conversations)
     }
 
     // MARK: - Per-file parsing
 
-    private func parseFile(file: URL) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
+    private func parseFile(
+        file: URL,
+        includeConversationBodies: Bool
+    ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
 
@@ -203,6 +272,7 @@ public final class PrimeAgentParser: LogParser, Sendable {
             }
 
             // Conversation extraction
+            guard includeConversationBodies else { continue }
             let content = msg["content"]
             var chunkText = ""
             if let str = content as? String {

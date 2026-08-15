@@ -176,16 +176,36 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
 
     private let fileManager: FileManager
     private let sessionsDirectory: URL
+    private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CachedUsageBundleEntry<OpenBurnBarCore.FileSignature>>
+    private let sessionScanCount = OpenBurnBarCore.Locked(0)
+    private let sessionCacheHitCount = OpenBurnBarCore.Locked(0)
 
     init(
         fileManager: FileManager = .default,
-        sessionsDirectory: URL = URL(fileURLWithPath: (AgentProvider.openClaw.logDirectory as NSString).expandingTildeInPath)
+        sessionsDirectory: URL = URL(fileURLWithPath: (AgentProvider.openClaw.logDirectory as NSString).expandingTildeInPath),
+        appPaths: OpenBurnBarCore.OpenBurnBarAppPaths = .live()
     ) {
         self.fileManager = fileManager
         self.sessionsDirectory = sessionsDirectory
+        let usesOverride = sessionsDirectory.path != (AgentProvider.openClaw.logDirectory as NSString).expandingTildeInPath
+        let cacheURL = usesOverride
+            ? sessionsDirectory.appendingPathComponent(".obb-mac-openclaw-parser-cache.plist")
+            : appPaths.macOpenClawParserCacheURL
+        self.cacheStore = OpenBurnBarCore.ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "MacOpenClawParser"
+        )
+        ParserSupportDirectoryWarmUp.prepare(fileManager: fileManager, appPaths: appPaths)
     }
 
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         guard fileManager.fileExists(atPath: sessionsDirectory.path) else {
             return OpenBurnBarCore.ParseResult(usages: [], conversations: [])
         }
@@ -194,15 +214,51 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         let files = sessionFiles(in: sessionsDirectory)
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var usages: [TokenUsage] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         for file in files {
-            guard try gate.shouldRead(file), let parsed = parseSession(file: file) else { continue }
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(file) else { continue }
+            let signature = OpenBurnBarCore.FileSignature(for: file, using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .openClaw) })
+                continue
+            }
+            sessionScanCount.withLock { $0 += 1 }
+            guard let parsed = parseSession(file: file) else { continue }
             if options.includeConversationBodies {
                 conversations.append(parsed.conversation)
             }
             if let usage = parsed.usage {
                 usages.append(usage)
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = OpenBurnBarCore.CachedUsageBundleEntry(
+                        signature: signature,
+                        usages: [usage]
+                    )
+                    cacheMutated = true
+                }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
@@ -211,7 +267,7 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
     private func sessionFiles(in directory: URL) -> [URL] {
         guard let enumerator = fileManager.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            includingPropertiesForKeys: OpenBurnBarCore.FileSignature.directoryListingPrefetchKeys,
             options: [.skipsHiddenFiles]
         ) else { return [] }
 
@@ -339,7 +395,8 @@ final class OpenClawParser: OpenBurnBarCore.LogParser, Sendable {
         handler: ([String: Any]) -> Void
     ) {
         var yieldedLineObject = false
-        if let handle = try? FileHandle(forReadingFrom: file) { // try?-ok(unreadable file falls back below)
+        if file.pathExtension.lowercased() != "json",
+           let handle = try? FileHandle(forReadingFrom: file) { // try?-ok(unreadable file falls back below)
             defer { try? handle.close() } // try?-ok(handle teardown)
             for line in handle.readAllUTF8Lines() {
                 parserAutoReleasePool {

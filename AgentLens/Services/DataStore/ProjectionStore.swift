@@ -17,59 +17,63 @@ final class ProjectionStore: Sendable {
     // MARK: - Projection Jobs
 
     func enqueueProjectionJob(_ job: ProjectionJobRecord) async throws {
-        try await dbQueue.write { db in
-            try db.execute(
-                sql: """
-                INSERT INTO projection_jobs (
-                    id, jobType, sourceKind, sourceID, sourceVersionID, status, priority, attempts,
-                    maxAttempts, payloadJSON, lastErrorCode, lastErrorMessage, scheduledAt, availableAt,
-                    startedAt, completedAt, leaseOwner, leaseExpiresAt, createdAt, updatedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    jobType = excluded.jobType,
-                    sourceKind = excluded.sourceKind,
-                    sourceID = excluded.sourceID,
-                    sourceVersionID = excluded.sourceVersionID,
-                    status = excluded.status,
-                    priority = excluded.priority,
-                    attempts = excluded.attempts,
-                    maxAttempts = excluded.maxAttempts,
-                    payloadJSON = excluded.payloadJSON,
-                    lastErrorCode = excluded.lastErrorCode,
-                    lastErrorMessage = excluded.lastErrorMessage,
-                    scheduledAt = excluded.scheduledAt,
-                    availableAt = excluded.availableAt,
-                    startedAt = excluded.startedAt,
-                    completedAt = excluded.completedAt,
-                    leaseOwner = excluded.leaseOwner,
-                    leaseExpiresAt = excluded.leaseExpiresAt,
-                    updatedAt = excluded.updatedAt
-                WHERE projection_jobs.status IN ('queued', 'failed', 'canceled')
-                """,
-                arguments: [
-                    job.id,
-                    job.jobType.rawValue,
-                    job.sourceKind?.rawValue,
-                    job.sourceID,
-                    job.sourceVersionID,
-                    job.status.rawValue,
-                    job.priority,
-                    job.attempts,
-                    job.maxAttempts,
-                    job.payloadJSON,
-                    job.lastErrorCode,
-                    job.lastErrorMessage,
-                    job.scheduledAt,
-                    job.availableAt,
-                    job.startedAt,
-                    job.completedAt,
-                    job.leaseOwner,
-                    job.leaseExpiresAt,
-                    job.createdAt,
-                    job.updatedAt
-                ]
-            )
+        try await dbQueue.write { [self] db in
+            try enqueueProjectionJob(job, db: db)
         }
+    }
+
+    func enqueueProjectionJob(_ job: ProjectionJobRecord, db: Database) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO projection_jobs (
+                id, jobType, sourceKind, sourceID, sourceVersionID, status, priority, attempts,
+                maxAttempts, payloadJSON, lastErrorCode, lastErrorMessage, scheduledAt, availableAt,
+                startedAt, completedAt, leaseOwner, leaseExpiresAt, createdAt, updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                jobType = excluded.jobType,
+                sourceKind = excluded.sourceKind,
+                sourceID = excluded.sourceID,
+                sourceVersionID = excluded.sourceVersionID,
+                status = excluded.status,
+                priority = excluded.priority,
+                attempts = excluded.attempts,
+                maxAttempts = excluded.maxAttempts,
+                payloadJSON = excluded.payloadJSON,
+                lastErrorCode = excluded.lastErrorCode,
+                lastErrorMessage = excluded.lastErrorMessage,
+                scheduledAt = excluded.scheduledAt,
+                availableAt = excluded.availableAt,
+                startedAt = excluded.startedAt,
+                completedAt = excluded.completedAt,
+                leaseOwner = excluded.leaseOwner,
+                leaseExpiresAt = excluded.leaseExpiresAt,
+                updatedAt = excluded.updatedAt
+            WHERE projection_jobs.status IN ('queued', 'failed', 'canceled')
+            """,
+            arguments: [
+                job.id,
+                job.jobType.rawValue,
+                job.sourceKind?.rawValue,
+                job.sourceID,
+                job.sourceVersionID,
+                job.status.rawValue,
+                job.priority,
+                job.attempts,
+                job.maxAttempts,
+                job.payloadJSON,
+                job.lastErrorCode,
+                job.lastErrorMessage,
+                job.scheduledAt,
+                job.availableAt,
+                job.startedAt,
+                job.completedAt,
+                job.leaseOwner,
+                job.leaseExpiresAt,
+                job.createdAt,
+                job.updatedAt
+            ]
+        )
     }
 
     func fetchProjectionJobs(statuses: [ProjectionJobStatus], limit: Int) async throws -> [ProjectionJobRecord] {
@@ -107,6 +111,26 @@ final class ProjectionStore: Sendable {
                 """,
                 arguments: StatementArguments(args)
             ) ?? 0
+        }
+    }
+
+    func countProjectionJobsByStatus() async throws -> [ProjectionJobStatus: Int] {
+        try await dbQueue.read { db in
+            var counts: [ProjectionJobStatus: Int] = [:]
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT status, COUNT(*) AS count
+                FROM projection_jobs
+                GROUP BY status
+                """
+            )
+            for row in rows {
+                guard let raw = row["status"] as? String,
+                      let status = ProjectionJobStatus(rawValue: raw) else { continue }
+                counts[status] = UsageStore.intValue(row["count"])
+            }
+            return counts
         }
     }
 

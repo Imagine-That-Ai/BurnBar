@@ -85,6 +85,8 @@ struct UsageRefreshPipeline: Sendable {
     /// `lane: .live` only reads files touched inside the live window and
     /// publishes only those rows, so a 3GB Claude tail cannot delay Grok.
     /// Providers run concurrently; one slow parser cannot block the others.
+    /// Indexing watermarks (`idx2:` / discovery tracker) are never forwarded
+    /// here — those skip old files and would drop historical usage.
     func parse(
         from discovery: DiscoverResult,
         includeConversationBodies: Bool? = nil,

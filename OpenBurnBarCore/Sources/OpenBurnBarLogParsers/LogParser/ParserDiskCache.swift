@@ -23,9 +23,174 @@ public struct FileSignature: Codable, Equatable, Sendable {
 
     public init?(for url: URL, using fileManager: FileManager = .default) {
         let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey])
-        guard values?.isRegularFile == true else { return nil }
-        self.modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
-        self.sizeBytes = Int64(values?.fileSize ?? 0)
+        guard let values else { return nil }
+        self.init(resourceValues: values)
+    }
+
+    public init?(resourceValues values: URLResourceValues) {
+        guard values.isRegularFile == true else { return nil }
+        self.modifiedAt = values.contentModificationDate?.timeIntervalSince1970 ?? 0
+        self.sizeBytes = Int64(values.fileSize ?? 0)
+    }
+
+    /// Prefetch these on `contentsOfDirectory` / `enumerator` so a later
+    /// `FileSignature(for:)` / `resourceValues(forKeys:)` hits the URL cache
+    /// instead of issuing a second `stat`.
+    public static let directoryListingPrefetchKeys: [URLResourceKey] = [
+        .fileSizeKey,
+        .contentModificationDateKey,
+        .isRegularFileKey
+    ]
+}
+
+public struct NamedFileSignature: Codable, Equatable, Sendable {
+    public let name: String
+    public let signature: FileSignature
+
+    public init(name: String, signature: FileSignature) {
+        self.name = name
+        self.signature = signature
+    }
+}
+
+public struct FileSetSignature: Codable, Equatable, Sendable {
+    public let files: [NamedFileSignature]
+
+    public init(files: [NamedFileSignature]) {
+        self.files = files.sorted { $0.name < $1.name }
+    }
+
+    public init?(urls: [URL], using fileManager: FileManager = .default) {
+        var collected: [NamedFileSignature] = []
+        collected.reserveCapacity(urls.count)
+        for url in urls {
+            guard let signature = FileSignature(for: url, using: fileManager) else { return nil }
+            collected.append(NamedFileSignature(name: url.lastPathComponent, signature: signature))
+        }
+        self.files = collected.sorted { $0.name < $1.name }
+    }
+
+    /// SQLite appends land in `-wal`. Signing only the main db file is a false
+    /// hit while the WAL grows, so the WAL participates when present.
+    /// `-shm` is a shared-memory index: a read-only open creates or rewrites it
+    /// without changing session totals, so it must not participate.
+    public init?(databaseURL: URL, using fileManager: FileManager = .default) {
+        var urls = [databaseURL]
+        let wal = URL(fileURLWithPath: databaseURL.path + "-wal")
+        if fileManager.fileExists(atPath: wal.path) {
+            urls.append(wal)
+        }
+        self.init(urls: urls, using: fileManager)
+    }
+
+    /// Build a signature from URLs whose size/mtime/`isRegularFile` values
+    /// were already prefetched by a directory listing. A second
+    /// `FileSignature(for:)` stat is not performed.
+    public init?(prefetchedURLs urls: [URL]) {
+        var collected: [NamedFileSignature] = []
+        collected.reserveCapacity(urls.count)
+        for url in urls {
+            let values = try? url.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .fileSizeKey,
+                .contentModificationDateKey
+            ])
+            guard let values, let signature = FileSignature(resourceValues: values) else {
+                return nil
+            }
+            collected.append(NamedFileSignature(name: url.lastPathComponent, signature: signature))
+        }
+        self.init(files: collected)
+    }
+}
+
+/// Persist-visible usage totals for idle ticks. Never includes conversation bodies.
+public struct CachedUsageTotals: Codable, Equatable, Sendable {
+    public let inputTokens: Int
+    public let outputTokens: Int
+    public let cacheCreationTokens: Int
+    public let cacheReadTokens: Int
+    public let reasoningTokens: Int
+    public let model: String
+    public let projectName: String
+    public let startTime: Date
+    public let endTime: Date
+    public let costUSD: Double
+    public let provenanceMethod: UsageProvenanceMethod
+    public let provenanceConfidence: UsageProvenanceConfidence
+    public let estimatorVersion: String
+
+    public init(usage: TokenUsage) {
+        self.inputTokens = usage.inputTokens
+        self.outputTokens = usage.outputTokens
+        self.cacheCreationTokens = usage.cacheCreationTokens
+        self.cacheReadTokens = usage.cacheReadTokens
+        self.reasoningTokens = usage.reasoningTokens
+        self.model = usage.model
+        self.projectName = usage.projectName
+        self.startTime = usage.startTime
+        self.endTime = usage.endTime
+        self.costUSD = usage.costUSD
+        self.provenanceMethod = usage.provenanceMethod
+        self.provenanceConfidence = usage.provenanceConfidence
+        self.estimatorVersion = usage.estimatorVersion
+    }
+
+    public func makeUsage(provider: AgentProvider, sessionId: String) -> TokenUsage {
+        TokenUsage(
+            provider: provider,
+            sessionId: sessionId,
+            projectName: projectName,
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens,
+            reasoningTokens: reasoningTokens,
+            costUSD: costUSD,
+            startTime: startTime,
+            endTime: endTime,
+            provenanceMethod: provenanceMethod,
+            provenanceConfidence: provenanceConfidence,
+            estimatorVersion: estimatorVersion
+        )
+    }
+}
+
+public struct CachedUsageEntry<Signature: Codable & Equatable & Sendable>: Codable, Equatable, Sendable {
+    public let signature: Signature
+    public let totals: CachedUsageTotals
+
+    public init(signature: Signature, usage: TokenUsage) {
+        self.signature = signature
+        self.totals = CachedUsageTotals(usage: usage)
+    }
+}
+
+/// One persist-visible usage row inside a multi-session file (Goose `sessions.db`).
+public struct CachedNamedUsage: Codable, Equatable, Sendable {
+    public let sessionId: String
+    public let totals: CachedUsageTotals
+
+    public init(sessionId: String, usage: TokenUsage) {
+        self.sessionId = sessionId
+        self.totals = CachedUsageTotals(usage: usage)
+    }
+
+    public func makeUsage(provider: AgentProvider) -> TokenUsage {
+        totals.makeUsage(provider: provider, sessionId: sessionId)
+    }
+}
+
+/// Disk cache entry for a file that yields many usage rows (Goose SQLite, or a
+/// JSONL session stored as a one-element bundle).
+public struct CachedUsageBundleEntry<Signature: Codable & Equatable & Sendable>: Codable, Equatable, Sendable {
+    public let signature: Signature
+    public let sessions: [CachedNamedUsage]
+
+    public init(signature: Signature, usages: [TokenUsage]) {
+        self.signature = signature
+        self.sessions = usages.map { CachedNamedUsage(sessionId: $0.sessionId, usage: $0) }
     }
 }
 

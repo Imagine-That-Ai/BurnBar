@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarParserSupport
 
 // MARK: - Grok Build Parser
 
@@ -8,46 +9,57 @@ import OpenBurnBarKernel
 /// Token accounting prefers exact per-turn usage from `updates.jsonl`, then falls
 /// back to the current context-window snapshot in `signals.json`. Conversation
 /// text is rebuilt from `chat_history.jsonl` when present.
+///
+/// Idle usage ticks resume `updates.jsonl` from `ParserDiskCache` keyed by
+/// mtime+size so unchanged sessions are not re-scanned. Cache entries store
+/// token breakdowns only — never conversation bodies.
 public final class GrokParser: LogParser, Sendable {
     public let provider: AgentProvider = .xAI
     let logDirectoryOverride: String?
-    private let cacheStore: ParserDiskCacheStore<GrokCacheEntry>
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<GrokUpdatesCacheEntry>
+    private let sessionCacheStore: ParserDiskCacheStore<GrokSessionCacheEntry>
+    private let updatesScanCount = Locked(0)
+    private let updatesCacheHitCount = Locked(0)
 
     public init(
         logDirectoryOverride: String? = nil,
-        appPaths: OpenBurnBarAppPaths? = nil
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
     ) {
         self.logDirectoryOverride = logDirectoryOverride
-        let resolvedPaths: OpenBurnBarAppPaths
-        if let appPaths {
-            resolvedPaths = appPaths
-        } else if let override = logDirectoryOverride {
-            // Tests and one-off scans keep the cache next to the override
-            // so they never touch the live Application Support cache.
-            resolvedPaths = OpenBurnBarAppPaths(
-                applicationSupportRoot: URL(fileURLWithPath: override, isDirectory: true)
-                    .appendingPathComponent(".obb-parser-cache", isDirectory: true)
-            )
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-grok-parser-cache.plist")
         } else {
-            resolvedPaths = .live()
+            cacheURL = appPaths.grokParserCacheURL
         }
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: resolvedPaths.grokParserCacheURL,
-            schemaVersion: 2,
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
             logLabel: "GrokParser"
         )
-        _ = try? OpenBurnBarMigration.prepareSupportDirectory(
-            fileManager: .default,
-            paths: resolvedPaths
-        ) // try?-ok(best-effort dir prep)
+        self.sessionCacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL.deletingLastPathComponent()
+                .appendingPathComponent(".obb-grok-session-cache.plist"),
+            fileManager: fileManager,
+            schemaVersion: 2,
+            logLabel: "GrokParserSession"
+        )
     }
+
+    var lastUpdatesScanCount: Int { updatesScanCount.read() }
+    var lastUpdatesCacheHitCount: Int { updatesCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fileManager = FileManager.default
+        updatesScanCount.write(0)
+        updatesCacheHitCount.write(0)
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         guard fileManager.fileExists(atPath: sessionsRoot) else {
@@ -57,7 +69,19 @@ public final class GrokParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
+        var sessionCache = sessionCacheStore.load()
+        var activePaths = Set<String>()
         var cacheMutated = false
+        var sessionCacheMutated = false
+        var cachedExactUsageByDirectory: [URL: TokenBreakdown] = [:]
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+            if sessionCacheMutated {
+                sessionCacheStore.persist(sessionCache)
+            }
+        }
 
         let workspaceDirs = try fileManager.contentsOfDirectory(
             at: URL(fileURLWithPath: sessionsRoot),
@@ -65,7 +89,6 @@ public final class GrokParser: LogParser, Sendable {
         ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
         var sessions: [(directory: URL, projectName: String)] = []
-        var cachedExactUsageByDirectory: [URL: TokenBreakdown] = [:]
         for workspaceDir in workspaceDirs {
             let projectName = decodedWorkspaceName(from: workspaceDir.lastPathComponent)
             let sessionDirs = try fileManager.contentsOfDirectory(
@@ -81,6 +104,7 @@ public final class GrokParser: LogParser, Sendable {
                 ) {
                     continue
                 }
+
                 var contentFiles = [
                     sessionDir.appendingPathComponent("summary.json"),
                     sessionDir.appendingPathComponent("signals.json"),
@@ -99,22 +123,25 @@ public final class GrokParser: LogParser, Sendable {
                         .filter { fileManager.fileExists(atPath: $0.path) })
                 }
 
+                let updatesURL = sessionDir.appendingPathComponent("updates.jsonl")
+                if fileManager.fileExists(atPath: updatesURL.path) {
+                    activePaths.insert(updatesURL.standardizedFileURL.path)
+                }
+
                 let cacheKey = sessionDir.standardizedFileURL.path
-                let signature = Self.sessionSignature(sessionDir: sessionDir)
-                // Parents are never cache-skipped: their totals depend on
-                // live child aggregates. Leaves skip content reads when the
-                // session signature is unchanged so catch-up can drain the
-                // rest of a multi-GB tree instead of rereading the same prefix.
+                let signature = Self.sessionSignature(sessionDir: sessionDir, fileManager: fileManager)
+                // Parents are never cache-skipped: their totals depend on live
+                // child aggregates. Leaves skip content reads when the session
+                // signature is unchanged so catch-up can drain the rest of a
+                // multi-GB tree instead of rereading the same prefix.
                 if !isParent,
                    !options.includeConversationBodies,
                    let signature,
-                   let cached = parseCache.fileEntries[cacheKey],
+                   let cached = sessionCache.fileEntries[cacheKey],
                    cached.signature == signature {
-                    if let usage = cached.usage {
-                        cachedExactUsageByDirectory[sessionDir] = TokenBreakdown(usage: usage)
-                        if options.includeCachedUnchangedUsages {
-                            usages.append(usage)
-                        }
+                    cachedExactUsageByDirectory[sessionDir] = cached.breakdown
+                    if options.includeCachedUnchangedUsages, let usage = cached.usage {
+                        usages.append(usage)
                     }
                     continue
                 }
@@ -126,7 +153,13 @@ public final class GrokParser: LogParser, Sendable {
         }
 
         let sessionDirs = sessions.map(\.directory)
-        var exactUsageByDirectory = exactUsageByDirectory(in: sessionDirs)
+        var exactUsageByDirectory = exactUsageByDirectory(
+            in: sessionDirs,
+            parseCache: &parseCache,
+            activePaths: &activePaths,
+            cacheMutated: &cacheMutated,
+            metrics: options.metrics
+        )
         for (directory, breakdown) in cachedExactUsageByDirectory {
             exactUsageByDirectory[directory] = breakdown
         }
@@ -143,7 +176,8 @@ public final class GrokParser: LogParser, Sendable {
                 sessionDir: session.directory,
                 summaryURL: summaryURL,
                 projectName: session.projectName,
-                exactUsage: reconciledExactUsage[session.directory]
+                exactUsage: reconciledExactUsage[session.directory],
+                includeConversationBodies: options.includeConversationBodies
             ), let usage = pair.usage {
                 usages.append(usage)
                 if options.includeConversationBodies, let conversation = pair.conversation {
@@ -151,28 +185,73 @@ public final class GrokParser: LogParser, Sendable {
                 }
                 let metadataRoot = session.directory.appendingPathComponent("subagents", isDirectory: true)
                 let isParent = fileManager.fileExists(atPath: metadataRoot.path)
-                if !isParent, let signature = Self.sessionSignature(sessionDir: session.directory) {
-                    parseCache.fileEntries[session.directory.standardizedFileURL.path] = GrokCacheEntry(
-                        signature: signature,
-                        usage: usage
+                if !isParent,
+                   let signature = Self.sessionSignature(
+                    sessionDir: session.directory,
+                    fileManager: fileManager
+                   ) {
+                    let breakdown = TokenBreakdown(
+                        inputTokens: usage.inputTokens,
+                        outputTokens: usage.outputTokens,
+                        cacheReadTokens: usage.cacheReadTokens,
+                        reasoningTokens: usage.reasoningTokens,
+                        isExact: true
                     )
-                    cacheMutated = true
+                    sessionCache.fileEntries[session.directory.standardizedFileURL.path] = GrokSessionCacheEntry(
+                        signature: signature,
+                        usage: usage,
+                        breakdown: breakdown
+                    )
+                    sessionCacheMutated = true
                 }
             }
         }
 
-        if cacheMutated {
-            cacheStore.persist(parseCache)
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)
     }
 
-    private func exactUsageByDirectory(in sessionDirs: [URL]) -> [URL: TokenBreakdown] {
+    private func exactUsageByDirectory(
+        in sessionDirs: [URL],
+        parseCache: inout ParserDiskCache<GrokUpdatesCacheEntry>,
+        activePaths: inout Set<String>,
+        cacheMutated: inout Bool,
+        metrics: ParserPassMetrics?
+    ) -> [URL: TokenBreakdown] {
         var result: [URL: TokenBreakdown] = [:]
         for sessionDir in sessionDirs {
-            if let usage = exactTurnUsage(in: sessionDir.appendingPathComponent("updates.jsonl")) {
+            let updatesURL = sessionDir.appendingPathComponent("updates.jsonl")
+            let cacheKey = updatesURL.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            metrics?.recordCandidate()
+            metrics?.recordMetadataStat()
+            guard fileManager.fileExists(atPath: updatesURL.path) else { continue }
+            let signature = FileSignature(for: updatesURL, using: fileManager)
+            if let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                updatesCacheHitCount.withLock { $0 += 1 }
+                result[sessionDir] = cached.breakdown
+                continue
+            }
+            updatesScanCount.withLock { $0 += 1 }
+            if let usage = exactTurnUsage(in: updatesURL) {
                 result[sessionDir] = usage
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = GrokUpdatesCacheEntry(
+                        signature: signature,
+                        breakdown: usage
+                    )
+                    cacheMutated = true
+                    metrics?.recordContentRead(bytes: signature.sizeBytes)
+                }
             }
         }
         return result
@@ -231,7 +310,8 @@ public final class GrokParser: LogParser, Sendable {
         sessionDir: URL,
         summaryURL: URL,
         projectName: String,
-        exactUsage: TokenBreakdown?
+        exactUsage: TokenBreakdown?,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         let mtime = (try? FileManager.default.attributesOfItem(atPath: summaryURL.path)[.modificationDate]) as? Date // try?-ok(mtime falls back)
         guard let summaryData = try? Data(contentsOf: summaryURL), // try?-ok(missing summary skipped)
@@ -254,9 +334,12 @@ public final class GrokParser: LogParser, Sendable {
             ?? mtime
 
         let signalsURL = sessionDir.appendingPathComponent("signals.json")
-        let signals = loadSignals(at: signalsURL)
         let chatHistoryURL = sessionDir.appendingPathComponent("chat_history.jsonl")
-        let chatTurns = parseChatHistory(at: chatHistoryURL)
+        let needsHeuristicFallback = exactUsage == nil
+        let signals = needsHeuristicFallback ? loadSignals(at: signalsURL) : nil
+        let chatTurns = (needsHeuristicFallback || includeConversationBodies)
+            ? parseChatHistory(at: chatHistoryURL)
+            : []
 
         let tokenBreakdown = tokenBreakdown(
             from: signals,
@@ -324,36 +407,12 @@ public final class GrokParser: LogParser, Sendable {
         let assistantMessageCount: Int
     }
 
-    private struct TokenBreakdown: Sendable {
+    private struct TokenBreakdown: Codable, Equatable, Sendable {
         let inputTokens: Int
         let outputTokens: Int
         let cacheReadTokens: Int
         let reasoningTokens: Int
         let isExact: Bool
-
-        init(
-            inputTokens: Int,
-            outputTokens: Int,
-            cacheReadTokens: Int,
-            reasoningTokens: Int,
-            isExact: Bool
-        ) {
-            self.inputTokens = inputTokens
-            self.outputTokens = outputTokens
-            self.cacheReadTokens = cacheReadTokens
-            self.reasoningTokens = reasoningTokens
-            self.isExact = isExact
-        }
-
-        init(usage: TokenUsage) {
-            self.init(
-                inputTokens: usage.inputTokens,
-                outputTokens: usage.outputTokens,
-                cacheReadTokens: usage.cacheReadTokens,
-                reasoningTokens: usage.reasoningTokens,
-                isExact: usage.provenanceConfidence == .exact
-            )
-        }
 
         var totalTokens: Int {
             inputTokens + outputTokens + cacheReadTokens + reasoningTokens
@@ -386,6 +445,17 @@ public final class GrokParser: LogParser, Sendable {
                 isExact: isExact
             )
         }
+    }
+
+    private struct GrokUpdatesCacheEntry: Codable, Equatable, Sendable {
+        let signature: FileSignature
+        let breakdown: TokenBreakdown
+    }
+
+    private struct GrokSessionCacheEntry: Codable, Equatable, Sendable {
+        let signature: CompositeFileSignature<FileSignature>
+        let usage: TokenUsage?
+        let breakdown: TokenBreakdown
     }
 
     private struct ChatTurn: Sendable {
@@ -650,7 +720,7 @@ public final class GrokParser: LogParser, Sendable {
     // MARK: - Helpers
 
     /// Live ticks skip whole idle session directories after cheap stats
-    /// instead of opening `updates.jsonl` (often tens of MB) just to reject it.
+    /// instead of opening `updates.jsonl` just to reject it.
     static func sessionLooksIdle(
         _ sessionDir: URL,
         cutoff: Date?,
@@ -673,11 +743,26 @@ public final class GrokParser: LogParser, Sendable {
         return newest < cutoff
     }
 
-    static func sessionSignature(sessionDir: URL) -> CompositeFileSignature<FileSignature>? {
-        let updates = FileSignature(for: sessionDir.appendingPathComponent("updates.jsonl"))
-        let summary = FileSignature(for: sessionDir.appendingPathComponent("summary.json"))
-        let signals = FileSignature(for: sessionDir.appendingPathComponent("signals.json"))
-        let chatHistory = FileSignature(for: sessionDir.appendingPathComponent("chat_history.jsonl"))
+    static func sessionSignature(
+        sessionDir: URL,
+        fileManager: FileManager = .default
+    ) -> CompositeFileSignature<FileSignature>? {
+        let updates = FileSignature(
+            for: sessionDir.appendingPathComponent("updates.jsonl"),
+            using: fileManager
+        )
+        let summary = FileSignature(
+            for: sessionDir.appendingPathComponent("summary.json"),
+            using: fileManager
+        )
+        let signals = FileSignature(
+            for: sessionDir.appendingPathComponent("signals.json"),
+            using: fileManager
+        )
+        let chatHistory = FileSignature(
+            for: sessionDir.appendingPathComponent("chat_history.jsonl"),
+            using: fileManager
+        )
         guard let primary = updates ?? summary else { return nil }
         return CompositeFileSignature(
             primary: primary,
@@ -712,11 +797,6 @@ public final class GrokParser: LogParser, Sendable {
     private func wordCount(_ value: String) -> Int {
         value.split { $0.isWhitespace || $0.isNewline }.filter { !$0.isEmpty }.count
     }
-}
-
-private struct GrokCacheEntry: Codable, Equatable, Sendable {
-    let signature: CompositeFileSignature<FileSignature>
-    let usage: TokenUsage?
 }
 
 private extension String {

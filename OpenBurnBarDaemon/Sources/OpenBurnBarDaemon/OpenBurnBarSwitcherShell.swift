@@ -262,9 +262,11 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
     private static func databaseConfiguration() -> Configuration {
         var configuration = Configuration()
         configuration.readonly = false
-        // The AgentLens app shares this SQLite file. Without a busy timeout, concurrent
-        // writers immediately raise SQLITE_BUSY (error 5: "database is locked").
+        // AgentLens shares this SQLite file. EQP showed intersection scans
+        // are not covering-indexable without a migration; extra readers hide
+        // WAL write-lock stalls. 5s busy timeout matches the Mac pool.
         configuration.busyMode = .timeout(5)
+        configuration.maximumReaderCount = 8
 
         // RR-1: key the shared SQLite with the same app Keychain key WHEN a
         // SQLCipher codec is linked, matching `DatabaseEncryptionService` on the
@@ -355,7 +357,7 @@ public final class BurnBarSwitcherSQLiteProfileStore: BurnBarSwitcherProfileStor
             return Date(timeIntervalSince1970: number.doubleValue)
         }
         if let string = value as? String {
-            return ISO8601DateFormatter().date(from: string)
+            return ThreadSafeISO8601DateFormatter.parseBasic(string)
         }
         return nil
     }

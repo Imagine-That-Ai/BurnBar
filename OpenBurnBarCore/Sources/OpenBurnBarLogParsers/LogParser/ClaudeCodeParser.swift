@@ -119,7 +119,10 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         for projectDir in filteredDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
 
-            guard let files = try? fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil) else { // try?-ok(dir read skip)
+            guard let files = try? fileManager.contentsOfDirectory(
+                at: projectDir,
+                includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+            ) else { // try?-ok(dir read skip)
                 continue
             }
 
@@ -146,7 +149,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
                     .appendingPathComponent("subagents")
                 if let subagentFiles = try? fileManager.contentsOfDirectory( // try?-ok(optional dir skip)
                     at: subagentsDir,
-                    includingPropertiesForKeys: nil
+                    includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
                 ) {
                     let agentJsonlFiles = subagentFiles.filter {
                         $0.pathExtension == "jsonl" && $0.lastPathComponent.hasPrefix("agent-")

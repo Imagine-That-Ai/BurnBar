@@ -20,12 +20,12 @@ public func parserAutoReleasePool<Result>(
 
 public struct LogParseOptions: Sendable {
     public var includeConversationBodies: Bool
-    /// When set, parsers may return cached older rows but should not parse
-    /// uncached files whose modification date is before this boundary.
+    /// Indexing-only watermark. Conversation indexing may skip files whose
+    /// mtime is behind the last `idx2:` checkpoint. Usage-accounting ticks
+    /// must leave this `nil` — an old transcript still has tokens.
     public var minimumFileModificationDate: Date?
-    /// Per-pass manifest of file identities already observed by a successful
-    /// indexing checkpoint. Parsers use it to admit newly discovered files
-    /// even when their preserved modification date predates the watermark.
+    /// Indexing-only discovery manifest paired with `idx2:` checkpoints.
+    /// Usage-accounting ticks must leave this `nil`.
     public var fileDiscoveryTracker: ParserFileDiscoveryTracker?
     /// Shared per-pass resource accounting: byte budget for new file content
     /// and a process memory ceiling. `nil` leaves direct, non-registry calls
@@ -41,6 +41,24 @@ public struct LogParseOptions: Sendable {
     public var includeCachedUnchangedUsages: Bool
 
     public static let `default` = LogParseOptions(includeConversationBodies: true)
+
+    /// Usage-accounting parse. Indexing watermarks (`idx2:` /
+    /// `minimumFileModificationDate` / discovery tracker) cannot be set
+    /// through this factory — an old file whose mtime lags the conversation
+    /// index still contributes tokens.
+    public static func usageAccounting(
+        includeConversationBodies: Bool = false,
+        resourceGovernor: ParserResourceGovernor? = nil,
+        metrics: ParserPassMetrics? = nil
+    ) -> LogParseOptions {
+        LogParseOptions(
+            includeConversationBodies: includeConversationBodies,
+            minimumFileModificationDate: nil,
+            fileDiscoveryTracker: nil,
+            resourceGovernor: resourceGovernor,
+            metrics: metrics
+        )
+    }
 
     public init(
         includeConversationBodies: Bool,

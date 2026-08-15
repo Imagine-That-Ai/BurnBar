@@ -29,7 +29,7 @@ struct EasterEggEventCanvas: View {
     @State private var didFinish = false
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
             Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, canvasSize in
                 guard let scene else { return }
                 let elapsed = elapsedTime(now: timeline.date)

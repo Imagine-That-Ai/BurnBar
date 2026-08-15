@@ -606,12 +606,21 @@ duplicate parser/provider boundaries. Planned ceilings move narrowly to 47,250 a
 (~221/185 LOC of bounded headroom); file-count ceilings and the main-target shim baseline stay
 unchanged.
 
-**Usage-ingest reliability ceiling adjustment (2026-08-14):** `fix/usage-ingest-live-catchup`
+**Idle usage/quota parse mining ceiling adjustment (2026-08-14):** the graphics/GRDB/quota
+mining work (#2244) adds mtime+size parser caches, OpenCode JSON-only `part` reads, and
+Kernel ISO-8601 / quota-refresh helpers in the existing owning modules. Measured sizes are
+`OpenBurnBarLogParsers` 16,472 LOC (35 files, at the file ceiling) and `OpenBurnBarKernel`
+47,446 LOC (154 files). Quota stays under its 13,000-LOC planned ceiling (12,501). New leaf
+targets would only duplicate parser/quota cache boundaries already covered by
+`ParserDiskCacheStore`. Planned ceilings move narrowly to 16,700 and 47,650 LOC (~228/204 LOC
+of bounded headroom); file-count ceilings, Quota's ceiling, and the main-target shim baseline
+stay unchanged. The deny-gate is otherwise unmodified.
+
+**Usage-ingest reliability ceiling adjustment (2026-08-15):** `fix/usage-ingest-live-catchup`
 (#2240) isolated `isLiveUsage` attribution to `OpenBurnBarKernel`, fixed Grok `chat_history.jsonl`
 cache staleness, split live vs catch-up ingest onto lane-aware governors, and bounded Codex
-subagent classification to an 8 KB head read. `OpenBurnBarLogParsers` now measures 14,174 LOC
-(32 files), still below the owning-module ceiling; the planned ceiling moves 14,100→14,300 LOC
-(~126 LOC headroom). `Kernel`'s `isLiveUsage` addition is under its existing 47,250 LOC budget. The
+subagent classification to an 8 KB head read. Those changes land inside the #2244
+`OpenBurnBarLogParsers` / `OpenBurnBarKernel` ceilings (16,700 / 47,650). The
 per-file `try?` debt gate and the `static let shared` singleton count were cleaned to zero
 (`UsageAggregator.swift:320` tagged `try?-ok`) and raised to 57/58 respectively
 (`UsageIngestPersistGate` + `UsageParserPassGate` are cross-queue global async-mutex refinements that

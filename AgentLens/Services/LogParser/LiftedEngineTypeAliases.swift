@@ -56,6 +56,10 @@ typealias BufferedLineSequence = OpenBurnBarCore.BufferedLineSequence
 typealias SessionLogMarkdownFormatter = OpenBurnBarCore.SessionLogMarkdownFormatter
 
 typealias FileSignature = OpenBurnBarCore.FileSignature
+typealias FileSetSignature = OpenBurnBarCore.FileSetSignature
+typealias CachedUsageTotals = OpenBurnBarCore.CachedUsageTotals
+typealias CachedUsageEntry = OpenBurnBarCore.CachedUsageEntry
+typealias CachedUsageBundleEntry = OpenBurnBarCore.CachedUsageBundleEntry
 typealias CompositeFileSignature = OpenBurnBarCore.CompositeFileSignature
 typealias ParserDiskCache = OpenBurnBarCore.ParserDiskCache
 typealias ParserDiskCacheStore = OpenBurnBarCore.ParserDiskCacheStore

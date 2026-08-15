@@ -2,6 +2,7 @@ package com.openburnbar.data.cloud
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.openburnbar.data.domains.DataDomains
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -15,7 +16,7 @@ import kotlinx.coroutines.tasks.await
  * The registry is the single source of truth — do NOT assume a hardcoded on/off state
  * here; whether any domain carries the scheme is whatever registry.json declares. When a
  * domain is NOT on the Signal scheme the gate is fail-closed (no envelopes emitted).
- * `signalSealingOverrideProvider` is a TEST-ONLY hook (mirrors the iOS pattern) so the
+ * `signalActivationOverrideProvider` is a TEST-ONLY hook (mirrors the iOS pattern) so the
  * producer path can be exercised under test without changing production behavior.
  *
  * Recipient resolution from Firestore (`atRestRecipients`) is added alongside the
@@ -23,6 +24,12 @@ import kotlinx.coroutines.tasks.await
  * pure seal/open below take recipients explicitly so they unit-test without Firestore.
  */
 object AndroidCloudVaultSignalPayloads {
+    enum class ActivationState {
+        OFF,
+        ENABLED,
+        REQUIRED,
+    }
+
     data class SignalEnvelopeMapRequest(
         val domainID: String,
         val uid: String,
@@ -34,24 +41,91 @@ object AndroidCloudVaultSignalPayloads {
         val otherRecipients: List<CloudVaultSignalRecipient>,
     )
 
-    /** Test-only deterministic gate override (domainID -> enabled?, null = no override). */
-    internal var signalSealingOverrideProvider: ((String) -> Boolean?)? = null
+    /** Test-only deterministic gate override (domainID -> state?, null = no override). */
+    internal var signalActivationOverrideProvider: ((String) -> ActivationState?)? = null
 
     /**
      * Kill switch (P1-5): the per-domain RUNTIME activation flag, AND-ed with the registry
      * scheme. Defaults to OFF (fail-closed), so a deployed-but-unramped registry flip is
      * inert on Android. Production wires this to Firebase Remote Config
      * (`signal_at_rest_<domainID>_enabled`) from BurnBarApplication once the firebase-config
-     * dependency is added — a one-line provider assignment — mirroring how iOS/Mac read RC
-     * directly. Kept as an injected provider so the crypto layer has no Firebase coupling and
-     * the AND is unit-testable. Returns false until wired => Android stays fail-closed.
+     * dependency is added, mirroring how iOS/Mac read RC directly. Kept as an injected provider
+     * so the crypto layer has no Firebase coupling and the AND is unit-testable. Returns OFF
+     * until wired, so Android stays fail-closed.
      */
-    internal var signalAtRestActivationProvider: ((String) -> Boolean)? = null
+    internal var signalAtRestActivationProvider: ((String) -> ActivationState)? = null
 
-    fun signalSealingIsEnabled(domainID: String): Boolean {
-        signalSealingOverrideProvider?.invoke(domainID)?.let { return it }
-        if (DataDomains.domain(domainID)?.sealingScheme != CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION) return false
-        return signalAtRestActivationProvider?.invoke(domainID) ?: false
+    fun signalActivationState(domainID: String): ActivationState {
+        signalActivationOverrideProvider?.invoke(domainID)?.let { return it }
+        if (DataDomains.domain(domainID)?.sealingScheme != CloudVaultCrypto.SIGNAL_AT_REST_ENCRYPTION) {
+            return ActivationState.OFF
+        }
+        return signalAtRestActivationProvider?.invoke(domainID) ?: ActivationState.OFF
+    }
+
+    fun signalSealingIsEnabled(domainID: String): Boolean = signalActivationState(domainID) != ActivationState.OFF
+
+    fun signalSealingIsRequired(domainID: String): Boolean = signalActivationState(domainID) == ActivationState.REQUIRED
+
+    internal fun remoteActivationState(enabled: Boolean, required: Boolean, hardKill: Boolean, enabledValueIsStatic: Boolean): ActivationState = when {
+        hardKill || enabledValueIsStatic || !enabled -> ActivationState.OFF
+        required -> ActivationState.REQUIRED
+        else -> ActivationState.ENABLED
+    }
+
+    internal fun applySignalEnvelopeForWrite(
+        payload: MutableMap<String, Any?>,
+        signalEnvelope: Map<String, Any>?,
+        state: ActivationState,
+        legacyPrivateFields: Set<String>,
+    ) {
+        if (signalEnvelope == null) {
+            check(state != ActivationState.REQUIRED) { "Signal envelope is required for this write." }
+            payload.remove("signalEnvelope")
+            return
+        }
+
+        payload["signalEnvelope"] = signalEnvelope
+        if (state == ActivationState.REQUIRED) {
+            legacyPrivateFields.forEach(payload::remove)
+        }
+    }
+
+    internal suspend fun writePayloadWithSignalPolicy(
+        payload: MutableMap<String, Any?>,
+        initialState: ActivationState,
+        finalStateProvider: () -> ActivationState,
+        legacyPrivateFields: Set<String>,
+        sealSignalEnvelope: suspend () -> Map<String, Any>?,
+        onOptionalSealFailure: (Throwable) -> Unit,
+        writePayload: suspend (Map<String, Any?>) -> Unit,
+    ) {
+        val sealResult =
+            if (initialState == ActivationState.OFF) {
+                Result.success(null)
+            } else {
+                runCatching { sealSignalEnvelope() }
+            }
+        val sealFailure = sealResult.exceptionOrNull()
+        if (sealFailure is CancellationException) throw sealFailure
+        val signalEnvelope = sealResult.getOrNull()
+
+        // Remote Config can activate while sealing suspends. The last observed state owns
+        // the committed shape, so hard-kill and required transitions cannot leak through.
+        val finalState = finalStateProvider()
+        if (finalState == ActivationState.REQUIRED) {
+            sealFailure?.let { throw it }
+        } else if (finalState == ActivationState.ENABLED) {
+            sealFailure?.let(onOptionalSealFailure)
+        }
+        applySignalEnvelopeForWrite(
+            payload,
+            signalEnvelope = if (finalState == ActivationState.OFF) null else signalEnvelope,
+            state = finalState,
+            legacyPrivateFields = legacyPrivateFields,
+        )
+
+        writePayload(payload)
     }
 
     /**

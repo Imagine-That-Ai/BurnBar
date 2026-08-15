@@ -56,7 +56,7 @@ final class JunieParser: LogParser, Sendable {
         self.appPaths = appPaths
         self.sessionsDirectoryOverride = sessionsDirectoryOverride
         self.fileHandleForReading = fileHandleForReading
-        self.cacheURL = appPaths.junieParserCacheURL
+        self.cacheURL = appPaths.macJunieParserCacheURL
         self.cacheStore = ParserDiskCacheStore(
             cacheURL: cacheURL,
             fileManager: fileManager,

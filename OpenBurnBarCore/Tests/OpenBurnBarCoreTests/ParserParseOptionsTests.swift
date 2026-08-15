@@ -7,6 +7,15 @@ import XCTest
 final class ParserParseOptionsTests: XCTestCase {
     private let fileManager = FileManager.default
 
+    func testUsageAccountingOptionsNeverCarryIndexingWatermarks() {
+        let options = LogParseOptions.usageAccounting(includeConversationBodies: true)
+        XCTAssertTrue(options.includeConversationBodies)
+        XCTAssertNil(options.minimumFileModificationDate)
+        XCTAssertNil(options.fileDiscoveryTracker)
+        XCTAssertNil(options.resourceGovernor)
+        XCTAssertNil(options.metrics)
+    }
+
     func testAntigravityOptionsPreserveUsageAndGateConversationBodiesAndHistory() async throws {
         let root = try makeTemporaryDirectory("antigravity")
         defer { try? fileManager.removeItem(at: root) }

@@ -6,6 +6,9 @@ import OpenBurnBarSQLiteReader
 
 /// Parses Goose (Block) sessions from the active Goose data directory.
 /// Falls back to legacy JSONL files only when no SQLite database exists.
+///
+/// Idle usage ticks resume unchanged `sessions.db` / `*.jsonl` files from a
+/// mtime+size disk cache (token totals only — never conversation bodies).
 public final class GooseParser: LogParser, Sendable {
     public let provider: AgentProvider = .goose
 
@@ -14,6 +17,10 @@ public final class GooseParser: LogParser, Sendable {
     /// callers point at a non-default Goose data root. `nil` uses the standard
     /// discovery order (env override + known install locations).
     private let sessionDirectoriesOverride: [String]?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
     typealias PricingCost = @Sendable (
         _ model: String,
         _ inputTokens: Int,
@@ -28,17 +35,51 @@ public final class GooseParser: LogParser, Sendable {
         let underlying: Error
     }
 
-    public init(sessionDirectoryOverride: String? = nil) {
+    public init(
+        sessionDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.sessionDirectoriesOverride = sessionDirectoryOverride.map { [$0] }
+        self.fileManager = fileManager
         self.pricingCost = Self.defaultPricingCost
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: Self.cacheURL(sessionDirectoriesOverride: sessionDirectoryOverride.map { [$0] }, appPaths: appPaths),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "GooseParser"
+        )
     }
 
     init(
         sessionDirectoriesOverride: [String],
-        pricingCost: @escaping PricingCost = GooseParser.defaultPricingCost
+        pricingCost: @escaping PricingCost = GooseParser.defaultPricingCost,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
     ) {
         self.sessionDirectoriesOverride = sessionDirectoriesOverride
+        self.fileManager = fileManager
         self.pricingCost = pricingCost
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: Self.cacheURL(sessionDirectoriesOverride: sessionDirectoriesOverride, appPaths: appPaths),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "GooseParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+
+    private static func cacheURL(
+        sessionDirectoriesOverride: [String]?,
+        appPaths: OpenBurnBarAppPaths
+    ) -> URL {
+        if let override = sessionDirectoriesOverride, let first = override.first {
+            return URL(fileURLWithPath: (first as NSString).expandingTildeInPath)
+                .appendingPathComponent(".obb-goose-parser-cache.plist")
+        }
+        return appPaths.gooseParserCacheURL
     }
 
     private static let sqliteDateFormats: [DateFormatter] = {
@@ -62,15 +103,25 @@ public final class GooseParser: LogParser, Sendable {
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let sessionDirectories = resolvedSessionDirectories()
 
         var databasePaths: [String] = []
-        for sessionsPath in sessionDirectories where fm.fileExists(atPath: sessionsPath) {
+        for sessionsPath in sessionDirectories where fileManager.fileExists(atPath: sessionsPath) {
             let dbPath = (sessionsPath as NSString).appendingPathComponent("sessions.db")
-            if fm.fileExists(atPath: dbPath) {
+            if fileManager.fileExists(atPath: dbPath) {
                 databasePaths.append(dbPath)
+            }
+        }
+
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
             }
         }
 
@@ -79,7 +130,23 @@ public final class GooseParser: LogParser, Sendable {
             var conversationsById: [String: ConversationRecord] = [:]
             for dbPath in databasePaths {
                 let dbURL = URL(fileURLWithPath: dbPath)
+                let cacheKey = dbURL.standardizedFileURL.path
+                activePaths.insert(cacheKey)
                 guard try gate.shouldRead(dbURL) else { continue }
+
+                let signature = FileSignature(for: dbURL, using: fileManager)
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    for session in cached.sessions {
+                        usagesBySessionId[session.sessionId] = session.makeUsage(provider: .goose)
+                    }
+                    continue
+                }
+
+                sessionScanCount.withLock { $0 += 1 }
                 do {
                     let result = try parseSQLiteDatabase(dbPath: dbPath)
                     for usage in result.usages {
@@ -90,6 +157,13 @@ public final class GooseParser: LogParser, Sendable {
                             conversationsById[conversation.id] = conversation
                         }
                     }
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                            signature: signature,
+                            usages: result.usages
+                        )
+                        cacheMutated = true
+                    }
                 } catch let error as SQLiteError {
                     gate.recordContentReadFailure(for: dbURL)
                     ParserDiagnostics.silentFailure(
@@ -98,6 +172,15 @@ public final class GooseParser: LogParser, Sendable {
                     )
                 }
             }
+
+            let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+            if !stalePaths.isEmpty {
+                for stalePath in stalePaths {
+                    parseCache.fileEntries.removeValue(forKey: stalePath)
+                }
+                cacheMutated = true
+            }
+
             return ParseResult(
                 usages: Array(usagesBySessionId.values),
                 conversations: Array(conversationsById.values)
@@ -107,21 +190,51 @@ public final class GooseParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        for sessionsPath in sessionDirectories where fm.fileExists(atPath: sessionsPath) {
+        for sessionsPath in sessionDirectories where fileManager.fileExists(atPath: sessionsPath) {
             let sessionsURL = URL(fileURLWithPath: sessionsPath)
-            let jsonlFiles = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: nil))?.filter {
+            let jsonlFiles = (try? fileManager.contentsOfDirectory(
+                at: sessionsURL,
+                includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+            ))?.filter {
                 $0.pathExtension == "jsonl"
             } ?? []
 
             for file in jsonlFiles {
+                let cacheKey = file.standardizedFileURL.path
+                activePaths.insert(cacheKey)
                 guard try gate.shouldRead(file) else { continue }
                 let sessionId = file.deletingPathExtension().lastPathComponent
+
+                let signature = FileSignature(for: file, using: fileManager)
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    for session in cached.sessions {
+                        usages.append(session.makeUsage(provider: .goose))
+                    }
+                    continue
+                }
+
+                sessionScanCount.withLock { $0 += 1 }
                 do {
-                    if let pair = try parseJsonlSession(file: file, sessionId: sessionId),
+                    if let pair = try parseJsonlSession(
+                        file: file,
+                        sessionId: sessionId,
+                        includeConversationBodies: options.includeConversationBodies
+                    ),
                        let usage = pair.usage {
                         usages.append(usage)
                         if options.includeConversationBodies, let conv = pair.conversation {
                             conversations.append(conv)
+                        }
+                        if let signature {
+                            parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                                signature: signature,
+                                usages: [usage]
+                            )
+                            cacheMutated = true
                         }
                     }
                 } catch let error as LegacyContentReadError {
@@ -132,6 +245,14 @@ public final class GooseParser: LogParser, Sendable {
                     )
                 }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -532,7 +653,8 @@ public final class GooseParser: LogParser, Sendable {
 
     private func parseJsonlSession(
         file: URL,
-        sessionId: String
+        sessionId: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         let handle: FileHandle
         do {
@@ -548,7 +670,7 @@ public final class GooseParser: LogParser, Sendable {
             throw LegacyContentReadError(underlying: error)
         }
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(mtime read, nil ok)
+        let mtime = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(mtime read, nil ok)
 
         var inputTokens = 0
         var outputTokens = 0
@@ -604,20 +726,24 @@ public final class GooseParser: LogParser, Sendable {
 
             if role == "user" && !content.isEmpty {
                 userChars += content.count
-                userWords += content.split { $0.isWhitespace || $0.isNewline }.count
-                if firstUser == nil {
-                    firstUser = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
-                }
-                if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: false, body: content)
                 messageCount += 1
+                if includeConversationBodies {
+                    userWords += content.split { $0.isWhitespace || $0.isNewline }.count
+                    if firstUser == nil {
+                        firstUser = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+                    }
+                    if !fullText.isEmpty { fullText += "\n\n" }
+                    fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: false, body: content)
+                }
             } else if role == "assistant" && !content.isEmpty {
                 assistantChars += content.count
-                assistantWords += content.split { $0.isWhitespace || $0.isNewline }.count
-                lastAssistant = content
-                if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: true, body: content)
                 messageCount += 1
+                if includeConversationBodies {
+                    assistantWords += content.split { $0.isWhitespace || $0.isNewline }.count
+                    lastAssistant = content
+                    if !fullText.isEmpty { fullText += "\n\n" }
+                    fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: true, body: content)
+                }
             }
         }
 
@@ -663,6 +789,8 @@ public final class GooseParser: LogParser, Sendable {
             provenanceConfidence: usedFallback ? .lowConfidenceEstimate : .exact,
             estimatorVersion: usedFallback ? TokenExtractionUtility.currentEstimatorVersion : ""
         )
+
+        guard includeConversationBodies else { return (usage, nil) }
 
         let conversation = ConversationRecord(
             id: ConversationRecord.stableId(provider: .goose, sessionId: sessionId),

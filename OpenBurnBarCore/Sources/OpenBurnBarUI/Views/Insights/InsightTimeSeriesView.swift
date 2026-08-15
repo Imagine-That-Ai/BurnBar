@@ -15,14 +15,15 @@ public struct InsightTimeSeriesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public var body: some View {
+        let layout = DomainLayout(points: data.series.flatMap(\.points))
         VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.sm) {
             if data.series.count > 1 {
                 legend
             }
-            if allPoints.isEmpty {
+            if layout.points.isEmpty {
                 emptyState
             } else {
-                chart
+                chart(layout)
             }
         }
     }
@@ -65,9 +66,7 @@ public struct InsightTimeSeriesView: View {
 
     // MARK: - Chart
 
-    // MARK: - Chart
-
-    private var chart: some View {
+    private func chart(_ layout: DomainLayout) -> some View {
         Group {
             if style == .line {
                 Chart {
@@ -102,8 +101,8 @@ public struct InsightTimeSeriesView: View {
             range: symbolScaleRange
         )
         .chartLegend(.hidden)
-        .chartYScale(domain: yDomain)
-        .chartXScale(domain: xDomain)
+        .chartYScale(domain: layout.yDomain)
+        .chartXScale(domain: layout.xDomain)
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine()
@@ -122,7 +121,7 @@ public struct InsightTimeSeriesView: View {
                 AxisGridLine()
                     .foregroundStyle(UnifiedDesignSystem.Colors.borderSubtle.opacity(0.35))
                 AxisValueLabel(
-                    format: xAxisFormat,
+                    format: layout.xAxisFormat,
                     centered: false,
                     collisionResolution: .greedy(minimumSpacing: 6)
                 )
@@ -348,46 +347,57 @@ public struct InsightTimeSeriesView: View {
 
     // MARK: - Domains + helpers
 
-    private var allPoints: [InsightWidgetData.TimeSeries.Point] {
-        data.series.flatMap(\.points)
-    }
+    struct DomainLayout {
+        let points: [InsightWidgetData.TimeSeries.Point]
+        let yDomain: ClosedRange<Double>
+        let xDomain: ClosedRange<Date>
+        let xAxisFormat: Date.FormatStyle
 
-    private var yDomain: ClosedRange<Double> {
-        let values = allPoints.map(\.value)
-        guard let maxValue = values.max(), maxValue > 0 else { return 0...1 }
-        let minValue = Swift.min(0, values.min() ?? 0)
-        let padded = maxValue * 1.15
-        return minValue...Swift.max(padded, maxValue + 0.001)
-    }
+        init(points: [InsightWidgetData.TimeSeries.Point]) {
+            self.points = points
+            if points.isEmpty {
+                yDomain = 0...1
+                let now = Date()
+                xDomain = now.addingTimeInterval(-3600)...now.addingTimeInterval(3600)
+                xAxisFormat = .dateTime.month(.abbreviated).day()
+                return
+            }
 
-    private var xDomain: ClosedRange<Date> {
-        let dates = allPoints.map(\.date)
-        guard let minDate = dates.min(), let maxDate = dates.max() else {
-            let now = Date()
-            return now.addingTimeInterval(-3600)...now.addingTimeInterval(3600)
-        }
-        let span = maxDate.timeIntervalSince(minDate)
-        if span < 60 * 60 {
-            let pad: TimeInterval = 3 * 3600
-            return minDate.addingTimeInterval(-pad)...maxDate.addingTimeInterval(pad)
-        }
-        let pad = span * 0.05
-        return minDate.addingTimeInterval(-pad)...maxDate.addingTimeInterval(pad)
-    }
+            var minValue = Double.greatestFiniteMagnitude
+            var maxValue = -Double.greatestFiniteMagnitude
+            var minDate = Date.distantFuture
+            var maxDate = Date.distantPast
+            for point in points {
+                minValue = Swift.min(minValue, point.value)
+                maxValue = Swift.max(maxValue, point.value)
+                if point.date < minDate { minDate = point.date }
+                if point.date > maxDate { maxDate = point.date }
+            }
 
-    private var xAxisFormat: Date.FormatStyle {
-        let dates = allPoints.map(\.date)
-        guard let minDate = dates.min(), let maxDate = dates.max() else {
-            return .dateTime.month(.abbreviated).day()
+            if maxValue > 0 {
+                let padded = maxValue * 1.15
+                yDomain = Swift.min(0, minValue)...Swift.max(padded, maxValue + 0.001)
+            } else {
+                yDomain = 0...1
+            }
+
+            let span = maxDate.timeIntervalSince(minDate)
+            if span < 60 * 60 {
+                let pad: TimeInterval = 3 * 3600
+                xDomain = minDate.addingTimeInterval(-pad)...maxDate.addingTimeInterval(pad)
+            } else {
+                let pad = span * 0.05
+                xDomain = minDate.addingTimeInterval(-pad)...maxDate.addingTimeInterval(pad)
+            }
+
+            if span < 36 * 3600 {
+                xAxisFormat = .dateTime.hour(.defaultDigits(amPM: .abbreviated))
+            } else if span < 60 * 86_400 {
+                xAxisFormat = .dateTime.month(.abbreviated).day()
+            } else {
+                xAxisFormat = .dateTime.month(.abbreviated).year(.twoDigits)
+            }
         }
-        let span = maxDate.timeIntervalSince(minDate)
-        if span < 36 * 3600 {
-            return .dateTime.hour(.defaultDigits(amPM: .abbreviated))
-        }
-        if span < 60 * 86_400 {
-            return .dateTime.month(.abbreviated).day()
-        }
-        return .dateTime.month(.abbreviated).year(.twoDigits)
     }
 
     private var style: InsightWidgetSpec.TimeSeriesSpec.Style {

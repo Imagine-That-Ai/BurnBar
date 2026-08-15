@@ -6,8 +6,46 @@ import OpenBurnBarSQLiteReader
 
 /// Parses Forge sessions from local SQLite databases, with JSONL as a last resort.
 public final class ForgeDevParser: LogParser, Sendable {
-    public init() {}
     public let provider: AgentProvider = .forgeDev
+    private let logDirectoryOverride: String?
+    private let fileManager: FileManager
+    private let homeDirectoryURL: URL
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
+    private let homeChildProbeHitCount = Locked(0)
+    private let homeListingHitCount = Locked(0)
+    private let homeChildProbes = Locked<[String: ForgeHomeChildProbe]>([:])
+    private let homeListing = Locked<ForgeHomeListing?>(nil)
+
+    public init(
+        logDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live(),
+        homeDirectoryURL: URL? = nil
+    ) {
+        self.logDirectoryOverride = logDirectoryOverride
+        self.fileManager = fileManager
+        self.homeDirectoryURL = homeDirectoryURL
+            ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-forge-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.forgeDevParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "ForgeDevParser"
+        )
+    }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    var lastHomeChildProbeHitCount: Int { homeChildProbeHitCount.read() }
+    var lastHomeListingHitCount: Int { homeListingHitCount.read() }
 
     private static let sqliteDateFormats: [DateFormatter] = {
         let formats = [
@@ -29,9 +67,18 @@ public final class ForgeDevParser: LogParser, Sendable {
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let databasePaths = discoverDatabasePaths()
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         if !databasePaths.isEmpty {
             var usagesBySessionId: [String: TokenUsage] = [:]
@@ -39,10 +86,29 @@ public final class ForgeDevParser: LogParser, Sendable {
             var parsedReadableDatabase = false
 
             for dbPath in databasePaths {
-                guard try gate.shouldRead(URL(fileURLWithPath: dbPath)) else { continue }
+                let dbURL = URL(fileURLWithPath: dbPath)
+                let cacheKey = dbURL.standardizedFileURL.path
+                activePaths.insert(cacheKey)
+                guard try gate.shouldRead(dbURL) else { continue }
+                let signature = FileSetSignature(databaseURL: dbURL, using: fileManager)
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    parsedReadableDatabase = true
+                    for session in cached.sessions {
+                        usagesBySessionId[session.sessionId] = session.makeUsage(provider: .forgeDev)
+                    }
+                    continue
+                }
+                sessionScanCount.withLock { $0 += 1 }
                 let result: ParseResult
                 do {
-                    result = try parseDatabase(at: dbPath)
+                    result = try parseDatabase(
+                        at: dbPath,
+                        includeConversationBodies: options.includeConversationBodies
+                    )
                 } catch {
                     ParserDiagnostics.silentFailure(
                         "forgedev_log_read_failed: \(dbPath) — \(error.localizedDescription)",
@@ -59,9 +125,23 @@ public final class ForgeDevParser: LogParser, Sendable {
                         conversationsBySessionId[conversation.sessionId] = conversation
                     }
                 }
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                        signature: signature,
+                        usages: result.usages
+                    )
+                    cacheMutated = true
+                }
             }
 
             if parsedReadableDatabase {
+                let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+                if !stalePaths.isEmpty {
+                    for stalePath in stalePaths {
+                        parseCache.fileEntries.removeValue(forKey: stalePath)
+                    }
+                    cacheMutated = true
+                }
                 return ParseResult(
                     usages: Array(usagesBySessionId.values),
                     conversations: Array(conversationsBySessionId.values)
@@ -69,8 +149,9 @@ public final class ForgeDevParser: LogParser, Sendable {
             }
         }
 
-        let sessionsPath = (provider.logDirectory as NSString).expandingTildeInPath
-        guard fm.fileExists(atPath: sessionsPath) else {
+        let sessionsRoot = logDirectoryOverride ?? provider.logDirectory
+        let sessionsPath = (sessionsRoot as NSString).expandingTildeInPath
+        guard fileManager.fileExists(atPath: sessionsPath) else {
             return ParseResult(usages: [], conversations: [])
         }
 
@@ -78,36 +159,67 @@ public final class ForgeDevParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
-        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        let contents = (try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         let jsonlFiles = contents.filter { $0.pathExtension == "jsonl" }
         let projectDirs = contents.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
-        for jsonlFile in jsonlFiles {
-            guard try gate.shouldRead(jsonlFile) else { continue }
-            let sessionId = jsonlFile.deletingPathExtension().lastPathComponent
-            if let pair = try parseJsonlSession(file: jsonlFile, sessionId: sessionId, projectName: sessionId),
-               let usage = pair.usage {
+        func ingestJSONL(file: URL, sessionId: String, projectName: String) throws {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
+            guard try gate.shouldRead(file) else { return }
+            let signature = FileSetSignature(urls: [file], using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .forgeDev) })
+                return
+            }
+            sessionScanCount.withLock { $0 += 1 }
+            if let pair = try parseJsonlSession(
+                file: file,
+                sessionId: sessionId,
+                projectName: projectName,
+                includeConversationBodies: options.includeConversationBodies
+            ), let usage = pair.usage {
                 usages.append(usage)
                 if options.includeConversationBodies, let conversation = pair.conversation {
                     conversations.append(conversation)
                 }
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                        signature: signature,
+                        usages: [usage]
+                    )
+                    cacheMutated = true
+                }
             }
+        }
+
+        for jsonlFile in jsonlFiles {
+            let sessionId = jsonlFile.deletingPathExtension().lastPathComponent
+            try ingestJSONL(file: jsonlFile, sessionId: sessionId, projectName: sessionId)
         }
 
         for projectDir in projectDirs {
             let projectName = projectDir.lastPathComponent
-            let files = (try? fm.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)) ?? []
+            let files = (try? fileManager.contentsOfDirectory(
+                at: projectDir,
+                includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+            )) ?? []
             for file in files where file.pathExtension == "jsonl" {
-                guard try gate.shouldRead(file) else { continue }
                 let sessionId = file.deletingPathExtension().lastPathComponent
-                if let pair = try parseJsonlSession(file: file, sessionId: sessionId, projectName: projectName),
-                   let usage = pair.usage {
-                    usages.append(usage)
-                    if options.includeConversationBodies, let conversation = pair.conversation {
-                        conversations.append(conversation)
-                    }
-                }
+                try ingestJSONL(file: file, sessionId: sessionId, projectName: projectName)
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -115,17 +227,20 @@ public final class ForgeDevParser: LogParser, Sendable {
 
     // MARK: - SQLite
 
-    private func parseDatabase(at dbPath: String) throws -> ParseResult {
+    private func parseDatabase(at dbPath: String, includeConversationBodies: Bool) throws -> ParseResult {
         if shouldParseFromSnapshot(dbPath: dbPath) {
-            return try parseSnapshotDatabase(at: dbPath)
+            return try parseSnapshotDatabase(
+                at: dbPath,
+                includeConversationBodies: includeConversationBodies
+            )
         }
 
         let reader = try SQLiteConnection.openReadOnly(path: dbPath)
         defer { reader.close() }
-        return try parseDatabase(reader: reader)
+        return try parseDatabase(reader: reader, includeConversationBodies: includeConversationBodies)
     }
 
-    private func parseSnapshotDatabase(at dbPath: String) throws -> ParseResult {
+    private func parseSnapshotDatabase(at dbPath: String, includeConversationBodies: Bool) throws -> ParseResult {
         let fm = FileManager.default
         let snapshotRoot = fm.temporaryDirectory.appendingPathComponent("openburnbar-forge-parser", isDirectory: true)
         try fm.createDirectory(at: snapshotRoot, withIntermediateDirectories: true)
@@ -148,7 +263,7 @@ public final class ForgeDevParser: LogParser, Sendable {
 
         let reader = try SQLiteConnection.openReadOnly(path: snapshotURL.path)
         defer { reader.close() }
-        return try parseDatabase(reader: reader)
+        return try parseDatabase(reader: reader, includeConversationBodies: includeConversationBodies)
     }
 
     private func shouldParseFromSnapshot(dbPath: String) -> Bool {
@@ -156,7 +271,7 @@ public final class ForgeDevParser: LogParser, Sendable {
         return !FileManager.default.fileExists(atPath: walPath)
     }
 
-    private func parseDatabase(reader: SQLiteReading) throws -> ParseResult {
+    private func parseDatabase(reader: SQLiteReading, includeConversationBodies: Bool) throws -> ParseResult {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
 
@@ -180,7 +295,10 @@ public final class ForgeDevParser: LogParser, Sendable {
             let metricsJSON = jsonObject(from: stringValue(row, column: "metrics"))
 
             let messages = (contextJSON?["messages"] as? [Any]) ?? []
-            let summary = parseContextMessages(messages)
+            let summary = parseContextMessages(
+                messages,
+                includeConversationBodies: includeConversationBodies
+            )
 
             let model = TokenExtractionUtility.normalizeModelName(summary.model ?? "forge")
             let projectPath = inferProjectPath(from: metricsJSON)
@@ -207,7 +325,8 @@ public final class ForgeDevParser: LogParser, Sendable {
                 usages.append(usage)
             }
 
-            if let conversation = conversation(
+            if includeConversationBodies,
+               let conversation = conversation(
                 sessionId: sessionId,
                 projectName: projectName,
                 title: title ?? summary.firstUser ?? projectName,
@@ -225,7 +344,10 @@ public final class ForgeDevParser: LogParser, Sendable {
         return ParseResult(usages: usages, conversations: conversations)
     }
 
-    private func parseContextMessages(_ messages: [Any]) -> ForgeSummary {
+    private func parseContextMessages(
+        _ messages: [Any],
+        includeConversationBodies: Bool
+    ) -> ForgeSummary {
         var summary = ForgeSummary()
 
         for entry in messages {
@@ -259,7 +381,11 @@ public final class ForgeDevParser: LogParser, Sendable {
                 continue
             }
 
-            summary.consume(role: role, content: content)
+            summary.consume(
+                role: role,
+                content: content,
+                includeConversationBodies: includeConversationBodies
+            )
         }
 
         return summary
@@ -348,7 +474,8 @@ public final class ForgeDevParser: LogParser, Sendable {
     private func parseJsonlSession(
         file: URL,
         sessionId: String,
-        projectName: String
+        projectName: String,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(guard-return-nil open)
         defer { try? handle.close() } // try?-ok(file handle teardown)
@@ -385,7 +512,7 @@ public final class ForgeDevParser: LogParser, Sendable {
                 summary.cacheReadTokens += extracted.cacheRead
             }
 
-            summary.consume(role: role, content: content)
+            summary.consume(role: role, content: content, includeConversationBodies: includeConversationBodies)
         }
 
         if summary.inputTokens == 0 && summary.outputTokens == 0 {
@@ -411,16 +538,18 @@ public final class ForgeDevParser: LogParser, Sendable {
             endTime: endTime ?? mtime ?? Date()
         )
 
-        let conversation = conversation(
-            sessionId: sessionId,
-            projectName: projectName,
-            title: summary.firstUser ?? projectName,
-            summary: summary,
-            keyFiles: [],
-            startTime: startTime ?? mtime,
-            endTime: endTime ?? mtime,
-            fileModifiedAt: mtime
-        )
+        let conversation = includeConversationBodies
+            ? conversation(
+                sessionId: sessionId,
+                projectName: projectName,
+                title: summary.firstUser ?? projectName,
+                summary: summary,
+                keyFiles: [],
+                startTime: startTime ?? mtime,
+                endTime: endTime ?? mtime,
+                fileModifiedAt: mtime
+            )
+            : nil
 
         return (usage, conversation)
     }
@@ -501,27 +630,80 @@ public final class ForgeDevParser: LogParser, Sendable {
     // MARK: - Discovery / Utilities
 
     private func discoverDatabasePaths() -> [String] {
-        let fm = FileManager.default
-        let homeURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        homeChildProbeHitCount.write(0)
+        homeListingHitCount.write(0)
+        if let override = logDirectoryOverride {
+            let dbPath = (override as NSString).appendingPathComponent(".forge.db")
+            return fileManager.fileExists(atPath: dbPath) ? [dbPath] : []
+        }
+        let homeURL = homeDirectoryURL
         var candidates: [String] = []
+        var verifiedChildDatabases: [String] = []
 
-        candidates.append(((provider.logDirectory as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"))
-        candidates.append((("~/.forge" as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"))
-        candidates.append((homeURL.path as NSString).appendingPathComponent(".forge.db"))
+        let wellKnown = [
+            ((provider.logDirectory as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"),
+            (("~/.forge" as NSString).expandingTildeInPath as NSString).appendingPathComponent(".forge.db"),
+            (homeURL.path as NSString).appendingPathComponent(".forge.db")
+        ]
 
-        if let children = try? fm.contentsOfDirectory(at: homeURL, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) { // try?-ok(dir listing optional)
-            for child in children {
-                let isDirectory = (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true // try?-ok(isDirectory defaults false)
-                guard isDirectory else { continue }
-                candidates.append(child.appendingPathComponent(".forge.db").path)
+        // Creating `~/foo/.forge.db` does not change `~` mtime; creating a
+        // new child directory typically does. Reuse the child URL list when
+        // home mtime is unchanged, then still re-stat known children.
+        let homeMtime = (try? homeURL.resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate)?.timeIntervalSince1970
+        let children: [URL]
+        if let homeMtime, let cached = homeListing.read(), cached.homeModifiedAt == homeMtime {
+            homeListingHitCount.write(1)
+            children = cached.children
+        } else {
+            children = (try? fileManager.contentsOfDirectory(
+                at: homeURL,
+                includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )) ?? []
+            if let homeMtime {
+                homeListing.write(ForgeHomeListing(homeModifiedAt: homeMtime, children: children))
             }
         }
+        var seenChildren = Set<String>()
+        var nextProbes: [String: ForgeHomeChildProbe] = [:]
+        let previousProbes = homeChildProbes.read()
+        for child in children {
+            let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
+            guard values?.isDirectory == true else { continue }
+            let childPath = child.standardizedFileURL.path
+            seenChildren.insert(childPath)
+            let mtime = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+            if let probe = previousProbes[childPath], probe.directoryModifiedAt == mtime {
+                homeChildProbeHitCount.withLock { $0 += 1 }
+                nextProbes[childPath] = probe
+                if probe.hasDatabase {
+                    verifiedChildDatabases.append(child.appendingPathComponent(".forge.db").path)
+                }
+                continue
+            }
+            let dbPath = child.appendingPathComponent(".forge.db").path
+            let hasDatabase = fileManager.fileExists(atPath: dbPath)
+            nextProbes[childPath] = ForgeHomeChildProbe(
+                directoryModifiedAt: mtime,
+                hasDatabase: hasDatabase
+            )
+            if hasDatabase {
+                verifiedChildDatabases.append(dbPath)
+            }
+        }
+        homeChildProbes.write(nextProbes.filter { seenChildren.contains($0.key) })
 
         var seen: Set<String> = []
-        return candidates.filter { path in
-            guard seen.insert(path).inserted else { return false }
-            return fm.fileExists(atPath: path)
+        for path in wellKnown where seen.insert(path).inserted {
+            if fileManager.fileExists(atPath: path) {
+                candidates.append(path)
+            }
         }
+        for path in verifiedChildDatabases where seen.insert(path).inserted {
+            candidates.append(path)
+        }
+        return candidates
     }
 
     private func jsonObject(from raw: String?) -> [String: Any]? {
@@ -612,22 +794,24 @@ private struct ForgeSummary {
     var fullText = ""
     var keyTools: Set<String> = []
 
-    mutating func consume(role: String, content: String) {
+    mutating func consume(role: String, content: String, includeConversationBodies: Bool) {
         switch role {
         case "user":
             userChars += content.count
+            messageCount += 1
+            guard includeConversationBodies else { return }
             userWords += content.split { $0.isWhitespace || $0.isNewline }.count
             if firstUser == nil {
                 firstUser = String(content.prefix(120))
             }
             append(content, isAssistant: false)
-            messageCount += 1
         case "assistant":
             assistantChars += content.count
+            messageCount += 1
+            guard includeConversationBodies else { return }
             assistantWords += content.split { $0.isWhitespace || $0.isNewline }.count
             lastAssistant = content
             append(content, isAssistant: true)
-            messageCount += 1
         default:
             break
         }
@@ -637,4 +821,14 @@ private struct ForgeSummary {
         if !fullText.isEmpty { fullText += "\n\n" }
         fullText += SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: isAssistant, body: content)
     }
+}
+
+private struct ForgeHomeChildProbe: Equatable, Sendable {
+    var directoryModifiedAt: TimeInterval
+    var hasDatabase: Bool
+}
+
+private struct ForgeHomeListing: Equatable, Sendable {
+    var homeModifiedAt: TimeInterval
+    var children: [URL]
 }

@@ -288,7 +288,7 @@ extension BurnBarMissionControlService {
         guard let rawValue = metadata[key]?.missionStringValue() else {
             return nil
         }
-        return ISO8601DateFormatter().date(from: rawValue)
+        return ThreadSafeISO8601DateFormatter.parseBasic(rawValue)
     }
 }
 

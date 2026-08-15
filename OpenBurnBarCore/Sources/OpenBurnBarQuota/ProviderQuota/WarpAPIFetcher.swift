@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -214,10 +215,7 @@ public enum WarpAPIFetcher {
 
         var nextRefreshTime: Date?
         if let nextRefreshTimeString = limitInfo["nextRefreshTime"] as? String {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            nextRefreshTime = formatter.date(from: nextRefreshTimeString)
-                ?? ISO8601DateFormatter().date(from: nextRefreshTimeString)
+            nextRefreshTime = ThreadSafeISO8601DateFormatter.parse(nextRefreshTimeString)
         }
 
         // Parse and combine bonus credits from user-level and workspace-level
