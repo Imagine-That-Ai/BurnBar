@@ -104,7 +104,7 @@ final class HermesDirectiveChannelTests: XCTestCase {
         XCTAssertEqual(outcome, .delivered)
     }
 
-    func test_requestCarriesBearerAuthAndDirectiveBody() async {
+    func test_requestCarriesBearerAuthAndDirectiveBody() async throws {
         var capturedRequest: URLRequest?
         StubURLProtocol.requestHandler = { request in
             capturedRequest = request
@@ -285,7 +285,7 @@ final class BurnBarFleetDeliveryRunnerTests: XCTestCase {
         }
     }
 
-    func test_deliveredWritesTerminalRecordWithChannel() async {
+    func test_deliveredWritesTerminalRecordWithChannel() async throws {
         let channel = StubChannel(outcome: .delivered)
         var recorded: [BurnBarFleetDirective] = []
         let result = await BurnBarFleetDeliveryRunner.run(
@@ -305,7 +305,7 @@ final class BurnBarFleetDeliveryRunnerTests: XCTestCase {
         XCTAssertNil(result.recordError)
     }
 
-    func test_failedWritesTerminalFailedRecordWithReason() async {
+    func test_failedWritesTerminalFailedRecordWithReason() async throws {
         let channel = StubChannel(outcome: .failed(reason: "hermes gateway unreachable: boom"))
         var recorded: [BurnBarFleetDirective] = []
         let result = await BurnBarFleetDeliveryRunner.run(
@@ -439,7 +439,23 @@ private final class StubURLProtocol: URLProtocol {
             return
         }
         do {
-            let (response, data) = try handler(request)
+            // URLSession delivers a request's httpBody to URLProtocol stubs
+            // via httpBodyStream, never via httpBody. Materialize the stream
+            // so handlers can inspect the request body.
+            var captured = request
+            if let stream = captured.httpBodyStream {
+                stream.open()
+                defer { stream.close() }
+                var body = Data()
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while stream.hasBytesAvailable {
+                    let read = stream.read(&buffer, maxLength: buffer.count)
+                    if read <= 0 { break }
+                    body.append(buffer, count: read)
+                }
+                captured.httpBody = body
+            }
+            let (response, data) = try handler(captured)
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)

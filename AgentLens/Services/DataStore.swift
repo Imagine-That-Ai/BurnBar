@@ -2298,7 +2298,11 @@ final class DataStore {
             try upsertChatThread(threadID, at: message.timestamp, db: db)
             try db.execute(
                 sql: """
-                INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON, cancelled, proposalJSON, proposalDecision, proposalDecidedAt, deliveryState)
+                INSERT OR REPLACE INTO chat_messages (
+                    id, threadId, role, content, timestamp, cliUsed,
+                    transcriptPiecesJSON, cancelled, proposalJSON,
+                    proposalDecision, proposalDecidedAt, deliveryState
+                )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
