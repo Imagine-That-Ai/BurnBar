@@ -491,6 +491,11 @@ function renderTranscript(entries: TranscriptEntry[]): HTMLElement {
       typing.append(element('i'), element('i'), element('i'));
       article.append(typing);
     }
+    if (entry.note) {
+      const note = element('p', `message-note${entry.error ? ' message-note--error' : ''}`, entry.note);
+      note.setAttribute('role', 'status');
+      article.append(note);
+    }
     section.append(article);
   }
   return section;

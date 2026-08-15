@@ -53,6 +53,8 @@ const MAX_LEARNING_RECALL_QUERY_BYTES = 2 * 1024;
 const MIN_LEARNING_CORRECTION_BYTES = 8;
 const LEARNING_RECALL_LIMIT = 8;
 const POLL_ERROR_BACKOFF_MS = 1_500;
+const ASK_STREAM_FLUSH_INTERVAL_MS = 40;
+const ASK_LENGTH_LIMIT_NOTE = 'The model reached its output limit, so this answer may be cut short.';
 const UTF8_ENCODER = new TextEncoder();
 const SAFARI_HANDOFF_BLOCKED_AGENT_IDS = new Set(['droid', 'forge', 'kimi', 'junie']);
 
@@ -1078,7 +1080,10 @@ export class SafariBackgroundController {
 
     let answer = '';
     let renderedAnswer = '';
-    let flushTimer: number | undefined;
+    // This runs in the MV3 background service worker: there is no `window`
+    // here, so timers must go through the global scope. `tsconfig.background.json`
+    // typechecks this file against the WebWorker lib to keep it that way.
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
     const flush = (): void => {
       if (flushTimer !== undefined) {
         clearTimeout(flushTimer);
@@ -1097,7 +1102,7 @@ export class SafariBackgroundController {
     };
     const scheduleFlush = (): void => {
       if (flushTimer === undefined) {
-        flushTimer = window.setTimeout(flush, 40);
+        flushTimer = setTimeout(flush, ASK_STREAM_FLUSH_INTERVAL_MS);
       }
     };
 
@@ -1127,17 +1132,24 @@ export class SafariBackgroundController {
         }
       );
       this.assertLocalWorkCurrent(workGeneration);
-      answer = completedAnswer;
+      answer = completedAnswer.answer;
       flush();
+      const cutShort = completedAnswer.finishReason === 'length';
       this.mutate((state) => {
         const entry = state.transcript.find((candidate) => candidate.id === transcriptId);
         if (entry) {
-          entry.text = completedAnswer;
+          entry.text = completedAnswer.answer;
           entry.streaming = false;
+          if (cutShort) {
+            entry.note = ASK_LENGTH_LIMIT_NOTE;
+          }
         }
         state.busy = false;
         state.running = false;
         this.appendActivityTo(state, 'Answered with page structure and the visible Safari viewport.', 'success');
+        if (cutShort) {
+          this.appendActivityTo(state, ASK_LENGTH_LIMIT_NOTE, 'warning');
+        }
       });
     } catch (error) {
       flush();
@@ -1156,13 +1168,19 @@ export class SafariBackgroundController {
         });
         return;
       }
+      const reason = serializeError(error, 'ask_failed').message || 'OpenBurnBar could not complete this page answer.';
       this.mutate((state) => {
         const entry = state.transcript.find((candidate) => candidate.id === transcriptId);
         if (entry) {
           entry.streaming = false;
           entry.error = true;
-          if (!entry.text) {
+          if (entry.text) {
+            // Partial text stays visible, but it must never pass for the whole
+            // answer: say why it stopped, right under the message.
+            entry.note = `Answer interrupted: ${reason}`;
+          } else {
             entry.text = 'OpenBurnBar could not complete this page answer.';
+            entry.note = reason;
           }
         }
       });
