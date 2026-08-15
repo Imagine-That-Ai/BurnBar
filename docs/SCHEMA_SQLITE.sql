@@ -318,11 +318,63 @@ CREATE TABLE memory_extraction_jobs (
   not_before      TEXT,
   lease_expires_at TEXT,
   created_at      TEXT NOT NULL,
-  updated_at      TEXT NOT NULL
+  updated_at      TEXT NOT NULL,
+  source_kind     TEXT NOT NULL DEFAULT 'chat' -- v61: 'chat' | 'safari_ask' | 'agent_session'
 );
 
 CREATE INDEX memory_extraction_jobs_status_idx ON memory_extraction_jobs(status, not_before);
 CREATE INDEX memory_extraction_jobs_lease_idx ON memory_extraction_jobs(status, lease_expires_at);
+
+-- v61 usage-memory substrate (OpenBurnBarDatabase+UsageMemoryMigrations.swift).
+-- Stage-0 candidate spool: payload_json is sealed inside the SQLCipher DB
+-- (same at-rest posture as memory_body_snapshots.snapshot_json); id is
+-- content-derived sha256(source_ref|content_hash) so re-mining is idempotent.
+CREATE TABLE memory_usage_candidates (
+  id              TEXT NOT NULL PRIMARY KEY,
+  source_kind     TEXT NOT NULL,             -- 'safari_ask' | 'agent_session'
+  source_ref      TEXT NOT NULL,             -- 'safari-ask:<observationId>' | 'codex:<threadId>'
+  thread_logical_id TEXT NOT NULL,
+  payload_json    TEXT NOT NULL,
+  content_hash    TEXT NOT NULL,
+  simhash         INTEGER NOT NULL,          -- 64-bit SimHash for repetition/near-dup pre-check
+  salience_hint   REAL NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending', -- pending|batched|extracted|dropped|expired
+  batch_job_id    TEXT,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+
+CREATE INDEX memory_usage_candidates_status_idx ON memory_usage_candidates(status, salience_hint, created_at);
+CREATE INDEX memory_usage_candidates_simhash_idx ON memory_usage_candidates(source_kind, simhash);
+
+-- Salience sidecar (consolidation worker is the sole writer). A sidecar, not
+-- an ALTER on agent_memories, so the mirrored agent_memories DDL stays
+-- byte-identical across app/daemon/python/doc copies.
+CREATE TABLE memory_salience (
+  memory_id          TEXT NOT NULL PRIMARY KEY,
+  salience           REAL NOT NULL,
+  hit_count          INTEGER NOT NULL DEFAULT 0,
+  last_reinforced_at TEXT,
+  corroboration      INTEGER NOT NULL DEFAULT 1,
+  source_trust       REAL NOT NULL,
+  computed_at        TEXT NOT NULL,
+  updated_at         TEXT NOT NULL
+);
+
+-- Typed consolidation edges. tags_json on agent_memories keeps extraction
+-- keywords/tags; links need indexed traversal for contradiction/promote passes.
+CREATE TABLE memory_links (
+  id             TEXT NOT NULL PRIMARY KEY,
+  from_memory_id TEXT NOT NULL,
+  to_memory_id   TEXT NOT NULL,
+  link_kind      TEXT NOT NULL, -- near_duplicate|contradicts|supports|promoted_from
+  score          REAL NOT NULL,
+  created_by     TEXT NOT NULL, -- 'stage2'|'consolidation'
+  created_at     TEXT NOT NULL
+);
+
+CREATE INDEX memory_links_from_idx ON memory_links(from_memory_id, link_kind);
+CREATE INDEX memory_links_to_idx ON memory_links(to_memory_id, link_kind);
 
 CREATE TABLE memory_embedding_refs (
   memory_id            TEXT NOT NULL,
