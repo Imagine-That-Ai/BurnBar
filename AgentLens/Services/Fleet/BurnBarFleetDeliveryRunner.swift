@@ -99,6 +99,10 @@ enum BurnBarFleetDeliveryRunner {
         let recorded: BurnBarFleetDirective?
         /// Non-nil when the terminal record write itself failed.
         let recordError: String?
+        /// True when the external channel may have succeeded but the
+        /// terminal directive record response was lost. The caller must
+        /// reconcile with the daemon before permitting another channel call.
+        let requiresReconciliation: Bool
     }
 
     /// Resolves the channel for a target agent. Returns nil when the agent
@@ -140,7 +144,12 @@ enum BurnBarFleetDeliveryRunner {
         case .unsupported(let reason):
             // The record stays `approved`; the card shows the typed
             // unsupported state with copy/retry affordances (VAL-ORCH-037).
-            return RunResult(outcome: outcome, recorded: nil, recordError: nil)
+            return RunResult(
+                outcome: outcome,
+                recorded: nil,
+                recordError: nil,
+                requiresReconciliation: false
+            )
         }
     }
 
@@ -162,12 +171,23 @@ enum BurnBarFleetDeliveryRunner {
         )
         do {
             let recorded = try record(terminal)
-            return RunResult(outcome: outcome(from: state), recorded: recorded, recordError: nil)
+            return RunResult(
+                // The daemon response is authoritative: another client may
+                // have won a terminal race while this channel call was in
+                // flight.
+                outcome: outcome(from: recorded.state),
+                recorded: recorded,
+                recordError: nil,
+                requiresReconciliation: false
+            )
         } catch {
             return RunResult(
                 outcome: .failed(reason: "delivery record failed: \(error.localizedDescription)"),
                 recorded: nil,
-                recordError: error.localizedDescription
+                recordError: error.localizedDescription,
+                // If the channel succeeded, a lost terminal record response
+                // is uncertain. A definite channel failure remains retryable.
+                requiresReconciliation: state == .delivered
             )
         }
     }

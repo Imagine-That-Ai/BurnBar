@@ -370,7 +370,7 @@ final class BurnBarFleetDeliveryRunnerTests: XCTestCase {
     }
 
     func test_recordWriteFailureSurfacesTyped() async {
-        let channel = StubChannel(outcome: .delivered)
+        let channel = StubChannel(outcome: .failed(reason: "gateway rejected request"))
         let result = await BurnBarFleetDeliveryRunner.run(
             directive: makeDirective(),
             channel: channel,
@@ -383,6 +383,22 @@ final class BurnBarFleetDeliveryRunnerTests: XCTestCase {
         }
         XCTAssertTrue(reason.contains("delivery record failed"), "got: \(reason)")
         XCTAssertNotNil(result.recordError)
+        XCTAssertFalse(result.requiresReconciliation, "a definite gateway failure remains retryable")
+    }
+
+    func test_lostTerminalRecordResponseIsMarkedForReconciliation() async {
+        let channel = StubChannel(outcome: .delivered)
+        let result = await BurnBarFleetDeliveryRunner.run(
+            directive: makeDirective(),
+            channel: channel,
+            record: { _ in
+                throw BurnBarFleetClientError.daemonUnavailable("terminal response lost")
+            }
+        )
+
+        XCTAssertTrue(result.requiresReconciliation)
+        XCTAssertEqual(channel.deliveredDirectives.count, 1)
+        XCTAssertTrue(result.recordError?.contains("terminal response lost") == true)
     }
 
     func test_channelResolutionHonestDegradesForUnsupportedAgent() {

@@ -498,6 +498,12 @@ offering another delivery attempt. A known terminal daemon record is adopted
 without redelivery; an approved record becomes a typed retryable interrupted
 failure; if the daemon is unavailable, the card remains visibly blocked until
 reconciliation succeeds. The original `decidedAt` is preserved in all cases.
+Recovery-journal entries carry the message id and decision timestamp they
+belong to. Journal restoration is monotonic: a durable row with a newer (or
+equal) terminal decision is never overwritten by an older journal, and a
+same-decision journal may only restore missing delivery-recovery detail. A
+stale journal is removed after the durable row wins, including the crash window
+between a successful decision save and journal removal.
 
 The app's FleetView designation state follows the same authority rule:
 refresh failure retains the last acknowledged designation while showing an
@@ -518,6 +524,10 @@ Delivery semantics (validators depend on these):
   record with `decidedAt` is written via `daemon.fleet.directive.record`
   BEFORE the channel call starts. The card shows `delivering` while the
   request is in flight.
+- **Durable in-flight fence:** the local `delivering` chat state must be
+  durably saved before Hermes is called. If that save fails, the channel is
+  not invoked; the card carries a typed local persistence failure and a
+  recovery journal entry.
 - **Terminal outcomes are typed** (VAL-ORCH-014): `delivered` (with
   `deliveryChannel: "hermes"`), `failed(reason)` (non-empty reason), or the
   record stays `approved` for the typed `unsupported` outcome. Never limbo,
@@ -529,6 +539,12 @@ Delivery semantics (validators depend on these):
   `failed(reason)`; the card shows the typed failure with a single
   user-action Retry — no silent background retry loop. A retry preserves the
   original `decidedAt`.
+- **Lost terminal-record response:** when Hermes returns delivered but the
+  terminal `directive.record` response is lost, the external outcome is
+  uncertain. The card records a typed failure with
+  `deliveryRecoveryRequired`, disables Retry, and requires daemon
+  reconciliation before any second Hermes call. A definite gateway failure
+  remains an explicit user-retryable failure.
 - **Unsupported agents** (VAL-ORCH-037): an approved directive targeting an
   agent with no documented writable channel (any agent other than `hermes`)
   honest-degrades: the record stays `approved`, no side effects, and the card

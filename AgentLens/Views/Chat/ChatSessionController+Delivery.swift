@@ -5,9 +5,31 @@ import SwiftUI
 // MARK: - Delivery (M4)
 
 extension ChatSessionController {
+    private enum RecoveryJournalEntryCodingKeys: String, CodingKey {
+        case threadID, messageID, decisionAt, message
+    }
+
     private struct RecoveryJournalEntry: Codable {
         let threadID: String
+        let messageID: String
+        let decisionAt: Date?
         let message: ChatMessageRecord
+
+        init(threadID: String, message: ChatMessageRecord) {
+            self.threadID = threadID
+            messageID = message.id
+            decisionAt = message.proposalDecidedAt
+            self.message = message
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: RecoveryJournalEntryCodingKeys.self)
+            threadID = try container.decode(String.self, forKey: .threadID)
+            message = try container.decode(ChatMessageRecord.self, forKey: .message)
+            messageID = try container.decodeIfPresent(String.self, forKey: .messageID) ?? message.id
+            decisionAt = try container.decodeIfPresent(Date.self, forKey: .decisionAt)
+                ?? message.proposalDecidedAt
+        }
     }
 
     private struct RecoveredMessageUpdate {
@@ -21,6 +43,38 @@ extension ChatSessionController {
 
     private static let recoveryJournalPrefix = "burnbar.chat.delivery-recovery."
 
+    /// A journal is a recovery candidate, not a newer source of truth. A
+    /// database row that already carries a decision must win over a journal
+    /// written before that decision, including the crash window between the
+    /// database save and journal removal.
+    private func journalCanOverlay(
+        _ journal: RecoveryJournalEntry,
+        currentMessage: ChatMessageRecord
+    ) -> Bool {
+        guard journal.messageID == journal.message.id else { return false }
+        guard currentMessage.proposalDecision != nil else { return true }
+        let journalMessage = journal.message
+        guard journalMessage.proposalDecision != nil else { return false }
+        guard let currentDecisionDate = currentMessage.proposalDecidedAt else { return false }
+        guard let journalDecisionDate = journal.decisionAt else { return false }
+        if journalDecisionDate > currentDecisionDate {
+            return true
+        }
+        guard journalDecisionDate == currentDecisionDate,
+              journalMessage.proposalDecision == currentMessage.proposalDecision,
+              currentMessage.proposalDecision == .approved,
+              currentMessage.deliveryState == nil
+        else {
+            return false
+        }
+
+        // A same-decision journal can carry delivery recovery detail that
+        // failed to reach SQLite. Preserve it while the durable row has no
+        // delivery state.
+        return journalMessage.deliveryRecoveryRequired
+            || journalMessage.deliveryState != nil
+    }
+
     /// Restores rows whose local save failed before attempting any new
     /// action. The journal is deliberately local and small: it carries the
     /// complete message card so a pending proposal cannot disappear when the
@@ -29,23 +83,40 @@ extension ChatSessionController {
         let defaults = UserDefaults.standard
         let prefix = Self.recoveryJournalPrefix + activeThreadID + "."
         let decoder = JSONDecoder()
-        var restored: [ChatMessageRecord] = []
-        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix(prefix) {
+        var restored: [RecoveryJournalEntry] = []
+        for (key, value) in defaults.dictionaryRepresentation()
+            where key.hasPrefix(prefix) {
+            let keyedMessageID = String(key.dropFirst(prefix.count))
             guard let data = value as? Data else {
                 persistenceError = "A local delivery recovery record was malformed and needs reconciliation."
                 continue
             }
             do {
                 let entry = try decoder.decode(RecoveryJournalEntry.self, from: data)
-                guard entry.threadID == activeThreadID else { continue }
-                restored.append(entry.message)
+                guard entry.threadID == activeThreadID,
+                      entry.messageID == keyedMessageID
+                else {
+                    persistenceError = "A local delivery recovery record did not match its message id."
+                    continue
+                }
+                restored.append(entry)
             } catch {
-                persistenceError = "A local delivery recovery record could not be decoded: \(error.localizedDescription)"
+                persistenceError =
+                    "A local delivery recovery record could not be decoded: \(error.localizedDescription)"
             }
         }
-        for message in restored {
+        for journal in restored {
+            let message = journal.message
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
-                messages[index] = message
+                let current = messages[index]
+                if journalCanOverlay(journal, currentMessage: current) {
+                    messages[index] = message
+                } else if current.proposalDecision != nil {
+                    // The durable row is newer or at least as authoritative.
+                    // Removing this stale entry is safe and prevents the same
+                    // crash-window journal from being reconsidered forever.
+                    clearRecoveryJournal(for: message.id)
+                }
             } else {
                 messages.append(message)
             }
@@ -117,37 +188,11 @@ extension ChatSessionController {
 
         do {
             let authoritative = try directiveRecordProvider(directive, fleetService.socketURL)
-            let state: ChatDeliveryState?
-            let decision: ChatProposalDecision
-            let recoveryRequired: Bool
-            switch authoritative.state {
-            case .delivered:
-                state = .delivered
-                decision = .approved
-                recoveryRequired = false
-            case .failed(let failure):
-                state = .failed(reason: failure)
-                decision = .approved
-                recoveryRequired = false
-            case .approved, .proposed:
-                state = .failed(reason: "Delivery was interrupted before its outcome was saved; retry when ready.")
-                decision = .approved
-                recoveryRequired = false
-            case .dismissed:
-                // Dismissal is terminal authority. Adopt it locally with no
-                // delivery state so the card cannot offer Reconcile or
-                // replay delivery on the next relaunch.
-                state = nil
-                decision = .dismissed
-                recoveryRequired = false
-            }
-            let update = RecoveredMessageUpdate(
-                proposalDecision: decision,
-                proposalDecidedAt: authoritative.decidedAt ?? message.proposalDecidedAt,
-                deliveryState: state,
-                recoveryRequired: recoveryRequired,
-                proposalError: nil,
-                refreshHistory: refreshHistory
+            let update = recoveredMessageUpdate(
+                for: authoritative,
+                currentMessage: message,
+                refreshHistory: refreshHistory,
+                nonTerminalRequiresReconciliation: false
             )
             replaceRecoveredMessage(messageID: messageID, update: update)
         } catch {
@@ -250,7 +295,11 @@ extension ChatSessionController {
             return
         }
 
-        updateDeliveryState(messageID: messageID, state: .delivering)
+        guard updateDeliveryState(messageID: messageID, state: .delivering) else {
+            // The local in-flight marker is the idempotency fence. Never call
+            // Hermes until that marker has been durably persisted.
+            return
+        }
 
         Task { [weak self] in
             guard let self else { return }
@@ -277,6 +326,22 @@ extension ChatSessionController {
         messageID: String,
         result: BurnBarFleetDeliveryRunner.RunResult
     ) {
+        if let recorded = result.recorded {
+            applyAuthoritativeDeliveryRecord(messageID: messageID, recorded: recorded)
+            return
+        }
+        if result.requiresReconciliation {
+            let detail = result.recordError.map { " \($0)" } ?? ""
+            let reason = "Delivery outcome is uncertain because the terminal record response was lost; "
+                + "reconcile with the daemon before retry.\(detail)"
+            _ = updateDeliveryState(
+                messageID: messageID,
+                state: .failed(reason: reason),
+                recoveryRequired: true,
+                proposalError: reason
+            )
+            return
+        }
         switch result.outcome {
         case .delivered:
             updateDeliveryState(messageID: messageID, state: .delivered)
@@ -287,13 +352,86 @@ extension ChatSessionController {
         }
     }
 
+    private func applyAuthoritativeDeliveryRecord(
+        messageID: String,
+        recorded: BurnBarFleetDirective
+    ) {
+        guard let message = messages.first(where: { $0.id == messageID }) else { return }
+        let update = recoveredMessageUpdate(
+            for: recorded,
+            currentMessage: message,
+            refreshHistory: true,
+            nonTerminalRequiresReconciliation: true
+        )
+        replaceRecoveredMessage(messageID: messageID, update: update)
+    }
+
+    private func recoveredMessageUpdate(
+        for directive: BurnBarFleetDirective,
+        currentMessage: ChatMessageRecord,
+        refreshHistory: Bool,
+        nonTerminalRequiresReconciliation: Bool
+    ) -> RecoveredMessageUpdate {
+        let decisionAt = directive.decidedAt ?? currentMessage.proposalDecidedAt
+        switch directive.state {
+        case .delivered:
+            return RecoveredMessageUpdate(
+                proposalDecision: .approved,
+                proposalDecidedAt: decisionAt,
+                deliveryState: .delivered,
+                recoveryRequired: false,
+                proposalError: nil,
+                refreshHistory: refreshHistory
+            )
+        case .failed(let reason):
+            return RecoveredMessageUpdate(
+                proposalDecision: .approved,
+                proposalDecidedAt: decisionAt,
+                deliveryState: .failed(reason: reason),
+                recoveryRequired: false,
+                proposalError: nil,
+                refreshHistory: refreshHistory
+            )
+        case .dismissed:
+            // Dismissal is terminal authority. Adopt it locally with no
+            // delivery state so the card cannot offer Reconcile or replay
+            // delivery on the next relaunch.
+            return RecoveredMessageUpdate(
+                proposalDecision: .dismissed,
+                proposalDecidedAt: decisionAt,
+                deliveryState: nil,
+                recoveryRequired: false,
+                proposalError: nil,
+                refreshHistory: refreshHistory
+            )
+        case .approved, .proposed:
+            let reason = nonTerminalRequiresReconciliation
+                ? "The daemon returned a non-terminal delivery record; reconcile before retry."
+                : "Delivery was interrupted before its outcome was saved; retry when ready."
+            return RecoveredMessageUpdate(
+                proposalDecision: .approved,
+                proposalDecidedAt: decisionAt,
+                deliveryState: .failed(reason: reason),
+                recoveryRequired: nonTerminalRequiresReconciliation,
+                proposalError: reason,
+                refreshHistory: refreshHistory
+            )
+        }
+    }
+
     /// Updates the persisted delivery state on the proposal card. The card
     /// keeps its decision and decision timestamp; only the delivery state
     /// changes (VAL-ORCH-014). A local save failure is surfaced as a visible
     /// card-level error — never a silent state that disappears on relaunch
     /// (scrutiny round 1, no-silent-`try?` on the delivery path).
-    func updateDeliveryState(messageID: String, state: ChatDeliveryState) {
-        guard let idx = messages.firstIndex(where: { $0.id == messageID }) else { return }
+    @discardableResult
+    func updateDeliveryState(
+        messageID: String,
+        state: ChatDeliveryState,
+        recoveryRequired: Bool = false,
+        proposalError: String? = nil
+    ) -> Bool {
+        guard let idx = messages.firstIndex(where: { $0.id == messageID }) else { return false }
         let old = messages[idx]
         let updated = ChatMessageRecord(
             id: old.id,
@@ -307,13 +445,17 @@ extension ChatSessionController {
             proposalDecision: old.proposalDecision,
             proposalDecidedAt: old.proposalDecidedAt,
             deliveryState: state,
-            deliveryRecoveryRequired: false,
-            proposalError: nil
+            deliveryRecoveryRequired: recoveryRequired,
+            proposalError: proposalError
         )
         messages[idx] = updated
         do {
             try saveChatMessageProvider(updated, activeThreadID)
-            clearRecoveryJournal(for: messageID)
+            if recoveryRequired {
+                persistRecoveryJournal(updated)
+            } else {
+                clearRecoveryJournal(for: messageID)
+            }
             persistenceError = nil
         } catch {
             let stateFailure = "Delivery state (\(state.rawValue)) could not be saved locally: "
@@ -332,15 +474,20 @@ extension ChatSessionController {
                 proposalJSON: updated.proposalJSON,
                 proposalDecision: updated.proposalDecision,
                 proposalDecidedAt: updated.proposalDecidedAt,
-                deliveryState: updated.deliveryState,
+                deliveryState: state == .delivering
+                    ? .failed(reason: stateFailure)
+                    : updated.deliveryState,
                 deliveryRecoveryRequired: true,
                 proposalError: message
             )
             messages[idx] = failed
             persistenceError = message
             persistRecoveryJournal(failed)
+            refreshHistory()
+            return false
         }
         refreshHistory()
+        return true
     }
 
     /// Retries delivery of a failed/unsupported approved directive (the

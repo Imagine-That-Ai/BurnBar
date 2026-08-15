@@ -226,6 +226,66 @@ class ChatSessionControllerOrchestratorTestCase: XCTestCase {
 // MARK: - M4 Delivery Recovery Repair Tests
 
 extension ChatSessionControllerDeliveryFlowTests {
+    /// Regression for the crash window after a database decision save and
+    /// before recovery-journal removal: relaunch must keep the newer
+    /// terminal database decision instead of restoring the stale pending card.
+    func test_crashBetweenDecisionSaveAndJournalRemovalCannotResurrectStaleDecision() throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot)
+        controller.startNewChatThread()
+        let wire = BurnBarFleetProposalWire(
+            id: "crash-window-decision",
+            kind: .askStatus,
+            targetAgent: .hermes,
+            payload: "Report current status"
+        )
+        let stalePending = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            proposalJSON: try XCTUnwrap(wire.encode())
+        )
+        try store.saveChatMessage(stalePending, threadID: controller.activeThreadID)
+        controller.messages = [stalePending]
+        let journalKey = "burnbar.chat.delivery-recovery.\(controller.activeThreadID).\(stalePending.id)"
+        defer { UserDefaults.standard.removeObject(forKey: journalKey) }
+
+        // This models the journal written by an earlier failed local save.
+        // The database save below is the newer decision write; intentionally
+        // do not clear the journal to model a process crash in between.
+        controller.persistRecoveryJournal(stalePending)
+        let decidedAt = Date(timeIntervalSince1970: 1_752_000_130)
+        let newerDismissal = ChatMessageRecord(
+            id: stalePending.id,
+            role: stalePending.role,
+            content: stalePending.content,
+            timestamp: stalePending.timestamp,
+            cliUsed: stalePending.cliUsed,
+            transcriptPieces: stalePending.transcriptPieces,
+            cancelled: stalePending.cancelled,
+            proposalJSON: stalePending.proposalJSON,
+            proposalDecision: .dismissed,
+            proposalDecidedAt: decidedAt,
+            deliveryState: nil,
+            deliveryRecoveryRequired: false,
+            proposalError: nil
+        )
+        try store.saveChatMessage(newerDismissal, threadID: controller.activeThreadID)
+
+        let relaunched = makeController(snapshot: snapshot)
+        relaunched.loadPersistedMessages()
+
+        let restored = try XCTUnwrap(relaunched.messages.first { $0.id == stalePending.id })
+        XCTAssertEqual(restored.proposalDecision, .dismissed)
+        XCTAssertEqual(restored.proposalDecidedAt, decidedAt)
+        XCTAssertNil(restored.deliveryState)
+        XCTAssertFalse(restored.deliveryRecoveryRequired)
+        XCTAssertNil(restored.proposalError)
+        XCTAssertNil(
+            UserDefaults.standard.object(forKey: journalKey),
+            "the stale journal must be removed after the durable decision wins"
+        )
+    }
+
     func test_successfulDecisionClearsEarlierRecoveryJournalBeforeRelaunch() async throws {
         let snapshot = freshSnapshot()
         let controller = makeController(snapshot: snapshot)
@@ -402,5 +462,72 @@ extension ChatSessionControllerDeliveryFlowTests {
         XCTAssertTrue(answer.contains("Running agents: claude-code (1 running)."), "got: \(answer)")
         XCTAssertFalse(answer.contains("hermes"), "U+2028 injection must not add hermes")
         XCTAssertFalse(answer.contains("grok-bot"), "U+2029 injection must not add grok-bot")
+    }
+}
+
+// MARK: - Daemon terminal authority regressions
+
+@MainActor
+final class ChatSessionControllerDeliveryAuthorityTests: ChatSessionControllerOrchestratorTestCase {
+    private final class StubDeliveryChannel: BurnBarFleetDirectiveChannel, @unchecked Sendable {
+        var deliveredDirectives: [BurnBarFleetDirective] = []
+
+        var channelName: String { "hermes" }
+
+        func supports(targetAgent: BurnBarFleetAgentID) -> Bool {
+            targetAgent == .hermes
+        }
+
+        func deliver(_ directive: BurnBarFleetDirective) async -> BurnBarFleetDeliveryOutcome {
+            deliveredDirectives.append(directive)
+            return .delivered
+        }
+    }
+
+    func test_daemonAuthoritativeDismissalWinsOverDeliveredCandidate() async throws {
+        let snapshot = freshSnapshot()
+        let channel = StubDeliveryChannel()
+        var terminalRecord = false
+        let controller = makeController(
+            snapshot: snapshot,
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            deliveryChannelProvider: { target in
+                guard target == .hermes else { return nil }
+                return channel
+            },
+            directiveRecordProvider: { directive, _ in
+                self.directiveRecordCalls += 1
+                if directive.state == .delivered {
+                    terminalRecord = true
+                    return BurnBarFleetDirective(
+                        id: directive.id,
+                        kind: directive.kind,
+                        targetAgent: directive.targetAgent,
+                        payload: directive.payload,
+                        state: .dismissed,
+                        createdAt: directive.createdAt,
+                        decidedAt: directive.decidedAt
+                    )
+                }
+                return directive
+            }
+        )
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+
+        let pending = try XCTUnwrap(lastAssistantMessage(controller))
+        controller.approveProposal(messageID: pending.id)
+        await waitForMessage(controller, id: pending.id) { $0.proposalDecision == .dismissed }
+
+        let adopted = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertTrue(terminalRecord)
+        XCTAssertEqual(adopted.proposalDecision, .dismissed)
+        XCTAssertNil(adopted.deliveryState)
+        XCTAssertFalse(adopted.deliveryRecoveryRequired)
+        XCTAssertEqual(channel.deliveredDirectives.count, 1)
+        XCTAssertEqual(directiveRecordCalls, 2)
     }
 }

@@ -354,6 +354,120 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         failSaves = false
     }
 
+    func test_deliveringStatePersistenceFailureMakesZeroChannelCalls() async throws {
+        let snapshot = freshSnapshot()
+        var controllerThreadID = DataStore.legacyChatThreadID
+        let channel = StubDeliveryChannel(outcome: .delivered)
+        let controller = makeController(
+            snapshot: snapshot,
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            deliveryChannelProvider: { target in
+                guard target == .hermes else { return nil }
+                return channel
+            },
+            saveChatMessage: { message, _ in
+                if message.deliveryState == .delivering {
+                    throw NSError(domain: "ChatPersistence", code: 10, userInfo: [
+                        NSLocalizedDescriptionKey: "delivering-state write failed"
+                    ])
+                }
+                try self.store.saveChatMessage(message, threadID: controllerThreadID)
+            }
+        )
+        controller.startNewChatThread()
+        controllerThreadID = controller.activeThreadID
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+
+        let pending = try XCTUnwrap(lastAssistantMessage(controller))
+        controller.approveProposal(messageID: pending.id)
+        try await Task.sleep(nanoseconds: 250_000_000)
+
+        let failed = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertEqual(failed.proposalDecision, .approved)
+        XCTAssertTrue(failed.deliveryState?.reason?.contains("delivering-state write failed") == true)
+        XCTAssertTrue(failed.deliveryRecoveryRequired)
+        XCTAssertEqual(directiveRecordCalls, 1, "only approval is recorded")
+        XCTAssertTrue(
+            channel.deliveredDirectives.isEmpty,
+            "the channel must not be called before delivering is durable"
+        )
+    }
+
+    func test_lostTerminalRecordResponseRequiresReconciliationBeforeRetry() async throws {
+        let snapshot = freshSnapshot()
+        let channel = StubDeliveryChannel(outcome: .delivered)
+        var approvalRecorded = false
+        var terminalResponseLost = true
+        let controller = makeController(
+            snapshot: snapshot,
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            deliveryChannelProvider: { target in
+                guard target == .hermes else { return nil }
+                return channel
+            },
+            directiveRecordProvider: { directive, _ in
+                self.directiveRecordCalls += 1
+                switch directive.state {
+                case .approved:
+                    if !approvalRecorded {
+                        approvalRecorded = true
+                        return directive
+                    }
+                    return BurnBarFleetDirective(
+                        id: directive.id,
+                        kind: directive.kind,
+                        targetAgent: directive.targetAgent,
+                        payload: directive.payload,
+                        state: .delivered,
+                        createdAt: directive.createdAt,
+                        decidedAt: directive.decidedAt,
+                        deliveryChannel: "hermes"
+                    )
+                case .delivered:
+                    if terminalResponseLost {
+                        terminalResponseLost = false
+                        throw BurnBarFleetClientError.daemonUnavailable("terminal response lost")
+                    }
+                    return directive
+                case .failed, .dismissed, .proposed:
+                    return directive
+                }
+            }
+        )
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+
+        let pending = try XCTUnwrap(lastAssistantMessage(controller))
+        controller.approveProposal(messageID: pending.id)
+        await waitForMessage(controller, id: pending.id) { $0.deliveryRecoveryRequired }
+
+        let uncertain = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertTrue(uncertain.deliveryRecoveryRequired)
+        XCTAssertTrue(uncertain.deliveryState?.reason?.contains("outcome is uncertain") == true)
+        XCTAssertTrue(uncertain.proposalError?.contains("terminal record response was lost") == true)
+        XCTAssertEqual(channel.deliveredDirectives.count, 1)
+
+        // A lost terminal-record response is not a gateway failure. Retry is
+        // blocked until the daemon-owned directive record is reconciled.
+        controller.retryDelivery(messageID: pending.id)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        XCTAssertEqual(channel.deliveredDirectives.count, 1, "retry must not call Hermes again")
+        XCTAssertEqual(directiveRecordCalls, 2, "approval + uncertain terminal record")
+
+        controller.reconcileDelivery(messageID: pending.id)
+        let reconciled = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertEqual(reconciled.deliveryState, .delivered)
+        XCTAssertFalse(reconciled.deliveryRecoveryRequired)
+        XCTAssertEqual(channel.deliveredDirectives.count, 1)
+        XCTAssertEqual(directiveRecordCalls, 3, "reconciliation reads daemon authority")
+    }
+
     func test_proposalErrorSaveFailureIsJournaledWithVisibleRetryState() throws {
         let snapshot = freshSnapshot()
         var failProposalErrorSave = true
