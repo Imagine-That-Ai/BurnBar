@@ -108,6 +108,9 @@ describe("buildConfig characterization (via getConfig)", () => {
     expect(cfg.flooRelay50GBProductID).toBe("com.openburnbar.floo.relay50gb");
     expect(cfg.elderWandSearches100ProductID).toBe("com.openburnbar.elderWand.searches100");
     expect(cfg.elderWandSearches500ProductID).toBe("com.openburnbar.elderWand.searches500");
+    expect(cfg.memoryBoostText1mProductID).toBe("com.openburnbar.memory.boost.text.1m");
+    expect(cfg.memoryBoostText5mProductID).toBe("com.openburnbar.memory.boost.text.5m");
+    expect(cfg.memoryBoostVision1mProductID).toBe("com.openburnbar.memory.boost.vision.1m");
 
     // Stripe price ids / secrets (default empty unless configured).
     expect(cfg.stripeBurnBarProPriceID).toBe("");
@@ -121,6 +124,9 @@ describe("buildConfig characterization (via getConfig)", () => {
     expect(cfg.stripeFlooRelay50GBPriceID).toBe("");
     expect(cfg.stripeElderWandSearches100PriceID).toBe("");
     expect(cfg.stripeElderWandSearches500PriceID).toBe("");
+    expect(cfg.stripeMemoryBoostText1mPriceID).toBe("");
+    expect(cfg.stripeMemoryBoostText5mPriceID).toBe("");
+    expect(cfg.stripeMemoryBoostVision1mPriceID).toBe("");
     expect(cfg.stripeRedirectURLAllowlist).toEqual([]);
     expect(cfg.stripeSecretKey).toBe("");
     expect(cfg.stripeWebhookSecret).toBe("");
@@ -138,6 +144,9 @@ describe("buildConfig characterization (via getConfig)", () => {
     expect(cfg.googlePlayFlooRelay50GBProductID).toBe("com.openburnbar.floo.relay50gb");
     expect(cfg.googlePlayElderWandSearches100ProductID).toBe("com.openburnbar.elderwand.searches100");
     expect(cfg.googlePlayElderWandSearches500ProductID).toBe("com.openburnbar.elderwand.searches500");
+    expect(cfg.googlePlayMemoryBoostText1mProductID).toBe("com.openburnbar.memory.boost.text.1m");
+    expect(cfg.googlePlayMemoryBoostText5mProductID).toBe("com.openburnbar.memory.boost.text.5m");
+    expect(cfg.googlePlayMemoryBoostVision1mProductID).toBe("com.openburnbar.memory.boost.vision.1m");
 
     // Hosted quota runner.
     expect(cfg.hostedQuotaRunnerURL).toBe("");

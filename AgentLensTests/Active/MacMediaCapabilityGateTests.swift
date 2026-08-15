@@ -252,6 +252,18 @@ final class MacMediaCapabilityGateTests: XCTestCase {
             Set(MacHostedQuotaPurchaseStore.tierProductIDs.values.flatMap(\.values)).count,
             6
         )
+        XCTAssertEqual(
+            MacHostedQuotaPurchaseStore.memoryBoostPacks.map(\.packId),
+            ["text_1m", "text_5m", "vision_1m"]
+        )
+        XCTAssertEqual(
+            MacHostedQuotaPurchaseStore.memoryBoostProductIDs,
+            Set([
+                "com.openburnbar.memory.boost.text.1m",
+                "com.openburnbar.memory.boost.text.5m",
+                "com.openburnbar.memory.boost.vision.1m"
+            ])
+        )
     }
 
     func testMacHostedQuotaRestorePrefersUltraAcrossMultipleCurrentEntitlements() throws {

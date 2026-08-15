@@ -97,6 +97,8 @@ internal data class CloudStoreScreenState(
     val remoteMcpLoading: Boolean,
     val remoteMcpError: String?,
     val revokingRemoteMcpClientId: String?,
+    val isCloudPro: Boolean = false,
+    val memoryWallet: MemoryBoostWalletUi = MemoryBoostWalletUi(),
 )
 
 internal data class CloudStoreScreenActions(
@@ -230,8 +232,10 @@ internal fun LazyListScope.cloudStoreLazyListItems(
     }
     cloudPaidTierLazyItems(
         isActive = state.isActive,
+        isCloudPro = state.isCloudPro,
         prices = state.productDetailsByID,
         isLoading = state.isLoading,
+        memoryWallet = state.memoryWallet,
         onPurchase = onPurchase,
     )
     item { CloudCapabilityLineup(isActive = state.isActive) }

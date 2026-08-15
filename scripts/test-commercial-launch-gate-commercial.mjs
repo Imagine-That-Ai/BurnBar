@@ -439,6 +439,19 @@ assert.equal(
   COMMERCIAL_PRODUCTS.elderWandSearches500,
   "com.openburnbar.elderWand.searches500",
 );
+assert.equal(
+  COMMERCIAL_PRODUCTS.memoryBoostText1m,
+  "com.openburnbar.memory.boost.text.1m",
+);
+assert.equal(
+  COMMERCIAL_PRODUCTS.memoryBoostVision1m,
+  "com.openburnbar.memory.boost.vision.1m",
+);
+assert.equal(
+  GOOGLE_PLAY_PRODUCTS.memoryBoostText1m,
+  "com.openburnbar.memory.boost.text.1m",
+);
+assert.match(launchGateSource, /STRIPE_MEMORY_BOOST_TEXT_1M_PRICE_ID/);
 assert.equal(GOOGLE_PLAY_PRODUCTS.ultraAnnual, "com.openburnbar.ultra.annual");
 assert.notEqual(
   GOOGLE_PLAY_PRODUCTS.cloudProMonthly,

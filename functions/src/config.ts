@@ -291,7 +291,10 @@ function buildAppleProductIds(
   | "agentControl100ActionsProductID"
   | "flooRelay50GBProductID"
   | "elderWandSearches100ProductID"
-  | "elderWandSearches500ProductID"
+    | "elderWandSearches500ProductID"
+    | "memoryBoostText1mProductID"
+    | "memoryBoostText5mProductID"
+    | "memoryBoostVision1mProductID"
 > {
   return {
     hostedQuotaProductID:
@@ -338,6 +341,18 @@ function buildAppleProductIds(
       process.env.ELDER_WAND_SEARCHES_500_PRODUCT_ID ??
       configString(openburnbar, "elder_wand_searches_500_product_id") ??
       "com.openburnbar.elderWand.searches500",
+    memoryBoostText1mProductID:
+      process.env.MEMORY_BOOST_TEXT_1M_PRODUCT_ID ??
+      configString(openburnbar, "memory_boost_text_1m_product_id") ??
+      "com.openburnbar.memory.boost.text.1m",
+    memoryBoostText5mProductID:
+      process.env.MEMORY_BOOST_TEXT_5M_PRODUCT_ID ??
+      configString(openburnbar, "memory_boost_text_5m_product_id") ??
+      "com.openburnbar.memory.boost.text.5m",
+    memoryBoostVision1mProductID:
+      process.env.MEMORY_BOOST_VISION_1M_PRODUCT_ID ??
+      configString(openburnbar, "memory_boost_vision_1m_product_id") ??
+      "com.openburnbar.memory.boost.vision.1m",
   };
 }
 
@@ -365,8 +380,11 @@ function buildStripeSettings(
   | "stripeAgentControl100ActionsPriceID"
   | "stripeFlooRelay50GBPriceID"
   | "stripeElderWandSearches100PriceID"
-  | "stripeElderWandSearches500PriceID"
-  | "stripeRedirectURLAllowlist"
+    | "stripeElderWandSearches500PriceID"
+    | "stripeMemoryBoostText1mPriceID"
+    | "stripeMemoryBoostText5mPriceID"
+    | "stripeMemoryBoostVision1mPriceID"
+    | "stripeRedirectURLAllowlist"
   | "stripeSecretKey"
   | "stripeWebhookSecret"
 > {
@@ -420,6 +438,21 @@ function buildStripeSettings(
       "STRIPE_ELDER_WAND_SEARCHES_500_PRICE_ID",
       "elder_wand_searches_500_price_id",
     ),
+    stripeMemoryBoostText1mPriceID: stripeSetting(
+      stripe,
+      "STRIPE_MEMORY_BOOST_TEXT_1M_PRICE_ID",
+      "memory_boost_text_1m_price_id",
+    ),
+    stripeMemoryBoostText5mPriceID: stripeSetting(
+      stripe,
+      "STRIPE_MEMORY_BOOST_TEXT_5M_PRICE_ID",
+      "memory_boost_text_5m_price_id",
+    ),
+    stripeMemoryBoostVision1mPriceID: stripeSetting(
+      stripe,
+      "STRIPE_MEMORY_BOOST_VISION_1M_PRICE_ID",
+      "memory_boost_vision_1m_price_id",
+    ),
     stripeRedirectURLAllowlist: parseStringList(
       stripeSetting(stripe, "STRIPE_REDIRECT_URL_ALLOWLIST", "redirect_url_allowlist"),
     ),
@@ -444,7 +477,10 @@ function buildGooglePlaySettings(
   | "googlePlayAgentControl100ActionsProductID"
   | "googlePlayFlooRelay50GBProductID"
   | "googlePlayElderWandSearches100ProductID"
-  | "googlePlayElderWandSearches500ProductID"
+    | "googlePlayElderWandSearches500ProductID"
+    | "googlePlayMemoryBoostText1mProductID"
+    | "googlePlayMemoryBoostText5mProductID"
+    | "googlePlayMemoryBoostVision1mProductID"
 > {
   return {
     googlePlayPackageName:
@@ -493,6 +529,18 @@ function buildGooglePlaySettings(
       process.env.GOOGLE_PLAY_ELDER_WAND_SEARCHES_500_PRODUCT_ID ??
       configString(googleplay, "elder_wand_searches_500_product_id") ??
       "com.openburnbar.elderwand.searches500",
+    googlePlayMemoryBoostText1mProductID:
+      process.env.GOOGLE_PLAY_MEMORY_BOOST_TEXT_1M_PRODUCT_ID ??
+      configString(googleplay, "memory_boost_text_1m_product_id") ??
+      "com.openburnbar.memory.boost.text.1m",
+    googlePlayMemoryBoostText5mProductID:
+      process.env.GOOGLE_PLAY_MEMORY_BOOST_TEXT_5M_PRODUCT_ID ??
+      configString(googleplay, "memory_boost_text_5m_product_id") ??
+      "com.openburnbar.memory.boost.text.5m",
+    googlePlayMemoryBoostVision1mProductID:
+      process.env.GOOGLE_PLAY_MEMORY_BOOST_VISION_1M_PRODUCT_ID ??
+      configString(googleplay, "memory_boost_vision_1m_product_id") ??
+      "com.openburnbar.memory.boost.vision.1m",
   };
 }
 

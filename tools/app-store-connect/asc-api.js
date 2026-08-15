@@ -57,6 +57,9 @@ const COMMERCIAL_TOP_UP_PRODUCT_IDS = [
   "com.openburnbar.floo.relay50gb",
   "com.openburnbar.elderWand.searches100",
   "com.openburnbar.elderWand.searches500",
+  "com.openburnbar.memory.boost.text.1m",
+  "com.openburnbar.memory.boost.text.5m",
+  "com.openburnbar.memory.boost.vision.1m",
 ];
 
 function currentMobileBuildVersion() {

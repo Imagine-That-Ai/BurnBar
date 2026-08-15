@@ -13,6 +13,8 @@ const { isActiveEntitlement } = entitlementsPackage;
 import { getConfig } from "../../config.js";
 import { isTimestampWithToMillis, stripUndefinedObject } from "../../guards.js";
 import { db } from "../../adminRuntime.js";
+import { logError } from "../../logging.js";
+import { settlePendingMemoryPacks } from "../../usageCuration/wallet.js";
 import {
   allowanceDocPath,
   cloudProTopUpReceiptDocPath,
@@ -324,6 +326,15 @@ export async function writeBurnBarProEntitlement(args: {
   });
   if ((entitlementID === BURNBAR_PRO_MAX_ENTITLEMENT_ID || entitlementID === BURNBAR_ULTRA_ENTITLEMENT_ID) && active) {
     await ensureCloudProAllowanceLedger(args.uid, cloudProAllowanceTierForEntitlement(entitlementID, args.productID));
+    try {
+      await settlePendingMemoryPacks(args.uid, true);
+    } catch (err) {
+      logError({
+        event: "memory_pack.settle_pending_failed",
+        uid: args.uid,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   }
   return written;
 }

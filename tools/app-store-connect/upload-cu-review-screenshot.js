@@ -65,6 +65,21 @@ const TOP_UP_PRODUCTS = [
     name: 'Elder Wand Search 500',
     description: 'Adds 500 hosted Elder Wand Fusion web_search credits.',
   },
+  {
+    productId: 'com.openburnbar.memory.boost.text.1m',
+    name: 'Memory Boost 1M',
+    description: 'Adds 1 million prepaid text tokens.',
+  },
+  {
+    productId: 'com.openburnbar.memory.boost.text.5m',
+    name: 'Memory Boost 5M',
+    description: 'Adds 5 million prepaid text tokens.',
+  },
+  {
+    productId: 'com.openburnbar.memory.boost.vision.1m',
+    name: 'Vision Memory Boost 1M',
+    description: 'Adds 1 million prepaid multimodal tokens.',
+  },
 ];
 const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
   'com.openburnbar.pro.monthly': 'review-final/burnbar-cloud-review.jpg',
@@ -75,6 +90,9 @@ const REVIEW_SCREENSHOT_BY_PRODUCT_ID = {
   'com.openburnbar.floo.relay50gb': 'review-final/burnbar-cloud-pro-topups-review.jpg',
   'com.openburnbar.elderWand.searches100': 'review-final/burnbar-cloud-pro-topups-review.jpg',
   'com.openburnbar.elderWand.searches500': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+  'com.openburnbar.memory.boost.text.1m': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+  'com.openburnbar.memory.boost.text.5m': 'review-final/burnbar-cloud-pro-topups-review.jpg',
+  'com.openburnbar.memory.boost.vision.1m': 'review-final/burnbar-cloud-pro-topups-review.jpg',
 };
 const TRUSTED_UPLOAD_HOST_SUFFIXES = [
   '.apple.com',

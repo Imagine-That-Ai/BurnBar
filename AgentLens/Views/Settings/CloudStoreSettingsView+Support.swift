@@ -383,7 +383,17 @@ struct MacHostedQuotaCurrentEntitlement: Equatable {
     let transactionID: UInt64?
 }
 
-@MainActor
+struct MacMemoryBoostPack: Identifiable, Hashable {
+    let packId: String
+    let productID: String
+    let title: String
+    let detail: String
+    let fallbackPrice: String
+    let requiresVision: Bool
+
+    var id: String { packId }
+}
+
 final class MacHostedQuotaPurchaseStore: ObservableObject {
     static let productID = MacCloudStoreKitProductCatalog.cloudMonthlyProductID
 
@@ -419,6 +429,39 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         .ultra: "$599"
     ]
 
+    static let memoryBoostText1mProductID = "com.openburnbar.memory.boost.text.1m"
+    static let memoryBoostText5mProductID = "com.openburnbar.memory.boost.text.5m"
+    static let memoryBoostVision1mProductID = "com.openburnbar.memory.boost.vision.1m"
+
+    static let memoryBoostPacks: [MacMemoryBoostPack] = [
+        MacMemoryBoostPack(
+            packId: "text_1m",
+            productID: memoryBoostText1mProductID,
+            title: "1M text tokens",
+            detail: "Prepaid Memory Boost. Monthly allowance is used first. Credits expire 12 months after purchase.",
+            fallbackPrice: "$2.99",
+            requiresVision: false
+        ),
+        MacMemoryBoostPack(
+            packId: "text_5m",
+            productID: memoryBoostText5mProductID,
+            title: "5M text tokens",
+            detail: "Prepaid Memory Boost. Monthly allowance is used first. Credits expire 12 months after purchase.",
+            fallbackPrice: "$9.99",
+            requiresVision: false
+        ),
+        MacMemoryBoostPack(
+            packId: "vision_1m",
+            productID: memoryBoostVision1mProductID,
+            title: "1M vision tokens",
+            detail: "Cloud Pro or Ultra. Screenshot and image memory. Credits expire 12 months after purchase.",
+            fallbackPrice: "$6.99",
+            requiresVision: true
+        )
+    ]
+
+    static let memoryBoostProductIDs: Set<String> = Set(memoryBoostPacks.map(\.productID))
+
     static let entitlementProductIDs = MacCloudStoreKitProductCatalog.entitlementProductIDs
 
     /// The primary (Cloud) product, kept for the legacy single-tier call sites.
@@ -431,11 +474,14 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
     /// The exact StoreKit product whose purchase sheet is currently opening.
     @Published private(set) var purchasingProductID: String?
     @Published private(set) var error: String?
+    @Published private(set) var lastMemoryPackNotice: String?
 
     private var transactionUpdatesTask: Task<Void, Never>?
+    private var unfinishedTransactionsTask: Task<Void, Never>?
 
     deinit {
         transactionUpdatesTask?.cancel()
+        unfinishedTransactionsTask?.cancel()
     }
 
     func load() async {
@@ -456,6 +502,110 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         switch billingPeriod {
         case .monthly: return Self.fallbackMonthlyPrice[tier]
         case .annual: return Self.fallbackAnnualPrice[tier]
+        }
+    }
+
+    func displayPrice(for pack: MacMemoryBoostPack) -> String {
+        productsByID[pack.productID]?.displayPrice ?? pack.fallbackPrice
+    }
+
+    func purchaseMemoryBoost(_ pack: MacMemoryBoostPack) async {
+        guard !isPurchasing else { return }
+        isPurchasing = true
+        purchasingProductID = pack.productID
+        error = nil
+        lastMemoryPackNotice = nil
+        defer {
+            isPurchasing = false
+            purchasingProductID = nil
+        }
+        do {
+            #if DISTRIBUTION_MAS
+            try await purchaseStoreKitMemoryBoost(pack)
+            #else
+            try await purchaseStripeMemoryBoost(pack)
+            #endif
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    #if DISTRIBUTION_MAS
+    private func purchaseStoreKitMemoryBoost(_ pack: MacMemoryBoostPack) async throws {
+        guard FirebaseApp.app() != nil else {
+            throw MacHostedQuotaPurchaseError.cloudUnavailable
+        }
+        var purchaseTarget = productsByID[pack.productID]
+        if purchaseTarget == nil {
+            purchaseTarget = try await Product.products(for: [pack.productID]).first
+            if let purchaseTarget {
+                productsByID[pack.productID] = purchaseTarget
+            }
+        }
+        guard let purchaseTarget else {
+            throw MacHostedQuotaPurchaseError.productUnavailable
+        }
+        let signedInUser = Auth.auth().currentUser.flatMap { $0.isAnonymous ? nil : $0 }
+        guard let signedInUser else {
+            throw MacHostedQuotaPurchaseError.signedOutSubscriptionPurchase
+        }
+        let appAccountToken = try await mintAppAccountToken(productID: pack.productID)
+        MacStoreKitAppAccountTokenBindingStore.shared.record(
+            appAccountToken: appAccountToken,
+            uid: signedInUser.uid,
+            productID: pack.productID
+        )
+        let result = try await purchaseTarget.purchase(options: [.appAccountToken(appAccountToken)])
+        switch result {
+        case .success(let verification):
+            let transaction = try checked(verification)
+            try await redeemAppleMemoryPack(
+                signedTransactionJWS: verification.jwsRepresentation,
+                productID: transaction.productID
+            )
+            await transaction.finish()
+        case .pending:
+            error = "Apple is still processing this purchase. OpenBurnBar will update when the transaction completes."
+        case .userCancelled:
+            break
+        @unknown default:
+            error = "Apple returned an unknown purchase state."
+        }
+    }
+    #else
+    private func purchaseStripeMemoryBoost(_ pack: MacMemoryBoostPack) async throws {
+        let functions = try hostedQuotaFunctions()
+        let result = try await functions.httpsCallable("createMemoryPackCheckoutSession").call([
+            "packId": pack.packId,
+            "successUrl": "https://burnbar.ai/account",
+            "cancelUrl": "https://burnbar.ai/account",
+            "attemptId": UUID().uuidString
+        ])
+        guard
+            let dict = result.data as? [String: Any],
+            let urlString = dict["url"] as? String,
+            let url = URL(string: urlString)
+        else {
+            throw MacHostedQuotaPurchaseError.productUnavailable
+        }
+        NSWorkspace.shared.open(url)
+        lastMemoryPackNotice = "Complete checkout in your browser. Tokens appear here after Stripe confirms payment."
+    }
+    #endif
+
+    private func redeemAppleMemoryPack(signedTransactionJWS: String, productID: String) async throws {
+        let functions = try hostedQuotaFunctions()
+        let result = try await functions.httpsCallable("redeemAppleMemoryPack").call([
+            "signedTransactionJWS": signedTransactionJWS,
+            "productID": productID
+        ])
+        let dict = result.data as? [String: Any]
+        if dict?["pending"] as? Bool == true {
+            lastMemoryPackNotice = "Vision pack is waiting for Cloud Pro or Ultra before tokens are released."
+        } else if dict?["alreadyGranted"] as? Bool == true {
+            lastMemoryPackNotice = "Memory Boost already credited."
+        } else {
+            lastMemoryPackNotice = "Memory Boost credited."
         }
     }
 
@@ -567,7 +717,7 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
         defer { isLoading = false }
         do {
             // cov:ignore-start -- fetches the live App Store catalogue; the tier/cadence id mapping is locked by testMacCloudPricingTierMapsEveryPaidMonthlyAndAnnualProduct
-            let ids = Array(Set(Self.tierProductIDs.values.flatMap(\.values)))
+            let ids = Array(Set(Self.tierProductIDs.values.flatMap(\.values)).union(Self.memoryBoostProductIDs))
             let products = try await Product.products(for: ids)
             productsByID = Dictionary(uniqueKeysWithValues: products.map { ($0.id, $0) })
             product = productsByID[Self.productID]
@@ -587,14 +737,29 @@ final class MacHostedQuotaPurchaseStore: ObservableObject {
                 await self.handle(transactionUpdate: update)
             }
         }
+        guard unfinishedTransactionsTask == nil else { return }
+        unfinishedTransactionsTask = Task.detached { [weak self] in
+            for await update in StoreKit.Transaction.unfinished {
+                guard let self else { return }
+                await self.handle(transactionUpdate: update)
+            }
+        }
     }
 
     private func handle(transactionUpdate update: VerificationResult<StoreKit.Transaction>) async {
         do {
             let transaction = try checked(update)
-            guard Self.entitlementProductIDs.contains(transaction.productID) else { return }
             guard FirebaseApp.app() != nil else { return }
             guard Auth.auth().currentUser?.isAnonymous == false else { return }
+            if Self.memoryBoostProductIDs.contains(transaction.productID) {
+                try await redeemAppleMemoryPack(
+                    signedTransactionJWS: update.jwsRepresentation,
+                    productID: transaction.productID
+                )
+                await transaction.finish()
+                return
+            }
+            guard Self.entitlementProductIDs.contains(transaction.productID) else { return }
             try await verifyHostedQuotaEntitlement(
                 signedTransactionJWS: update.jwsRepresentation,
                 productID: transaction.productID

@@ -3,6 +3,7 @@ package com.openburnbar.ui.store
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -56,6 +57,14 @@ class CloudStorePurchaseClickTest {
         clickPurchase(HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID)
         clickPurchase(HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID)
         clickPurchase(HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID)
+        clickPurchase(HostedQuotaSubscriptionStore.MEMORY_BOOST_TEXT_1M_PRODUCT_ID)
+        clickPurchase(HostedQuotaSubscriptionStore.MEMORY_BOOST_TEXT_5M_PRODUCT_ID)
+        composeRule
+            .onNodeWithTag(
+                cloudStorePurchaseTag(HostedQuotaSubscriptionStore.MEMORY_BOOST_VISION_1M_PRODUCT_ID),
+                useUnmergedTree = true,
+            )
+            .assertDoesNotExist()
 
         composeRule.runOnIdle {
             assertEquals(
@@ -66,7 +75,48 @@ class CloudStorePurchaseClickTest {
                     HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID,
                     HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID,
                     HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID,
+                    HostedQuotaSubscriptionStore.MEMORY_BOOST_TEXT_1M_PRODUCT_ID,
+                    HostedQuotaSubscriptionStore.MEMORY_BOOST_TEXT_5M_PRODUCT_ID,
                 ),
+                purchasedProductIDs,
+            )
+        }
+    }
+
+    @Test
+    fun cloudProStoreShowsVisionMemoryBoost() {
+        val purchasedProductIDs = mutableListOf<String>()
+
+        composeRule.setContent {
+            MaterialTheme {
+                CloudStoreLazyContent(
+                    innerPadding = PaddingValues(),
+                    state =
+                    CloudStoreScreenState(
+                        isActive = true,
+                        isLoading = false,
+                        error = null,
+                        priceText = "$24.99",
+                        expirationDateMs = null,
+                        purchaseDateMs = null,
+                        productDetailsByID = emptyMap(),
+                        remoteMcpClients = emptyList(),
+                        remoteMcpLoading = false,
+                        remoteMcpError = null,
+                        revokingRemoteMcpClientId = null,
+                        isCloudPro = true,
+                    ),
+                    onPurchase = { purchasedProductIDs += it },
+                    onRestore = {},
+                    onRevoke = {},
+                )
+            }
+        }
+
+        clickPurchase(HostedQuotaSubscriptionStore.MEMORY_BOOST_VISION_1M_PRODUCT_ID)
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf(HostedQuotaSubscriptionStore.MEMORY_BOOST_VISION_1M_PRODUCT_ID),
                 purchasedProductIDs,
             )
         }

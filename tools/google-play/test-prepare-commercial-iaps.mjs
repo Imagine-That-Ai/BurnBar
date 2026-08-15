@@ -23,7 +23,25 @@ assert.deepEqual(
     "com.openburnbar.floo.relay50gb",
     "com.openburnbar.elderwand.searches100",
     "com.openburnbar.elderwand.searches500",
+    "com.openburnbar.memory.boost.text.1m",
+    "com.openburnbar.memory.boost.text.5m",
+    "com.openburnbar.memory.boost.vision.1m",
   ],
+);
+for (const product of GOOGLE_PLAY_TOP_UPS) {
+  assert.equal(product.productId, product.productId.toLowerCase(), `${product.productId} must stay lowercase`);
+}
+assert.equal(
+  GOOGLE_PLAY_TOP_UPS.find((product) => product.productId === "com.openburnbar.memory.boost.text.1m")?.priceUSD,
+  "2.99",
+);
+assert.equal(
+  GOOGLE_PLAY_TOP_UPS.find((product) => product.productId === "com.openburnbar.memory.boost.text.5m")?.priceUSD,
+  "9.99",
+);
+assert.equal(
+  GOOGLE_PLAY_TOP_UPS.find((product) => product.productId === "com.openburnbar.memory.boost.vision.1m")?.priceUSD,
+  "6.99",
 );
 assert.equal(GOOGLE_PLAY_TOP_UPS[0].name, "Agent Control · 100 actions");
 assert.equal(GOOGLE_PLAY_TOP_UPS[1].name, "Floo relay · 50 GB");

@@ -14,6 +14,7 @@ lives, and what a human still owns before activation.
 
 Related design docs (the "why" and the schema): [`MEMORY_BACKEND_PLAN.md`](MEMORY_BACKEND_PLAN.md),
 [`MEMORY_FRONTEND_PLAN.md`](MEMORY_FRONTEND_PLAN.md), [`MEMORY_STRATEGY_AUDIT.md`](MEMORY_STRATEGY_AUDIT.md).
+Commerce for prepaid extraction tokens: [`MEMORY_POWER_UP_PACKS.md`](MEMORY_POWER_UP_PACKS.md).
 
 ---
 

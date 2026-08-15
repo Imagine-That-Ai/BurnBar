@@ -675,6 +675,8 @@ struct CloudTopUpChip: View {
             return "CloudChipFloo"
         case "elder_wand_searches_100", "elder_wand_searches_500":
             return "CloudCapSessionSearch"
+        case "text_1m", "text_5m", "vision_1m":
+            return "CloudChipAgent"
         default:
             return "CloudChipAgent"
         }

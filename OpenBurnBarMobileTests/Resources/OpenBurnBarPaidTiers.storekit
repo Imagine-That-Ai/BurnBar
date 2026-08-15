@@ -61,6 +61,51 @@
       "productID": "com.openburnbar.elderWand.searches500",
       "referenceName": "Elder Wand Search 500",
       "type": "Consumable"
+    },
+    {
+      "displayPrice": "2.99",
+      "familyShareable": false,
+      "internalID": "MEMBOOSTTEXT1M",
+      "localizations": [
+        {
+          "description": "Adds 1 million prepaid text tokens to the Memory Boost wallet.",
+          "displayName": "Memory Boost 1M",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.openburnbar.memory.boost.text.1m",
+      "referenceName": "Memory Boost 1M",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "9.99",
+      "familyShareable": false,
+      "internalID": "MEMBOOSTTEXT5M",
+      "localizations": [
+        {
+          "description": "Adds 5 million prepaid text tokens to the Memory Boost wallet.",
+          "displayName": "Memory Boost 5M",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.openburnbar.memory.boost.text.5m",
+      "referenceName": "Memory Boost 5M",
+      "type": "Consumable"
+    },
+    {
+      "displayPrice": "6.99",
+      "familyShareable": false,
+      "internalID": "MEMBOOSTVISION1M",
+      "localizations": [
+        {
+          "description": "Adds 1 million prepaid multimodal tokens to the Memory Boost wallet.",
+          "displayName": "Vision Memory Boost 1M",
+          "locale": "en_US"
+        }
+      ],
+      "productID": "com.openburnbar.memory.boost.vision.1m",
+      "referenceName": "Vision Memory Boost 1M",
+      "type": "Consumable"
     }
   ],
   "settings": {},

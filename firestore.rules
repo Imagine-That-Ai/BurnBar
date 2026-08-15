@@ -4181,6 +4181,20 @@ service cloud.firestore {
       allow read: if ownsUserNamespace(userId);
     }
 
+    // Memory Power-Up wallet cache. Clients read balances; Cloud Functions
+    // are the sole writer. Grants and the append-only ledger are server-only
+    // so purchase identifiers never leak to the client SDK.
+    match /users/{userId}/memoryWallet/{walletId} {
+      allow read: if ownsUserNamespace(userId) && walletId == "current";
+      allow write: if false;
+      match /grants/{grantId} {
+        allow read, write: if false;
+      }
+    }
+    match /users/{userId}/memoryWalletLedger/{entryId} {
+      allow read, write: if false;
+    }
+
 
 
 

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Memory Power-Up packs
+- Prepaid Memory Boost wallets (`text_1m`, `text_5m`, `vision_1m`) with
+  Stripe, App Store, and Google Play rails. Credits expire 12 months after
+  purchase; refunds claw back only that grant; vision packs stay pending until
+  Cloud Pro or Ultra is active. Live SKUs are provisioned in Stripe (test +
+  live), App Store Connect (`WAITING_FOR_REVIEW`), and Google Play (`ACTIVE`).
+  Play RTDN now reverses Memory Boost voids (not Cloud Pro top-ups) and retries
+  unclaimed one-time refunds until redeem claims the token. Stripe checkout
+  fails closed on quantity ≠ 1 and discounts. Store UI shows pending vision
+  tokens, 12-month expiry, and distinct pack titles.
+  See [`docs/MEMORY_POWER_UP_PACKS.md`](docs/MEMORY_POWER_UP_PACKS.md).
+
 ### Changed - Instant graphics, GRDB, and quota mining
 - **Constellation / logo swarm fills** now batch every live draw path
   (swarm, formed logo, color-driver) by `RGBA.bucketKey` instead of one

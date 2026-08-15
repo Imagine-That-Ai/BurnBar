@@ -103,6 +103,8 @@ If an agent needs to access these secrets for a build:
    GOOGLE_PLAY_SERVICE_ACCOUNT_JSON="$(firebase functions:secrets:access GOOGLE_PLAY_SERVICE_ACCOUNT_JSON --project burnbar)" \
      node tools/google-play/prepare-commercial-iaps.mjs --json
    ```
+   Memory Boost SKUs (`com.openburnbar.memory.boost.text.1m`,
+   `.text.5m`, `.vision.1m`) are created and activated by the same script.
 
 ## Emergency: Keystore Lost
 

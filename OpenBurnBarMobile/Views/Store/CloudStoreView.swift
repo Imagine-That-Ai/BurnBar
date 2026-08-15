@@ -29,9 +29,12 @@ private enum CloudSubscriptionDisclosure {
         "Agent Control 100 Actions - consumable top-up.",
         "Floo Relay 50 GB - consumable top-up.",
         "Elder Wand Search 100 - consumable top-up.",
-        "Elder Wand Search 500 - consumable top-up."
+        "Elder Wand Search 500 - consumable top-up.",
+        "Memory Boost 1M text tokens - consumable.",
+        "Memory Boost 5M text tokens - consumable.",
+        "Vision Memory Boost 1M tokens - consumable."
     ]
-    static let reviewVisiblePlanSummary = "All App Store Connect subscriptions for this app are available here: \(reviewVisiblePlans.joined(separator: " "))"
+    static let reviewVisiblePlanSummary = "All App Store Connect in-app purchases for this app are available here: \(reviewVisiblePlans.joined(separator: " "))"
 }
 
 // MARK: - Cloud Store View — Pro Poster
@@ -91,6 +94,10 @@ struct CloudStoreView: View {
                                 .padding(.horizontal, MobileTheme.Spacing.lg)
                                 .settingsAnchor(SettingsAnchor.cloudPlan)
                                 .staggeredEntrance(delay: 0.08)
+
+                            CloudStoreMemoryBoostTile(store: store)
+                                .padding(.horizontal, MobileTheme.Spacing.lg)
+                                .staggeredEntrance(delay: 0.09)
                         } else {
                             CloudBillingPeriodToggle(period: $billingPeriod)
                                 .padding(.horizontal, MobileTheme.Spacing.lg)
@@ -109,6 +116,12 @@ struct CloudStoreView: View {
                                 .padding(.horizontal, MobileTheme.Spacing.lg)
                                 .settingsAnchor(SettingsAnchor.cloudPlan)
                                 .staggeredEntrance(delay: 0.12)
+
+                            if store.isActive {
+                                CloudStoreMemoryBoostTile(store: store)
+                                    .padding(.horizontal, MobileTheme.Spacing.lg)
+                                    .staggeredEntrance(delay: 0.13)
+                            }
                         }
                     } else {
                         CloudBillingPeriodToggle(period: $billingPeriod)
@@ -379,6 +392,83 @@ private struct CloudStoreTopUpTile: View {
         .membershipCard()
         .accessibilityIdentifier("cloudStore.topUps")
     }
+}
+
+private struct CloudStoreMemoryBoostTile: View {
+    @Bindable var store: HostedQuotaSubscriptionStore
+    @State private var wallet = MemoryWalletStore()
+
+    private var visiblePacks: [OpenBurnBarStoreProduct] {
+        OpenBurnBarProductCatalog.memoryBoosts.filter { pack in
+            pack.topUpKind != "vision_1m" || store.isActivePro
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MobileTheme.Spacing.md) {
+            Text("MEMORY BOOST")
+                .font(MobileTheme.Typography.tiny)
+                .fontWeight(.bold)
+                .tracking(2.4)
+                .foregroundStyle(ProTheme.Membership.foilLeaf)
+
+            Text(memoryWalletSummary(wallet))
+                .font(MobileTheme.Typography.caption)
+                .foregroundStyle(ProTheme.Membership.engravingSoft)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(spacing: MobileTheme.Spacing.md) {
+                ForEach(visiblePacks) { pack in
+                    CloudTopUpChip(
+                        catalogProduct: pack,
+                        priceText: store.displayPrice(for: pack),
+                        isDisabled: !store.isActive,
+                        isPurchasing: store.isPurchasing
+                    ) {
+                        Haptics.medium()
+                        Task { await store.purchase(productID: pack.id) }
+                    }
+                }
+            }
+
+            if let redeem = store.lastMemoryPackRedeem {
+                Text(memoryPackRedeemCopy(redeem))
+                    .font(MobileTheme.Typography.caption)
+                    .foregroundStyle(ProTheme.Membership.foilLeaf)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(MobileTheme.Spacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .membershipCard()
+        .accessibilityIdentifier("cloudStore.memoryBoost")
+        .onAppear { wallet.start() }
+        .onDisappear { wallet.stop() }
+    }
+}
+
+private func memoryWalletSummary(_ wallet: MemoryWalletStore) -> String {
+    if wallet.loadFailed {
+        return "Could not load your Memory Boost wallet. Reopen this screen to try again."
+    }
+    var lines = ["Wallet: \(wallet.textTokens.formatted()) text · \(wallet.multimodalTokens.formatted()) vision"]
+    if wallet.pendingTextTokens > 0 || wallet.pendingMultimodalTokens > 0 {
+        lines.append(
+            "Waiting: \(wallet.pendingTextTokens.formatted()) text · \(wallet.pendingMultimodalTokens.formatted()) vision until Cloud Pro or Ultra is active."
+        )
+    }
+    lines.append("Credits expire 12 months after purchase.")
+    return lines.joined(separator: "\n")
+}
+
+private func memoryPackRedeemCopy(_ redeem: MemoryPackRedeemResponse) -> String {
+    if redeem.pending {
+        return "Vision pack is waiting for Cloud Pro or Ultra before tokens are released."
+    }
+    if redeem.alreadyGranted {
+        return "Memory Boost already credited."
+    }
+    return "Memory Boost credited."
 }
 
 private func topUpUnitLabel(for kind: String) -> String {

@@ -115,6 +115,9 @@ class HostedQuotaSubscriptionStoreTest {
                 HostedQuotaSubscriptionStore.FLOO_RELAY_TOP_UP_PRODUCT_ID,
                 HostedQuotaSubscriptionStore.FUSION_SEARCH_100_TOP_UP_PRODUCT_ID,
                 HostedQuotaSubscriptionStore.FUSION_SEARCH_500_TOP_UP_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.MEMORY_BOOST_TEXT_1M_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.MEMORY_BOOST_TEXT_5M_PRODUCT_ID,
+                HostedQuotaSubscriptionStore.MEMORY_BOOST_VISION_1M_PRODUCT_ID,
             ),
             HostedQuotaSubscriptionStore.STORE_PRODUCTS.map { it.id }.toSet(),
         )

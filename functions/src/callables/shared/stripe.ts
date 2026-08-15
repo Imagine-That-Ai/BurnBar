@@ -27,6 +27,7 @@ import {
   stripeSubscriptionProductID,
 } from "./stripeSubscriptionTiers.js";
 import { applyStripeTopUpCheckoutSession, reconcileStripeTopUpCharge } from "./stripeTopUps.js";
+import { applyStripeMemoryPackCheckoutSession, reconcileStripeMemoryPackCharge } from "../../usageCuration/stripeRail.js";
 import {
   recordStripeSubscriptionPaymentReversal,
   stripeInvoiceSubscriptionID,
@@ -306,6 +307,7 @@ export async function applyStripeCheckoutSession(
 ): Promise<void> {
   const uid = session.metadata?.firebaseUID ?? session.client_reference_id ?? undefined;
   if (!uid) return;
+  if (await applyStripeMemoryPackCheckoutSession(stripe, session, uid)) return;
   if (await applyStripeTopUpCheckoutSession(stripe, session, uid)) return;
 
   let subscription: Stripe.Subscription | undefined;
@@ -492,6 +494,7 @@ export async function reconcileStripeCharge(
   const currentCharge = await stripeWithResilience("charges.retrieve.webhook_reconcile", () =>
     stripe.charges.retrieve(charge.id),
   );
+  await reconcileStripeMemoryPackCharge(stripe, currentCharge, disputeStatus);
   await reconcileStripeTopUpCharge(stripe, currentCharge, eventContext, disputeStatus);
   // Record the money-state BEFORE reconciling subscriptions so the customer
   // sweep below observes the marker and deactivates the entitlement in the
