@@ -69,22 +69,20 @@ fun TrendAtlasCard(
     onOpenStudio: (() -> Unit)? = null,
 ) {
     val digest =
-        androidx.compose.runtime.remember(rollups, recentUsages, displayMode) {
+        remember(rollups, recentUsages, displayMode) {
             TrendDataDigest.build(rollups = rollups, recentUsages = recentUsages, displayMode = displayMode)
         }
     TrendAtlasCard(digest = digest, modifier = modifier, onOpenStudio = onOpenStudio)
 }
 
 @Composable
-fun TrendAtlasCard(
-    digest: TrendDataDigest,
-    insights: List<TrendInsight> = com.openburnbar.data.derived.TrendInsightEngine.insights(digest),
-    modifier: Modifier = Modifier,
-    onOpenStudio: (() -> Unit)? = null,
-) {
+fun TrendAtlasCard(digest: TrendDataDigest, insights: List<TrendInsight>? = null, modifier: Modifier = Modifier, onOpenStudio: (() -> Unit)? = null) {
     var scene by rememberSaveable { mutableStateOf(AtlasScene.SPEND) }
     var paused by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val resolvedInsights = remember(digest, insights) {
+        resolvedAtlasInsights(digest, insights)
+    }
 
     AuroraGlassCard(
         modifier = modifier,
@@ -93,7 +91,7 @@ fun TrendAtlasCard(
     ) {
         TrendAtlasCardBody(
             digest = digest,
-            insights = insights,
+            insights = resolvedInsights,
             scene = scene,
             paused = paused,
             onSceneChange = {

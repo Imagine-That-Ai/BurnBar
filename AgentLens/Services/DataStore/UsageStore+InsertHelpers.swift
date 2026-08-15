@@ -137,8 +137,9 @@ extension UsageStore {
                         executionSourceKind, executionSourceConfidence,
                         sourceDeviceId, sourceDeviceName, isRemote, syncedAt,
                         providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                        provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID,
+                        billingKind
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                         projectName = excluded.projectName,
                         inputTokens = excluded.inputTokens,
@@ -289,6 +290,34 @@ extension UsageStore {
                         -- Sticky fusion linkage (see upsertUsage): never erase a
                         -- recorded elderwand parentRequestID with an incoming NULL.
                         parentRequestID = COALESCE(excluded.parentRequestID, token_usage.parentRequestID),
+                        -- Billing provenance uses the same source/confidence
+                        -- precedence as the local upsert (see UsageStore+Upsert):
+                        -- a peer re-uploading the SAME source may correct the
+                        -- kind (VAL-TOKEN-012 convergence), a different source at
+                        -- equal confidence may not, and an unknown never erases.
+                        billingKind = CASE
+                            WHEN excluded.billingKind = 'unknown' THEN token_usage.billingKind
+                            WHEN token_usage.billingKind = 'unknown' THEN excluded.billingKind
+                            WHEN
+                                CASE excluded.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                                >
+                                CASE token_usage.provenanceConfidence
+                                    WHEN 'exact' THEN 4
+                                    WHEN 'derived_exact' THEN 3
+                                    WHEN 'high_confidence_estimate' THEN 2
+                                    WHEN 'low_confidence_estimate' THEN 1
+                                    ELSE 0
+                                END
+                            THEN excluded.billingKind
+                            WHEN excluded.usageSource = token_usage.usageSource THEN excluded.billingKind
+                            ELSE token_usage.billingKind
+                        END,
                         syncedAt = NULL
                     WHERE
                         CASE excluded.provenanceConfidence
@@ -326,7 +355,16 @@ extension UsageStore {
                     usage.provenanceMethod.rawValue,
                     usage.provenanceConfidence.rawValue,
                     usage.estimatorVersion,
-                    usage.parentRequestID
+                    usage.parentRequestID,
+                    // Stamp at write time; derive for peers whose upload
+                    // predates the synced `billingKind` field, using the same
+                    // classifier the local v60 backfill applied.
+                    (usage.billingKind == .unknown
+                        ? BurnBarBillingProvenance.classify(
+                            provider: usage.provider,
+                            usageSource: usage.usageSource
+                        )
+                        : usage.billingKind).rawValue
                 ]
             )
             return db.changesCount

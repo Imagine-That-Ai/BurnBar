@@ -15,8 +15,9 @@ extension UsageStore {
                     executionSourceKind, executionSourceConfidence,
                     sourceDeviceId, sourceDeviceName, isRemote,
                     providerID, providerAccountID, providerAccountLabel, providerAccountSource,
-                    provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    provenanceMethod, provenanceConfidence, estimatorVersion, parentRequestID,
+                    billingKind
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(provider, sessionId, model, COALESCE(sourceDeviceId, ''), COALESCE(providerAccountID, '')) DO UPDATE SET
                     projectName = excluded.projectName,
                     inputTokens = excluded.inputTokens,
@@ -129,6 +130,40 @@ extension UsageStore {
                     -- elderwand parentRequestID, a later non-daemon correction
                     -- (which carries NULL) must not erase it.
                     parentRequestID = COALESCE(excluded.parentRequestID, token_usage.parentRequestID),
+                    -- Billing provenance follows the SAME source/confidence
+                    -- precedence the `usageSource` arm above applies, because
+                    -- the kind describes the source that the row retains. An
+                    -- unknown-carrying correction never erases a classified
+                    -- kind; a stale unknown is always improvable; a strictly
+                    -- higher-confidence source re-classifies; an
+                    -- equal-confidence source may re-classify only when it
+                    -- speaks for the source the row already records. Without
+                    -- that last gate an exact Codex provider-log correction
+                    -- would flip a confirmed `billing_api` wallet charge into
+                    -- plan value while `usageSource` still said `billing_api`.
+                    billingKind = CASE
+                        WHEN excluded.billingKind = 'unknown' THEN token_usage.billingKind
+                        WHEN token_usage.billingKind = 'unknown' THEN excluded.billingKind
+                        WHEN
+                            CASE excluded.provenanceConfidence
+                                WHEN 'exact' THEN 4
+                                WHEN 'derived_exact' THEN 3
+                                WHEN 'high_confidence_estimate' THEN 2
+                                WHEN 'low_confidence_estimate' THEN 1
+                                ELSE 0
+                            END
+                            >
+                            CASE token_usage.provenanceConfidence
+                                WHEN 'exact' THEN 4
+                                WHEN 'derived_exact' THEN 3
+                                WHEN 'high_confidence_estimate' THEN 2
+                                WHEN 'low_confidence_estimate' THEN 1
+                                ELSE 0
+                            END
+                        THEN excluded.billingKind
+                        WHEN excluded.usageSource = token_usage.usageSource THEN excluded.billingKind
+                        ELSE token_usage.billingKind
+                    END,
                     syncedAt = NULL
                 WHERE
                     CASE excluded.provenanceConfidence
@@ -171,6 +206,11 @@ extension UsageStore {
                         -- fusion parentRequestID a prior row lacked.
                         OR (excluded.parentRequestID IS NOT NULL
                             AND COALESCE(token_usage.parentRequestID, '') != excluded.parentRequestID)
+                        -- A differing kind is a reason to run the write; whether
+                        -- it actually replaces the stored one is decided by the
+                        -- precedence CASE in the SET clause above.
+                        OR (excluded.billingKind != 'unknown'
+                            AND token_usage.billingKind != excluded.billingKind)
                     )
                 """,
         )
@@ -206,7 +246,14 @@ extension UsageStore {
                 usage.provenanceMethod.rawValue,
                 usage.provenanceConfidence.rawValue,
                 usage.estimatorVersion,
-                usage.parentRequestID
+                usage.parentRequestID,
+                // Stamp at write time; derive for callers that didn't classify.
+                (usage.billingKind == .unknown
+                    ? BurnBarBillingProvenance.classify(
+                        provider: usage.provider,
+                        usageSource: usage.usageSource
+                    )
+                    : usage.billingKind).rawValue
             ]
         )
     }
@@ -216,38 +263,39 @@ extension UsageStore {
     }
 
     static func decodeUsage(row: Row) -> TokenUsage? { // pure-move: was private
-        guard let idString = row["id"] as? String,
+        guard let idString = indexed(row, UsageDecodeCol.id.rawValue) as? String,
               let id = UUID(uuidString: idString),
-              let providerString = row["provider"] as? String,
+              let providerString = indexed(row, UsageDecodeCol.provider.rawValue) as? String,
               let provider = AgentProvider(rawValue: providerString),
-              let sessionId = row["sessionId"] as? String,
-              let projectName = row["projectName"] as? String,
-              let model = row["model"] as? String else { return nil }
+              let sessionId = indexed(row, UsageDecodeCol.sessionId.rawValue) as? String,
+              let projectName = indexed(row, UsageDecodeCol.projectName.rawValue) as? String,
+              let model = indexed(row, UsageDecodeCol.model.rawValue) as? String else { return nil }
 
-        let inputTokens = intValue(row["inputTokens"])
-        let outputTokens = intValue(row["outputTokens"])
-        let cacheCreationTokens = intValue(row["cacheCreationTokens"])
-        let cacheReadTokens = intValue(row["cacheReadTokens"])
-        let reasoningTokens = intValue(row["reasoningTokens"])
-        let usageSourceRaw = row["usageSource"] as? String
+        let inputTokens = intValue(indexed(row, UsageDecodeCol.inputTokens.rawValue))
+        let outputTokens = intValue(indexed(row, UsageDecodeCol.outputTokens.rawValue))
+        let cacheCreationTokens = intValue(indexed(row, UsageDecodeCol.cacheCreationTokens.rawValue))
+        let cacheReadTokens = intValue(indexed(row, UsageDecodeCol.cacheReadTokens.rawValue))
+        let reasoningTokens = intValue(indexed(row, UsageDecodeCol.reasoningTokens.rawValue))
+        let usageSourceRaw = indexed(row, UsageDecodeCol.usageSource.rawValue) as? String
         let usageSource = usageSourceRaw.flatMap { UsageSource(rawValue: $0) } ?? .unknown
-        let executionSourceKind = (row["executionSourceKind"] as? String)
+        let executionSourceKind = (indexed(row, UsageDecodeCol.executionSourceKind.rawValue) as? String)
             .flatMap { UsageExecutionSourceKind(rawValue: $0) }
-        let executionSourceConfidence = (row["executionSourceConfidence"] as? String)
+        let executionSourceConfidence = (indexed(row, UsageDecodeCol.executionSourceConfidence.rawValue) as? String)
             .flatMap { UsageProvenanceConfidence(rawValue: $0) }
-        let provenanceMethodRaw = row["provenanceMethod"] as? String
+        let provenanceMethodRaw = indexed(row, UsageDecodeCol.provenanceMethod.rawValue) as? String
         let provenanceMethod = provenanceMethodRaw.flatMap { UsageProvenanceMethod(rawValue: $0) } ?? .unknown
-        let provenanceConfidenceRaw = row["provenanceConfidence"] as? String
+        let provenanceConfidenceRaw = indexed(row, UsageDecodeCol.provenanceConfidence.rawValue) as? String
         let provenanceConfidence = provenanceConfidenceRaw.flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
-        let estimatorVersion = row["estimatorVersion"] as? String ?? ""
-        let cost = (row["cost"] as? Double) ?? ((row["cost"] as? NSNumber)?.doubleValue) ?? 0
-        let startTime = OpenBurnBarDatabase.parseDateValue(row["startTime"])
-        let endTime = OpenBurnBarDatabase.parseDateValue(row["endTime"])
-        let createdAt = OpenBurnBarDatabase.parseDateValue(row["createdAt"]) ?? Date()
+        let estimatorVersion = indexed(row, UsageDecodeCol.estimatorVersion.rawValue) as? String ?? ""
+        let costValue = indexed(row, UsageDecodeCol.cost.rawValue)
+        let cost = (costValue as? Double) ?? ((costValue as? NSNumber)?.doubleValue) ?? 0
+        let startTime = OpenBurnBarDatabase.parseDateValue(indexed(row, UsageDecodeCol.startTime.rawValue))
+        let endTime = OpenBurnBarDatabase.parseDateValue(indexed(row, UsageDecodeCol.endTime.rawValue))
+        let createdAt = OpenBurnBarDatabase.parseDateValue(indexed(row, UsageDecodeCol.createdAt.rawValue)) ?? Date()
         guard let startTime, let endTime else { return nil }
 
-        let providerID = (row["providerID"] as? String).map(ProviderID.init(rawValue:)) ?? provider.providerID
-        let providerAccountSourceRaw = row["providerAccountSource"] as? String
+        let providerID = (indexed(row, UsageDecodeCol.providerID.rawValue) as? String).map(ProviderID.init(rawValue:)) ?? provider.providerID
+        let providerAccountSourceRaw = indexed(row, UsageDecodeCol.providerAccountSource.rawValue) as? String
 
         return TokenUsage(
             id: id,
@@ -265,21 +313,23 @@ extension UsageStore {
             endTime: endTime,
             createdAt: createdAt,
             usageSource: usageSource,
-            executionSourceID: row["executionSourceID"] as? String,
-            executionSourceName: row["executionSourceName"] as? String,
+            executionSourceID: indexed(row, UsageDecodeCol.executionSourceID.rawValue) as? String,
+            executionSourceName: indexed(row, UsageDecodeCol.executionSourceName.rawValue) as? String,
             executionSourceKind: executionSourceKind,
             executionSourceConfidence: executionSourceConfidence,
-            sourceDeviceId: row["sourceDeviceId"] as? String,
-            sourceDeviceName: row["sourceDeviceName"] as? String,
-            isRemote: intValue(row["isRemote"]) != 0,
+            sourceDeviceId: indexed(row, UsageDecodeCol.sourceDeviceId.rawValue) as? String,
+            sourceDeviceName: indexed(row, UsageDecodeCol.sourceDeviceName.rawValue) as? String,
+            isRemote: intValue(indexed(row, UsageDecodeCol.isRemote.rawValue)) != 0,
             providerID: providerID,
-            providerAccountID: row["providerAccountID"] as? String,
-            providerAccountLabel: row["providerAccountLabel"] as? String,
+            providerAccountID: indexed(row, UsageDecodeCol.providerAccountID.rawValue) as? String,
+            providerAccountLabel: indexed(row, UsageDecodeCol.providerAccountLabel.rawValue) as? String,
             providerAccountSource: providerAccountSourceRaw.flatMap { ProviderAccountStorageScope(rawValue: $0) },
             provenanceMethod: provenanceMethod,
             provenanceConfidence: provenanceConfidence,
             estimatorVersion: estimatorVersion,
-            parentRequestID: row["parentRequestID"] as? String
+            parentRequestID: indexed(row, UsageDecodeCol.parentRequestID.rawValue) as? String,
+            billingKind: (indexed(row, UsageDecodeCol.billingKind.rawValue) as? String)
+                .flatMap(BurnBarBillingKind.init(rawValue:)) ?? .unknown
         )
     }
 

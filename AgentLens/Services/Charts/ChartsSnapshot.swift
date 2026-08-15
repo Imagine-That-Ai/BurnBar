@@ -73,6 +73,24 @@ struct ChartsSnapshot: Equatable, Sendable {
     /// when the first half is silent.
     let burnTrendPercent: Double?
 
+    // MARK: spendLens (billing provenance)
+
+    /// Burn series restricted to real per-token API dollars.
+    let apiBurnSeries: [ChartBucketing.DateBucket]
+    /// Burn series restricted to plan-covered (subscription) imputed value.
+    let subscriptionBurnSeries: [ChartBucketing.DateBucket]
+    /// Burn series for spend that resisted classification.
+    ///
+    /// Carried as a series and not only a total so every lens mode can *draw*
+    /// it. Split previously showed only API and Plan, which silently dropped
+    /// this bucket from both the curves and the headline total.
+    let unknownBurnSeries: [ChartBucketing.DateBucket]
+    let apiCost: Double
+    let subscriptionCost: Double
+    /// Cost that resisted classification. Surfaced in copy when non-zero —
+    /// never silently folded into either side.
+    let unknownBillingCost: Double
+
     // MARK: providerMix / modelMix
 
     let providerShares: [ProviderShare]
@@ -142,10 +160,29 @@ extension ChartsSnapshot {
 
     /// Pure builder. `rows` = usage in the selected window; `recentRows` =
     /// usage over the trailing 30 days (feeds the fixed-window charts:
-    /// week-vs-week and the forecast).
+    /// week-vs-week and the forecast). TokenUsage input stays the oracle;
+    /// production Charts uses `ChartFactRow` from the covering SQL scan.
     static func build(
         rows: [TokenUsage],
         recentRows: [TokenUsage],
+        timeRange: TimeRange,
+        usagesVersion: Int,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> ChartsSnapshot {
+        build(
+            rows: rows.map(ChartFactRow.init),
+            recentRows: recentRows.map(ChartFactRow.init),
+            timeRange: timeRange,
+            usagesVersion: usagesVersion,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    static func build(
+        rows: [ChartFactRow],
+        recentRows: [ChartFactRow],
         timeRange: TimeRange,
         usagesVersion: Int,
         now: Date = Date(),
@@ -155,11 +192,49 @@ extension ChartsSnapshot {
         let bucketComponent: Calendar.Component = timeRange == .today ? .hour : .day
 
         let costEvents = rows.map {
-            (date: attributionDate(for: $0, in: range), value: $0.cost)
+            (date: attributionDate(for: $0.startTime, in: range), value: $0.cost)
         }
         let burnSeries = ChartBucketing.dateBuckets(
             events: costEvents, range: range, component: bucketComponent, calendar: calendar
         )
+
+        // Spend lens: split the same window by billing provenance. Rows carry
+        // a stamped kind from v60 onward; anything still unknown is classified
+        // with the shared deterministic rule so the chart and the migration
+        // backfill can never disagree.
+        func effectiveBillingKind(_ row: ChartFactRow) -> BurnBarBillingKind {
+            row.billingKind == .unknown
+                ? BurnBarBillingProvenance.classify(provider: row.provider, usageSource: row.usageSource)
+                : row.billingKind
+        }
+        var apiRows: [ChartFactRow] = []
+        var subscriptionRows: [ChartFactRow] = []
+        // Kept as rows, not just a running total, so Split can draw the
+        // unclassified curve rather than only naming its total. A bucket the
+        // lens cannot draw is a bucket the lens hides.
+        var unknownRows: [ChartFactRow] = []
+        for row in rows {
+            switch effectiveBillingKind(row) {
+            case .api: apiRows.append(row)
+            case .subscription: subscriptionRows.append(row)
+            case .unknown: unknownRows.append(row)
+            }
+        }
+        let apiBurnSeries = ChartBucketing.dateBuckets(
+            events: apiRows.map { (date: attributionDate(for: $0.startTime, in: range), value: $0.cost) },
+            range: range, component: bucketComponent, calendar: calendar
+        )
+        let subscriptionBurnSeries = ChartBucketing.dateBuckets(
+            events: subscriptionRows.map { (date: attributionDate(for: $0.startTime, in: range), value: $0.cost) },
+            range: range, component: bucketComponent, calendar: calendar
+        )
+        let unknownBurnSeries = ChartBucketing.dateBuckets(
+            events: unknownRows.map { (date: attributionDate(for: $0.startTime, in: range), value: $0.cost) },
+            range: range, component: bucketComponent, calendar: calendar
+        )
+        let apiCost = apiRows.reduce(0) { $0 + $1.cost }
+        let subscriptionCost = subscriptionRows.reduce(0) { $0 + $1.cost }
+        let unknownBillingCost = unknownRows.reduce(0) { $0 + $1.cost }
 
         let totalCost = rows.reduce(0) { $0 + $1.cost }
         let totalTokens = rows.reduce(0) { $0 + $1.totalTokens }
@@ -201,8 +276,10 @@ extension ChartsSnapshot {
         let reasoningTotal = rows.reduce(0) { $0 + $1.reasoningTokens }
         let reasoningShare = totalTokens > 0 ? Double(reasoningTotal) / Double(totalTokens) : 0
 
-        // Heatmap
-        let matrix = ChartBucketing.hourWeekdayMatrix(events: costEvents, calendar: calendar)
+        // Heatmap / outliers / entropy share one fold so the SQL narrow-scan
+        // path can match `ChartsSnapshot.build` bit-identically.
+        let sessionAnalytics = ChartSessionAnalytics.from(rows: rows, range: range, calendar: calendar)
+        let matrix = sessionAnalytics.hourWeekdayCost
         let peak = peakCell(in: matrix)
 
         // Week vs week (trailing fixed windows anchored at start of today)
@@ -215,27 +292,10 @@ extension ChartsSnapshot {
 
         // Sessions
         var sessionCosts: [String: Double] = [:]
-        var sessionMeta: [String: (project: String, model: String, provider: AgentProvider)] = [:]
         for row in rows {
             sessionCosts[row.sessionId, default: 0] += row.cost
-            if sessionMeta[row.sessionId] == nil {
-                sessionMeta[row.sessionId] = (row.projectName, row.model, row.provider)
-            }
         }
         let costsPerSession = Array(sessionCosts.values)
-        let outliers = sessionCosts
-            .sorted { $0.value > $1.value }
-            .prefix(5)
-            .compactMap { entry -> OutlierSession? in
-                guard let meta = sessionMeta[entry.key] else { return nil }
-                return OutlierSession(
-                    sessionId: entry.key,
-                    projectName: meta.project,
-                    model: meta.model,
-                    provider: meta.provider,
-                    cost: entry.value
-                )
-            }
 
         // Project focus
         var projectCosts: [String: Double] = [:]
@@ -248,13 +308,12 @@ extension ChartsSnapshot {
         let projectSeries: [ProjectDailySeries] = topProjects.map { project in
             let events = rows
                 .filter { ($0.projectName.isEmpty ? "Unassigned" : $0.projectName) == project }
-                .map { (date: attributionDate(for: $0, in: range), value: $0.cost) }
+                .map { (date: attributionDate(for: $0.startTime, in: range), value: $0.cost) }
             let buckets = ChartBucketing.dateBuckets(
                 events: events, range: range, component: bucketComponent, calendar: calendar
             )
             return ProjectDailySeries(projectName: project, dailyCosts: buckets.map(\.value))
         }
-        let projectEntropy = ChartBucketing.entropyIndex(Array(projectCosts.values))
 
         // Forecast (trailing 30 days observation, project to month end)
         let forecast = buildForecast(rows: recentRows, now: now, calendar: calendar)
@@ -290,6 +349,12 @@ extension ChartsSnapshot {
             sessionCount: sessionIDs.count,
             burnSeries: burnSeries,
             burnTrendPercent: halfOverHalfPercent(burnSeries.map(\.value)),
+            apiBurnSeries: apiBurnSeries,
+            subscriptionBurnSeries: subscriptionBurnSeries,
+            unknownBurnSeries: unknownBurnSeries,
+            apiCost: apiCost,
+            subscriptionCost: subscriptionCost,
+            unknownBillingCost: unknownBillingCost,
             providerShares: providerShares,
             modelCosts: Array(rankedModels),
             cacheHitRateSeries: cacheSeries,
@@ -306,10 +371,10 @@ extension ChartsSnapshot {
             weekOverWeekPercent: wowPercent,
             sessionCostBins: ChartBucketing.histogramLogBuckets(values: costsPerSession),
             medianSessionCost: ChartBucketing.median(costsPerSession.filter { $0 > 0 }),
-            outlierSessions: outliers,
+            outlierSessions: sessionAnalytics.outlierSessions,
             projectDayStarts: dayStarts,
             projectSeries: projectSeries,
-            projectEntropy: projectEntropy,
+            projectEntropy: sessionAnalytics.projectEntropy,
             forecast: forecast,
             provenanceShares: provenanceShares,
             exactShare: exactShare,
@@ -321,46 +386,80 @@ extension ChartsSnapshot {
 
     // MARK: Helpers
 
-    private static func resolvedRange(
+    static func attributionDate(
+        for startTime: Date,
+        in range: ClosedRange<Date>
+    ) -> Date {
+        min(max(startTime, range.lowerBound), range.upperBound)
+    }
+
+    static func attributionDate(
+        for row: TokenUsage,
+        in range: ClosedRange<Date>
+    ) -> Date {
+        attributionDate(for: row.startTime, in: range)
+    }
+
+    static func resolvedRange(
         for timeRange: TimeRange,
-        rows: [TokenUsage],
+        earliestStart: Date?,
         now: Date,
         calendar: Calendar
     ) -> ClosedRange<Date> {
         if let range = timeRange.dateRange(now: now) {
             return range.lowerBound...max(range.lowerBound, min(range.upperBound, now))
         }
-        // All Time: span the loaded data (fall back to the last 30 days when empty).
-        let earliest = rows.map(\.startTime).min()
+        let earliest = earliestStart
             ?? calendar.date(byAdding: .day, value: -30, to: now)
             ?? now.addingTimeInterval(-30 * 86_400)
         let lower = min(earliest, now.addingTimeInterval(-1))
         return lower...now
     }
 
-    private static func attributionDate(
-        for row: TokenUsage,
-        in range: ClosedRange<Date>
-    ) -> Date {
-        min(max(row.startTime, range.lowerBound), range.upperBound)
+    static func resolvedRange(
+        for timeRange: TimeRange,
+        rows: [TokenUsage],
+        now: Date,
+        calendar: Calendar
+    ) -> ClosedRange<Date> {
+        resolvedRange(
+            for: timeRange,
+            earliestStart: rows.map(\.startTime).min(),
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    static func resolvedRange(
+        for timeRange: TimeRange,
+        rows: [ChartFactRow],
+        now: Date,
+        calendar: Calendar
+    ) -> ClosedRange<Date> {
+        resolvedRange(
+            for: timeRange,
+            earliestStart: rows.map(\.startTime).min(),
+            now: now,
+            calendar: calendar
+        )
     }
 
     /// Per-bucket ratio of two summed row projections (e.g. cache reads over
     /// prompt basis). Buckets with a zero denominator carry 0.
     private static func ratioSeries(
-        rows: [TokenUsage],
+        rows: [ChartFactRow],
         range: ClosedRange<Date>,
         component: Calendar.Component,
         calendar: Calendar,
-        numerator: (TokenUsage) -> Double,
-        denominator: (TokenUsage) -> Double
+        numerator: (ChartFactRow) -> Double,
+        denominator: (ChartFactRow) -> Double
     ) -> [ChartBucketing.DateBucket] {
         let num = ChartBucketing.dateBuckets(
-            events: rows.map { (date: attributionDate(for: $0, in: range), value: numerator($0)) },
+            events: rows.map { (date: attributionDate(for: $0.startTime, in: range), value: numerator($0)) },
             range: range, component: component, calendar: calendar
         )
         let den = ChartBucketing.dateBuckets(
-            events: rows.map { (date: attributionDate(for: $0, in: range), value: denominator($0)) },
+            events: rows.map { (date: attributionDate(for: $0.startTime, in: range), value: denominator($0)) },
             range: range, component: component, calendar: calendar
         )
         return zip(num, den).map { top, bottom in
@@ -391,7 +490,7 @@ extension ChartsSnapshot {
     }
 
     private static func weekPair(
-        rows: [TokenUsage],
+        rows: [ChartFactRow],
         now: Date,
         calendar: Calendar
     ) -> (thisWeek: [Double], lastWeek: [Double]) {
@@ -412,7 +511,7 @@ extension ChartsSnapshot {
     }
 
     private static func buildForecast(
-        rows: [TokenUsage],
+        rows: [ChartFactRow],
         now: Date,
         calendar: Calendar
     ) -> Forecast? {

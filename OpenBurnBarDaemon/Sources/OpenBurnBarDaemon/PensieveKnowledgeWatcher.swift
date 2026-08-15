@@ -303,12 +303,13 @@ public final class PensieveKnowledgeWatcher: Sendable {
             // Only consider sessions that have settled (no write in the last
             // debounce window) — a still-active session keeps getting touched.
             guard Date().timeIntervalSince(modified) >= debounceInterval else { continue }
-            let key = PensieveKnowledgeChunker.sha256Hex(fileURL.path + "@" + ISO8601DateFormatter().string(from: modified))
+            let stamp = ThreadSafeISO8601DateFormatter.formatBasic(modified)
+            let key = PensieveKnowledgeChunker.sha256Hex(fileURL.path + "@" + stamp)
             let sentinelURL = sentinelDir.appendingPathComponent("\(key).json", isDirectory: false)
             guard !fileSystem.fileExists(atPath: sentinelURL.path) else { continue }
             let payload: [String: Any] = [
                 "sessionPath": fileURL.path,
-                "modifiedAt": ISO8601DateFormatter().string(from: modified),
+                "modifiedAt": stamp,
                 "sourceKind": PensieveSourceKind.chatMemory.rawValue,
                 "schemaVersion": 1
             ]

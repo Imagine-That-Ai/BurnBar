@@ -160,6 +160,16 @@ public enum UsageExecutionSourceResolver {
             (["codex desktop", "codex-desktop", "chatgpt desktop"], known("codex-desktop", "Codex Desktop", .desktopApp)),
             (["codex vscode", "codex-vscode", "codex_vscode"], known("codex-vscode", "Codex for VS Code", .ide)),
             (["codex web", "codex-web", "codex cloud", "codex-cloud"], known("codex-cloud", "Codex Cloud", .service)),
+            (["claude desktop", "claude-desktop"], known("claude-desktop", "Claude Desktop", .desktopApp)),
+            (["cursor desktop", "cursor-desktop", "cursor ide", "cursor-ide"], known("cursor-desktop", "Cursor Desktop", .ide)),
+            (["factory desktop", "factory-desktop"], known("factory-desktop", "Factory Desktop", .desktopApp)),
+            (["minimax desktop", "minimax-desktop", "minimax agent", "minimax-agent"], known("minimax-desktop", "MiniMax Desktop", .desktopApp)),
+            (["zcode desktop", "zcode-desktop", "z.ai desktop", "z.ai-desktop", "zai desktop", "zai-desktop"], known("zcode-desktop", "ZCode Desktop", .desktopApp)),
+            (["devin desktop", "devin-desktop"], known("devin-desktop", "Devin Desktop", .desktopApp)),
+            (["devin cli", "devin-cli", "devin"], known("devin-cli", "Devin CLI", .cli)),
+            (["warp desktop", "warp-desktop", "warp terminal", "warp-terminal"], known("warp-desktop", "Warp Desktop", .desktopApp)),
+            (["ollama desktop", "ollama-desktop"], known("ollama-desktop", "Ollama Desktop", .desktopApp)),
+            (["hermes dashboard", "hermes-desktop", "hermes dashboard tui"], known("hermes-desktop", "Hermes Dashboard", .desktopApp)),
             (["cursor"], known("cursor", "Cursor", .ide)),
             (["grok build", "grok-build"], known("grok-build", "Grok Build", .cli)),
             (["claude code", "claude-code"], known("claude-code", "Claude Code", .cli)),
@@ -222,6 +232,7 @@ public enum UsageExecutionSourceResolver {
         case .omp: return known("omp", "OMP", .cli, .derivedExact)
         case .ollama: return known("ollama", "Ollama", .service, .derivedExact)
         case .windsurf: return known("windsurf", "Windsurf", .ide, .derivedExact)
+        case .devin: return known("devin-cli", "Devin CLI", .cli, .derivedExact)
         case .warp: return known("warp", "Warp", .cli, .derivedExact)
         case .xAI: return known("grok-build", "Grok Build", .cli, .derivedExact)
         case .junie: return known("junie", "Junie", .ide, .derivedExact)
@@ -238,11 +249,30 @@ public enum UsageExecutionSourceResolver {
             known("codex-vscode", "Codex for VS Code", .ide),
             known("codex-cloud", "Codex Cloud", .service),
             known("cursor", "Cursor", .ide),
+            known("cursor-desktop", "Cursor Desktop", .ide),
             known("grok-build", "Grok Build", .cli),
             known("claude-code", "Claude Code", .cli),
+            known("claude-desktop", "Claude Desktop", .desktopApp),
             known("factory-droid", "Factory Droid", .automation),
+            known("factory-desktop", "Factory Desktop", .desktopApp),
+            known("minimax-cli", "MiniMax CLI", .cli),
+            known("minimax-desktop", "MiniMax Desktop", .desktopApp),
+            known("zai-cli", "Z.ai CLI", .cli),
+            known("zcode-desktop", "ZCode Desktop", .desktopApp),
+            known("devin-cli", "Devin CLI", .cli),
+            known("devin-desktop", "Devin Desktop", .desktopApp),
+            known("warp", "Warp", .cli),
+            known("warp-desktop", "Warp Desktop", .desktopApp),
+            known("ollama", "Ollama", .service),
+            known("ollama-desktop", "Ollama Desktop", .desktopApp),
+            known("hermes", "Hermes", .cli),
+            known("hermes-desktop", "Hermes Dashboard", .desktopApp),
             known("opencode", "OpenCode", .cli),
-            known("openburnbar", "OpenBurnBar", .desktopApp)
+            known("openburnbar", "OpenBurnBar", .desktopApp),
+            known("windsurf", "Windsurf", .ide),
+            known("cline", "Cline", .ide),
+            known("kilo-code", "Kilo Code", .ide),
+            known("roo-code", "Roo Code", .ide)
         ]
         return sources.first { $0.id == id }
     }
@@ -323,6 +353,13 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
     /// migration adds a nullable `parentRequestID` column so imported rows can
     /// carry it, making the period fusion/normal partition a real SQL query.
     public let parentRequestID: String?
+    /// Billing provenance: real per-token API dollars (`api`) vs the imputed
+    /// list-price value of plan-covered work (`subscription`). `unknown` is
+    /// the honest default for rows that predate v60 or resist classification —
+    /// consumers surface it as its own bucket. Writers that cannot stamp a
+    /// kind leave `.unknown` and the store derives one via
+    /// `BurnBarBillingProvenance.classify(provider:usageSource:)`.
+    public let billingKind: BurnBarBillingKind
 
     public var costUSD: Double { cost }
 
@@ -368,7 +405,8 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         provenanceMethod: UsageProvenanceMethod = .unknown,
         provenanceConfidence: UsageProvenanceConfidence = .unknown,
         estimatorVersion: String = "",
-        parentRequestID: String? = nil
+        parentRequestID: String? = nil,
+        billingKind: BurnBarBillingKind = .unknown
     ) {
         self.id = id ?? Self.deterministicID(
             provider: provider,
@@ -426,6 +464,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         self.provenanceConfidence = provenanceConfidence
         self.estimatorVersion = estimatorVersion
         self.parentRequestID = parentRequestID
+        self.billingKind = billingKind
     }
 
     public static func deterministicID(
@@ -512,6 +551,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         case currency, recordedAt, eventKind, idempotencyKey
         case provenanceMethod, provenanceConfidence, estimatorVersion
         case parentRequestID
+        case billingKind
     }
 
     public init(from decoder: Decoder) throws {
@@ -571,6 +611,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         provenanceConfidence = try c.decodeIfPresent(UsageProvenanceConfidence.self, forKey: .provenanceConfidence) ?? .unknown
         estimatorVersion = try c.decodeIfPresent(String.self, forKey: .estimatorVersion) ?? ""
         parentRequestID = try c.decodeIfPresent(String.self, forKey: .parentRequestID)
+        billingKind = try c.decodeIfPresent(BurnBarBillingKind.self, forKey: .billingKind) ?? .unknown
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -612,6 +653,7 @@ public struct TokenUsage: Codable, Identifiable, Hashable, Sendable {
         try c.encode(provenanceConfidence, forKey: .provenanceConfidence)
         try c.encode(estimatorVersion, forKey: .estimatorVersion)
         try c.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
+        try c.encode(billingKind, forKey: .billingKind)
     }
 
     public var duration: TimeInterval {

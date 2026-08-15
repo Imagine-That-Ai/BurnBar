@@ -29,6 +29,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
     OPEN_CLAW("openclaw", "OpenClaw", 0xFFFF6B6B, 0xFFF472B6),
     OLLAMA("ollama", "Ollama", 0xFF6B7280, 0xFF9CA3AF),
     WINDSURF("windsurf", "Windsurf", 0xFF06B6D4, 0xFF22D3EE),
+    DEVIN("devin", "Devin", 0xFF0A84FF, 0xFF1E293B),
     WARP("warp", "Warp", 0xFFDDE4EA, 0xFF111111),
     XAI("xai", "xAI", 0xFF1A1A1A, 0xFF4A4A4A),
     MIMO("mimo", "MiMo", 0xFFFF6900, 0xFFFF8533),
@@ -68,6 +69,7 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 GOOSE,
                 OLLAMA,
                 WINDSURF,
+                DEVIN,
                 WARP,
                 MUSE,
             )
@@ -151,6 +153,11 @@ enum class AgentProvider(val key: String, val displayName: String, val brandColo
                 "muse" to MUSE,
                 "musecode" to MUSE,
                 "meta-muse" to MUSE,
+                // Devin (Cognition) — mirrors the Swift alias switch in
+                // OpenBurnBarKernel/SharedModels/AgentProvider.fromCatalogProviderID.
+                "devindesktop" to DEVIN,
+                "devincli" to DEVIN,
+                "devinai" to DEVIN,
             )
 
         fun chartPalette(provider: AgentProvider): List<Color> {

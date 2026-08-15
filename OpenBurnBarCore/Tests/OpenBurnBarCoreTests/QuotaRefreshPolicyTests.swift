@@ -45,6 +45,184 @@ final class QuotaRefreshPolicyTests: XCTestCase {
         }
     }
 
+    func test_providersDueForRefresh_skipsHighRemainingInsideAdaptiveTTL() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let high = makeSnapshot(
+            provider: .codex,
+            fetchedAt: now.addingTimeInterval(-20 * 60),
+            remaining: 80,
+            limit: 100
+        )
+        let due = QuotaRefreshPolicy.providersDueForRefresh(
+            [.codex, .claudeCode],
+            snapshots: [.codex: high],
+            now: now
+        )
+        XCTAssertEqual(due, [.claudeCode])
+        XCTAssertTrue(QuotaRefreshPolicy.isFresh(high, now: now))
+    }
+
+    func test_providersDueForRefresh_includesLowRemainingAfterThreeMinutes() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let low = makeSnapshot(
+            provider: .codex,
+            fetchedAt: now.addingTimeInterval(-4 * 60),
+            remaining: 10,
+            limit: 100
+        )
+        let due = QuotaRefreshPolicy.providersDueForRefresh(
+            [.codex],
+            snapshots: [.codex: low],
+            now: now
+        )
+        XCTAssertEqual(due, [.codex])
+        XCTAssertFalse(QuotaRefreshPolicy.isFresh(low, now: now))
+    }
+
+    func test_policySnapshot_usesMinimumRemainingFraction() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let snapshot = ProviderQuotaSnapshot(
+            id: "codex_default",
+            provider: AgentProvider.codex.rawValue,
+            providerID: AgentProvider.codex.providerID,
+            sourceKind: .officialAPI,
+            sourceId: "default",
+            fetchedAt: now,
+            source: "officialAPI",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "weekly",
+                    label: "Weekly",
+                    windowKind: .weekly,
+                    usedValue: 10,
+                    limitValue: 100,
+                    remainingValue: 90,
+                    usedPercent: 10,
+                    resetsAt: nil,
+                    unit: .requests,
+                    isEstimated: false
+                ),
+                ProviderQuotaBucket(
+                    key: "hourly",
+                    label: "5h",
+                    windowKind: .rollingHours,
+                    usedValue: 80,
+                    limitValue: 100,
+                    remainingValue: 20,
+                    usedPercent: 80,
+                    resetsAt: nil,
+                    unit: .requests,
+                    isEstimated: false
+                )
+            ],
+            updatedAt: now
+        )
+        let policy = QuotaRefreshPolicy.policySnapshot(from: snapshot)
+        XCTAssertEqual(policy.remainingFraction ?? -1, 0.2, accuracy: 0.0001)
+        XCTAssertEqual(policy.windowKind, .weekly)
+    }
+
+    func test_policySnapshot_usesEarliestBucketReset() throws {
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let earlyReset = fetchedAt.addingTimeInterval(5 * 60)
+        let snapshot = ProviderQuotaSnapshot(
+            id: "codex_default",
+            provider: AgentProvider.codex.rawValue,
+            providerID: AgentProvider.codex.providerID,
+            sourceKind: .officialAPI,
+            sourceId: "default",
+            fetchedAt: fetchedAt,
+            source: "officialAPI",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "weekly",
+                    label: "Weekly",
+                    windowKind: .weekly,
+                    usedValue: 10,
+                    limitValue: 100,
+                    remainingValue: 90,
+                    usedPercent: 10,
+                    resetsAt: fetchedAt.addingTimeInterval(7 * 24 * 60 * 60),
+                    unit: .requests,
+                    isEstimated: false
+                ),
+                ProviderQuotaBucket(
+                    key: "rolling",
+                    label: "5-hour",
+                    windowKind: .rollingHours,
+                    usedValue: 10,
+                    limitValue: 100,
+                    remainingValue: 90,
+                    usedPercent: 10,
+                    resetsAt: earlyReset,
+                    unit: .requests,
+                    isEstimated: false
+                )
+            ],
+            updatedAt: fetchedAt
+        )
+
+        let policy = QuotaRefreshPolicy.policySnapshot(from: snapshot)
+
+        XCTAssertEqual(policy.resetsAt, earlyReset)
+        XCTAssertEqual(QuotaRefreshPolicy.nextRefreshAfter(policy), earlyReset)
+    }
+
+    func test_nextRefreshAfter_anchorsResetDeadlineToFetchedAt() {
+        let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let resetAt = fetchedAt.addingTimeInterval(20 * 60)
+        let snapshot = QuotaRefreshPolicySnapshot(
+            fetchedAt: fetchedAt,
+            remainingFraction: 0.9,
+            windowKind: .rollingHours,
+            resetsAt: resetAt
+        )
+
+        let initialDeadline = QuotaRefreshPolicy.nextRefreshAfter(snapshot, now: fetchedAt)
+        let laterDeadline = QuotaRefreshPolicy.nextRefreshAfter(
+            snapshot,
+            now: fetchedAt.addingTimeInterval(10 * 60)
+        )
+
+        XCTAssertEqual(initialDeadline, resetAt)
+        XCTAssertEqual(laterDeadline, resetAt)
+    }
+
+    private func makeSnapshot(
+        provider: AgentProvider,
+        fetchedAt: Date,
+        remaining: Double,
+        limit: Double
+    ) -> ProviderQuotaSnapshot {
+        ProviderQuotaSnapshot(
+            id: "\(provider.rawValue)_default",
+            provider: provider.rawValue,
+            providerID: provider.providerID,
+            sourceKind: .officialAPI,
+            sourceId: "default",
+            fetchedAt: fetchedAt,
+            source: "officialAPI",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "monthly",
+                    label: "Monthly",
+                    windowKind: .monthly,
+                    usedValue: limit - remaining,
+                    limitValue: limit,
+                    remainingValue: remaining,
+                    usedPercent: ((limit - remaining) / limit) * 100,
+                    resetsAt: nil,
+                    unit: .requests,
+                    isEstimated: false
+                )
+            ],
+            updatedAt: fetchedAt
+        )
+    }
+
     private func loadFixture() throws -> FixtureFile {
         let url = try XCTUnwrap(
             Bundle.module.url(forResource: "quota-refresh-policy-fixtures", withExtension: "json")

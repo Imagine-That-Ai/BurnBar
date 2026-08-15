@@ -5,32 +5,70 @@ import OpenBurnBarKernel
 
 /// Shared parser for Cline-family VS Code extensions (Cline, Kilo Code, Roo Code).
 /// All three use the same `tasks/*/api_conversation_history.json` format.
+///
+/// Idle usage ticks resume unchanged task histories from a mtime+size disk cache
+/// (token totals only — never conversation bodies).
 public final class ClineFormatParser: LogParser, Sendable {
     public let provider: AgentProvider
     private let storagePaths: [String]
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(provider: AgentProvider, storagePaths: [String]) {
+    public init(
+        provider: AgentProvider,
+        storagePaths: [String],
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.provider = provider
         self.storagePaths = storagePaths
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if storagePaths.count == 1, let path = storagePaths.first {
+            cacheURL = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+                .appendingPathComponent(".obb-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.clineFormatParserCacheURL(for: provider)
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "ClineFormatParser.\(provider.persistedToken)"
+        )
     }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var seenTaskIds = Set<String>()
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         for storagePath in storagePaths {
             let expanded = (storagePath as NSString).expandingTildeInPath
-            guard fm.fileExists(atPath: expanded) else { continue }
+            guard fileManager.fileExists(atPath: expanded) else { continue }
 
             let tasksURL = URL(fileURLWithPath: expanded)
-            guard let taskDirs = try? fm.contentsOfDirectory(
+            guard let taskDirs = try? fileManager.contentsOfDirectory(
                 at: tasksURL,
                 includingPropertiesForKeys: [.isDirectoryKey]
             ) else { continue }
@@ -41,19 +79,47 @@ public final class ClineFormatParser: LogParser, Sendable {
 
             for taskDir in dirs {
                 let taskId = taskDir.lastPathComponent
-                guard !seenTaskIds.contains(taskId) else { continue }
-                seenTaskIds.insert(taskId)
-
                 let historyFile = taskDir.appendingPathComponent("api_conversation_history.json")
-                guard fm.fileExists(atPath: historyFile.path), try gate.shouldRead(historyFile) else { continue }
+                guard fileManager.fileExists(atPath: historyFile.path) else { continue }
+                let cacheKey = historyFile.standardizedFileURL.path
+                activePaths.insert(cacheKey)
+                guard seenTaskIds.insert(taskId).inserted else { continue }
+                guard try gate.shouldRead(historyFile) else { continue }
 
-                if let pair = try parseTask(taskId: taskId, historyFile: historyFile), let usage = pair.usage {
+                let signature = FileSignature(for: historyFile, using: fileManager)
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    usages.append(cached.totals.makeUsage(provider: provider, sessionId: taskId))
+                    continue
+                }
+
+                sessionScanCount.withLock { $0 += 1 }
+                if let pair = try parseTask(
+                    taskId: taskId,
+                    historyFile: historyFile,
+                    includeConversationBodies: options.includeConversationBodies
+                ), let usage = pair.usage {
                     usages.append(usage)
                     if options.includeConversationBodies, let conv = pair.conversation {
                         conversations.append(conv)
                     }
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = CachedUsageEntry(signature: signature, usage: usage)
+                        cacheMutated = true
+                    }
                 }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -63,7 +129,8 @@ public final class ClineFormatParser: LogParser, Sendable {
 
     private func parseTask(
         taskId: String,
-        historyFile: URL
+        historyFile: URL,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let data = try? Data(contentsOf: historyFile), // try?-ok(skip unreadable log)
               let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { // try?-ok(malformed log skip)
@@ -127,16 +194,20 @@ public final class ClineFormatParser: LogParser, Sendable {
 
             if role == "user" {
                 userWords += words
-                if firstUserText == nil {
-                    firstUserText = String(contentText.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
-                }
-                appendText(&fullText, contentText)
                 messageCount += 1
+                if includeConversationBodies {
+                    if firstUserText == nil {
+                        firstUserText = String(contentText.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+                    }
+                    appendText(&fullText, contentText)
+                }
             } else if role == "assistant" {
                 assistantWords += words
-                lastAssistantText = contentText
-                appendText(&fullText, contentText)
                 messageCount += 1
+                if includeConversationBodies {
+                    lastAssistantText = contentText
+                    appendText(&fullText, contentText)
+                }
             }
         }
 
@@ -144,8 +215,8 @@ public final class ClineFormatParser: LogParser, Sendable {
 
         // Fallback estimation if no usage data
         if !hasUsage {
-            let userChars = fullText.isEmpty ? 0 : userWords * 5
-            let assistantChars = fullText.isEmpty ? 0 : assistantWords * 5
+            let userChars = userWords * 5
+            let assistantChars = assistantWords * 5
             guard userChars + assistantChars > 0 else { return nil }
             let estimated = TokenExtractionUtility.estimateFallbackTokens(
                 userVisibleChars: userChars,
@@ -188,26 +259,28 @@ public final class ClineFormatParser: LogParser, Sendable {
             provenanceConfidence: .exact
         )
 
-        let conversation = ConversationRecord(
-            id: ConversationRecord.stableId(provider: provider, sessionId: taskId),
-            provider: provider,
-            sessionId: taskId,
-            projectName: taskId,
-            startTime: startTime,
-            endTime: endTime,
-            messageCount: messageCount,
-            userWordCount: userWords,
-            assistantWordCount: assistantWords,
-            keyFiles: [],
-            keyCommands: [],
-            keyTools: [],
-            inferredTaskTitle: firstUserText ?? taskId,
-            lastAssistantMessage: lastAssistantText,
-            fullText: fullText,
-            indexedAt: Date(),
-            fileModifiedAt: mtime,
-            summary: nil
-        )
+        let conversation = includeConversationBodies
+            ? ConversationRecord(
+                id: ConversationRecord.stableId(provider: provider, sessionId: taskId),
+                provider: provider,
+                sessionId: taskId,
+                projectName: taskId,
+                startTime: startTime,
+                endTime: endTime,
+                messageCount: messageCount,
+                userWordCount: userWords,
+                assistantWordCount: assistantWords,
+                keyFiles: [],
+                keyCommands: [],
+                keyTools: [],
+                inferredTaskTitle: firstUserText ?? taskId,
+                lastAssistantMessage: lastAssistantText,
+                fullText: fullText,
+                indexedAt: Date(),
+                fileModifiedAt: mtime,
+                summary: nil
+            )
+            : nil
 
         return (usage, conversation)
     }
@@ -235,6 +308,6 @@ public final class ClineFormatParser: LogParser, Sendable {
 
     private func modificationDate(of url: URL) -> Date? {
         // try?-ok(optional mtime metadata)
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
+        (try? fileManager.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
     }
 }

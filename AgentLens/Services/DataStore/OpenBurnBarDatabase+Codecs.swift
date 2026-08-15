@@ -34,15 +34,7 @@ extension OpenBurnBarDatabase {
     }
 
     private static func parseISO8601Date(_ string: String) -> Date? {
-        let fractionalFormatter = ISO8601DateFormatter()
-        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let parsed = fractionalFormatter.date(from: string) {
-            return parsed
-        }
-
-        let basicFormatter = ISO8601DateFormatter()
-        basicFormatter.formatOptions = [.withInternetDateTime]
-        return basicFormatter.date(from: string)
+        ThreadSafeISO8601DateFormatter.parse(string)
     }
 
     static func parseDateValue(_ value: Any?) -> Date? {

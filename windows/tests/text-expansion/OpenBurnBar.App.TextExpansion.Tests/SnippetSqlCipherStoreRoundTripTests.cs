@@ -17,7 +17,7 @@ namespace OpenBurnBar.App.TextExpansion.Tests;
 /// </summary>
 public sealed class SnippetSqlCipherStoreRoundTripTests
 {
-    private const string FixtureName = "openburnbar-db-compat-v59.sqlcipher";
+    private const string FixtureName = "openburnbar-db-compat-v60.sqlcipher";
 
     private static string FixtureSource => Path.Combine(AppContext.BaseDirectory, "Fixtures", FixtureName);
 

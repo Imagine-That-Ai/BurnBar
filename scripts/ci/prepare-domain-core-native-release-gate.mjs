@@ -117,8 +117,26 @@ export function selectExactSourceRun(rawPages, candidateCommit) {
   return { runId: run.id, runAttempt: run.run_attempt };
 }
 
+export function normalizeProtectedSignerWorkflowPath(path) {
+  // GitHub Actions run metadata returns the bare workflow path
+  // (`.github/workflows/….yml`). Older fixtures and some attestation identities
+  // append `@refs/heads/<branch>`; keep accepting that form when the suffix is
+  // exactly `refs/heads/main`.
+  const text = typeof path === "string" ? path : "";
+  const separator = text.indexOf("@");
+  if (separator < 0) {
+    return { workflowPath: text, sourceRef: null };
+  }
+  return {
+    workflowPath: text.slice(0, separator),
+    sourceRef: text.slice(separator + 1),
+  };
+}
+
 export function validateProtectedSignerRun(raw, coordinates, candidateCommit) {
-  const expectedPath = `${DOMAIN_CORE_PROTECTED_SIGNER_WORKFLOW}@refs/heads/main`;
+  const { workflowPath, sourceRef } = normalizeProtectedSignerWorkflowPath(
+    raw?.path,
+  );
   if (
     raw?.id !== coordinates.runId ||
     raw?.run_attempt !== coordinates.runAttempt ||
@@ -126,7 +144,8 @@ export function validateProtectedSignerRun(raw, coordinates, candidateCommit) {
     raw?.status !== "completed" ||
     raw?.conclusion !== "success" ||
     raw?.head_branch !== "main" ||
-    raw?.path !== expectedPath
+    workflowPath !== DOMAIN_CORE_PROTECTED_SIGNER_WORKFLOW ||
+    (sourceRef !== null && sourceRef !== "refs/heads/main")
   ) {
     throw new Error(
       `protected signer run does not match the exact successful main workflow for ${candidateCommit}`,

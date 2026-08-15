@@ -8,7 +8,9 @@ struct DaemonCredentialSlotAccountProjection {
         now: Date = Date()
     ) -> [ProviderAccountDoc] {
         configurations.flatMap { configuration -> [ProviderAccountDoc] in
-            let providerID = ProviderID(rawValue: configuration.providerID)
+            let providerID = QuotaCapableProviderMap.canonicalProviderID(
+                forDaemonProviderID: configuration.providerID
+            )
             let defaultSlotID = configuration.preferredCredentialSlotID
                 ?? configuration.credentialSlots.first(where: \.isEnabled)?.slotID
 
@@ -46,6 +48,16 @@ struct DaemonCredentialSlotAccountProjection {
 
     static func accountID(providerID: ProviderID, slotID: String) -> String {
         "\(providerID.rawValue)-\(ProviderID.normalize(slotID))"
+    }
+
+    /// Account id for a slot addressed by its *daemon-config* provider id.
+    /// Callers holding the configured string (which may be an alias) must go
+    /// through here so they address the same row `accounts(from:)` writes.
+    static func accountID(daemonProviderID: String, slotID: String) -> String {
+        accountID(
+            providerID: QuotaCapableProviderMap.canonicalProviderID(forDaemonProviderID: daemonProviderID),
+            slotID: slotID
+        )
     }
 
     private static func accountStatus(
@@ -180,6 +192,14 @@ final class ProviderQuotaPlanReaders: Sendable {
 @Observable
 @MainActor
 final class ProviderQuotaService {
+    struct InFlightRefresh {
+        let id: UUID
+        /// Providers whose normal refresh contract this task satisfies.
+        /// Empty for specialized work that only needs serialization.
+        let providers: Set<AgentProvider>
+        let task: Task<Void, Never>
+    }
+
     static let shared = ProviderQuotaService()
     internal static let maxPersistedRoutingEvents = 500  // pure-move: was private
 
@@ -213,6 +233,9 @@ final class ProviderQuotaService {
     internal(set) var snapshotsByAccountID: [String: ProviderQuotaSnapshot] = [:]  // pure-move: was private
     internal(set) var errors: [AgentProvider: String] = [:]  // pure-move: was private
     internal(set) var isFetching = false  // pure-move: was private
+    /// Coalesces overlapping adaptive and full refreshes so a provider has at
+    /// most one rate-limited probe in flight through the batch refresh path.
+    var inFlightRefresh: InFlightRefresh?
 
     var quotaHomeDirectoryURL: URL { homeDirectoryURL }
     internal(set) var activeProviders: Set<AgentProvider> = []  // pure-move: was private
@@ -455,15 +478,19 @@ final class ProviderQuotaService {
         }
     }
 
+    /// Canonical id first, then every daemon alias for the provider.
+    ///
+    /// Snapshots are written under the canonical id, but records persisted
+    /// before that was true — and records synced from a device still on the old
+    /// build — carry the alias, so reads stay alias-tolerant. This used to be a
+    /// hand-written `kimi`/`claude-code` special case that never learned about
+    /// xAI's aliases; it now reads the same table the projection canonicalizes
+    /// against, so the two cannot drift.
     private static func snapshotProviderIDs(for provider: AgentProvider) -> [ProviderID] {
-        switch provider {
-        case .kimi:
-            return [provider.providerID, ProviderID(rawValue: "moonshot")]
-        case .claudeCode:
-            return [provider.providerID, ProviderID(rawValue: "anthropic")]
-        default:
-            return [provider.providerID]
-        }
+        let aliases = QuotaCapableProviderMap.daemonProviderIDs(for: provider)
+            .subtracting([provider.providerID])
+            .sorted { $0.rawValue < $1.rawValue }
+        return [provider.providerID] + aliases
     }
 
     var accountsByProvider: [ProviderID: [ProviderQuotaSnapshot]] {

@@ -60,7 +60,10 @@ public final class FactoryDroidParser: LogParser, Sendable {
 
         for projectDir in projectDirs {
             let projectName = decodeProjectName(projectDir.lastPathComponent)
-            let files = try fileManager.contentsOfDirectory(at: projectDir, includingPropertiesForKeys: nil)
+            let files = try fileManager.contentsOfDirectory(
+                at: projectDir,
+                includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+            )
                 .filter { $0.pathExtension == "jsonl" || $0.pathExtension == "json" }
 
             for jsonlFile in files where jsonlFile.pathExtension == "jsonl" {

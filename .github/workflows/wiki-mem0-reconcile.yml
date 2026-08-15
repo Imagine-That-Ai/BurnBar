@@ -65,7 +65,7 @@ jobs:
   commit-refreshed-manifest:
     needs: reconcile
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

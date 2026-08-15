@@ -82,7 +82,23 @@ struct DashboardView: View {
     var chatController: ChatSessionController
     @State var quotaService = ProviderQuotaService.shared
     @State var missionConsoleController: MissionConsoleWindowController?
-    @State private var showMacWandComposer = false
+    /// Internal, not private: the Control Deck's Wand tile presents this same
+    /// composer from `DashboardView+ControlDeck.swift`, so the app has one
+    /// cast surface with one set of approval switches rather than two.
+    @State var showMacWandComposer = false
+    /// The Control Deck's cached facts, owned here rather than by the route
+    /// view: route views carry `.id(mainRoute)` and are rebuilt on every visit,
+    /// so a model held there would flash "—" each time you came back. Internal,
+    /// not private — `DashboardView+ControlDeck.swift` hands it to the deck.
+    @State var controlDeckModel = ControlDeckModel()
+    /// The inbox shelf (pins, tags, categories, manual order).
+    ///
+    /// Held here rather than as a global because the models below are rebuilt
+    /// on every body evaluation, and the shelf coalesces its writes on a timer:
+    /// a store discarded mid-debounce loses the write. `@State` gives it a
+    /// lifetime tied to this view instead of to the process.
+    @State private var inboxShelf = InboxShelfStore()
+
     @State var pendingMemoryReviewCount: Int?
     /// Unread AI Inbox items, shown as a badge on the section switcher. Nil until
     /// the first read, so a profile whose daemon has never run shows no badge
@@ -204,7 +220,11 @@ struct DashboardView: View {
         switch route {
         case .overview, .insights, .charts, .provider, .model:
             return true
-        case .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat, .quota:
+        case .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat, .quota,
+             .controlDeck:
+            // The Control Deck is a full-width workspace like Inbox and Quota:
+            // it is *not* about the provider/model breakdown, so the provider
+            // rail would be a third redundant column.
             return false
         }
     }
@@ -299,6 +319,7 @@ struct DashboardView: View {
         case .inbox: return "Inbox"
         case .chat: return "Chat"
         case .quota: return "Quota"
+        case .controlDeck: return "Control Deck"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -521,6 +542,7 @@ struct DashboardView: View {
         .accessibilityIdentifier(OBBAccessibilityID.dashboardRoot)
         .background {
             sectionShortcuts
+            controlDeckShortcut
             commandPaletteShortcut
         }
         .sheet(isPresented: $showCommandPalette) {
@@ -669,6 +691,19 @@ struct DashboardView: View {
         .openBurnBarPreferredColorScheme(settingsManager.preferredSwiftUIColorScheme)
         .environment(\.backdropReadabilityProfile, activeReadabilityProfile)
         .environment(\.dashboardLiveBackdropActive, dashboardLiveBackdropActive)
+        // Resolved once, here, so every route below draws with ink that clears
+        // 4.5:1 against whatever the kernel is currently painting. Routes that
+        // reached for `DesignSystem.Colors.text*` directly were readable on a
+        // static canvas and invisible the moment a backdrop was switched on —
+        // `textMuted` in particular cannot clear the bar on any canvas this app
+        // draws. See `Theme/BackdropLegibleSurface.swift`.
+        .environment(
+            \.backdropInk,
+            BackdropInk.resolve(
+                liveBackdropActive: dashboardLiveBackdropActive,
+                profile: activeReadabilityProfile
+            )
+        )
         .environment(settingsManager)
     }
 
@@ -693,6 +728,23 @@ struct DashboardView: View {
             .frame(width: 0, height: 0)
             .allowsHitTesting(false)
         }
+    }
+
+    /// Hidden ⌘0 for the Control Deck. Deliberately *outside* the ⌘1–⌘8
+    /// `primarySections` range, which is positional — inserting the deck into
+    /// that array would renumber every existing user's shortcuts.
+    private var controlDeckShortcut: some View {
+        Button {
+            withAnimation(DesignSystem.Animation.standard) {
+                navigate(to: .controlDeck)
+            }
+        } label: {
+            EmptyView()
+        }
+        .keyboardShortcut("0", modifiers: .command)
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .allowsHitTesting(false)
     }
 
     /// Hidden ⌘K to open the Command Palette from anywhere in the window.
@@ -813,6 +865,8 @@ struct DashboardView: View {
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .controlDeck:
+                    controlDeckRouteView
                 case .provider(let provider):
                     ProviderDashboardView(
                         provider: provider,
@@ -973,7 +1027,8 @@ struct DashboardView: View {
                     try await dataStore.setAIInboxItemFeedback(id: id, feedback: feedback)
                 },
                 markAllRead: { [dataStore] in try await dataStore.markAllAIInboxItemsRead() },
-                loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() }
+                loadRuns: { [dataStore] in try await dataStore.fetchAIInboxRuns() },
+                shelf: inboxShelf
             ),
             onOpenSessionLog: { conversationID in
                 // Resolve the citation into a real jump target so the click lands

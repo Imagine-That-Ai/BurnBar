@@ -120,23 +120,33 @@ actor QuotaRefreshActor {
         return try await adapter.fetch(context: context)
     }
 
+    func invalidateAPIKeyResolutionCache() {
+        apiKeyResolutionCache = nil
+    }
+
     func fetchAllSnapshots(
-        switcherProfileFetcher: ProviderQuotaSwitcherProfileFetcher
+        switcherProfileFetcher: ProviderQuotaSwitcherProfileFetcher,
+        providers: [AgentProvider]? = nil
     ) async -> ProviderQuotaRefreshBatch {
+        let targets = providers ?? refreshProviders
+        guard !targets.isEmpty else {
+            return ProviderQuotaRefreshBatch(providerSnapshots: [:], accountSnapshots: [:])
+        }
         let context = await makeContext()
-        let providerSnapshots = await fetchProviderSnapshots(for: refreshProviders, context: context)
-        var accountSnapshots = await fetchAccountSnapshots(
+        async let providerSnapshots = fetchProviderSnapshots(for: targets, context: context)
+        async let accountSnapshotsTask = fetchAccountSnapshots(
             using: context,
-            providers: Set(refreshProviders)
+            providers: Set(targets)
         )
-        let switcherSnapshots = await fetchSwitcherProfileSnapshots(
+        async let switcherSnapshotsTask = fetchSwitcherProfileSnapshots(
             using: context,
-            providers: Set(refreshProviders),
+            providers: Set(targets),
             switcherProfileFetcher: switcherProfileFetcher
         )
-        accountSnapshots.merge(switcherSnapshots) { _, replacement in replacement }
+        var accountSnapshots = await accountSnapshotsTask
+        accountSnapshots.merge(await switcherSnapshotsTask) { _, replacement in replacement }
         return ProviderQuotaRefreshBatch(
-            providerSnapshots: providerSnapshots,
+            providerSnapshots: await providerSnapshots,
             accountSnapshots: accountSnapshots
         )
     }
@@ -210,9 +220,13 @@ actor QuotaRefreshActor {
             mimoTokenPlanBillingCycle: plan.mimoTokenPlanBillingCycle,
             codexRolloutScanCache: codexCacheBox.read(),
             updateCodexRolloutScanCache: { [codexCacheBox, snapshotStore] cache, didChange in
-                codexCacheBox.write(cache)
-                if didChange {
-                    snapshotStore.persistCodexRolloutScanCache(cache)
+                let applied = CodexRolloutScanCacheUpdate.apply(
+                    incoming: cache,
+                    didChangeIncoming: didChange,
+                    to: codexCacheBox
+                )
+                if applied.didChange {
+                    snapshotStore.persistCodexRolloutScanCache(applied.cache)
                 }
             },
             claudeCredentialsReader: claudeCredentialsReader,
@@ -593,8 +607,18 @@ private func resolveDaemonAccountCredentials(
               let provider = quotaCapableProvider(for: configuration.providerID) else {
             continue
         }
-        guard provider != .openAI else { continue }
-        let normalizedProviderID = ProviderID(rawValue: configuration.providerID)
+        // Organization-scoped providers report the same numbers for every
+        // credential slot, so a per-slot fetch would render N identical cards
+        // and multiply one org's usage in the cumulative merge. They stay
+        // provider-level; the workspace labels their rollup card accordingly.
+        guard QuotaCapableProviderMap.supportsPerAccountQuota(provider) else { continue }
+        // Canonical, not as-configured: the account identity has to match what
+        // `DaemonCredentialSlotAccountProjection` writes and what
+        // `snapshots(for:)` looks up, or an alias-configured provider (`x-ai`,
+        // `grok`, `anthropic`, …) fetches quota nobody can find. The keychain
+        // account below deliberately stays on the raw configured id — that is
+        // where the daemon actually stored the secret.
+        let canonicalProviderID = provider.providerID
 
         for slot in configuration.credentialSlots where slot.isEnabled {
             let secretAccount = "provider.\(configuration.providerID).slot.\(slot.slotID).apiKey"
@@ -607,14 +631,16 @@ private func resolveDaemonAccountCredentials(
                 continue
             }
 
-            let normalizedSlotID = ProviderID.normalize(slot.slotID)
             credentials.append(ProviderQuotaAccountCredential(
                 provider: provider,
-                providerID: normalizedProviderID,
-                accountID: "\(normalizedProviderID.rawValue)-\(normalizedSlotID)",
+                providerID: canonicalProviderID,
+                accountID: DaemonCredentialSlotAccountProjection.accountID(
+                    providerID: canonicalProviderID,
+                    slotID: slot.slotID
+                ),
                 label: slot.label,
                 storageScope: .deviceKeychain,
-                sourceID: "daemon-slot:\(normalizedProviderID.rawValue):\(slot.slotID)",
+                sourceID: "daemon-slot:\(canonicalProviderID.rawValue):\(slot.slotID)",
                 apiKey: normalizedKey
             ))
         }
@@ -783,28 +809,7 @@ private func quotaSwitcherProfileLabel(
 }
 
 private func quotaCapableProvider(for providerID: String) -> AgentProvider? {
-    switch ProviderID.normalize(providerID) {
-    case "minimax":
-        return .minimax
-    case "zai", "z-ai":
-        return .zai
-    case "ollama":
-        return .ollama
-    case "openai":
-        return .openAI
-    case "anthropic", "claude", "claude-code":
-        return .claudeCode
-    case "opencode", "open-code":
-        return .openCode
-    case "deepseek", "deep-seek":
-        return .deepSeek
-    case "moonshot", "kimi":
-        return .kimi
-    case "xai", "x-ai", "x.ai", "grok":
-        return .xAI
-    default:
-        return nil
-    }
+    QuotaCapableProviderMap.provider(forDaemonProviderID: providerID)
 }
 
 private func quotaKeyIdentifiers(for provider: AgentProvider) -> [String] {

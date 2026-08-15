@@ -778,7 +778,7 @@ final class JunieParserTests: XCTestCase {
             [events.standardizedFileURL.path, index.standardizedFileURL.path].sorted()
         )
         XCTAssertTrue(tracker.hasAdmittedFiles)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: appPaths.junieParserCacheURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: appPaths.macJunieParserCacheURL.path))
     }
 
     func testEventsOpenFailureAfterAdmissionDefersWholeSessionAndDoesNotCache() async throws {
@@ -826,7 +826,7 @@ final class JunieParserTests: XCTestCase {
         )
         XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty)
         XCTAssertFalse(tracker.hasAdmittedFiles)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: appPaths.junieParserCacheURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: appPaths.macJunieParserCacheURL.path))
     }
 
     func testStateOpenFailureAfterAdmissionDefersWholeSessionAndDoesNotCache() async throws {
@@ -874,7 +874,7 @@ final class JunieParserTests: XCTestCase {
         )
         XCTAssertTrue(tracker.partialCheckpointFiles.isEmpty)
         XCTAssertFalse(tracker.hasAdmittedFiles)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: appPaths.junieParserCacheURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: appPaths.macJunieParserCacheURL.path))
     }
 
     func testUnchangedIndexMapsNewlyRestoredHistoricalSessionWithoutState() async throws {

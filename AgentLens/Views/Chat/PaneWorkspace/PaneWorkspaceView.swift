@@ -70,10 +70,15 @@ private struct ChatWorkspaceShortcuts: View {
                 Button("") { _ = workspace.performCloseShortcut() }
                     .keyboardShortcut("w", modifiers: .command)
             }
-            ForEach(Array(workspace.tabs.prefix(9).enumerated()), id: \.element.id) { idx, tab in
-                Button("") { workspace.selectTab(tab.id) }
-                    .keyboardShortcut(KeyEquivalent(Character("\(idx + 1)")), modifiers: .command)
-            }
+            // ⌘1–⌘9 tab selection is deliberately NOT registered here.
+            //
+            // It was ambiguous against `DashboardView.swift:691`, which binds
+            // ⌘1–⌘8 to the app's primary sections in the same responder chain,
+            // and `docs/qa/CHAT_PANE_TABS_QA.md` marks the row NOT RUN — so
+            // there was no verified behaviour to preserve, only a coin flip.
+            // Tabs keep ⌘⇧[ / ⌘⇧] / ⌘T / ⌘⇧T / ⌘W; the digit keys stay with
+            // app-global navigation. Removing a broken binding beats relocating
+            // one (spec §4.2).
         }
         .hidden()
     }

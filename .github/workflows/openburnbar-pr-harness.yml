@@ -54,7 +54,7 @@ jobs:
   platform-misc:
     name: Platform Misc
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       INTERNAL_RUN: "true"
     steps:
@@ -325,7 +325,7 @@ jobs:
   node-evals:
     name: Node Evals
     runs-on: macos-26
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -351,7 +351,7 @@ jobs:
   supply-chain:
     name: Supply Chain
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -494,6 +494,10 @@ jobs:
         run: echo "Firebase CI secrets are unavailable; running tests without injected auth config."
 
       - name: Run OpenBurnBar app tests
+        # Unfiltered OpenBurnBarTests corpus — includes DomainCoreShadowEvidenceSpoolTests.
+        # That focused spool selector is skipped from domain-core swift-consumer-contracts
+        # on pull_request/merge_group (app-graph rebuild cost); this nightly/dispatch lane
+        # plus domain-core push/dispatch remain the coverage homes.
         env:
           XCODEBUILD_RETRY_ON_FAILURE: "YES"
           XCODEBUILD_TEST_ITERATIONS: "3"

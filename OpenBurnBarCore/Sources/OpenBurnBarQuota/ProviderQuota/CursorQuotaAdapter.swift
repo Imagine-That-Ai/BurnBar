@@ -224,7 +224,7 @@ public struct CursorQuotaAdapter: ProviderQuotaAdapter {
 
         // Parse billing cycle end
         let resetsAt = usageSummary.billingCycleEnd
-            .flatMap { ISO8601DateFormatter().date(from: $0) }
+            .flatMap { ThreadSafeISO8601DateFormatter.parseBasic($0) }
 
         // Primary: Total included usage
         if let plan {

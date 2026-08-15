@@ -119,7 +119,7 @@ struct CloudHeroAnimation: View {
     // MARK: - Orbit
 
     private var animatedOrbitLayer: some View {
-        TimelineView(.animation) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let angleA = (t * 0.18).truncatingRemainder(dividingBy: 2 * .pi)
             let angleB = angleA + (2 * .pi / 3)

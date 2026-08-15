@@ -14,10 +14,10 @@ cask "openburnbar" do
   version "1.0.3"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000" # Updated by scripts/update-homebrew.sh
 
-  url "https://github.com/Ajnunezg/BurnBar/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"
+  url "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v#{version}/OpenBurnBar-#{version}-macOS.dmg"
   name "OpenBurnBar"
   desc "Menu bar app for tracking AI agent token usage across Claude, Codex, and more"
-  homepage "https://github.com/Ajnunezg/BurnBar"
+  homepage "https://github.com/Imagine-That-Ai/BurnBar"
 
   depends_on macos: ">= :sonoma"
 

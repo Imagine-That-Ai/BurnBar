@@ -35,14 +35,17 @@ when nil.
 ### Bucketed fills
 
 The data-driven draw branch used to call `ctx.fill` once per particle —
-hundreds of `CGContextFillRect`-like ops per frame. The new path
-accumulates particles into `[UInt32: (color: RGBA, path: Path)]` keyed
-on `RGBA.bucketKey` (an 8-bit-per-channel quantization of the colour),
+hundreds of `CGContextFillRect`-like ops per frame. Every live path
+(swarm palette, logo/shape formation, and color-driver) now accumulates
+particles into `[UInt32: (color: RGBA, path: Path)]` keyed on
+`RGBA.bucketKey` (an 8-bit-per-channel quantization of the colour),
 then issues exactly one `ctx.fill` per bucket. Sparkles render in a
-deferred pass so the draw order is preserved.
+deferred pass so they still sit on top of their dots.
 
-Net effect: a frame that used to be 600 fills is now ~12 fills, with no
-visible difference to the eye.
+Net effect: a formed constellation that used to be ~900 fills is now
+tens of fills plus a handful of sparkle overlays, with no visible
+difference to the eye. `SwarmSimulation.planParticleFills` pins the
+budget without a `GraphicsContext`.
 
 ### Pointer throttling
 
@@ -649,3 +652,916 @@ tick-path-vs-legacy-full-recompute aggregate equality).
 `DownloadSyncServiceRollupTotalsTests` covers the rollup read end to end:
 one-read proof, verbatim costUsd, integer-stored cost decode, and nil on
 missing or undecodable rollups.
+
+---
+
+## §19 — Graphics / GRDB / quota mining (August 2026)
+
+Three remaining hot paths after §18, measured without Instruments:
+
+### Lane 1 — Constellation / logo fills
+
+`SwarmSimulation.draw` still took the per-particle fill path for
+shape, provider-logo, and color-driver frames (`shouldRenderIndividually`).
+Dashboard Constellation and Website backgrounds spend half their cycle
+formed, so the 30 Hz cap was paying ~900 `ctx.fill` calls/frame.
+
+The individual path is gone. Every non-glyph dot batches through
+`RGBA.bucketKey`; sparkles stay a deferred second pass. Fill counts are
+pinned by `SwarmCanvasFrameRateTests` (`planParticleFills`).
+
+### Lane 2 — Dashboard snapshot + idle persist
+
+`fetchDashboardUsageSnapshot` ran 14 separate `fetchUsageTotals`
+round-trips for the last-7-day series and rolling average (two loops
+over the same days). Those windows now come from one
+`fetchOverlappingDayCostAndTokens` scan using the same intersection
+predicate, so overlapping long-runners stay bit-identical.
+`test_dashboardSnapshot_last7DaySeriesMatchesPerDayTotals` pins that
+equality; `test_dashboardSnapshotQueryCount_isIndependentOfRowCount`
+tightens the SELECT ceiling from 64 to 24 (ratcheted to 12 in §20).
+
+Idle usage ticks still issued `INSERT…ON CONFLICT` for every parsed row
+even when the value-diff WHERE gate changed nothing. `insertChunked`
+now fingerprints persist-visible content (not UUID/`createdAt`) and
+skips the upsert storm when the fingerprint matches and
+`UsageTableWriteMarker` has not advanced. Fail-closed: any other writer
+or a token/cost change re-runs the upserts.
+`UsagePersistSkipTests` pins skip vs. write.
+
+### Lane 3 — Grok `updates.jsonl` resume
+
+Codex and Claude already resume from `ParserDiskCache`. Grok re-read
+every `~/.grok/sessions/**/updates.jsonl` on every usage tick.
+`GrokParser` now caches exact turn totals by mtime+size (token
+breakdowns only — no conversation bodies) and skips `chat_history.jsonl`
+on usage-only passes when exact totals exist. Child-session
+reconciliation still runs in memory so parent totals stay correct.
+`test_parse_skipsUnchangedUpdatesJsonlOnSecondPass` pins scan vs. hit
+counts and grown-file invalidation.
+
+Validation:
+- `OpenBurnBarTests/SwarmCanvasFrameRateTests`
+- `OpenBurnBarTests/DashboardUsageViewModelTests`
+- `OpenBurnBarTests/RefreshTickPerfTests` (`UsagePersistSkipTests`)
+- `OpenBurnBarCoreTests/GrokParserTests`
+
+---
+
+## §20 — Remaining hot paths (August 2026, round 2)
+
+Round 1 closed constellation fills, overlapping-day scans, idle persist
+skip, and Grok resume. This round burns down the leftovers that were
+still on the 60s/appear path, without changing usage totals, quota
+remaining%, `resetsAt`, or `.exact|.estimated|.unavailable`.
+
+### Lane 1 — Graphics
+
+Chart Studio, Burn, and Trend Atlas were rebuilding gallery facts /
+insights on every Hermes token and every SwiftUI body. iOS now memoizes
+through `TrendDigestCacheStore` / `ChartStudioDerivedCache` keyed on
+digest equality. Android uses unconditional `remember(digest)` so
+Compose never calls `TrendInsightEngine` per recomposition.
+
+Substrate `sizePx` uses `upperMedian` (`selectNth`, same as
+`sorted()[count/2]`) instead of a per-frame sort. Editorial website
+backdrop requests `streamingThrottledFrameRate(30)` instead of the 60
+fps canvas default. Insight time-series domains are one `DomainLayout`
+pass computed once per body. Quota dials flatten the trimmed stroke
+with `.compositingGroup()` before the drop shadow so animated `Circle.trim`
+does not re-blur every frame.
+
+### Lane 2 — GRDB
+
+Dashboard window totals (today / 7d / 30d / month / all-time) come from
+one `GROUP BY` over membership flags (`CASE WHEN <intersection> THEN 1`)
+evaluated once per window per row, then `SUM(flag * column)`. Overlapping
+day cost/token series uses the same flag shape (one bind set per day).
+Row fetches per window stay: credential and project summaries need
+`LIMIT` rows, and all-time `LIMIT` cannot be reused for shorter windows.
+`test_dashboardSnapshot_windowTotalsMatchPerWindowAggregateQueries`
+pins totals against per-window `fetchUsageTotals`; the SELECT ceiling
+is 12.
+
+Database workspace snapshot counts are one `GROUP BY status` each for
+shared-artifact sync states and projection jobs.
+
+### Lane 3 — Quota
+
+`QuotaRefreshPolicy` now drives Mac `refreshIfNeeded` and Linux
+`BurnBarLinuxQuotaRefreshService`. High remaining (≥50%) refreshes every
+30m, 20–50% every 10m, <20% every 3m, unknown 15m, clamped to
+`resetsAt` / 60s / 4h. `maxAge <= 0` still force-refreshes everyone.
+Subset refreshes do not occupy the full `refreshAll` in-flight slot.
+
+SuperGrok pacing tail-reads JSONL from EOF in 64KB chunks until the
+newest timestamp in a chunk is older than the 2h window. Lines longer
+than a chunk are carried, not dropped. `sawAnyEvent` still reflects
+historical lines so the empty-log status message does not flip.
+
+Claude JSONL quota scans resume from the previous newline when a
+transcript only grew. A mid-line last parse fail-closes to a full
+re-read. Codex rollout enumeration skips `rollout-*.jsonl` whose mtime
+is older than the 7-day freshness cutoff and prunes those cache
+entries.
+
+### Named leftovers
+
+- `ChartsDataService.refresh` still materializes `fetchAllUsage()` for
+  all-time. `ChartsSnapshot.build` needs per-session rows (heatmap,
+  outliers, project entropy); a SQL rewrite is a different coherent unit.
+- `ConversationIndexer.index` still opens one write transaction per
+  *changed* conversation. Steady-state ticks already skip via the
+  batched identity map; first-index of thousands of new rows is the
+  remaining cost.
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Wall-clock
+  only; snapshots stay last-write-wins.
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+
+Validation:
+- `OpenBurnBarTests/SwarmCanvasFrameRateTests`
+- `OpenBurnBarTests/DashboardUsageViewModelTests`
+- `OpenBurnBarTests/ProviderQuotaServiceTests`
+- `OpenBurnBarTests/XAIQuotaAdapterTests`
+- `OpenBurnBarTests/ClaudeQuotaJSONLScannerTests`
+- `OpenBurnBarCoreTests/QuotaRefreshPolicyTests`
+- `OpenBurnBarCoreTests/CodexRolloutScannerTests`
+- `OpenBurnBarCoreTests/SuperGrokLogScanTests`
+- `OpenBurnBarCoreTests/ClaudeJSONLResumeTests`
+- `OpenBurnBarDaemonTests/BurnBarLinuxQuotaRefreshServiceTests` (Linux)
+
+---
+
+## §21 — Remaining hot paths (August 2026, round 3)
+
+Round 2 closed adaptive quota TTL, SQL window flags, and Claude JSONL
+resume. This round burns down the leftovers that were still on the
+Charts appear path, first-index writes, and decorative 60 fps loops.
+
+### Lane 1 — Graphics
+
+Cooking and mining loaders were ticking `TimelineView` at 60 fps for a
+bounce/swing the eye cannot resolve above ~30 Hz. Both now request
+`1.0 / 30`. The Cloud store hero orbit was `TimelineView(.animation)`
+uncapped (sparks were already 30 fps); the orbit matches. iOS easter-egg
+canvas now uses the same 30 fps cap as macOS.
+
+### Lane 2 — GRDB / Charts
+
+`ChartsDataService.refresh` issued `fetchAllUsage()` (or the selected
+window) **and** a second last-31-day `fetchUsage`. Every bounded
+`TimeRange` (today / 7d / 30d / month) sits inside that 31-day covering
+window, so one intersection scan now supplies both row sets.
+`deriveWindows` filters with `TokenUsage.intersects(dateRange:)`, the
+same predicate as `fetchUsage(in:)`. All-time still materializes every
+row because heatmap / outliers / entropy need per-session values.
+
+`ConversationIndexer.index` still skipped unchanged rows from a batched
+identity map, then opened **two** transactions per changed row (upsert +
+`fetchConversation` + enqueue). Changed rows now persist in chunks of 64
+inside one write: upsert uses the existing ON CONFLICT body, and a
+projection job is enqueued only when `deletedAt` is nil so tombstones
+stay buried. Steady-state ticks remain O(ceil(N/500)) reads and zero
+writes.
+
+Database workspace snapshot counts/fetches launch concurrently so GRDB
+pool reads overlap; assignments still hop back to the main actor.
+
+### Lane 3 — Quota
+
+Factory droid `.settings.json` files whose mtime is older than 30 days
+cannot contribute to the 5h / 7d / 30d displayable buckets, so they are
+skipped (missing mtime fail-closes to a full read). Historical-only trees
+still return a local snapshot instead of flipping to unavailable.
+Antigravity `history.jsonl` tail-reads from EOF in 64KB chunks until the
+newest timestamp in a chunk is older than the 5h window, with the same
+long-line carry as SuperGrok. UTF-8 split fail-closes to a full-file
+read, then to unavailable.
+
+### Named leftovers
+
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Overlapping
+  the phases would race the Codex rollout cache (whole-cache last-write-wins).
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Warp / Kilo Code quota fallbacks still `Data(contentsOf:)` whole files
+  (JSON arrays / unstructured telemetry, not append-only JSONL).
+- Goose / Antigravity **usage parsers** still scan from offset 0 because
+  they accumulate conversation bodies, not just windowed quota counts.
+
+Validation:
+- `OpenBurnBarTests/ChartsSnapshotBuilderTests`
+- `OpenBurnBarTests/IncrementalConversationIndexingTests`
+- `OpenBurnBarTests/SwarmCanvasFrameRateTests`
+- `OpenBurnBarTests/LocalSearchSchemaStoreTests` (workspace snapshot)
+- `OpenBurnBarCoreTests/FactoryQuotaSessionSkipTests`
+- `OpenBurnBarCoreTests/AntigravityJSONLTailTests`
+- plus the §20 quota / dashboard suites
+
+---
+
+## §22 — Remaining hot paths (August 2026, round 4)
+
+Round 3 closed the Charts covering scan, indexer write batching, and
+Factory / Antigravity quota tails. This round burns down the leftovers
+that were still whole-file on the quota tick or re-parsed on every
+usage tick.
+
+### Lane 1 — Graphics
+
+`BurnBarLogoFormationView` (splash / onboarding) was ticking `TimelineView`
+and the glyph `Timer` at 45 fps. Both now use `1.0 / 30` so wall-clock
+formation time stays the same at the editorial decorative cap.
+
+### Lane 2 — Quota
+
+Warp's local telemetry fallback still needed the newest credit bucket
+from unstructured `warp_network*.log` files. It now reads the last
+512 KB first (`CodexQuotaScanPolicy.tailReadBytes`). A UTF-8 split or
+a tail with no credit fail-closes to a full-file read so remaining% /
+`resetsAt` stay bit-identical. Factory session timestamps reuse
+`ThreadSafeISO8601DateFormatter.parse` instead of allocating a pair of
+formatters per `.settings.json`.
+
+### Lane 3 — Usage parsers
+
+Usage ticks do not share indexing `idx2:` / `fileDiscoveryTracker` /
+`minimumFileModificationDate`, so `ParserFileReadGate` admits every
+session file every 60s. Gemini CLI now keeps a mtime+size disk cache of
+token totals (never bodies) and skips transcript markdown on usage-only
+passes. Cache keys for files that still exist are kept even when a
+watermark or tracker skips the content read, so an indexing pass cannot
+evict a warm usage cache (Grok `updates.jsonl` got the same prune fix).
+
+Cursor Agent and Antigravity usage parsers parse timestamps through the
+shared formatter instead of two `ISO8601DateFormatter` instances per
+session. Cursor Agent also skips `fullText` / key-file / tool-name
+assembly when `includeConversationBodies` is false; token estimates
+still count characters.
+
+### Named leftovers
+
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Overlapping
+  the phases would race the Codex rollout cache (whole-cache last-write-wins).
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Kilo Code's `KiloCodeQuotaAdapter` still `Data(contentsOf:)` task JSON
+  arrays, but it is not on the quota refresh path (`quotaSignalProviders`
+  / the adapter registry omit it). Cline-family usage still goes through
+  `ClineFormatParser` (now with the idle-tick disk cache in §23).
+- Warp **usage** parsing still reads a changed `warp_network*.log` in
+  full because every Body object can contribute a usage row.
+- Goose / Antigravity **usage parsers** no longer rescan unchanged
+  transcripts on idle ticks (see §23). A miss still reads from offset 0
+  because token estimates accumulate conversation characters.
+
+Validation:
+- `OpenBurnBarTests/SwarmCanvasFrameRateTests`
+- `OpenBurnBarTests/WarpQuotaAdapterMattersTests`
+- `OpenBurnBarCoreTests/WarpTelemetryTailTests`
+- `OpenBurnBarCoreTests/GeminiCLIParserCacheTests`
+- `OpenBurnBarCoreTests/GrokParserTests`
+- `OpenBurnBarCoreTests/LiftedParserBoundaryTests` (Cursor Agent usage-only)
+- plus the §21 Charts / indexer / quota suites
+
+---
+
+## §23 — Remaining hot paths (August 2026, round 5)
+
+Round 4 cached Gemini CLI and tailed Warp quota. Usage ticks still had
+no `fileDiscoveryTracker` / `minimumFileModificationDate`, so
+`ParserFileReadGate` admitted every remaining session tree every 60s.
+
+### Lane 1 — Idle usage parser caches
+
+Cursor Agent, Cline-family (`ClineFormatParser` for Cline / Kilo / Roo),
+Copilot CLI, Antigravity, and Goose now keep a mtime+size disk cache of
+**token totals only** (never conversation bodies). Usage-only ticks
+skip `fullText` / titles / key-files / tool-names on a miss; character
+counts for token estimates still run.
+
+Signatures fail closed:
+
+- Cursor Agent includes nested `summary.json` so a sidecar model/title
+  change busts the hit.
+- Copilot includes process-log fallback integers so a later
+  `CompactionProcessor` parse cannot reuse a zeroed JSONL row.
+- Antigravity includes the `settings.json` fallback model string so a
+  selector change cannot reuse a cached row that still carried the
+  previous model.
+- Goose caches both legacy JSONL sessions and `sessions.db` as a
+  session bundle (one SQLite file yields many rows).
+
+Cache keys for files that still exist stay even when a watermark or
+tracker skips the content read, so an indexing pass cannot evict a warm
+usage cache.
+
+### Lane 2 — Quota ISO-8601
+
+Spend / reset parsers that allocated a fractional+basic
+`ISO8601DateFormatter` pair per payload now use
+`ThreadSafeISO8601DateFormatter.parse` (xAI spend points, Kimi, Warp
+GraphQL `nextRefreshTime`, Ollama Cloud HTML). Parsers that used a
+default `ISO8601DateFormatter()` now use `parseBasic` (Copilot
+`quotaResetDate`, Cursor `billingCycleEnd`, Factory dashboard
+`endDate`) so `resetsAt` acceptance does not widen to fractional
+strings. Codex `last_refresh` stays on its throwing Codable path.
+
+### Named leftovers
+
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Overlapping
+  the phases would race the Codex rollout cache (whole-cache last-write-wins).
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Warp **usage** parsing still reads a changed `warp_network*.log` in
+  full because every Body object can contribute a usage row.
+- Windsurf / Hermes / Forge / Augment / Muse / Prime / Kimi usage
+  parsers still reread admitted session files on every usage tick.
+  Cache them the same way only with a bit-identical equality test per
+  provider.
+
+Validation:
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests`
+- `OpenBurnBarCoreTests/CopilotParserTests`
+- `OpenBurnBarCoreTests/LiftedParserBoundaryTests`
+- `OpenBurnBarCoreTests/ParserParseOptionsTests` (Antigravity / Goose gates)
+- `OpenBurnBarCoreTests/GeminiCLIParserCacheTests`
+- plus the §22 Warp / Gemini / Grok suites
+
+---
+
+## §24 — Remaining hot paths (August 2026, round 6)
+
+Round 5 cached Cursor Agent / Cline / Copilot / Antigravity / Goose.
+Every other Core usage parser still reread admitted session files on
+the 60s tick because usage parse does not share indexing watermarks.
+
+### Lane 1 — Remaining idle usage parser caches
+
+Warp, Prime, Muse, Kimi, Windsurf, Hermes, Forge, Augment, Aider,
+Cursor SQLite, OpenCode, Pi, OMP, OpenClaw, Ollama, Junie, and
+ModelFilter (zai / minimax / the Mac ollama Factory filter) now keep a
+mtime+size disk cache of **token totals only** (never conversation
+bodies). Session ids are stored in the bundle so Prime envelope ids
+survive a filename mismatch.
+
+Signatures fail closed:
+
+- Warp caches per `warp_network*.log` and re-applies global Body
+  dedup on a hit. A changed log still reads in full because every Body
+  object can contribute a usage row.
+- Kimi signs the session directory (`context.jsonl` + optional
+  `wire.jsonl`). CJK character fallback still runs on a miss when wire
+  has no buckets. Cache-only nil from `parseWireFile` is unchanged.
+- Windsurf signs the protobuf plus the global `state.vscdb` (and WAL)
+  so a model/workspace rewrite cannot reuse a cached row. In-memory
+  `state.vscdb` lookups are keyed on that same signature.
+- Hermes signs `state.db` + WAL, the gateway index **and** referenced
+  transcripts, CLI `session_*.json`, and leftover jsonl. Hits still
+  honor `seenSessionIds` / `profile::sessionId`.
+- Forge override reads only `{override}/.forge.db` and jsonl under
+  that directory; production home-wide `*/.forge.db` crawl is unchanged
+  when override is nil. SQLite usage-only misses skip conversation
+  assembly.
+- Aider signs `analytics.jsonl` + `.json` as one combined stream.
+- Cursor / OpenCode SQLite sign the db + WAL. OpenCode usage-only
+  skips the `part` table when every session already has explicit token
+  buckets (heuristic totals still need `part` text).
+- ModelFilter signs jsonl + settings/metadata sidecars and caches an
+  **empty** bundle for non-matching Factory sessions so a zai tick does
+  not rescan gpt-4o jsonl.
+
+Cache keys for files that still exist stay even when a watermark or
+tracker skips the content read. Goose still signs `sessions.db` only
+(do not bump its schema to WAL without a dedicated equality test).
+
+### Lane 2 — Quota ISO-8601 format leftovers
+
+xAI spend-point writes, Claude OAuth disk cache read/write, Claude
+auto-install attempt markers, and Claude `firstDate` now go through
+`formatBasic` / `parseBasic` / `parse` instead of allocating a
+default `ISO8601DateFormatter()`. Codex `last_refresh` stays on its
+throwing Codable path.
+
+### Named leftovers
+
+- `fetchDailySummaries` still `GROUP BY DATE(startTime)` (start-day
+  membership, not the intersection predicate). Do not fold it into the
+  overlapping-day scan without a dedicated equality test.
+- `QuotaRefreshActor.fetchAllSnapshots` still runs provider, account,
+  and switcher phases sequentially (4-wide inside each phase). Overlapping
+  the phases would race the Codex rollout cache (whole-cache last-write-wins).
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Kilo Code's `KiloCodeQuotaAdapter` still `Data(contentsOf:)` task JSON
+  arrays, but it is not on the quota refresh path.
+- Warp **usage** parsing still reads a changed `warp_network*.log` in
+  full because every Body object can contribute a usage row.
+- AgentLens Mac shadows (Copilot, Aider, Cursor, OpenCode, Pi, OpenClaw,
+  Junie) still run on Mac idle ticks. They are **not** bit-identical to
+  the Core lifts (Copilot shutdown double-count, Junie `state.json`,
+  OpenClaw nested wrappers). Do not alias `ParserRegistry` to Core
+  without per-provider golden tests. Prefer a later Mac-semantics cache
+  over a second copy of Core totals.
+- Windsurf / Hermes / Forge **discovery** of home-wide session trees
+  still stats every candidate even when the content read is a cache hit.
+- OpenCode usage-only still reads `part` when any session has zero
+  explicit token buckets (needed for heuristic totals).
+
+Validation:
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests` (including Warp /
+  Prime / Muse / Kimi / Windsurf / Hermes / Forge / Augment / Aider /
+  Cursor SQLite / OpenCode / Pi / OMP / OpenClaw / Ollama / Junie /
+  ModelFilter, plus WAL-vs-shm signature)
+- `OpenBurnBarCoreTests/ThreadSafeISO8601DateFormatterStaticParseTests`
+  (`formatBasic` matches `ISO8601DateFormatter().string(from:)`)
+- plus the §23 idle-cache / quota suites
+
+## §25 — Remaining hot paths (August 2026, round 7)
+
+Round 6 cached remaining Core parsers. Five leftovers were still on
+the table: Mac AgentLens shadows, `fetchDailySummaries` start-day
+membership, sequential quota phases racing the Codex rollout cache,
+Warp usage full-reads on append, and Windsurf / Hermes / Forge
+discovery stats on cache hits.
+
+### Lane 1 — Mac-semantics idle caches
+
+Mac Copilot, Aider, Cursor, OpenCode, Pi, OpenClaw, and Junie keep a
+mtime+size disk cache of **token totals only** around the existing
+AgentLens parse math, written to dedicated `mac_*_parser_cache.json`
+files. ParserRegistry is not aliased to Core: Copilot still
+double-counts `assistant.usage` + `session.shutdown`, Junie still
+prefers `state.json`, OpenClaw still flattens nested wrappers. Aider
+signs each analytics file separately. Copilot's process-log fallback
+integers participate in the signature. Sharing Core cache files would
+let an isomorphic signature decode Mac totals as a Core hit.
+
+### Lane 2 — Daily summaries use intersection membership
+
+`fetchDailySummaries` attributes each row to every overlapped local
+calendar day (same predicate as last-7-day SQL). A spanning
+yesterday→today session counts on both days; a start-today session
+counts today only. `DashboardUsageViewModel` in-memory rebuild uses
+the same helper. Equality test: folded scan vs per-day intersection
+`GROUP BY`.
+
+### Lane 3 — Overlapping quota phases
+
+`CodexRolloutScanner` prunes only files under the directories it
+scanned. `CodexRolloutScanCache.mergingScan` overlays those roots on
+the live box and keeps other trees (default `~/.codex` vs switcher
+`CODEX_HOME`). `QuotaRefreshActor.fetchAllSnapshots` then `async let`s
+provider, account, and switcher phases.
+
+### Lane 4 — Warp append resume
+
+Changed `warp_network*.log` files resume from the last complete Body
+when the 4096-byte head digest matches. `byteOffset` is the UTF-8
+offset after that Body, so a partial Body at EOF is reread next tick.
+Head-digest mismatch (rewrite / rotation) fails closed to a full read.
+
+### Lane 5 — Discovery stats
+
+Windsurf and Hermes listing prefetches size/mtime/creation and builds
+`FileSignature` from those values (no second `FileSignature(for:)`
+stat). Hermes gateway signatures use that listing for `sessions.json`
+plus every sibling `.jsonl` — they do not `Data(contentsOf:)` the
+index or stat referenced transcripts to decide a cache hit. Forge
+still readdirs home every tick (creating `~/foo/.forge.db` does not
+change `~` mtime) but reuses per-child directory mtime to skip
+`.forge.db` `fileExists` probes. Override `{override}/.forge.db` stays
+scoped.
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+- `ChartsSnapshot.build` still needs per-session rows; a SQL rewrite of
+  heatmap / outliers / entropy is a different coherent unit.
+- Kilo Code's `KiloCodeQuotaAdapter` still `Data(contentsOf:)` task JSON
+  arrays, but it is not on the quota refresh path.
+- OpenCode usage-only still reads `part` when any session has zero
+  explicit token buckets (needed for heuristic totals).
+- `fetchDistinctUsageDayCount` still `COUNT(DISTINCT DATE(startTime))`
+  (start-day). Daily summaries and last-7-day series are intersection.
+
+Validation:
+- `OpenBurnBarCoreTests/CodexRolloutScannerTests` (scoped prune,
+  merge-on-write, locked apply)
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests` (Warp append resume,
+  rewrite fail-closed, Forge home-child probe skip, Mac vs Core cache
+  URL split)
+- `AgentLensTests/Active/DailySummaryIntersectionTests` (Swift vs
+  per-day SQL equality, spanning session)
+- `AgentLensTests/Active/MacIdleUsageParserCacheTests` (Copilot / Aider /
+  Cursor / OpenCode / Pi / OpenClaw usage-only second pass)
+
+## §26 — Remaining hot paths (August 2026, round 8)
+
+Round 7 closed Mac-semantics caches, daily-summary intersection, overlapping
+quota phases, Warp append resume, and discovery stats. Four leftovers were
+still on the table: distinct-day count was start-day SQL, OpenCode usage-only
+read every `part` row when any session lacked buckets, Kilo Code quota
+re-parsed every `ui_messages.json`, and Charts heatmap / outliers / entropy
+still needed a TokenUsage materialize.
+
+### Lane 1 — Distinct usage days use intersection membership
+
+`fetchDistinctUsageDayCount` counts unique local calendar days that at least
+one session overlaps (same `UsageDayIntersection` fold as daily summaries).
+The dashboard snapshot reuses `dailySummaries.count` so the all-time scan
+is not repeated. A spanning yesterday→today session is two days; a same-day
+session is one. Start-day `COUNT(DISTINCT DATE(startTime))` is gone.
+
+### Lane 2 — OpenCode usage-only `part` scope
+
+Core and Mac OpenCode parsers skip the `part` table on usage-only when every
+session has explicit token buckets. If some sessions are zero-bucket, they
+`SELECT * FROM part WHERE messageID IN (…)` for those message ids only
+(chunked). Conversation-body passes still read every text/reasoning part so
+transcripts stay complete. Heuristic totals for zero-bucket sessions are
+unchanged.
+
+### Lane 3 — Kilo Code quota task cache
+
+`KiloCodeQuotaAdapter` resumes unchanged `ui_messages.json` files from a
+mtime+size disk cache of **quota totals only** (tasks / tokens / cost).
+Conversation bodies are not stored. Kilo is not a `quotaSignalProviders`
+member, so it stays off `ProviderQuotaAdapterRegistry.standard`.
+
+### Lane 4 — Charts heatmap / outliers / entropy SQL twin
+
+`ChartSessionAnalytics` is the shared fold. `UsageStore.fetchChartSessionAnalytics`
+loads a narrow `startTime, cost, sessionId, projectName, model, provider`
+projection with the same intersection window as `fetchUsage(in:)`, then
+clamps `startTime` into the resolved chart range (not exploded onto every
+overlapped day). Equality tests match `ChartsSnapshot.build` on heatmap,
+top-5 outliers, and project entropy. Burn / cache / provenance / histogram
+still use the covering TokenUsage scan; all-time covering rows remain for
+those cards.
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+
+Validation:
+- `AgentLensTests/Active/DailySummaryIntersectionTests` (distinct-day count
+  vs per-day intersection summaries, spanning session)
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests` (OpenCode usage-only
+  skips `part` when every session has buckets; mixed explicit+heuristic
+  reads only heuristic message ids)
+- `AgentLensTests/Active/MacIdleUsageParserCacheTests` (Mac OpenCode `part`
+  scope)
+- `OpenBurnBarCoreTests/KiloCodeQuotaCacheTests` (second fetch cache hit,
+  changed task reread, bodies absent from cache)
+- `AgentLensTests/Active/ChartSessionAnalyticsSQLTests` (SQL vs
+  `ChartsSnapshot.build`, crossing-range clamp)
+
+## §27 — Charts covering scan uses fact rows (August 2026, round 9)
+
+Round 8 left burn / cache / provenance / histogram on the covering
+`TokenUsage` scan. `ChartsDataService.refresh` still `fetchAllUsage()`
+for all-time even after the heatmap SQL twin. This round wires a
+`ChartFactRow` projection so production Charts never decodes ledger
+identity for those cards.
+
+### Lane 1 — Chart fact-row covering scan
+
+`ChartFactRow` is the columns `ChartsSnapshot.build` actually reads:
+`startTime`, `endTime`, `cost`, `sessionId`, `projectName`, `model`,
+`provider`, `billingKind`, `usageSource`, token buckets, `totalTokens`
+(via `TokenUsage.billedTotalTokens`), `provenanceConfidence`,
+`isRemote`. `UsageStore.fetchChartFactRows` uses the same intersection
+predicate as `fetchUsage(in:)` and `ORDER BY startTime DESC`. Bounded
+ranges still cover the last 31 days in one scan; all-time covers the
+table without `SELECT *`. `ChartsSnapshot.build([TokenUsage])` stays
+the oracle (maps to fact rows). Heatmap attribution still clamps
+`startTime` into the resolved range — not exploded onto every
+overlapped day. Stamped `billingKind` is preserved (a Claude Code
+`.api` row does not reclassify to subscription).
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+  **Invariant, not remaining work.**
+
+OpenCode JSON-only `part` schemas still full-scan `part` when any
+heuristic session exists (IN-list needs a messageID column). Forge
+still `contentsOfDirectory` on home every tick (creating
+`~/foo/.forge.db` does not change `~` mtime) but already skips
+`.forge.db` `fileExists` via per-child directory mtime.
+
+Validation:
+- `AgentLensTests/Active/ChartFactRowSQLTests` (fact rows vs
+  `fetchAllUsage` / `ChartsSnapshot.build`, 31-day covering split,
+  crossing-range clamp, stamped billing kind + Spend Lens conservation)
+- `AgentLensTests/Active/ChartSessionAnalyticsSQLTests`
+- `AgentLensTests/Active/ChartsSnapshotBuilderTests`
+- `AgentLensTests/Active/SpendLensConservationTests`
+
+## §28 — Dashboard tick snapshot, Factory quota cache, listing prefetch (August 2026, round 10)
+
+Round 9 left three real burns on the graphics / GRDB / quota / usage lanes.
+
+### Lane 1 — Persist ticks use the dashboard snapshot, one covering scan
+
+`DataStoreCoordinator.reloadUsagesIfChanged` reloaded with `fetchAllUsage()` /
+`SELECT *` + `replaceUsages` whenever the write marker advanced or a window
+boundary passed. Init already used `fetchDashboardUsageSnapshot` +
+`replaceUsageSnapshot`. Persist ticks now take that same path
+(`GROUP BY` window totals + `quickHydrationLimit` covering rows).
+
+Inside the snapshot, bounded windows each used to `SELECT * … LIMIT N`.
+Provider / model totals already come from the overlapping-window `GROUP BY`.
+Covering rows are now loaded once (newest N, all-time) and filtered in
+memory for today / 7d / 30d / month credential and project covering lists.
+Those nested windows are recency suffixes of all-time, so the lists match
+per-window `LIMIT N` except a long-runner whose `startTime` is older than
+the newest N. Window **totals** still use intersection SQL and stay exact.
+
+### Lane 2 — Factory quota session cache
+
+Factory is on `quotaSignalProviders`. Unchanged `*.settings.json` files
+resume from a mtime+size disk cache of **quota facts only** (token total,
+cache reads, session date, lane, model). 5h / 7d / 30d membership is
+recomputed at fetch time. Conversation bodies and prompt text are not
+stored. The existing 30-day mtime skip still applies before a content
+read. Test / harness `sessionsDirectoryOverride` skips the billing API
+and dashboard scraper so cache tests cannot hang on network.
+
+### Lane 3 — Directory listings prefetch signature keys
+
+Goose, Gemini CLI, Claude Code (sessions + subagents), Mac Pi, Forge
+JSONL fallback, Muse flat-file fallback, Factory droid listings, and the
+Factory quota enumerator prefetch `fileSize` / `contentModificationDate` /
+`isRegularFile`. A later `FileSignature(for:)` hits the URL cache instead
+of a second `stat`. Apple's `contentsOfDirectory(includingPropertiesForKeys:)`
+documents this prefetch; `nil` keys are a default set, not "the keys we
+will read next."
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+  **Invariant, not remaining work.**
+- OpenCode JSON-only `part` schemas still full-scan `part` when any
+  heuristic session exists (IN-list needs a messageID column).
+- Forge still `contentsOfDirectory` on home every tick (creating
+  `~/foo/.forge.db` does not change `~` mtime) but already skips
+  `.forge.db` `fileExists` via per-child directory mtime.
+- Bounded-window credential / project covering lists can miss a
+  long-runner whose `startTime` is older than the newest N all-time
+  covering rows. SQL window totals still count it.
+- Aider quota adapter still full-reads analytics JSONL but Aider is
+  not on `quotaSignalProviders` / `ProviderQuotaAdapterRegistry.standard`.
+- Kilo Code quota is cached but still lists tasks with `contentsOfDirectory(atPath:)`
+  (Kilo is not a quota-signal provider).
+- GRDB named-column vs index decode on `ChartFactRow` (~2× per wiki;
+  brittle; dedicated unit).
+- Daemon `ISO8601DateFormatter()` per file (Pensieve etc.) is outside
+  this PR's Mac graphics / GRDB / quota / usage lanes.
+
+Validation:
+- `AgentLensTests/Active/RefreshTickPerfTests` (tick path == dashboard
+  snapshot; marker / boundary reload)
+- `AgentLensTests/Active/DashboardUsageViewModelTests`
+  (`test_dashboardSnapshot_usesOneCoveringScanAndFiltersWindowsInMemory`,
+  window totals vs per-window aggregates, constant query count)
+- `OpenBurnBarCoreTests/FactoryQuotaCacheTests` (second fetch cache hit,
+  changed settings reread, prompt text absent from cache)
+- `OpenBurnBarCoreTests/FactoryQuotaSessionSkipTests`
+
+## §29 — Forge home listing, SQL credential/project, named covering columns (August 2026, round 11)
+
+Round 10 left real burns on this PR's graphics / GRDB / quota / usage lanes.
+This round closes them. Leftovers below are invariants or out of lane.
+
+### Lane 1 — Skip Forge `$HOME` readdir when home mtime is unchanged
+
+`ForgeDevParser.discoverDatabasePaths()` listed every home child every tick.
+Per-child mtime already skipped `.forge.db` `fileExists`. Creating
+`~/foo/.forge.db` does not change `~` mtime; creating a new child directory
+typically does. The parser now caches `{homeModifiedAt, children URLs}`.
+On a home-mtime hit it reuses the child list and still re-stats known
+children (the existing probe path). `logDirectoryOverride` still returns
+before any home crawl. `lastHomeListingHitCount` is the listing analog of
+`lastHomeChildProbeHitCount`.
+
+### Lane 2 — Directory listings that `FileSignature` follows prefetch size
+
+Incomplete key sets still extra-stat after `contentsOfDirectory` /
+`enumerator`. Copilot event files and process logs, Warp candidate logs,
+Augment recursive JSON, Mac OpenClaw session files, Mac Copilot process
+logs (`atPath` → URL listing, and `events.jsonl` `fileExists` dropped in
+favor of `FileSetSignature`), Prime Agent, Muse recursive JSONL, and
+`LocalUsageParserSupport.files` (Pi / OpenClaw / OMP / Ollama / ModelFilter)
+now prefetch `FileSignature.directoryListingPrefetchKeys`.
+
+### Lane 3 — Kilo quota listing
+
+`KiloCodeQuotaAdapter` listed tasks with `contentsOfDirectory(atPath:)` then
+`fileExists` + `FileSignature` per `ui_messages.json`. It now uses URL
+listing and drops `fileExists` (nil signature = missing). Totals-only cache
+is unchanged. Kilo stays off `quotaSignalProviders` /
+`ProviderQuotaAdapterRegistry.standard`.
+
+### Lane 4 — OpenCode `part` named columns
+
+JSON-only `part` schemas still full-scan when any heuristic session exists
+and there is no message-id column (IN-list cannot invent that column).
+Core and Mac now `PRAGMA table_info(part)` and `SELECT` the intersection of
+`data, json, value, content, payload, messageID, message_id, messageId`.
+Conversation-body passes still need text. Heuristic totals are unchanged.
+
+### Lane 5 — Dashboard covering scan names `decodeUsage` columns
+
+`fetchUsageRows` was `SELECT * FROM token_usage … LIMIT ?`. `decodeUsage`
+only needs identity / tokens / cost / times / provenance / account /
+`billingKind`. Extra ledger columns (sync, hashes, paths) stay off the
+wire. `fetchAllUsage` / `fetchRecentUsage` / `fetchUnsynced` share this
+column list.
+
+### Lane 6 — SQL credential + project summaries
+
+`makeWindowSummary` built credential / project lists from covering
+`TokenUsage` rows. Bounded windows (and all-time when N is smaller than
+the table) missed a long-runner whose `startTime` is older than the
+newest N. Provider / model already fold from `UsageAggregateRow`.
+Identity / `GROUP BY` now include `projectName`, `providerAccountID`,
+`providerAccountLabel`, `providerAccountSource`. Empty `projectName` still
+maps to `"Unattributed"`. Window **totals** stay intersection SQL.
+Covering rows remain the session list only. `CredentialSummary.id` is a
+per-instance UUID — tests compare `stableKey` / cost / tokens /
+sessionCount, not full struct equality.
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+  **Invariant, not remaining work.**
+- OpenCode JSON-only `part` schemas still full-scan `part` when any
+  heuristic session exists and there is no message-id column. Named-column
+  SELECT still applies.
+- Aider quota adapter still full-reads analytics JSONL; Aider is not on
+  `quotaSignalProviders` / `ProviderQuotaAdapterRegistry.standard`.
+- GRDB named-column vs index decode on `ChartFactRow` (~2× per wiki;
+  brittle; dedicated unit).
+- Daemon `ISO8601DateFormatter()` per file (Pensieve etc.) is outside
+  this PR's Mac graphics / GRDB / quota / usage lanes.
+
+Validation:
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests`
+  (`test_forge_skipsChildDatabaseProbeWhenHomeChildMtimeUnchanged`)
+- `OpenBurnBarCoreTests/KiloCodeQuotaCacheTests`
+- `AgentLensTests/Active/DashboardUsageViewModelTests`
+  (named covering SELECT; long-runner credential/project via SQL;
+  TokenUsage-fold match when covering is complete)
+- `AgentLensTests/Active/RefreshTickPerfTests`
+
+## §30 — Aider quota resume, GRDB index decode, ISO-8601 reuse (August 2026, round 12)
+
+Context7 (`/groue/grdb.swift`, SQLite query planner, Foundation
+FileHandle) plus the named leftovers from §29.
+
+### Lane 1 — Aider quota JSONL cache
+
+`AiderQuotaAdapter` reread `~/.aider/analytics.jsonl` (and
+`analytics.json`) from offset 0 every fetch. It now keeps a mtime+size
+disk cache of **quota facts only** (`time`, tokens, cost), a byte offset
+past the last terminated line, and a 4 KB head prefix so a rewrite is
+not mistaken for append. Window membership (today / this month) is
+recomputed at fetch time. Aider stays off `quotaSignalProviders` /
+`ProviderQuotaAdapterRegistry.standard`.
+
+### Lane 2 — ChartFactRow / covering scan index decode + cursor
+
+Named SELECT was already in place; Swift still did case-insensitive
+`row["name"]` per column per row. GRDB wiki: index decode is ~2× vs
+names. `fetchChartFactRows`, `fetchChartSessionAnalytics`,
+`fetchUsageRows`, and `fetchUnsynced` now decode by SELECT ordinal,
+iterate `Row.fetchCursor` inside `db.read`, and reuse
+`cachedStatement`. A dedicated unit pins column order and asserts
+named-oracle vs index decode are bit-identical. No new GRDB migration.
+
+### Lane 3 — ISO-8601 reuse
+
+`OpenBurnBarDatabase.parseISO8601Date` allocated fractional+basic
+formatters per string after the sqlite formatters missed. It now uses
+`ThreadSafeISO8601DateFormatter.parse` (Mac) / a lock-guarded pair
+(Core Data). Daemon Pensieve session-end sentinels, Indexed Search,
+quota-signal / switcher / chat-thread / CLI ISO paths reuse
+`formatBasic` / `parseBasic` / `parse`. Default
+`ISO8601DateFormatter()` remains ≡ `parseBasic` / `formatBasic`.
+Codex `last_refresh` stays on the throwing Codable path.
+
+### Named leftovers
+
+- Usage parse still must not share indexing `idx2:` discovery tokens /
+  `minimumFileModificationDate` with conversation indexing.
+  **Invariant, not remaining work.**
+- OpenCode JSON-only `part` schemas still full-scan `part` when any
+  heuristic session exists and there is no message-id column. Named-column
+  SELECT still applies.
+- Covering indexes / `DatabasePool` retune need EQP on a real DB.
+  No migration in this PR.
+- Aider is still off `quotaSignalProviders` / the standard registry
+  (by design).
+
+Validation:
+- `OpenBurnBarCoreTests/AiderQuotaCacheTests`
+- `OpenBurnBarCoreTests/KiloCodeQuotaCacheTests`
+- `AgentLensTests/Active/ChartFactRowSQLTests`
+  (named-oracle vs index decode; SELECT order locked)
+- `AgentLensTests/Active/DashboardUsageViewModelTests`
+- `AgentLensTests/Active/RefreshTickPerfTests`
+
+## 31. Round 13 — watermark split, JSON-only OpenCode `part`, EQP, Aider off-registry
+
+Constraints from the leftovers in §30, implemented rather than deferred.
+
+### Usage parse cannot share indexing watermarks
+
+`LogParseOptions.usageAccounting(...)` is the only factory the refresh
+pipeline / single-provider refresh / privacy scrub parse through. It
+hard-wires `minimumFileModificationDate` and `fileDiscoveryTracker` to
+`nil`. Conversation indexing still passes the `idx2:` checkpoint
+watermark and discovery tracker. `UsageRefreshPipeline.parse` no longer
+accepts a cutoff argument — the previous test that forwarded one is now
+`test_parseStageNeverForwardsIndexingWatermarks`.
+
+### OpenCode JSON-only `part` is bounded without inventing a column
+
+When heuristic (zero-bucket) sessions exist and `part` has no
+`messageID` / `message_id` / `messageId` column, usage-only ticks run
+`WHERE COALESCE(json_extract(payload, '$.messageID'), …) IN (…)` on an
+allowlisted payload column (`data` / `json` / `value` / `content` /
+`payload`). JSON1 is probed once per fetch; a failed probe or empty
+extract falls back to the named-column full scan so heuristic
+char-count totals cannot drop. Conversation-body passes still read
+every text part. Named id-column `IN` lists are unchanged. Core and Mac
+parsers share `OpenCodePartQuery`.
+
+### EQP on a real DB; pool retune; no covering-index migration
+
+`EXPLAIN QUERY PLAN` on an on-disk `DatabasePool` (migrated production
+schema, `ANALYZE`) shows unsynced rows already use
+`token_usage_sync_pending_idx`. The chart / dashboard intersection
+`OR` is not covering-indexable on the existing `(provider, startTime)`
+indexes without a new migration, which this round does not add. Linux
+SQLiteConnection EQP pins the same unsynced index shape and that
+JSON-only `part` queries return two bound rows rather than the whole
+table.
+
+`DatabasePool` retune (no schema change): `maximumReaderCount = 8`
+(GRDB default 5) and `busyMode = .timeout(5)` via
+`OpenBurnBarDatabase.applyPoolTuning`, mirrored on Core SQLCipher open
+and daemon pools. Tests stay on in-memory `DatabaseQueue`.
+
+### Aider stays off `quotaSignalProviders`
+
+The JSONL facts cache from §30 does not make Aider a live quota signal.
+`quotaSignal: false` in the generated catalog, `nil` registry entry,
+and an explicit test remain the contract.
+
+Validation:
+- `OpenBurnBarCoreTests/ParserParseOptionsTests`
+  (`testUsageAccountingOptionsNeverCarryIndexingWatermarks`)
+- `OpenBurnBarCoreTests/IdleUsageParserCacheTests`
+  (JSON-only `part` `lastPartReadCount == 2` with 20 decoys)
+- `OpenBurnBarCoreTests/TokenUsageExplainQueryPlanTests`
+- `OpenBurnBarCoreTests/AiderQuotaCacheTests`
+  (`test_aiderStaysOffQuotaSignalProvidersByDesign`)
+- `AgentLensTests/Active/UsageRefreshPipelineTests`
+  (`test_parseStageNeverForwardsIndexingWatermarks`)
+- `AgentLensTests/Active/ChartFactRowSQLTests`
+  (on-disk pool EQP + pool tuning)
+- `AgentLensTests/Active/MacIdleUsageParserCacheTests`
+  (Mac JSON-only `part`)

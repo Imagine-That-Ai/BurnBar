@@ -13,8 +13,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     ENABLE_PREVIEWS: YES
-    MARKETING_VERSION: "1.0.33"
-    CURRENT_PROJECT_VERSION: 75
+    MARKETING_VERSION: "1.0.34"
+    CURRENT_PROJECT_VERSION: 76
     CODE_SIGN_STYLE: Automatic
     INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.utilities"
     INFOPLIST_KEY_LSUIElement: true
@@ -147,8 +147,8 @@ targets:
         NSBonjourServices:
           - _googlecast._tcp
           - _http._tcp
-        OpenBurnBarDirectUpdateFeedURL: https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json
-        SUFeedURL: https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/appcast.xml
+        OpenBurnBarDirectUpdateFeedURL: https://downloads.burnbar.ai/latest-macos.json
+        SUFeedURL: https://downloads.burnbar.ai/appcast.xml
         SUPublicEDKey: 613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"

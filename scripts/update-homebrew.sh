@@ -31,7 +31,7 @@ fi
 
 VERSION="${1#v}"  # Strip leading 'v' if present
 TAG="v${VERSION}"
-OWNER="Ajnunezg"
+OWNER="Imagine-That-Ai"
 REPO="BurnBar"
 DMG_NAME="OpenBurnBar-${VERSION}-macOS.dmg"
 RELEASE_URL="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}/${DMG_NAME}"

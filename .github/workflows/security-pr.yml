@@ -1,8 +1,8 @@
 name: PR Security Gate
 
 # Fast (<3 min) security checks that run on every pull request.
-# Swift CodeQL still runs nightly (see codeql.yml); JS/TS + Python CodeQL runs
-# on relevant PRs in codeql-pr.yml.
+# Swift CodeQL still runs nightly (see codeql.yml); JS/TS + Python + Java/Kotlin
+# CodeQL runs on PR + merge_group in codeql-pr.yml.
 #
 # Checks:
 #   1. Secret detection via gitleaks
@@ -127,7 +127,7 @@ jobs:
     name: Dependency Review (CVE check)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -175,7 +175,7 @@ jobs:
   npm-audit:
     name: npm Audit (Node package locks)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -206,7 +206,7 @@ jobs:
     # actions/checkout (run 31025374942: 3m10s in checkout, zero work done).
     # The blobless sparse fetch below removes that failure mode; the headroom
     # keeps a slow fetch from being reported as a policy violation.
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -227,7 +227,7 @@ jobs:
   production-deploy-auth-policy:
     name: Production Deploy Auth Policy
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -259,7 +259,7 @@ jobs:
     runs-on: ubuntu-latest
     # See remote-installer-policy above: a full-history clone alone exceeded the
     # old 3-minute cap (run 31025374942: cancelled after 3m22s in checkout).
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -277,7 +277,7 @@ jobs:
   vendored-agent-provenance:
     name: Vendored Agent Provenance
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -308,12 +308,12 @@ jobs:
   signal-activation-parity:
     name: Signal Activation Parity (fail-closed default)
     runs-on: ubuntu-latest
-    # 8 rather than 3: the check itself is a few seconds of Node, but a full
+    # 15 rather than 3: the check itself is a few seconds of Node, but a full
     # clone of this repo's 8.6 GiB history consumed the entire 3-minute budget
     # and cancelled the job inside actions/checkout with zero work done (run
     # 31040880338: 3m02s in checkout). Same pathology, and same remedy, as
     # remote-installer-policy and codeowners-security-trees above.
-    timeout-minutes: 8
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -340,7 +340,7 @@ jobs:
   browser-target-policy:
     name: Browser Target Policy (SSRF / DNS-rebinding)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -355,7 +355,9 @@ jobs:
   osv-scanner:
     name: OSV Scanner (open source vulnerabilities)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Merge-queue runs 31394861587 and 31395500157 exhausted the old
+    # five-minute budget inside checkout on 2026-08-10, before OSV could start.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -390,7 +392,9 @@ jobs:
   hosted-mcp-security-smoke:
     name: Hosted MCP Security Smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # PR run 31396652837 spent the full former 8-minute budget in checkout
+    # on 2026-08-10, so the required security smoke never started.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -429,7 +433,7 @@ jobs:
   hosted-mcp-isolation-proofs:
     name: Hosted MCP Isolation Proofs (local, deterministic)
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     # RR-11: the live cross-tenant / revocation / entitlement / cap / at-rest
     # proofs in scripts/test-hosted-mcp-security.sh and
     # functions/scripts/prove-hosted-mcp-live.mjs SKIP in token-less CI, so the

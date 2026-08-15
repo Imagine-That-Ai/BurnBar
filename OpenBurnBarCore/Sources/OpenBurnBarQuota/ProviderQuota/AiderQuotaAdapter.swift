@@ -12,15 +12,37 @@ import OpenBurnBarLogParsers
 /// Aider has no rate limits — it uses your own API keys for each model provider.
 /// This adapter reports real token usage and cost, with no "quota" concept.
 ///
+/// Unchanged analytics files resume from a mtime+size disk cache of **quota
+/// facts only** (`time`, tokens, cost) plus a byte offset past the last
+/// terminated line. The first 4096 bytes are fingerprinted with SHA-256 so
+/// the cache never stores JSONL text. Window membership (today / this month)
+/// is recomputed at fetch time. Prompts and conversation bodies are not stored.
+///
 /// Reference: `AiderParser.swift` in UsageAggregatorParsers (same data source).
 
 public struct AiderQuotaAdapter: ProviderQuotaAdapter {
-    public init() {}
+    private let analyticsDirectoryOverride: URL?
+    private let cacheURLOverride: URL?
+    private let contentReadCount = Locked(0)
+
+    public init(
+        analyticsDirectoryOverride: URL? = nil,
+        cacheURLOverride: URL? = nil
+    ) {
+        self.analyticsDirectoryOverride = analyticsDirectoryOverride
+        self.cacheURLOverride = cacheURLOverride
+    }
+
+    var lastContentReadCount: Int { contentReadCount.read() }
+
+    private static let headPrefixSpan = 4096
 
     // MARK: - Public API
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        let analyticsFiles = findAnalyticsFiles(fileManager: context.fileManager)
+        contentReadCount.write(0)
+        let fm = context.fileManager
+        let analyticsFiles = findAnalyticsFiles(fileManager: fm, homeDirectoryURL: context.homeDirectoryURL)
 
         guard !analyticsFiles.isEmpty else {
             return ProviderQuotaSnapshot(
@@ -40,6 +62,18 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
         let startOfMonth = calendar.date(from: calendar.dateComponents([.year, .month], from: now)) ?? now
         let nextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth) ?? now
 
+        let aiderDir = analyticsDirectoryOverride
+            ?? context.homeDirectoryURL.appendingPathComponent(".aider", isDirectory: true)
+        let cacheStore = ParserDiskCacheStore<AiderQuotaCacheEntry>(
+            cacheURL: cacheURL(context: context, analyticsDirectory: aiderDir),
+            fileManager: fm,
+            schemaVersion: 2,
+            logLabel: "AiderQuotaAdapter"
+        )
+        var parseCache = cacheStore.load()
+        var cacheMutated = false
+        var activeKeys = Set<String>()
+
         var dailyTokens = 0
         var dailyCost = 0.0
         var monthlyTokens = 0
@@ -47,53 +81,46 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
         var sessionsFound = 0
         var latestTimestamp: Date?
 
-        for fileURL in analyticsFiles {
-            guard let handle = try? FileHandle(forReadingFrom: fileURL) else { continue } // try?-ok(skip unreadable analytics file)
-            defer { try? handle.close() } // try?-ok(handle teardown)
+        for (fileURL, signature) in analyticsFiles {
+            let cacheKey = fileURL.standardizedFileURL.path
+            activeKeys.insert(cacheKey)
 
-            var currentSessionTokens = 0
-            var currentSessionCost = 0.0
+            let scanned = scanFile(
+                fileURL,
+                signature: signature,
+                cached: parseCache.fileEntries[cacheKey]
+            )
+            if scanned.didReadContent {
+                contentReadCount.withLock { $0 += 1 }
+            }
+            if scanned.entry != parseCache.fileEntries[cacheKey] {
+                parseCache.fileEntries[cacheKey] = scanned.entry
+                cacheMutated = true
+            }
 
-            for line in handle.readAllUTF8Lines() {
-                guard let data = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed JSONL line)
-                      let event = json["event"] as? String else { continue }
-
-                let time = json["time"] as? Double
-                let timestamp = time.map { Date(timeIntervalSince1970: $0) }
-
-                switch event {
-                case "message_send":
-                    let props = json["properties"] as? [String: Any] ?? [:]
-                    let promptTokens = props["prompt_tokens"] as? Int ?? 0
-                    let completionTokens = props["completion_tokens"] as? Int ?? 0
-                    let cost = props["cost"] as? Double ?? 0
-                    let total = promptTokens + completionTokens
-
-                    currentSessionTokens += total
-                    currentSessionCost += cost
-
-                    if let ts = timestamp {
-                        latestTimestamp = max(ts, latestTimestamp ?? .distantPast)
-                        if ts >= startOfDay {
-                            dailyTokens += total
-                            dailyCost += cost
-                        }
-                        if ts >= startOfMonth {
-                            monthlyTokens += total
-                            monthlyCost += cost
-                        }
-                    }
-
-                case "exit", "launched", "cli session":
-                    if currentSessionTokens > 0 { sessionsFound += 1 }
-                    currentSessionTokens = 0
-                    currentSessionCost = 0
-
-                default:
-                    break
+            sessionsFound += scanned.sessionCount
+            for fact in scanned.facts {
+                guard let time = fact.time else { continue }
+                let timestamp = Date(timeIntervalSince1970: time)
+                latestTimestamp = max(timestamp, latestTimestamp ?? .distantPast)
+                if timestamp >= startOfDay {
+                    dailyTokens += fact.tokens
+                    dailyCost += fact.cost
+                }
+                if timestamp >= startOfMonth {
+                    monthlyTokens += fact.tokens
+                    monthlyCost += fact.cost
                 }
             }
+        }
+
+        let staleKeys = parseCache.fileEntries.keys.filter { !activeKeys.contains($0) }
+        if !staleKeys.isEmpty {
+            parseCache.prune(staleKeys: Array(staleKeys))
+            cacheMutated = true
+        }
+        if cacheMutated {
+            cacheStore.persist(parseCache)
         }
 
         var buckets: [ProviderQuotaBucket] = []
@@ -167,15 +194,275 @@ public struct AiderQuotaAdapter: ProviderQuotaAdapter {
 
     // MARK: - File Discovery
 
-    private func findAnalyticsFiles(fileManager: FileManager) -> [URL] {
-        let candidatePaths = [
-            ("~/.aider/analytics.jsonl" as NSString).expandingTildeInPath,
-            ("~/.aider/analytics.json" as NSString).expandingTildeInPath
-        ]
-
-        return candidatePaths.compactMap { path in
-            guard fileManager.fileExists(atPath: path) else { return nil }
-            return URL(fileURLWithPath: path)
+    private func findAnalyticsFiles(
+        fileManager: FileManager,
+        homeDirectoryURL: URL
+    ) -> [(url: URL, signature: FileSignature)] {
+        let aiderDir = analyticsDirectoryOverride
+            ?? homeDirectoryURL.appendingPathComponent(".aider", isDirectory: true)
+        return ["analytics.jsonl", "analytics.json"].compactMap { name in
+            let url = aiderDir.appendingPathComponent(name)
+            guard let signature = FileSignature(for: url, using: fileManager) else { return nil }
+            return (url, signature)
         }
     }
+
+    private func cacheURL(context: ProviderQuotaAdapterContext, analyticsDirectory: URL) -> URL {
+        if let cacheURLOverride { return cacheURLOverride }
+        if analyticsDirectoryOverride != nil {
+            return analyticsDirectory.appendingPathComponent(".obb-aider-quota-cache.plist")
+        }
+        return context.appPaths.aiderQuotaCacheURL
+    }
+
+    private func scanFile(
+        _ fileURL: URL,
+        signature: FileSignature,
+        cached: AiderQuotaCacheEntry?
+    ) -> (facts: [AiderQuotaFact], sessionCount: Int, entry: AiderQuotaCacheEntry, didReadContent: Bool) {
+        if let cached, cached.signature == signature {
+            return (cached.facts, cached.sessionCount, cached, false)
+        }
+
+        if let cached, let resumed = resumeAppendIfPossible(
+            fileURL: fileURL,
+            signature: signature,
+            cached: cached
+        ) {
+            return resumed
+        }
+
+        return fullScan(fileURL: fileURL, signature: signature)
+    }
+
+    private func resumeAppendIfPossible(
+        fileURL: URL,
+        signature: FileSignature,
+        cached: AiderQuotaCacheEntry
+    ) -> (facts: [AiderQuotaFact], sessionCount: Int, entry: AiderQuotaCacheEntry, didReadContent: Bool)? {
+        guard signature.sizeBytes >= cached.signature.sizeBytes,
+              cached.byteOffset >= 0,
+              cached.byteOffset <= signature.sizeBytes,
+              cached.headPrefixLength > 0,
+              cached.headPrefixLength <= signature.sizeBytes,
+              !cached.headPrefixSHA256.isEmpty else {
+            return nil
+        }
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil } // try?-ok(append probe)
+        defer { try? handle.close() } // try?-ok(handle teardown)
+
+        try? handle.seek(toOffset: 0) // try?-ok(seek 0 before head read)
+        let observedHead = handle.readData(ofLength: cached.headPrefixLength)
+        guard QuotaSHA256.hexDigest(observedHead) == cached.headPrefixSHA256 else { return nil }
+
+        if cached.byteOffset == signature.sizeBytes {
+            let entry = AiderQuotaCacheEntry(
+                signature: signature,
+                byteOffset: cached.byteOffset,
+                headPrefixLength: cached.headPrefixLength,
+                headPrefixSHA256: cached.headPrefixSHA256,
+                facts: cached.facts,
+                sessionCount: cached.sessionCount,
+                openSessionTokens: cached.openSessionTokens
+            )
+            return (cached.facts, cached.sessionCount, entry, false)
+        }
+
+        do {
+            try handle.seek(toOffset: UInt64(cached.byteOffset))
+        } catch {
+            return nil
+        }
+        let reduced = reduceLines(
+            handle: handle,
+            startOffset: cached.byteOffset,
+            facts: cached.facts,
+            sessionCount: cached.sessionCount,
+            openSessionTokens: cached.openSessionTokens
+        )
+        let entry = AiderQuotaCacheEntry(
+            signature: signature,
+            byteOffset: reduced.persistedOffset,
+            headPrefixLength: cached.headPrefixLength,
+            headPrefixSHA256: cached.headPrefixSHA256,
+            facts: reduced.persistedFacts,
+            sessionCount: reduced.persistedSessionCount,
+            openSessionTokens: reduced.persistedOpenSessionTokens
+        )
+        return (reduced.snapshotFacts, reduced.snapshotSessionCount, entry, true)
+    }
+
+    private func fullScan(
+        fileURL: URL,
+        signature: FileSignature
+    ) -> (facts: [AiderQuotaFact], sessionCount: Int, entry: AiderQuotaCacheEntry, didReadContent: Bool) {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { // try?-ok(skip unreadable analytics file)
+            let entry = AiderQuotaCacheEntry(
+                signature: signature,
+                byteOffset: 0,
+                headPrefixLength: 0,
+                headPrefixSHA256: "",
+                facts: [],
+                sessionCount: 0,
+                openSessionTokens: 0
+            )
+            return ([], 0, entry, false)
+        }
+        defer { try? handle.close() } // try?-ok(handle teardown)
+
+        let headLength = Int(min(Int64(Self.headPrefixSpan), max(signature.sizeBytes, 0)))
+        try? handle.seek(toOffset: 0) // try?-ok(seek 0 before head read)
+        let headPrefix = handle.readData(ofLength: headLength)
+        try? handle.seek(toOffset: 0) // try?-ok(rewind after head)
+
+        let reduced = reduceLines(
+            handle: handle,
+            startOffset: 0,
+            facts: [],
+            sessionCount: 0,
+            openSessionTokens: 0
+        )
+        let entry = AiderQuotaCacheEntry(
+            signature: signature,
+            byteOffset: reduced.persistedOffset,
+            headPrefixLength: headPrefix.count,
+            headPrefixSHA256: QuotaSHA256.hexDigest(headPrefix),
+            facts: reduced.persistedFacts,
+            sessionCount: reduced.persistedSessionCount,
+            openSessionTokens: reduced.persistedOpenSessionTokens
+        )
+        return (reduced.snapshotFacts, reduced.snapshotSessionCount, entry, true)
+    }
+
+    private struct AiderLineReduceResult {
+        var snapshotFacts: [AiderQuotaFact]
+        var snapshotSessionCount: Int
+        var persistedFacts: [AiderQuotaFact]
+        var persistedSessionCount: Int
+        var persistedOpenSessionTokens: Int
+        var persistedOffset: Int64
+    }
+
+    private func reduceLines(
+        handle: FileHandle,
+        startOffset: Int64,
+        facts: [AiderQuotaFact],
+        sessionCount: Int,
+        openSessionTokens: Int
+    ) -> AiderLineReduceResult {
+        var persistedFacts = facts
+        var persistedSessionCount = sessionCount
+        var persistedOpenSessionTokens = openSessionTokens
+        var persistedOffset = startOffset
+        var snapshotFacts = facts
+        var snapshotSessionCount = sessionCount
+        var snapshotOpenSessionTokens = openSessionTokens
+
+        let reader = BufferedLineReader(fileHandle: handle, startOffset: startOffset)
+        while let line = reader.nextLine() {
+            if line.isTerminated {
+                Self.reduceLine(
+                    line.text,
+                    facts: &persistedFacts,
+                    sessionCount: &persistedSessionCount,
+                    openSessionTokens: &persistedOpenSessionTokens
+                )
+                persistedOffset = line.endOffset
+                snapshotFacts = persistedFacts
+                snapshotSessionCount = persistedSessionCount
+                snapshotOpenSessionTokens = persistedOpenSessionTokens
+            } else {
+                snapshotFacts = persistedFacts
+                snapshotSessionCount = persistedSessionCount
+                snapshotOpenSessionTokens = persistedOpenSessionTokens
+                Self.reduceLine(
+                    line.text,
+                    facts: &snapshotFacts,
+                    sessionCount: &snapshotSessionCount,
+                    openSessionTokens: &snapshotOpenSessionTokens
+                )
+            }
+        }
+        _ = snapshotOpenSessionTokens
+        return AiderLineReduceResult(
+            snapshotFacts: snapshotFacts,
+            snapshotSessionCount: snapshotSessionCount,
+            persistedFacts: persistedFacts,
+            persistedSessionCount: persistedSessionCount,
+            persistedOpenSessionTokens: persistedOpenSessionTokens,
+            persistedOffset: persistedOffset
+        )
+    }
+
+    private static func reduceLine(
+        _ text: String,
+        facts: inout [AiderQuotaFact],
+        sessionCount: inout Int,
+        openSessionTokens: inout Int
+    ) {
+        guard let data = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed JSONL line)
+              let event = json["event"] as? String else { return }
+
+        let time = jsonTime(json["time"])
+
+        switch event {
+        case "message_send":
+            let props = json["properties"] as? [String: Any] ?? [:]
+            let promptTokens = jsonInt(props["prompt_tokens"])
+            let completionTokens = jsonInt(props["completion_tokens"])
+            let cost = jsonDouble(props["cost"])
+            let total = promptTokens + completionTokens
+
+            openSessionTokens += total
+            facts.append(AiderQuotaFact(time: time, tokens: total, cost: cost))
+
+        case "exit", "launched", "cli session":
+            if openSessionTokens > 0 { sessionCount += 1 }
+            openSessionTokens = 0
+
+        default:
+            break
+        }
+    }
+
+    private static func jsonInt(_ value: Any?) -> Int {
+        if let number = value as? Int { return number }
+        if let number = value as? Int64 { return Int(number) }
+        if let number = value as? NSNumber { return number.intValue }
+        if let number = value as? Double { return Int(number) }
+        return 0
+    }
+
+    private static func jsonDouble(_ value: Any?) -> Double {
+        if let number = value as? Double { return number }
+        if let number = value as? Int { return Double(number) }
+        if let number = value as? Int64 { return Double(number) }
+        if let number = value as? NSNumber { return number.doubleValue }
+        return 0
+    }
+
+    private static func jsonTime(_ value: Any?) -> Double? {
+        if let number = value as? Double { return number }
+        if let number = value as? Int { return Double(number) }
+        if let number = value as? Int64 { return Double(number) }
+        if let number = value as? NSNumber { return number.doubleValue }
+        return nil
+    }
+}
+
+struct AiderQuotaFact: Codable, Equatable, Sendable {
+    var time: Double?
+    var tokens: Int
+    var cost: Double
+}
+
+struct AiderQuotaCacheEntry: Codable, Equatable, Sendable {
+    var signature: FileSignature
+    var byteOffset: Int64
+    var headPrefixLength: Int
+    var headPrefixSHA256: String
+    var facts: [AiderQuotaFact]
+    var sessionCount: Int
+    var openSessionTokens: Int
 }

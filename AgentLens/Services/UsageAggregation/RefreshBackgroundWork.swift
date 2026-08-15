@@ -267,8 +267,11 @@ enum RefreshBackgroundWork {
                 // watermark and a byte budget, so its usage view is partial by
                 // construction — persisting it would let a background indexing
                 // tick overwrite the totals the foreground refresh published.
-                // Usage rows have exactly one writer: the refresh pipeline.
-                // Pinned by `test_conversationIndexingDoesNotPersistUsageRows`.
+                // Usage rows have exactly one writer: the refresh pipeline,
+                // which calls `LogParseOptions.usageAccounting` and therefore
+                // cannot carry this `idx2:` watermark or discovery tracker.
+                // Pinned by `test_conversationIndexingDoesNotPersistUsageRows`
+                // and `test_parseStageNeverForwardsIndexingWatermarks`.
 
                 guard indexingEnabled else { continue }
 
@@ -440,8 +443,7 @@ enum RefreshBackgroundWork {
 
         do {
             let parseResult = try await parser.parse(
-                options: OpenBurnBarCore.LogParseOptions(
-                    includeConversationBodies: false,
+                options: OpenBurnBarCore.LogParseOptions.usageAccounting(
                     resourceGovernor: ParserResourcePolicy.makeRefreshGovernor()
                 )
             )

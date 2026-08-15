@@ -92,6 +92,11 @@ final class ScreenCapturePipeline: NSObject {
 
     static func availableWindows() async -> [WindowDescriptor] {
         #if canImport(ScreenCaptureKit)
+        // Perf guard: do not wake ScreenCaptureKit when Screen Recording is denied.
+        // Synchronous preflight avoids a heavy WindowServer round-trip when idle.
+        #if canImport(CoreGraphics)
+        if !CGPreflightScreenCaptureAccess() { return [] }
+        #endif
         do {
             let content = try await currentShareableContent(requestPermissionIfNeeded: false)
             return content.windows.compactMap { window in
@@ -116,6 +121,13 @@ final class ScreenCapturePipeline: NSObject {
 
     func start() async throws {
         #if canImport(ScreenCaptureKit)
+        // Synchronous TCC gate before ANY CG/SC call (closes the 5-30s poll window)
+        #if canImport(CoreGraphics)
+        guard CGPreflightScreenCaptureAccess() else {
+            Self.log.error("screen_capture_permission_missing synchronous_gate=true")
+            throw Failure.screenRecordingPermissionDenied
+        }
+        #endif
         let content: SCShareableContent
         do {
             // Do not trigger the native Screen Recording prompt from automatic
@@ -253,9 +265,16 @@ final class ScreenCapturePipeline: NSObject {
         ownBundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> Bool {
         guard let bundleIdentifier, !bundleIdentifier.isEmpty else { return false }
+        // Own bundle + deny-list (P0 #2) — never capture loginwindow/SecurityAgent/keychain etc.
         var excludedBundleIdentifiers: Set<String> = [
             "com.openburnbar.app",
-            "com.openburnbar.AgentLens"
+            "com.openburnbar.AgentLens",
+            "com.apple.loginwindow",
+            "com.apple.SecurityAgent",
+            "com.apple.SecurityAgentHelper",
+            "com.apple.keychainaccess",
+            "com.apple.FileVaultRecoveryUtility",
+            "com.apple.systempreferences"
         ]
         if let ownBundleIdentifier, !ownBundleIdentifier.isEmpty {
             excludedBundleIdentifiers.insert(ownBundleIdentifier)

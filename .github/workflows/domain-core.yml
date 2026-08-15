@@ -993,7 +993,7 @@ jobs:
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
     # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -1063,14 +1063,17 @@ jobs:
     name: swift-consumer-contracts
     needs: classify
     if: needs.classify.outputs.rust == 'true'
-    # Cold macos-26 runners can spend nearly an hour building the domain-core
-    # XCFramework and app-test dependency graph before the focused spool test.
-    timeout-minutes: 90
+    # PR/MQ keep DomainCore Swift contracts (~XCFramework + Core) and skip the
+    # Apple app spool that rebuilds the full OpenBurnBar graph (~47m measured).
+    # Push/dispatch still runs the spool after Core so main keeps focused
+    # coverage; the nightly openburnbar-pr-harness app-xctest also runs the
+    # full OpenBurnBarTests corpus (including DomainCoreShadowEvidenceSpoolTests).
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 90 }}
     # Routing (cost + security): pull-request and merge-queue candidates may both
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
     # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -1114,16 +1117,24 @@ jobs:
           set -o pipefail
           ./scripts/test-openburnbar-swift.sh \
             2>&1 | tee "$RUNNER_TEMP/swift-consumer-core.log"
+          # Proof emit always succeeds from the Core log alone on PR/MQ. Push
+          # and workflow_dispatch append the app spool log below.
+          cp "$RUNNER_TEMP/swift-consumer-core.log" \
+            "$RUNNER_TEMP/swift-consumer-contracts.log"
 
       - name: Run Apple shadow evidence spool contracts
+        # Keep the focused app-spool selector off pull_request + merge_group: it
+        # rebuilds the same OpenBurnBar app graph AgentLens already built in the
+        # same MQ batch. Coverage homes: this step on push/dispatch, plus the
+        # nightly Full Harness app-xctest unfiltered OpenBurnBarTests run.
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         run: |
           set -o pipefail
           ./scripts/test-openburnbar-app.sh \
             -only-testing:OpenBurnBarTests/DomainCoreShadowEvidenceSpoolTests \
             2>&1 | tee "$RUNNER_TEMP/swift-consumer-spool.log"
-          cat "$RUNNER_TEMP/swift-consumer-core.log" \
-            "$RUNNER_TEMP/swift-consumer-spool.log" \
-            > "$RUNNER_TEMP/swift-consumer-contracts.log"
+          cat "$RUNNER_TEMP/swift-consumer-spool.log" \
+            >> "$RUNNER_TEMP/swift-consumer-contracts.log"
 
       - name: Restore tracked Swift artifacts after debug validation
         run: |
@@ -1442,7 +1453,7 @@ jobs:
       - python-hermes-contracts
       - rollback-drill
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out exact candidate
         if: github.event_name == 'push'
@@ -1512,11 +1523,12 @@ jobs:
       - rollback-drill
       - candidate-bundle
     runs-on: ubuntu-latest
-    # The deletion-candidate checkout needs complete history and blobs for
-    # ancestry and historical-content proofs, so a degraded GitHub fetch can
-    # consume most of the job budget before the gate logic runs. Leave enough
-    # headroom without weakening the fail-closed gate.
-    timeout-minutes: 60
+    # The deletion-candidate checkout needs complete history, all refs, and
+    # blobs for ancestry and historical-content proofs. The current repository
+    # pack is 8.68 GiB, so a degraded GitHub fetch can consume an hour before
+    # the gate logic runs. Leave two hours of headroom without weakening the
+    # fail-closed gate.
+    timeout-minutes: 120
     steps:
       - name: Require every meaningful Domain Core job
         if: needs.classify.outputs.rust == 'true'

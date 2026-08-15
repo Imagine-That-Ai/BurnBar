@@ -6,6 +6,20 @@ import path from 'node:path';
 import test from 'node:test';
 import { repoRoot } from './lib/linux-release-common.mjs';
 
+test('Linux native runner refuses non-Linux hosts before applying Linux filters', () => {
+  const result = spawnSync('bash', [
+    '-c',
+    'source scripts/linux-port/run-linux-native-tests.sh; assert_linux_native_host Darwin'
+  ], {
+    cwd: repoRoot,
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.status, 78, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, /require a Linux userspace/u);
+  assert.match(result.stderr, /misleading zero-test filter failure/u);
+});
+
 test('Linux XCTest timeout retries in a fresh process under errexit', {
   skip: process.platform !== 'linux'
 }, () => {

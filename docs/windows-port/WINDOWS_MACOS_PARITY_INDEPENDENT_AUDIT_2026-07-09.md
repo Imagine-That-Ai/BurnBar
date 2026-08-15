@@ -1,15 +1,147 @@
 # Independent Windows Parity Audit Against macOS
 
 **Date:** 2026-07-09
+**Last current-source refresh:** 2026-08-11
 **Reference product:** shipping macOS OpenBurnBar
-**Audit target:** local windows/liquid-glass-kernel-reskin checkout
-**Status:** F1 source/product implementation and applicable WPD-0006 F2 substitutions are complete. Exact signed candidate `windows-v1.0.38` is stable on physical Intel x64, but remains a validator-clean **NO-GO** until its supplemental accessibility, performance, staging, paired-device safety, and private Store/update receipts are complete; physical ARM64 remains an explicit beta limitation
+**Source checkpoint:** exact merged `main` commit `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`
+**Staging checkpoint:** exact candidate `0b8c208537bcf7786ff43370ffb28d0d4becb0f4`
+**Status:** F1 source/product parity is complete at 51/51 Real rows, the measured source passes the current automated Windows x64 and ARM64 proof, and the exact-candidate staging infrastructure deployment passed. Release certification remains **NO-GO**: the final release source has not yet been signed as `windows-v1.0.39`, and no exact artifact has completed physical x64 performance, manual accessibility/display, signed-in OAuth/App Check/physical TPM/CloudVault, paired-device safety, or private Store/update evidence. Physical ARM64 also remains uncertified, as an explicit non-blocking beta limitation.
 
 **Day-two operations:** use
 [`WINDOWS_PORT_OPERATIONS_RUNBOOK.md`](WINDOWS_PORT_OPERATIONS_RUNBOOK.md) for
 the current release sequence, cost model, maintenance cadence, evidence gates,
 rollback steps, and agent handoff format. This audit preserves the detailed
 historical evidence; the runbook owns repeatable operations.
+
+## Exact-candidate staging infrastructure checkpoint - 2026-08-11
+
+[Staging run 31439802683](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31439802683)
+completed successfully at `2026-08-11T02:13:37Z`. The dispatch head was trusted
+`main` commit `b5f927866ede91795fa2dadb1f1f915e42b98ab5`, which had landed the
+source-bound staging workflow through PR #2209. While the protected deployment
+waited for a runner, PR #2207 advanced `main` to the docs-only successor
+`43172c62e80e698ca76713d628b3aba534c70a18`; the trusted reusable workflow
+therefore resolved that newer `main` ref when it started, but its workflow bytes
+were unchanged from `b5f927866ede91795fa2dadb1f1f915e42b98ab5`.
+
+The deployed artifact remained bound to open, unmerged PR #2208 candidate
+`0b8c208537bcf7786ff43370ffb28d0d4becb0f4`. The run used `dry_run=false`,
+Functions on, Hosting off, and exactly these four selectors:
+
+- `issueWindowsAppCheckChallenge`
+- `mintWindowsAppCheckToken`
+- `getWindowsRuntimeSafetyConfig`
+- `submitDomainCoreShadowSamples`
+
+The original zero-step job `93622386842` was cancelled after receiving no
+runner. GitHub's replacement trusted deploy job `93656565440` then passed
+artifact-identity checks, deployed Firestore indexes/rules and Storage rules,
+verified post-deploy drift, confirmed all 12 declared TTL policies were
+`ACTIVE`, and updated exactly the four selected Node 22 Functions.
+
+Live readback found all four Functions `ACTIVE`, with no configured minimum
+instance count, and with both
+`OPENBURNBAR_SOURCE_COMMIT=0b8c208537bcf7786ff43370ffb28d0d4becb0f4`
+and
+`FUNCTION_VERSION=staging-0b8c208537bcf7786ff43370ffb28d0d4becb0f4`.
+Their revisions are:
+
+- `issuewindowsappcheckchallenge-00003-lix`
+- `mintwindowsappchecktoken-00003-tol`
+- `getwindowsruntimesafetyconfig-00003-mov`
+- `submitdomaincoreshadowsamples-00003-sax`
+
+An anonymous callable POST to each live URI returned HTTP `401`, preserving the
+fail-closed authentication boundary.
+
+Post-deploy fingerprints matched the saved pre-deploy boundaries:
+
+- seven non-target staging Functions:
+  `2cac40f5decf9e3be4b2090565c594c572576b53a520078b4b08a788f43d1616`;
+- 174 production Functions:
+  `38482806c5fd80cd31f3e6f1aecc1e2a43707ecd11c1dcc85ead5c6fd82d2937`;
+- 12 production TTL policies:
+  `81c60fc0946f3ffc421dcc49a0092e661fe2bcebf3a115096dd4c83f3021a1c0`;
+- staging marketing, staging console, production marketing, and production
+  console body hashes:
+  `a37a332869c6e177f2a3dd299e2dd8407be557623057de9dc355c1603a97379f`,
+  `dd7c22b3f25d3c331abc00a714b9672396f01a14648bd3ed99f45ceeb64a2642`,
+  `567cdbe5dbc3caa6c64e7de038770450e3c5ade6140f18f8533cc2bbb910894e`,
+  and `4ef30e0d661cc7a08294b83c663b074b14cdff0918e64147ee527ef02278d007`.
+
+The 92 production Firestore indexes were also unchanged. Their canonical saved
+hash remains
+`8bcfaac80d623481b061737aca15d3de1ef5c03430b63d8aa676deec01570873`;
+an observed
+`793a9e4a66211992218506c39962809b6e5250d6e9d0b227d424bb1740fa8ac0`
+alternate is the same JSON without its final newline, not index drift.
+Production Firestore Admin audit logs recorded no index create, delete, or
+update event during the staging window.
+
+The Azure TPM verifier also remained Running, enabled, HTTPS-only, on the
+F1/Free plan, with `/healthz` returning `200` and an unauthenticated `/verify`
+request returning `401`. PR #2208 remains open and unmerged; the pending
+production Firestore workflow has zero jobs. Production, Hosting, tags,
+releases, and Store state were not changed.
+
+This checkpoint closes the exact-candidate **staging deployment and
+infrastructure** proof. It does not make the release `GO`: the signed-in OAuth,
+App Check, physical TPM, CloudVault, offline/revocation/sign-out, and
+cross-device safety protocols still require the exact signed Windows artifact
+on physical hardware.
+
+## Merged-main automated checkpoint - 2026-08-10
+
+[PR #2203](https://github.com/Imagine-That-Ai/BurnBar/pull/2203) received the
+required independent approval and merged at `2026-08-10T05:16:15Z`. Its exact
+merge commit is `8b07625eebe9db0bf0084e6a884becd6d8bcc72e`. A clean detached
+checkout of that commit matched `origin/main`.
+
+The current-source result is strong and candidate-bound:
+
+- The machine-checked parity ledger reports 51/51 `Real`, with zero
+  `Substituted`, `DeferredApproved`, `Blocked`, or `Authored` rows.
+- The exact merged source passed all 65 local certification commands with zero
+  failures and zero timeouts. The independent evidence validator accepted all
+  seven receipts and confirmed that the tracked tree was clean.
+- [Windows Full run 31358055958](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31358055958)
+  passed x64, ARM64, and its aggregate gate. Independent TRX inspection found
+  4,082 executed x64 passes and 4,081 executed ARM64 passes, zero failures, and
+  only the two exact allowlisted live/manual rows not executed on each
+  architecture. The x64 live Playwright bridge separately passed.
+- [Windows engine run 31358056003](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31358056003)
+  built and exercised the production Swift/C ABI engine for x64 and ARM64. The
+  downloaded manifests covered 26 x64 files and 25 ARM64 files; every recorded
+  SHA-256 and byte size matched, and binary inspection confirmed native x86-64
+  and Aarch64 Windows DLLs.
+- [Candidate export run 31358681287](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31358681287)
+  exported and re-imported 13,535 files with an exact tree match, passed all
+  nine foundation commands, passed ten storage cases, and found no secret-scan
+  finding. Independent extraction and a separate local re-export matched the
+  complete file manifest and uncompressed tar content.
+- [Distribution run 31354131189](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31354131189)
+  passed 124 distribution tests, direct and Store MSIX fixture inspection,
+  signer pinning/fail-closed checks, package identity, version policy, and the
+  aggregate distribution gate against the same exact SHA.
+- [Staging dry run 31358681447](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31358681447)
+  verified all 969 Functions/rules checksums and generated exactly the four
+  reviewed Windows exports. Its deployment job was skipped; no staging state
+  changed.
+- [Shared domain-core run 31354131316](https://github.com/Imagine-That-Ai/BurnBar/actions/runs/31354131316)
+  passed the exact same SHA across Rust, C#, Windows x64, Windows ARM64, Apple,
+  Android, Wasm, Python, Console, rollback, and consumer-contract jobs.
+
+This checkpoint closes the current-source and hosted automated proof boundary.
+It does not convert historical `windows-v1.0.38` physical evidence into proof
+for the new merged source. The Windows manifest is `1.0.39.0`, but no protected
+`windows-v1.0.39` tag exists, so no signed exact-main release artifact has been
+created. Pushing that tag is a separate public-release action and is not
+authorized by PR approval.
+
+The honest release result therefore remains **NO-GO**. The six still-open
+external receipt groups are physical x64 performance, physical ARM64,
+accessibility/display, staging cloud, paired media/Computer Use safety, and
+Store/update lifecycle.
 
 ## Supplemental Harness Recovery - 2026-07-20
 
@@ -976,20 +1108,23 @@ primary row remains SUB-BUILD. That source result covers the gateway, durable
 runs/missions, Browser Computer Use, the exact-approval privileged-input broker,
 project symbols, the sealed Pensieve watcher, the full Elder Wand fusion
 pipeline, standalone companion CLI, guarded Switcher, indexed search, and the
-connector/tooling plane. It does not close signed-host or physical evidence.
-The x64/ARM64 build, signing/provenance, hosted x64 registration, ARM64 UTM
-foundation, and corrected signed-runtime gates are proven. The exact v1.0.38
-x64 package also passed repeated physical cold/warm/reinstall launch holds and
-a 30-minute soak. The evidence does not yet close every row in the QA
-checklist.
+connector/tooling plane.
+
+Exact merged `main` commit
+`8b07625eebe9db0bf0084e6a884becd6d8bcc72e` now also passes the current local
+and hosted x64/ARM64 automated proof described in the 2026-08-10 checkpoint.
+Historical signed `windows-v1.0.38` evidence remains useful for its own exact
+commit, but it cannot certify the newer source. The newer source has not yet
+produced a protected, signed `windows-v1.0.39` release candidate.
 
 Accordingly, the accurate current claim is: **F1 source/product parity is
-ledger-green; applicable F2 source composition is complete; the exact-head
-signed automated release is verified; F2 True 1:1 is not release-certified
-because physical/manual/live/public-lifecycle evidence is incomplete**.
-A public parity release remains gated on the explicitly named
-physical Windows, manual accessibility/display, live staging/cross-device,
-advanced safety, and public lifecycle evidence above.
+ledger-green; applicable F2 source composition is complete; exact merged-main
+automated Windows proof is green; exact-candidate staging infrastructure proof
+is green; F2 True 1:1 is not release-certified because the exact release source
+is not yet signed and its physical/manual/signed-in/Store evidence is
+incomplete**. A public parity release remains gated on the explicitly named
+physical Windows, manual accessibility/display, signed-in staging and
+cross-device protocols, advanced safety, and public lifecycle evidence above.
 
 ## Independent physical-release certification addendum - 2026-07-11
 

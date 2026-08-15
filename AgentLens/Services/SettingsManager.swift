@@ -55,6 +55,7 @@ final class SettingsManager {
     let routedClientWiring: RoutedClientWiringSettings
     let textExpansion: TextExpansionSettings
     let elderWand: ElderWandSettings
+    let visualCapture: VisualCapturePreferences
     private var computerUseRemoteConfigTask: Task<Void, Never>?
     private(set) var hasResolvedComputerUseRemoteConfig = false
 
@@ -107,6 +108,7 @@ final class SettingsManager {
         self.routedClientWiring = RoutedClientWiringSettings(persistence: coordinator)
         self.textExpansion = TextExpansionSettings(persistence: coordinator)
         self.elderWand = ElderWandSettings(persistence: coordinator)
+        self.visualCapture = VisualCapturePreferences(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(
@@ -1446,6 +1448,39 @@ final class SettingsManager {
 
     enum SettingsJSONEncodingError: Error {
         case nonUTF8Output
+    }
+
+    // MARK: - Visual Capture (Both toggle)
+
+    var visualCaptureSourceToggleEnabled: Bool {
+        get { visualCapture.visualCaptureSourceToggleEnabled }
+        set { visualCapture.visualCaptureSourceToggleEnabled = newValue }
+    }
+
+    var visualCaptureGlobalDefault: VisualCaptureSource {
+        get { visualCapture.visualCaptureGlobalDefault }
+        set { visualCapture.visualCaptureGlobalDefault = newValue }
+    }
+
+    var visualCapturePerProvider: [AgentProvider: VisualCaptureSource] {
+        get { visualCapture.visualCapturePerProvider }
+        set { visualCapture.visualCapturePerProvider = newValue }
+    }
+
+    func visualCaptureSource(for provider: AgentProvider) -> VisualCaptureSource {
+        visualCapture.visualCaptureSource(for: provider)
+    }
+
+    func isToggleEligible(_ provider: AgentProvider) -> Bool {
+        visualCapture.isToggleEligible(provider)
+    }
+
+    func setVisualCaptureSource(_ source: VisualCaptureSource, for provider: AgentProvider) {
+        visualCapture.setVisualCaptureSource(source, for: provider)
+    }
+
+    func clearVisualCaptureSource(for provider: AgentProvider) {
+        visualCapture.clearVisualCaptureSource(for: provider)
     }
 
     // MARK: - Explicit Save
