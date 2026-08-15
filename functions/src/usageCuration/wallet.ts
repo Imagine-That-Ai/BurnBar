@@ -20,7 +20,7 @@
 import { Timestamp, type DocumentReference, type Transaction } from "firebase-admin/firestore";
 
 import { db } from "../adminRuntime.js";
-import { stripUndefinedObject } from "../guards.js";
+import { isRecord, isTimestampWithToMillis, stripUndefinedObject } from "../guards.js";
 import { requiredIdentifier } from "../callables/shared/validators.js";
 import { proportionalTopUpReversalUnits } from "../callables/shared/stripeTopUpReversal.js";
 import {
@@ -80,17 +80,16 @@ function nowTimestamp(): Timestamp {
 
 function timestampMillis(value: unknown): number {
   if (value instanceof Timestamp) return value.toMillis();
-  if (value && typeof value === "object") {
-    const withToMillis = value as { toMillis?: unknown; millis?: unknown };
-    if (typeof withToMillis.toMillis === "function") {
-      const millis = withToMillis.toMillis();
-      if (typeof millis === "number" && Number.isFinite(millis)) return millis;
-    }
-    if (typeof withToMillis.millis === "number" && Number.isFinite(withToMillis.millis)) {
-      return withToMillis.millis;
-    }
+  if (isTimestampWithToMillis(value)) return value.toMillis();
+  if (isRecord(value) && typeof value.millis === "number" && Number.isFinite(value.millis)) {
+    return value.millis;
   }
   return 0;
+}
+
+function coerceTimestamp(value: unknown): Timestamp {
+  if (value instanceof Timestamp) return value;
+  return Timestamp.fromMillis(timestampMillis(value));
 }
 
 function nonNegativeInt(value: unknown): number {
@@ -145,11 +144,11 @@ function parseGrant(id: string, raw: Record<string, unknown> | undefined): (Gran
     refundReversedTokens,
     disputeReversedTokens,
     reversedTokens,
-    expiresAt: raw.expiresAt as Timestamp,
+    expiresAt: coerceTimestamp(raw.expiresAt),
     amountMinor: typeof raw.amountMinor === "number" ? raw.amountMinor : undefined,
     currency: typeof raw.currency === "string" ? raw.currency : undefined,
-    createdAt: raw.createdAt as Timestamp,
-    updatedAt: raw.updatedAt as Timestamp,
+    createdAt: coerceTimestamp(raw.createdAt),
+    updatedAt: coerceTimestamp(raw.updatedAt),
   };
 }
 

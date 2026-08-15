@@ -66,16 +66,10 @@ const { dbMock, store } = vi.hoisted(() => {
     runTransaction: async <T>(fn: (transaction: unknown) => Promise<T>): Promise<T> => {
       const txn = {
         get: async (ref: DocRef | CollectionRef) => {
-          if ("collection" in ref && typeof ref.collection === "function" && "path" in ref) {
-            const asDoc = ref as DocRef;
-            if (typeof asDoc.get === "function" && !("doc" in ref)) {
-              return snapshotFor(asDoc.path);
-            }
-          }
           if ("doc" in ref) {
-            return (ref as CollectionRef).get();
+            return ref.get();
           }
-          return snapshotFor((ref as DocRef).path);
+          return snapshotFor(ref.path);
         },
         set: (ref: DocRef, data: StoredDoc, options?: { merge?: boolean }) => {
           applySet(ref.path, data, options);
@@ -87,6 +81,14 @@ const { dbMock, store } = vi.hoisted(() => {
 
   return { dbMock: db, store: docs };
 });
+
+function requireStored(path: string): StoredDoc {
+  const doc = store.get(path);
+  if (doc === undefined) {
+    throw new Error(`expected stored document at ${path}`);
+  }
+  return doc;
+}
 
 vi.mock("firebase-admin/firestore", () => {
   class FakeTimestamp {
@@ -310,9 +312,10 @@ describe("memory wallet", () => {
       visionEligible: false,
     });
     const grantPath = [...store.keys()].find((path) => path.includes("/grants/"));
-    expect(grantPath).toBeTruthy();
-    const grant = store.get(grantPath!);
-    grant!.expiresAt = { toMillis: () => Date.now() - 1000 };
+    if (grantPath === undefined) {
+      throw new Error("expected a grant path");
+    }
+    requireStored(grantPath).expiresAt = { toMillis: () => Date.now() - 1000 };
     expect(await settlePendingMemoryPacks(UID, true)).toBe(0);
     await db.runTransaction(async (txn) => {
       const balances = await getWalletBalances(txn, UID);
@@ -392,10 +395,10 @@ describe("memory wallet grant mechanics", () => {
       packId: "text_1m",
       visionEligible: true,
     });
-    const later = store.get(`users/${UID}/memoryWallet/current/grants/stripe_created_first_expires_later`);
-    const sooner = store.get(`users/${UID}/memoryWallet/current/grants/stripe_created_second_expires_sooner`);
-    later!.expiresAt = Timestamp.fromMillis(Date.now() + 40 * 24 * 60 * 60 * 1000);
-    sooner!.expiresAt = Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
+    requireStored(`users/${UID}/memoryWallet/current/grants/stripe_created_first_expires_later`).expiresAt =
+      Timestamp.fromMillis(Date.now() + 40 * 24 * 60 * 60 * 1000);
+    requireStored(`users/${UID}/memoryWallet/current/grants/stripe_created_second_expires_sooner`).expiresAt =
+      Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
 
     await db.runTransaction(async (txn) => debitWallet(txn, UID, "text", 1, "fifo_expiry"));
     expect(store.get(`users/${UID}/memoryWallet/current/grants/stripe_created_second_expires_sooner`)?.spentTokens).toBe(1);

@@ -1,7 +1,7 @@
 import { HttpsError } from "firebase-functions/v2/https";
 
 import { enumField, optionalString, parseCallableInput, requiredString } from "../validation/callableSchema.js";
-import { MEMORY_PACK_IDS } from "../usageCuration/catalog.js";
+import { MEMORY_PACK_IDS, isMemoryPackId } from "../usageCuration/catalog.js";
 
 function requiredParsedString(value: unknown, fieldName: string): string {
   if (typeof value === "string") return value;
@@ -29,8 +29,12 @@ export function parseCreateMemoryPackCheckoutInput(data: unknown): {
     },
     data,
   );
+  const packId = requiredParsedString(parsed.packId, "packId");
+  if (!isMemoryPackId(packId)) {
+    throw new HttpsError("internal", "Validated callable field packId did not parse to a Memory Boost pack id.");
+  }
   return {
-    packId: requiredParsedString(parsed.packId, "packId") as (typeof MEMORY_PACK_IDS)[number],
+    packId,
     successUrl: requiredParsedString(parsed.successUrl, "successUrl"),
     cancelUrl: requiredParsedString(parsed.cancelUrl, "cancelUrl"),
     attemptId: optionalParsedString(parsed.attemptId, "attemptId"),

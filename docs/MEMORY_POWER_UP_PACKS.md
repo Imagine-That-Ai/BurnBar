@@ -50,6 +50,10 @@ as a zero wallet.
 
 Ledger (server-only): `users/{uid}/memoryWalletLedger/{entryId}`.
 
+These collections belong to the Plan & Billing Control Center domain
+(`entitlements_billing`). The owner can read `memoryWallet/current`; nested
+grants and the ledger stay server-only.
+
 Fable must call `debitWallet` / `getWalletBalances` **inside the same
 Firestore transaction** that meters curation spend. Replay of `reservationId`
 is success. Insufficient balance throws `MemoryWalletInsufficientError` (not

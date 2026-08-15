@@ -7,6 +7,7 @@ import { HttpsError } from "firebase-functions/v2/https";
 import Stripe from "stripe";
 
 import { db } from "../adminRuntime.js";
+import { isRecord } from "../guards.js";
 import { stripeWithResilience } from "../resilienceHelpers.js";
 import { requiredIdentifier } from "../callables/shared/validators.js";
 import {
@@ -28,25 +29,30 @@ function stripeObjectID(value: unknown): string | undefined {
   return undefined;
 }
 
-export function stripeMemoryPackLineItem(session: Stripe.Checkout.Session): {
+export function stripeMemoryPackLineItem(session: unknown): {
   priceID?: string;
   quantity?: number;
 } {
-  const item = session.line_items?.data?.[0];
-  if (!item) return {};
-  const price = item.price;
-  const priceID = typeof price === "string" ? price : price?.id;
+  if (!isRecord(session)) return {};
+  const lineItems = session.line_items;
+  if (!isRecord(lineItems) || !Array.isArray(lineItems.data)) return {};
+  const item = lineItems.data[0];
+  if (!isRecord(item)) return {};
   const quantity = item.quantity;
   return {
-    priceID,
+    priceID: stripeObjectID(item.price),
     quantity: typeof quantity === "number" && Number.isInteger(quantity) ? quantity : undefined,
   };
 }
 
-export function stripeMemoryPackDiscountMinor(session: Stripe.Checkout.Session): number {
-  const totalDiscount = session.total_details?.amount_discount;
-  if (typeof totalDiscount === "number" && Number.isFinite(totalDiscount) && totalDiscount > 0) {
-    return totalDiscount;
+export function stripeMemoryPackDiscountMinor(session: unknown): number {
+  if (!isRecord(session)) return 0;
+  const totalDetails = session.total_details;
+  if (isRecord(totalDetails)) {
+    const totalDiscount = totalDetails.amount_discount;
+    if (typeof totalDiscount === "number" && Number.isFinite(totalDiscount) && totalDiscount > 0) {
+      return totalDiscount;
+    }
   }
   if (Array.isArray(session.discounts) && session.discounts.length > 0) return 1;
   return 0;

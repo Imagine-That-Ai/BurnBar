@@ -9,14 +9,14 @@
 import { getConfig } from "../config.js";
 
 export const MEMORY_PACK_IDS = ["text_1m", "text_5m", "vision_1m"] as const;
-export type MemoryPackId = (typeof MEMORY_PACK_IDS)[number];
-export type MemoryLane = "text" | "multimodal";
-export type MemoryPackSource = "stripe" | "app_store" | "google_play";
+type MemoryPackId = (typeof MEMORY_PACK_IDS)[number];
+type MemoryLane = "text" | "multimodal";
+type MemoryPackSource = "stripe" | "app_store" | "google_play";
 
 export const MEMORY_PACK_SCHEMA_VERSION = 1;
 export const MEMORY_PACK_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
-export interface MemoryPackDefinition {
+interface MemoryPackDefinition {
   packId: MemoryPackId;
   lane: MemoryLane;
   tokens: number;
@@ -31,6 +31,8 @@ export interface MemoryPackDefinition {
   cadence: string;
   requiresVisionEntitlement: boolean;
 }
+
+export type { MemoryLane, MemoryPackDefinition, MemoryPackId, MemoryPackSource };
 
 export const DEFAULT_MEMORY_PACKS: Record<MemoryPackId, MemoryPackDefinition> = {
   text_1m: {

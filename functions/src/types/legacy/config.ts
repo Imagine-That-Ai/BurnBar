@@ -66,7 +66,19 @@ export interface ProviderAdapter {
 // Runtime configuration shapes
 // ---------------------------------------------------------------------------
 
-export interface EnvConfig {
+interface MemoryBoostCommerceIds {
+  memoryBoostText1mProductID: string;
+  memoryBoostText5mProductID: string;
+  memoryBoostVision1mProductID: string;
+  stripeMemoryBoostText1mPriceID: string;
+  stripeMemoryBoostText5mPriceID: string;
+  stripeMemoryBoostVision1mPriceID: string;
+  googlePlayMemoryBoostText1mProductID: string;
+  googlePlayMemoryBoostText5mProductID: string;
+  googlePlayMemoryBoostVision1mProductID: string;
+}
+
+export interface EnvConfig extends MemoryBoostCommerceIds {
   /** GCP project id. */
   projectId: string;
 
@@ -174,15 +186,6 @@ export interface EnvConfig {
   /** Elder Wand Fusion 500 hosted-search top-up product id. */
   elderWandSearches500ProductID: string;
 
-  /** Memory Boost 1M text-token pack (App Store). */
-  memoryBoostText1mProductID: string;
-
-  /** Memory Boost 5M text-token pack (App Store). */
-  memoryBoostText5mProductID: string;
-
-  /** Vision Memory Boost 1M multimodal-token pack (App Store). */
-  memoryBoostVision1mProductID: string;
-
   /** Compatibility Stripe price id for macOS/web BurnBar Cloud monthly checkout. */
   stripeBurnBarProPriceID: string;
 
@@ -215,15 +218,6 @@ export interface EnvConfig {
 
   /** Stripe price id for 500 hosted Elder Wand Fusion searches. */
   stripeElderWandSearches500PriceID: string;
-
-  /** Stripe price id for Memory Boost 1M text tokens. */
-  stripeMemoryBoostText1mPriceID: string;
-
-  /** Stripe price id for Memory Boost 5M text tokens. */
-  stripeMemoryBoostText5mPriceID: string;
-
-  /** Stripe price id for Vision Memory Boost 1M multimodal tokens. */
-  stripeMemoryBoostVision1mPriceID: string;
 
   /** Exact non-loopback hostname[:port] values allowed for Stripe browser redirects. */
   stripeRedirectURLAllowlist: string[];
@@ -269,15 +263,6 @@ export interface EnvConfig {
 
   /** Google Play Elder Wand Fusion 500 hosted-search top-up product id. */
   googlePlayElderWandSearches500ProductID: string;
-
-  /** Google Play Memory Boost 1M text-token pack. */
-  googlePlayMemoryBoostText1mProductID: string;
-
-  /** Google Play Memory Boost 5M text-token pack. */
-  googlePlayMemoryBoostText5mProductID: string;
-
-  /** Google Play Vision Memory Boost 1M multimodal-token pack. */
-  googlePlayMemoryBoostVision1mProductID: string;
 
   /** Max encrypted session blob upload size in bytes. */
   encryptedSessionBlobMaxBytes: number;

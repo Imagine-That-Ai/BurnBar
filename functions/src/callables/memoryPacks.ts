@@ -17,13 +17,13 @@ import {
   assertMemoryPackPurchaseEntitlement,
   hasActiveMemoryPackVisionEntitlement,
 } from "../usageCuration/eligibility.js";
-import { settlePendingMemoryPacks } from "../usageCuration/wallet.js";
+import * as memoryWallet from "../usageCuration/wallet.js";
 import {
   requireConfiguredStripeMemoryPackPrice,
   stripeMemoryPackCheckoutMetadata,
   stripeMemoryPackIdempotencyKey,
 } from "../usageCuration/stripeRail.js";
-import { redeemPlayMemoryPack } from "../usageCuration/playRail.js";
+import * as playRail from "../usageCuration/playRail.js";
 import { parseCreateMemoryPackCheckoutInput, parseRedeemPlayMemoryPackInput } from "./memoryPackInputSchemas.js";
 
 export const listMemoryPacks = onCall(
@@ -54,7 +54,7 @@ export const listMemoryPacks = onCall(
   }),
 );
 
-export const settlePendingMemoryPacksCallable = onCall(
+export const settlePendingMemoryPacks = onCall(
   {
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
@@ -65,7 +65,7 @@ export const settlePendingMemoryPacksCallable = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before settling Memory Boost packs.");
     enforceAuthAndAppCheck(request, uid);
     const visionEligible = await hasActiveMemoryPackVisionEntitlement(uid);
-    const settled = await settlePendingMemoryPacks(uid, visionEligible);
+    const settled = await memoryWallet.settlePendingMemoryPacks(uid, visionEligible);
     return { settled, visionEligible };
   }),
 );
@@ -117,7 +117,7 @@ export const createMemoryPackCheckoutSession = onCall(
   }),
 );
 
-export const redeemPlayMemoryPackCallable = onCall(
+export const redeemPlayMemoryPack = onCall(
   {
     region: FUNCTIONS_REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
@@ -128,6 +128,6 @@ export const redeemPlayMemoryPackCallable = onCall(
     if (!uid) throw new HttpsError("unauthenticated", "Sign in before redeeming a Memory Boost pack.");
     enforceAuthAndAppCheck(request, uid);
     const input = parseRedeemPlayMemoryPackInput(request.data);
-    return redeemPlayMemoryPack({ uid, purchaseToken: input.purchaseToken, productID: input.productID });
+    return playRail.redeemPlayMemoryPack({ uid, purchaseToken: input.purchaseToken, productID: input.productID });
   }),
 );

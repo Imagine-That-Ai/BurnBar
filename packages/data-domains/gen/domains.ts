@@ -496,20 +496,23 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Plan & Billing",
     "icon": "creditcard.fill",
     "encryptionTier": "server_readable",
-    "summary": "Your subscription entitlements (Cloud Pro, Ultra) and their change history.",
+    "summary": "Your subscription entitlements (Cloud Pro, Ultra), prepaid Memory Boost token packs, and their change history.",
     "serverSees": [
       "entitlement ids",
       "product ids",
       "active state",
       "expiry",
-      "purchase source"
+      "purchase source",
+      "prepaid Memory Boost balances and grant metadata"
     ],
     "deviceOnly": [],
     "firestorePaths": [
       "entitlements",
       "entitlement_events",
       "entitlement_bindings",
-      "billing"
+      "billing",
+      "memoryWallet",
+      "memoryWalletLedger"
     ],
     "storagePaths": [],
     "countSource": "entitlements",

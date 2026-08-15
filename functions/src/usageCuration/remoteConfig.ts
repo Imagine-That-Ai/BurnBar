@@ -7,7 +7,7 @@
 
 import { getRemoteConfig } from "firebase-admin/remote-config";
 
-import { errorMessage } from "../guards.js";
+import { errorMessage, isRecord } from "../guards.js";
 import { logWarn } from "../logging.js";
 import { remoteConfigStringValue } from "../remoteConfigGuards.js";
 import {
@@ -28,10 +28,9 @@ function integerOverride(raw: unknown): number | undefined {
 }
 
 function overlayPack(base: MemoryPackDefinition, overlay: unknown): MemoryPackDefinition {
-  if (!overlay || typeof overlay !== "object") return base;
-  const rec = overlay as Record<string, unknown>;
-  const minChargeMinor = integerOverride(rec.minChargeMinor) ?? base.minChargeMinor;
-  const hidden = rec.hidden === true;
+  if (!isRecord(overlay)) return base;
+  const minChargeMinor = integerOverride(overlay.minChargeMinor) ?? base.minChargeMinor;
+  const hidden = overlay.hidden === true;
   return {
     ...base,
     minChargeMinor: Math.max(minChargeMinor, base.minChargeMinor),
@@ -45,10 +44,9 @@ export function normalizeMemoryPackCatalog(raw: unknown): MemoryPackCatalogSnaps
     text_5m: DEFAULT_MEMORY_PACKS.text_5m,
     vision_1m: DEFAULT_MEMORY_PACKS.vision_1m,
   };
-  if (!raw || typeof raw !== "object") return { packs };
-  const rec = raw as Record<string, unknown>;
+  if (!isRecord(raw)) return { packs };
   for (const packId of MEMORY_PACK_IDS) {
-    packs[packId] = overlayPack(packs[packId], rec[packId]);
+    packs[packId] = overlayPack(packs[packId], raw[packId]);
   }
   return { packs };
 }

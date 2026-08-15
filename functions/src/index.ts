@@ -235,8 +235,8 @@ export {
 export {
   listMemoryPacks,
   createMemoryPackCheckoutSession,
-  redeemPlayMemoryPackCallable as redeemPlayMemoryPack,
-  settlePendingMemoryPacksCallable as settlePendingMemoryPacks,
+  redeemPlayMemoryPack,
+  settlePendingMemoryPacks,
 } from "./callables/memoryPacks.js";
 
 export { startCliLink, pollCliLink, completeCliLink } from "./callables/cliLink.js";

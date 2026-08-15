@@ -26,7 +26,7 @@ import type { HostedQuotaEntitlementDoc } from "../types.js";
 import type { CloudProTopUpKind } from "../cloudProAllowanceCore.js";
 import { creditCloudProTopUp } from "../callables/shared.js";
 import { memoryPackFromAppleProductID } from "../usageCuration/catalog.js";
-import { redeemAppleMemoryPack } from "../usageCuration/appleRail.js";
+import * as appleRail from "../usageCuration/appleRail.js";
 import { parseRedeemAppleMemoryPackInput } from "../callables/memoryPackInputSchemas.js";
 
 import { APP_STORE_SECRETS, hostedQuotaProductID, loadAppStoreRuntimeConfig } from "./config.js";
@@ -222,7 +222,7 @@ export const verifyCloudProTopUp = onCall(
 // redeemAppleMemoryPack
 // ---------------------------------------------------------------------------
 
-export const redeemAppleMemoryPackCallable = onCall(
+export const redeemAppleMemoryPack = onCall(
   {
     region: REGION,
     enforceAppCheck: getConfig().enforceAppCheck,
@@ -273,7 +273,7 @@ export const redeemAppleMemoryPackCallable = onCall(
         typeof decoded.payload.appAccountToken === "string" ? decoded.payload.appAccountToken : undefined;
       const db = getFirestore();
       try {
-        return await redeemAppleMemoryPack({
+        return await appleRail.redeemAppleMemoryPack({
           db,
           uid,
           productID: transactionProductID,

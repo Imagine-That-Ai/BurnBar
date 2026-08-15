@@ -14,14 +14,14 @@ export class MemoryWalletInsufficientError extends Error {
   }
 }
 
-export type MemoryGrantStatus = "active" | "pending" | "expired" | "exhausted" | "revoked";
+type MemoryGrantStatus = "active" | "pending" | "expired" | "exhausted" | "revoked";
 
-export interface MemoryWalletBalances {
+interface MemoryWalletBalances {
   textTokens: number;
   multimodalTokens: number;
 }
 
-export interface GrantMemoryPackArgs {
+interface GrantMemoryPackArgs {
   uid: string;
   source: MemoryPackSource;
   transactionId: string;
@@ -32,7 +32,7 @@ export interface GrantMemoryPackArgs {
   currency?: string;
 }
 
-export interface GrantMemoryPackResult {
+interface GrantMemoryPackResult {
   granted: boolean;
   pending: boolean;
   alreadyGranted: boolean;
@@ -43,7 +43,7 @@ export interface GrantMemoryPackResult {
   status: MemoryGrantStatus;
 }
 
-export interface ReverseMemoryPackGrantArgs {
+interface ReverseMemoryPackGrantArgs {
   uid: string;
   source: MemoryPackSource;
   transactionId: string;
@@ -57,3 +57,11 @@ export interface ReverseMemoryPackGrantArgs {
   /** Apple REFUND: claw back this grant via refundReversedTokens, restorable later. */
   refundFull?: boolean;
 }
+
+export type {
+  GrantMemoryPackArgs,
+  GrantMemoryPackResult,
+  MemoryGrantStatus,
+  MemoryWalletBalances,
+  ReverseMemoryPackGrantArgs,
+};

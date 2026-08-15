@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type Stripe from "stripe";
 
 vi.mock("../adminRuntime.js", () => ({
   db: { doc: () => ({ set: vi.fn(), get: vi.fn() }) },
@@ -26,38 +25,28 @@ vi.mock("../callables/shared/validators.js", () => ({
 
 import { stripeMemoryPackDiscountMinor, stripeMemoryPackLineItem } from "../usageCuration/stripeRail.js";
 
-function session(partial: Record<string, unknown>): Stripe.Checkout.Session {
-  return partial as unknown as Stripe.Checkout.Session;
-}
-
 describe("Stripe Memory Boost checkout guards", () => {
   it("does not default a missing line-item quantity to 1", () => {
-    const parsed = stripeMemoryPackLineItem(
-      session({
-        line_items: {
-          data: [{ price: { id: "price_text_1m" } }],
-        },
-      }),
-    );
+    const parsed = stripeMemoryPackLineItem({
+      line_items: {
+        data: [{ price: { id: "price_text_1m" } }],
+      },
+    });
     expect(parsed.priceID).toBe("price_text_1m");
     expect(parsed.quantity).toBeUndefined();
   });
 
   it("rejects a discount on the session total", () => {
     expect(
-      stripeMemoryPackDiscountMinor(
-        session({
-          total_details: { amount_discount: 50 },
-        }),
-      ),
+      stripeMemoryPackDiscountMinor({
+        total_details: { amount_discount: 50 },
+      }),
     ).toBe(50);
     expect(
-      stripeMemoryPackDiscountMinor(
-        session({
-          discounts: [{ coupon: "promo" }],
-        }),
-      ),
+      stripeMemoryPackDiscountMinor({
+        discounts: [{ coupon: "promo" }],
+      }),
     ).toBeGreaterThan(0);
-    expect(stripeMemoryPackDiscountMinor(session({}))).toBe(0);
+    expect(stripeMemoryPackDiscountMinor({})).toBe(0);
   });
 });
