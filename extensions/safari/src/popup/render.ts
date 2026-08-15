@@ -1,10 +1,54 @@
-import type { ActivityEvent, ApprovalPreview, LearningItem, TranscriptEntry } from '../shared/messages';
+import type {
+  ActivityEvent,
+  ApprovalPreview,
+  LearningItem,
+  PopupSnapshot,
+  TranscriptEntry,
+  UsageMemoryState
+} from '../shared/messages';
 import type { BridgeAgentOption } from '../shared/protocol';
 import { SAFARI_PERFORMANCE_LABELS, formatPerformanceDuration } from './diagnostics';
 import { initializeModeVisuals } from './modeVisuals';
 import type { PopupViewModel } from './viewModel';
 
 const TRANSCRIPT_FOLLOW_THRESHOLD_PX = 32;
+
+const LEARNING_EMPTY_BASE = 'No durable learning yet. BurnBar proposes memories only from your explicit corrections';
+
+/**
+ * Learning and privacy copy that must stay honest in both usage-memory states.
+ * Single-sourced so the popup UI and the copy-pinning tests share one truth.
+ */
+export const POPUP_LEARNING_COPY = {
+  correctionNote: {
+    usageMemoryOff:
+      'Corrections are taken only from what you type here. BurnBar does not learn from pages or asks unless you turn on usage memory.',
+    usageMemoryOn:
+      'Corrections are taken only from what you type here. Usage memory is on, so BurnBar may also propose memories from your asks and answers — nothing activates without your review.'
+  },
+  learningEmpty: {
+    usageMemoryOff: `${LEARNING_EMPTY_BASE} — everything waits for your approval.`,
+    usageMemoryOn: `${LEARNING_EMPTY_BASE}, and from your asks with usage memory on — everything waits for your approval.`
+  },
+  trustFooter: {
+    base: 'Screenshots stay on this Mac unless you choose a cloud model. Page actions are scoped, audited, and panic-haltable.',
+    usageMemoryOnSuffix: ' Usage memory proposes from your asks — manage it in the OpenBurnBar app.'
+  },
+  usageMemoryRow: {
+    label: 'Learn from my asks',
+    subtitle:
+      'Propose memories from questions you ask here. Quarantined until you approve. Manage placement and sources in the OpenBurnBar app.'
+  }
+} as const;
+
+/**
+ * Reads the usage-memory state defensively: snapshots from an older daemon can
+ * predate the field even though the current type marks it required.
+ */
+function usageMemoryState(snapshot: PopupSnapshot | undefined): UsageMemoryState | undefined {
+  const usageMemory: UsageMemoryState | undefined = snapshot?.usageMemory;
+  return usageMemory;
+}
 
 interface TextSelectionState {
   start: number;
@@ -827,7 +871,9 @@ function renderTrust(viewModel: PopupViewModel, preserveOpen: boolean): HTMLElem
   const privacyNote = element(
     'p',
     'privacy-note',
-    'Screenshots stay on this Mac unless you choose a cloud model. Page actions are scoped, audited, and panic-haltable.'
+    usageMemoryState(snapshot)?.optedIn
+      ? `${POPUP_LEARNING_COPY.trustFooter.base}${POPUP_LEARNING_COPY.trustFooter.usageMemoryOnSuffix}`
+      : POPUP_LEARNING_COPY.trustFooter.base
   );
   body.append(privacyNote);
   details.append(body);
@@ -879,7 +925,9 @@ function renderLearningCorrection(viewModel: PopupViewModel): HTMLElement {
   const note = element(
     'p',
     'learning-correction-note',
-    'Only what you type is reviewed. OpenBurnBar does not infer a correction from the page, screenshot, or chat.'
+    usageMemoryState(viewModel.snapshot)?.optedIn
+      ? POPUP_LEARNING_COPY.correctionNote.usageMemoryOn
+      : POPUP_LEARNING_COPY.correctionNote.usageMemoryOff
   );
   note.id = 'learning-correction-note';
   const footer = element('div', 'learning-correction-footer');
@@ -928,6 +976,18 @@ function renderLearning(viewModel: PopupViewModel, preserveOpen: boolean): HTMLE
       !(snapshot?.learning.eligible ?? false)
     )
   );
+  const usageMemory = usageMemoryState(snapshot);
+  if (usageMemory) {
+    body.append(
+      checkboxRow(
+        POPUP_LEARNING_COPY.usageMemoryRow.label,
+        POPUP_LEARNING_COPY.usageMemoryRow.subtitle,
+        'usage-memory-opt-in',
+        usageMemory.optedIn,
+        !(snapshot?.learning.eligible ?? false)
+      )
+    );
+  }
   if (snapshot?.learning.optedIn) {
     body.append(renderLearningCorrection(viewModel));
     if (snapshot.learning.items.length === 0) {
@@ -935,7 +995,9 @@ function renderLearning(viewModel: PopupViewModel, preserveOpen: boolean): HTMLE
         element(
           'p',
           'drawer-empty',
-          'No durable learning yet. BurnBar waits for explicit corrections or repeated workflows instead of guessing.'
+          usageMemory?.optedIn
+            ? POPUP_LEARNING_COPY.learningEmpty.usageMemoryOn
+            : POPUP_LEARNING_COPY.learningEmpty.usageMemoryOff
         )
       );
     } else {

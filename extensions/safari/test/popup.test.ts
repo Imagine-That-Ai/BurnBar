@@ -1,4 +1,4 @@
-import { renderPopup } from '../src/popup/render';
+import { POPUP_LEARNING_COPY, renderPopup } from '../src/popup/render';
 import { createInitialPopupState, reducePopupState } from '../src/popup/state';
 import { buildPopupViewModel } from '../src/popup/viewModel';
 import type { PopupSnapshot } from '../src/shared/messages';
@@ -619,6 +619,10 @@ describe('popup rendering', () => {
     expect(root.querySelector('.popup-tools')?.getAttribute('aria-label')).toBe('OpenBurnBar controls');
     expect(root.querySelector('[data-action="toggle-tools"]')?.getAttribute('aria-controls')).toBe('popup-tools');
     expect(root.querySelector('.trust-drawer')?.textContent).toContain('Screenshots stay on this Mac');
+    expect(root.querySelector('.trust-drawer')?.textContent).not.toContain('manage it in the OpenBurnBar app');
+    expect(root.querySelector<HTMLInputElement>('[data-input="usage-memory-opt-in"]')?.checked).toBe(false);
+    expect(root.querySelector<HTMLInputElement>('[data-input="usage-memory-opt-in"]')?.disabled).toBe(false);
+    expect(root.querySelector('.learning-drawer')?.textContent).toContain('Learn from my asks');
     expect(root.querySelector('.learning-drawer')?.textContent).toContain('Extract store prices');
     expect(root.querySelector('.performance-drawer')?.textContent).toContain('Ask first token');
     expect(root.querySelector('.performance-drawer')?.textContent).toContain('Local timing only');
@@ -636,7 +640,10 @@ describe('popup rendering', () => {
       'retained local'
     );
     expect(root.querySelector('.learning-correction')?.textContent).toContain('Explicit only');
-    expect(root.querySelector('.learning-correction-note')?.textContent).toContain('does not infer a correction');
+    expect(root.querySelector('.learning-correction-note')?.textContent).toContain('taken only from what you type');
+    expect(root.querySelector('.learning-correction-note')?.textContent).toBe(
+      POPUP_LEARNING_COPY.correctionNote.usageMemoryOff
+    );
     expect(root.querySelector<HTMLTextAreaElement>('[data-input="correction-draft"]')?.value).toBe(
       'Always compare annual totals before monthly prices.'
     );
@@ -653,6 +660,62 @@ describe('popup rendering', () => {
     const focusKeys = interactiveControls.map((control) => control.dataset.focusKey);
     expect(focusKeys.every(Boolean)).toBe(true);
     expect(new Set(focusKeys).size).toBe(interactiveControls.length);
+  });
+
+  it('keeps learning and privacy copy honest in both usage-memory states', () => {
+    const root = document.createElement('div');
+    document.body.append(root);
+    root.dataset.toolsOpen = 'true';
+    const render = (current: PopupSnapshot): void => {
+      renderPopup(root, buildPopupViewModel({ ...createInitialPopupState(), initialized: true, snapshot: current }));
+    };
+
+    render(snapshot({ learning: { ...snapshot().learning, items: [] } }));
+    expect(root.querySelector('.learning-correction-note')?.textContent).toBe(
+      POPUP_LEARNING_COPY.correctionNote.usageMemoryOff
+    );
+    expect(root.querySelector('.learning-drawer .drawer-empty')?.textContent).toBe(
+      POPUP_LEARNING_COPY.learningEmpty.usageMemoryOff
+    );
+    expect(root.querySelector('.learning-drawer .drawer-empty')?.textContent).toContain(
+      'only from your explicit corrections'
+    );
+    expect(root.querySelector('.trust-drawer .privacy-note:last-of-type')?.textContent).toBe(
+      POPUP_LEARNING_COPY.trustFooter.base
+    );
+    expect(root.querySelector<HTMLInputElement>('[data-input="usage-memory-opt-in"]')?.checked).toBe(false);
+
+    render(snapshot({ learning: { ...snapshot().learning, items: [] }, usageMemory: { optedIn: true } }));
+    expect(root.querySelector('.learning-correction-note')?.textContent).toBe(
+      POPUP_LEARNING_COPY.correctionNote.usageMemoryOn
+    );
+    expect(root.querySelector('.learning-correction-note')?.textContent).toContain('taken only from what you type');
+    expect(root.querySelector('.learning-drawer .drawer-empty')?.textContent).toBe(
+      POPUP_LEARNING_COPY.learningEmpty.usageMemoryOn
+    );
+    expect(root.querySelector('.trust-drawer .privacy-note:last-of-type')?.textContent).toBe(
+      `${POPUP_LEARNING_COPY.trustFooter.base}${POPUP_LEARNING_COPY.trustFooter.usageMemoryOnSuffix}`
+    );
+    expect(root.querySelector('.trust-drawer')?.textContent).toContain('Screenshots stay on this Mac');
+    expect(root.querySelector<HTMLInputElement>('[data-input="usage-memory-opt-in"]')?.checked).toBe(true);
+    expect(root.querySelector<HTMLInputElement>('[data-input="usage-memory-opt-in"]')?.disabled).toBe(false);
+
+    render(
+      snapshot({
+        learning: { eligible: false, optedIn: false, consentSeen: false, items: [] },
+        usageMemory: { optedIn: false }
+      })
+    );
+    expect(root.querySelector<HTMLInputElement>('[data-input="usage-memory-opt-in"]')?.disabled).toBe(true);
+
+    const legacy = snapshot();
+    delete (legacy as Partial<PopupSnapshot>).usageMemory;
+    render(legacy);
+    expect(root.querySelector('[data-input="usage-memory-opt-in"]')).toBeNull();
+    expect(root.querySelector('.learning-drawer')?.textContent).not.toContain('Learn from my asks');
+    expect(root.querySelector('.trust-drawer .privacy-note:last-of-type')?.textContent).toBe(
+      POPUP_LEARNING_COPY.trustFooter.base
+    );
   });
 
   it('preserves drawer, scroll, search focus, and selection state across polling renders', () => {
