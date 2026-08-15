@@ -34,6 +34,7 @@ function buildTree(mutator = () => {}) {
   const root = mkdtempSync(join(tmpdir(), "release-tag-safety-"));
   roots.push(root);
   mkdirSync(join(root, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(root, "scripts", "ci"), { recursive: true });
   copyFileSync(
     join(WORKFLOWS_DIR, "deploy-production.yml"),
     join(root, ".github", "workflows", "deploy-production.yml"),
@@ -41,6 +42,14 @@ function buildTree(mutator = () => {}) {
   copyFileSync(
     join(WORKFLOWS_DIR, "deploy-cloud-run.yml"),
     join(root, ".github", "workflows", "deploy-cloud-run.yml"),
+  );
+  copyFileSync(
+    join(SCRIPT_DIR, "verify-existing-tag-dry-run-recovery.mjs"),
+    join(root, "scripts", "ci", "verify-existing-tag-dry-run-recovery.mjs"),
+  );
+  copyFileSync(
+    join(SCRIPT_DIR, "release-dry-run-attestation.mjs"),
+    join(root, "scripts", "ci", "release-dry-run-attestation.mjs"),
   );
   mutator(root);
   return root;
@@ -51,6 +60,16 @@ function mutate(root, file, edit) {
   const original = readFileSync(path, "utf8");
   const updated = edit(original);
   if (updated === original) throw new Error(`mutation did not change ${file}`);
+  writeFileSync(path, updated);
+}
+
+function mutateAttestation(root, edit) {
+  const path = join(root, "scripts", "ci", "release-dry-run-attestation.mjs");
+  const original = readFileSync(path, "utf8");
+  const updated = edit(original);
+  if (updated === original) {
+    throw new Error("mutation did not change release-dry-run-attestation.mjs");
+  }
   writeFileSync(path, updated);
 }
 
@@ -95,7 +114,7 @@ expect(
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        /      candidate_sha:\n        description: "Full SHA of the release candidate on origin\/main \(dry_run only\)"\n        required: false\n        type: string\n/,
+        /      candidate_sha:\n        description: "Full immutable release-candidate SHA"\n        required: false\n        type: string\n/,
         "",
       ),
     ),
@@ -107,7 +126,7 @@ expect(
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        /      candidate_sha:\n        description: "Full SHA of the release candidate on origin\/main \(dry_run only\)"\n        required: false\n        type: string\n/,
+        /      candidate_sha:\n        description: "Full immutable release-candidate SHA"\n        required: false\n        type: string\n/,
         "",
       ),
     ),
@@ -125,7 +144,7 @@ expect(
           "",
         )
         .replace(
-          /          if \[\[ "\$IS_DRY_RUN" == "true" \]\]; then[\s\S]*?          else\n/,
+          /          if \[\[ "\$IS_DRY_RUN" == "true" \|\| "\$IS_EXISTING_TAG_RETRY" == "true" \]\]; then[\s\S]*?          else\n/,
           "          ",
         )
         .replace(
@@ -146,7 +165,7 @@ expect(
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        '            if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then\n              echo "::error::Dry-run dispatch requires candidate_sha (full SHA on origin/main)."\n              exit 1\n            fi\n',
+        '            if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then\n              echo "::error::Manual release control requires candidate_sha (full immutable release SHA)."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -166,13 +185,13 @@ expect(
   1,
 );
 
-/* ── Dry-run allowing tag ref fails ── */
+/* ── Manual control without main-only guard fails ── */
 expect(
-  "production: dry-run allowing tag ref fails",
+  "production: manual control without main-only guard fails",
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        '            if [[ "$GITHUB_REF" == "$tag_ref" ]]; then\n              echo "::error::Dry-run must not run from a tag ref ($tag_ref). Dispatch from a non-tag branch or SHA ref."\n              exit 1\n            fi\n',
+        '            if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/main" || "$REF_NAME" != "main" ]]; then\n              echo "::error::Manual release control must be dispatched from main; tag-selected reruns are forbidden."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -181,24 +200,24 @@ expect(
 
 /* ── Dry-run without origin/main comparison fails ── */
 expect(
-  "production: dry-run without candidate==main check fails",
+  "production: future-tag dry-run without candidate==main check fails",
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        '            main_sha="$(git rev-parse origin/main)"\n            if [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then\n              echo "::error::candidate_sha $INPUT_CANDIDATE_SHA != origin/main $main_sha."\n              echo "::error::Dry-run must prove the exact commit that will be tagged is current main."\n              exit 1\n            fi\n',
+        '            elif [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then\n              echo "::error::candidate_sha $INPUT_CANDIDATE_SHA != origin/main $main_sha."\n              echo "::error::A future-tag dry-run must prove the exact commit that will be tagged is current main."\n              exit 1\n',
         "",
       ),
     ),
   1,
 );
 
-/* ── Non-dry-run without tag ref requirement fails ── */
+/* ── Ordinary path allowing manual dispatch fails ── */
 expect(
-  "production: non-dry-run without tag ref guard fails",
+  "production: ordinary path allowing manual dispatch fails",
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        '            if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then\n              echo "::error::Manual production deploy for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}."\n              echo "::error::Select the release tag as the workflow dispatch ref so production credentials stay tag-bound."\n              exit 1\n            fi\n',
+        '            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then\n              echo "::error::Manual real deploys must use existing_tag_retry=true from main; tag-selected dispatches and reruns are forbidden."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -211,7 +230,7 @@ expect(
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        '            if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then\n              echo "::error::Dry-run dispatch requires candidate_sha (full SHA on origin/main)."\n              exit 1\n            fi\n',
+        '            if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then\n              echo "::error::Manual release control requires candidate_sha (full immutable release SHA)."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -231,11 +250,11 @@ expect(
 );
 
 expect(
-  "cloud-run: dry-run allowing tag ref fails",
+  "cloud-run: manual control without main-only guard fails",
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        '            if [[ "$GITHUB_REF" == "$tag_ref" ]]; then\n              echo "::error::Dry-run must not run from a tag ref ($tag_ref). Dispatch from a non-tag branch or SHA ref."\n              exit 1\n            fi\n',
+        '            if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/main" || "$REF_NAME" != "main" ]]; then\n              echo "::error::Manual release control must be dispatched from main; tag-selected reruns are forbidden."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -243,11 +262,11 @@ expect(
 );
 
 expect(
-  "cloud-run: dry-run without candidate==main check fails",
+  "cloud-run: future-tag dry-run without candidate==main check fails",
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        '            main_sha="$(git rev-parse origin/main)"\n            if [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then\n              echo "::error::candidate_sha $INPUT_CANDIDATE_SHA != origin/main $main_sha."\n              echo "::error::Dry-run must prove the exact commit that will be tagged is current main."\n              exit 1\n            fi\n',
+        '            elif [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then\n              echo "::error::candidate_sha $INPUT_CANDIDATE_SHA != origin/main $main_sha."\n              echo "::error::A future-tag dry-run must prove the exact commit that will be tagged is current main."\n              exit 1\n',
         "",
       ),
     ),
@@ -255,11 +274,11 @@ expect(
 );
 
 expect(
-  "cloud-run: non-dry-run without tag ref guard fails",
+  "cloud-run: ordinary path allowing manual dispatch fails",
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        '            if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then\n              echo "::error::Manual Cloud Run deploy for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}."\n              echo "::error::Select the release tag as the workflow dispatch ref so production credentials stay tag-bound."\n              exit 1\n            fi\n',
+        '            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then\n              echo "::error::Manual real deploys must use existing_tag_retry=true from main; tag-selected dispatches and reruns are forbidden."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -368,7 +387,7 @@ expect(
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        /  verify-attestations:\n    name: Verify dry-run attestations[\s\S]*?run: node scripts\/ci\/release-dry-run-attestation\.mjs verify --sha "\$ATTEST_SHA" --tag "\$ATTEST_TAG"\n/,
+        /  verify-attestations:\n    name: Verify dry-run attestations[\s\S]*?run: node .*release-dry-run-attestation\.mjs verify --sha "\$ATTEST_SHA" --tag "\$ATTEST_TAG" --control-sha "\$ATTEST_CONTROL_SHA"\n/,
         "",
       ),
     ),
@@ -391,6 +410,61 @@ expect(
   1,
 );
 
+expect(
+  "production: attestation verify without actions:read fails",
+  (root) =>
+    mutate(root, PROD, (text) => text.replace("      actions: read\n", "")),
+  1,
+);
+
+expect(
+  "cloud-run: attestation verify without actions:read fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        "    permissions:\n      actions: read\n      contents: read\n      statuses: read\n",
+        "    permissions:\n      contents: read\n      statuses: read\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: attestation verify with OIDC fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        "    permissions:\n      actions: read\n      contents: read\n      statuses: read\n",
+        "    permissions:\n      actions: read\n      contents: read\n      id-token: write\n      statuses: read\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "production: attestation helper staged after candidate checkout fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        '      - name: Stage trusted release attestation helper\n        run: install -m 0700 scripts/ci/release-dry-run-attestation.mjs "$RUNNER_TEMP/release-dry-run-attestation.mjs"\n\n',
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: mutable main attestation helper checkout fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        "          ref: ${{ github.sha }}\n",
+        "          ref: main\n",
+      ),
+    ),
+  1,
+);
+
 /* ── Production deploy-job dry_run gate removal fails ── */
 expect(
   "production: credentialed deploy job without dry_run gate fails",
@@ -404,13 +478,13 @@ expect(
   1,
 );
 
-/* ── Tag-existence check mutations ── */
+/* ── Existing-tag recovery guard mutations ── */
 expect(
-  "production: dry-run without tag-existence check fails",
+  "production: existing-tag recovery without main-only guard fails",
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        '            git fetch --force --tags origin\n            if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then\n              echo "::error::Future tag ${TAG} already exists. Dry-run validates a candidate BEFORE the tag is created."\n              exit 1\n            fi\n',
+        '            if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/main" || "$REF_NAME" != "main" ]]; then\n              echo "::error::Manual release control must be dispatched from main; tag-selected reruns are forbidden."\n              exit 1\n            fi\n',
         "",
       ),
     ),
@@ -418,12 +492,135 @@ expect(
 );
 
 expect(
-  "cloud-run: dry-run without tag-existence check fails",
+  "cloud-run: existing-tag recovery without annotated-tag guard fails",
   (root) =>
     mutate(root, CLOUD, (text) =>
       text.replace(
-        '            git fetch --force --tags origin\n            if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then\n              echo "::error::Future tag ${TAG} already exists. Dry-run validates a candidate BEFORE the tag is created."\n              exit 1\n            fi\n',
+        '              if [[ "$(git cat-file -t "$tag_ref")" != "tag" ]]; then\n                echo "::error::Existing-tag control requires an annotated release tag: $TAG."\n                exit 1\n              fi\n',
         "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "production: existing-tag recovery without exact peel binding fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        '              if [[ "$tag_commit" != "$INPUT_CANDIDATE_SHA" ]]; then\n                echo "::error::Existing tag $TAG peels to $tag_commit, not candidate_sha $INPUT_CANDIDATE_SHA."\n                exit 1\n              fi\n',
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: existing-tag recovery without GitHub-state verifier fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        /                node scripts\/ci\/verify-existing-tag-dry-run-recovery\.mjs \\\n                  --sha "\$INPUT_CANDIDATE_SHA" \\\n                  --tag "\$TAG" \\\n                  --plane deploy-cloud-run\n/,
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: recovery resolver without deployments read permission fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace("      deployments: read\n", ""),
+    ),
+  1,
+);
+
+expect(
+  "production: recovery resolver with production environment fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        "    runs-on: ubuntu-latest\n    timeout-minutes: 60\n",
+        "    runs-on: ubuntu-latest\n    timeout-minutes: 60\n    environment: production\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "production: removing dedicated existing-tag retry input fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        /      existing_tag_retry:\n        description: "Current-main controlled real retry for an existing stable tag"\n        required: false\n        type: boolean\n        default: false\n/,
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: removing exact release-control run-name receipt fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(/^run-name: release-control\/deploy-cloud-run\/.*\n/mu, ""),
+    ),
+  1,
+);
+
+expect(
+  "production: existing-tag retry without publication recheck fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace("                  --mode real-retry\n", ""),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: existing-tag retry without exact control-SHA binding fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        '                  --control-sha "$GITHUB_SHA"\n',
+        '                  --control-sha "$INPUT_CANDIDATE_SHA"\n',
+      ),
+    ),
+  1,
+);
+
+expect(
+  "production: rollback environment before retry authority fails",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        "          && !inputs.existing_tag_retry }}\n",
+        "          }}\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "cloud-run: candidate checkout before attestation authority fails",
+  (root) =>
+    mutate(root, CLOUD, (text) =>
+      text.replace(
+        "    steps:\n      - name: Check out trusted release attestation helper\n",
+        "    steps:\n      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n        with:\n          ref: ${{ needs.resolve-release.outputs.commit }}\n\n      - name: Check out trusted release attestation helper\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "attestation verifier without exact display-title receipt fails",
+  (root) =>
+    mutateAttestation(root, (text) =>
+      text.replace(
+        "      run?.display_title === receiptTitle({ plane, tag, sha, controlSha }),\n",
+        "      true,\n",
       ),
     ),
   1,

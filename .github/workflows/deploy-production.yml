@@ -1,4 +1,5 @@
 name: Deploy Production (Cloud Functions)
+run-name: release-control/deploy-production/${{ inputs.dry_run && 'dry-run' || inputs.existing_tag_retry && 'existing-tag-retry' || github.event_name }}/${{ inputs.tag || github.ref_name }}/${{ inputs.candidate_sha || github.sha }}/${{ github.sha }}
 
 permissions:
   contents: read
@@ -19,9 +20,14 @@ on:
         type: boolean
         default: false
       candidate_sha:
-        description: "Full SHA of the release candidate on origin/main (dry_run only)"
+        description: "Full immutable release-candidate SHA"
         required: false
         type: string
+      existing_tag_retry:
+        description: "Current-main controlled real retry for an existing stable tag"
+        required: false
+        type: boolean
+        default: false
       domain_core_profile:
         description: "Signed Functions domain-core profile"
         required: true
@@ -39,7 +45,8 @@ jobs:
   authorize-domain-core-rollback:
     if: >-
       ${{ github.event_name == 'workflow_dispatch'
-          && inputs.domain_core_profile == 'public-production-rollback' }}
+          && inputs.domain_core_profile == 'public-production-rollback'
+          && !inputs.existing_tag_retry }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: domain-core-promotion
@@ -67,12 +74,15 @@ jobs:
       actions: read
       attestations: read
       contents: read
+      deployments: read
       statuses: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       commit: ${{ steps.tag.outputs.commit }}
       candidate_commit: ${{ steps.domain-core-profile.outputs.candidate_commit }}
       dry_run: ${{ steps.tag.outputs.dry_run }}
+      existing_tag_retry: ${{ steps.tag.outputs.existing_tag_retry }}
+      control_sha: ${{ steps.tag.outputs.control_sha }}
       stable_release: ${{ steps.tag.outputs.stable_release }}
       domain_core_profile: ${{ steps.tag.outputs.domain_core_profile }}
       core_version: ${{ steps.domain-core-profile.outputs.core_version }}
@@ -93,6 +103,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           fetch-depth: 0
+          persist-credentials: false
           # The release preflight's provenance gate requires corresponding-source
           # files inside Vendor/libsignal (a submodule). Without this, every tag
           # deploy fails on "Vendor/libsignal/LICENSE missing" — the wedge that
@@ -101,21 +112,34 @@ jobs:
           # all provenance lanes consistent.
           submodules: recursive
 
+      - name: Stage trusted release attestation helper
+        run: install -m 0700 scripts/ci/release-dry-run-attestation.mjs "$RUNNER_TEMP/release-dry-run-attestation.mjs"
+
       - name: Resolve release tag
         id: tag
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_EXISTING_TAG_RETRY: ${{ inputs.existing_tag_retry }}
           INPUT_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           INPUT_DOMAIN_CORE_PROFILE: ${{ inputs.domain_core_profile }}
           REF_NAME: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
           IS_DRY_RUN="false"
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]]; then
             IS_DRY_RUN="true"
+          fi
+          IS_EXISTING_TAG_RETRY="false"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_EXISTING_TAG_RETRY" == "true" ]]; then
+            IS_EXISTING_TAG_RETRY="true"
+          fi
+          if [[ "$IS_DRY_RUN" == "true" && "$IS_EXISTING_TAG_RETRY" == "true" ]]; then
+            echo "::error::dry_run and existing_tag_retry are mutually exclusive."
+            exit 1
           fi
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_TAG" ]]; then
@@ -141,11 +165,16 @@ jobs:
             exit 1
           fi
 
-          # Dry-runs prove the exact current main commit before its future tag
-          # exists. Real deploys remain bound to the immutable tag event.
-          if [[ "$IS_DRY_RUN" == "true" ]]; then
+          # All manual release control executes from the exact current main
+          # workflow SHA. Dry-runs may attest a future candidate or recover
+          # missing evidence for an untouched existing stable tag. A real
+          # existing-tag retry is a separate main-only mode: current-main
+          # authority and both attestations are verified before the immutable
+          # tag payload is checked out or executed. Tag-push deploys remain the
+          # ordinary immutable publication path.
+          if [[ "$IS_DRY_RUN" == "true" || "$IS_EXISTING_TAG_RETRY" == "true" ]]; then
             if [[ -z "$INPUT_CANDIDATE_SHA" ]]; then
-              echo "::error::Dry-run dispatch requires candidate_sha (full SHA on origin/main)."
+              echo "::error::Manual release control requires candidate_sha (full immutable release SHA)."
               exit 1
             fi
             if ! [[ "$INPUT_CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -153,17 +182,13 @@ jobs:
               exit 1
             fi
             tag_ref="refs/tags/${TAG}"
-            if [[ "$GITHUB_REF" == "$tag_ref" ]]; then
-              echo "::error::Dry-run must not run from a tag ref ($tag_ref). Dispatch from a non-tag branch or SHA ref."
+            if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/main" || "$REF_NAME" != "main" ]]; then
+              echo "::error::Manual release control must be dispatched from main; tag-selected reruns are forbidden."
               exit 1
             fi
 
             git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"
             git fetch --force --tags origin
-            if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
-              echo "::error::Future tag ${TAG} already exists. Dry-run validates a candidate BEFORE the tag is created."
-              exit 1
-            fi
             if ! git cat-file -e "$INPUT_CANDIDATE_SHA^{commit}" 2>/dev/null; then
               git fetch --force origin "$INPUT_CANDIDATE_SHA"
             fi
@@ -172,17 +197,62 @@ jobs:
               exit 1
             fi
             main_sha="$(git rev-parse origin/main)"
-            if [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then
+            if [[ "${GITHUB_SHA:-}" != "$main_sha" ]]; then
+              echo "::error::Trusted control workflow SHA ${GITHUB_SHA:-<missing>} != current origin/main $main_sha."
+              exit 1
+            fi
+
+            if git rev-parse --verify --quiet "$tag_ref" >/dev/null; then
+              if [[ ! "$TAG" =~ ^v[0-9]{1,3}\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]]; then
+                echo "::error::Existing-tag recovery and retry are limited to stable SemVer tags."
+                exit 1
+              fi
+              if [[ "$(git cat-file -t "$tag_ref")" != "tag" ]]; then
+                echo "::error::Existing-tag control requires an annotated release tag: $TAG."
+                exit 1
+              fi
+              tag_commit="$(git rev-parse "${tag_ref}^{commit}")"
+              if [[ "$tag_commit" != "$INPUT_CANDIDATE_SHA" ]]; then
+                echo "::error::Existing tag $TAG peels to $tag_commit, not candidate_sha $INPUT_CANDIDATE_SHA."
+                exit 1
+              fi
+              if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+                echo "::error::Existing release tag $TAG is not reachable from origin/main."
+                exit 1
+              fi
+              if [[ "$IS_DRY_RUN" == "true" ]]; then
+                node scripts/ci/verify-existing-tag-dry-run-recovery.mjs \
+                  --sha "$INPUT_CANDIDATE_SHA" \
+                  --tag "$TAG" \
+                  --plane deploy-production
+              else
+                node scripts/ci/verify-existing-tag-dry-run-recovery.mjs \
+                  --sha "$INPUT_CANDIDATE_SHA" \
+                  --tag "$TAG" \
+                  --plane deploy-production \
+                  --mode real-retry
+                node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify \
+                  --sha "$INPUT_CANDIDATE_SHA" \
+                  --tag "$TAG" \
+                  --control-sha "$GITHUB_SHA"
+              fi
+            elif [[ "$IS_EXISTING_TAG_RETRY" == "true" ]]; then
+              echo "::error::existing_tag_retry requires an existing immutable stable tag: $TAG."
+              exit 1
+            elif [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then
               echo "::error::candidate_sha $INPUT_CANDIDATE_SHA != origin/main $main_sha."
-              echo "::error::Dry-run must prove the exact commit that will be tagged is current main."
+              echo "::error::A future-tag dry-run must prove the exact commit that will be tagged is current main."
               exit 1
             fi
             commit="$INPUT_CANDIDATE_SHA"
           else
+            if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "::error::Manual real deploys must use existing_tag_retry=true from main; tag-selected dispatches and reruns are forbidden."
+              exit 1
+            fi
             tag_ref="refs/tags/${TAG}"
-            if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then
-              echo "::error::Manual production deploy for ${TAG} must run from ${tag_ref}, not ${GITHUB_REF}."
-              echo "::error::Select the release tag as the workflow dispatch ref so production credentials stay tag-bound."
+            if [[ "$EVENT_NAME" != "push" || "$GITHUB_REF" != "$tag_ref" ]]; then
+              echo "::error::Ordinary real deploys require the immutable tag-push event for $tag_ref."
               exit 1
             fi
 
@@ -221,6 +291,8 @@ jobs:
             echo "tag=$TAG"
             echo "commit=$commit"
             echo "dry_run=$IS_DRY_RUN"
+            echo "existing_tag_retry=$IS_EXISTING_TAG_RETRY"
+            echo "control_sha=${GITHUB_SHA:-}"
             echo "stable_release=$([[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\+[0-9A-Za-z.-]+)?$ ]] && echo true || echo false)"
             echo "domain_core_profile=$DOMAIN_CORE_PROFILE"
           } >> "$GITHUB_OUTPUT"
@@ -565,7 +637,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           ATTEST_SHA: ${{ steps.tag.outputs.commit }}
           ATTEST_TAG: ${{ steps.tag.outputs.tag }}
-        run: node scripts/ci/release-dry-run-attestation.mjs verify --sha "$ATTEST_SHA" --tag "$ATTEST_TAG"
+          ATTEST_CONTROL_SHA: ${{ steps.tag.outputs.control_sha }}
+        run: node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify --sha "$ATTEST_SHA" --tag "$ATTEST_TAG" --control-sha "$ATTEST_CONTROL_SHA"
 
       - name: Stage immutable prepared deploy artifact
         if: steps.tag.outputs.dry_run != 'true'
@@ -644,7 +717,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           ATTEST_SHA: ${{ steps.tag.outputs.commit }}
           ATTEST_TAG: ${{ steps.tag.outputs.tag }}
-        run: node scripts/ci/release-dry-run-attestation.mjs publish --sha "$ATTEST_SHA" --tag "$ATTEST_TAG" --plane deploy-production
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: node "$RUNNER_TEMP/release-dry-run-attestation.mjs" publish --sha "$ATTEST_SHA" --tag "$ATTEST_TAG" --plane deploy-production
 
   deploy-functions:
     needs: prepare-functions-deploy

@@ -279,6 +279,16 @@ The workflow will:
     publishes and verifies the exact R2 candidate, and only then makes that
     exact release GitHub's latest release.
 
+If a stable tag exists but the Functions or Cloud Run dry-run status was never
+published, do not move or recreate the tag. Use the fail-closed
+[existing stable-tag dry-run recovery](runbooks/existing-stable-tag-dry-run-recovery.md);
+it permits only an untouched tag whose commit remains reachable from current
+main, with no GitHub Release, matching production deployment, or prior plane
+status. After recovery, the Functions and Cloud Run real retries must also be
+dispatched from `main` with `existing_tag_retry=true`; never select `v1.0.34`
+as their dispatch ref or rerun its failed tag-triggered deploy jobs because that
+would execute the older workflow/helper frozen in the tag.
+
 `notarytool` and `stapler` are wrapped by
 `scripts/ci/release-command-watchdog.py` in release CI. Apple's `--timeout` flag
 is still passed to the inner notary request, and the wrapper enforces a separate
