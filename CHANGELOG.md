@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Metered usage-memory curation gateway (U4)
+- **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
+  token-metered gateway for cloud usage-memory curation inference
+  (text lane = any active Pro on deepseek-v4-flash; multimodal lane =
+  Pro Max/Ultra on minimax-m3). Reserve-before-spend / settle-to-actual
+  Firestore ledger with monthly + daily lane meters, Remote Config-tunable
+  limits, and a `usage_curation_enabled` kill flag. Every request pins
+  OpenRouter routing to CoreWeave (US) with fallbacks disabled, provider
+  data collection denied, and ZDR required; candidate text rides inside an
+  untrusted-data fence with fence-marker neutralization. See
+  `docs/USAGE_CURATION_METERING.md`.
+
 ### Changed - Approved first-run + homepage copy
 - Homepage hero now uses Alberto-approved copy: **Watch your agents. Before the
   bill.** plus the locked receipt subhead, the real `/brand/logo-*.png` mark, and
