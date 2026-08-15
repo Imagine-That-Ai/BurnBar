@@ -79,47 +79,84 @@ enum RefreshBackgroundWork {
         orchestrator: RefreshOrchestrator,
         settings: RefreshSettingsSnapshot
     ) async throws -> FullRefreshResult {
+        // Recount / tests: no live-window filter. Conversation bodies stay
+        // off this pass; `publishUsageThenIndexConversations` is still the
+        // persist-before-index contract.
+        try await runLaneRefresh(
+            lane: .catchUp,
+            parsers: parsers,
+            dataStore: dataStore,
+            orchestrator: orchestrator,
+            settings: settings,
+            runBackfill: true,
+            runPostPersistence: true
+        )
+    }
+
+    /// UI-facing tick: only files touched inside the live window, providers
+    /// in parallel. Historical unread bytes are `runCatchUpRefresh`.
+    static func runLiveRefresh(
+        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        dataStore: DataStore,
+        orchestrator: RefreshOrchestrator,
+        settings: RefreshSettingsSnapshot
+    ) async throws -> FullRefreshResult {
+        try await runLaneRefresh(
+            lane: .live,
+            parsers: parsers,
+            dataStore: dataStore,
+            orchestrator: orchestrator,
+            settings: settings,
+            runBackfill: true,
+            runPostPersistence: true
+        )
+    }
+
+    /// Isolated historical drain. Must not be awaited by the menu-bar refresh
+    /// spinner; one slice is bounded by `UsageIngestionPolicy.catchUpFileByteBudget`.
+    static func runCatchUpRefresh(
+        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        dataStore: DataStore,
+        orchestrator: RefreshOrchestrator,
+        settings: RefreshSettingsSnapshot
+    ) async throws -> FullRefreshResult {
+        try await runLaneRefresh(
+            lane: .catchUp,
+            parsers: parsers,
+            dataStore: dataStore,
+            orchestrator: orchestrator,
+            settings: settings,
+            runBackfill: false,
+            runPostPersistence: false
+        )
+    }
+
+    private static func runLaneRefresh(
+        lane: UsageIngestionLane,
+        parsers: [AgentProvider: any OpenBurnBarCore.LogParser],
+        dataStore: DataStore,
+        orchestrator: RefreshOrchestrator,
+        settings: RefreshSettingsSnapshot,
+        runBackfill: Bool,
+        runPostPersistence: Bool
+    ) async throws -> FullRefreshResult {
         var result = FullRefreshResult(
             postPersistence: PostPersistenceResult()
         )
-
         let pipeline = UsageRefreshPipeline(
             parsers: parsers,
             dataStore: dataStore,
             orchestrator: orchestrator,
             settings: settings
         )
-
-        // discover → usage-only parse → publish usage → index conversations
-        //
-        // Conversation bodies are intentionally excluded here. The caller
-        // schedules the optional indexing pass after this result is applied so
-        // today's token usage is visible without waiting for historical text
-        // reconstruction.
-        //
-        // `includeConversationBodies: false` is a performance choice and must
-        // not be load-bearing for correctness: the ordering guarantee lives in
-        // `publishUsageThenIndexConversations`, which commits the parsed usage
-        // rows (and the invalidations that retire superseded ones) before any
-        // conversation indexing touches the store. Before this, the stages ran
-        // reconcile-then-persist, and the only thing keeping the indexer out of
-        // the pre-publication window was the `false` literal below.
-        //
-        // The governor bounds the pass: at most
-        // `ParserResourcePolicy.refreshFileByteBudget` bytes of new log
-        // content per tick (files past the budget keep cached values and
-        // retry next tick) and a hard process-footprint ceiling (2026-07-16
-        // incident: an ungoverned pass reached 25.4GB and swap-killed the
-        // machine).
         let discovery = pipeline.discover()
-        let governor = ParserResourcePolicy.makeRefreshGovernor()
         let parsed = try await pipeline.parse(
             from: discovery,
             includeConversationBodies: false,
-            resourceGovernor: governor
+            lane: lane
         )
-        result.parseConsumedByteCount = governor.consumedBytes
-        result.parseDeferredFileCount = governor.deferredFileCount
+        result.parseConsumedByteCount = parsed.consumedByteCount
+        result.parseDeferredFileCount = parsed.deferredFileCount
         let published = await pipeline.publishUsageThenIndexConversations(parsed: parsed)
         let persisted = published.persist
         let reconciled = published.reconcile
@@ -139,17 +176,15 @@ enum RefreshBackgroundWork {
             result.healthWriteError = "Failed to persist parser/import health: \(error.localizedDescription)"
         }
 
-        // ── Backfill ─────────────────────────────────────────────────
-        if result.persistenceErrorMessage == nil {
+        if runBackfill, result.persistenceErrorMessage == nil {
             await orchestrator.runScheduledBackfillIfNeeded(parsers: parsers)
         }
-
-        // ── Post-Persistence Phase (API reconcile + quota) ───────────
-        result.postPersistence = await orchestrator.runPostPersistencePhaseOffMain(
-            allUsages: parsed.allUsages,
-            snapshotAPIs: settings.snapshotAPIs
-        )
-
+        if runPostPersistence {
+            result.postPersistence = await orchestrator.runPostPersistencePhaseOffMain(
+                allUsages: parsed.allUsages,
+                snapshotAPIs: settings.snapshotAPIs
+            )
+        }
         return result
     }
 
@@ -210,9 +245,6 @@ enum RefreshBackgroundWork {
         let startedAt = Date()
         let parserEntries = parsers.sorted { $0.key.rawValue < $1.key.rawValue }
         let checkpointStore = dataStore.actor.checkpointStore
-        // One governor for the whole pass: the byte budget bounds the pass,
-        // not each provider.
-        let governor = ParserResourcePolicy.makeIndexingGovernor()
 
         for (provider, parser) in parserEntries {
             do {
@@ -250,7 +282,7 @@ enum RefreshBackgroundWork {
                     fileDiscoveryTracker = nil
                 }
 
-                let deferredFilesBeforeProvider = governor.deferredFileCount
+                let governor = ParserResourcePolicy.makeIndexingGovernor()
                 let parseResult = try await parser.parse(
                     options: OpenBurnBarCore.LogParseOptions(
                         includeConversationBodies: indexingEnabled,
@@ -259,7 +291,9 @@ enum RefreshBackgroundWork {
                         resourceGovernor: governor
                     )
                 )
-                let providerHadDeferrals = governor.deferredFileCount > deferredFilesBeforeProvider
+                let providerHadDeferrals = governor.deferredFileCount > 0
+                result.consumedByteCount += governor.consumedBytes
+                result.deferredFileCount += governor.deferredFileCount
                 result.parsedConversationCount += parseResult.conversations.count
 
                 // `parseResult.usages` and `parseResult.usageSessionIDsToDelete`
@@ -401,8 +435,6 @@ enum RefreshBackgroundWork {
                     AppLogger.parser.error("Checkpoint advance failed for \(provider.rawValue): \(error.localizedDescription)")
                 }
             } catch is CancellationError {
-                result.consumedByteCount = governor.consumedBytes
-                result.deferredFileCount = governor.deferredFileCount
                 return result
             } catch {
                 result.errors[provider] = error.localizedDescription
@@ -410,8 +442,6 @@ enum RefreshBackgroundWork {
         }
 
         result.duration = Date().timeIntervalSince(startedAt)
-        result.consumedByteCount = governor.consumedBytes
-        result.deferredFileCount = governor.deferredFileCount
 
         // P-PERF-2: visible cost logging — no silent truncation.
         // At steady state: parsed_count > 0, changed_count = 0,
@@ -452,13 +482,21 @@ enum RefreshBackgroundWork {
                 ? .empty
                 : .healthy(sessionCount: parseResult.usages.count)
 
-            if !parseResult.usageSessionIDsToDelete.isEmpty {
-                try await dataStore.deleteUsage(
-                    provider: provider,
-                    sessionIDs: parseResult.usageSessionIDsToDelete
-                )
+            let persistOutcome: Result<Void, Error> = await UsageIngestPersistGate.shared.withLock {
+                do {
+                    if !parseResult.usageSessionIDsToDelete.isEmpty {
+                        try await dataStore.deleteUsage(
+                            provider: provider,
+                            sessionIDs: parseResult.usageSessionIDsToDelete
+                        )
+                    }
+                    try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
+                    return .success(())
+                } catch {
+                    return .failure(error)
+                }
             }
-            try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
+            try persistOutcome.get()
         } catch {
             result.health = .failed(error: error.localizedDescription)
             result.error = "Provider refresh failed for \(provider.displayName): \(error.localizedDescription)"

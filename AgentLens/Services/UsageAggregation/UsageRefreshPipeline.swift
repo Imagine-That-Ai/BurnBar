@@ -47,6 +47,8 @@ struct UsageRefreshPipeline: Sendable {
         var allConversations: [OpenBurnBarCore.ConversationRecord] = []
         var usageSessionIDsToDeleteByProvider: [AgentProvider: Set<String>] = [:]
         var duration: TimeInterval = 0
+        var consumedByteCount: Int64 = 0
+        var deferredFileCount: Int = 0
     }
 
     struct ReconcileResult: Sendable {
@@ -79,55 +81,201 @@ struct UsageRefreshPipeline: Sendable {
     ///
     /// The normal refresh passes `false` so token usage can be persisted before
     /// the much more expensive optional conversation-indexing pass begins.
-    /// Indexing watermarks (`idx2:` / `minimumFileModificationDate` /
-    /// discovery tracker) cannot be supplied here — those skip old files
-    /// and would drop usage.
+    ///
+    /// `lane: .live` only reads files touched inside the live window and
+    /// publishes only those rows, so a 3GB Claude tail cannot delay Grok.
+    /// Providers run concurrently; one slow parser cannot block the others.
+    /// Indexing watermarks (`idx2:` / discovery tracker) are never forwarded
+    /// here — those skip old files and would drop historical usage.
     func parse(
         from discovery: DiscoverResult,
         includeConversationBodies: Bool? = nil,
-        resourceGovernor: OpenBurnBarCore.ParserResourceGovernor? = nil
+        minimumFileModificationDate: Date? = nil,
+        resourceGovernor: OpenBurnBarCore.ParserResourceGovernor? = nil,
+        lane: UsageIngestionLane = .catchUp
     ) async throws -> ParsedBatch {
         var result = ParsedBatch()
         let startedAt = Date()
         let includeConversationBodies = includeConversationBodies ?? settings.conversationIndexingEnabled
+        let liveCutoff = UsageIngestionPolicy.liveCutoff()
+        let effectiveMinimumDate = minimumFileModificationDate
+            ?? (lane == .live ? liveCutoff : nil)
+        let sharedGovernor = resourceGovernor
+        let perProviderBudget = sharedGovernor == nil
+            ? UsageIngestionPolicy.fileByteBudget(for: lane)
+            : ParserResourcePolicy.perProviderRefreshFileByteBudget(
+                providerCount: max(discovery.parserEntries.count, 1)
+            )
+        let maxConcurrency = max(1, UsageIngestionPolicy.concurrency(for: lane))
 
-        for (provider, parser) in discovery.parserEntries {
-            do {
-                let parseResult = try await parser.parse(
-                    options: OpenBurnBarCore.LogParseOptions.usageAccounting(
-                        includeConversationBodies: includeConversationBodies,
-                        resourceGovernor: resourceGovernor
-                    )
-                )
-                let usages = parseResult.usages
-                let providerHealth: ParserHealth = usages.isEmpty
-                    ? .empty
-                    : .healthy(sessionCount: usages.count)
-                result.allUsages.append(contentsOf: usages)
-                if !parseResult.usageSessionIDsToDelete.isEmpty {
-                    result.usageSessionIDsToDeleteByProvider[provider, default: []]
-                        .formUnion(parseResult.usageSessionIDsToDelete)
-                }
-                if includeConversationBodies {
-                    result.allConversations.append(contentsOf: parseResult.conversations)
-                }
-                result.parserHealth[provider] = providerHealth
-            } catch {
-                if error is CancellationError {
-                    throw error
-                }
-                let typed = OpenBurnBarError.parse(
-                    "provider_parse_failed",
-                    message: error.localizedDescription,
-                    underlying: error
-                )
-                result.parserHealth[provider] = .failed(error: typed.message)
-                result.errors[provider] = typed.message
+        let slices = try await parseProvidersInParallel(
+            discovery.parserEntries,
+            includeConversationBodies: includeConversationBodies,
+            minimumFileModificationDate: effectiveMinimumDate,
+            sharedGovernor: sharedGovernor,
+            perProviderBudget: perProviderBudget,
+            maxConcurrency: maxConcurrency,
+            lane: lane
+        )
+
+        for slice in slices {
+            result.consumedByteCount += slice.consumedByteCount
+            result.deferredFileCount += slice.deferredFileCount
+            if let error = slice.error {
+                result.parserHealth[slice.provider] = .failed(error: error)
+                result.errors[slice.provider] = error
+                continue
             }
+            var usages = slice.usages
+            if lane == .live {
+                usages = usages.filter { UsageIngestionPolicy.isLiveUsage($0, cutoff: liveCutoff) }
+            }
+            // Health reflects parser success, not the live-window persist set.
+            // A provider with only older sessions is healthy, not empty.
+            let providerHealth: ParserHealth = slice.usages.isEmpty
+                ? .empty
+                : .healthy(sessionCount: slice.usages.count)
+            result.allUsages.append(contentsOf: usages)
+            let deletes = lane == .live
+                ? UsageIngestionPolicy.deletesSafeForLivePublish(
+                    slice.deleteIDs,
+                    publishedSessionIDs: usages.map(\.sessionId)
+                )
+                : slice.deleteIDs
+            if !deletes.isEmpty {
+                result.usageSessionIDsToDeleteByProvider[slice.provider, default: []]
+                    .formUnion(deletes)
+            }
+            if includeConversationBodies {
+                result.allConversations.append(contentsOf: slice.conversations)
+            }
+            result.parserHealth[slice.provider] = providerHealth
         }
 
         result.duration = Date().timeIntervalSince(startedAt)
         return result
+    }
+
+    private struct ProviderParseSlice: Sendable {
+        let provider: AgentProvider
+        let usages: [TokenUsage]
+        let conversations: [OpenBurnBarCore.ConversationRecord]
+        let deleteIDs: Set<String>
+        let error: String?
+        let consumedByteCount: Int64
+        let deferredFileCount: Int
+    }
+
+    private func parseProvidersInParallel(
+        _ entries: [(AgentProvider, any OpenBurnBarCore.LogParser)],
+        includeConversationBodies: Bool,
+        minimumFileModificationDate: Date?,
+        sharedGovernor: OpenBurnBarCore.ParserResourceGovernor?,
+        perProviderBudget: Int64,
+        maxConcurrency: Int,
+        lane: UsageIngestionLane
+    ) async throws -> [ProviderParseSlice] {
+        if entries.isEmpty { return [] }
+        if entries.count == 1 || maxConcurrency == 1 {
+            var slices: [ProviderParseSlice] = []
+            slices.reserveCapacity(entries.count)
+            for entry in entries {
+                try Task.checkCancellation()
+                slices.append(
+                    try await parseOneProvider(
+                        entry,
+                        includeConversationBodies: includeConversationBodies,
+                        minimumFileModificationDate: minimumFileModificationDate,
+                        sharedGovernor: sharedGovernor,
+                        perProviderBudget: perProviderBudget,
+                        lane: lane
+                    )
+                )
+            }
+            return slices
+        }
+
+        return try await withThrowingTaskGroup(of: ProviderParseSlice.self) { group in
+            var iterator = entries.makeIterator()
+            var inFlight = 0
+            var slices: [ProviderParseSlice] = []
+            slices.reserveCapacity(entries.count)
+
+            func enqueueAvailable() {
+                while inFlight < maxConcurrency, let entry = iterator.next() {
+                    inFlight += 1
+                    group.addTask {
+                        try await parseOneProvider(
+                            entry,
+                            includeConversationBodies: includeConversationBodies,
+                            minimumFileModificationDate: minimumFileModificationDate,
+                            sharedGovernor: sharedGovernor,
+                            perProviderBudget: perProviderBudget,
+                            lane: lane
+                        )
+                    }
+                }
+            }
+
+            enqueueAvailable()
+            while let slice = try await group.next() {
+                slices.append(slice)
+                inFlight -= 1
+                enqueueAvailable()
+            }
+            return slices.sorted { $0.provider.rawValue < $1.provider.rawValue }
+        }
+    }
+
+    private func parseOneProvider(
+        _ entry: (AgentProvider, any OpenBurnBarCore.LogParser),
+        includeConversationBodies: Bool,
+        minimumFileModificationDate: Date?,
+        sharedGovernor: OpenBurnBarCore.ParserResourceGovernor?,
+        perProviderBudget: Int64,
+        lane: UsageIngestionLane
+    ) async throws -> ProviderParseSlice {
+        let (provider, parser) = entry
+        let governor = sharedGovernor ?? ParserResourcePolicy.makeGovernor(
+            fileByteBudget: perProviderBudget,
+            label: "usage_\(lane == .live ? "live" : "catchup").\(provider.persistedToken)"
+        )
+        do {
+            let parseResult = try await parser.parse(
+                options: OpenBurnBarCore.LogParseOptions(
+                    includeConversationBodies: includeConversationBodies,
+                    minimumFileModificationDate: minimumFileModificationDate,
+                    resourceGovernor: governor,
+                    includeCachedUnchangedUsages: lane != .live
+                )
+            )
+            return ProviderParseSlice(
+                provider: provider,
+                usages: parseResult.usages,
+                conversations: parseResult.conversations,
+                deleteIDs: Set(parseResult.usageSessionIDsToDelete),
+                error: nil,
+                consumedByteCount: sharedGovernor == nil ? governor.consumedBytes : 0,
+                deferredFileCount: sharedGovernor == nil ? governor.deferredFileCount : 0
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            let typed = OpenBurnBarError.parse(
+                "provider_parse_failed",
+                message: error.localizedDescription,
+                underlying: error
+            )
+            return ProviderParseSlice(
+                provider: provider,
+                usages: [],
+                conversations: [],
+                deleteIDs: [],
+                error: typed.message,
+                consumedByteCount: sharedGovernor == nil ? governor.consumedBytes : 0,
+                deferredFileCount: sharedGovernor == nil ? governor.deferredFileCount : 0
+            )
+        }
     }
 
     /// Commits the parsed usage batch, then indexes any conversation bodies it
@@ -154,12 +302,14 @@ struct UsageRefreshPipeline: Sendable {
     /// projection jobs that materialize incomplete totals, so reconciliation is
     /// skipped and the persistence error is surfaced via `PublishResult.persist`.
     func publishUsageThenIndexConversations(parsed: ParsedBatch) async -> PublishResult {
-        let persisted = await persist(parsed: parsed)
-        guard persisted.persistenceErrorMessage == nil else {
-            return PublishResult(persist: persisted, reconcile: ReconcileResult())
+        await UsageIngestPersistGate.shared.withLock {
+            let persisted = await persistExclusive(parsed: parsed)
+            guard persisted.persistenceErrorMessage == nil else {
+                return PublishResult(persist: persisted, reconcile: ReconcileResult())
+            }
+            let reconciled = await reconcile(parsed: parsed, afterPublishing: persisted)
+            return PublishResult(persist: persisted, reconcile: reconciled)
         }
-        let reconciled = await reconcile(parsed: parsed, afterPublishing: persisted)
-        return PublishResult(persist: persisted, reconcile: reconciled)
     }
 
     /// Indexes conversation bodies.
@@ -182,6 +332,13 @@ struct UsageRefreshPipeline: Sendable {
     }
 
     func persist(parsed: ParsedBatch) async -> PersistResult {
+        await UsageIngestPersistGate.shared.withLock {
+            await persistExclusive(parsed: parsed)
+        }
+    }
+
+    /// Caller must already hold `UsageIngestPersistGate`.
+    fileprivate func persistExclusive(parsed: ParsedBatch) async -> PersistResult {
         var result = PersistResult()
         let startedAt = Date()
 

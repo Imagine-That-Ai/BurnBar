@@ -18,6 +18,7 @@ public final class GrokParser: LogParser, Sendable {
     let logDirectoryOverride: String?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<GrokUpdatesCacheEntry>
+    private let sessionCacheStore: ParserDiskCacheStore<GrokSessionCacheEntry>
     private let updatesScanCount = Locked(0)
     private let updatesCacheHitCount = Locked(0)
 
@@ -40,6 +41,13 @@ public final class GrokParser: LogParser, Sendable {
             schemaVersion: 1,
             logLabel: "GrokParser"
         )
+        self.sessionCacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL.deletingLastPathComponent()
+                .appendingPathComponent(".obb-grok-session-cache.plist"),
+            fileManager: fileManager,
+            schemaVersion: 2,
+            logLabel: "GrokParserSession"
+        )
     }
 
     var lastUpdatesScanCount: Int { updatesScanCount.read() }
@@ -61,11 +69,17 @@ public final class GrokParser: LogParser, Sendable {
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
         var parseCache = cacheStore.load()
+        var sessionCache = sessionCacheStore.load()
         var activePaths = Set<String>()
         var cacheMutated = false
+        var sessionCacheMutated = false
+        var cachedExactUsageByDirectory: [URL: TokenBreakdown] = [:]
         defer {
             if cacheMutated {
                 cacheStore.persist(parseCache)
+            }
+            if sessionCacheMutated {
+                sessionCacheStore.persist(sessionCache)
             }
         }
 
@@ -83,6 +97,14 @@ public final class GrokParser: LogParser, Sendable {
             ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
             for sessionDir in sessionDirs {
+                if Self.sessionLooksIdle(
+                    sessionDir,
+                    cutoff: options.minimumFileModificationDate,
+                    fileManager: fileManager
+                ) {
+                    continue
+                }
+
                 var contentFiles = [
                     sessionDir.appendingPathComponent("summary.json"),
                     sessionDir.appendingPathComponent("signals.json"),
@@ -91,6 +113,7 @@ public final class GrokParser: LogParser, Sendable {
                 ].filter { fileManager.fileExists(atPath: $0.path) }
 
                 let metadataRoot = sessionDir.appendingPathComponent("subagents", isDirectory: true)
+                let isParent = fileManager.fileExists(atPath: metadataRoot.path)
                 if let metadataDirs = try? fileManager.contentsOfDirectory(
                     at: metadataRoot,
                     includingPropertiesForKeys: [.isDirectoryKey]
@@ -105,6 +128,24 @@ public final class GrokParser: LogParser, Sendable {
                     activePaths.insert(updatesURL.standardizedFileURL.path)
                 }
 
+                let cacheKey = sessionDir.standardizedFileURL.path
+                let signature = Self.sessionSignature(sessionDir: sessionDir, fileManager: fileManager)
+                // Parents are never cache-skipped: their totals depend on live
+                // child aggregates. Leaves skip content reads when the session
+                // signature is unchanged so catch-up can drain the rest of a
+                // multi-GB tree instead of rereading the same prefix.
+                if !isParent,
+                   !options.includeConversationBodies,
+                   let signature,
+                   let cached = sessionCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    cachedExactUsageByDirectory[sessionDir] = cached.breakdown
+                    if options.includeCachedUnchangedUsages, let usage = cached.usage {
+                        usages.append(usage)
+                    }
+                    continue
+                }
+
                 if try gate.shouldRead(contentFiles) {
                     sessions.append((sessionDir, projectName))
                 }
@@ -112,15 +153,18 @@ public final class GrokParser: LogParser, Sendable {
         }
 
         let sessionDirs = sessions.map(\.directory)
-        let exactUsageByDirectory = exactUsageByDirectory(
+        var exactUsageByDirectory = exactUsageByDirectory(
             in: sessionDirs,
             parseCache: &parseCache,
             activePaths: &activePaths,
             cacheMutated: &cacheMutated,
             metrics: options.metrics
         )
+        for (directory, breakdown) in cachedExactUsageByDirectory {
+            exactUsageByDirectory[directory] = breakdown
+        }
         let reconciledExactUsage = reconciledExactUsageByDirectory(
-            in: sessionDirs,
+            in: sessionDirs + Array(cachedExactUsageByDirectory.keys),
             exactUsageByDirectory: exactUsageByDirectory
         )
 
@@ -138,6 +182,27 @@ public final class GrokParser: LogParser, Sendable {
                 usages.append(usage)
                 if options.includeConversationBodies, let conversation = pair.conversation {
                     conversations.append(conversation)
+                }
+                let metadataRoot = session.directory.appendingPathComponent("subagents", isDirectory: true)
+                let isParent = fileManager.fileExists(atPath: metadataRoot.path)
+                if !isParent,
+                   let signature = Self.sessionSignature(
+                    sessionDir: session.directory,
+                    fileManager: fileManager
+                   ) {
+                    let breakdown = TokenBreakdown(
+                        inputTokens: usage.inputTokens,
+                        outputTokens: usage.outputTokens,
+                        cacheReadTokens: usage.cacheReadTokens,
+                        reasoningTokens: usage.reasoningTokens,
+                        isExact: true
+                    )
+                    sessionCache.fileEntries[session.directory.standardizedFileURL.path] = GrokSessionCacheEntry(
+                        signature: signature,
+                        usage: usage,
+                        breakdown: breakdown
+                    )
+                    sessionCacheMutated = true
                 }
             }
         }
@@ -384,6 +449,12 @@ public final class GrokParser: LogParser, Sendable {
 
     private struct GrokUpdatesCacheEntry: Codable, Equatable, Sendable {
         let signature: FileSignature
+        let breakdown: TokenBreakdown
+    }
+
+    private struct GrokSessionCacheEntry: Codable, Equatable, Sendable {
+        let signature: CompositeFileSignature<FileSignature>
+        let usage: TokenUsage?
         let breakdown: TokenBreakdown
     }
 
@@ -647,6 +718,59 @@ public final class GrokParser: LogParser, Sendable {
     }
 
     // MARK: - Helpers
+
+    /// Live ticks skip whole idle session directories after cheap stats
+    /// instead of opening `updates.jsonl` just to reject it.
+    static func sessionLooksIdle(
+        _ sessionDir: URL,
+        cutoff: Date?,
+        fileManager: FileManager
+    ) -> Bool {
+        guard let cutoff else { return false }
+        func mtime(_ file: String) -> Date? {
+            let path = sessionDir.appendingPathComponent(file).path
+            return (try? fileManager.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        }
+        let newest = [
+            mtime("updates.jsonl"),
+            mtime("summary.json"),
+            mtime("signals.json"),
+            mtime("chat_history.jsonl")
+        ]
+            .compactMap { $0 }
+            .max()
+        guard let newest else { return false }
+        return newest < cutoff
+    }
+
+    static func sessionSignature(
+        sessionDir: URL,
+        fileManager: FileManager = .default
+    ) -> CompositeFileSignature<FileSignature>? {
+        let updates = FileSignature(
+            for: sessionDir.appendingPathComponent("updates.jsonl"),
+            using: fileManager
+        )
+        let summary = FileSignature(
+            for: sessionDir.appendingPathComponent("summary.json"),
+            using: fileManager
+        )
+        let signals = FileSignature(
+            for: sessionDir.appendingPathComponent("signals.json"),
+            using: fileManager
+        )
+        let chatHistory = FileSignature(
+            for: sessionDir.appendingPathComponent("chat_history.jsonl"),
+            using: fileManager
+        )
+        guard let primary = updates ?? summary else { return nil }
+        return CompositeFileSignature(
+            primary: primary,
+            settings: summary,
+            metadata: signals,
+            transcript: chatHistory
+        )
+    }
 
     private func decodedWorkspaceName(from encoded: String) -> String {
         encoded.removingPercentEncoding?

@@ -222,27 +222,26 @@ public final class ClaudeCodeParser: LogParser, Sendable {
         if options.minimumFileModificationDate != nil, signature == nil {
             governor?.recordDeferredFile()
             options.metrics?.recordDeferred(.metadataUnavailable)
-            if let usage = cached?.usage { usages.append(usage) }
+            emitCachedUsage(cached?.usage, options: options, into: &usages)
             return
         }
 
         // Historical files below the indexing boundary are never content-read;
-        // cached usage rows still surface.
+        // cached usage rows still surface unless the live lane opted out.
         if !isNewlyDiscovered,
            shouldDeferHistoricalFile(
                signature: signature,
                minimumFileModificationDate: options.minimumFileModificationDate
            ) {
-            if let signature, let cached, cached.signature == signature,
-               let usage = cached.usage {
-                usages.append(usage)
+            if let signature, let cached, cached.signature == signature {
+                emitCachedUsage(cached.usage, options: options, into: &usages)
             }
             return
         }
 
         let isUnchanged = !isNewlyDiscovered && signature != nil && cached?.signature == signature
         if isUnchanged, !includeConversation || options.fileDiscoveryTracker != nil {
-            if let usage = cached?.usage { usages.append(usage) }
+            emitCachedUsage(cached?.usage, options: options, into: &usages)
             return
         }
 
@@ -256,7 +255,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
 
         guard governor?.admitFile(estimatedBytes: estimatedNewBytes) ?? true else {
             options.metrics?.recordDeferred(.byteBudget)
-            if let usage = cached?.usage { usages.append(usage) }
+            emitCachedUsage(cached?.usage, options: options, into: &usages)
             return
         }
         options.fileDiscoveryTracker?.recordAdmitted(discoveredFile)
@@ -273,7 +272,7 @@ public final class ClaudeCodeParser: LogParser, Sendable {
             governor?.recordDeferredFile()
             options.fileDiscoveryTracker?.recordDeferred(discoveredFile)
             options.metrics?.recordDeferred(.contentReadFailed)
-            if let usage = cached?.usage { usages.append(usage) }
+            emitCachedUsage(cached?.usage, options: options, into: &usages)
             return
         }
 
@@ -575,6 +574,15 @@ public final class ClaudeCodeParser: LogParser, Sendable {
 
     private func cachePath(for file: URL) -> String {
         file.standardizedFileURL.path
+    }
+
+    private func emitCachedUsage(
+        _ usage: TokenUsage?,
+        options: LogParseOptions,
+        into usages: inout [TokenUsage]
+    ) {
+        guard options.includeCachedUnchangedUsages, let usage else { return }
+        usages.append(usage)
     }
 
     private func shouldDeferHistoricalFile(
