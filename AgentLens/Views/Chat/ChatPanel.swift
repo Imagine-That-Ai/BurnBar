@@ -708,6 +708,8 @@ struct ChatPanel: View {
                             .foregroundStyle(DesignSystem.Colors.primaryGradient)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Send")
+                    .accessibilityIdentifier("chatSendButton")
                     .disabled(controller.isStreaming || controller.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
