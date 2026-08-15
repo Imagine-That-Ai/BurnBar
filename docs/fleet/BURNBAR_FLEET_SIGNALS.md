@@ -56,8 +56,8 @@ BurnBarDaemon dependency — no new deps) and atomically writes the well-known
 |---|---|---|
 | `fleet_snapshots` | `id` PK, `generated_at` REAL, `payload` TEXT | Latest completed snapshot JSON, persisted VERBATIM (the payload is the exact JSON of the served snapshot — its `cadenceSeconds` is already the configured cadence, never re-stamped). Pruned to the latest 240 rows (≈1h at the default 15s cadence). |
 | `fleet_events` | `id` PK, `at` REAL, `agent` TEXT, `kind` TEXT, `from_status` TEXT, `to_status` TEXT, `detail` TEXT | Fixed-roster transition events. `status_changed` is ALWAYS recorded for a status change; `confidence_changed` is recorded when confidence changes — both with exact agent/from/to values. Pruned to exactly 24h by default; `BURNBAR_FLEET_EVENT_RETENTION_SECONDS` overrides the window. |
-| `orchestrator_state` | `id` PK CHECK (id = 1), `payload` TEXT | Schema only in M1; behavior lands in M4. |
-| `fleet_directives` | `id` PK, `directive_id` TEXT UNIQUE, `payload` TEXT, `created_at` REAL | Schema only in M1; behavior lands in M4. |
+| `orchestrator_state` | `id` PK CHECK (id = 1), `payload` TEXT | M4: the daemon-owned designation (single row; overwrite semantics). |
+| `fleet_directives` | `id` PK, `directive_id` TEXT UNIQUE, `payload` TEXT, `created_at` REAL | M4: the directive history (upsert keyed by `directive_id`). |
 
 **Model declaration: fixed-roster rows.** The ten declared agents are never
 removed from snapshots; status/confidence transitions carry exact
@@ -224,8 +224,9 @@ client-supplied id.
 type names, byte counts, method names, and version numbers. Internal-error
 envelopes (`-32603`) carry `details` naming the failing surface (e.g.
 `state=not_ready; retry_after=first_tick` for pre-first-tick fleet reads,
-`method=<name>; implemented_in=M4` for the M4 placeholder methods, or
-`error=<error description>` for daemon-side failures).
+`method=<name>; reason=<typed reason>` for M4 orchestrator/directive
+validation rejections, or `error=<error description>` for daemon-side
+failures).
 
 **Parse-vs-classify boundary.** The parse-error class is reserved for bytes
 that are not syntactically valid JSON at all. Top-level JSON fragments
@@ -248,6 +249,84 @@ instead of a silent close.
 
 **Pre-first-tick reads** return the typed `-32603` not-ready error (see
 "Snapshot builder behavior") — never a fabricated snapshot.
+
+---
+
+## Orchestrator designation + directive records (M4, implemented)
+
+The daemon is the control plane for orchestrator designation and directive
+records. `daemon.fleet.orchestrator.get/set` and
+`daemon.fleet.directive.record` are real handlers (M4); they persist into the
+daemon-owned `fleet.sqlite` (`orchestrator_state` single row + `fleet_directives`
+rows). There is NO directive-list RPC by design — directive records are read
+via read-only `sqlite3` inspection of `fleet_directives`. The snapshot's
+`orchestrator` block and the well-known file (which is the snapshot payload)
+always embed the live designation + `pendingDirectives` count from the same
+control store that serves `orchestrator.get` (VAL-ORCH-038).
+
+### Designation semantics (daemon-owned)
+
+- **Fresh-daemon default:** designation `none`, `setAt` null, pending 0
+  (VAL-RPC-008).
+- **Set:** `daemon.fleet.orchestrator.set` with designation `burnBarManaged`
+  or `agent(<fleetAgentID>[, sessionRef])` persists; the response is the
+  updated state and a subsequent `get` round-trips it (VAL-ORCH-001/002).
+  Every accepted set stamps the daemon-owned `setAt = now` (a client-supplied
+  `setAt` is ignored).
+- **Clear:** setting `none` clears an existing designation; `get` returns
+  `none` with the clear-time `setAt` (VAL-ORCH-003). **Clearing when none is
+  set is a typed success no-op:** no phantom `setAt` is stamped and no state
+  row is created (VAL-ORCH-018).
+- **Overwrite semantics:** setting while set replaces the designation and
+  advances `setAt`; exactly ONE `orchestrator_state` row ever exists
+  (`id = 1`, `SELECT COUNT(*)` is always 1 after the first accepted set;
+  VAL-ORCH-017).
+- **Declared non-running agent (ORCH-019, outcome A):** designating any
+  *declared roster* agent is ACCEPTED even when that agent is not running.
+  Designation is control-plane intent, not a liveness claim: the snapshot
+  reports the agent's real status independently (a designated non-running
+  agent appears as `designated` with its honest non-running row; the app's
+  board renders the "designated but not detected" badge). Only agent ids
+  OUTSIDE the declared ten-ID roster are rejected.
+- **Serialized single-state integrity (ORCH-020):** the control store is the
+  single writer of control state. Concurrent sets serialize; each accepted
+  payload is stored whole (never torn or merged); the final state equals
+  exactly one accepted payload; exactly one state row exists; and that state
+  survives restart.
+- **Restart persistence (VAL-ORCH-004):** the designation (kind + agent id +
+  sessionRef) survives daemon restarts against the same support dir.
+- **Snapshot reads never mutate control state (VAL-CROSS-009):**
+  `daemon.fleet.snapshot` and `orchestrator.get` are read-only — they never
+  change the designation, directive states, or `pendingDirectives`.
+
+### `pendingDirectives` definition (ORCH-038, documented)
+
+`pendingDirectives` is the count of directive records in the **non-terminal
+states `proposed` or `approved`**. Terminal records (`dismissed`,
+`delivered`, `failed(reason)`) never count. The same definition drives
+`orchestrator.get`, the snapshot's `orchestrator.pendingDirectives`, and the
+well-known file (which is the snapshot payload).
+
+### `directive.record` (VAL-RPC-015 / ORCH-029)
+
+`daemon.fleet.directive.record` accepts a `BurnBarFleetDirective` and returns
+one versioned response envelope whose `result.directive` is the exact
+persisted record; read-only `fleet_directives` inspection shows exactly that
+single record. **Idempotency rule:** re-recording an existing `directive_id`
+updates the record in place (upsert) — a retry never creates a duplicate row,
+and the response always describes the single persisted record.
+
+**Payload validation (the canonical home of ORCH-029):** a directive with an
+unknown `kind`, an empty id, an empty (whitespace-only) payload, or a
+`targetAgent` outside the declared ten-ID roster is rejected with a typed
+`-32603` error and NO record is created (history unchanged). Validation
+failures never persist partial records.
+
+**Terminal outcomes survive restart (ORCH-039):** `delivered` and
+`failed(reason)` records (with their reasons, delivery channels, and decision
+timestamps) are persisted and survive daemon restarts; a restart never
+replays a delivered directive and never loses a terminal failure reason.
+Terminal records never count as pending after restart.
 
 ---
 

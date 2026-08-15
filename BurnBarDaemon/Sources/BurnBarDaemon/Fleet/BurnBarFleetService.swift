@@ -28,25 +28,41 @@ public actor BurnBarFleetService {
     /// served snapshot carries the post-persist `persistenceHealth`.
     public let persister: BurnBarFleetPersister?
 
+    /// M4 daemon-owned orchestrator state + directive store. Optional so
+    /// tests can run the service without control state; the daemon always
+    /// wires one. Every completed build embeds the live designation and
+    /// `pendingDirectives` count into the snapshot's `orchestrator` block —
+    /// the snapshot, `orchestrator.get`, and the well-known file (which is
+    /// the snapshot payload) all derive from this single source.
+    public let controlStore: BurnBarFleetControlStore?
+
     public var cadenceSeconds: Int { builder.cadenceSeconds }
 
     private var latestSnapshot: BurnBarFleetSnapshot?
     private var tickTask: Task<Void, Never>?
     private var isRunning = false
 
-    public init(builder: BurnBarFleetSnapshotBuilder, persister: BurnBarFleetPersister? = nil) {
+    public init(
+        builder: BurnBarFleetSnapshotBuilder,
+        persister: BurnBarFleetPersister? = nil,
+        controlStore: BurnBarFleetControlStore? = nil
+    ) {
         self.builder = builder
         self.persister = persister
+        self.controlStore = controlStore
     }
 
     /// Starts the cadence ticker. The first tick runs immediately; subsequent
     /// ticks wait `cadenceSeconds` between builds. Idempotent.
-    public func start() {
+    public func start() async {
         guard !isRunning else { return }
         isRunning = true
         // Seed the transition baseline from the store so events after a
         // daemon restart compare against the last persisted snapshot.
         persister?.loadLastPersistedSnapshot()
+        // Load the persisted designation/directive history so a restarted
+        // daemon serves the prior designation from the first read.
+        await controlStore?.loadPersistedState()
         tickTask = Task { [weak self] in
             await self?.runTicker()
         }
@@ -69,12 +85,46 @@ public actor BurnBarFleetService {
         return .notReady
     }
 
+    // MARK: - Orchestrator control state (M4)
+
+    /// The live orchestrator state (designation + pendingDirectives) served
+    /// by `daemon.fleet.orchestrator.get`. Read-only — never mutates control
+    /// state (VAL-CROSS-009).
+    public func orchestratorState() async -> BurnBarOrchestratorState {
+        await controlStore?.currentState() ?? BurnBarOrchestratorState(designation: .none)
+    }
+
+    /// Sets the orchestrator designation with the documented overwrite and
+    /// idempotent-clear semantics. Throws typed validation errors for invalid
+    /// payloads (VAL-RPC-009). Serialized by the control store actor — the
+    /// single writer of control state (ORCH-020).
+    public func setOrchestratorState(_ state: BurnBarOrchestratorState) async throws -> BurnBarOrchestratorState {
+        guard let controlStore else {
+            throw BurnBarFleetControlError.storeUnavailable("control store is not wired")
+        }
+        return try await controlStore.setOrchestratorState(state)
+    }
+
+    /// Records an approved directive (idempotent upsert by directive id;
+    /// ORCH-029 validation). Serialized by the control store actor.
+    public func recordDirective(_ directive: BurnBarFleetDirective) async throws -> BurnBarFleetDirective {
+        guard let controlStore else {
+            throw BurnBarFleetControlError.storeUnavailable("control store is not wired")
+        }
+        return try await controlStore.recordDirective(directive)
+    }
+
     /// Builds one snapshot immediately (used by the ticker and by tests).
+    /// The live orchestrator state (designation + pendingDirectives) is
+    /// embedded from the control store (or the default `none` state).
     /// When a persister is wired, the snapshot is persisted and the returned
     /// snapshot carries the post-persist `persistenceHealth`.
     @discardableResult
     public func buildOnce() async throws -> BurnBarFleetSnapshot {
+        let orchestratorState = await controlStore?.currentState()
+            ?? BurnBarOrchestratorState(designation: .none)
         let snapshot = try await builder.build(
+            orchestrator: orchestratorState,
             persistenceHealth: persister?.persistenceHealth() ?? .ok
         )
         if let persister {

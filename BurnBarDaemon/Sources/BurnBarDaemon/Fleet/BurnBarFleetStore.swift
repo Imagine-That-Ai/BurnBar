@@ -394,14 +394,83 @@ public final class BurnBarFleetStore {
         }
     }
 
-    // MARK: - Orchestrator / directives (schema only until M4)
+    // MARK: - Orchestrator state (M4)
 
-    /// M4 lands orchestrator/directive behavior. This method exists so the
-    /// schema-only tables are exercised (open + round-trip) without behavior.
+    /// True once the store has been opened (migrated). The control store uses
+    /// this to distinguish "not open yet" (retry on next access) from an
+    /// open store with no persisted state.
+    public var isOpen: Bool {
+        queue != nil
+    }
+
+    /// The persisted orchestrator-state payload (the JSON of the last
+    /// `BurnBarOrchestratorState` written), or nil when no state row exists.
+    /// The single-row contract (`id = 1`) means at most one row can exist.
+    public func orchestratorStatePayload() throws -> String? {
+        guard let queue else { return nil }
+        return try queue.read { db in
+            try String.fetchOne(db, sql: "SELECT payload FROM orchestrator_state WHERE id = 1")
+        }
+    }
+
+    /// Upserts the orchestrator-state row (`id = 1`, single row contract).
+    /// Replaces any prior state — the designation overwrite semantics (M4,
+    /// ORCH-017) live in the control store, which calls this per accepted set.
+    public func setOrchestratorState(payload: String) throws {
+        guard let queue else { throw BurnBarFleetPersistenceError.storeNotOpen }
+        try queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO orchestrator_state (id, payload) VALUES (1, ?) "
+                    + "ON CONFLICT(id) DO UPDATE SET payload = excluded.payload",
+                arguments: [payload]
+            )
+        }
+    }
+
     public func orchestratorStateRowCount() throws -> Int {
         guard let queue else { return 0 }
         return try queue.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM orchestrator_state") ?? 0
+        }
+    }
+
+    // MARK: - Directive records (M4)
+
+    /// All directive records, oldest first. There is NO directive-list RPC by
+    /// design: validators read `fleet_directives` with read-only sqlite3.
+    public func directiveRecords() throws -> [BurnBarFleetDirective] {
+        guard let queue else { return [] }
+        return try queue.read { db in
+            let payloads = try String.fetchAll(
+                db,
+                sql: "SELECT payload FROM fleet_directives ORDER BY id ASC"
+            )
+            return try payloads.map { payload in
+                guard let data = payload.data(using: .utf8) else {
+                    throw BurnBarFleetPersistenceError.payloadDecodingFailed
+                }
+                return try JSONDecoder().decode(BurnBarFleetDirective.self, from: data)
+            }
+        }
+    }
+
+    /// Upserts one directive record keyed by `directive_id` (UNIQUE). The M4
+    /// idempotency rule: re-recording an existing id updates the record in
+    /// place — a retry never creates a duplicate row.
+    public func upsertDirective(_ directive: BurnBarFleetDirective) throws {
+        guard let queue else { throw BurnBarFleetPersistenceError.storeNotOpen }
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(directive)
+        guard let payload = String(data: data, encoding: .utf8) else {
+            throw BurnBarFleetPersistenceError.payloadEncodingFailed
+        }
+        try queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO fleet_directives (directive_id, payload, created_at) VALUES (?, ?, ?) "
+                    + "ON CONFLICT(directive_id) DO UPDATE SET payload = excluded.payload, "
+                    + "created_at = excluded.created_at",
+                arguments: [directive.id, payload, directive.createdAt.timeIntervalSince1970]
+            )
         }
     }
 

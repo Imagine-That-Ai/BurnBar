@@ -59,7 +59,7 @@ public actor BurnBarDaemonServer {
     private let clientRegistry: BurnBarClientRegistry
     private let runService: BurnBarRunService
     private let indexedSearch: BurnBarIndexedSearchService?
-    private let fleetService: BurnBarFleetService
+    let fleetService: BurnBarFleetService
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
 
@@ -590,50 +590,24 @@ extension BurnBarDaemonServer {
         case .fleetSnapshot:
             return try await handleFleetSnapshot(requestData: requestData, decoder: decoder)
         case .fleetOrchestratorGet:
-            // M0 placeholder: orchestrator/directive handlers land in M4.
-            // Until then every call returns this documented typed error;
-            // the daemon keeps serving. A present-but-wrong-typed params
-            // payload is still rejected typed (-32602, VAL-RPC-011) rather
-            // than silently accepted.
-            try Self.validatePlaceholderParams(
-                requestData: requestData,
-                decoder: decoder,
-                paramsType: BurnBarFleetOrchestratorGetRequest.self
-            )
-            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
-                id: request.id,
-                code: BurnBarRPCErrorCode.internalError,
-                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented.",
-                details: "method=\(method.rawValue); implemented_in=M4"
-            )
+            // M4 handlers live in BurnBarDaemonServer+FleetControl.swift.
+            return try await handleFleetOrchestratorGet(requestData: requestData, decoder: decoder)
         case .fleetOrchestratorSet:
-            try Self.validatePlaceholderParams(
+            return try await handleFleetOrchestratorSet(
                 requestData: requestData,
                 decoder: decoder,
-                paramsType: BurnBarFleetOrchestratorSetRequest.self
-            )
-            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
-                id: request.id,
-                code: BurnBarRPCErrorCode.internalError,
-                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented.",
-                details: "method=\(method.rawValue); implemented_in=M4"
+                method: method.rawValue
             )
         case .fleetDirectiveRecord:
-            try Self.validatePlaceholderParams(
+            return try await handleFleetDirectiveRecord(
                 requestData: requestData,
                 decoder: decoder,
-                paramsType: BurnBarFleetDirectiveRecordRequest.self
-            )
-            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
-                id: request.id,
-                code: BurnBarRPCErrorCode.internalError,
-                message: "BurnBar RPC method '\(method.rawValue)' is not yet implemented.",
-                details: "method=\(method.rawValue); implemented_in=M4"
+                method: method.rawValue
             )
         }
     }
 
-    private func encode<Result: Codable & Sendable>(_ envelope: BurnBarRPCResponseEnvelope<Result>) -> Data {
+    func encode<Result: Codable & Sendable>(_ envelope: BurnBarRPCResponseEnvelope<Result>) -> Data {
         do {
             let encoder = JSONEncoder()
             return try encoder.encode(envelope)
@@ -960,13 +934,26 @@ extension BurnBarDaemonServer {
         }
     }
 
-    /// M4-placeholder params validation: a request with NO `params` key is
-    /// accepted (the placeholder typed error is returned); a request whose
-    /// `params` is present but fails to decode as the method's typed params
-    /// throws, which the caller maps to the typed invalid-params error
-    /// (-32602, VAL-RPC-011) — a wrong-typed params payload is never silently
-    /// accepted.
-    private static func validatePlaceholderParams<Params: Codable & Sendable>(
+    /// Encodes a typed `-32603` validation error for orchestrator-set and
+    /// directive-record rejections. The message names the failing surface and
+    /// the reason; `details` carries the method and the typed reason — never
+    /// payload content. A rejected mutation leaves the stored state and the
+    /// directive history unchanged (VAL-RPC-009 / ORCH-029).
+    private static func controlValidationError(id: String, error: Error, method: String) -> Data {
+        BurnBarRPCErrorEnvelope.encodeErrorResponse(
+            id: id,
+            code: BurnBarRPCErrorCode.internalError,
+            message: "BurnBar RPC method '\(method)' rejected the payload: \(error.localizedDescription)",
+            details: "method=\(method); reason=\(error.localizedDescription)"
+        )
+    }
+
+    /// Optional-params validation for methods whose params are optional (a
+    /// request with NO `params` key is accepted); a request whose `params` is
+    /// present but fails to decode as the method's typed params throws, which
+    /// the caller maps to the typed invalid-params error (-32602, VAL-RPC-011)
+    /// — a wrong-typed params payload is never silently accepted.
+    private static func validateOptionalParams<Params: Codable & Sendable>(
         requestData: Data,
         decoder: JSONDecoder,
         paramsType: Params.Type

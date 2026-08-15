@@ -31,7 +31,10 @@ public enum BurnBarFleetServiceFactory {
         )
         let fileWriter = BurnBarFleetFileWriter(fileURL: URL(fileURLWithPath: configuration.fleetSnapshotFilePath))
         let persister = BurnBarFleetPersister(store: store, fileWriter: fileWriter)
+        // M4: the daemon-owned orchestrator state + directive records live in
+        // the same fleet.sqlite store (orchestrator_state + fleet_directives).
+        let controlStore = BurnBarFleetControlStore(store: store)
 
-        return BurnBarFleetService(builder: builder, persister: persister)
+        return BurnBarFleetService(builder: builder, persister: persister, controlStore: controlStore)
     }
 }

@@ -2,6 +2,7 @@ import BurnBarCore
 @testable import BurnBarDaemon
 import Darwin
 import Foundation
+import GRDB
 import XCTest
 
 /// Shared fixtures + socket helpers for the RPC transport/error-matrix tests
@@ -276,5 +277,277 @@ class BurnBarFleetRPCTestCase: XCTestCase {
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         throw XCTSkip("snapshot never became ready within \(timeout)s")
+    }
+}
+
+/// Shared fixtures for the M4 orchestrator/directive RPC tests (VAL-RPC-008/009/
+/// 015, VAL-ORCH-001..004/015/017/018/019/020/029, VAL-ORCH-038/039,
+/// VAL-CROSS-009): hermetic daemon servers with a wired control store, a
+/// deterministic non-running probe set, and read-only sqlite3 inspection of
+/// the daemon-owned store.
+class BurnBarFleetOrchestratorRPCTestCase: XCTestCase {
+    private(set) var tempRoots: URL!
+
+    override func setUpWithError() throws {
+        tempRoots = FileManager.default.temporaryDirectory
+            .appendingPathComponent("burnbar-orch-rpc-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempRoots, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        if let tempRoots {
+            try? FileManager.default.removeItem(at: tempRoots)
+        }
+    }
+
+    /// A stub probe returning a fixed non-running row (deterministic snapshot
+    /// content; the exact statuses do not matter for control-state tests).
+    struct FixedProbe: BurnBarFleetProbe {
+        let agentID: BurnBarFleetAgentID
+        let rootPath: String
+
+        func probe(now: Date) async -> BurnBarFleetProbeResult {
+            BurnBarFleetProbeResult(
+                agent: BurnBarFleetAgent(
+                    id: agentID,
+                    displayName: BurnBarFleetSnapshotBuilder.displayName(for: agentID),
+                    status: .unknown,
+                    confidence: .unsupported
+                ),
+                health: BurnBarFleetProbeHealth(
+                    agent: agentID,
+                    state: .ok,
+                    rootPath: rootPath,
+                    checkedAt: now
+                )
+            )
+        }
+    }
+
+    func makeProbes() -> [BurnBarFleetAgentID: any BurnBarFleetProbe] {
+        var probes: [BurnBarFleetAgentID: any BurnBarFleetProbe] = [:]
+        for agentID in BurnBarFleetAgentID.declaredRoster {
+            let rootPath = tempRoots
+                .appendingPathComponent(BurnBarFleetRootResolver.rootDirectoryName(for: agentID), isDirectory: true)
+                .path
+            probes[agentID] = FixedProbe(agentID: agentID, rootPath: rootPath)
+        }
+        return probes
+    }
+
+    func makeConfiguration(name: String) -> BurnBarDaemonConfiguration {
+        let fleetDir = tempRoots.appendingPathComponent("fleet-\(name)-\(UUID().uuidString)", isDirectory: true)
+        return BurnBarDaemonConfiguration(
+            socketPath: makeSocketPath(name: name),
+            fleetStorePath: fleetDir.appendingPathComponent("fleet.sqlite").path,
+            fleetSnapshotFilePath: fleetDir.appendingPathComponent("fleet-snapshot.json").path
+        )
+    }
+
+    func makeSocketPath(name: String) -> String {
+        "/tmp/burnbar-orch-rpc-\(name)-\(UUID().uuidString).sock"
+    }
+
+    func makeDirective(
+        id: String = "dir-1",
+        kind: BurnBarFleetDirectiveKind = .summarize,
+        targetAgent: BurnBarFleetAgentID? = .claudeCode,
+        payload: String = "Summarize current work",
+        state: BurnBarFleetDirectiveState = .approved,
+        createdAt: Date = Date(timeIntervalSince1970: 1_752_000_000),
+        decidedAt: Date? = Date(timeIntervalSince1970: 1_752_000_100),
+        deliveryChannel: String? = nil
+    ) -> BurnBarFleetDirective {
+        BurnBarFleetDirective(
+            id: id,
+            kind: kind,
+            targetAgent: targetAgent,
+            payload: payload,
+            state: state,
+            createdAt: createdAt,
+            decidedAt: decidedAt,
+            deliveryChannel: deliveryChannel
+        )
+    }
+
+    /// Builds a fleet service wired exactly like the daemon factory: real
+    /// persister + control store on the configuration's fleet.sqlite, with an
+    /// injectable cadence for fast tick tests.
+    func makeFleetService(
+        configuration: BurnBarDaemonConfiguration,
+        cadenceSeconds: Int = 15
+    ) -> BurnBarFleetService {
+        let builder = BurnBarFleetSnapshotBuilder(cadenceSeconds: cadenceSeconds, probes: makeProbes())
+        let store = BurnBarFleetStore(
+            databasePath: configuration.fleetStorePath,
+            eventRetentionSeconds: 3600,
+            snapshotRetentionCount: 5
+        )
+        let writer = BurnBarFleetFileWriter(fileURL: URL(fileURLWithPath: configuration.fleetSnapshotFilePath))
+        let persister = BurnBarFleetPersister(store: store, fileWriter: writer)
+        let controlStore = BurnBarFleetControlStore(store: store)
+        return BurnBarFleetService(builder: builder, persister: persister, controlStore: controlStore)
+    }
+
+    /// Starts a server with a wired control store (persistent) and returns
+    /// the server plus its configuration.
+    func makeServer(
+        name: String,
+        cadenceSeconds: Int = 15
+    ) async throws -> (server: BurnBarDaemonServer, configuration: BurnBarDaemonConfiguration) {
+        let configuration = makeConfiguration(name: name)
+        let fleetService = makeFleetService(configuration: configuration, cadenceSeconds: cadenceSeconds)
+        let server = BurnBarDaemonServer(configuration: configuration, fleetService: fleetService)
+        try await server.start()
+        return (server, configuration)
+    }
+
+    /// Opens the hermetic fleet.sqlite READ-ONLY (the documented directive
+    /// read surface — no list RPC exists by design) and returns the directive
+    /// rows plus the orchestrator-state payload.
+    func readStoreRows(
+        databasePath: String
+    ) throws -> (directives: [BurnBarFleetDirective], state: String?) {
+        let queue = try DatabaseQueue(path: databasePath, configuration: {
+            var config = Configuration()
+            config.readonly = true
+            return config
+        }())
+        defer { try? queue.close() }
+        let payloads = try queue.read { db in
+            try String.fetchAll(db, sql: "SELECT payload FROM fleet_directives ORDER BY id ASC")
+        }
+        let directives = try payloads.map { payload -> BurnBarFleetDirective in
+            try JSONDecoder().decode(BurnBarFleetDirective.self, from: Data(payload.utf8))
+        }
+        let state = try queue.read { db in
+            try String.fetchOne(db, sql: "SELECT payload FROM orchestrator_state WHERE id = 1")
+        }
+        return (directives, state)
+    }
+
+    /// The orchestrator_state row count (read-only).
+    func orchestratorStateRowCount(databasePath: String) throws -> Int {
+        let queue = try DatabaseQueue(path: databasePath, configuration: {
+            var config = Configuration()
+            config.readonly = true
+            return config
+        }())
+        defer { try? queue.close() }
+        return try queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM orchestrator_state") ?? -1
+        }
+    }
+
+    // MARK: - Socket helpers
+
+    /// Sends one typed envelope and returns the decoded response envelope.
+    func sendEnvelope<Envelope: Encodable, Response: Decodable>(
+        _ envelope: Envelope,
+        socketPath: String
+    ) throws -> BurnBarRPCResponseEnvelope<Response> {
+        let fileDescriptor = try connectSocket(socketPath: socketPath)
+        defer { close(fileDescriptor) }
+
+        let encoder = JSONEncoder()
+        let payload = try encoder.encode(envelope) + Data([0x0A])
+        payload.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            var bytesRemaining = rawBuffer.count
+            var offset = 0
+            while bytesRemaining > 0 {
+                let pointer = baseAddress.advanced(by: offset)
+                let bytesWritten = write(fileDescriptor, pointer, bytesRemaining)
+                XCTAssertGreaterThan(bytesWritten, 0)
+                bytesRemaining -= bytesWritten
+                offset += bytesWritten
+            }
+        }
+
+        let response = try readResponse(from: fileDescriptor)
+        return try JSONDecoder().decode(BurnBarRPCResponseEnvelope<Response>.self, from: response)
+    }
+
+    /// Sends one raw request line and returns the raw response line.
+    func rawRequest(_ payload: String, socketPath: String) throws -> String {
+        let fileDescriptor = try connectSocket(socketPath: socketPath)
+        defer { close(fileDescriptor) }
+
+        let data = Data(payload.utf8) + Data([0x0A])
+        data.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            _ = write(fileDescriptor, baseAddress, rawBuffer.count)
+        }
+        let response = try readResponse(from: fileDescriptor)
+        return String(decoding: response, as: UTF8.self)
+    }
+
+    func connectSocket(socketPath: String) throws -> Int32 {
+        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        XCTAssertNotEqual(fileDescriptor, -1)
+
+        var noSigPipe: Int32 = 1
+        setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_NOSIGPIPE,
+            &noSigPipe,
+            socklen_t(MemoryLayout<Int32>.size)
+        )
+
+        var address = try socketAddress(for: socketPath)
+        let connectResult = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
+                Darwin.connect(fileDescriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
+            }
+        }
+        guard connectResult == 0 else {
+            let code = errno
+            close(fileDescriptor)
+            throw POSIXError(.init(rawValue: code) ?? .EIO)
+        }
+        return fileDescriptor
+    }
+
+    func socketAddress(for socketPath: String) throws -> sockaddr_un {
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+
+        let pathBytes = Array(socketPath.utf8)
+        guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
+            throw POSIXError(.ENAMETOOLONG)
+        }
+
+        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
+            rawBuffer.initializeMemory(as: UInt8.self, repeating: 0)
+            for (index, byte) in pathBytes.enumerated() {
+                rawBuffer[index] = byte
+            }
+        }
+
+        return address
+    }
+
+    func readResponse(from fileDescriptor: Int32) throws -> Data {
+        var response = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while true {
+            let bytesRead = read(fileDescriptor, &buffer, buffer.count)
+            if bytesRead == 0 {
+                break
+            }
+            guard bytesRead > 0 else {
+                throw POSIXError(.init(rawValue: errno) ?? .EIO)
+            }
+            response.append(contentsOf: buffer.prefix(bytesRead))
+            if response.last == 0x0A {
+                break
+            }
+        }
+        while response.last == 0x0A || response.last == 0x0D {
+            response.removeLast()
+        }
+        return response
     }
 }

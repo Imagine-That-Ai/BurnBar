@@ -351,31 +351,27 @@ final class BurnBarDaemonServerTests: XCTestCase {
         await server.stop()
     }
 
-    func testFleetRPCPlaceholdersReturnTypedNotImplementedError() async throws {
-        let configuration = makeConfiguration(name: "fleet-placeholder")
+    func testFleetOrchestratorAndDirectiveMethodsDispatchAfterM4() async throws {
+        let configuration = makeConfiguration(name: "fleet-m4-dispatch")
         let socketPath = configuration.socketPath
         let server = BurnBarDaemonServer(configuration: configuration)
         try await server.start()
 
-        // M0 contract: the fleet method cases resolve in BurnBarRPCMethod. M1
-        // implements daemon.fleet.snapshot; the orchestrator/directive methods
-        // still return the documented typed not-implemented error until M4.
-        let placeholderMethods: [BurnBarRPCMethod] = [
-            .fleetOrchestratorGet,
-            .fleetOrchestratorSet,
-            .fleetDirectiveRecord
-        ]
-        for method in placeholderMethods {
-            let response: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendEnvelope(
-                BurnBarRPCRequestEnvelope(id: "fleet-\(method.rawValue)", method: method),
-                socketPath: socketPath
-            )
-            XCTAssertEqual(response.id, "fleet-\(method.rawValue)")
-            XCTAssertEqual(response.protocolVersion, BurnBarProtocolVersion.current)
-            XCTAssertNil(response.result)
-            XCTAssertEqual(response.error?.code, -32603)
-            XCTAssertTrue(response.error?.message.contains("not yet implemented") == true)
-        }
+        // M4: the orchestrator/directive method cases dispatch real handlers.
+        // On a fresh daemon, get returns the default none designation in the
+        // standard versioned envelope (VAL-RPC-008).
+        let getResponse: BurnBarRPCResponseEnvelope<BurnBarFleetOrchestratorGetResponse> = try sendEnvelope(
+            BurnBarRPCRequestEnvelope(id: "fleet-orch-get", method: .fleetOrchestratorGet),
+            socketPath: socketPath
+        )
+        XCTAssertEqual(getResponse.id, "fleet-orch-get")
+        XCTAssertEqual(getResponse.protocolVersion, BurnBarProtocolVersion.current)
+        XCTAssertNil(getResponse.error)
+        XCTAssertEqual(getResponse.result?.state.designation, BurnBarOrchestratorDesignation.none)
+        XCTAssertNil(getResponse.result?.state.setAt)
+        XCTAssertEqual(getResponse.result?.state.pendingDirectives, 0)
+
+        // The daemon keeps serving normal requests after the fleet calls.
         let health: BurnBarRPCResponseEnvelope<BurnBarHealthResponse> = try sendRequest(
             BurnBarRPCRequestEnvelope(id: "health-after-fleet", method: .health),
             socketPath: socketPath
