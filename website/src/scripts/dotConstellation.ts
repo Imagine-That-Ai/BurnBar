@@ -18,7 +18,8 @@
 
   // Full provider roster — mirrors the native AgentProvider.swarmGlyphProviders
   // order, interleaved with the three BurnBar Cloud crests. (Cursor Agent
-  // shares Cursor's mark; Anthropic + Qwen ride along as brand moments.)
+  // shares Cursor's mark; Anthropic + Qwen + Alibaba Cloud ride along as brand
+  // moments.)
   var LOGOS = [
     { src: "/brand/vector/cloud_crest.svg", scale: 0.4 },
     { src: "/brand/providers/openai.png", scale: 0.26 },
@@ -35,6 +36,7 @@
     { src: "/brand/providers/xai.png", scale: 0.24 },
     { src: "/brand/providers/mimo.svg", scale: 0.26 },
     { src: "/brand/providers/qwen.svg", scale: 0.26 },
+    { src: "/brand/providers/alibabacloud.svg", scale: 0.26 },
     { src: "/brand/providers/ollama.png", scale: 0.26 },
     { src: "/brand/providers/windsurf.png", scale: 0.26 },
     { src: "/brand/providers/warp.png", scale: 0.26 },
