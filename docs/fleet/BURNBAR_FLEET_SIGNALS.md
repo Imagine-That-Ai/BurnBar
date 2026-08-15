@@ -329,6 +329,16 @@ validated before the persistence path is chosen** — the store-less/in-memory
 mode rejects exactly the same invalid records as the wired mode, so
 validation never depends on the backing store.
 
+**Monotonic terminal authority:** `dismissed` and `delivered` records are
+immutable against every later candidate (`proposed`, `approved`, `dismissed`,
+`delivered`, or `failed`). This prevents a stale delivery completion from
+turning a human dismissal into delivery and prevents a later failure callback
+from replacing a completed delivery. A `failed` record is terminal for
+ordinary candidates; an explicit `failed → delivered` user retry is supported,
+and a repeated `failed` outcome may refresh its failure detail. The daemon
+returns the authoritative existing record whenever this rule rejects a
+candidate.
+
 **Terminal outcomes survive restart (ORCH-039):** `delivered` and
 `failed(reason)` records (with their reasons, delivery channels, and decision
 timestamps) are persisted and survive daemon restarts; a restart never

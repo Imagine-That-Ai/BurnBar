@@ -37,10 +37,14 @@ external consumers (any local agent/CLI) and for the BurnBar app itself.
   stored state stays unchanged.
 - `daemon.fleet.directive.record` — records a directive (idempotent upsert
   by `directive_id`). Validation (unknown kind, empty id/payload,
-  non-roster `targetAgent`) rejects typed with no record created. An
-  `approved` record request used for app-relaunch reconciliation never
-  downgrades an existing terminal (`dismissed`, `delivered`, or `failed`)
-  record; the authoritative terminal record is returned unchanged.
+  non-roster `targetAgent`) rejects typed with no record created. Terminal
+  authority is monotonic: existing `dismissed` and `delivered` records are
+  immutable against **all** later candidates, including stale `delivered` or
+  `failed` callbacks. An existing `failed` record remains authoritative for
+  ordinary candidates; the explicit `failed → delivered` retry transition is
+  supported, and a repeated `failed` outcome may refresh its failure detail.
+  The authoritative record is returned unchanged whenever a candidate is
+  rejected by this rule.
 
 Directive records are read via read-only `sqlite3` inspection of the
 daemon-owned `fleet.sqlite` (`fleet_directives` table) — there is no

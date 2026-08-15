@@ -71,6 +71,11 @@ public enum BurnBarFleetControlError: Error, LocalizedError, Equatable, Sendable
 ///   `directive_id` updates the record in place — a retry never creates a
 ///   duplicate row, and the response always describes the single persisted
 ///   record.
+/// - **Monotonic terminal authority:** `dismissed` and `delivered` records are
+///   immutable against every later candidate, including stale terminal
+///   callbacks. A `failed` record is terminal for ordinary candidates; the
+///   only retry transition it accepts is an explicit `failed → delivered`
+///   completion (a repeated `failed` outcome may refresh its failure detail).
 /// - **`pendingDirectives` definition (ORCH-038):** the count of directive
 ///   records in the non-terminal states `proposed` or `approved`. Terminal
 ///   records (`dismissed`, `delivered`, `failed(reason)`) never count. The
@@ -178,25 +183,22 @@ public actor BurnBarFleetControlStore {
         )
     }
 
-    /// Records an approved directive (upsert by `directive_id`). Throws typed
+    /// Records a directive candidate (upsert by `directive_id`). Throws typed
     /// validation errors for invalid payloads (ORCH-029) — no record is
-    /// created on rejection.
+    /// created on rejection. Terminal-authority rules may return an existing
+    /// authoritative record instead of accepting the candidate.
     @discardableResult
     public func recordDirective(_ directive: BurnBarFleetDirective) throws -> BurnBarFleetDirective {
         try Self.validateDirective(directive)
         // Recovery reads use the same idempotent record surface with an
-        // `approved` candidate. A terminal daemon record is authoritative:
-        // do not downgrade delivered, failed, or dismissed history back to
-        // an intermediate decision, which would permit a relaunch to
-        // redeliver a directive whose outcome is already known.
-        switch directive.state {
-        case .approved, .dismissed:
-            if let existing = try existingDirective(id: directive.id),
-               !Self.isPending(existing.state) {
-                return existing
-            }
-        case .proposed, .delivered, .failed:
-            break
+        // `approved` candidate. The daemon record is authoritative for
+        // terminal outcomes: stale callbacks must not overwrite a dismissal
+        // or a completed delivery, and an ordinary candidate must not
+        // downgrade a failed delivery. The explicit failed → delivered
+        // retry is the one exception.
+        if let existing = try existingDirective(id: directive.id),
+           Self.shouldPreserveExisting(existing.state, for: directive.state) {
+            return existing
         }
         if let store {
             guard store.isOpen else {
@@ -288,6 +290,29 @@ public actor BurnBarFleetControlStore {
         case .proposed, .approved:
             return true
         case .dismissed, .delivered, .failed:
+            return false
+        }
+    }
+
+    /// Returns whether an existing directive record has authority over an
+    /// incoming candidate. Dismissed and delivered are immutable terminal
+    /// outcomes. Failed remains terminal for all ordinary candidates, while
+    /// an explicit delivered callback is the supported user-retry transition.
+    private static func shouldPreserveExisting(
+        _ existing: BurnBarFleetDirectiveState,
+        for candidate: BurnBarFleetDirectiveState
+    ) -> Bool {
+        switch existing {
+        case .dismissed, .delivered:
+            return true
+        case .failed:
+            switch candidate {
+            case .delivered, .failed:
+                return false
+            case .proposed, .approved, .dismissed:
+                return true
+            }
+        case .proposed, .approved:
             return false
         }
     }
