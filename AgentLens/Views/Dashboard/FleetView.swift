@@ -190,6 +190,7 @@ struct FleetView: View {
         }
 
         if let snapshot = viewModel.snapshot {
+            orchestratorSection
             providerChips(snapshot: snapshot)
             agentCards(snapshot: snapshot)
             repoGroups
@@ -197,6 +198,127 @@ struct FleetView: View {
             resourceConsumers
             probeHealthSection(snapshot: snapshot)
         }
+    }
+
+    // MARK: - Orchestrator designation (M4)
+
+    /// The daemon-authoritative designation control (VAL-ORCH-034): the user
+    /// can select BurnBar-managed, any declared agent, or None. Each action
+    /// sends the corresponding daemon set request; the control/badge changes
+    /// only after daemon acknowledgement. A rejected or unavailable set
+    /// preserves the prior acknowledged state and shows a typed error — no
+    /// optimistic local state.
+    private var orchestratorSection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Orchestrator")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+            GlassCard {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+                    HStack(spacing: DesignSystem.Spacing.sm) {
+                        Image(systemName: "network")
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.whimsy)
+
+                        Text(designationTitle)
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                        Spacer()
+
+                        if viewModel.isSettingDesignation {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("Updating orchestrator designation")
+                        }
+                    }
+
+                    Picker("Designation", selection: designationBinding) {
+                        Text("BurnBar-managed").tag(DesignationChoice.burnBarManaged)
+                        ForEach(BurnBarFleetAgentID.declaredRoster, id: \.self) { agentID in
+                            Text(viewModel.providerName(for: agentID))
+                                .tag(DesignationChoice.agent(agentID))
+                        }
+                        Text("None").tag(DesignationChoice.none)
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .disabled(viewModel.isSettingDesignation)
+                    .accessibilityLabel("Orchestrator designation")
+
+                    if let error = viewModel.orchestratorStateError {
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(DesignSystem.Colors.error)
+                            Text("Designation update failed: \(error)")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.error)
+                                .lineLimit(2)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Designation update failed: \(error)")
+                    }
+
+                    if let state = viewModel.orchestratorState, let setAt = state.setAt {
+                        Text("Set \(FleetFormatting.formatRelativeTime(setAt)) · \(state.pendingDirectives) pending directive\(state.pendingDirectives == 1 ? "" : "s")")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(DesignSystem.Spacing.lg)
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Orchestrator designation control")
+        }
+    }
+
+    /// The designation choices offered by the control (VAL-ORCH-034):
+    /// BurnBar-managed, any declared agent, or None.
+    private enum DesignationChoice: Hashable {
+        case burnBarManaged
+        case agent(BurnBarFleetAgentID)
+        case none
+    }
+
+    private var designationTitle: String {
+        switch viewModel.designationKind {
+        case .burnBarManaged:
+            return "BurnBar-managed"
+        case .agent(let id, _):
+            return "Designated: \(viewModel.providerName(for: id))"
+        case .none:
+            return "No orchestrator designated"
+        }
+    }
+
+    private var designationBinding: Binding<DesignationChoice> {
+        Binding(
+            get: {
+                switch viewModel.designationKind {
+                case .burnBarManaged:
+                    return .burnBarManaged
+                case .agent(let id, _):
+                    return .agent(id)
+                case .none:
+                    return .none
+                }
+            },
+            set: { choice in
+                let designation: BurnBarOrchestratorDesignation
+                switch choice {
+                case .burnBarManaged:
+                    designation = .burnBarManaged
+                case .agent(let agentID):
+                    designation = .agent(id: agentID, sessionRef: .absent)
+                case .none:
+                    designation = .none
+                }
+                Task { await viewModel.setDesignation(designation) }
+            }
+        )
     }
 
     private var emptyFleetState: some View {

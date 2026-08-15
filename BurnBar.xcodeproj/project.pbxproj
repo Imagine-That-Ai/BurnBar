@@ -35,6 +35,7 @@
 		1F2A81EA2C8C07DC8590DEA9 /* PiParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B349E0D5EF26F9ABAC244670 /* PiParser.swift */; };
 		1FDC3D17CAA154F4B8C8F467 /* TokenExtractionUtility.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA269E3080C36499D19BB076 /* TokenExtractionUtility.swift */; };
 		20226898B29A1336722A8F74 /* ParserRootResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3F819CB6E1D0BE54BBEB22 /* ParserRootResolver.swift */; };
+		2068AF520D3EA6FCAFC12698 /* BurnBarFleetDeliveryRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F958463E83FDB178BF48CBB5 /* BurnBarFleetDeliveryRunner.swift */; };
 		2160E0861FDA738ABA9FB7F2 /* ConversationIndexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F78AAB24FFCF6E834BEF9F57 /* ConversationIndexer.swift */; };
 		22143D75FA5A0E8BF92D0861 /* GrokCLIParserStrictnessRound3Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 398CE01CD51A025B5F6BEDB2 /* GrokCLIParserStrictnessRound3Tests.swift */; };
 		22ED69E3B33A04412FFF512E /* OpenRouterUsageAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECCDF707C013B9746C2C881C /* OpenRouterUsageAPI.swift */; };
@@ -171,6 +172,7 @@
 		B91B070620D33D42BA264E36 /* FleetViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37BC202439283E3E8406B4E /* FleetViewModelTests.swift */; };
 		B9D6A4B6C79CAF77769C3214 /* CrossEncoderReranker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AB0C2B1159EF1508DED5FCF /* CrossEncoderReranker.swift */; };
 		BC3A293B622202B95F37F726 /* ModelDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446591207B48BD3395B876D2 /* ModelDashboardView.swift */; };
+		BCDD0C641B4257A5ED0A71C2 /* BurnBarFleetDirectiveChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9B7FA6B5B2CB7F8C286397 /* BurnBarFleetDirectiveChannel.swift */; };
 		BD88BFC5BFFF32DFFBE9374F /* CrossEncoderRerankerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7804F13D717D2F98E7183BC3 /* CrossEncoderRerankerTests.swift */; };
 		C0C391E1AE3B91F98AA817F9 /* ModelPricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DF7BE299DBC731B8FECEBB /* ModelPricing.swift */; };
 		C14AC078B7A8EF49D3EEF5A1 /* BurnBarFleetProbeHardeningCTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583ABF21B9DFFBCE3CB4BDCE /* BurnBarFleetProbeHardeningCTests2.swift */; };
@@ -361,6 +363,7 @@
 		5BF5D43DBEE5297486AA3A82 /* FleetService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetService.swift; sourceTree = "<group>"; };
 		5C214CC49124CECFAF086415 /* FleetPanelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetPanelsTests.swift; sourceTree = "<group>"; };
 		5C7B9095083BF1AF6D2EDAC7 /* ProviderQuotaServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaServiceTests.swift; sourceTree = "<group>"; };
+		5C9B7FA6B5B2CB7F8C286397 /* BurnBarFleetDirectiveChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetDirectiveChannel.swift; sourceTree = "<group>"; };
 		603B5F939ABFB5D2EF3EB33D /* BurnBarFleetRPCTransportBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetRPCTransportBehaviorTests.swift; sourceTree = "<group>"; };
 		64A91ED439EC13DC8F3DC8B5 /* BurnBarFleetPiProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetPiProbeTests.swift; sourceTree = "<group>"; };
 		65A09A8DD647C8765C28A970 /* ConversationParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationParsingTests.swift; sourceTree = "<group>"; };
@@ -495,6 +498,7 @@
 		F729FDFE6D34B6F03B5DDCA9 /* CLIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridge.swift; sourceTree = "<group>"; };
 		F78AAB24FFCF6E834BEF9F57 /* ConversationIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationIndexer.swift; sourceTree = "<group>"; };
 		F7F630B724939E45EFCB2EB6 /* GrokCLIParserStrictnessRound2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokCLIParserStrictnessRound2Tests.swift; sourceTree = "<group>"; };
+		F958463E83FDB178BF48CBB5 /* BurnBarFleetDeliveryRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetDeliveryRunner.swift; sourceTree = "<group>"; };
 		FA53CDBBD782834EC9FA51B8 /* MiniSparkline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniSparkline.swift; sourceTree = "<group>"; };
 		FB2B6C595EE40639297CBC2A /* BurnBarMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarMigrationTests.swift; sourceTree = "<group>"; };
 		FC1FEB09843037917ABF13A2 /* BurnBarFleetRPCTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetRPCTestSupport.swift; sourceTree = "<group>"; };
@@ -793,6 +797,8 @@
 		70D8DE22FE249DFD935B5BE7 /* Fleet */ = {
 			isa = PBXGroup;
 			children = (
+				F958463E83FDB178BF48CBB5 /* BurnBarFleetDeliveryRunner.swift */,
+				5C9B7FA6B5B2CB7F8C286397 /* BurnBarFleetDirectiveChannel.swift */,
 				4D3BD69BF5F6C274EE648B79 /* FleetFormatting.swift */,
 				5BF5D43DBEE5297486AA3A82 /* FleetService.swift */,
 			);
@@ -1254,6 +1260,8 @@
 				940835280FB24C4565C952EF /* ArtifactAuthoringService.swift in Sources */,
 				0A23D849F157E1BDA0CAA9D6 /* AugmentParser.swift in Sources */,
 				4D455F701D9DB63B75DB7138 /* BurnBarDaemonManager.swift in Sources */,
+				2068AF520D3EA6FCAFC12698 /* BurnBarFleetDeliveryRunner.swift in Sources */,
+				BCDD0C641B4257A5ED0A71C2 /* BurnBarFleetDirectiveChannel.swift in Sources */,
 				578C2A41C12B2C0C7D3464E2 /* BurnBarFleetSocketClient.swift in Sources */,
 				353FC2A36D8DB60F6018E9F5 /* BurnBarIdentity.swift in Sources */,
 				996C4E4C0C5D370445E86E59 /* CLIAssistantConsentSheet.swift in Sources */,

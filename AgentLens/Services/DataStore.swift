@@ -1714,6 +1714,18 @@ final class DataStore {
                 t.add(column: "proposalDecision", .text)
             }
         }
+        /// M4 directive delivery: `deliveryState` records the typed delivery
+        /// outcome of an approved proposal (delivering/delivered/
+        /// failed(reason)/unsupported(reason), VAL-ORCH-014/030/037) and
+        /// `proposalDecidedAt` preserves the daemon-recorded decision
+        /// timestamp across delivery retries. Absent for undecided proposals
+        /// and pre-M4 rows.
+        migrator.registerMigration("v23_chat_delivery_state") { db in
+            try db.alter(table: "chat_messages") { t in
+                t.add(column: "deliveryState", .text)
+                t.add(column: "proposalDecidedAt", .datetime)
+            }
+        }
 
         return migrator
     }
@@ -2286,8 +2298,8 @@ final class DataStore {
             try upsertChatThread(threadID, at: message.timestamp, db: db)
             try db.execute(
                 sql: """
-                INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON, cancelled, proposalJSON, proposalDecision)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO chat_messages (id, threadId, role, content, timestamp, cliUsed, transcriptPiecesJSON, cancelled, proposalJSON, proposalDecision, proposalDecidedAt, deliveryState)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     message.id,
@@ -2299,7 +2311,9 @@ final class DataStore {
                     piecesJSON,
                     message.cancelled,
                     message.proposalJSON,
-                    message.proposalDecision?.rawValue
+                    message.proposalDecision?.rawValue,
+                    message.proposalDecidedAt,
+                    message.deliveryState?.rawValue
                 ]
             )
         }
@@ -2473,7 +2487,9 @@ final class DataStore {
             transcriptPieces: pieces,
             cancelled: Self.boolValue(row["cancelled"]),
             proposalJSON: row["proposalJSON"] as? String,
-            proposalDecision: (row["proposalDecision"] as? String).flatMap(ChatProposalDecision.init(rawValue:))
+            proposalDecision: (row["proposalDecision"] as? String).flatMap(ChatProposalDecision.init(rawValue:)),
+            proposalDecidedAt: parseDate(row["proposalDecidedAt"]),
+            deliveryState: (row["deliveryState"] as? String).flatMap(ChatDeliveryState.init(rawValue:))
         )
     }
 

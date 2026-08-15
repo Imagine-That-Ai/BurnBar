@@ -415,6 +415,61 @@ delivered") never produces a proposal, a record, or a delivery.
 - **Pending proposal survives app quit** (ORCH-032): the proposal JSON is
   persisted on the chat message; after relaunch the card is re-presented
   pending — never auto-approved/recorded/delivered.
+### Directive delivery (M4, branch A — writable Hermes channel)
+The Hermes gateway exposes a documented writable input channel: its
+`api_server` platform (`POST /v1/chat/completions` on
+`http://127.0.0.1:8642`, Bearer auth via `API_SERVER_KEY`). BurnBar delivers
+human-approved directives targeting `hermes` through that endpoint. The
+branch declaration and the full delivery contract live in
+`docs/fleet/BURNBAR_FLEET_API.md` ("Hermes delivery branch declaration").
+
+Delivery semantics (validators depend on these):
+- **Approval is observable before delivery** (VAL-ORCH-012): the `approved`
+  record with `decidedAt` is written via `daemon.fleet.directive.record`
+  BEFORE the channel call starts. The card shows `delivering` while the
+  request is in flight.
+- **Terminal outcomes are typed** (VAL-ORCH-014): `delivered` (with
+  `deliveryChannel: "hermes"`), `failed(reason)` (non-empty reason), or the
+  record stays `approved` for the typed `unsupported` outcome. Never limbo,
+  never a fabricated delivery.
+- **Malformed acks fail closed** (VAL-ORCH-036): invalid JSON, missing/
+  mismatched `directive_id`, or unknown/contradictory status →
+  `failed(reason: "malformedAck: ...")`, never `delivered`.
+- **Gateway failure** (VAL-ORCH-030): transport error or non-200 HTTP →
+  `failed(reason)`; the card shows the typed failure with a single
+  user-action Retry — no silent background retry loop. A retry preserves the
+  original `decidedAt`.
+- **Unsupported agents** (VAL-ORCH-037): an approved directive targeting an
+  agent with no documented writable channel (any agent other than `hermes`)
+  honest-degrades: the record stays `approved`, no side effects, and the card
+  shows "Delivery unsupported" with copy/retry affordances.
+- **Dismissed directives are never delivered** (VAL-ORCH-013): dismissal
+  triggers no channel call.
+- **Claude `/tmp/cc-socks` is NEVER used** (VAL-ORCH-016): the messaging
+  socket is undocumented internal IPC and no delivery code path opens,
+  connects, or writes to it.
+- **Delivery outcomes survive restart** (VAL-ORCH-039): `delivered` and
+  `failed(reason)` records (with reasons, channels, and decision timestamps)
+  persist; a restart never replays a delivered directive.
+- **Hermes fixture gateway:** `tools/burnbar-fake-hermes-gateway.py`
+  implements the documented acknowledgement contract for validation
+  (`BURNBAR_FAKE_HERMES_MODE` = `ack`/`hold`/`malformed-json`/
+  `malformed-id`/`malformed-status`/`fail`; receipts in
+  `$BURNBAR_FAKE_HERMES_SCRATCH/receipts.jsonl`). The app points at the
+  fixture via `BURNBAR_HERMES_GATEWAY_URL` and authenticates via
+  `BURNBAR_HERMES_API_KEY` or the `API_SERVER_KEY` line of `~/.hermes/.env`
+  (structural parse of that one key only; never logged or copied into
+  fixtures).
+### FleetView designation control (VAL-ORCH-005/034)
+FleetView exposes the daemon-authoritative designation control:
+BurnBar-managed, any declared agent, or None. Each action sends the
+corresponding `daemon.fleet.orchestrator.set` request; the control and the
+orchestrator badge on the designated agent's card change only after daemon
+acknowledgement. A rejected or unavailable set preserves the prior
+acknowledged state and shows a typed error — no optimistic local state. The
+designation propagates to the snapshot's `orchestrator` block, the
+well-known file, and the UI after the next completed fleet tick
+(VAL-ORCH-033).
 
 ### Fleet-context truncation (VAL-ORCH-026/040)
 

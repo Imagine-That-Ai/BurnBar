@@ -44,6 +44,8 @@ struct ChatMessageView: View {
     /// Approve/dismiss callbacks for a proposal card (M4). Keyed by message id.
     var onApproveProposal: ((String) -> Void)?
     var onDismissProposal: ((String) -> Void)?
+    /// Retry callback for a failed/unsupported delivery (M4, VAL-ORCH-030/037).
+    var onRetryDelivery: ((String) -> Void)?
 
     private var transcript: [ChatTranscriptPiece] {
         message.displayTranscript
@@ -164,6 +166,10 @@ struct ChatMessageView: View {
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
                 }
+
+                if isApproved, let deliveryState = message.deliveryState {
+                    deliveryStateRow(deliveryState)
+                }
             } else if let onApproveProposal, let onDismissProposal {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     Button("Approve") {
@@ -203,6 +209,96 @@ struct ChatMessageView: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Directive proposal")
+    }
+
+    /// Renders the typed delivery state of an approved proposal (M4,
+    /// VAL-ORCH-014/030/037): `delivering` while in flight, `delivered` on
+    /// success, and typed `failed(reason)` / `unsupported(reason)` rows with
+    /// a copy affordance and a single user-action retry — never a silent
+    /// background loop.
+    @ViewBuilder
+    private func deliveryStateRow(_ state: ChatDeliveryState) -> some View {
+        switch state {
+        case .delivering:
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Delivering…")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Delivering directive")
+        case .delivered:
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.success)
+                Text("Delivered")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.success)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Directive delivered")
+        case .failed(let reason):
+            deliveryIssueRow(
+                icon: "exclamationmark.triangle.fill",
+                color: DesignSystem.Colors.error,
+                title: "Delivery failed",
+                reason: reason
+            )
+        case .unsupported(let reason):
+            deliveryIssueRow(
+                icon: "hand.raised.slash.fill",
+                color: DesignSystem.Colors.warning,
+                title: "Delivery unsupported",
+                reason: reason
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func deliveryIssueRow(
+        icon: String,
+        color: Color,
+        title: String,
+        reason: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(color)
+            }
+
+            Text(reason)
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(reason, forType: .string)
+                }
+                .font(DesignSystem.Typography.tiny)
+                .buttonStyle(.bordered)
+
+                if let onRetryDelivery {
+                    Button("Retry") {
+                        onRetryDelivery(message.id)
+                    }
+                    .font(DesignSystem.Typography.tiny)
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.whimsy)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(title): \(reason)")
     }
 
     @ViewBuilder

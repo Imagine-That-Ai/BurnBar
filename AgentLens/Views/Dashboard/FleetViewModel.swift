@@ -309,6 +309,48 @@ final class FleetViewModel {
     /// The latest snapshot, if any.
     var snapshot: BurnBarFleetSnapshot? { service.loadState.snapshot }
 
+    /// The daemon-owned orchestrator state (designation + pending count),
+    /// fetched on demand (M4). nil while never fetched or while the daemon
+    /// is unreachable.
+    var orchestratorState: BurnBarOrchestratorState? { service.orchestratorState }
+
+    /// Typed reason when the orchestrator state could not be fetched.
+    var orchestratorStateError: String? { service.orchestratorStateError }
+
+    /// True while a designation set request is in flight (the control
+    /// changes only after daemon acknowledgement — VAL-ORCH-034).
+    var isSettingDesignation: Bool { service.isSettingDesignation }
+
+    /// The current designation kind for the control (VAL-ORCH-034):
+    /// `burnBarManaged`, `agent(id)`, or `none`. Derives from the daemon
+    /// state — never optimistic local state.
+    var designationKind: BurnBarOrchestratorDesignation {
+        orchestratorState?.designation ?? .none
+    }
+
+    /// True when the given agent is the designated orchestrator (the badge
+    /// on the agent's card, VAL-ORCH-005). Derives from daemon state.
+    func isDesignatedAgent(_ agentID: BurnBarFleetAgentID) -> Bool {
+        if case .agent(let id, _) = designationKind {
+            return id == agentID
+        }
+        return false
+    }
+
+    /// Fetches the daemon-owned orchestrator state (called when the fleet
+    /// view appears and after each acknowledged set).
+    func refreshOrchestratorState() {
+        service.refreshOrchestratorState()
+    }
+
+    /// Sets the daemon-owned designation. The control/badge changes only
+    /// after daemon acknowledgement; a rejected or unavailable set preserves
+    /// the prior acknowledged state and surfaces a typed error
+    /// (VAL-ORCH-034).
+    func setDesignation(_ designation: BurnBarOrchestratorDesignation) async {
+        await service.setDesignation(designation)
+    }
+
     /// Whether the current snapshot is stale per the documented
     /// `2 * cadenceSeconds` threshold (VAL-DASH-006/009).
     var isStale: Bool { service.isStale }
@@ -484,10 +526,13 @@ final class FleetViewModel {
 
     // MARK: - Lifecycle
 
-    /// Called when the fleet view appears: starts the single poller.
+    /// Called when the fleet view appears: starts the single poller and
+    /// fetches the daemon-owned orchestrator state for the designation
+    /// control/badge (VAL-ORCH-005/034).
     func viewAppeared() {
         isVisible = true
         service.start()
+        service.refreshOrchestratorState()
     }
 
     /// Called when the fleet view disappears (navigate away, window close):

@@ -387,6 +387,9 @@ struct ChatPanel: View {
                                     },
                                     onDismissProposal: { messageID in
                                         controller.dismissProposal(messageID: messageID)
+                                    },
+                                    onRetryDelivery: { messageID in
+                                        controller.retryDelivery(messageID: messageID)
                                     }
                                 )
                                 .id(msg.id)

@@ -68,10 +68,27 @@ final class FleetService {
     /// `BurnBarDaemonSocketClient.fleetSnapshot(at:)`.
     private let fetchSnapshot: (URL) throws -> BurnBarFleetSnapshot
 
+    /// The orchestrator-state fetch closure (injectable for tests). Defaults
+    /// to the real `daemon.fleet.orchestrator.get` RPC (M4).
+    private let fetchOrchestratorState: (URL) throws -> BurnBarOrchestratorState
+
+    /// The orchestrator-set closure (injectable for tests). Defaults to the
+    /// real `daemon.fleet.orchestrator.set` RPC (M4).
+    private let setOrchestratorState: (BurnBarOrchestratorDesignation, URL) throws -> BurnBarOrchestratorState
+
     /// The clock (injectable for deterministic staleness tests).
     private let nowProvider: () -> Date
 
     private(set) var loadState: FleetLoadState = .loading
+    /// The daemon-owned orchestrator state (designation + pending count),
+    /// fetched on demand (M4). nil while never fetched or while the daemon
+    /// is unreachable.
+    private(set) var orchestratorState: BurnBarOrchestratorState?
+    /// Typed reason when the orchestrator state could not be fetched.
+    private(set) var orchestratorStateError: String?
+    /// True while a designation set request is in flight (the control
+    /// changes only after daemon acknowledgement — VAL-ORCH-034).
+    private(set) var isSettingDesignation = false
     /// True while the poller is active (exactly one poller exists when true).
     private(set) var isPolling = false
     /// Total fleet requests issued since the last `start()` (test seam).
@@ -87,10 +104,18 @@ final class FleetService {
         fetchSnapshot: @escaping (URL) throws -> BurnBarFleetSnapshot = { url in
             try BurnBarDaemonSocketClient.fleetSnapshot(at: url)
         },
+        fetchOrchestratorState: @escaping (URL) throws -> BurnBarOrchestratorState = { url in
+            try BurnBarDaemonSocketClient.fleetOrchestratorGet(at: url)
+        },
+        setOrchestratorState: @escaping (BurnBarOrchestratorDesignation, URL) throws -> BurnBarOrchestratorState = { designation, url in
+            try BurnBarDaemonSocketClient.fleetOrchestratorSet(designation, at: url)
+        },
         now: @escaping () -> Date = { Date() }
     ) {
         self.socketURL = socketURL
         self.fetchSnapshot = fetchSnapshot
+        self.fetchOrchestratorState = fetchOrchestratorState
+        self.setOrchestratorState = setOrchestratorState
         self.nowProvider = now
     }
 
@@ -172,6 +197,38 @@ final class FleetService {
     /// The snapshot's age in seconds, or nil when no snapshot is loaded.
     var snapshotAgeSeconds: TimeInterval? {
         loadState.snapshot.map { nowProvider().timeIntervalSince($0.generatedAt) }
+    }
+
+    // MARK: - Orchestrator designation (M4)
+
+    /// Fetches the daemon-owned orchestrator state (designation + pending
+    /// count). Typed failure states are surfaced via `orchestratorStateError`
+    /// — never fabricated (VAL-ORCH-034).
+    func refreshOrchestratorState() {
+        do {
+            orchestratorState = try fetchOrchestratorState(socketURL)
+            orchestratorStateError = nil
+        } catch {
+            orchestratorState = nil
+            orchestratorStateError = error.localizedDescription
+        }
+    }
+
+    /// Sets the daemon-owned orchestrator designation. The control changes
+    /// only after daemon acknowledgement: the returned state is stored, and a
+    /// rejected/unavailable set preserves the prior acknowledged state and
+    /// surfaces a typed error (VAL-ORCH-034). No optimistic local state.
+    func setDesignation(_ designation: BurnBarOrchestratorDesignation) async {
+        guard !isSettingDesignation else { return }
+        isSettingDesignation = true
+        defer { isSettingDesignation = false }
+        do {
+            let updated = try setOrchestratorState(designation, socketURL)
+            orchestratorState = updated
+            orchestratorStateError = nil
+        } catch {
+            orchestratorStateError = error.localizedDescription
+        }
     }
 
     private func runPollLoop() async {

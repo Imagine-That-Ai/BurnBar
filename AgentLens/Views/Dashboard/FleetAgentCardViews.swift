@@ -37,6 +37,26 @@ struct FleetAgentCard: View {
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                         .lineLimit(1)
 
+                    // Orchestrator badge (VAL-ORCH-005): marks the designated
+                    // agent's card. Derives from the daemon-owned designation
+                    // — never optimistic local state.
+                    if viewModel.isDesignatedAgent(agent.id) {
+                        Text("Orchestrator")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.whimsy)
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                            .padding(.vertical, DesignSystem.Spacing.xxs)
+                            .background(
+                                Capsule()
+                                    .fill(DesignSystem.Colors.whimsy.opacity(0.12))
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(DesignSystem.Colors.whimsy.opacity(0.5), lineWidth: 1)
+                            )
+                            .accessibilityLabel("Orchestrator")
+                    }
+
                     Spacer()
 
                     Text(statusLabel)

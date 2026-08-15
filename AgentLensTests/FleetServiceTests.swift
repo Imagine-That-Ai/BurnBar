@@ -200,4 +200,109 @@ final class FleetServiceTests: XCTestCase {
             return XCTFail("expected ready after recovery")
         }
     }
+
+    // MARK: - Orchestrator designation (VAL-ORCH-034)
+
+    func test_refreshOrchestratorStateFetchesDaemonState() {
+        let state = BurnBarOrchestratorState(
+            designation: .agent(id: .claudeCode, sessionRef: .present("sess-1")),
+            setAt: Date(timeIntervalSince1970: 1_752_000_000),
+            pendingDirectives: 2
+        )
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in state }
+        )
+        XCTAssertNil(service.orchestratorState)
+        service.refreshOrchestratorState()
+        XCTAssertEqual(service.orchestratorState, state)
+        XCTAssertNil(service.orchestratorStateError)
+    }
+
+    func test_refreshOrchestratorStateFailureIsTyped() {
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in
+                throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+            }
+        )
+        service.refreshOrchestratorState()
+        XCTAssertNil(service.orchestratorState)
+        XCTAssertNotNil(service.orchestratorStateError)
+        XCTAssertTrue(service.orchestratorStateError?.contains("unreachable") == true)
+    }
+
+    func test_setDesignationChangesOnlyAfterDaemonAck() async {
+        // The control changes only after daemon acknowledgement: the set
+        // closure returns the updated state, which is stored. No optimistic
+        // local state (VAL-ORCH-034).
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in
+                BurnBarOrchestratorState(designation: .none)
+            },
+            setOrchestratorState: { designation, _ in
+                BurnBarOrchestratorState(designation: designation, setAt: Date(), pendingDirectives: 0)
+            }
+        )
+        service.refreshOrchestratorState()
+        XCTAssertEqual(service.orchestratorState?.designation, BurnBarOrchestratorDesignation.none)
+
+        await service.setDesignation(.burnBarManaged)
+        XCTAssertEqual(service.orchestratorState?.designation, .burnBarManaged)
+        XCTAssertNil(service.orchestratorStateError)
+    }
+
+    func test_setDesignationRejectionPreservesPriorState() async {
+        // A rejected set preserves the prior acknowledged state and surfaces
+        // a typed error (VAL-ORCH-034).
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in
+                BurnBarOrchestratorState(designation: .burnBarManaged, setAt: Date(), pendingDirectives: 0)
+            },
+            setOrchestratorState: { _, _ in
+                throw BurnBarFleetClientError.rpcError(code: -32603, message: "invalid designation")
+            }
+        )
+        service.refreshOrchestratorState()
+        XCTAssertEqual(service.orchestratorState?.designation, .burnBarManaged)
+
+        await service.setDesignation(.agent(id: .claudeCode, sessionRef: .absent))
+        XCTAssertEqual(
+            service.orchestratorState?.designation,
+            .burnBarManaged,
+            "a rejected set must preserve the prior acknowledged state"
+        )
+        XCTAssertNotNil(service.orchestratorStateError)
+        XCTAssertTrue(service.orchestratorStateError?.contains("invalid designation") == true)
+    }
+
+    func test_setDesignationWhileInFlightIsSerialized() async {
+        // Concurrent set requests serialize: the second is a no-op while the
+        // first is in flight (single-writer discipline, VAL-ORCH-034).
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in BurnBarOrchestratorState(designation: .none) },
+            setOrchestratorState: { designation, _ in
+                BurnBarOrchestratorState(designation: designation, setAt: Date(), pendingDirectives: 0)
+            }
+        )
+        let first = Task { await service.setDesignation(.burnBarManaged) }
+        let second = Task { await service.setDesignation(.agent(id: .hermes, sessionRef: .absent)) }
+        await first.value
+        await second.value
+        // Both requests complete; the final state is one complete accepted
+        // payload (never torn/merged).
+        let final = service.orchestratorState?.designation
+        XCTAssertTrue(
+            final == .burnBarManaged || final == .agent(id: .hermes, sessionRef: .absent),
+            "final state must be one complete accepted payload, got \(String(describing: final))"
+        )
+    }
 }

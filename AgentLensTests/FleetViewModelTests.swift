@@ -154,6 +154,121 @@ final class FleetViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isStale)
         XCTAssertNotNil(viewModel.snapshotAgeSeconds)
     }
+
+    // MARK: - Orchestrator designation + badge (VAL-ORCH-005/034)
+
+    func test_designationKindDerivesFromDaemonState() {
+        let state = BurnBarOrchestratorState(
+            designation: .agent(id: .claudeCode, sessionRef: .present("sess-1")),
+            setAt: Date(timeIntervalSince1970: 1_752_000_000),
+            pendingDirectives: 1
+        )
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in state }
+        )
+        let viewModel = FleetViewModel(service: service)
+        XCTAssertEqual(viewModel.designationKind, .none, "no optimistic state before the daemon read")
+        viewModel.refreshOrchestratorState()
+        XCTAssertEqual(viewModel.designationKind, state.designation)
+        XCTAssertTrue(viewModel.isDesignatedAgent(.claudeCode))
+        XCTAssertFalse(viewModel.isDesignatedAgent(.hermes))
+    }
+
+    func test_burnBarManagedDesignationHasNoAgentBadge() {
+        let state = BurnBarOrchestratorState(
+            designation: .burnBarManaged,
+            setAt: Date(timeIntervalSince1970: 1_752_000_000),
+            pendingDirectives: 0
+        )
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in state }
+        )
+        let viewModel = FleetViewModel(service: service)
+        viewModel.refreshOrchestratorState()
+        XCTAssertEqual(viewModel.designationKind, .burnBarManaged)
+        for agentID in BurnBarFleetAgentID.declaredRoster {
+            XCTAssertFalse(viewModel.isDesignatedAgent(agentID), "no agent badge for burnBarManaged")
+        }
+    }
+
+    func test_clearedDesignationRemovesBadge() {
+        // Clearing the designation removes the mark (VAL-ORCH-005): the
+        // badge derives from daemon state, so a cleared state has no badge.
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in
+                BurnBarOrchestratorState(designation: .none, setAt: Date(), pendingDirectives: 0)
+            }
+        )
+        let viewModel = FleetViewModel(service: service)
+        viewModel.refreshOrchestratorState()
+        XCTAssertEqual(viewModel.designationKind, .none)
+        XCTAssertFalse(viewModel.isDesignatedAgent(.claudeCode))
+    }
+
+    func test_viewAppearedFetchesOrchestratorState() {
+        let state = BurnBarOrchestratorState(
+            designation: .burnBarManaged,
+            setAt: Date(timeIntervalSince1970: 1_752_000_000),
+            pendingDirectives: 0
+        )
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in state }
+        )
+        let viewModel = FleetViewModel(service: service)
+        viewModel.viewAppeared()
+        XCTAssertEqual(viewModel.orchestratorState, state, "the designation control loads on appear")
+        viewModel.viewDisappeared()
+    }
+
+    func test_setDesignationUpdatesOnlyAfterDaemonAck() async {
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in BurnBarOrchestratorState(designation: .none) },
+            setOrchestratorState: { designation, _ in
+                BurnBarOrchestratorState(designation: designation, setAt: Date(), pendingDirectives: 0)
+            }
+        )
+        let viewModel = FleetViewModel(service: service)
+        viewModel.refreshOrchestratorState()
+        XCTAssertEqual(viewModel.designationKind, .none)
+
+        await viewModel.setDesignation(.burnBarManaged)
+        XCTAssertEqual(viewModel.designationKind, .burnBarManaged)
+        XCTAssertNil(viewModel.orchestratorStateError)
+    }
+
+    func test_setDesignationRejectionPreservesPriorState() async {
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in FleetTestFixtures.makeSnapshot() },
+            fetchOrchestratorState: { _ in
+                BurnBarOrchestratorState(designation: .burnBarManaged, setAt: Date(), pendingDirectives: 0)
+            },
+            setOrchestratorState: { _, _ in
+                throw BurnBarFleetClientError.rpcError(code: -32603, message: "invalid designation")
+            }
+        )
+        let viewModel = FleetViewModel(service: service)
+        viewModel.refreshOrchestratorState()
+        XCTAssertEqual(viewModel.designationKind, .burnBarManaged)
+
+        await viewModel.setDesignation(.agent(id: .claudeCode, sessionRef: .absent))
+        XCTAssertEqual(
+            viewModel.designationKind,
+            .burnBarManaged,
+            "a rejected set preserves the prior acknowledged state"
+        )
+        XCTAssertNotNil(viewModel.orchestratorStateError)
+    }
 }
 
 // MARK: - Fleet Formatting Tests
