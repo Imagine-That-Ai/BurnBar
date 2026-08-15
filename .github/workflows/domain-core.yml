@@ -1064,9 +1064,7 @@ jobs:
     needs: classify
     if: needs.classify.outputs.rust == 'true'
     # PR/MQ keep DomainCore Swift contracts (~XCFramework + Core) and skip the
-    # Apple app spool that rebuilds the full OpenBurnBar graph (~47–50m measured
-    # on #2255 / prior MQ). That wall made Domain Core PR Gate start after the
-    # 45m BurnBar CI Gate fast umbrella timed out (missing aggregator).
+    # Apple app spool that rebuilds the full OpenBurnBar graph (~47m measured).
     # Push/dispatch still runs the spool after Core so main keeps focused
     # coverage; the nightly openburnbar-pr-harness app-xctest also runs the
     # full OpenBurnBarTests corpus (including DomainCoreShadowEvidenceSpoolTests).
@@ -1127,7 +1125,7 @@ jobs:
       - name: Run Apple shadow evidence spool contracts
         # Keep the focused app-spool selector off pull_request + merge_group: it
         # rebuilds the same OpenBurnBar app graph AgentLens already built in the
-        # same batch. Coverage homes: this step on push/dispatch, plus the
+        # same MQ batch. Coverage homes: this step on push/dispatch, plus the
         # nightly Full Harness app-xctest unfiltered OpenBurnBarTests run.
         if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         run: |

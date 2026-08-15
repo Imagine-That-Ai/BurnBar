@@ -767,11 +767,11 @@ test("swift-consumer-contracts gates libsignal out to prevent duplicate Rust run
 });
 
 test("swift-consumer-contracts skips Apple app spool on pull_request and merge_group", () => {
-  // Measured on #2255 head 8339a9d: Apple shadow spool alone was ~50m of a
-  // ~59m swift-consumer-contracts job, so Domain Core PR Gate stayed missing
-  // until after the 45m BurnBar CI Gate fast umbrella timed out. PR/MQ keep
-  // DomainCore Core contracts + proof emit; the focused spool selector stays
-  // on push/dispatch and in the nightly Full Harness unfiltered app-xctest.
+  // Measured MQ baseline (2026-08-12 pr-2051): app spool alone was ~47.68m of a
+  // 58.7m swift-consumer-contracts job while AgentLens already rebuilt the same
+  // OpenBurnBar app graph. PR/MQ keep DomainCore Core contracts + proof emit;
+  // the focused spool selector stays on push/dispatch and in the nightly Full
+  // Harness unfiltered app-xctest corpus.
   const job = workflowJob(core, "swift-consumer-contracts");
   const coreStep = job.indexOf("Run Swift domain-core consumer contracts");
   const spoolStep = job.indexOf("Run Apple shadow evidence spool contracts");
@@ -826,6 +826,8 @@ test("swift-consumer-contracts skips Apple app spool on pull_request and merge_g
     "proof fragment suite id/path must remain swift-consumer-contracts",
   );
 
+  // Nightly Full Harness still runs the unfiltered app corpus that includes
+  // DomainCoreShadowEvidenceSpoolTests (second coverage home alongside push).
   const harness = readFileSync(
     new URL("../../.github/workflows/openburnbar-pr-harness.yml", import.meta.url),
     "utf8",
