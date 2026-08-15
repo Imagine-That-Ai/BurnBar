@@ -69,9 +69,13 @@ extension ChatSessionController {
         } catch {
             AppLogger.chat.silentFailure("memory recallForPrompt", error: error)
             self.lastRecalledMemoryCitations = []
+            self.lastRecalledMemoryIDs = []
             return ""
         }
         self.lastRecalledMemoryCitations = snippets.flatMap(\.citations)
+        // PR8 reinforce-on-use: remember WHICH memories entered the prompt so
+        // the terminal-commit hook can bump their hit counts if the turn lands.
+        self.lastRecalledMemoryIDs = snippets.map(\.memoryID)
         guard !snippets.isEmpty else { return "" }
         return snippets.map { snippet in
             let jumpID = snippet.citations.first?.messageID ?? snippet.citations.first?.crossDeviceHMAC

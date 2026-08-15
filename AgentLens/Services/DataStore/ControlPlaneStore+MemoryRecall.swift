@@ -203,12 +203,21 @@ extension ControlPlaneStore {
     func searchChatMemoryAuthorityRecords(_ query: MemoryQuery) async throws -> [Memory] {
         let records = try await fetchActiveChatMemoryAuthorityRecords(scope: query.scope)
             .filter { $0.reviewStatus != .rejected }
+        // PR8 salience-aware ranking: `+ 0.3 · clamp(salience, 0, 1)` from the
+        // sidecar (the LEFT JOIN surfaces as a batched map because scoring
+        // happens in Swift). An absent row contributes exactly 0.0, keeping a
+        // salience-free database's ordering byte-identical to pre-PR8.
+        let salienceByID = try await memorySalienceValues(ids: records.map(\.id))
         var scored: [(memory: Memory, score: Double)] = []
         scored.reserveCapacity(records.count)
         for memory in records {
             guard try await memoryHasTombstonedSource(id: memory.id) == false else { continue }
             let body = try await openChatMemoryBody(id: memory.id) ?? ""
-            scored.append((memory, Self.memoryTextScore(query: query.text, text: body) + memory.confidence))
+            let salienceBoost = Self.memorySalienceRecallWeight
+                * min(max(salienceByID[memory.id] ?? 0, 0), 1)
+            scored.append(
+                (memory, Self.memoryTextScore(query: query.text, text: body) + memory.confidence + salienceBoost)
+            )
         }
         return scored.sorted { lhs, rhs in
             if lhs.score == rhs.score { return lhs.memory.id < rhs.memory.id }
@@ -222,6 +231,10 @@ extension ControlPlaneStore {
         guard request.tokenBudget > 0, request.limit > 0 else { return [] }
         let records = try await fetchActiveChatMemoryAuthorityRecords(scope: request.scope)
             .filter { $0.reviewStatus == .approved && $0.validTo == nil }
+        // PR8 salience-aware ranking; see `searchChatMemoryAuthorityRecords`.
+        // Absent sidecar rows contribute exactly 0.0 — a salience-free
+        // database ranks byte-identically to pre-PR8 (regression-pinned).
+        let salienceByID = try await memorySalienceValues(ids: records.map(\.id))
         var ranked: [(memory: Memory, text: String, tokenEstimate: Int, score: Double)] = []
         ranked.reserveCapacity(records.count)
         for memory in records {
@@ -230,7 +243,11 @@ extension ControlPlaneStore {
                 continue
             }
             let tokenEstimate = Self.memoryTokenEstimate(body)
-            let score = Self.memoryTextScore(query: request.query, text: body) + memory.confidence
+            let salienceBoost = Self.memorySalienceRecallWeight
+                * min(max(salienceByID[memory.id] ?? 0, 0), 1)
+            let score = Self.memoryTextScore(query: request.query, text: body)
+                + memory.confidence
+                + salienceBoost
             ranked.append((memory, body, tokenEstimate, score))
         }
 

@@ -24,6 +24,7 @@ extension ChatSessionController {
         selectedContext = nil
         conversationJumpTargets = []
         lastRecalledMemoryCitations = []
+        lastRecalledMemoryIDs = []
         pendingMemoryJumpMessageID = nil
         memoryJumpHighlightMessageID = nil
         revokeDesktopControl()

@@ -199,6 +199,15 @@ extension ControlPlaneStore {
             }
             try db.execute(sql: "DELETE FROM memory_embedding_refs WHERE memory_id = ?", arguments: [id])
             try db.execute(sql: "DELETE FROM memory_provenance WHERE memory_id = ?", arguments: [id])
+            // PR8: the v61 consolidation sidecars ride the same delete — the
+            // salience row and every link touching this id (either end) go with
+            // the authority row, so eviction/user-delete leaves no orphans for
+            // `purgeOrphanConsolidationRows` to repair.
+            try db.execute(sql: "DELETE FROM memory_salience WHERE memory_id = ?", arguments: [id])
+            try db.execute(
+                sql: "DELETE FROM memory_links WHERE from_memory_id = ? OR to_memory_id = ?",
+                arguments: [id, id]
+            )
             try db.execute(sql: "DELETE FROM agent_memories WHERE id = ? AND source_kind = ?", arguments: [id, existing.sourceKind.rawValue])
             try db.execute(sql: "DELETE FROM memory_body_snapshots WHERE memory_id = ?", arguments: [id])
             try Self.insertMemoryAuditEvent(

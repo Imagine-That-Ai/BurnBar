@@ -31,6 +31,15 @@ extension ChatSessionController {
     /// the live gate and returns immediately when extraction is disabled. Fire-and-forget;
     /// extraction must never block or fail the chat turn.
     func scheduleMemoryDrainAfterCommit() {
+        // PR8 reinforce-on-use: the memories recalled into this turn's prompt
+        // earned a hit — the turn committed, so the recall demonstrably fed a
+        // kept exchange. Fire-and-forget (zero LLM, zero blocking) and cleared
+        // here so an abandoned turn never reinforces.
+        let recalledIDs = lastRecalledMemoryIDs
+        lastRecalledMemoryIDs = []
+        if recalledIDs.isEmpty == false {
+            memoryExtractionEngine?.reinforceRecalledMemories(ids: recalledIDs)
+        }
         memoryExtractionEngine?.launchDrain()
     }
 }
