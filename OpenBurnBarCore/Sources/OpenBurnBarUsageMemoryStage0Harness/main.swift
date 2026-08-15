@@ -126,7 +126,11 @@ fileLoop: for fileURL in rolloutFiles {
         // The 2026-07-16 incident lesson: JSONSerialization piles autoreleased
         // objects across a multi-GB loop — drain per line or the footprint
         // climbs to the governor ceiling and the pass aborts.
-        let shouldContinue: Bool = autoreleasepool {
+        // `parserAutoReleasePool` (OpenBurnBarLogParsers, re-exported through
+        // OpenBurnBarCore) drains on Darwin and is a passthrough on
+        // Linux/Windows, where bare `autoreleasepool` does not exist and
+        // breaks the Windows swift build.
+        let shouldContinue: Bool = parserAutoReleasePool {
             guard let line = reader.nextLine() else { return false }
             do {
                 try governor.checkpoint()
