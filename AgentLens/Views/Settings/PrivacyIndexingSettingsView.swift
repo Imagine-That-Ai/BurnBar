@@ -34,6 +34,8 @@ struct PrivacyIndexingSettingsView: View {
     @State private var openAIKeySaved = false
     @State private var reembedStatusMessage: String?
     @State private var reembedErrorMessage: String?
+    @State private var showUsageMemoryConsentSheet = false
+    @State private var usageMemoryCloudUpgradePlacement: UsageMemoryModelPlacement?
 
     /// Opt-in analytics consent toggle. Reads/writes the shared tri-state consent
     /// store and notifies the recorder so the Amplitude SDK starts on grant and
@@ -150,6 +152,11 @@ struct PrivacyIndexingSettingsView: View {
                         )
                     }
                     .buttonStyle(.plain)
+
+                    Divider().background(DesignSystem.Colors.border)
+
+                    // MARK: Usage memory (U2: consent UI over the U1 gate lattice)
+                    usageMemorySubsection
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
 
@@ -547,6 +554,131 @@ struct PrivacyIndexingSettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Removes learned preferences from the memory store. Chat transcripts and token usage are not affected.")
+        }
+        .sheet(isPresented: $showUsageMemoryConsentSheet) {
+            // Mirrors DashboardConsentCoordinator.confirmUsageMemoryConsent:
+            // granting flips the consent key (whose setter marks the prompt
+            // shown); declining only marks it shown so the loop stays dormant.
+            UsageMemoryConsentSheet(settingsManager: settingsManager) { grant in
+                settingsManager.usageMemoryConsentGranted = grant
+                if !grant {
+                    settingsManager.usageMemoryConsentShown = true
+                }
+                showUsageMemoryConsentSheet = false
+            }
+            .presentationBackground(Material.ultraThinMaterial)
+        }
+        .sheet(item: $usageMemoryCloudUpgradePlacement) { placement in
+            // Cloud-consent-only step: the placement is applied by the flow
+            // model on affirmative consent; declining leaves it untouched.
+            UsageMemoryConsentSheet(
+                settingsManager: settingsManager,
+                mode: .cloudUpgrade(placement)
+            ) { _ in
+                usageMemoryCloudUpgradePlacement = nil
+            }
+            .presentationBackground(Material.ultraThinMaterial)
+        }
+    }
+
+    // MARK: - Usage memory subsection (U2)
+
+    /// Master toggle for usage memory. Turning it ON for the very first time
+    /// routes through the consent sheet instead of flipping the key directly
+    /// (mirroring how the chat Memory consent works); once the prompt has been
+    /// shown, turning it back ON simply re-grants. Turning it OFF revokes.
+    private var usageMemoryMasterBinding: Binding<Bool> {
+        Binding(
+            get: { settingsManager.usageMemoryConsentGranted },
+            set: { isOn in
+                if isOn {
+                    if settingsManager.usageMemoryConsentShown {
+                        settingsManager.usageMemoryConsentGranted = true
+                    } else {
+                        showUsageMemoryConsentSheet = true
+                    }
+                } else {
+                    settingsManager.usageMemoryConsentGranted = false
+                }
+            }
+        )
+    }
+
+    private var usageMemorySubsection: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            SettingsToggle(
+                title: "Usage memory",
+                subtitle: "Propose durable memories from what you actually do — questions you ask in Safari and your recorded agent sessions. Everything is quarantined until you approve it in the review inbox; forget is permanent.",
+                isOn: usageMemoryMasterBinding
+            )
+
+            if settingsManager.usageMemoryConsentGranted {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                    Text("Where curation runs")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+
+                    ForEach(UsageMemoryModelPlacement.allCases) { placement in
+                        usageMemoryPlacementRow(placement)
+                    }
+
+                    Divider().background(DesignSystem.Colors.border)
+
+                    SettingsToggle(
+                        title: "Safari asks",
+                        subtitle: "Derive usage memory from questions you ask in Safari.",
+                        isOn: $settingsManager.usageMemorySourceSafariAsksEnabled
+                    )
+
+                    SettingsToggle(
+                        title: "Agent sessions",
+                        subtitle: "Derive usage memory from your recorded agent session logs.",
+                        isOn: $settingsManager.usageMemorySourceAgentSessionsEnabled
+                    )
+                }
+                .padding(.leading, DesignSystem.Spacing.lg)
+            }
+
+            if !settingsManager.usageMemoryExtractionRemoteConfigEnabled
+                || !settingsManager.usageMemoryAuthorityWritesRemoteConfigEnabled {
+                HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DesignSystem.Colors.warning)
+                        .padding(.top, 2)
+                    Text("Usage memory is temporarily disabled by your admin. Your browsing and agent sessions are unaffected.")
+                        .font(DesignSystem.Typography.tiny)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, DesignSystem.Spacing.xs)
+                .background(DesignSystem.Colors.warning.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous))
+            }
+        }
+    }
+
+    /// One selectable placement row. Selecting a cloud placement without the
+    /// separate cloud-curation consent presents the affirmative cloud-consent
+    /// step and only applies the placement when the user accepts it there.
+    private func usageMemoryPlacementRow(_ placement: UsageMemoryModelPlacement) -> some View {
+        Button {
+            selectUsageMemoryPlacement(placement)
+        } label: {
+            UsageMemoryPlacementRowLabel(
+                placement: placement,
+                isSelected: settingsManager.usageMemoryModelPlacement == placement
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func selectUsageMemoryPlacement(_ placement: UsageMemoryModelPlacement) {
+        if placement.isCloud && !settingsManager.usageMemoryCloudCurationConsentGranted {
+            usageMemoryCloudUpgradePlacement = placement
+        } else {
+            settingsManager.usageMemoryModelPlacement = placement
         }
     }
 
