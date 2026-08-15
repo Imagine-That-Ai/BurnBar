@@ -24,6 +24,7 @@ struct BurnView: View {
     @State private var sheetProvider: String?
     @State private var isEditing = false
     @State private var draggingKey: String?
+    @StateObject private var digestCache = TrendDigestCacheStore()
 
     /// Persisted per-device choice of how the Burn tab is visualized.
     @AppStorage("burnLayoutStyle") private var layoutRaw: String = BurnLayoutStyle.cards.rawValue
@@ -368,14 +369,14 @@ struct BurnView: View {
     /// The per-provider daily digest used by the `.timeline` view, built from
     /// the same data the Pulse Atlas card uses.
     private var trendDigest: TrendDataDigest {
-        TrendDataDigest.build(
+        digestCache.digest(
+            dailyPoints: dashboard.dailyPoints,
+            displayMode: displayMode,
             windowTotals: dashboard.windowTotals,
             providerSummaries: dashboard.topProviders,
             modelSummaries: dashboard.topModels,
             deviceSummaries: dashboard.topDevices,
-            dailyPoints: dashboard.dailyPoints,
-            recentUsages: activityStore.rawUsages.isEmpty ? activityStore.usages : activityStore.rawUsages,
-            displayMode: displayMode
+            recentUsages: activityStore.rawUsages.isEmpty ? activityStore.usages : activityStore.rawUsages
         )
     }
 

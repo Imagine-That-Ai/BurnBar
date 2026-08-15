@@ -608,7 +608,7 @@ public final class OpenBurnBarLocalDatabase: @unchecked Sendable {
             throw OpenBurnBarDatabaseOpenError.invalidPassphrase
         }
         var config = Configuration()
-        config.busyMode = .timeout(5)
+        OpenBurnBarDatabase.applyPoolTuning(&config)
         config.prepareDatabase { db in
             try db.usePassphrase(passphrase)
             let version = try String.fetchOne(db, sql: "PRAGMA cipher_version")

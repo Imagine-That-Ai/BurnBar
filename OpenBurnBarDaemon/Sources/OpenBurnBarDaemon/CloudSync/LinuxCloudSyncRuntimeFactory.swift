@@ -136,6 +136,7 @@ public enum LinuxCloudSyncRuntimeFactory {
         var configuration = Configuration()
         configuration.readonly = false
         configuration.busyMode = .timeout(5)
+        configuration.maximumReaderCount = 8
         if BurnBarDaemonDatabaseCipher.isCipherAvailable(),
            let key = BurnBarDaemonDatabaseCipher.validatedKeyForGRDB() {
             configuration.prepareDatabase { db in

@@ -344,7 +344,373 @@ final class DashboardUsageViewModelTests: XCTestCase {
             baseline,
             "Dashboard snapshot must run a constant number of data queries — growth with row count is an N+1 regression"
         )
-        tracer.assertMaxQueries(count: 64)
+        tracer.assertMaxQueries(count: 12)
+    }
+
+    func test_dashboardSnapshot_usesOneCoveringScanAndFiltersWindowsInMemory() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        let now = Date()
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "covering-today",
+            model: "gpt-5",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1,
+            startTime: now,
+            endTime: now.addingTimeInterval(30)
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .claudeCode,
+            sessionId: "covering-week-ago",
+            model: "sonnet",
+            inputTokens: 20,
+            outputTokens: 10,
+            costUSD: 2,
+            startTime: now.addingTimeInterval(-8 * 24 * 3600),
+            endTime: now.addingTimeInterval(-8 * 24 * 3600 + 30)
+        ))
+
+        _ = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        tracer.resetLog()
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+
+        let coveringSelects = tracer.queryLog.filter { event in
+            let sql = event.sql
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            return sql.contains("from token_usage")
+                && sql.contains("order by starttime desc limit")
+                && !sql.contains("group by")
+        }
+        XCTAssertEqual(
+            coveringSelects.count,
+            1,
+            "Dashboard snapshot must decode covering rows once, not once per TimeRange"
+        )
+        XCTAssertFalse(
+            coveringSelects.contains { $0.sql.lowercased().contains("select * from token_usage") },
+            "Covering scan must name decodeUsage columns instead of SELECT *"
+        )
+        XCTAssertTrue(
+            coveringSelects.contains { event in
+                let sql = event.sql.lowercased()
+                return sql.contains("billingkind") && sql.contains("parentrequestid")
+            },
+            "Covering scan must include decodeUsage identity columns"
+        )
+
+        let todayRange = try XCTUnwrap(TimeRange.today.dateRange(now: now))
+        let today = try XCTUnwrap(snapshot.windowSummaries[.today])
+        XCTAssertEqual(today.usages.map(\.sessionId), ["covering-today"])
+        XCTAssertEqual(
+            snapshot.loadedUsages.filter { $0.intersects(dateRange: todayRange) }.map(\.sessionId),
+            today.usages.map(\.sessionId)
+        )
+        XCTAssertEqual(Set(snapshot.loadedUsages.map(\.sessionId)), [
+            "covering-today",
+            "covering-week-ago"
+        ])
+    }
+
+    func test_dashboardSnapshot_credentialAndProjectSummariesIncludeLongRunnerOutsideCoveringLimit() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+        let longStart = now.addingTimeInterval(-45 * 86_400)
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "long-runner",
+            projectName: "marathon",
+            model: "test-model",
+            inputTokens: 50_000,
+            outputTokens: 25_000,
+            costUSD: 12.5,
+            startTime: longStart,
+            endTime: now,
+            providerAccountID: "acct-long",
+            providerAccountLabel: "Factory · long"
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "recent",
+            projectName: "today-proj",
+            model: "gpt-5",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1,
+            startTime: now,
+            endTime: now.addingTimeInterval(30)
+        ))
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 1)
+        let today = try XCTUnwrap(snapshot.windowSummaries[.today])
+        XCTAssertEqual(today.usages.map(\.sessionId), ["recent"])
+        XCTAssertFalse(today.usages.contains { $0.sessionId == "long-runner" })
+
+        let marathon = try XCTUnwrap(today.projectSpendSummaries.first { $0.projectName == "marathon" })
+        XCTAssertEqual(marathon.sessionCount, 1)
+        XCTAssertEqual(marathon.totalCost, 12.5, accuracy: 0.0001)
+        XCTAssertEqual(marathon.totalTokens, 75_000)
+
+        let accountID = try XCTUnwrap(
+            TokenUsage.providerAccountIdentityPartition(from: "acct-long")
+        )
+        let longCred = try XCTUnwrap(
+            today.credentialSummaries.first { $0.stableKey == "Factory#\(accountID)" }
+        )
+        XCTAssertEqual(longCred.sessionCount, 1)
+        XCTAssertEqual(longCred.totalCost, 12.5, accuracy: 0.0001)
+        XCTAssertEqual(longCred.totalTokens, 75_000)
+        XCTAssertEqual(longCred.accountLabel, "Factory · long")
+    }
+
+    func test_dashboardSnapshot_credentialSummaryUsesNewestAccountMetadata() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+        let older = TokenUsage(
+            provider: .factory,
+            sessionId: "before-rename",
+            projectName: "alpha",
+            model: "test-model",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-3600),
+            endTime: now.addingTimeInterval(-3500),
+            providerAccountID: "renamed-account",
+            providerAccountLabel: "Old account",
+            providerAccountSource: .localOnly
+        )
+        let newer = TokenUsage(
+            provider: .factory,
+            sessionId: "after-rename",
+            projectName: "alpha",
+            model: "test-model",
+            inputTokens: 20,
+            outputTokens: 10,
+            costUSD: 2,
+            startTime: now,
+            endTime: now.addingTimeInterval(100),
+            providerAccountID: "renamed-account",
+            providerAccountLabel: "Current account",
+            providerAccountSource: .deviceKeychain
+        )
+        try await usageStore.insert([older, newer])
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let allTime = try XCTUnwrap(snapshot.windowSummaries[.allTime])
+        let aggregateSummary = try XCTUnwrap(allTime.credentialSummaries.first)
+        XCTAssertEqual(aggregateSummary.accountLabel, "Current account")
+        XCTAssertEqual(aggregateSummary.accountSource, .deviceKeychain)
+
+        let inMemorySummary = try XCTUnwrap(
+            UsageStore.makeCredentialSummaries(from: [older, newer]).first
+        )
+        XCTAssertEqual(inMemorySummary.accountLabel, aggregateSummary.accountLabel)
+        XCTAssertEqual(inMemorySummary.accountSource, aggregateSummary.accountSource)
+    }
+
+    func test_credentialSummary_equalStartTimeUsesLexicalMetadataTieBreakRegardlessOfOrder() async throws {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let alphaLabel = TokenUsage(
+            provider: .factory,
+            sessionId: "alpha-label",
+            projectName: "alpha",
+            model: "test-model",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1,
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            providerAccountID: "shared-account",
+            providerAccountLabel: "Alpha account",
+            providerAccountSource: .localOnly
+        )
+        let deviceSource = TokenUsage(
+            provider: .factory,
+            sessionId: "device-source",
+            projectName: "alpha",
+            model: "test-model",
+            inputTokens: 20,
+            outputTokens: 10,
+            costUSD: 2,
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            providerAccountID: "shared-account",
+            providerAccountLabel: "Zulu account",
+            providerAccountSource: .deviceKeychain
+        )
+
+        for usages in [[alphaLabel, deviceSource], [deviceSource, alphaLabel]] {
+            let queue = try DatabaseQueue()
+            _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+            let usageStore = UsageStore(dbQueue: queue)
+            try await usageStore.insert(usages)
+
+            let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+            let allTime = try XCTUnwrap(snapshot.windowSummaries[.allTime])
+            let aggregateSummary = try XCTUnwrap(allTime.credentialSummaries.first)
+            let inMemorySummary = try XCTUnwrap(
+                UsageStore.makeCredentialSummaries(from: usages).first
+            )
+
+            XCTAssertEqual(aggregateSummary.accountLabel, "Alpha account")
+            XCTAssertEqual(aggregateSummary.accountSource, .deviceKeychain)
+            XCTAssertEqual(inMemorySummary.accountLabel, aggregateSummary.accountLabel)
+            XCTAssertEqual(inMemorySummary.accountSource, aggregateSummary.accountSource)
+        }
+    }
+
+    func test_dashboardSnapshot_credentialAndProjectSummariesMatchTokenUsageFoldWhenCoveringIsComplete() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "a",
+            projectName: "alpha",
+            costUSD: 3,
+            startTime: now.addingTimeInterval(-120),
+            endTime: now.addingTimeInterval(-60),
+            providerAccountID: "acct-a",
+            providerAccountLabel: "Key A"
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "b",
+            projectName: "",
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-30),
+            endTime: now,
+            providerAccountID: nil
+        ))
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        let allTime = try XCTUnwrap(snapshot.windowSummaries[.allTime])
+        let fromUsages = UsageStore.makeCredentialSummaries(from: snapshot.loadedUsages)
+        XCTAssertEqual(
+            Set(allTime.credentialSummaries.map(\.stableKey)),
+            Set(fromUsages.map(\.stableKey))
+        )
+        for expected in fromUsages {
+            let actual = try XCTUnwrap(allTime.credentialSummaries.first { $0.stableKey == expected.stableKey })
+            XCTAssertEqual(actual.totalCost, expected.totalCost, accuracy: 0.0001, expected.stableKey)
+            XCTAssertEqual(actual.totalTokens, expected.totalTokens, expected.stableKey)
+            XCTAssertEqual(actual.sessionCount, expected.sessionCount, expected.stableKey)
+            XCTAssertEqual(actual.accountLabel, expected.accountLabel, expected.stableKey)
+        }
+
+        let fromUsageProjects = UsageStore.makeProjectSpendSummaries(from: snapshot.loadedUsages)
+        XCTAssertEqual(
+            Set(allTime.projectSpendSummaries.map(\.projectName)),
+            Set(fromUsageProjects.map(\.projectName))
+        )
+        for expected in fromUsageProjects {
+            let actual = try XCTUnwrap(
+                allTime.projectSpendSummaries.first { $0.projectName == expected.projectName }
+            )
+            XCTAssertEqual(actual.totalCost, expected.totalCost, accuracy: 0.0001, expected.projectName)
+            XCTAssertEqual(actual.totalTokens, expected.totalTokens, expected.projectName)
+            XCTAssertEqual(actual.sessionCount, expected.sessionCount, expected.projectName)
+        }
+        XCTAssertTrue(allTime.projectSpendSummaries.contains { $0.projectName == "Unattributed" })
+    }
+
+    func test_dashboardSnapshot_last7DaySeriesMatchesPerDayTotals() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+
+        for offset in 0...7 {
+            let day = try XCTUnwrap(calendar.date(byAdding: .day, value: -offset, to: todayStart))
+            let start = day.addingTimeInterval(3_600)
+            try await usageStore.insert(ViewTestFixtures.makeUsage(
+                provider: .codex,
+                sessionId: "day-\(offset)",
+                model: "gpt-5",
+                inputTokens: 100 * (offset + 1),
+                outputTokens: 50,
+                costUSD: Double(offset + 1),
+                startTime: start,
+                endTime: start.addingTimeInterval(60)
+            ))
+        }
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        XCTAssertEqual(snapshot.last7DayCosts.count, 7)
+        XCTAssertEqual(snapshot.last7DayTokenTotals.count, 7)
+
+        for (index, offset) in (0..<7).reversed().enumerated() {
+            let day = try XCTUnwrap(calendar.date(byAdding: .day, value: -offset, to: todayStart))
+            let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: day))
+            let totals = try await usageStore.fetchUsageTotals(in: day...nextDay)
+            XCTAssertEqual(
+                snapshot.last7DayCosts[index],
+                totals.cost,
+                accuracy: 0.0001,
+                "last7DayCosts[\(index)] (offset \(offset)) must match the intersection-day total"
+            )
+            XCTAssertEqual(snapshot.last7DayTokenTotals[index], totals.tokens)
+        }
+
+        var expectedRolling = 0.0
+        for offset in 1...7 {
+            let day = try XCTUnwrap(calendar.date(byAdding: .day, value: -offset, to: todayStart))
+            let nextDay = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: day))
+            expectedRolling += try await usageStore.fetchUsageTotals(in: day...nextDay).cost
+        }
+        XCTAssertEqual(snapshot.rollingDailyAverage, expectedRolling / 7, accuracy: 0.0001)
+    }
+
+    func test_dashboardSnapshot_windowTotalsMatchPerWindowAggregateQueries() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let now = Date()
+
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "today",
+            model: "gpt-5",
+            inputTokens: 100,
+            outputTokens: 20,
+            costUSD: 2,
+            startTime: now,
+            endTime: now.addingTimeInterval(30)
+        ))
+        try await usageStore.insert(ViewTestFixtures.makeUsage(
+            provider: .claudeCode,
+            sessionId: "week-ago",
+            model: "sonnet",
+            inputTokens: 50,
+            outputTokens: 10,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-8 * 24 * 3600),
+            endTime: now.addingTimeInterval(-8 * 24 * 3600 + 30)
+        ))
+
+        let snapshot = try await usageStore.fetchDashboardUsageSnapshot(loadedUsageLimit: 100)
+        for timeRange in TimeRange.allCases {
+            let expected = try await usageStore.fetchUsageTotals(in: timeRange.dateRange(now: now))
+            let summary = try XCTUnwrap(snapshot.windowSummaries[timeRange])
+            XCTAssertEqual(summary.totalCost, expected.cost, accuracy: 0.0001, timeRange.rawValue)
+            XCTAssertEqual(summary.totalTokens, expected.tokens, timeRange.rawValue)
+            XCTAssertEqual(summary.sessionCount, expected.sessionCount, timeRange.rawValue)
+        }
     }
 
     func test_sqliteDateStringFormatsCanonicalUTCForDashboardWindows() {

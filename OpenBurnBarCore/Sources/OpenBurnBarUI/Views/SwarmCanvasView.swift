@@ -865,83 +865,109 @@ public final class SwarmSimulation {
             return
         }
 
-        let shouldRenderIndividually: Bool = {
-            if colorDriver != nil { return true }
-            if case .shapeProviderLogo = mode { return true }
-            if mode != .swarm { return true } // Ensure shapes always support high-quality sparkles & transitions
-            return false
-        }()
-
-        if shouldRenderIndividually {
-            // Data-driven path: each particle may have a unique color from the
-            // provider palette, so we render individually.
-            for (index, p) in particles.enumerated() where !p.isGlyph {
-                if isBatteryThrottled && index % 2 == 1 { continue } // Skip 50% on battery
-                let color = resolvedColor(for: p, at: index, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
-                let inShape = (mode != .swarm && p.tx != nil)
-                var r = max(0.4, p.size * (inShape ? 1.2 : 0.85))
-
-                var isSparkling = false
-                var sparkleIntensity = 0.0
-
-                if enableSwarmSparkles, inShape, shapeSettledAt != nil {
-                    // Premium, organic-feeling, extremely elegant twinkle
-                    let pHash = Double((index * 127) % 1000) / 1000.0 // Unique phase 0.0 - 1.0
-                    let speed = 0.5 + Double((index * 17) % 5) * 0.15 // Slower speed (0.5 to 1.1 rad/s)
-                    let sparkleVal = sin(flowTime * speed + pHash * .pi * 2)
-
-                    // Only a tiny fraction of particles (top 6%) twinkle at any given time
-                    // Using a smooth power-based curve makes the fade-in and fade-out extremely soft.
-                    if sparkleVal > 0.94 {
-                        let normalized = (sparkleVal - 0.94) / 0.06 // 0.0 to 1.0
-                        let intensity = pow(normalized, 2.0) // Quadratic ease-in for a soft peak
-
-                        // Very subtle size increase (max 6%) to prevent layout from looking "bumpy" or "wild"
-                        r *= (1.0 + intensity * 0.06)
-                        isSparkling = true
-                        sparkleIntensity = intensity
-                    }
-                }
-
-                let rect = CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)
-                ctx.fill(Path(ellipseIn: rect), with: .color(color))
-
-                if isSparkling {
-                    // Draw core glint
-                    let sr = r * 0.35
-                    let sRect = CGRect(x: p.x - sr, y: p.y - sr, width: sr * 2, height: sr * 2)
-                    let sColor = Color.white.opacity(sparkleIntensity * 0.55)
-                    ctx.fill(Path(ellipseIn: sRect), with: .color(sColor))
-
-                    // Draw outer subtle glow halo
-                    let glowR = r * 0.75
-                    let glowRect = CGRect(x: p.x - glowR, y: p.y - glowR, width: glowR * 2, height: glowR * 2)
-                    let glowColor = Color.white.opacity(sparkleIntensity * 0.15)
-                    ctx.fill(Path(ellipseIn: glowRect), with: .color(glowColor))
-                }
+        // Every live draw path — swarm, logo/shape, and color-driver — batches
+        // dots by `RGBA.bucketKey` so a formed constellation is tens of fills
+        // rather than one fill per particle. Sparkles stay a deferred second
+        // pass so they still sit on top of their dots.
+        let dots = collectDotDrawOps(isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
+        var bucketPaths: [UInt32: (color: RGBA, path: Path)] = [:]
+        bucketPaths.reserveCapacity(64)
+        var sparkles: [(x: Double, y: Double, r: Double, intensity: Double)] = []
+        sparkles.reserveCapacity(16)
+        for dot in dots {
+            var bucket = bucketPaths[dot.rgba.bucketKey] ?? (dot.rgba, Path())
+            bucket.path.addEllipse(
+                in: CGRect(x: dot.x - dot.r, y: dot.y - dot.r, width: dot.r * 2, height: dot.r * 2)
+            )
+            bucketPaths[dot.rgba.bucketKey] = bucket
+            if dot.sparkleIntensity > 0 {
+                sparkles.append((dot.x, dot.y, dot.r, dot.sparkleIntensity))
             }
-        } else {
-            // Original bucket path: batch particles by color key to minimize fill calls.
-            var bucketPaths: [Int: Path] = [:]
-            bucketPaths.reserveCapacity(64)
-            for (index, p) in particles.enumerated() where !p.isGlyph {
-                if isBatteryThrottled && index % 2 == 1 { continue } // Skip 50% on battery
-                let key = colorKey(for: p)
-                let inShape = (mode != .swarm && p.tx != nil)
-                let r = max(0.4, p.size * (inShape ? 1.2 : 0.85))
-                bucketPaths[key, default: Path()].addEllipse(in: CGRect(
-                    x: p.x - r, y: p.y - r,
-                    width: r * 2, height: r * 2
-                ))
-            }
-            for (key, path) in bucketPaths {
-                let baseColor = colorFromKey(key, uiMode: uiMode)
-                let finalColor = isBatteryThrottled ? baseColor.opacity(0.5) : baseColor
-                ctx.fill(path, with: .color(finalColor))
-            }
+        }
+        for bucket in bucketPaths.values {
+            ctx.fill(bucket.path, with: .color(bucket.color.color))
+        }
+        for sparkle in sparkles {
+            let sr = sparkle.r * 0.35
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: sparkle.x - sr, y: sparkle.y - sr, width: sr * 2, height: sr * 2)),
+                with: .color(Color.white.opacity(sparkle.intensity * 0.55))
+            )
+            let glowR = sparkle.r * 0.75
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: sparkle.x - glowR, y: sparkle.y - glowR, width: glowR * 2, height: glowR * 2)),
+                with: .color(Color.white.opacity(sparkle.intensity * 0.15))
+            )
         }
 
         drawGlyphParticles(into: ctx, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
+    }
+
+    struct SwarmDotDrawOp {
+        var x: Double
+        var y: Double
+        var r: Double
+        var rgba: RGBA
+        var sparkleIntensity: Double
+    }
+
+    struct SwarmParticleFillPlan: Equatable {
+        var drawnDotCount: Int
+        var colorBucketCount: Int
+        var sparkleFillCount: Int
+        var totalFillCount: Int { colorBucketCount + sparkleFillCount }
+    }
+
+    /// Same walk `draw(into:)` uses, without a `GraphicsContext`. Tests pin
+    /// that logo/driver frames stay bucket-bounded instead of one fill per particle.
+    func planParticleFills(isBatteryThrottled: Bool, uiMode: UIMode = .standard) -> SwarmParticleFillPlan {
+        let dots = collectDotDrawOps(isBatteryThrottled: isBatteryThrottled, uiMode: uiMode)
+        var buckets = Set<UInt32>()
+        buckets.reserveCapacity(64)
+        var sparkleFillCount = 0
+        for dot in dots {
+            buckets.insert(dot.rgba.bucketKey)
+            if dot.sparkleIntensity > 0 {
+                sparkleFillCount += 2
+            }
+        }
+        return SwarmParticleFillPlan(
+            drawnDotCount: dots.count,
+            colorBucketCount: buckets.count,
+            sparkleFillCount: sparkleFillCount
+        )
+    }
+
+    func collectDotDrawOps(isBatteryThrottled: Bool, uiMode: UIMode) -> [SwarmDotDrawOp] {
+        var ops: [SwarmDotDrawOp] = []
+        ops.reserveCapacity(particles.count)
+        for (index, p) in particles.enumerated() where !p.isGlyph {
+            if isBatteryThrottled && index % 2 == 1 { continue }
+            let inShape = (mode != .swarm && p.tx != nil)
+            var r = max(0.4, p.size * (inShape ? 1.2 : 0.85))
+            var sparkleIntensity = 0.0
+            if enableSwarmSparkles, inShape, shapeSettledAt != nil {
+                let pHash = Double((index * 127) % 1000) / 1000.0
+                let speed = 0.5 + Double((index * 17) % 5) * 0.15
+                let sparkleVal = sin(flowTime * speed + pHash * .pi * 2)
+                if sparkleVal > 0.94 {
+                    let normalized = (sparkleVal - 0.94) / 0.06
+                    let intensity = pow(normalized, 2.0)
+                    r *= (1.0 + intensity * 0.06)
+                    sparkleIntensity = intensity
+                }
+            }
+            ops.append(
+                SwarmDotDrawOp(
+                    x: p.x,
+                    y: p.y,
+                    r: r,
+                    rgba: resolvedRGBA(for: p, at: index, isBatteryThrottled: isBatteryThrottled, uiMode: uiMode),
+                    sparkleIntensity: sparkleIntensity
+                )
+            )
+        }
+        return ops
     }
 
     /// The brand-glyph (`$`, `tok`, `429`, provider marks) text pass, factored out

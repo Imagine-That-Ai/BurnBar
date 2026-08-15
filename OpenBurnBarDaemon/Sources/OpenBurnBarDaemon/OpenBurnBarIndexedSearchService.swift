@@ -1308,7 +1308,7 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         if let date = Self.sqliteDateFormatter.date(from: string) {
             return date
         }
-        return Self.iso8601Fractional.date(from: string) ?? Self.iso8601Basic.date(from: string)
+        return ThreadSafeISO8601DateFormatter.parse(string)
     }
 
     private func vectorSnapshotRecord(from statement: OpaquePointer) -> DaemonVectorIndexSnapshotRecord? {
@@ -1354,18 +1354,6 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         return formatter
     }()
-
-    private static var iso8601Fractional: ISO8601DateFormatter {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }
-
-    private static var iso8601Basic: ISO8601DateFormatter {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }
 
     private func sqliteError(db: OpaquePointer?, code: Int32, context: String) -> NSError {
         let message = db.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "sqlite error"

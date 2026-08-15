@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -151,12 +152,7 @@ public enum OllamaCloudScraper {
 
     private static func parseISODate(in text: String) -> Date? {
         guard let raw = firstCapture(in: text, pattern: #"data-time=\"([^\"]+)\""#, options: []) else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: raw) { return date }
-        let fallback = ISO8601DateFormatter()
-        fallback.formatOptions = [.withInternetDateTime]
-        return fallback.date(from: raw)
+        return ThreadSafeISO8601DateFormatter.parse(raw)
     }
 
     private static func firstCapture(in text: String, pattern: String, options: NSRegularExpression.Options) -> String? {

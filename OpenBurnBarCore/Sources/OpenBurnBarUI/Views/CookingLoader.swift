@@ -79,7 +79,7 @@ public struct CookingLoader: View {
     }
 
     private var dancingIcon: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: false)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
             let phase = dancingPhase(at: context.date)
             let bounce = bounceOffset(phase)
             let sway = swayRotation(phase)

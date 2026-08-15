@@ -501,6 +501,7 @@ enum BurnBarDaemonDatabaseCipher {
     private static func makePlaintextMigrationConfiguration() -> Configuration {
         var configuration = Configuration()
         configuration.busyMode = .timeout(5)
+        configuration.maximumReaderCount = 8
         return configuration
     }
 
