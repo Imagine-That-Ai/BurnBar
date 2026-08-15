@@ -112,6 +112,26 @@ final class MemoryExtractionEngine {
     /// router snapshot's `cloudBudgetOK`.
     private let usageBudgetLedger: UsageMemoryBudgetLedger
 
+    /// PR9: the Stage-2 embedding service, retained so the consolidation
+    /// worker shares the SAME instance (one cached registration) as the
+    /// extraction worker's Stage-2 funnel.
+    let usageStage2Service: UsageMemoryEmbeddingService?
+
+    /// PR9: the bounded promote/self-heal model client for the consolidation
+    /// worker — the SAME LLM/cloud/telemetry/ledger seams as the Stage-1
+    /// batch extractor, text lane only.
+    let usageConsolidationModelClient: UsageMemoryConsolidationLLMClient
+
+    /// PR9: off-main reader over the SAME router snapshot box the Stage-1
+    /// extractor routes on.
+    let usageConsolidationRouterSnapshotProvider: @Sendable () -> UsageMemoryModelRouter.Snapshot
+
+    /// PR6/PR9: the usage lane's combined authority-writes gate (extraction
+    /// box AND authority box AND the production write default). The extraction
+    /// worker's usage closure and the consolidation worker's canonical-note
+    /// insert read the SAME composition.
+    let usageAuthorityWritesGate: @Sendable () -> Bool
+
     /// The worker that actually claims + processes jobs. Constructed once with the
     /// extractor closure and the kill-switch-backed authority gate.
     private let worker: MemoryExtractionWorker
@@ -206,6 +226,18 @@ final class MemoryExtractionEngine {
             Self.makeUsageRouterSnapshot(settingsManager: settingsManager, ledger: usageBudgetLedger)
         )
         self.usageRouterSnapshotBox = usageRouterSnapshotBox
+        self.usageConsolidationRouterSnapshotProvider = { usageRouterSnapshotBox.current() }
+
+        // PR9: retain the Stage-2 embedding service and compose the usage
+        // authority gate ONCE, shared by the extraction worker's usage closure
+        // and the consolidation worker's canonical-note insert.
+        self.usageStage2Service = usageStage2
+        let usageAuthorityGate: @Sendable () -> Bool = {
+            usageExtractionKillSwitch.isAllowed()
+                && usageAuthorityWritesKillSwitch.isAllowed()
+                && authorityWritesGoLiveEnabled
+        }
+        self.usageAuthorityWritesGate = usageAuthorityGate
 
         // Build the extractor closure (run off-main per drain). The spend source is
         // injected for the future cloud-egress path; local-only v1 never reads it.
@@ -215,6 +247,17 @@ final class MemoryExtractionEngine {
             spendReader: DataStoreSummaryPersistenceStore(dataStore: dataStore),
             llmClient: llmClient,
             keyResolver: resolver,
+            settingsProvider: { settingsBox.current() }
+        )
+
+        // PR9: the consolidation worker's bounded promote/self-heal client,
+        // over the SAME transport seams and settings box as the extractor.
+        self.usageConsolidationModelClient = UsageMemoryConsolidationLLMClient(
+            llmClient: llmClient,
+            cloudClient: usageCloudClient,
+            telemetry: usageTelemetry,
+            budgetLedger: usageBudgetLedger,
+            policy: usageExtractionPolicy,
             settingsProvider: { settingsBox.current() }
         )
 
@@ -254,12 +297,10 @@ final class MemoryExtractionEngine {
             // extraction atomic AND live authority atomic AND the write
             // default), built from the usage boxes. Fail-closed by default:
             // usage consent is OFF out of the box, so this evaluates false and
-            // the worker never claims a usage batch.
-            usageAuthorityWritesEnabled: {
-                usageExtractionKillSwitch.isAllowed()
-                    && usageAuthorityWritesKillSwitch.isAllowed()
-                    && authorityWritesGoLiveEnabled
-            },
+            // the worker never claims a usage batch. PR9: the SAME composed
+            // gate (`usageAuthorityWritesGate`) guards consolidation's
+            // canonical-note inserts.
+            usageAuthorityWritesEnabled: usageAuthorityGate,
             // PR7: Stage-2 semantic dedup/corroboration on the usage write
             // path. Registration happens lazily on the first usage drain.
             usageStage2: usageStage2,

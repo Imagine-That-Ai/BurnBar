@@ -2,13 +2,15 @@ import Foundation
 @preconcurrency import GRDB
 import OpenBurnBarCore
 
-// MARK: - Stage-3 zero-LLM consolidation passes (PR8)
+// MARK: - Stage-3 consolidation passes (PR8 + PR9 store primitives)
 //
 // The pure-SQL/Swift-math consolidation primitives `MemoryConsolidationWorker`
 // runs on the sleep-time cadence: salience decay recompute, reinforce-on-use,
 // decay/cap eviction of quarantined usage rows, and orphan repair/GC over the
-// v61 sidecar tables. Everything here is deterministic and LLM-free; the
-// LLM passes (promote / self-heal) are Stage-3's PR9 and do not exist yet.
+// v61 sidecar tables. Everything in this file is deterministic and LLM-free —
+// PR9's promote/self-heal passes make their bounded LLM calls in the WORKER
+// and come back here only for reads (`consolidatableUsageMemories`,
+// `memoryLinkExists`) and deterministic writes (`supersedeUsageMemory`).
 
 extension ControlPlaneStore {
     /// Recall's salience contribution weight: `+ 0.3 · clamp(salience, 0, 1)`
@@ -330,6 +332,209 @@ extension ControlPlaneStore {
                 purged += 1
             }
             return purged
+        }
+    }
+
+    // MARK: - PR9: promote / self-heal store primitives
+
+    /// One live usage-partition memory as the Stage-3 LLM passes see it:
+    /// authority identity + plaintext body (opened from the sealed snapshot)
+    /// + salience + embedding vector + the `"k:"`-prefixed retrieval keywords
+    /// from `tags_json` (lowercased for overlap checks).
+    struct ConsolidatableUsageMemory: Sendable {
+        let id: MemoryID
+        let sourceKind: MemorySourceKind
+        let body: String
+        let salience: Double
+        let vector: [Float]
+        let keywords: Set<String>
+        let validFrom: Date
+    }
+
+    /// Fetch the LIVE usage-partition rows that carry an embedding ref under
+    /// `embeddingVersionID` — the promote pass's clustering space
+    /// (`quarantinedOnly: true`) and the self-heal pass's pair space
+    /// (`quarantinedOnly: false`). Ordered salience DESC (id ASC tiebreak) so
+    /// greedy clustering seeds deterministically; bounded by `limit` per tick.
+    /// Rows whose snapshot or vector cannot be decoded are skipped.
+    func consolidatableUsageMemories(
+        embeddingVersionID: String,
+        dimension: Int,
+        quarantinedOnly: Bool,
+        limit: Int = 200
+    ) async throws -> [ConsolidatableUsageMemory] {
+        let kindClause = Self.memorySourceKindInClause(
+            column: "m.source_kind",
+            kinds: MemorySourceKind.usageKinds
+        )
+        return try await dbQueue.read { db in
+            var predicates = [kindClause.sql, "m.valid_to IS NULL"]
+            var arguments: [any DatabaseValueConvertible] = kindClause.arguments
+            if quarantinedOnly {
+                predicates.append("m.review_status = ?")
+                arguments.append(MemoryReviewStatus.quarantined.rawValue)
+            }
+            arguments.append(embeddingVersionID)
+            arguments.append(dimension)
+            arguments.append(max(1, limit))
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT m.id AS id,
+                       m.source_kind AS source_kind,
+                       m.valid_from AS valid_from,
+                       m.tags_json AS tags_json,
+                       COALESCE(s.salience, 0.0) AS salience,
+                       r.vector AS vector,
+                       snap.snapshot_json AS snapshot_json
+                FROM agent_memories m
+                JOIN memory_embedding_refs r
+                  ON r.memory_id = m.id
+                LEFT JOIN memory_salience s
+                  ON s.memory_id = m.id
+                JOIN memory_body_snapshots snap
+                  ON snap.memory_id = m.id
+                WHERE \(predicates.joined(separator: " AND "))
+                  AND r.embedding_version_id = ?
+                  AND r.dimension = ?
+                ORDER BY COALESCE(s.salience, 0.0) DESC, m.id ASC
+                LIMIT ?
+                """,
+                arguments: StatementArguments(arguments)
+            )
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return rows.compactMap { row -> ConsolidatableUsageMemory? in
+                guard let id: String = row["id"],
+                      let sourceKindRaw: String = row["source_kind"],
+                      let sourceKind = MemorySourceKind(rawValue: sourceKindRaw),
+                      let validFrom = OpenBurnBarDatabase.parseDateValue(row["valid_from"]),
+                      let salience: Double = row["salience"],
+                      let vectorData: Data = row["vector"],
+                      let vector = BurnBarVectorBlobCodec.decode(vectorData),
+                      vector.count == dimension,
+                      let snapshotJSON: String = row["snapshot_json"],
+                      let snapshot = try? decoder.decode( // try?-ok(undecodable snapshot row is skipped, never wedges the pass)
+                          MemoryBodySnapshot.self,
+                          from: Data(snapshotJSON.utf8)
+                      )
+                else {
+                    return nil
+                }
+                return ConsolidatableUsageMemory(
+                    id: id,
+                    sourceKind: sourceKind,
+                    body: snapshot.body,
+                    salience: salience,
+                    vector: vector,
+                    keywords: Self.memoryKeywords(fromTagsJSON: row["tags_json"]),
+                    validFrom: validFrom
+                )
+            }
+        }
+    }
+
+    /// The lowercased `"k:"`-prefixed keyword vocabulary of one
+    /// `agent_memories.tags_json` value (see `memoryTagsJSON` for the
+    /// encoding). Malformed JSON yields the empty set.
+    static func memoryKeywords(fromTagsJSON tagsJSON: String?) -> Set<String> {
+        guard let tagsJSON,
+              let entries = try? JSONDecoder().decode([String].self, from: Data(tagsJSON.utf8)) // try?-ok(malformed tags row contributes no keywords)
+        else {
+            return []
+        }
+        return Set(
+            entries.compactMap { entry -> String? in
+                guard entry.hasPrefix("k:") else { return nil }
+                let keyword = entry.dropFirst(2).trimmingCharacters(in: .whitespacesAndNewlines)
+                return keyword.isEmpty ? nil : keyword.lowercased()
+            }
+        )
+    }
+
+    /// Whether ANY link of the given kinds exists between `a` and `b` in
+    /// EITHER direction — the self-heal pass's "already asked / already
+    /// decided" check (near_duplicate, contradicts, or the `unrelated`
+    /// marker).
+    func memoryLinkExists(
+        between a: MemoryID,
+        and b: MemoryID,
+        kinds: [MemoryLinkKind]
+    ) async throws -> Bool {
+        guard kinds.isEmpty == false else { return false }
+        let kindPlaceholders = Array(repeating: "?", count: kinds.count).joined(separator: ", ")
+        let arguments: [any DatabaseValueConvertible] = [a, b, b, a] + kinds.map { $0.rawValue as any DatabaseValueConvertible }
+        return try await dbQueue.read { db in
+            let count = try Int.fetchOne(
+                db,
+                sql: """
+                SELECT COUNT(*)
+                FROM memory_links
+                WHERE ((from_memory_id = ? AND to_memory_id = ?)
+                    OR (from_memory_id = ? AND to_memory_id = ?))
+                  AND link_kind IN (\(kindPlaceholders))
+                """,
+                arguments: StatementArguments(arguments)
+            ) ?? 0
+            return count > 0
+        }
+    }
+
+    /// Supersede one usage-partition row in favor of `winnerID` — the PR9
+    /// promote/self-heal supersede primitive, one write transaction:
+    ///   * `valid_to = COALESCE(valid_to, now)` + `superseded_by = winnerID`
+    ///     (the existing dedup machinery's exact column semantics);
+    ///   * provenance union-copied onto the winner (dedup by hmac+occurrence
+    ///     via `copyMemoryProvenance` — the promote pass's citation union);
+    ///   * a `memory.supersede` audit event with the caller's reason label
+    ///     (`promoted` / `duplicate` / `contradiction`), ids only.
+    /// Returns false (and writes nothing) when the loser is missing, already
+    /// superseded, or outside the usage partition.
+    @discardableResult
+    func supersedeUsageMemory(
+        loserID: MemoryID,
+        winnerID: MemoryID,
+        reason: String,
+        projectID: String,
+        now: Date = Date()
+    ) async throws -> Bool {
+        guard loserID != winnerID else { return false }
+        let kindClause = Self.memorySourceKindInClause(
+            column: "source_kind",
+            kinds: MemorySourceKind.usageKinds
+        )
+        let auditSourceKindLabel = MemorySourceKind.usageKinds.map(\.rawValue).sorted().joined(separator: ",")
+        let nowString = Self.iso8601String(now)
+        return try await dbQueue.write { db in
+            var arguments: [any DatabaseValueConvertible] = [now, winnerID, now, loserID]
+            arguments.append(contentsOf: kindClause.arguments)
+            try db.execute(
+                sql: """
+                UPDATE agent_memories
+                SET valid_to = COALESCE(valid_to, ?),
+                    superseded_by = ?,
+                    updated_at = ?
+                WHERE id = ?
+                  AND valid_to IS NULL
+                  AND \(kindClause.sql)
+                """,
+                arguments: StatementArguments(arguments)
+            )
+            guard db.changesCount > 0 else { return false }
+            try Self.copyMemoryProvenance(db: db, from: loserID, to: winnerID, now: now)
+            try Self.insertMemoryAuditEvent(
+                db: db,
+                action: "memory.supersede",
+                projectID: projectID,
+                subjectID: loserID,
+                labels: [
+                    "reason:\(reason)",
+                    "source_kind:\(auditSourceKindLabel)",
+                    "winner_id:\(winnerID)"
+                ],
+                nowString: nowString
+            )
+            return true
         }
     }
 

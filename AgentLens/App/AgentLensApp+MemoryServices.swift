@@ -130,12 +130,21 @@ extension OpenBurnBarApp {
             mineAgentSessions: { settingsManager.usageMemorySourceAgentSessionsEnabled }
         )
 
-        // PR8: the Stage-3 consolidation worker over the SAME store, behind the
-        // SAME usage gate box as the Stage-1 ticker. Constructing it flips
-        // nothing on — the tick's first act is this gate check.
+        // PR8/PR9: the Stage-3 consolidation worker over the SAME store,
+        // behind the SAME usage gate box as the Stage-1 ticker. PR9 hands it
+        // the engine's Stage-2 embedding service, the bounded promote/
+        // self-heal model client, the live router snapshot, and the composed
+        // usage authority gate — the tick loads the PERSISTED curation policy
+        // record (compiled defaults as fallback). Constructing it flips
+        // nothing on — the tick's first act is the gate check, and the LLM
+        // passes additionally require the router to resolve a usable route.
         let consolidationWorker = MemoryConsolidationWorker(
             store: store,
-            isEnabled: { usageExtractionSwitch.isAllowed() }
+            isEnabled: { usageExtractionSwitch.isAllowed() },
+            embedding: engine.usageStage2Service,
+            modelClient: engine.usageConsolidationModelClient,
+            routerSnapshotProvider: engine.usageConsolidationRouterSnapshotProvider,
+            authorityWritesEnabled: engine.usageAuthorityWritesGate
         )
 
         return MemoryServices(
@@ -259,6 +268,10 @@ struct UsageMemoryStage1Ticker {
         miner: UsageSessionLogMiner,
         engine: MemoryExtractionEngine,
         policy: UsageMemoryExtractionPolicy = .default,
+        // PR9: the FALLBACK prompt version only — each tick prefers the
+        // persisted `UsageMemoryCurationPolicy` record's
+        // `extractionPromptVersion` (compiled defaults when absent) and falls
+        // back here solely on a policy-load failure.
         promptVersion: String = UsageMemoryCurationPolicy.defaults.extractionPromptVersion,
         // The same user scope the chat extraction path stamps on its jobs
         // (`ChatSessionController.makeMemoryExtractionContext`).
@@ -293,10 +306,14 @@ struct UsageMemoryStage1Ticker {
                 AppLogger.dataStore.silentFailure("usage_memory_stage1_mine_failed", error: error, context: [:])
             }
         }
+        // PR9: the persisted curation-policy record now owns the prompt
+        // version (it salts batch idempotency keys); the compiled default
+        // rides only a load failure.
+        let curationPolicy = try? await store.loadUsageMemoryCurationPolicy() // try?-ok(policy load failure degrades to the injected fallback)
         do {
             _ = try await store.assembleUsageExtractionBatch(
                 policy: policy,
-                promptVersion: promptVersion,
+                promptVersion: curationPolicy?.extractionPromptVersion ?? promptVersion,
                 scope: scope,
                 now: now
             )

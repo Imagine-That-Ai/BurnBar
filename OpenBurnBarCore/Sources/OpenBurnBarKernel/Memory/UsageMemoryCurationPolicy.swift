@@ -5,11 +5,13 @@ import Foundation
 /// Stage-3 decay weights, per-source trust, and retention caps.
 ///
 /// This is durable harness state, not code constants: the app persists the
-/// active policy as JSON in `app_state` (key `usage_memory.curation_policy`)
-/// and the self-improvement loop tunes ONLY this record, with every change
-/// audited (`memory.policy_updated`). Privacy and consent boundaries are
-/// deliberately NOT representable here — nothing in this type can widen
-/// egress, consent, or the G7 gate.
+/// active policy as JSON in `controller_runtime_cache` (key
+/// `usage_memory.curation_policy.v1`; macOS has no `app_state` table — see
+/// `ControlPlaneStore+UsageMemoryPolicy`) and the self-improvement loop tunes
+/// ONLY this record, with every change audited (`memory.policy_updated`,
+/// version labels only). Privacy and consent boundaries are deliberately NOT
+/// representable here — nothing in this type can widen egress, consent, or
+/// the G7 gate.
 public struct UsageMemoryCurationPolicy: Codable, Equatable, Sendable {
     /// Bumped on any semantic change to this type's interpretation.
     public var policyVersion: Int
