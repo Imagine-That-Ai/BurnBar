@@ -36,6 +36,18 @@ extension ControlPlaneStore {
         }
     }
 
+    /// Split a mixed kind set into per-partition subsets so partition-scoped
+    /// queries (whose `project_id` bucket differs per partition) can run once
+    /// per partition and union the results. Chat-partition kinds come first so
+    /// the fetch order is deterministic; `[.chat]` yields exactly `[[.chat]]`.
+    static func memoryPartitionedSourceKinds(
+        _ kinds: Set<MemorySourceKind>
+    ) -> [Set<MemorySourceKind>] {
+        let usage = kinds.intersection(MemorySourceKind.usageKinds)
+        let chatLike = kinds.subtracting(MemorySourceKind.usageKinds)
+        return [chatLike, usage].filter { $0.isEmpty == false }
+    }
+
     static func memorySnapshotSlug(_ id: MemoryID) -> String {
         "memory-\(id)"
     }
