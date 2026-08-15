@@ -2122,7 +2122,7 @@ final class PricingParserSuccessTests: XCTestCase {
             relativePath: ".copilot/session-state/pricing-session/events.jsonl"
         )
 
-        let result = try await CopilotParser().parse()
+        let result = try await OpenBurnBar.CopilotParser().parse()
 
         let usage = try XCTUnwrap(result.usages.first)
         XCTAssertEqual(result.usages.count, 1)

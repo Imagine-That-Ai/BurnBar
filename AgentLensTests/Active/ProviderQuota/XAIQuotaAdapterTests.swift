@@ -139,6 +139,48 @@ final class XAIQuotaAdapterTests: XCTestCase {
         XCTAssertEqual(bucket.remainingValue ?? -1, 400, accuracy: 0.0001)
     }
 
+    func testScanSuperGrokLog_tailsPastStalePrefixInsteadOfReadingTheWholeFile() throws {
+        let now = Date()
+        var events: [Date] = []
+        events.reserveCapacity(2_500)
+        for index in 0..<2_400 {
+            events.append(now.addingTimeInterval(-TimeInterval(4 * 3600 + index)))
+        }
+        events.append(contentsOf: [
+            now.addingTimeInterval(-30 * 60),
+            now.addingTimeInterval(-45 * 60),
+            now.addingTimeInterval(-90 * 60)
+        ])
+        try writeSuperGrokLog(events: events)
+
+        let url = XAIQuotaAdapter.superGrokLogURL(homeDirectoryURL: tempDirectoryURL)
+        let fileSize = try XCTUnwrap(fileManager.attributesOfItem(atPath: url.path)[.size] as? NSNumber).intValue
+        let scan = XAIQuotaAdapter.scanSuperGrokLog(
+            at: url,
+            fileManager: fileManager,
+            now: now,
+            chunkBytes: 8 * 1024
+        )
+
+        XCTAssertEqual(scan.inWindowCount, 3)
+        XCTAssertTrue(scan.sawAnyEvent)
+        XCTAssertLessThan(scan.bytesRead, fileSize / 2, "stale prefix must not be fully scanned")
+        XCTAssertGreaterThan(fileSize, 80_000)
+    }
+
+    func testScanSuperGrokLog_oldEventsStillCountAsObserved() throws {
+        let now = Date()
+        try writeSuperGrokLog(events: [now.addingTimeInterval(-4 * 3600)])
+        let url = XAIQuotaAdapter.superGrokLogURL(homeDirectoryURL: tempDirectoryURL)
+        let scan = XAIQuotaAdapter.scanSuperGrokLog(
+            at: url,
+            fileManager: fileManager,
+            now: now
+        )
+        XCTAssertEqual(scan.inWindowCount, 0)
+        XCTAssertTrue(scan.sawAnyEvent)
+    }
+
     // MARK: - Credential read: adapter probes secret store, absent stays nil
 
     /// A genuinely missing Cursor-connector secret must still be observed by

@@ -198,4 +198,73 @@ final class ChartsSnapshotBuilderTests: XCTestCase {
         )
         XCTAssertNil(snapshot.forecast)
     }
+
+    // MARK: Window derivation (one covering SQL scan)
+
+    func test_boundedTimeRanges_sitInsideThe31DayCoveringWindow() throws {
+        let now = Date()
+        let recent = ChartsDataService.recentRange(now: now)
+        for rangeCase in [TimeRange.today, .last7Days, .last30Days, .thisMonth] {
+            let requested = try XCTUnwrap(rangeCase.dateRange(now: now))
+            XCTAssertGreaterThanOrEqual(
+                requested.lowerBound, recent.lowerBound,
+                "\(rangeCase.rawValue) must be a subset of the 31-day covering fetch"
+            )
+            XCTAssertLessThanOrEqual(requested.upperBound, recent.upperBound)
+        }
+    }
+
+    func test_deriveWindows_allTime_filtersRecentByIntersection() {
+        let now = Date()
+        let recent = ChartsDataService.recentRange(now: now)
+        let inside = TokenUsage(
+            provider: .claudeCode, sessionId: "inside", projectName: "p",
+            model: "m", inputTokens: 1, outputTokens: 1,
+            costUSD: 1, startTime: now.addingTimeInterval(-3_600), endTime: now
+        )
+        let inverted = TokenUsage(
+            provider: .claudeCode, sessionId: "inverted", projectName: "p",
+            model: "m", inputTokens: 1, outputTokens: 1,
+            costUSD: 1, startTime: now, endTime: now.addingTimeInterval(-1_800)
+        )
+        let outside = TokenUsage(
+            provider: .claudeCode, sessionId: "outside", projectName: "p",
+            model: "m", inputTokens: 1, outputTokens: 1,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-40 * 24 * 3_600),
+            endTime: now.addingTimeInterval(-39 * 24 * 3_600)
+        )
+        let windows = ChartsDataService.deriveWindows(
+            coveringRows: [inside, inverted, outside],
+            requestedRange: nil,
+            recentRange: recent
+        )
+        XCTAssertEqual(windows.selected.map(\.sessionId), ["inside", "inverted", "outside"])
+        XCTAssertEqual(Set(windows.recent.map(\.sessionId)), ["inside", "inverted"])
+    }
+
+    func test_deriveWindows_boundedRange_filtersSelectedFromCoveringRecent() {
+        let now = Date()
+        let recent = ChartsDataService.recentRange(now: now)
+        let seven = TimeRange.last7Days.dateRange(now: now)!
+        let inSeven = TokenUsage(
+            provider: .claudeCode, sessionId: "week", projectName: "p",
+            model: "m", inputTokens: 1, outputTokens: 1,
+            costUSD: 1, startTime: now.addingTimeInterval(-2 * 24 * 3_600), endTime: now
+        )
+        let inThirty = TokenUsage(
+            provider: .claudeCode, sessionId: "month", projectName: "p",
+            model: "m", inputTokens: 1, outputTokens: 1,
+            costUSD: 1,
+            startTime: now.addingTimeInterval(-20 * 24 * 3_600),
+            endTime: now.addingTimeInterval(-20 * 24 * 3_600)
+        )
+        let windows = ChartsDataService.deriveWindows(
+            coveringRows: [inSeven, inThirty],
+            requestedRange: seven,
+            recentRange: recent
+        )
+        XCTAssertEqual(windows.recent.map(\.sessionId), ["week", "month"])
+        XCTAssertEqual(windows.selected.map(\.sessionId), ["week"])
+    }
 }

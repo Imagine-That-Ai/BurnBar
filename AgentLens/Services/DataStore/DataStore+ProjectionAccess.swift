@@ -49,6 +49,10 @@ extension DataStore {
         try await actor.projectionStore.countProjectionJobs(statuses: statuses)
     }
 
+    func countProjectionJobsByStatus() async throws -> [ProjectionJobStatus: Int] {
+        try await actor.projectionStore.countProjectionJobsByStatus()
+    }
+
     func compactConversationProjectionBacklog() async throws -> Int {
         try await actor.projectionStore.compactConversationProjectionBacklog()
     }

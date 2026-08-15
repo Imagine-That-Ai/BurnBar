@@ -9,17 +9,42 @@ import OpenBurnBarKernel
 public final class KimiParser: LogParser, Sendable {
     public let provider: AgentProvider = .kimi
     let logDirectoryOverride: String?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(logDirectoryOverride: String? = nil) {
+    public init(
+        logDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.logDirectoryOverride = logDirectoryOverride
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-kimi-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.kimiParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "KimiParser"
+        )
     }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try await parse(options: .default)
     }
 
     public func parse(options: LogParseOptions) async throws -> ParseResult {
-        let fileManager = FileManager.default
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let sessionsPath = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         let sessionsURL = URL(fileURLWithPath: sessionsPath)
@@ -30,6 +55,14 @@ public final class KimiParser: LogParser, Sendable {
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         let workspaceDirs = try fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
@@ -49,8 +82,21 @@ public final class KimiParser: LogParser, Sendable {
                 if fileManager.fileExists(atPath: wireFile.path) {
                     sessionFiles.append(wireFile)
                 }
+                let cacheKey = sessionDir.standardizedFileURL.path
+                activePaths.insert(cacheKey)
                 guard try gate.shouldRead(sessionFiles) else { continue }
+                let signature = FileSetSignature(urls: sessionFiles, using: fileManager)
 
+                if !options.includeConversationBodies,
+                   let signature,
+                   let cached = parseCache.fileEntries[cacheKey],
+                   cached.signature == signature {
+                    sessionCacheHitCount.withLock { $0 += 1 }
+                    usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .kimi) })
+                    continue
+                }
+
+                sessionScanCount.withLock { $0 += 1 }
                 if let pair = try parseSession(
                     sessionId: sessionId,
                     contextFile: contextFile,
@@ -62,8 +108,23 @@ public final class KimiParser: LogParser, Sendable {
                     if options.includeConversationBodies, let conv = pair.conversation {
                         conversations.append(conv)
                     }
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                            signature: signature,
+                            usages: [usage]
+                        )
+                        cacheMutated = true
+                    }
                 }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -103,6 +164,9 @@ public final class KimiParser: LogParser, Sendable {
         var assistantWords = 0
         var messageCount = 0
         var allContent = ""
+        let useWire = wireTokens.map {
+            $0.inputOther > 0 || $0.output > 0 || $0.inputCacheRead > 0 || $0.inputCacheCreation > 0
+        } ?? false
 
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
@@ -116,24 +180,28 @@ public final class KimiParser: LogParser, Sendable {
 
             switch role {
             case "assistant":
-                assistantChars += charCount
-                if !content.isEmpty {
+                if !useWire {
+                    assistantChars += charCount
+                    if !content.isEmpty { allContent += content }
+                }
+                if includeConversationBodies, !content.isEmpty {
                     let w = wordCount(content)
                     assistantWords += w
                     lastAssistant = content
                     appendText(&fullText, content)
-                    allContent += content
                     messageCount += 1
                 }
             case "user":
-                userChars += charCount
-                if !content.isEmpty {
+                if !useWire {
+                    userChars += charCount
+                    if !content.isEmpty { allContent += content }
+                }
+                if includeConversationBodies, !content.isEmpty {
                     userWords += wordCount(content)
                     if firstUser == nil {
                         firstUser = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
                     }
                     appendText(&fullText, content)
-                    allContent += content
                     messageCount += 1
                 }
             default:

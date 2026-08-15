@@ -66,6 +66,69 @@ final class BurnBarLinuxQuotaRefreshServiceTests: XCTestCase {
         XCTAssertEqual(reloaded.snapshots(), [snapshot])
     }
 
+    func testRefreshIfNeeded_skipsFreshHighRemainingSnapshot() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-linux-quota-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let fetchCount = Locked(0)
+        let snapshot = ProviderQuotaSnapshot(
+            id: "fixture-codex",
+            provider: AgentProvider.codex.rawValue,
+            providerID: AgentProvider.codex.providerID,
+            sourceKind: .officialAPI,
+            sourceId: "fixture.adapter",
+            fetchedAt: Date(),
+            source: "fixture",
+            confidence: .high,
+            buckets: [
+                ProviderQuotaBucket(
+                    key: "requests",
+                    label: "Requests",
+                    windowKind: .daily,
+                    usedValue: 1,
+                    limitValue: 10,
+                    remainingValue: 9,
+                    usedPercent: 10,
+                    resetsAt: nil,
+                    unit: .requests,
+                    isEstimated: false
+                )
+            ],
+            updatedAt: Date()
+        )
+        let registry = ProviderQuotaAdapterRegistry(entries: [
+            .init(provider: .codex, adapter: CountingAdapter(snapshot: snapshot, fetchCount: fetchCount), coverage: .live)
+        ])
+        let configStore = BurnBarConfigStore(
+            fileURL: root.appendingPathComponent("config.json"),
+            secretStore: BurnBarInMemorySecretStore()
+        )
+        let cacheURL = root.appendingPathComponent("quotas.json")
+        let service = BurnBarLinuxQuotaRefreshService(
+            configStore: configStore,
+            registry: registry,
+            cache: BurnBarLinuxQuotaSnapshotCache(fileURL: cacheURL)
+        )
+
+        _ = await service.refreshIfNeeded(force: true)
+        XCTAssertEqual(fetchCount.read(), 1)
+        _ = await service.refreshIfNeeded(force: false)
+        XCTAssertEqual(fetchCount.read(), 1)
+    }
+
+    private struct CountingAdapter: ProviderQuotaAdapter {
+        let snapshot: ProviderQuotaSnapshot
+        let fetchCount: Locked<Int>
+
+        func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
+            _ = context.resolvedAPIKeys
+            fetchCount.withLock { $0 += 1 }
+            return snapshot
+        }
+    }
+
     func testCLIExecutorDrainsBothStreamsAndRejectsOversizedOutput() throws {
         let root = try makeExecutableDirectory()
         defer { try? FileManager.default.removeItem(at: root) }

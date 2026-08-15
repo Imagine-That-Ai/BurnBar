@@ -127,6 +127,14 @@ extension ThreadSafeISO8601DateFormatter {
         func parseBasic(_ string: String) -> Date? {
             formatters.withLockUnchecked { $0.basic.date(from: string) }
         }
+
+        func formatBasic(_ date: Date) -> String {
+            formatters.withLockUnchecked { $0.basic.string(from: date) }
+        }
+
+        func formatFractional(_ date: Date) -> String {
+            formatters.withLockUnchecked { $0.fractional.string(from: date) }
+        }
         #else
         private let lock = NSLock()
         private let fractional: ISO8601DateFormatter
@@ -150,6 +158,16 @@ extension ThreadSafeISO8601DateFormatter {
             lock.lock(); defer { lock.unlock() }
             return basic.date(from: string)
         }
+
+        func formatBasic(_ date: Date) -> String {
+            lock.lock(); defer { lock.unlock() }
+            return basic.string(from: date)
+        }
+
+        func formatFractional(_ date: Date) -> String {
+            lock.lock(); defer { lock.unlock() }
+            return fractional.string(from: date)
+        }
         #endif
     }
 
@@ -171,5 +189,16 @@ extension ThreadSafeISO8601DateFormatter {
     /// - Returns: A `Date` if parsing succeeds, `nil` otherwise.
     public static func parseBasic(_ string: String) -> Date? {
         syncCache.parseBasic(string)
+    }
+
+    /// Synchronously formats a date as ISO8601 without fractional seconds.
+    /// Matches `ISO8601DateFormatter().string(from:)` with default options.
+    public static func formatBasic(_ date: Date) -> String {
+        syncCache.formatBasic(date)
+    }
+
+    /// Synchronously formats a date as ISO8601 with fractional seconds.
+    public static func formatFractional(_ date: Date) -> String {
+        syncCache.formatFractional(date)
     }
 }

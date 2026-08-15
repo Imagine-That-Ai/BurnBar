@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Metered usage-memory curation gateway (U4)
+- **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
+  token-metered gateway for cloud usage-memory curation inference
+  (text lane = any active Pro on deepseek-v4-flash; multimodal lane =
+  Pro Max/Ultra on minimax-m3). Reserve-before-spend / settle-to-actual
+  Firestore ledger with monthly + daily lane meters, Remote Config-tunable
+  limits, and a `usage_curation_enabled` kill flag. Every request pins
+  OpenRouter routing to CoreWeave (US) with fallbacks disabled, provider
+  data collection denied, and ZDR required; candidate text rides inside an
+  untrusted-data fence with fence-marker neutralization. See
+  `docs/USAGE_CURATION_METERING.md`.
+
+### Changed - Approved first-run + homepage copy
+- Homepage hero now uses Alberto-approved copy: **Watch your agents. Before the
+  bill.** plus the locked receipt subhead, the real `/brand/logo-*.png` mark, and
+  **Download for Mac — {shipping version}**.
+- macOS first-launch popover (`OnboardingView`) uses the real `AppLogo` brand
+  mark and the locked tip copy: **Look up. That's the app.** / menu-bar receipt /
+  Claude or Codex / **Got it**.
+
 ### Added - Spend provenance: real API dollars vs subscription value
 - **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
   across the macOS/Windows/Linux migrators with deterministic backfill): `api`
@@ -61,7 +81,122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (fenced, trust-signaled; deliberately no write tool).
 - Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
 
-## [1.0.34] - 2026-08-09
+## [1.0.34] - 2026-08-15
+
+### Changed - Instant graphics, GRDB, and quota mining
+- **Constellation / logo swarm fills** now batch every live draw path
+  (swarm, formed logo, color-driver) by `RGBA.bucketKey` instead of one
+  `ctx.fill` per particle. Sparkles stay a deferred overlay. Wallpaper
+  stays on the existing 30 Hz organic-motion cap.
+- **Dashboard snapshot** builds last-7-day cost/token series and the
+  rolling average from one overlapping-day SQL scan instead of 14
+  per-day round-trips. Window membership is unchanged (intersection
+  predicate), so long-running sessions still count on every overlapped
+  day. Today / 7d / 30d / month / all-time aggregates are one `GROUP BY`
+  with per-window membership flags. Workspace artifact and projection
+  counts are one `GROUP BY status` each.
+- **Idle usage persist** skips the `token_usage` upsert storm when a
+  refresh tick re-parses byte-identical session totals and nothing else
+  has written the table. New UUIDs/`createdAt` values do not bust the
+  skip gate.
+- **Grok Build quota/usage ticks** resume `updates.jsonl` from a
+  mtime+size disk cache (token breakdowns only) so unchanged
+  `~/.grok/sessions/` trees are not re-scanned. Codex and Claude already
+  had this shape.
+- **Chart Studio / Burn / Trend Atlas** memoize digest-derived gallery
+  facts and insights so Hermes streaming and Compose recomposition do
+  not rebuild them per token. Editorial backdrop is capped at 30 fps;
+  substrate radius uses an in-place upper median; quota dial shadows
+  flatten through a compositing group.
+- **Quota refresh** follows `QuotaRefreshPolicy` on Mac and Linux
+  (30m / 10m / 3m by remaining fraction). SuperGrok pacing tail-reads
+  the 2h window; Claude JSONL quota scans resume on append-only growth;
+  Codex rollout walks skip files older than the 7-day cutoff.
+- **Charts page** uses one covering SQL scan (all-time, or last 31 days
+  for every bounded range) and splits selected vs heatmap rows in memory
+  with the intersection predicate. Conversation first-index writes land
+  in chunks of 64 inside one transaction each (upsert + projection
+  enqueue). Factory skips `.settings.json` older than 30 days; Antigravity
+  history.jsonl tail-reads the 5h window. Decorative loaders, the Cloud
+  store orbit, and the iOS easter-egg canvas cap at 30 fps. Database
+  workspace snapshot reads overlap instead of awaiting one-by-one.
+- **Warp quota fallback** tail-reads the last 512 KB of `warp_network*.log`
+  for the newest credit bucket and only rereads the whole file when the
+  tail has no credits or is not valid UTF-8. **Gemini CLI** usage ticks
+  resume unchanged `session-*.json(l)` files from a mtime+size cache
+  (token totals only) and skip transcript markdown on usage-only passes.
+  Cursor Agent and Antigravity usage parsers share the process-wide
+  ISO-8601 formatter; Cursor Agent skips conversation assembly on
+  usage-only ticks. Factory quota timestamps use the same formatter.
+  Logo formation (splash/onboarding) matches the 30 fps decorative cap.
+- **Idle usage ticks** resume unchanged Cursor Agent, Cline-family,
+  Copilot, Antigravity, and Goose transcripts from a mtime+size cache
+  (token totals only). Copilot's process-log fallback integers and
+  Antigravity's settings-model string participate in the signature.
+  Quota spend/reset parsers reuse `ThreadSafeISO8601DateFormatter`
+  (`parse` for fractional-then-basic, `parseBasic` where the default
+  formatter's acceptance must not widen).
+- **Remaining Core usage parsers** (Warp, Prime, Muse, Kimi, Windsurf,
+  Hermes, Forge, Augment, Aider, Cursor SQLite, OpenCode, Pi, OMP,
+  OpenClaw, Ollama, Junie, ModelFilter) resume unchanged session files
+  from the same mtime+size cache. SQLite signatures include `-wal` when
+  present and ignore `-shm` (a read-only open rewrites shm without
+  changing totals). ModelFilter caches empty bundles for non-matching
+  Factory sessions so zai/minimax ticks do not rescan every other
+  provider's jsonl. Quota cache writes reuse `formatBasic`.
+- **Mac-semantics idle caches** resume Copilot / Aider / Cursor /
+  OpenCode / Pi / OpenClaw / Junie on the AgentLens parse math (not Core
+  aliases), in dedicated `mac_*_parser_cache.json` files so isomorphic
+  signatures cannot decode Mac totals as a Core hit. Daily summaries
+  use intersection membership with a dedicated equality test. Quota
+  provider / account / switcher phases overlap after Codex rollout
+  merge-on-write. Warp usage resumes append-only logs from the last
+  complete Body. Windsurf / Hermes reuse listing stats for discovery
+  and gateway signatures; Forge skips `.forge.db` probes when a home
+  child directory mtime is unchanged.
+- **Distinct usage days, OpenCode `part`, Kilo quota, and Charts analytics.**
+  Dashboard distinct-day count uses intersection membership (same days as
+  daily summaries) instead of `DATE(startTime)`. OpenCode usage-only ticks
+  skip `part` when every session has explicit token buckets and otherwise
+  query only the zero-bucket message ids. Kilo Code quota resumes unchanged
+  `ui_messages.json` files from a mtime+size cache of totals only. Charts
+  heatmap / outliers / entropy have a SQL twin that matches
+  `ChartsSnapshot.build` without decoding full `TokenUsage` rows. The Charts
+  page covering scan now loads `ChartFactRow` columns only (burn / cache /
+  provenance / histogram / Spend Lens included), so all-time no longer
+  `SELECT *` / `decodeUsage`. Attribution still clamps `startTime`.
+- **Dashboard persist ticks** reload with `fetchDashboardUsageSnapshot` (the
+  same SQL window totals + hydration covering rows as init) instead of
+  `fetchAllUsage` / `SELECT *`. The snapshot itself decodes covering rows
+  once and filters them for bounded windows. **Factory quota** resumes
+  unchanged `*.settings.json` from a mtime+size cache of totals / lane /
+  session date only. Goose, Gemini CLI, Claude Code, Mac Pi, Forge, Muse,
+  and Factory listings prefetch size/mtime so cache signatures do not
+  re-stat.
+- **Forge home discovery** reuses the `$HOME` child list when home mtime is
+  unchanged (still re-stats known children for `.forge.db`). Dashboard
+  covering scans name `decodeUsage` columns instead of `SELECT *`.
+  Credential / project summaries fold from the window `GROUP BY` so a
+  long-runner older than the newest N covering rows still appears.
+  OpenCode `part` selects payload/id columns; Kilo quota lists tasks via
+  URL `contentsOfDirectory` and drops the extra `fileExists`. Copilot,
+  Warp, Augment, Prime, Muse, Mac OpenClaw, and shared local-parser
+  listings prefetch size/mtime for `FileSignature`.
+- **Aider quota, ChartFactRow index decode, and ISO-8601 reuse.** Aider
+  analytics JSONL resumes from a mtime+size cache of tokens/cost/time
+  plus a byte offset past the last terminated line (no prompt text).
+  Charts / dashboard covering scans decode GRDB rows by SELECT ordinal
+  through a cached statement cursor. Date fallbacks and daemon Pensieve
+  sentinels reuse `ThreadSafeISO8601DateFormatter` instead of allocating
+  a formatter per string or per file.
+- **Usage watermarks, OpenCode JSON-only `part`, and pool EQP.** Usage
+  refresh parse cannot carry indexing `idx2:` / `minimumFileModificationDate`
+  / discovery tracker (`LogParseOptions.usageAccounting`). OpenCode
+  usage-only ticks bound JSON-only `part` rows with `json_extract` on an
+  existing payload column (no invented message-id column). On-disk
+  `EXPLAIN QUERY PLAN` shows unsynced rows already use
+  `token_usage_sync_pending_idx`; no covering-index migration. Production
+  `DatabasePool` reader count is 8. Aider stays off `quotaSignalProviders`.
 
 ### Fixed - Domain-core protected signer path vs GitHub Actions API
 

@@ -86,6 +86,15 @@ public struct SQLiteRow: Sendable, Equatable {
         if case .blob(let bytes)? = columns[column] { return bytes }
         return nil
     }
+
+    /// TEXT values in column-iteration order. Used by EXPLAIN QUERY PLAN
+    /// readers when the `detail` name is absent on a given SQLite build.
+    public func allTextValues() -> [String] {
+        columns.values.compactMap { value in
+            if case .text(let text) = value { return text }
+            return nil
+        }
+    }
 }
 
 /// A read-only, plain-SQLite reader. One concrete backend (`SQLiteConnection`)

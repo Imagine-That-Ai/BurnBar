@@ -12,6 +12,11 @@ struct ConversationIndexingReport: Equatable {
     }
 }
 
+struct IndexedConversationWrite: Sendable {
+    let record: ConversationRecord
+    let jobType: ProjectionJobType
+}
+
 final class ConversationIndexer {
     static var shared: ConversationIndexer {
         ConversationIndexer()
@@ -39,8 +44,11 @@ final class ConversationIndexer {
     /// `fetchConversations(ids:)` queries (chunked to stay under SQLite's
     /// parameter limit) and builds a lookup map, making steady-state indexing
     /// O(ceil(N/500)) DB roundtrips + O(changed) writes rather than O(N) roundtrips.
-    /// The parsers already skip re-parsing unchanged files via `CompositeFileSignature`
-    /// cache hits; this removes the DB-side N+1 that remained.
+    /// Changed rows persist in chunks of 64 inside one write each (upsert +
+    /// projection enqueue), so first-index of thousands no longer opens two
+    /// transactions per record. The parsers already skip re-parsing unchanged
+    /// files via `CompositeFileSignature` cache hits; this removes the DB-side
+    /// N+1 that remained.
     func index(_ records: [ConversationRecord], in dataStore: DataStore) async throws -> ConversationIndexingReport {
         var report = ConversationIndexingReport.empty
         guard !records.isEmpty else { return report }
@@ -60,7 +68,11 @@ final class ConversationIndexer {
             }
         }
 
-        for (index, record) in records.enumerated() {
+        var pendingWrites: [IndexedConversationWrite] = []
+        pendingWrites.reserveCapacity(min(records.count, Self.writeYieldInterval))
+        let writeNow = Date()
+
+        for record in records {
             let existingConversation = existingMap[record.id]
 
             if let existingConversation,
@@ -69,15 +81,29 @@ final class ConversationIndexer {
                 continue
             }
 
-            try await dataStore.upsertConversation(record)
-            let jobType: ProjectionJobType = existingConversation == nil ? .project : .reproject
-            try await dataStore.enqueueConversationProjectionJob(conversationID: record.id, jobType: jobType)
+            pendingWrites.append(
+                IndexedConversationWrite(
+                    record: record,
+                    jobType: existingConversation == nil ? .project : .reproject
+                )
+            )
             report.changedRecordCount += 1
-            report.enqueuedProjectionJobCount += 1
 
-            if index > 0, index.isMultiple(of: Self.writeYieldInterval) {
+            if pendingWrites.count >= Self.writeYieldInterval {
+                report.enqueuedProjectionJobCount += try await dataStore.persistIndexedConversations(
+                    pendingWrites,
+                    now: writeNow
+                )
+                pendingWrites.removeAll(keepingCapacity: true)
                 await Task.yield()
             }
+        }
+
+        if pendingWrites.isEmpty == false {
+            report.enqueuedProjectionJobCount += try await dataStore.persistIndexedConversations(
+                pendingWrites,
+                now: writeNow
+            )
         }
 
         if report.changedRecordCount > 0 {

@@ -839,12 +839,7 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
     }
 
     private static func parseISO8601(_ raw: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        let basic = ISO8601DateFormatter()
-        basic.formatOptions = [.withInternetDateTime]
-        return basic.date(from: raw)
+        ThreadSafeISO8601DateFormatter.parse(raw)
     }
 
     /// Mirrors GRDB's default `Date` storage representation (see the vendored
@@ -866,9 +861,7 @@ actor BurnBarChatThreadService: BurnBarChatThreadServing {
     }
 
     private static func iso8601(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: date)
+        ThreadSafeISO8601DateFormatter.formatFractional(date)
     }
 
     private static func messagesAreEquivalent(_ lhs: BurnBarChatMessage, _ rhs: BurnBarChatMessage) -> Bool {
