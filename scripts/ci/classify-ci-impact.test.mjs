@@ -88,12 +88,42 @@ test("dependency manifests and security or release workflows force full CI", () 
     ".github/workflows/deploy-production.yml",
     "governance/branch-protection.main.json",
     "windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj",
+    "packages/libsignal-bridge/package-lock.json",
+    "package-lock.json",
   ]) {
     const result = classifyPaths([path]);
     assert.equal(result.full, true, path);
     for (const lane of LANES)
       assert.equal(result[lane], true, `${path}:${lane}`);
   }
+});
+
+test("signal-envelope-contracts npm lockfile selects functions, not macos", () => {
+  const result = classifyPaths([
+    "packages/signal-envelope-contracts/package-lock.json",
+    "packages/signal-envelope-contracts/package.json",
+  ]);
+  assert.equal(result.full, false);
+  assert.equal(result.reason, "owned-paths");
+  assert.equal(result.functions, true);
+  assert.equal(result.macos, false);
+  assert.equal(result.mobile, false);
+  assert.equal(result.android, false);
+  assert.equal(result.rust, false);
+  assert.equal(result.daemon, false);
+  assert.equal(result.web, false);
+  assert.equal(result.console, false);
+});
+
+test("signal-envelope-contracts mixed with AgentLens still wakes macos", () => {
+  const result = classifyPaths([
+    "packages/signal-envelope-contracts/package-lock.json",
+    "AgentLens/Services/LogParser/GrokParser.swift",
+  ]);
+  assert.equal(result.full, false);
+  assert.equal(result.functions, true);
+  assert.equal(result.macos, true);
+  assert.equal(result.mobile, false);
 });
 
 test("unknown and empty classifications fail closed", () => {
