@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 struct ProviderCredentialCustodySlot: Hashable, Sendable {
     let providerID: String

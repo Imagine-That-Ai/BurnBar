@@ -1,4 +1,5 @@
 import type { ActivityEvent, ApprovalPreview, LearningItem, TranscriptEntry } from '../shared/messages';
+import { isRecord } from '../shared/protocol';
 import type { BridgeAgentOption } from '../shared/protocol';
 import { SAFARI_PERFORMANCE_LABELS, formatPerformanceDuration } from './diagnostics';
 import { initializeModeVisuals } from './modeVisuals';
@@ -964,10 +965,10 @@ function renderError(viewModel: PopupViewModel): HTMLElement | undefined {
 }
 
 function daemonCode(error: NonNullable<PopupViewModel['snapshot']>['lastError']): number | undefined {
-  if (!error || typeof error.details !== 'object' || error.details === null) {
+  if (!error || !isRecord(error.details)) {
     return undefined;
   }
-  const code = (error.details as Record<string, unknown>).daemonCode;
+  const code = error.details.daemonCode;
   return typeof code === 'number' && Number.isSafeInteger(code) ? code : undefined;
 }
 
