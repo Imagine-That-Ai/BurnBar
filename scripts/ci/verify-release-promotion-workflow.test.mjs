@@ -72,11 +72,14 @@ test("remote audit and every public-trust check precede the sole promotion comma
   const promotion = job("release-promotion");
   const orderedMarkers = [
     "promote-github-release.mjs audit",
-    "gpg --homedir \"$keyring\" --batch --verify",
+    'gpg --homedir "$keyring" --batch --verify',
     "verify-release-attestations.sh",
     "cosign verify-blob-attestation",
     "verify-apple-appcheck-release-artifact.sh",
     "verify-public-macos-download-trust.sh",
+    "macos-r2-publication.mjs preflight",
+    "Retain authoritative R2 publication handoff",
+    "scripts/upload-macos-downloads-r2.sh",
     "promote-github-release.mjs promote",
   ];
   let previous = -1;
@@ -92,11 +95,55 @@ test("remote audit and every public-trust check precede the sole promotion comma
   );
 });
 
+test("promotion serializes and activates GitHub latest only after verified R2 publication", () => {
+  const promotion = job("release-promotion");
+  assert.match(
+    promotion,
+    /concurrency:\s*\n\s*# GitHub's global `latest` pointer[\s\S]*group: openburnbar-release-promotion-global[\s\S]*cancel-in-progress: false/u,
+  );
+  assert.match(
+    promotion,
+    /OPENBURNBAR_EXPECTED_LIVE_VERSION: \$\{\{ inputs\.expected_live_macos_version \}\}[\s\S]*OPENBURNBAR_EXPECTED_LIVE_COMMIT: \$\{\{ inputs\.expected_live_macos_commit \}\}/u,
+  );
+  const handoffIndex = promotion.indexOf(
+    "Retain authoritative R2 publication handoff",
+  );
+  const publishIndex = promotion.indexOf(
+    "bash scripts/upload-macos-downloads-r2.sh",
+  );
+  const promoteIndex = promotion.indexOf("promote-github-release.mjs promote");
+  assert.ok(handoffIndex >= 0 && publishIndex > handoffIndex);
+  assert.ok(
+    promoteIndex > publishIndex,
+    "GitHub latest must be the final activation after exact R2 public verification",
+  );
+});
+
 test("the audit binds the operator-declared governed domain-core profile", () => {
   assert.match(
     job("release-promotion"),
     /--domain-core-profile "\$\{\{ inputs\.domain_core_profile \}\}"/u,
   );
+});
+
+test("successful promotion retains the exact receipt and asset directory for R2", () => {
+  const promotion = job("release-promotion");
+  const handoffIndex = promotion.indexOf(
+    "Retain authoritative R2 publication handoff",
+  );
+  assert.ok(
+    handoffIndex > promotion.indexOf("macos-r2-publication.mjs preflight"),
+    "R2 handoff must be retained only after exact local preflight succeeds",
+  );
+  assert.match(
+    promotion,
+    /macos-r2-publication-inputs-\$\{\{ steps\.release\.outputs\.release_commit \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u,
+  );
+  assert.match(
+    promotion,
+    /\$\{\{ steps\.release\.outputs\.asset_dir \}\}\/[\s\S]*\$\{\{ steps\.release\.outputs\.receipt_path \}\}/u,
+  );
+  assert.match(promotion, /retention-days: 90/u);
 });
 
 test("a published legacy GPG checksum signature must verify before promotion", () => {
@@ -105,7 +152,10 @@ test("a published legacy GPG checksum signature must verify before promotion", (
     promotion,
     /checksums-v\$\{VERSION\}\.txt\.asc is published but RELEASE_SIGNING_KEY is not configured/u,
   );
-  assert.match(promotion, /gpg --homedir "\$keyring" --batch --verify "\$signature" "\$checksums"/u);
+  assert.match(
+    promotion,
+    /gpg --homedir "\$keyring" --batch --verify "\$signature" "\$checksums"/u,
+  );
 });
 
 test("live feed verification follows the exact successful promotion", () => {
