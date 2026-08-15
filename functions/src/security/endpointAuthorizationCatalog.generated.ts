@@ -1297,13 +1297,14 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
   },
   {
     exportedName: "googlePlayDeveloperNotifications",
-    trigger: "provider-webhook",
-    authMethod: "Google Play RTDN delivered over an owned Pub/Sub topic (not client-callable)",
+    trigger: "pubsub-trigger",
+    authMethod: "Google Cloud Pub/Sub topic IAM and Firebase Functions platform delivery",
     appCheck: "not-applicable",
-    tenantSource: "purchase-token claim resolved server-side to a uid",
+    tenantSource:
+      "server-owned Google Play token claim resolved from the RTDN purchase-token hash; the provider payload never supplies a uid",
     objectIdsFromClient: [],
     ownershipCheck:
-      "handler maps the Play-signed purchase token to an existing server-owned claim before touching any uid-scoped document",
+      "trigger accepts only Pub/Sub delivery, validates the BurnBar package, hashes the purchase token, resolves the server-owned claim, and reconciles against the Google Play Developer API before updating that claim's uid",
     handlerModule: "googlePlayRtdn.ts",
     bolaCoverage: [
       {
@@ -1314,8 +1315,6 @@ export const endpointAuthorizationCatalog: EndpointAuthorizationEntry[] = [
       },
     ],
     highRiskComputerUse: false,
-    publicJustification:
-      "Provider notification endpoint authenticated by Google Play's signed RTDN payload on a project-owned Pub/Sub topic; it accepts no client-supplied object ids.",
   },
   {
     exportedName: "grantMediaGrandfather",
