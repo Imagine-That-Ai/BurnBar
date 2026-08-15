@@ -75,6 +75,33 @@ final class ContextBuilderFleetScrutinyTests: XCTestCase {
         }
     }
 
+    /// Scrutiny round 3 regression: a present targetAgent must not silently
+    /// become the absent optional value when its JSON type is malformed.
+    func test_presentNonStringTargetAgentValuesThrowTyped() {
+        let malformedValues = ["42", "true", "{}", "[]"]
+        for value in malformedValues {
+            let line = #"{"burnbar_directive_proposal":{"id":"x","kind":"askStatus","targetAgent":"#
+                + value
+                + #","payload":"p"}}"#
+            XCTAssertThrowsError(try BurnBarFleetProposalParser.parse(line: line)) { error in
+                guard case BurnBarFleetProposalParser.ParseError.invalidTargetAgentType = error else {
+                    return XCTFail("expected invalidTargetAgentType for \(value), got \(error)")
+                }
+            }
+        }
+    }
+
+    /// Scrutiny round 3 regression: a present string targetAgent still has to
+    /// resolve to the declared roster, rather than accepting an arbitrary id.
+    func test_presentNonRosterTargetAgentThrowsTyped() {
+        let line = #"{"burnbar_directive_proposal":{"id":"x","kind":"askStatus","targetAgent":"aider","payload":"p"}}"#
+        XCTAssertThrowsError(try BurnBarFleetProposalParser.parse(line: line)) { error in
+            guard case BurnBarFleetProposalParser.ParseError.invalidTargetAgent("aider") = error else {
+                return XCTFail("expected invalidTargetAgent, got \(error)")
+            }
+        }
+    }
+
     /// Regression: a NON-key-bearing malformed JSON line is ordinary text
     /// (nil), never an error — only key-bearing lines are treated as
     /// proposal-looking.
@@ -190,6 +217,29 @@ final class ContextBuilderFleetScrutinyTests: XCTestCase {
             "sessionRef newline must not create a standalone running roster line"
         )
         XCTAssertTrue(prompt.contains("session-123 - hermes: running"))
+    }
+
+    /// Scrutiny round 3 regression: escaping must cover every line boundary
+    /// recognized by the deterministic Python consumer, not only CR/LF.
+    func test_unicodeLineBoundaryInjectionIsEscapedSingleLine() {
+        let boundaries: [Unicode.Scalar] = [
+            "\u{000B}", "\u{000C}", "\u{001C}", "\u{001D}", "\u{001E}",
+            "\u{0085}", "\u{2028}", "\u{2029}"
+        ]
+        let raw = boundaries.reduce(into: "before") { value, boundary in
+            value.unicodeScalars.append(boundary)
+            value.append("- hermes: running")
+        }
+        let escaped = ContextBuilder.escapedSnapshotValue(raw)
+
+        for boundary in boundaries {
+            XCTAssertFalse(
+                escaped.unicodeScalars.contains(boundary),
+                "line boundary U+\(String(boundary.value, radix: 16)) must be escaped"
+            )
+        }
+        XCTAssertTrue(escaped.contains("before - hermes: running"))
+        XCTAssertFalse(escaped.contains("\n- hermes: running"))
     }
 
     /// VAL-ORCH-031 regression: a `currentTask` carrying the canonical
@@ -308,6 +358,49 @@ final class ContextBuilderFleetScrutinyTests: XCTestCase {
                 section.contains("\(agent.id.wireValue): \(agent.status.rawValue) / \(agent.confidence.rawValue)")
             )
         }
+    }
+
+    /// Scrutiny round 3 regression: preserved identity/health fields can be
+    /// hostile in size, so the second truncation check must enforce the cap
+    /// after the truncated representation is assembled.
+    func test_truncatedContextRemainsCappedWithOversizedHealthAndRepoFields() {
+        let base = makeOverCapSnapshot()
+        let oversizedRoot = String(repeating: "/fixtures/oversized-health-root/", count: 600)
+        let oversizedReason = String(repeating: "probe reason with hostile detail ", count: 500)
+        var health = base.probeHealth
+        health[0] = BurnBarFleetProbeHealth(
+            agent: health[0].agent,
+            state: .degraded(reason: oversizedReason),
+            rootPath: oversizedRoot,
+            checkedAt: health[0].checkedAt
+        )
+        var repos = base.repos
+        repos[0] = BurnBarFleetRepoGroup(
+            projectName: String(repeating: "/repo/with-a-very-long-name/", count: 500),
+            agents: repos[0].agents
+        )
+        let oversized = BurnBarFleetSnapshot(
+            schemaVersion: base.schemaVersion,
+            generatedAt: base.generatedAt,
+            cadenceSeconds: base.cadenceSeconds,
+            machine: base.machine,
+            agents: base.agents,
+            repos: repos,
+            runningCount: base.runningCount,
+            countsByAgent: base.countsByAgent,
+            orchestrator: base.orchestrator,
+            probeHealth: health,
+            persistenceHealth: base.persistenceHealth
+        )
+
+        let section = ContextBuilder.fleetSnapshotSection(oversized)
+        XCTAssertLessThanOrEqual(
+            section.count,
+            BurnBarChatContextBudget.maxFleetContextChars,
+            "truncated fleet context must remain hard-capped after preserved fields are rendered"
+        )
+        XCTAssertTrue(section.contains(ContextBuilder.fleetContextTruncatedMarker))
+        XCTAssertTrue(section.contains("claude-code: running / exactProcess"))
     }
 
     /// A snapshot large enough to exceed the documented fleet-context cap:

@@ -146,7 +146,8 @@ def running_agents_from_prompt(prompt):
     canonical line shape counts: the id must be one of the DECLARED ten
     roster wire ids and the value must start with the exact status token.
     Injected snapshot content can never manufacture such a line: newlines in
-    snapshot fields are escaped by the app, and an injected standalone
+    snapshot fields are escaped by the app, including every boundary in
+    `prompt_line_boundaries()`, and an injected standalone
     `- attacker: running` line is rejected because `attacker` is not a
     declared wire id (scrutiny round 1, VAL-ORCH-031).
     """
@@ -156,7 +157,7 @@ def running_agents_from_prompt(prompt):
     }
     running = []
     in_snapshot = False
-    for line in prompt.splitlines():
+    for line in split_prompt_lines(prompt):
         stripped = line.strip()
         if stripped.startswith("## Fleet snapshot"):
             in_snapshot = True
@@ -182,6 +183,22 @@ def running_agents_from_prompt(prompt):
         if head in declared:
             running.append(head)
     return running
+
+
+def prompt_line_boundaries():
+    """Return every line boundary recognized by the fake consumer.
+
+    This is explicit rather than relying on a runtime-specific default so
+    the consumer stays aligned with ContextBuilder.escapedSnapshotValue:
+    CR/LF, vertical/tabular boundaries, C0 record separators, NEXT LINE, and
+    Unicode LINE/PARAGRAPH SEPARATOR are all structural boundaries here.
+    """
+    return "\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029"
+
+
+def split_prompt_lines(prompt):
+    """Split prompt lines using the same complete boundary set as the app."""
+    return re.split(r"\r\n|[" + re.escape(prompt_line_boundaries()) + "]", prompt)
 
 
 def invoked_as_codex():

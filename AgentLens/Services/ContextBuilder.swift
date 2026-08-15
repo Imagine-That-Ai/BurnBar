@@ -499,11 +499,17 @@ extension ContextBuilder {
             }
         }
 
-        var section = lines.joined(separator: "\n")
-        if section.count > BurnBarChatContextBudget.maxFleetContextChars {
-            section = truncatedFleetSection(snapshot)
+        let section = lines.joined(separator: "\n")
+        guard section.count > BurnBarChatContextBudget.maxFleetContextChars else {
+            return section
         }
-        return section
+
+        // The first rendering can contain arbitrarily large agent-provided
+        // strings. Build the documented reduced representation, then apply a
+        // second hard check because even its preserved identity/health fields
+        // are external data (scrutiny round 3).
+        let truncated = truncatedFleetSection(snapshot)
+        return hardCapFleetContext(truncated)
     }
 
     /// The deterministic truncated form preserves every non-verbose
@@ -542,7 +548,16 @@ extension ContextBuilder {
                 lines.append(probeHealthLine(health))
             }
         }
-        return lines.joined(separator: "\n")
+        return lines.map { Self.boundedSnapshotValue($0) }.joined(separator: "\n")
+    }
+
+    /// Applies the final character budget after the reduced representation
+    /// has been assembled. `String.prefix` preserves valid Unicode scalar
+    /// boundaries while guaranteeing the documented character cap.
+    private static func hardCapFleetContext(_ section: String) -> String {
+        let cap = BurnBarChatContextBudget.maxFleetContextChars
+        guard section.count > cap else { return section }
+        return String(section.prefix(cap))
     }
 
     /// ISO-8601 UTC with fractional seconds — the same wire format the fleet
@@ -588,17 +603,17 @@ extension ContextBuilder {
     }
 
     /// Escapes a snapshot-provided value for single-line embedding
-    /// (VAL-ORCH-031): CR/LF become space runs and a lone `\r` becomes a
-    /// space, so untrusted `currentTask`/`projectName`/`model`/`note`/
-    /// `displayName` content can never inject extra prompt lines or
-    /// proposal-looking text. Escaping is injective for single-line inputs
-    /// (backslash-free), so the rendered context stays deterministic.
+    /// (VAL-ORCH-031). This matches the complete line-boundary set consumed
+    /// by `tools/burnbar-fake-cli.py`, including Unicode line/paragraph
+    /// separators and the C0 record separators. Untrusted
+    /// `currentTask`/`projectName`/`model`/`note`/`displayName` content can
+    /// never inject extra prompt lines or proposal-looking text.
     static func escapedSnapshotValue(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         var out = ""
         var pendingSpace = false
         for scalar in trimmed.unicodeScalars {
-            if scalar == "\n" || scalar == "\r" {
+            if isPromptLineBoundary(scalar) {
                 pendingSpace = true
             } else {
                 if pendingSpace {
@@ -610,6 +625,29 @@ extension ContextBuilder {
         }
         if pendingSpace { out.append(" ") }
         return out
+    }
+
+    /// Python's `str.splitlines()` recognizes these boundaries. Keep the
+    /// producer's escaping explicit so it cannot drift from the deterministic
+    /// consumer's parser.
+    private static func isPromptLineBoundary(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x000A, 0x000D, 0x000B, 0x000C,
+             0x001C, 0x001D, 0x001E, 0x0085,
+             0x2028, 0x2029:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Bounds preserved identity/health fields before the final section cap.
+    /// The marker keeps the field visibly incomplete instead of presenting a
+    /// hostile value as if it were fully preserved.
+    private static func boundedSnapshotValue(_ raw: String, maxLength: Int = 320) -> String {
+        let escaped = escapedSnapshotValue(raw)
+        guard maxLength > 1, escaped.count > maxLength else { return escaped }
+        return String(escaped.prefix(maxLength - 1)) + "…"
     }
 
     private static func sensorLine(_ label: String, _ state: BurnBarSensorState) -> String {
@@ -730,6 +768,7 @@ extension ContextBuilder {
         }
         return "- " + parts.joined(separator: " · ")
     }
+
 }
 
 // MARK: - Deterministic proposal parsing (M4)
@@ -746,10 +785,36 @@ struct BurnBarFleetProposalWire: Codable, Equatable, Sendable {
     let payload: String
 
     /// Decodes a persisted proposal JSON (nil when malformed — the card then
-    /// renders a typed malformed state, never a live-looking proposal).
+    /// renders a typed malformed state, never a live-looking proposal). The
+    /// semantic checks mirror `BurnBarFleetProposalParser`, because persisted
+    /// cards bypass the streamed wrapper parser.
     static func decode(json: String) -> BurnBarFleetProposalWire? {
         guard let data = json.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(BurnBarFleetProposalWire.self, from: data)
+        guard let proposal = try? JSONDecoder().decode(BurnBarFleetProposalWire.self, from: data) else {
+            return nil
+        }
+        guard !proposal.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !proposal.payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        guard let targetAgent = proposal.targetAgent else {
+            return BurnBarFleetProposalWire(
+                id: proposal.id.trimmingCharacters(in: .whitespacesAndNewlines),
+                kind: proposal.kind,
+                targetAgent: nil,
+                payload: proposal.payload
+            )
+        }
+        guard BurnBarFleetAgentID(wireValue: targetAgent.wireValue) != nil else {
+            return nil
+        }
+        return BurnBarFleetProposalWire(
+            id: proposal.id.trimmingCharacters(in: .whitespacesAndNewlines),
+            kind: proposal.kind,
+            targetAgent: targetAgent,
+            payload: proposal.payload
+        )
     }
 
     /// Encodes the wire shape to its canonical JSON for persistence on the
@@ -782,6 +847,7 @@ enum BurnBarFleetProposalParser {
         case malformedJSON
         case invalidKind(String)
         case invalidTargetAgent(String)
+        case invalidTargetAgentType
         case emptyID
         case emptyPayload
 
@@ -795,6 +861,8 @@ enum BurnBarFleetProposalParser {
                 return "Unknown directive kind: \(raw)"
             case .invalidTargetAgent(let raw):
                 return "Unknown target agent: \(raw)"
+            case .invalidTargetAgentType:
+                return "Target agent must be a roster string when present."
             case .emptyID:
                 return "Proposal id must be non-empty."
             case .emptyPayload:
@@ -868,7 +936,10 @@ enum BurnBarFleetProposalParser {
         }
 
         let targetAgent: BurnBarFleetAgentID?
-        if let targetRaw = proposal["targetAgent"] as? String {
+        if let targetValue = proposal["targetAgent"], !(targetValue is NSNull) {
+            guard let targetRaw = targetValue as? String else {
+                throw ParseError.invalidTargetAgentType
+            }
             guard let agent = BurnBarFleetAgentID(wireValue: targetRaw) else {
                 throw ParseError.invalidTargetAgent(targetRaw)
             }

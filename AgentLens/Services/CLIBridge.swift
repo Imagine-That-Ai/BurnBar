@@ -65,6 +65,26 @@ class CLIBridge: ObservableObject {
         runningProcess = nil
     }
 
+    /// Clears the active process only when the completing stream still owns
+    /// the shared pointer. A cancelled generation may finish after a newer
+    /// stream has started; its completion must not make the newer stream
+    /// impossible to cancel (scrutiny round 3).
+    private func clearRunningProcessIfOwned(_ process: Process) {
+        if Self.ownsRunningProcess(runningProcess, completedProcess: process) {
+            runningProcess = nil
+        }
+    }
+
+    /// Process identity is the generation token for the shared pointer.
+    /// A completion may clear only its own process, never a newer stream's
+    /// owner (scrutiny round 3).
+    nonisolated static func ownsRunningProcess(
+        _ runningProcess: Process?,
+        completedProcess: Process
+    ) -> Bool {
+        runningProcess === completedProcess
+    }
+
     /// Waits for the child process to exit. A bounded `isRunning` poll
     /// replaces Foundation's `waitUntilExit()` (scrutiny round 1,
     /// M4-orchestrator): when the child exits while the synchronous stdout
@@ -147,7 +167,7 @@ class CLIBridge: ObservableObject {
         do {
             try process.run()
         } catch {
-            await MainActor.run { self.runningProcess = nil }
+            await MainActor.run { self.clearRunningProcessIfOwned(process) }
             continuation.finish(throwing: error)
             return
         }
@@ -161,7 +181,7 @@ class CLIBridge: ObservableObject {
 
         await waitForExit(process)
 
-        await MainActor.run { self.runningProcess = nil }
+        await MainActor.run { self.clearRunningProcessIfOwned(process) }
 
         if process.terminationStatus != 0, process.terminationStatus != 15 {
             continuation.finish(throwing: CLIBridgeError.processExit(code: Int(process.terminationStatus)))
@@ -198,7 +218,7 @@ class CLIBridge: ObservableObject {
         do {
             try process.run()
         } catch {
-            await MainActor.run { self.runningProcess = nil }
+            await MainActor.run { self.clearRunningProcessIfOwned(process) }
             continuation.finish(throwing: error)
             return
         }
@@ -226,7 +246,7 @@ class CLIBridge: ObservableObject {
                         ?? (obj["error"] as? String)
                         ?? "Codex reported an error"
                     continuation.finish(throwing: CLIBridgeError.codexEvent(msg))
-                    await MainActor.run { self.runningProcess = nil }
+                    await MainActor.run { self.clearRunningProcessIfOwned(process) }
                     return
                 }
             }
@@ -276,7 +296,7 @@ class CLIBridge: ObservableObject {
 
         await waitForExit(process)
 
-        await MainActor.run { self.runningProcess = nil }
+        await MainActor.run { self.clearRunningProcessIfOwned(process) }
 
         if process.terminationStatus != 0, process.terminationStatus != 15 {
             continuation.finish(throwing: CLIBridgeError.processExit(code: Int(process.terminationStatus)))
