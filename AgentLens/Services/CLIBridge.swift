@@ -65,6 +65,22 @@ class CLIBridge: ObservableObject {
         runningProcess = nil
     }
 
+    /// Waits for the child process to exit. A bounded `isRunning` poll
+    /// replaces Foundation's `waitUntilExit()` (scrutiny round 1,
+    /// M4-orchestrator): when the child exits while the synchronous stdout
+    /// read loop is still draining (typical for short-lived deterministic
+    /// fixtures), `waitUntilExit()` can miss the termination notification
+    /// and block forever on its Mach-port wait. The read loop has already
+    /// reached EOF by the time this is called, so the process is dead or
+    /// dying and a short poll is race-free; `isRunning` is a plain flag set
+    /// at launch and cleared at termination.
+    nonisolated private func waitForExit(_ process: Process) async {
+        let deadline = Date().addingTimeInterval(30)
+        while process.isRunning, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
     /// Streams assistant text and tool-use events from the CLI (Claude `stream-json`, Codex JSONL text only).
     func chat(systemPrompt: String, userMessage: String) -> AsyncThrowingStream<CLIChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -143,7 +159,7 @@ class CLIBridge: ObservableObject {
             }
         }
 
-        process.waitUntilExit()
+        await waitForExit(process)
 
         await MainActor.run { self.runningProcess = nil }
 
@@ -258,7 +274,7 @@ class CLIBridge: ObservableObject {
             }
         }
 
-        process.waitUntilExit()
+        await waitForExit(process)
 
         await MainActor.run { self.runningProcess = nil }
 

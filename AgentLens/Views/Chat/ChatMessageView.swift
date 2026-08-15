@@ -129,63 +129,10 @@ struct ChatMessageView: View {
         let decision = message.proposalDecision
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                Image(systemName: "hand.raised.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(DesignSystem.Colors.whimsy)
-                Text("Directive proposal")
-                    .font(DesignSystem.Typography.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-            }
-
-            if let proposal {
-                Text("\(proposal.kind.rawValue) · \(proposal.targetAgent?.wireValue ?? "any")")
-                    .font(DesignSystem.Typography.tiny)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
-                Text(proposal.payload)
-                    .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("id: \(proposal.id)")
-                    .font(DesignSystem.Typography.monoTiny)
-                    .foregroundStyle(DesignSystem.Colors.textMuted)
-            } else {
-                Text("Malformed proposal payload")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.error)
-            }
-
-            if let decision {
-                let isApproved = decision == .approved
-                HStack(spacing: DesignSystem.Spacing.xs) {
-                    Image(systemName: isApproved ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
-                    Text(isApproved ? "Approved" : "Dismissed")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
-                }
-
-                if isApproved, let deliveryState = message.deliveryState {
-                    deliveryStateRow(deliveryState)
-                }
-            } else if let onApproveProposal, let onDismissProposal {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    Button("Approve") {
-                        onApproveProposal(message.id)
-                    }
-                    .font(DesignSystem.Typography.caption)
-                    .buttonStyle(.borderedProminent)
-                    .tint(DesignSystem.Colors.success)
-
-                    Button("Dismiss") {
-                        onDismissProposal(message.id)
-                    }
-                    .font(DesignSystem.Typography.caption)
-                    .buttonStyle(.bordered)
-                }
-            }
+            proposalHeader
+            proposalBody(proposal: proposal)
+            proposalErrorRow
+            proposalActions(proposal: proposal, decision: decision)
         }
         .frame(maxWidth: 300, alignment: .leading)
         .padding(DesignSystem.Spacing.md)
@@ -209,6 +156,118 @@ struct ChatMessageView: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Directive proposal")
+    }
+
+    /// The card's header row (icon + "Directive proposal").
+    private var proposalHeader: some View {
+        HStack(spacing: DesignSystem.Spacing.xs) {
+            Image(systemName: "hand.raised.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(DesignSystem.Colors.whimsy)
+            Text("Directive proposal")
+                .font(DesignSystem.Typography.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+        }
+    }
+
+    /// The card's payload rows: the decoded proposal, or a visibly
+    /// non-actionable malformed state (scrutiny round 1) — no live-looking
+    /// approve/dismiss buttons that would silently no-op.
+    @ViewBuilder
+    private func proposalBody(proposal: BurnBarFleetProposalWire?) -> some View {
+        if let proposal {
+            Text("\(proposal.kind.rawValue) · \(proposal.targetAgent?.wireValue ?? "any")")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Text(proposal.payload)
+                .font(DesignSystem.Typography.body)
+                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("id: \(proposal.id)")
+                .font(DesignSystem.Typography.monoTiny)
+                .foregroundStyle(DesignSystem.Colors.textMuted)
+        } else {
+            Text("Malformed proposal payload — no actions available")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.error)
+            Text("This proposal could not be decoded. It will not be recorded or delivered.")
+                .font(DesignSystem.Typography.tiny)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The visible card-level typed error (scrutiny round 1): a daemon
+    /// failure during Approve/Dismiss, or a critical local persistence
+    /// failure, renders on the card itself — never only in streamError,
+    /// which ChatPanel does not display. The pending proposal is preserved
+    /// so the action stays retryable.
+    @ViewBuilder
+    private var proposalErrorRow: some View {
+        if let proposalError = message.proposalError, !proposalError.isEmpty {
+            HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.error)
+                    .padding(.top, 1)
+                Text(proposalError)
+                    .font(DesignSystem.Typography.tiny)
+                    .foregroundStyle(DesignSystem.Colors.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(DesignSystem.Spacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DesignSystem.Radius.sm, style: .continuous)
+                    .fill(DesignSystem.Colors.error.opacity(0.08))
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Proposal error: \(proposalError)")
+        }
+    }
+
+    /// The card's consent/outcome row: the decided outcome (with delivery
+    /// state), or approve/dismiss controls — only for a DECODED proposal
+    /// (a malformed payload renders non-actionable above).
+    @ViewBuilder
+    private func proposalActions(
+        proposal: BurnBarFleetProposalWire?,
+        decision: ChatProposalDecision?
+    ) -> some View {
+        if let decision {
+            let isApproved = decision == .approved
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                Image(systemName: isApproved ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
+                Text(isApproved ? "Approved" : "Dismissed")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
+            }
+
+            if isApproved, let deliveryState = message.deliveryState {
+                deliveryStateRow(deliveryState)
+            }
+        } else if let proposal, let onApproveProposal, let onDismissProposal {
+            // Only a DECODED proposal offers live consent controls: a
+            // malformed persisted payload renders visibly non-actionable
+            // above (scrutiny round 1).
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Button("Approve") {
+                    onApproveProposal(message.id)
+                }
+                .font(DesignSystem.Typography.caption)
+                .buttonStyle(.borderedProminent)
+                .tint(DesignSystem.Colors.success)
+
+                Button("Dismiss") {
+                    onDismissProposal(message.id)
+                }
+                .font(DesignSystem.Typography.caption)
+                .buttonStyle(.bordered)
+            }
+        }
     }
 
     /// Renders the typed delivery state of an approved proposal (M4,

@@ -1726,6 +1726,16 @@ final class DataStore {
                 t.add(column: "proposalDecidedAt", .datetime)
             }
         }
+        /// M4 scrutiny round 1: `proposalError` carries a visible card-level
+        /// typed error when an Approve/Dismiss decision could not be recorded
+        /// (daemon down) or a critical proposal/decision save failed locally.
+        /// The pending proposal is preserved on the same row so the card
+        /// stays coherent and retryable — never a silent no-op.
+        migrator.registerMigration("v24_chat_proposal_error") { db in
+            try db.alter(table: "chat_messages") { t in
+                t.add(column: "proposalError", .text)
+            }
+        }
 
         return migrator
     }
@@ -2301,9 +2311,10 @@ final class DataStore {
                 INSERT OR REPLACE INTO chat_messages (
                     id, threadId, role, content, timestamp, cliUsed,
                     transcriptPiecesJSON, cancelled, proposalJSON,
-                    proposalDecision, proposalDecidedAt, deliveryState
+                    proposalDecision, proposalDecidedAt, deliveryState,
+                    proposalError
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 arguments: [
                     message.id,
@@ -2317,7 +2328,8 @@ final class DataStore {
                     message.proposalJSON,
                     message.proposalDecision?.rawValue,
                     message.proposalDecidedAt,
-                    message.deliveryState?.rawValue
+                    message.deliveryState?.rawValue,
+                    message.proposalError
                 ]
             )
         }
@@ -2493,7 +2505,8 @@ final class DataStore {
             proposalJSON: row["proposalJSON"] as? String,
             proposalDecision: (row["proposalDecision"] as? String).flatMap(ChatProposalDecision.init(rawValue:)),
             proposalDecidedAt: parseDate(row["proposalDecidedAt"]),
-            deliveryState: (row["deliveryState"] as? String).flatMap(ChatDeliveryState.init(rawValue:))
+            deliveryState: (row["deliveryState"] as? String).flatMap(ChatDeliveryState.init(rawValue:)),
+            proposalError: row["proposalError"] as? String
         )
     }
 

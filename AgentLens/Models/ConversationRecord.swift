@@ -168,6 +168,12 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
     /// (VAL-ORCH-014/030/037). Persisted so the card's outcome survives app
     /// relaunch.
     let deliveryState: ChatDeliveryState?
+    /// A visible card-level typed error (M4 scrutiny round 1): set when an
+    /// Approve/Dismiss decision could not be recorded (daemon down), when
+    /// the decision/delivery state could not be persisted locally, or when a
+    /// stream-finalize save of a proposal failed. The pending proposal is
+    /// preserved so the card stays actionable — never a silent no-op.
+    let proposalError: String?
 
     init(
         id: String = UUID().uuidString,
@@ -180,7 +186,8 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         proposalJSON: String? = nil,
         proposalDecision: ChatProposalDecision? = nil,
         proposalDecidedAt: Date? = nil,
-        deliveryState: ChatDeliveryState? = nil
+        deliveryState: ChatDeliveryState? = nil,
+        proposalError: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -193,6 +200,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         self.proposalDecision = proposalDecision
         self.proposalDecidedAt = proposalDecidedAt
         self.deliveryState = deliveryState
+        self.proposalError = proposalError
     }
 
     /// Pieces for display (legacy rows use a single synthetic text piece from `content`).
@@ -209,12 +217,14 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, role, content, timestamp, cliUsed, transcriptPieces,
-             cancelled, proposalJSON, proposalDecision, proposalDecidedAt, deliveryState
+             cancelled, proposalJSON, proposalDecision, proposalDecidedAt,
+             deliveryState, proposalError
     }
 
     /// Tolerant decoding: the M4 fields (`cancelled`, `proposalJSON`,
-    /// `proposalDecision`, `proposalDecidedAt`, `deliveryState`) default when
-    /// absent so pre-M4 persisted payloads still decode.
+    /// `proposalDecision`, `proposalDecidedAt`, `deliveryState`, and the
+    /// scrutiny-round-1 `proposalError`) default when absent so pre-M4
+    /// persisted payloads still decode.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -228,6 +238,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         proposalDecision = try container.decodeIfPresent(ChatProposalDecision.self, forKey: .proposalDecision)
         proposalDecidedAt = try container.decodeIfPresent(Date.self, forKey: .proposalDecidedAt)
         deliveryState = try container.decodeIfPresent(ChatDeliveryState.self, forKey: .deliveryState)
+        proposalError = try container.decodeIfPresent(String.self, forKey: .proposalError)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -243,6 +254,7 @@ struct ChatMessageRecord: Codable, Identifiable, Hashable {
         try container.encodeIfPresent(proposalDecision, forKey: .proposalDecision)
         try container.encodeIfPresent(proposalDecidedAt, forKey: .proposalDecidedAt)
         try container.encodeIfPresent(deliveryState, forKey: .deliveryState)
+        try container.encodeIfPresent(proposalError, forKey: .proposalError)
     }
 }
 

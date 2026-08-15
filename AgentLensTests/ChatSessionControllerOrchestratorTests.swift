@@ -329,8 +329,7 @@ final class ChatSessionControllerOrchestratorTests: ChatSessionControllerOrchest
         let sendTask = Task { await controller.send() }
 
         // Let the slow stream start, then cancel.
-        try await Task.sleep(nanoseconds: 500_000_000)
-        XCTAssertTrue(controller.isStreaming)
+        await waitForStreaming(controller, shouldStream: true)
         controller.cancelGeneration()
         await sendTask.value
         await waitForLastMessage(controller, cancelled: true)
@@ -392,5 +391,199 @@ final class ChatSessionControllerOrchestratorTests: ChatSessionControllerOrchest
         // Nothing was written into the sandbox home root beyond the scratch.
         let homeContents = try FileManager.default.contentsOfDirectory(atPath: sandboxHome.path)
         XCTAssertTrue(homeContents.isEmpty, "no CLI self-writes outside scratch: \(homeContents)")
+    }
+
+    // MARK: - Scrutiny round 1: malformed proposal lines are dropped (blocking)
+
+    /// VAL-ORCH-031 regression (scrutiny round 1): a canonical-key-bearing
+    /// malformed JSON line is DROPPED by the stream consumer — never
+    /// rendered as assistant text, never a proposal, no record.
+    func test_keyBearingMalformedJSONIsDroppedNotRendered() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal-malformed"))
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForStream(controller)
+
+        let last = lastAssistantMessage(controller)
+        XCTAssertNotNil(last)
+        // The malformed line must NOT appear as assistant text.
+        XCTAssertNil(last?.proposalJSON, "malformed key-bearing line never becomes a proposal")
+        XCTAssertFalse(last?.content.contains("burnbar_directive_proposal") == true, "never rendered as assistant text")
+        XCTAssertEqual(directiveRecordCalls, 0, "no record from a malformed proposal line")
+    }
+
+    // MARK: - Scrutiny round 1: cancellation race isolation (blocking)
+
+    /// VAL-ORCH-023 regression (scrutiny round 1): a rapid cancel→send
+    /// sequence can never attach the NEW stream's proposal to the OLD
+    /// (cancelled) message, and the new stream's pending proposal survives.
+    func test_cancelThenSendRaceKeepsProposalOnNewStreamOnly() async throws {
+        let snapshot = freshSnapshot()
+        // combo mode: "hang-first" stream ignores SIGTERM and lingers (the
+        // cancelled old generation's finalize is delayed past the new
+        // stream's proposal parse); the second stream emits the canonical
+        // proposal with the nonce binding and lingers.
+        let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "combo"))
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+
+        // Send #1 (old generation, delayed finalize).
+        controller.inputText = "hang-first stream"
+        let firstSend = Task { await controller.send() }
+        // Wait until the old stream is actually streaming (its process is up
+        // and its finalize is delayed past the new stream's proposal parse),
+        // then cancel and immediately send again — the race window.
+        await waitForStreaming(controller, shouldStream: true)
+        controller.cancelGeneration()
+        await firstSend.value
+
+        let firstAssistantID = lastAssistantMessage(controller)?.id
+        XCTAssertNotNil(firstAssistantID)
+
+        // Send #2 immediately — the old generation must not clobber it.
+        controller.inputText = "hang-then-proposal"
+        let secondSend = Task { await controller.send() }
+        await secondSend.value
+        await waitForStream(controller)
+        await waitForProposal(controller)
+
+        let newLast = lastAssistantMessage(controller)
+        XCTAssertNotNil(newLast)
+        XCTAssertNotEqual(newLast?.id, firstAssistantID, "the second send must create its own assistant message")
+
+        // The NEW stream's proposal is attached to the NEW message only.
+        XCTAssertNotNil(newLast?.proposalJSON, "the new stream's pending proposal must survive")
+        XCTAssertTrue(newLast?.proposalJSON?.contains("m4-proposal-001") == true)
+        let old = controller.messages.first { $0.id == firstAssistantID }
+        XCTAssertNotNil(old)
+        XCTAssertTrue(old?.cancelled == true, "the first message is marked cancelled honestly")
+        XCTAssertNil(old?.proposalJSON, "the old message must never carry the new stream's proposal")
+
+        // The thread stays consistent: a decision on the new proposal records
+        // exactly one directive.
+        controller.approveProposal(messageID: newLast!.id)
+        XCTAssertEqual(directiveRecordCalls, 1)
+        XCTAssertEqual(recordedDirectives.first?.id, "m4-proposal-001")
+    }
+
+    /// VAL-ORCH-023: a cancelled stream that finalizes AFTER a newer stream
+    /// started must not clear the newer stream's streaming state.
+    func test_staleCancelledFinalizeDoesNotClobberNewerStreamState() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "slow"))
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+
+        controller.inputText = "slow one"
+        let firstSend = Task { await controller.send() }
+        // Wait until the slow stream is actually streaming before cancelling
+        // (deterministic under heavy machine load).
+        await waitForStreaming(controller, shouldStream: true)
+        controller.cancelGeneration()
+        await firstSend.value
+        XCTAssertFalse(controller.isStreaming)
+
+        // Send again with a fast stream; while it streams, the cancelled
+        // task's finalize (if any) must not flip isStreaming off.
+        controller.inputText = "quick two"
+        let secondSend = Task { await controller.send() }
+        await waitForStreaming(controller, shouldStream: true)
+        XCTAssertTrue(controller.isStreaming, "the new stream must stay streaming")
+        await secondSend.value
+        await waitForStream(controller)
+        XCTAssertFalse(controller.isStreaming)
+        XCTAssertNil(controller.activeStreamMessageId)
+    }
+
+    // MARK: - Scrutiny round 1: visible card-level decision errors (non-blocking)
+
+    /// VAL-ORCH-027 regression (scrutiny round 1): an Approve failure while
+    /// the daemon is down is a visible CARD-LEVEL typed error (not only
+    /// streamError, which ChatPanel never renders); the proposal stays
+    /// pending and retryable.
+    func test_approveWhileDaemonDownShowsCardLevelErrorAndKeepsProposalPending() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+        let last = try XCTUnwrap(lastAssistantMessage(controller))
+
+        // Daemon goes down: the record provider now throws.
+        let failingController = ChatSessionController(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            fleetService: FleetService(socketURL: socketURL) { _ in snapshot },
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            orchestratorStateProvider: { _ in
+                BurnBarOrchestratorState(designation: .burnBarManaged, setAt: Date(), pendingDirectives: 0)
+            },
+            directiveRecordProvider: { _, _ in
+                throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+            },
+            deliveryChannelProvider: { _ in nil },
+            cliAssistantAllowedProvider: { true }
+        )
+        failingController.messages = controller.messages
+        failingController.approveProposal(messageID: last.id)
+
+        // The card itself carries the typed error; the proposal stays pending.
+        let message = try XCTUnwrap(lastAssistantMessage(failingController))
+        XCTAssertNotNil(message.proposalError, "the card must expose the typed error")
+        XCTAssertTrue(message.proposalError?.contains("failed") == true)
+        XCTAssertEqual(message.proposalDecision, nil, "proposal stays pending — no phantom record")
+        XCTAssertNotNil(message.proposalJSON, "the pending proposal is preserved")
+        XCTAssertEqual(directiveRecordCalls, 0)
+
+        // After the daemon recovers, a single retry produces exactly one
+        // record: the error clears when the decision succeeds.
+        let recovered = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
+        recovered.messages = failingController.messages
+        recovered.approveProposal(messageID: last.id)
+        XCTAssertEqual(directiveRecordCalls, 1)
+        XCTAssertNil(lastAssistantMessage(recovered)?.proposalError, "the error clears on success")
+        XCTAssertEqual(lastAssistantMessage(recovered)?.proposalDecision, .approved)
+    }
+
+    /// Dismiss failure is equally visible on the card and keeps the proposal
+    /// pending.
+    func test_dismissWhileDaemonDownShowsCardLevelErrorAndKeepsProposalPending() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+        let last = try XCTUnwrap(lastAssistantMessage(controller))
+
+        let failingController = ChatSessionController(
+            dataStore: store,
+            settingsManager: SettingsManager.shared,
+            fleetService: FleetService(socketURL: socketURL) { _ in snapshot },
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            orchestratorStateProvider: { _ in
+                BurnBarOrchestratorState(designation: .burnBarManaged, setAt: Date(), pendingDirectives: 0)
+            },
+            directiveRecordProvider: { _, _ in
+                throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+            },
+            deliveryChannelProvider: { _ in nil },
+            cliAssistantAllowedProvider: { true }
+        )
+        failingController.messages = controller.messages
+        failingController.dismissProposal(messageID: last.id)
+
+        let message = try XCTUnwrap(lastAssistantMessage(failingController))
+        XCTAssertNotNil(message.proposalError)
+        XCTAssertTrue(message.proposalError?.contains("dismissal failed") == true)
+        XCTAssertNil(message.proposalDecision, "dismissal stays pending on failure")
+        XCTAssertNotNil(message.proposalJSON)
+        XCTAssertEqual(directiveRecordCalls, 0)
     }
 }

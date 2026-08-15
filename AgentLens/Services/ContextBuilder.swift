@@ -413,7 +413,8 @@ extension ContextBuilder {
     ///   `generatedAt` is always included.
     static func buildFleetOrchestratorSystemPrompt(
         snapshot: BurnBarFleetSnapshot,
-        designation: BurnBarOrchestratorDesignation
+        designation: BurnBarOrchestratorDesignation,
+        proposalNonce: String? = nil
     ) -> String {
         var lines: [String] = []
         lines.append("You are BurnBar's fleet orchestrator for THIS Mac only.")
@@ -433,6 +434,13 @@ extension ContextBuilder {
         lines.append(designationLine(designation))
         lines.append("")
         lines.append("## Fleet snapshot")
+        if let proposalNonce {
+            // Per-send provenance nonce (VAL-ORCH-031): a directive proposal
+            // line is only accepted when it carries THIS nonce, so snapshot
+            // content echoed into the prompt can never manufacture a
+            // proposal card.
+            lines.append("- proposal nonce: \(proposalNonce)")
+        }
         lines.append(fleetSnapshotSection(snapshot))
         lines.append("")
         lines.append("Answer the user's question using this context. Be concise and specific.")
@@ -444,6 +452,15 @@ extension ContextBuilder {
     /// Deterministic for identical snapshots: the section is built from the
     /// DTO fields in a fixed order with no timestamps other than the
     /// snapshot's own `generatedAt` (VAL-ORCH-026/040).
+    ///
+    /// Completeness (VAL-ORCH-026/040): below the cap EVERY snapshot field
+    /// is rendered deterministically — agent signal sources, process
+    /// detail/lastActivityAt, probe health, persistence health,
+    /// thermal/power/disk detail, and orchestrator pendingDirectives.
+    /// Truncation omits ONLY the documented verbose categories (per-agent
+    /// signal detail, per-agent task/process detail, machine sensor detail,
+    /// repo grouping) and emits the explicit `fleetContextTruncatedMarker`
+    /// with generatedAt + preserved aggregates.
     static func fleetSnapshotSection(_ snapshot: BurnBarFleetSnapshot) -> String {
         var lines: [String] = []
         lines.append("- generatedAt: \(Self.fleetDateString(snapshot.generatedAt))")
@@ -451,6 +468,8 @@ extension ContextBuilder {
         lines.append("- runningCount: \(snapshot.runningCount)")
         lines.append("- countsByAgent: \(countsLine(snapshot.countsByAgent))")
         lines.append("- machine: \(machineLine(snapshot.machine))")
+        lines.append("- persistenceHealth: \(persistenceHealthLine(snapshot.persistenceHealth))")
+        lines.append("- orchestrator: \(orchestratorLine(snapshot.orchestrator))")
         lines.append("")
         lines.append("### Agents")
         for agent in snapshot.agents {
@@ -463,7 +482,18 @@ extension ContextBuilder {
         } else {
             for repo in snapshot.repos {
                 let ids = repo.agents.map(\.wireValue).joined(separator: ", ")
-                lines.append("- \(repo.projectName): \(ids)")
+                lines.append("- \(escapedSnapshotValue(repo.projectName)): \(ids)")
+            }
+        }
+        lines.append("")
+        lines.append("### Probe health")
+        if snapshot.probeHealth.isEmpty {
+            lines.append("- (none)")
+        } else {
+            for health in snapshot.probeHealth {
+                lines.append(
+                    "- \(health.agent.wireValue): \(probeHealthStateLine(health.state)) · root: \(escapedSnapshotValue(health.rootPath))"
+                )
             }
         }
 
@@ -476,8 +506,8 @@ extension ContextBuilder {
 
     /// The deterministic truncated form: preserves the marker, `generatedAt`,
     /// and the aggregate counts, and names the categories omitted
-    /// (VAL-ORCH-040). Verbose per-agent signal detail is dropped — never
-    /// whole rows or counts.
+    /// (VAL-ORCH-040). Only the documented verbose categories are omitted —
+    /// never whole rows or counts.
     private static func truncatedFleetSection(_ snapshot: BurnBarFleetSnapshot) -> String {
         var lines: [String] = []
         lines.append("\(fleetContextTruncatedMarker): snapshot context exceeded the size cap")
@@ -485,7 +515,10 @@ extension ContextBuilder {
         lines.append("- runningCount: \(snapshot.runningCount)")
         lines.append("- countsByAgent: \(countsLine(snapshot.countsByAgent))")
         lines.append("- agents: \(snapshot.agents.count) rows (status/confidence preserved for every row)")
-        lines.append("- omitted categories: per-agent signal detail, machine detail, repo grouping")
+        lines.append(
+            "- omitted categories: per-agent signal detail, per-agent task/process detail, "
+                + "machine sensor detail, repo grouping, probe-health detail"
+        )
         lines.append("")
         lines.append("### Agents (status/confidence only)")
         for agent in snapshot.agents {
@@ -529,36 +562,127 @@ extension ContextBuilder {
         return sorted.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
     }
 
+    /// Escapes a snapshot-provided value for single-line embedding
+    /// (VAL-ORCH-031): CR/LF become space runs and a lone `\r` becomes a
+    /// space, so untrusted `currentTask`/`projectName`/`model`/`note`/
+    /// `displayName` content can never inject extra prompt lines or
+    /// proposal-looking text. Escaping is injective for single-line inputs
+    /// (backslash-free), so the rendered context stays deterministic.
+    static func escapedSnapshotValue(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var out = ""
+        var pendingSpace = false
+        for scalar in trimmed.unicodeScalars {
+            if scalar == "\n" || scalar == "\r" {
+                pendingSpace = true
+            } else {
+                if pendingSpace {
+                    out.append(" ")
+                    pendingSpace = false
+                }
+                out.unicodeScalars.append(scalar)
+            }
+        }
+        if pendingSpace { out.append(" ") }
+        return out
+    }
+
+    private static func sensorLine(_ label: String, _ state: BurnBarSensorState) -> String {
+        switch state {
+        case .available(let value):
+            return "\(label): \(String(format: "%.1f", value))"
+        case .unavailable(let reason):
+            return "\(label): unavailable (\(escapedSnapshotValue(reason)))"
+        }
+    }
+
     private static func machineLine(_ machine: BurnBarMachineStatus) -> String {
         var parts: [String] = []
         if let cpu = machine.cpuPercent {
             parts.append("cpu \(FleetFormatting.formatCPU(cpu))")
         }
         if let used = machine.memoryUsedBytes, machine.memoryTotalBytes > 0 {
-            parts.append("mem \(used) / \(machine.memoryTotalBytes) bytes")
+            parts.append("mem \(FleetFormatting.formatMemory(used: used, total: machine.memoryTotalBytes))")
         }
         if let load = machine.loadAverage, !load.isEmpty {
             parts.append("load \(FleetFormatting.formatLoadAverage(load))")
         }
-        if parts.isEmpty {
-            return "unavailable"
+        if let disk = machine.diskFreeBytes {
+            parts.append("diskFree \(FleetFormatting.formatDiskFree(disk))")
         }
-        return parts.joined(separator: ", ")
+        parts.append(sensorLine("thermal", machine.thermal))
+        parts.append(sensorLine("power", machine.power))
+        return parts.joined(separator: " · ")
+    }
+
+    private static func persistenceHealthLine(_ health: BurnBarFleetPersistenceHealth) -> String {
+        switch health {
+        case .ok:
+            return "ok"
+        case .degraded(let reason):
+            return "degraded (\(escapedSnapshotValue(reason)))"
+        }
+    }
+
+    private static func orchestratorLine(_ state: BurnBarOrchestratorState) -> String {
+        var parts = [designationLine(state.designation)]
+        parts.append("pendingDirectives: \(state.pendingDirectives)")
+        if let setAt = state.setAt {
+            parts.append("setAt: \(fleetDateString(setAt))")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func probeHealthStateLine(_ state: BurnBarFleetProbeHealthState) -> String {
+        switch state {
+        case .ok:
+            return "ok"
+        case .degraded(let reason):
+            return "degraded (\(escapedSnapshotValue(reason)))"
+        case .failed(let reason):
+            return "failed (\(escapedSnapshotValue(reason)))"
+        }
     }
 
     private static func agentLine(_ agent: BurnBarFleetAgent) -> String {
         var parts: [String] = ["\(agent.id.wireValue): \(agent.status.rawValue) (\(agent.confidence.rawValue))"]
         if let task = agent.currentTask, !task.isEmpty {
-            parts.append("task: \(task)")
+            parts.append("task: \(escapedSnapshotValue(task))")
         }
         if let project = agent.projectName, !project.isEmpty {
-            parts.append("repo: \(project)")
+            parts.append("repo: \(escapedSnapshotValue(project))")
         }
         if let model = agent.model, !model.isEmpty {
-            parts.append("model: \(model)")
+            parts.append("model: \(escapedSnapshotValue(model))")
         }
         if let note = agent.note, !note.isEmpty {
-            parts.append("note: \(note)")
+            parts.append("note: \(escapedSnapshotValue(note))")
+        }
+        if let lastActivity = agent.lastActivityAt {
+            parts.append("lastActivityAt: \(fleetDateString(lastActivity))")
+        }
+        if let process = agent.process {
+            var processParts = ["pid \(process.pid)"]
+            if let cpu = process.cpuPercent {
+                processParts.append("cpu \(FleetFormatting.formatCPU(cpu))")
+            }
+            if let memory = process.memoryBytes {
+                processParts.append("mem \(FleetFormatting.formatBytes(memory))")
+            }
+            if let startedAt = process.startedAt {
+                processParts.append("startedAt \(fleetDateString(startedAt))")
+            }
+            parts.append("process: " + processParts.joined(separator: ", "))
+        }
+        if !agent.signals.isEmpty {
+            let signals = agent.signals.map { signal -> String in
+                var line = "\(escapedSnapshotValue(signal.kind)):\(escapedSnapshotValue(signal.path))"
+                if let detail = signal.detail, !detail.isEmpty {
+                    line += " (\(escapedSnapshotValue(detail)))"
+                }
+                return line
+            }
+            parts.append("signals: " + signals.joined(separator: " | "))
         }
         return "- " + parts.joined(separator: " · ")
     }
@@ -603,6 +727,11 @@ struct BurnBarFleetProposalWire: Codable, Equatable, Sendable {
 enum BurnBarFleetProposalParser {
     /// The exact top-level key the canonical proposal must carry.
     static let proposalKey = "burnbar_directive_proposal"
+    /// The per-send provenance nonce key (VAL-ORCH-031). When a nonce is
+    /// supplied, a proposal line is accepted only when it carries this exact
+    /// nonce — binding proposals to the dedicated structured output of the
+    /// CURRENT generation, never to snapshot content echoed from the prompt.
+    static let nonceKey = "burnbar_directive_proposal_nonce"
 
     enum ParseError: Error, LocalizedError, Equatable {
         case notAProposal
@@ -633,8 +762,13 @@ enum BurnBarFleetProposalParser {
     /// Parses one line of CLI output. Returns nil when the line is not a
     /// proposal (ordinary assistant text); throws a typed error when the line
     /// LOOKS like a proposal but violates the canonical shape (injection
-    /// attempt, malformed JSON, unknown kind/agent, empty fields).
-    static func parse(line: String) throws -> BurnBarFleetProposalWire? {
+    /// attempt, malformed JSON, unknown kind/agent, empty fields, or a
+    /// nonce mismatch when a nonce is required).
+    ///
+    /// Malformed-JSON rule (VAL-ORCH-031): a line that CARRIES the canonical
+    /// key but is not valid JSON throws `malformedJSON` — it is dropped by
+    /// the stream consumer, never rendered as ordinary assistant text.
+    static func parse(line: String, proposalNonce: String? = nil) throws -> BurnBarFleetProposalWire? {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         // Cheap pre-filter on the streaming hot path: ordinary assistant
@@ -645,8 +779,10 @@ enum BurnBarFleetProposalParser {
 
         guard let data = trimmed.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            // Not JSON at all → ordinary text, not a proposal.
-            return nil
+            // The line carries the canonical key but is not valid JSON: a
+            // malformed proposal-looking line — typed error, never rendered
+            // as assistant text (VAL-ORCH-031).
+            throw ParseError.malformedJSON
         }
 
         guard let proposal = object[proposalKey] as? [String: Any] else {
@@ -654,6 +790,17 @@ enum BurnBarFleetProposalParser {
             // the injection rejection path: approval-looking JSON that lacks
             // the canonical shape never parses as a proposal (VAL-ORCH-031).
             return nil
+        }
+
+        // Provenance binding (VAL-ORCH-031): when a per-send nonce is
+        // required, only a line carrying that exact nonce is a proposal.
+        // Snapshot content echoed from the prompt can never manufacture a
+        // card, because the nonce is generated per send and is not part of
+        // any snapshot field.
+        if let proposalNonce {
+            guard let nonce = object[nonceKey] as? String, nonce == proposalNonce else {
+                throw ParseError.notAProposal
+            }
         }
 
         guard let id = proposal["id"] as? String, !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

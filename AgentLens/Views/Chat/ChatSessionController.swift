@@ -49,7 +49,7 @@ final class ChatSessionController {
     /// Typed reason when the orchestrator state could not be fetched.
     private(set) var orchestratorStateError: String?
 
-    private let dataStore: DataStore
+    let dataStore: DataStore
     private var searchService: SearchService
     private let retrievalHealthService: RetrievalHealthService
     private let settingsManager: SettingsManager
@@ -61,13 +61,13 @@ final class ChatSessionController {
     let fleetService: FleetService
     /// Injectable daemon orchestrator-state source (M4). Defaults to the real
     /// `daemon.fleet.orchestrator.get` RPC; tests inject fixed DTOs.
-    private let orchestratorStateProvider: (URL) throws -> BurnBarOrchestratorState
+    let orchestratorStateProvider: (URL) throws -> BurnBarOrchestratorState
     /// Injectable directive-record source (M4). Defaults to the real
     /// `daemon.fleet.directive.record` RPC; tests inject a recording stub.
-    private let directiveRecordProvider: (BurnBarFleetDirective, URL) throws -> BurnBarFleetDirective
+    let directiveRecordProvider: (BurnBarFleetDirective, URL) throws -> BurnBarFleetDirective
     /// Injectable delivery-channel resolver (M4). Defaults to the Hermes
     /// gateway channel (branch A); tests inject a stub channel.
-    private let deliveryChannelProvider: (BurnBarFleetAgentID?) -> BurnBarFleetDirectiveChannel?
+    let deliveryChannelProvider: (BurnBarFleetAgentID?) -> BurnBarFleetDirectiveChannel?
     /// Injectable privacy-consent gate (VAL-ORCH-010). Defaults to the
     /// SettingsManager flag shared with analyst mode.
     private let cliAssistantAllowedProvider: () -> Bool
@@ -216,6 +216,7 @@ final class ChatSessionController {
         streamTask = nil
         isStreaming = false
         activeStreamMessageId = nil
+        generation = nil
         messages = []
         inputText = ""
         streamError = nil
@@ -246,6 +247,7 @@ final class ChatSessionController {
         streamTask = nil
         isStreaming = false
         activeStreamMessageId = nil
+        generation = nil
         streamError = nil
         selectedContext = nil
 
@@ -299,7 +301,31 @@ final class ChatSessionController {
     /// The proposal parsed from the current orchestrator stream (M4). Set
     /// before the stream finishes; attached to the assistant message so the
     /// card renders with approve/dismiss actions (VAL-ORCH-011).
-    private var pendingProposal: BurnBarFleetProposalWire?
+    ///
+    /// Per-stream isolation (scrutiny round 1): the proposal is scoped to the
+    /// generation that parsed it, and `finalizeStream` only consumes it when
+    /// its generation token still matches the active stream — a cancelled
+    /// stream can never attach a newer stream's proposal to an old message
+    /// or erase the newer stream's pending proposal.
+    private struct GenerationContext {
+        let assistantId: String
+        let proposalNonce: String
+        var pendingProposal: BurnBarFleetProposalWire?
+    }
+
+    /// The active generation's per-stream state, or nil while idle. Each
+    /// `startStream` creates a fresh context; `finalizeStream` guards shared
+    /// state (isStreaming/pendingProposal) by generation token, so a
+    /// cancel→send race cannot corrupt proposal state across generations.
+    private var generation: GenerationContext?
+
+    /// A per-send provenance nonce injected into the orchestrator prompt
+    /// (VAL-ORCH-031). A proposal line is accepted only when it carries this
+    /// exact nonce, so snapshot content echoed from the prompt can never
+    /// manufacture a proposal card.
+    static func makeProposalNonce() -> String {
+        UUID().uuidString
+    }
 
     // MARK: - Send
 
@@ -474,17 +500,27 @@ extension ChatSessionController {
             return
         }
 
-        // 5. Fleet-scoped prompt + snapshot context.
+        // 5. Fleet-scoped prompt + snapshot context. The per-send proposal
+        // nonce binds proposal parsing to this generation's structured
+        // output (VAL-ORCH-031): the fake CLI echoes it back inside the
+        // canonical wrapper; a snapshot field can never carry it.
+        let proposalNonce = Self.makeProposalNonce()
         let systemPrompt = ContextBuilder.buildFleetOrchestratorSystemPrompt(
             snapshot: snapshot,
-            designation: state.designation
+            designation: state.designation,
+            proposalNonce: proposalNonce
         )
 
         startStream(
             systemPrompt: systemPrompt,
             userMessage: trimmed,
+            proposalNonce: proposalNonce,
             onProposal: { [weak self] proposal in
-                self?.pendingProposal = proposal
+                // Scoped to the current generation context (startStream
+                // wraps this with the generation guard): a stale cancelled
+                // stream's callback can no longer write into the shared
+                // pending-proposal state (scrutiny round 1).
+                self?.generation?.pendingProposal = proposal
             }
         )
     }
@@ -495,9 +531,18 @@ extension ChatSessionController {
     /// invoked when a canonical directive-proposal line is parsed from the
     /// stream (orchestrator mode only); the proposal line is never rendered
     /// as assistant text (VAL-ORCH-031).
+    ///
+    /// Cancellation-race isolation (scrutiny round 1): every stream creates
+    /// a fresh `GenerationContext` (assistant id + proposal nonce + pending
+    /// proposal). `finalizeStream` and the proposal callback only touch
+    /// shared state when the generation token still matches the active
+    /// stream, so a cancelled task can never attach a newer stream's
+    /// proposal to an old message or erase the newer stream's pending
+    /// proposal.
     private func startStream(
         systemPrompt: String,
         userMessage: String,
+        proposalNonce: String? = nil,
         onProposal: ((BurnBarFleetProposalWire) -> Void)?
     ) {
         isStreaming = true
@@ -518,7 +563,18 @@ extension ChatSessionController {
         )
         firstAssistantBadgeShown = true
         messages.append(placeholder)
-        pendingProposal = nil
+        let context = GenerationContext(assistantId: assistantId, proposalNonce: proposalNonce ?? "")
+        generation = context
+
+        // Wraps the caller's proposal callback with the generation guard:
+        // only the stream whose assistant id is still active may write its
+        // pending proposal (a stale cancelled stream cannot).
+        let guardedOnProposal: ((BurnBarFleetProposalWire) -> Void)? = onProposal.map { original in
+            { [weak self] proposal in
+                guard let self, self.generation?.assistantId == assistantId else { return }
+                original(proposal)
+            }
+        }
 
         streamTask = Task { [weak self] in
             guard let self else { return }
@@ -533,7 +589,8 @@ extension ChatSessionController {
                             chunk,
                             buffer: &proposalBuffer,
                             pieces: &pieces,
-                            onProposal: onProposal
+                            proposalNonce: proposalNonce,
+                            onProposal: guardedOnProposal
                         )
                     case .toolUse(let name, let detail):
                         pieces.append(ChatTranscriptPiece(kind: .toolUse, value: name, detail: detail))
@@ -554,7 +611,8 @@ extension ChatSessionController {
                                 proposalJSON: old.proposalJSON,
                                 proposalDecision: old.proposalDecision,
                                 proposalDecidedAt: old.proposalDecidedAt,
-                                deliveryState: old.deliveryState
+                                deliveryState: old.deliveryState,
+                                proposalError: old.proposalError
                             )
                         }
                     }.value
@@ -567,7 +625,8 @@ extension ChatSessionController {
                         proposalBuffer + "\n",
                         buffer: &proposalBuffer,
                         pieces: &pieces,
-                        onProposal: onProposal
+                        proposalNonce: proposalNonce,
+                        onProposal: guardedOnProposal
                     )
                 }
                 await Task { @MainActor in
@@ -594,14 +653,22 @@ extension ChatSessionController {
     /// Called from the stream completion block; saves BEFORE clearing
     /// `isStreaming` so callers that wait on `isStreaming` observe a fully
     /// persisted message (no race between the save and the wait).
+    ///
+    /// Generation guard (scrutiny round 1): shared proposal state is only
+    /// finalized when `assistantId` still matches the active generation — a
+    /// cancelled stream can no longer consume the pending proposal of a
+    /// newer stream or clobber its `isStreaming` state.
     private func finalizeStream(
         assistantId: String,
         wasCancelled: Bool,
         streamError: String?
     ) {
+        // The pending proposal is read from the generation context guarded
+        // by the assistant id: an old cancelled stream sees the newer
+        // stream's context, never its own stale proposal.
         if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
             let old = messages[idx]
-            let proposal = pendingProposal
+            let proposal = (generation?.assistantId == assistantId) ? generation?.pendingProposal : nil
             let content: String
             if let streamError, old.content.isEmpty {
                 content = streamError
@@ -619,10 +686,22 @@ extension ChatSessionController {
                 proposalJSON: proposal.flatMap { $0.encode() },
                 proposalDecision: old.proposalDecision,
                 proposalDecidedAt: old.proposalDecidedAt,
-                deliveryState: old.deliveryState
+                deliveryState: old.deliveryState,
+                proposalError: old.proposalError
             )
             messages[idx] = final
-            try? dataStore.saveChatMessage(final, threadID: activeThreadID)
+            // No silent `try?` on the proposal save (scrutiny round 1): the
+            // pending proposal must not vanish on app quit without a typed,
+            // visible error; the card keeps the in-memory proposal and shows
+            // the persistence failure.
+            do {
+                try dataStore.saveChatMessage(final, threadID: activeThreadID)
+            } catch {
+                setProposalError(
+                    messageID: assistantId,
+                    error: "Proposal could not be saved locally: " + error.localizedDescription
+                )
+            }
             refreshHistory()
         }
         // Only clear streaming state if this is still the active stream (a
@@ -630,22 +709,32 @@ extension ChatSessionController {
         if activeStreamMessageId == assistantId {
             isStreaming = false
             activeStreamMessageId = nil
+            generation = nil
+        } else if generation?.assistantId == assistantId, activeStreamMessageId == nil {
+            // The stream was cancelled (its active id was already cleared by
+            // cancelGeneration) and no newer stream replaced this
+            // generation: release the stale context.
+            generation = nil
         }
         if let streamError {
             self.streamError = streamError
         }
         selectedContext = nil
-        pendingProposal = nil
     }
 
     /// Consumes one text chunk: complete lines are scanned for the canonical
     /// proposal shape; proposal lines are dropped from the display text and
     /// reported via `onProposal` (VAL-ORCH-031). Partial trailing lines stay
     /// in the buffer until the next chunk completes them.
+    ///
+    /// A key-bearing malformed proposal line throws `ParseError.malformedJSON`
+    /// and is DROPPED here (never rendered as assistant text); a line without
+    /// the canonical key is ordinary text (scrutiny round 1).
     private static func consumeStreamText(
         _ chunk: String,
         buffer: inout String,
         pieces: inout [ChatTranscriptPiece],
+        proposalNonce: String? = nil,
         onProposal: ((BurnBarFleetProposalWire) -> Void)?
     ) {
         buffer += chunk
@@ -656,15 +745,19 @@ extension ChatSessionController {
             if trimmed.isEmpty { continue }
             if let onProposal {
                 do {
-                    if let proposal = try BurnBarFleetProposalParser.parse(line: line) {
+                    if let proposal = try BurnBarFleetProposalParser.parse(
+                        line: line,
+                        proposalNonce: proposalNonce
+                    ) {
                         onProposal(proposal)
                         continue
                     }
                 } catch {
                     // A line that LOOKS like a proposal but violates the
                     // canonical shape (injection attempt, malformed JSON,
-                    // unknown kind/agent) is dropped — never rendered as
-                    // assistant text, never a proposal (VAL-ORCH-031).
+                    // unknown kind/agent, nonce mismatch) is dropped — never
+                    // rendered as assistant text, never a proposal
+                    // (VAL-ORCH-031).
                     continue
                 }
             }
@@ -721,10 +814,25 @@ extension ChatSessionController {
                 cancelled: old.cancelled,
                 proposalJSON: old.proposalJSON,
                 proposalDecision: decision,
-                proposalDecidedAt: directive.decidedAt
+                proposalDecidedAt: directive.decidedAt,
+                deliveryState: old.deliveryState,
+                proposalError: nil
             )
             messages[idx] = updated
-            try? dataStore.saveChatMessage(updated, threadID: activeThreadID)
+            // No silent `try?` on the decision persistence (scrutiny round 1):
+            // the daemon has accepted the record; if the local save fails the
+            // card must show a typed, retryable error instead of silently
+            // dropping the decision on relaunch.
+            do {
+                try dataStore.saveChatMessage(updated, threadID: activeThreadID)
+                setProposalError(messageID: messageID, error: nil)
+            } catch {
+                setProposalError(
+                    messageID: messageID,
+                    error: "Decision recorded on the daemon, but saving it locally failed: "
+                        + error.localizedDescription
+                )
+            }
             refreshHistory()
 
             // An approved directive is delivered through the documented
@@ -737,86 +845,21 @@ extension ChatSessionController {
                 startDelivery(messageID: messageID, directive: directive)
             }
         } catch {
-            streamError = "Directive \(state == .approved ? "approval" : "dismissal") failed: "
+            // A daemon failure is a visible CARD-LEVEL typed error
+            // (scrutiny round 1): streamError is never rendered by
+            // ChatPanel, so the error is stored on the proposal card
+            // itself. The proposal stays pending — no phantom record.
+            let message = "Directive \(state == .approved ? "approval" : "dismissal") failed: "
                 + error.localizedDescription
+            streamError = message
+            setProposalError(messageID: messageID, error: message)
         }
     }
 
-    // MARK: - Delivery (M4)
-
-    /// Starts the delivery flow for an approved directive. The card shows
-    /// `delivering` while the channel call is in flight; the terminal outcome
-    /// is typed (`delivered`, `failed(reason)`, or `unsupported(reason)`) and
-    /// persisted on the message (VAL-ORCH-014/030/037).
-    ///
-    /// Honesty invariants:
-    /// - a malformed acknowledgement fails closed — never `delivered`
-    ///   (VAL-ORCH-036);
-    /// - a gateway failure produces a typed `failed(reason)` record and a
-    ///   documented single user-action retry — no silent background loop
-    ///   (VAL-ORCH-030);
-    /// - an agent with no documented writable channel honest-degrades to
-    ///   `unsupported`: the record stays `approved`, no side effects, and
-    ///   the card exposes copy/retry affordances (VAL-ORCH-037);
-    /// - Claude's `/tmp/cc-socks/*.sock` messaging socket is NEVER used
-    ///   (VAL-ORCH-016).
-    private func startDelivery(messageID: String, directive: BurnBarFleetDirective) {
-        guard let channel = BurnBarFleetDeliveryRunner.channel(
-            for: directive.targetAgent,
-            provider: deliveryChannelProvider
-        ) else {
-            // No documented writable channel for this agent: honest
-            // unsupported outcome, no side effects (VAL-ORCH-037).
-            updateDeliveryState(
-                messageID: messageID,
-                state: .unsupported(
-                    reason: "no documented writable channel for \(directive.targetAgent?.wireValue ?? "any")"
-                )
-            )
-            return
-        }
-
-        updateDeliveryState(messageID: messageID, state: .delivering)
-
-        Task { [weak self] in
-            guard let self else { return }
-            let result = await BurnBarFleetDeliveryRunner.run(
-                directive: directive,
-                channel: channel,
-                record: { [weak self] terminal in
-                    guard let self else {
-                        throw BurnBarFleetClientError.daemonUnavailable("controller deallocated")
-                    }
-                    return try self.directiveRecordProvider(terminal, self.fleetService.socketURL)
-                }
-            )
-            await MainActor.run {
-                self.applyDeliveryResult(messageID: messageID, result: result)
-            }
-        }
-    }
-
-    /// Applies a delivery run result to the proposal card. The terminal
-    /// state is typed and persisted; a failed record write surfaces as a
-    /// typed failure on the card (VAL-ORCH-030).
-    private func applyDeliveryResult(
-        messageID: String,
-        result: BurnBarFleetDeliveryRunner.RunResult
-    ) {
-        switch result.outcome {
-        case .delivered:
-            updateDeliveryState(messageID: messageID, state: .delivered)
-        case .failed(let reason):
-            updateDeliveryState(messageID: messageID, state: .failed(reason: reason))
-        case .unsupported(let reason):
-            updateDeliveryState(messageID: messageID, state: .unsupported(reason: reason))
-        }
-    }
-
-    /// Updates the persisted delivery state on the proposal card. The card
-    /// keeps its decision and decision timestamp; only the delivery state
-    /// changes (VAL-ORCH-014).
-    private func updateDeliveryState(messageID: String, state: ChatDeliveryState) {
+    /// Persists a visible card-level proposal error (scrutiny round 1). The
+    /// pending proposal and decision state are preserved — the card stays
+    /// coherent and retryable.
+    func setProposalError(messageID: String, error: String?) {
         guard let idx = messages.firstIndex(where: { $0.id == messageID }) else { return }
         let old = messages[idx]
         let updated = ChatMessageRecord(
@@ -830,37 +873,13 @@ extension ChatSessionController {
             proposalJSON: old.proposalJSON,
             proposalDecision: old.proposalDecision,
             proposalDecidedAt: old.proposalDecidedAt,
-            deliveryState: state
+            deliveryState: old.deliveryState,
+            proposalError: error
         )
         messages[idx] = updated
+        // Persistence of the error itself is best-effort: the in-memory card
+        // already shows it, and the error is only transient context.
         try? dataStore.saveChatMessage(updated, threadID: activeThreadID)
-        refreshHistory()
-    }
-
-    /// Retries delivery of a failed/unsupported approved directive (the
-    /// documented single user-action retry — no silent background loop,
-    /// VAL-ORCH-030). The delivery flow restarts from the approved directive;
-    /// the terminal record is written by the runner when the new attempt
-    /// completes (failed → delivered or failed(newReason)).
-    func retryDelivery(messageID: String) {
-        guard let idx = messages.firstIndex(where: { $0.id == messageID }),
-              let proposalJSON = messages[idx].proposalJSON,
-              messages[idx].proposalDecision == .approved,
-              let deliveryState = messages[idx].deliveryState,
-              deliveryState.isRetryable,
-              let wire = BurnBarFleetProposalWire.decode(json: proposalJSON) else {
-            return
-        }
-        let directive = BurnBarFleetDirective(
-            id: wire.id,
-            kind: wire.kind,
-            targetAgent: wire.targetAgent,
-            payload: wire.payload,
-            state: .approved,
-            createdAt: messages[idx].timestamp,
-            decidedAt: messages[idx].proposalDecidedAt ?? messages[idx].timestamp
-        )
-        startDelivery(messageID: messageID, directive: directive)
     }
 
     // MARK: - Cancellation (M4)

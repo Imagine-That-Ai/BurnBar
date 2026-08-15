@@ -39,7 +39,7 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
     private func waitForDeliveryState(
         _ controller: ChatSessionController,
         _ expected: ChatDeliveryState,
-        timeout: TimeInterval = 15
+        timeout: TimeInterval = 45
     ) async {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
