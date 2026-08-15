@@ -618,6 +618,16 @@ struct DashboardView: View {
             }
             .presentationBackground(Material.ultraThinMaterial)
         }
+        .sheet(isPresented: Binding(
+            get: { consentCoordinator?.showUsageMemoryConsent ?? false },
+            set: { consentCoordinator?.showUsageMemoryConsent = $0 }
+        )) {
+            UsageMemoryConsentSheet(settingsManager: settingsManager) { grant in
+                consentCoordinator?.confirmUsageMemoryConsent(grant: grant)
+                consentCoordinator?.showUsageMemoryConsent = false
+            }
+            .presentationBackground(Material.ultraThinMaterial)
+        }
         .sheet(isPresented: $showAnalyticsConsent) {
             AnalyticsConsentPromptView { granted in
                 if granted {
@@ -639,16 +649,26 @@ struct DashboardView: View {
         .onAppear {
             presentAnalyticsConsentIfNeeded()
             presentMemoryConsentIfNeeded()
+            presentUsageMemoryConsentIfNeeded()
         }
         .onChange(of: showIndexingConsent) { wasShowing, isShowing in
             if wasShowing && !isShowing {
                 presentAnalyticsConsentIfNeeded()
                 presentMemoryConsentIfNeeded()
+                presentUsageMemoryConsentIfNeeded()
             }
         }
         .onChange(of: showAnalyticsConsent) { wasShowing, isShowing in
             if wasShowing && !isShowing {
                 presentMemoryConsentIfNeeded()
+                presentUsageMemoryConsentIfNeeded()
+            }
+        }
+        .onChange(of: consentCoordinator?.showMemoryConsent ?? false) { wasShowing, isShowing in
+            if wasShowing && !isShowing {
+                // Chat-memory consent just settled; usage-memory consent is the
+                // next (third) link in the one-at-a-time first-run chain.
+                presentUsageMemoryConsentIfNeeded()
             }
         }
         .onChange(of: accountManager.isSignedIn) { _, isSignedIn in
@@ -939,6 +959,23 @@ struct DashboardView: View {
               !showAnalyticsConsent,
               AnalyticsConsentStore.shared.hasDecided else { return }
         consentCoordinator.showMemoryConsent = true
+    }
+
+    /// Presents the first-run usage-memory consent, the THIRD link in the chain:
+    /// `shouldShowUsageMemoryConsent` already requires the indexing prompt and
+    /// the chat-memory consent to be settled, and the guards below additionally
+    /// hold it back while any other first-run sheet is on screen.
+    private func presentUsageMemoryConsentIfNeeded() {
+        guard let consentCoordinator,
+              consentCoordinator.shouldShowUsageMemoryConsent,
+              !consentCoordinator.showUsageMemoryConsent,
+              !consentCoordinator.showMemoryConsent,
+              !showIndexingConsent,
+              !showCLIConsentSheet,
+              !showSessionLogCloudConsent,
+              !showAnalyticsConsent,
+              AnalyticsConsentStore.shared.hasDecided else { return }
+        consentCoordinator.showUsageMemoryConsent = true
     }
 
     private func autoExpandTimeRangeIfNeeded() {
