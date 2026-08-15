@@ -20,12 +20,33 @@ assert.match(
 );
 
 const deadFlags = read("scripts/detect-dead-feature-flags.sh");
-for (const include of ['--include="*.mjs"', '--include="*.js"', '--include="*.sh"']) {
-  assert.ok(deadFlags.includes(include), `grep fallback must include ${include}`);
+for (const include of [
+  '--include="*.mjs"',
+  '--include="*.js"',
+  '--include="*.sh"',
+]) {
+  assert.ok(
+    deadFlags.includes(include),
+    `grep fallback must include ${include}`,
+  );
 }
 
 const versionConsistency = read("scripts/verify-version-consistency.sh");
-const projectVersion = read("project.yml").match(/^\s+MARKETING_VERSION:\s*["']?([^\s"']+)/m)?.[1];
+const homebrewUpdater = read("scripts/update-homebrew.sh");
+const macosR2Uploader = read("scripts/upload-macos-downloads-r2.sh");
+const macosRollbackPublisher = read(
+  "scripts/publish-macos-appcast-rollback-r2.sh",
+);
+const macosRollback = read("scripts/ops/rollback-macos-appcast.sh");
+const releaseProject = read("project.yml");
+const releaseInfoPlist = read("AgentLens/Resources/OpenBurnBar-Info.plist");
+const directUpdateService = read(
+  "AgentLens/Services/DirectDownloadUpdateService.swift",
+);
+const homebrewCask = read("homebrew/burnbar.rb");
+const projectVersion = read("project.yml").match(
+  /^\s+MARKETING_VERSION:\s*["']?([^\s"']+)/m,
+)?.[1];
 assert.ok(projectVersion, "project.yml must expose a MARKETING_VERSION");
 assert.ok(
   versionConsistency.includes("OPENBURNBAR_REQUIRE_CURRENT_HOMEBREW_CASK"),
@@ -49,6 +70,100 @@ assert.ok(
   versionConsistency.includes("OPENBURNBAR_EXPECTED_WINDOWS_VERSION"),
   "version consistency must support an independently requested Windows release version",
 );
+assert.match(
+  homebrewUpdater,
+  /^OWNER="Imagine-That-Ai"$/m,
+  "the Homebrew updater must download releases from the canonical organization repository",
+);
+assert.match(
+  homebrewCask,
+  /url "https:\/\/github\.com\/Imagine-That-Ai\/BurnBar\/releases\/download\/v#\{version\}\/OpenBurnBar-#\{version\}-macOS\.dmg"/,
+  "the Homebrew cask must download the canonical organization release artifact",
+);
+assert.match(
+  homebrewCask,
+  /homepage "https:\/\/github\.com\/Imagine-That-Ai\/BurnBar"/,
+  "the Homebrew cask homepage must use the canonical organization repository",
+);
+assert.match(
+  versionConsistency,
+  /canonical_repository="Imagine-That-Ai\/BurnBar"/,
+  "version consistency must fail closed on Homebrew repository-owner drift",
+);
+assert.match(
+  macosR2Uploader,
+  /OPENBURNBAR_RELEASE_ASSET_DIR/,
+  "the R2 uploader must consume the exact audited release asset directory",
+);
+assert.match(
+  macosR2Uploader,
+  /OPENBURNBAR_RELEASE_RECEIPT/,
+  "the R2 uploader must consume the promotion-audit receipt",
+);
+assert.match(
+  macosR2Uploader,
+  /OPENBURNBAR_RELEASE_VERSION:-\$\(/,
+  "the R2 uploader must accept an exact release version independent of the public website pointer",
+);
+assert.match(
+  macosR2Uploader,
+  /MARKETING_VERSION:/,
+  "the R2 uploader must default to the prepared project marketing version",
+);
+assert.doesNotMatch(
+  macosR2Uploader,
+  /website\/src\/data\/site\.ts/,
+  "the R2 uploader must not derive release artifacts from the previously published website version",
+);
+assert.match(
+  macosR2Uploader,
+  /macos-r2-publication\.mjs preflight[\s\S]*upload_group immutable[\s\S]*upload_group metadata[\s\S]*upload_group discovery[\s\S]*macos-r2-publication\.mjs verify-public/u,
+  "the R2 uploader must preflight fully, publish immutable assets before metadata/discovery, and exactly verify public bytes",
+);
+assert.match(
+  macosR2Uploader,
+  /Use the exact asset directory and receipt emitted by promote-github-release\.mjs audit/,
+  "the R2 uploader must document the authoritative producer handoff",
+);
+assert.match(
+  macosRollbackPublisher,
+  /OPENBURNBAR_EXPECTED_LIVE_VERSION[\s\S]*OPENBURNBAR_EXPECTED_LIVE_COMMIT/u,
+  "the rollback publisher must compare-and-swap against the operator-declared live release",
+);
+assert.match(
+  macosRollbackPublisher,
+  /capture_snapshot[\s\S]*verify_snapshot_unchanged[\s\S]*mutation_started=true[\s\S]*upload_group metadata[\s\S]*upload_group discovery[\s\S]*verify-rollback-public/u,
+  "the rollback publisher must snapshot, race-check, publish metadata/discovery in order, and exactly verify",
+);
+assert.match(
+  macosRollbackPublisher,
+  /on_exit[\s\S]*restore_snapshot/u,
+  "the rollback publisher must compensate after partial publication",
+);
+assert.match(
+  macosRollback,
+  /scripts\/publish-macos-appcast-rollback-r2\.sh/u,
+  "the rollback tool must hand off only to the dedicated rollback publisher",
+);
+assert.doesNotMatch(
+  macosRollback,
+  /scripts\/upload-macos-downloads-r2\.sh/u,
+  "the rollback tool must never invoke the full-release uploader",
+);
+for (const source of [releaseProject, releaseInfoPlist, directUpdateService]) {
+  assert.match(
+    source,
+    /https:\/\/downloads\.burnbar\.ai\/latest-macos\.json/u,
+    "the shipped direct updater must poll the governed R2 pointer",
+  );
+}
+for (const source of [releaseProject, releaseInfoPlist]) {
+  assert.match(
+    source,
+    /https:\/\/downloads\.burnbar\.ai\/appcast\.xml/u,
+    "the shipped Sparkle updater must poll the governed R2 appcast",
+  );
+}
 
 const windowsManifest = read("windows/app/OpenBurnBar.App/app.manifest");
 const expectedWindowsAssemblyVersion = "1.0.39.0";
@@ -61,39 +176,62 @@ assert.equal(
   `Windows app manifest must declare the next release identity ${expectedWindowsAssemblyVersion}`,
 );
 const windowsVersion = windowsVersionFull.split(".").slice(0, 3).join(".");
-assert.ok(windowsVersion, "Windows app manifest must expose an X.Y.Z release version");
+assert.ok(
+  windowsVersion,
+  "Windows app manifest must expose an X.Y.Z release version",
+);
 const windowsVersionParts = windowsVersion.split(".").map(Number);
 const mismatchedWindowsVersion = `${windowsVersionParts[0]}.${windowsVersionParts[1]}.${windowsVersionParts[2] + 1}`;
-const matchingWindowsGate = spawnSync("bash", ["scripts/verify-version-consistency.sh"], {
-  encoding: "utf8",
-  env: {
-    ...process.env,
-    OPENBURNBAR_EXPECTED_WINDOWS_VERSION: windowsVersion,
-    OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "1",
+const matchingWindowsGate = spawnSync(
+  "bash",
+  ["scripts/verify-version-consistency.sh"],
+  {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      OPENBURNBAR_EXPECTED_WINDOWS_VERSION: windowsVersion,
+      OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "1",
+    },
   },
-});
-assert.equal(matchingWindowsGate.status, 0, matchingWindowsGate.stderr || matchingWindowsGate.stdout);
-const mismatchedWindowsGate = spawnSync("bash", ["scripts/verify-version-consistency.sh"], {
-  encoding: "utf8",
-  env: {
-    ...process.env,
-    OPENBURNBAR_EXPECTED_WINDOWS_VERSION: mismatchedWindowsVersion,
-    OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "1",
+);
+assert.equal(
+  matchingWindowsGate.status,
+  0,
+  matchingWindowsGate.stderr || matchingWindowsGate.stdout,
+);
+const mismatchedWindowsGate = spawnSync(
+  "bash",
+  ["scripts/verify-version-consistency.sh"],
+  {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      OPENBURNBAR_EXPECTED_WINDOWS_VERSION: mismatchedWindowsVersion,
+      OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "1",
+    },
   },
-});
-assert.notEqual(mismatchedWindowsGate.status, 0, "a mismatched Windows release version must fail closed");
+);
+assert.notEqual(
+  mismatchedWindowsGate.status,
+  0,
+  "a mismatched Windows release version must fail closed",
+);
 assert.match(mismatchedWindowsGate.stderr, /Windows app manifest.*expected/);
-const nonWindowsTagGate = spawnSync("bash", ["scripts/verify-version-consistency.sh"], {
-  encoding: "utf8",
-  env: {
-    ...process.env,
-    GITHUB_REF: `refs/tags/v${projectVersion}`,
-    GITHUB_REF_NAME: `v${projectVersion}`,
-    GITHUB_REF_TYPE: "tag",
-    OPENBURNBAR_EXPECTED_WINDOWS_VERSION: "",
-    OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "0",
+const nonWindowsTagGate = spawnSync(
+  "bash",
+  ["scripts/verify-version-consistency.sh"],
+  {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GITHUB_REF: `refs/tags/v${projectVersion}`,
+      GITHUB_REF_NAME: `v${projectVersion}`,
+      GITHUB_REF_TYPE: "tag",
+      OPENBURNBAR_EXPECTED_WINDOWS_VERSION: "",
+      OPENBURNBAR_REQUIRE_CURRENT_WINDOWS_VERSION: "0",
+    },
   },
-});
+);
 assert.equal(
   nonWindowsTagGate.status,
   0,
@@ -115,8 +253,12 @@ assert.doesNotMatch(
   "ordinary v* tags may fail their macOS release gates, but not the independent Windows version gate",
 );
 
-const windowsReleaseWorkflow = read(".github/workflows/openburnbar-release-windows.yml");
-const windowsEngineWorkflow = read(".github/workflows/openburnbar-engine-windows.yml");
+const windowsReleaseWorkflow = read(
+  ".github/workflows/openburnbar-release-windows.yml",
+);
+const windowsEngineWorkflow = read(
+  ".github/workflows/openburnbar-engine-windows.yml",
+);
 const windowsOperationsRunbook = read(
   "docs/windows-port/WINDOWS_PORT_OPERATIONS_RUNBOOK.md",
 );
@@ -245,7 +387,9 @@ const publishedLayoutValidationIndex = windowsReleaseWorkflow.indexOf(
 const publishedParserSmokeIndex = windowsReleaseWorkflow.indexOf(
   "Run parser smoke from the published x64 layout",
 );
-const authenticodeSignIndex = windowsReleaseWorkflow.indexOf("- name: Authenticode sign");
+const authenticodeSignIndex = windowsReleaseWorkflow.indexOf(
+  "- name: Authenticode sign",
+);
 assert.ok(
   publishedLayoutValidationIndex >= 0 &&
     publishedParserSmokeIndex > publishedLayoutValidationIndex &&
@@ -264,12 +408,18 @@ assert.match(
 const trustedDotnetCaptureIndex = publishedParserSmokeBlock.indexOf(
   "$dotnetExecutable = (Get-Command dotnet -CommandType Application -ErrorAction Stop).Source",
 );
-const testhostBuildIndex = publishedParserSmokeBlock.indexOf("& $dotnetExecutable build $testProject");
-const resourceCopyIndex = publishedParserSmokeBlock.indexOf("$requiredResourceBundles = @(");
+const testhostBuildIndex = publishedParserSmokeBlock.indexOf(
+  "& $dotnetExecutable build $testProject",
+);
+const resourceCopyIndex = publishedParserSmokeBlock.indexOf(
+  "$requiredResourceBundles = @(",
+);
 const nativeDllSearchPathIndex = publishedParserSmokeBlock.indexOf(
   '$env:PATH = "$smokeRoot;$env:PATH"',
 );
-const parserTestIndex = publishedParserSmokeBlock.indexOf("& $dotnetExecutable test $testProject");
+const parserTestIndex = publishedParserSmokeBlock.indexOf(
+  "& $dotnetExecutable test $testProject",
+);
 assert.ok(
   trustedDotnetCaptureIndex >= 0 &&
     testhostBuildIndex > trustedDotnetCaptureIndex &&
@@ -278,7 +428,8 @@ assert.ok(
   "the isolated testhost must build before resource staging and execute afterward",
 );
 assert.ok(
-  nativeDllSearchPathIndex > trustedDotnetCaptureIndex && nativeDllSearchPathIndex < parserTestIndex,
+  nativeDllSearchPathIndex > trustedDotnetCaptureIndex &&
+    nativeDllSearchPathIndex < parserTestIndex,
   "the isolated testhost must pin trusted dotnet before exposing copied native dependencies",
 );
 for (const bundleName of [
@@ -306,12 +457,19 @@ assert.doesNotMatch(
   "the .NET testhost must not be emitted into the self-contained published app layout",
 );
 assert.equal(
-  (windowsEngineWorkflow.match(/OPENBURNBAR_CORE_CABI_PATH=\$stagedEngine/g) ?? []).length,
+  (
+    windowsEngineWorkflow.match(/OPENBURNBAR_CORE_CABI_PATH=\$stagedEngine/g) ??
+    []
+  ).length,
   2,
   "both native architectures must run their usage scan from the staged engine layout",
 );
 assert.equal(
-  (windowsEngineWorkflow.match(/Copy-Item -Path \(Join-Path \$env:OPENBURNBAR_NATIVE_ENGINE_STAGE "\*"\)/g) ?? []).length,
+  (
+    windowsEngineWorkflow.match(
+      /Copy-Item -Path \(Join-Path \$env:OPENBURNBAR_NATIVE_ENGINE_STAGE "\*"\)/g,
+    ) ?? []
+  ).length,
   2,
   "both native architectures must mirror the staged bundle into the parser smoke host layout",
 );
@@ -320,9 +478,15 @@ assert.equal(
   2,
   "both native parser smoke hosts must execute beside the staged Swift resource bundles",
 );
-const portableSignatureIndex = windowsReleaseWorkflow.indexOf("Verify portable Authenticode signatures");
-const signedManifestRefreshIndex = windowsReleaseWorkflow.indexOf("Refresh and validate signed native-engine layouts");
-const portablePackageIndex = windowsReleaseWorkflow.indexOf("Package zips + checksums");
+const portableSignatureIndex = windowsReleaseWorkflow.indexOf(
+  "Verify portable Authenticode signatures",
+);
+const signedManifestRefreshIndex = windowsReleaseWorkflow.indexOf(
+  "Refresh and validate signed native-engine layouts",
+);
+const portablePackageIndex = windowsReleaseWorkflow.indexOf(
+  "Package zips + checksums",
+);
 assert.ok(
   portableSignatureIndex >= 0 &&
     signedManifestRefreshIndex > portableSignatureIndex &&
@@ -334,7 +498,7 @@ assert.ok(
   "Windows release packaging must refresh native-engine hashes after signing",
 );
 assert.ok(
-  windowsReleaseWorkflow.includes('predicate.write_text(json.dumps(payload'),
+  windowsReleaseWorkflow.includes("predicate.write_text(json.dumps(payload"),
   "Windows release attestations must generate a per-artifact Sigstore predicate",
 );
 assert.ok(
@@ -347,7 +511,9 @@ assert.match(
   "Windows SBOM generation must inventory expanded package contents",
 );
 assert.ok(
-  windowsReleaseWorkflow.includes("SBOM contains no dependency packages after expanding Windows artifacts"),
+  windowsReleaseWorkflow.includes(
+    "SBOM contains no dependency packages after expanding Windows artifacts",
+  ),
   "Windows SBOM generation must fail closed when package dependencies are absent",
 );
 const updaterTestsIndex = windowsReleaseWorkflow.indexOf(
@@ -425,7 +591,9 @@ assert.match(
   "MSIX staging must fail closed when the packaged FlyoutWindow XBF is absent",
 );
 
-const signedMsixLifecycle = read("windows/packaging/msix/Test-SignedMsixLifecycle.ps1");
+const signedMsixLifecycle = read(
+  "windows/packaging/msix/Test-SignedMsixLifecycle.ps1",
+);
 assert.match(
   signedMsixLifecycle,
   /shell:AppsFolder\\\$appUserModelId/,
@@ -474,7 +642,9 @@ assert.match(
   "Windows distribution PR verification must parse the MSIX PowerShell scripts",
 );
 assert.ok(
-  windowsDistPrWorkflow.includes("node scripts/ci/verify-ops-script-hardening.test.mjs"),
+  windowsDistPrWorkflow.includes(
+    "node scripts/ci/verify-ops-script-hardening.test.mjs",
+  ),
   "Windows distribution PR verification must execute the release wiring regressions",
 );
 assert.match(

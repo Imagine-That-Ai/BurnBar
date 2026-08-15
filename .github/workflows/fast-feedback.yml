@@ -844,6 +844,7 @@ jobs:
             homebrew/burnbar.rb
             OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/OpenBurnBarDaemonConfiguration.swift
             windows/app/OpenBurnBar.App/app.manifest
+            scripts/update-homebrew.sh
             scripts/verify-version-consistency.sh
 
       - name: Verify version consistency

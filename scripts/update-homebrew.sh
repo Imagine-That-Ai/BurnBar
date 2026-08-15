@@ -36,8 +36,14 @@
 
 set -euo pipefail
 
-readonly SOURCE_REPOSITORY="Imagine-That-Ai/BurnBar"
-readonly TAP_REPOSITORY="Imagine-That-Ai/homebrew-tap"
+# The canonical organization identity is pinned as discrete OWNER/REPO lines so
+# the repository-drift gates (verify-version-consistency.sh and
+# verify-ops-script-hardening.test.mjs) can assert it fail-closed.
+OWNER="Imagine-That-Ai"
+REPO="BurnBar"
+readonly OWNER REPO
+readonly SOURCE_REPOSITORY="${OWNER}/${REPO}"
+readonly TAP_REPOSITORY="${OWNER}/homebrew-tap"
 readonly TAP_BRANCH="main"
 readonly TAP_CASK_RELATIVE_PATH="Casks/openburnbar.rb"
 readonly SOURCE_CASK_RELATIVE_PATH="homebrew/burnbar.rb"

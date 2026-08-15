@@ -294,18 +294,67 @@ AGPL/libsignal-linked review binaries until counsel signs off. The upload path
 fails unless `OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved` is set by the
 operator after counsel approval.
 
-Upload the customer-facing direct-download artifacts to the Cloudflare R2 bucket
-behind the branded `downloads.burnbar.ai` host with:
+The protected `promote=true` workflow publishes and verifies the exact audited
+candidate in the Cloudflare R2 bucket behind `downloads.burnbar.ai` before it
+makes the GitHub release latest. The commands below are the manual recovery
+path for an interrupted R2 publication:
 
 ```bash
 scripts/setup-macos-downloads-r2.sh
+
+# Download the exact handoff retained after audit and before activation.
+handoff_dir="$(mktemp -d)"
+gh run download <release-workflow-run-id> \
+  --repo Imagine-That-Ai/BurnBar \
+  --name "macos-r2-publication-inputs-<release-commit>-<run-id>-<run-attempt>" \
+  --dir "$handoff_dir"
+
+OPENBURNBAR_RELEASE_ASSET_DIR="$handoff_dir/release-promotion-assets" \
+OPENBURNBAR_RELEASE_RECEIPT="$handoff_dir/release-promotion-receipt.json" \
+OPENBURNBAR_RELEASE_VERSION="<version>" \
+OPENBURNBAR_RELEASE_TAG="v<version>" \
+OPENBURNBAR_RELEASE_COMMIT="<full-release-commit>" \
+OPENBURNBAR_EXPECTED_LIVE_VERSION="<currently-live-version>" \
+OPENBURNBAR_EXPECTED_LIVE_COMMIT="<currently-live-full-commit>" \
 scripts/upload-macos-downloads-r2.sh
 ```
 
-The setup script creates the R2 bucket and can bind the branded custom domain. The
-upload script reads the current macOS release file/version from `website/src/data/site.ts`,
-uploads the DMG, ZIP, `appcast.xml`, `latest-macos.json`, checksums, SBOM, and release metadata from
-`website/public/downloads/`, and verifies the public DMG, appcast, and latest-metadata URLs. Defaults:
+The setup script creates the R2 bucket and can bind the branded custom domain.
+The promotion job retains one authoritative handoff containing its exact
+downloaded GitHub Release asset directory and immutable promotion-audit receipt
+before any public pointer changes.
+The R2 uploader requires both. Before resolving Wrangler or making any provider
+call, it verifies every receipt asset's size and GitHub SHA-256 digest, then
+reuses the release-promotion checksum and update-metadata validators to bind the
+version, tag, commit, DMG/ZIP/source names, DMG byte length and SHA-256, Sparkle
+signature, appcast, and release metadata. The Sparkle signature is verified over
+the exact DMG using `SUPublicEDKey` extracted from the receipt-bound app ZIP;
+the current checkout is not trusted for that key. The audited feeds must already
+use the exact `OPENBURNBAR_MAC_UPDATE_BASE_URL`; publication never rewrites
+signed or checksummed update metadata.
+
+Only after that complete preflight succeeds does it publish:
+
+1. immutable versioned artifacts: DMG, ZIP, checksums, SBOM, corresponding
+   source, and source digest;
+2. `release-metadata.json`;
+3. `latest-macos.json`, then `appcast.xml` as the final activation pointer.
+
+It then downloads every published R2 object with bounded retries, no-cache
+headers, and cache-busting query parameters; the public bytes must match the
+audited local size and SHA-256 and pass the same exact release bindings. A
+missing final discovery file therefore produces zero R2 writes, while a stale
+edge cache is retried rather than mistaken for the new candidate. Before any
+write, the uploader seals the audited bytes into a private snapshot and
+compare-and-swaps all three mutable public pointers against the operator-declared
+live version/commit. It permits only a newer version or an exact same-candidate
+retry. A failure after mutable publication starts attempts to restore and verify
+the prior bytes; an unverified restore is a manual-recovery HOLD.
+
+The uploader intentionally does not read `website/src/data/site.ts` or
+`website/public/downloads/`: those describe the already-published public release
+and may remain on the previous version until the replacement artifact has passed
+public trust verification. Defaults:
 
 - R2 bucket: `openburnbar-downloads`
 - Public download URL: `https://downloads.burnbar.ai`
@@ -314,6 +363,14 @@ If the bucket or host changes, override with `OPENBURNBAR_R2_BUCKET` and
 `OPENBURNBAR_R2_PUBLIC_BASE_URL`. Keep `SITE.macDownloadBaseUrl` in
 `website/src/data/site.ts` on a first-party host; raw `r2.dev` bucket URLs are a
 storage implementation detail, not the customer-facing trust boundary.
+The repository variable `OPENBURNBAR_MAC_UPDATE_BASE_URL` is required before
+tagging and must equal the stable R2 public base. Mutable GitHub
+`releases/latest/download` URLs are rejected for release handoffs.
+
+R2 publication is not website activation. Keep the website release pointer and
+audited live URL on the previous version until the exact R2 candidate has passed
+the public byte verifier and the macOS signing/notarization/trust gate. Update
+and deploy the website separately, last.
 
 ### Website download preflight
 
@@ -387,13 +444,15 @@ the direct-download release lane, upload the signed/notarized artifacts, restore
 `SITE.macDownloadBaseUrl` to `https://downloads.burnbar.ai`, and rerun the same
 guard before deployment.
 
-The app's default direct-update feed is the stable GitHub Release asset URL
-`https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json`.
-That feed is generated by `.github/workflows/release.yml` and must include a
-non-empty Sparkle `sparkle:edSignature`; the app ignores unsigned update
-metadata. `SITE.macUpdateBaseUrl` controls the public feed links on
-`/download`, and `OPENBURNBAR_MAC_UPDATE_BASE_URL` can intentionally move a
-release feed to R2 or a branded download host.
+The app's default direct-update feeds are
+`https://downloads.burnbar.ai/latest-macos.json` and
+`https://downloads.burnbar.ai/appcast.xml`. Both the custom updater and Sparkle
+therefore use the governed R2 rollback pointers. The release artifact scan
+fails if either packaged Info.plist value drifts. The workflow still promotes
+the same audited GitHub release last so already-shipped clients that poll the
+legacy GitHub-latest URL can discover the transition release only after every
+R2 byte is publicly verified. `SITE.macUpdateBaseUrl` controls the public feed
+links on `/download`.
 
 The direct-download app bundle declares `SUPublicEDKey`
 `613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=`. Its matching private seed is
@@ -461,8 +520,9 @@ The workflow will:
 17. Run release smoke from the uploaded DMG artifact, including explicit Safari appex verification, app launch, and authenticated daemon health.
 18. Publish a GitHub Release with the same downloaded artifacts as explicitly
     non-latest. A separate `workflow_dispatch` with `promote=true` audits the
-    already-published tag, metadata, attestations, and every asset byte before
-    making that exact release GitHub's latest release.
+    already-published tag, metadata, attestations, and every asset byte,
+    publishes and verifies the exact R2 candidate, and only then makes that
+    exact release GitHub's latest release.
 
 `notarytool` and `stapler` are wrapped by
 `scripts/ci/release-command-watchdog.py` in release CI. Apple's `--timeout` flag
@@ -484,13 +544,21 @@ approved, promote it by dispatching the same workflow from the immutable tag:
 gh workflow run release.yml \
   --ref v1.0.5 \
   -f tag=v1.0.5 \
-  -f promote=true
+  -f promote=true \
+  -f expected_live_macos_version=1.0.4 \
+  -f expected_live_macos_commit=<currently-live-full-commit>
 ```
 
 The promotion retry downloads and verifies the complete existing asset set,
 checks each GitHub asset ID, size, and SHA-256 digest against the audited bytes,
-and rechecks the exact release metadata. Only then may it perform the single
-`gh release edit ... --latest` mutation. The workflow finally verifies that
+and rechecks the exact release metadata. It retains the exact handoff, performs
+the R2 compare-and-swap against the declared live coordinates, uploads and
+publicly verifies every candidate byte, and only then may it perform the single
+`gh release edit ... --latest` mutation. GitHub latest is the final activation
+for legacy installed clients. If that final mutation fails, the verified R2
+candidate remains staged but the legacy client channel is unchanged; stop on a
+manual-recovery HOLD and retry with the same candidate coordinates as the
+expected live R2 release. The workflow finally verifies that
 `releases/latest` resolves to the same release and unchanged asset identities
 before the live Sparkle feed gate runs. A missing, substituted, extra, or
 concurrently changed asset blocks promotion.
@@ -724,7 +792,7 @@ Tagged releases are **fail-hard**: if any required secret below is missing, the 
 | `FIREBASE_PLIST_BASE64`                                                                               | Base64-encoded Firebase plist for CI                                                                                                                                                                                   |
 | `FIREBASE_APP_CHECK_DEBUG_TOKEN`                                                                      | Firebase App Check debug token for CI                                                                                                                                                                                  |
 | `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast                                                                                                                                                        |
-| `OPENBURNBAR_MAC_UPDATE_BASE_URL`                                                                     | _(Optional)_ Override for generated update feed URLs; defaults to the GitHub Release latest-download host                                                                                                              |
+| `OPENBURNBAR_MAC_UPDATE_BASE_URL`                                                                     | Required stable first-party HTTPS base for generated update feeds (normally `https://downloads.burnbar.ai`); mutable GitHub latest URLs are rejected                                                                   |
 | `RELEASE_SIGNING_KEY`                                                                                 | _(Optional)_ Base64-encoded GPG private key for signing checksums                                                                                                                                                      |
 
 Never commit raw Apple credentials. Local `.p12`, `.p8`, provisioning profile,

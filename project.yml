@@ -151,8 +151,8 @@ targets:
         NSBonjourServices:
           - _googlecast._tcp
           - _http._tcp
-        OpenBurnBarDirectUpdateFeedURL: https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json
-        SUFeedURL: https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/appcast.xml
+        OpenBurnBarDirectUpdateFeedURL: https://downloads.burnbar.ai/latest-macos.json
+        SUFeedURL: https://downloads.burnbar.ai/appcast.xml
         SUPublicEDKey: 613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
