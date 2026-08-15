@@ -24,7 +24,7 @@ import { defineSecret } from "firebase-functions/params";
 import { HttpsError } from "firebase-functions/v2/https";
 
 import { errorMessage, isRecord } from "../guards.js";
-import { resilientFetch } from "../resilienceHelpers.js";
+import { modelInferenceFetch } from "../resilienceHelpers.js";
 import type { UsageCurationLane } from "./limits.js";
 
 const OPENROUTER_API_KEY = defineSecret("OPENROUTER_API_KEY");
@@ -36,6 +36,13 @@ export const USAGE_CURATION_TEXT_MODEL = "deepseek/deepseek-v4-flash";
 export const USAGE_CURATION_MULTIMODAL_MODEL = "minimax/minimax-m3";
 
 const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
+/**
+ * Matches modelInferencePolicy's 60 s cap (resilience.ts). The AbortController
+ * below is what actually cancels the socket; the policy timeout is the
+ * belt-and-suspenders race. Multimodal completions legitimately exceed the
+ * generic 20 s external-API timeout, which is why this call must NOT go
+ * through resilientFetch.
+ */
 const REQUEST_TIMEOUT_MS = 60_000;
 
 /**
@@ -77,13 +84,26 @@ function nonNegativeInteger(raw: unknown): number | undefined {
   return typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : undefined;
 }
 
+/**
+ * Parse the usage block. Missing or malformed token counts are an upstream
+ * ERROR, not a zero: settling a paid completion to zero tokens would leave the
+ * spend unmetered (a provider usage-reporting regression = free inference).
+ * Failure policy: the thrown error discards the completion, the callable's
+ * failure path releases the reservation, and the regression is loud in logs
+ * instead of silently unbilled.
+ */
 function usageFromResponse(raw: Record<string, unknown>): UsageCurationModelUsage {
-  const usage = isRecord(raw.usage) ? raw.usage : {};
+  const usage = isRecord(raw.usage) ? raw.usage : undefined;
+  const inputTokens = usage ? nonNegativeInteger(usage.prompt_tokens) : undefined;
+  const outputTokens = usage ? nonNegativeInteger(usage.completion_tokens) : undefined;
+  if (usage === undefined || inputTokens === undefined || outputTokens === undefined) {
+    throw new HttpsError("internal", "OpenRouter response omitted usage metering; refusing an unmetered completion.");
+  }
   const details = isRecord(usage.prompt_tokens_details) ? usage.prompt_tokens_details : {};
   const cachedTokens = nonNegativeInteger(details.cached_tokens);
   return {
-    inputTokens: nonNegativeInteger(usage.prompt_tokens) ?? 0,
-    outputTokens: nonNegativeInteger(usage.completion_tokens) ?? 0,
+    inputTokens,
+    outputTokens,
     ...(cachedTokens !== undefined ? { cachedTokens } : {}),
   };
 }
@@ -144,18 +164,23 @@ export async function callUsageCurationModel(args: {
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await resilientFetch("usage_curation.openrouter.chat", OPENROUTER_CHAT_COMPLETIONS_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.apiKey}`,
-        "Content-Type": "application/json",
-        // OpenRouter recommends advertising the calling app for routing logs.
-        "HTTP-Referer": "https://burnbar.ai",
-        "X-Title": "BurnBar Usage Curation",
+    response = await modelInferenceFetch(
+      "openrouter",
+      "usage_curation.openrouter.chat",
+      OPENROUTER_CHAT_COMPLETIONS_URL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${args.apiKey}`,
+          "Content-Type": "application/json",
+          // OpenRouter recommends advertising the calling app for routing logs.
+          "HTTP-Referer": "https://burnbar.ai",
+          "X-Title": "BurnBar Usage Curation",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
       },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    );
   } catch (error) {
     throw new HttpsError("unavailable", `OpenRouter transport failed: ${errorMessage(error)}`);
   } finally {

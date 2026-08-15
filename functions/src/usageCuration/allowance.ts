@@ -138,9 +138,10 @@ function allowanceDocWrite(counters: UsageCurationAllowanceCounters, now: Timest
  *
  * Idempotent by `reservationId`: replaying the same reservation (same uid,
  * lane, estimate) returns the stored outcome WITHOUT a second deduction — the
- * caller must inspect `reservationStatus` and refuse to place a NEW cloud call
- * on an already-settled reservation (otherwise a replayed id would buy
- * unmetered inference). The same id with different parameters is rejected
+ * caller must inspect `idempotent` and refuse to place a NEW cloud call on ANY
+ * replayed reservation, settled or still in flight (otherwise concurrent
+ * replays of one id would buy unmetered inference off a single deduction).
+ * The same id with different parameters is rejected
  * (`already-exists`) so a client cannot mutate a priced reservation in place.
  * On shortfall throws `resource-exhausted` with details `{ lane, resetsAt }` —
  * `resetsAt` names the boundary that actually unblocks the caller (next UTC

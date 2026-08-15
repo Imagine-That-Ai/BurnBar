@@ -74,7 +74,7 @@ vi.mock("../config.js", () => ({
   getConfig: () => mocks.config,
 }));
 vi.mock("../resilienceHelpers.js", () => ({
-  resilientFetch: mocks.fetch,
+  modelInferenceFetch: mocks.fetch,
 }));
 
 import { monthKeyForDate } from "../cloudProAllowanceCore.js";
@@ -162,7 +162,7 @@ function requireArray(value: unknown, label: string): unknown[] {
 function lastFetchBody(): Record<string, unknown> {
   const call = mocks.fetch.mock.calls.at(-1);
   if (!call) throw new Error("expected an OpenRouter fetch call");
-  const init = requireRecord(call[2], "fetch init");
+  const init = requireRecord(call[3], "fetch init");
   if (typeof init.body !== "string") throw new Error("fetch init body must be a string");
   return requireRecord(JSON.parse(init.body), "OpenRouter request body");
 }
@@ -294,7 +294,8 @@ describe("curateUsageMemoryBatch", () => {
 
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     const firstCall: unknown[] = mocks.fetch.mock.calls[0];
-    const [label, url, init] = firstCall;
+    const [provider, label, url, init] = firstCall;
+    expect(provider).toBe("openrouter");
     expect(label).toBe("usage_curation.openrouter.chat");
     expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
     const headers = requireRecord(requireRecord(init, "fetch init").headers, "fetch request headers");
@@ -384,12 +385,49 @@ describe("curateUsageMemoryBatch", () => {
     await run()(callableRequest(ALICE_UID, textBatch({ requestId: "req-replay" })));
     await expect(run()(callableRequest(ALICE_UID, textBatch({ requestId: "req-replay" })))).rejects.toMatchObject({
       code: "already-exists",
-      message: expect.stringContaining("already completed"),
+      message: expect.stringContaining("already used"),
     });
     // Exactly ONE metered cloud call for one reservation.
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
     const monthKey = monthKeyForDate(new Date());
     expect(mocks.store.get(usageCurationAllowanceDocPath(ALICE_UID, monthKey))?.textTokensUsed).toBe(900);
+  });
+
+  it("refuses a requestId whose reservation is still in flight (no concurrent free calls)", async () => {
+    seedProUser();
+    const candidates = [{ id: "c1", sourceKind: "page", text: "Alberto said drafts only, he merges himself." }];
+    const { promptChars, imageCount } = __testing__.userContentFor(candidates);
+    const monthKey = monthKeyForDate(new Date());
+    // A reservation another invocation created but has not settled yet.
+    seedDoc(mocks.store, usageCurationReservationDocPath(ALICE_UID, monthKey, "curate_text_req-inflight"), {
+      uid: ALICE_UID,
+      lane: "text",
+      reservationId: "curate_text_req-inflight",
+      estimatedTokens: __testing__.estimateTokens(promptChars, imageCount),
+      status: "reserved",
+      schemaVersion: 1,
+    });
+    await expect(
+      run()(callableRequest(ALICE_UID, textBatch({ candidates, requestId: "req-inflight" }))),
+    ).rejects.toMatchObject({
+      code: "already-exists",
+      message: expect.stringContaining("already used"),
+    });
+    // The in-flight reservation keeps its one funded call: no second OpenRouter hit.
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when OpenRouter omits usage metering (releases the reservation)", async () => {
+    seedProUser();
+    mocks.fetch.mockResolvedValueOnce(openRouterResponse({ usage: undefined }));
+    await expect(run()(callableRequest(ALICE_UID, textBatch({ requestId: "req-unmetered" })))).rejects.toMatchObject({
+      code: "internal",
+      message: expect.stringContaining("usage metering"),
+    });
+    const monthKey = monthKeyForDate(new Date());
+    const allowanceDoc = mocks.store.get(usageCurationAllowanceDocPath(ALICE_UID, monthKey));
+    expect(allowanceDoc?.textTokensUsed).toBe(0);
+    expect(allowanceDoc?.textTokensUsedToday).toBe(0);
   });
 
   it("blocks the call before OpenRouter when the monthly allowance is exhausted", async () => {

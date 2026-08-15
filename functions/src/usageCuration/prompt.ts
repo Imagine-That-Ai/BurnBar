@@ -41,6 +41,22 @@ export interface UsageCurationCandidate {
 }
 
 /**
+ * Neutralize fence-marker collisions in untrusted candidate fields: a candidate
+ * whose text (or id/sourceKind) contains a literal fence marker could otherwise
+ * fake the trusted-data boundary and present attacker text as if it sat outside
+ * the fence. The replacement string contains neither marker and is non-empty,
+ * so removals can never splice a new marker together. Lossy on pathological
+ * input by design (a memory whose candidateId was neutralized simply drops).
+ */
+const FENCE_MARKER_REPLACEMENT = "[fence marker removed]";
+
+function neutralizeFenceMarkers(value: string): string {
+  return value
+    .replaceAll(USAGE_CURATION_FENCE_BEGIN, FENCE_MARKER_REPLACEMENT)
+    .replaceAll(USAGE_CURATION_FENCE_END, FENCE_MARKER_REPLACEMENT);
+}
+
+/**
  * Build the user message: frozen prefix context line + fenced JSON candidates.
  * `imageRefs` are replaced by stable indices into the request's attached image
  * parts so raw image payloads never bloat the fenced JSON.
@@ -48,9 +64,9 @@ export interface UsageCurationCandidate {
 export function buildUsageCurationUserPrompt(candidates: UsageCurationCandidate[]): string {
   const fenced = JSON.stringify(
     candidates.map((candidate, index) => ({
-      id: candidate.id,
-      sourceKind: candidate.sourceKind,
-      text: candidate.text,
+      id: neutralizeFenceMarkers(candidate.id),
+      sourceKind: neutralizeFenceMarkers(candidate.sourceKind),
+      text: neutralizeFenceMarkers(candidate.text),
       ...(candidate.imageRefs && candidate.imageRefs.length > 0
         ? { imageRefs: candidate.imageRefs.map((_, imageIndex) => `image:${index}:${imageIndex}`) }
         : {}),

@@ -315,11 +315,15 @@ export const curateUsageMemoryBatch = onCall(
       estimatedTokens,
       limits,
     });
-    if (reservation.idempotent && reservation.reservationStatus === "settled") {
-      // A settled reservation already paid for exactly one cloud call.
-      // Refusing the replay (rather than skipping the reserve) keeps every
-      // OpenRouter call backed by a live reservation.
-      throw new HttpsError("already-exists", "requestId was already completed; use a new requestId to curate again.", {
+    if (reservation.idempotent) {
+      // ANY pre-existing reservation — settled OR still in flight — already
+      // backs exactly one cloud call. Refusing every replay (not just settled
+      // ones) keeps N concurrent calls sharing one requestId from funding N
+      // OpenRouter calls off a single deduction: the first settle would charge
+      // once and the rest would be idempotent no-ops. The trade is that a
+      // crashed attempt strands its estimate until the monthly reset — bounded,
+      // and fail-closed in the payer's favor.
+      throw new HttpsError("already-exists", "requestId was already used; use a new requestId to curate again.", {
         lane,
         requestId,
       });
