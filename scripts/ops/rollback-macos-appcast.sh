@@ -30,9 +30,8 @@
 #   --to-version <X>    Target good shortVersionString to pin the feed back to (REQUIRED
 #                       to act; this script refuses to guess a target). SemVer grammar.
 #   --list              List versions advertised in each feed and exit.
-#   --feed <path>       Appcast file to operate on. Repeatable. Defaults to the standard
-#                       pair (appcast.xml + appcast-x86_64.xml) under the downloads dir,
-#                       restricted to those that exist.
+#   --feed <path>       Appcast file to operate on. Repeatable for local drills. Defaults
+#                       to the canonical appcast.xml under the downloads directory.
 #   --dry-run           Print the plan; change nothing. This is the DEFAULT.
 #   --yes, -y           Apply the rollback (write the feed files). Without this the
 #                       script never modifies a feed.
@@ -48,8 +47,8 @@
 #
 # Prerequisites:
 #   - python3 (XML parsing; matches scripts/ops/rollback-revision.sh).
-#   - The feed files to roll back exist locally (they are published from
-#     OPENBURNBAR_DOWNLOADS_DIR by scripts/upload-macos-downloads-r2.sh).
+#   - The feed file to roll back exists locally. Production rollback publication also
+#     requires the previous-good audited release handoff described in the runbook.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -101,20 +100,17 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-# ── Resolve feeds (flag → standard pair that exists) ───────────────────────
-# The published direct-download channel is a pair: the arm64 feed (appcast.xml) and the
-# Intel feed (appcast-x86_64.xml). Default to whichever of the pair actually exists so a
-# single-arch deployment still works; an explicit --feed overrides the default entirely.
+# ── Resolve feeds (flag → canonical production feed) ───────────────────────
+# Current macOS releases publish one universal Sparkle feed, appcast.xml. Explicit
+# --feed values remain available for offline drills against historical fixtures.
 if [[ ${#FEEDS[@]} -eq 0 ]]; then
-  for candidate in "$DOWNLOADS_DIR/appcast.xml" "$DOWNLOADS_DIR/appcast-x86_64.xml"; do
-    if [[ -f "$candidate" ]]; then
-      FEEDS+=("$candidate")
-    fi
-  done
-  if [[ ${#FEEDS[@]} -eq 0 ]]; then
+  candidate="$DOWNLOADS_DIR/appcast.xml"
+  if [[ -f "$candidate" ]]; then
+    FEEDS+=("$candidate")
+  else
     echo "ERROR: no appcast feed found under ${DOWNLOADS_DIR}." >&2
     echo "       Pass --feed <path>, or set OPENBURNBAR_DOWNLOADS_DIR to the directory" >&2
-    echo "       that scripts/upload-macos-downloads-r2.sh publishes from." >&2
+    echo "       containing a downloaded copy of the live canonical appcast.xml." >&2
     exit 1
   fi
 fi
@@ -370,9 +366,22 @@ echo "    Pinned latest: ${TO_VERSION}"
 echo "    Feeds rewritten: ${FEEDS[*]}"
 echo ""
 echo "PUBLISH STEP (operator runs this — NOT performed here; no upload from this script):"
-echo "  # Re-upload the rolled-back feed(s) to the public download host. The uploader"
-echo "  # also re-verifies the live appcast advertises a Sparkle version."
-echo "  scripts/upload-macos-downloads-r2.sh"
+echo "  # Use the exact audited handoff for ${TO_VERSION}; the dedicated publisher"
+echo "  # restores release-metadata.json + latest-macos.json, activates appcast.xml"
+echo "  # last, and verifies the previous-good DMG and all public pointer bytes."
+echo "  OPENBURNBAR_RELEASE_ASSET_DIR=<previous-good-assets> \\"
+echo "  OPENBURNBAR_RELEASE_RECEIPT=<previous-good-promotion-receipt.json> \\"
+echo "  OPENBURNBAR_RELEASE_VERSION=${TO_VERSION} \\"
+echo "  OPENBURNBAR_RELEASE_TAG=v${TO_VERSION} \\"
+echo "  OPENBURNBAR_RELEASE_COMMIT=<previous-good-full-commit> \\"
+echo "  OPENBURNBAR_ROLLBACK_APPCAST=$(printf '%q' "${FEEDS[0]}") \\"
+echo "  OPENBURNBAR_EXPECTED_LIVE_VERSION=<bad-live-version> \\"
+echo "  OPENBURNBAR_EXPECTED_LIVE_COMMIT=<bad-live-full-commit> \\"
+echo "  OPENBURNBAR_ROLLBACK_CONFIRM=publish-appcast-rollback \\"
+echo "  scripts/publish-macos-appcast-rollback-r2.sh"
+echo "  # Only after R2 verifies byte-exact, restore GitHub latest for legacy clients:"
+echo "  node scripts/ci/promote-github-release.mjs promote-rollback-target \\"
+echo "    --receipt <previous-good-rollback-target-receipt.json>"
 # remediation(B4): the upload is intentionally NOT executed here — this script makes no
 # network/cloud mutation. The line above is the exact operator command, no automatic run.
 echo ""

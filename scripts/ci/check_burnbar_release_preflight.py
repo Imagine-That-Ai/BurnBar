@@ -159,6 +159,31 @@ def release_tag_from_environment() -> str | None:
     return None
 
 
+def success_posture(
+    *,
+    source_provenance_only: bool,
+    owner_emergency_approval: bool,
+    owner_emergency_runtime_hold: bool,
+) -> tuple[list[str], list[str]]:
+    if source_provenance_only:
+        return ["PASS: BurnBar source provenance preflight is ready"], []
+    if owner_emergency_approval:
+        stderr = [
+            "WARNING: This is an owner-attested emergency soft-approval lane, not signed external-counsel approval."
+        ]
+        if owner_emergency_runtime_hold:
+            stderr.append(
+                "WARNING: Runtime readiness remains HOLD and is being bypassed "
+                "only for this explicitly bounded emergency artifact release."
+            )
+        stderr.append(
+            "HOLD: Normal BurnBar release readiness still requires signed "
+            "external-counsel approval and complete runtime readiness."
+        )
+        return ["PASS: BurnBar emergency artifact release preflight is authorized"], stderr
+    return ["PASS: BurnBar product release preflight is ready"], []
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=ROOT)
@@ -217,10 +242,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"- {blocker}", file=sys.stderr)
         return 1
 
-    if args.source_provenance_only:
-        print("PASS: BurnBar source provenance preflight is ready")
-    else:
-        print("PASS: BurnBar product release preflight is ready")
+    owner_emergency_approval = (
+        not args.source_provenance_only
+        and args.allow_owner_emergency_approval
+        and has_owner_emergency_status(legal_evidence, repo_root)
+    )
+    stdout_lines, stderr_lines = success_posture(
+        source_provenance_only=args.source_provenance_only,
+        owner_emergency_approval=owner_emergency_approval,
+        owner_emergency_runtime_hold=args.allow_owner_emergency_runtime_hold,
+    )
+    for line in stdout_lines:
+        print(line)
+    for line in stderr_lines:
+        print(line, file=sys.stderr)
     return 0
 
 
