@@ -1,10 +1,19 @@
 # CI cost controls
 
-BurnBar uses one required status context, `BurnBar CI Gate`. The gate is always
-emitted for pull requests and native merge-queue candidates and fails closed
-until every component context in
-[`governance/burnbar-ci-gate.json`](../governance/burnbar-ci-gate.json) is
+BurnBar uses one required status context, `BurnBar CI Gate`. On pull requests the
+gate polls [`governance/burnbar-ci-gate.fast.json`](../governance/burnbar-ci-gate.fast.json)
+(45-minute PR eligibility set without the slow walls). Merge-queue candidates
+still fail closed on the full component inventory in
+[`governance/burnbar-ci-gate.json`](../governance/burnbar-ci-gate.json). The gate
+is always emitted and fails closed until every required component context is
 successful, neutral, or intentionally skipped.
+
+Slow walls kept off the fast PR set (still required on merge_group / classic
+protection where applicable): App build + test (AgentLens), Mobile build + unit
+test, Daemon PR Gate, Android PR Gate, PR Windows Full Gate, and Domain Core PR
+Gate. Domain Core stays path-scoped evidence when `rust=true`; its aggregator
+must not sit in the 45-minute eligibility umbrella while
+`swift-consumer-contracts` can still run for tens of minutes.
 
 ## Path classification
 
