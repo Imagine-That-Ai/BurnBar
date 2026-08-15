@@ -22,6 +22,7 @@ struct ChartStudioView: View {
     @State private var error: String?
     @State private var streamTask: Task<Void, Never>?
     @State private var lastSubmittedPrompt: String?
+    @StateObject private var derivedCache = ChartStudioDerivedCache()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
@@ -39,15 +40,15 @@ struct ChartStudioView: View {
     }
 
     private var promptEngine: ChartStudioPromptEngine {
-        ChartStudioPromptEngine(digest: digest)
+        derivedCache.promptEngine(for: digest)
     }
 
     private var quickFacts: [QuickFact] {
-        StandardGallery.quickFacts(from: digest)
+        derivedCache.facts(for: digest)
     }
 
     private var galleryItems: [StandardGalleryItem] {
-        StandardGallery.items(from: digest)
+        derivedCache.items(for: digest)
     }
 
     /// True once the user has interacted with Hermes (typed something or
@@ -268,7 +269,7 @@ struct ChartStudioView: View {
 
     private var promptCarousel: some View {
         ChartStudioPromptCarousel(
-            prompts: promptEngine.suggestedPrompts(),
+            prompts: derivedCache.prompts(for: digest),
             onSelect: { tapped in
                 prompt = tapped
                 submit()

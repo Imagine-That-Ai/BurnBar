@@ -104,7 +104,7 @@ public struct MiningPickLoader: View {
             .frame(width: size, height: size)
             .opacity(0.92)
         } else {
-            TimelineView(.animation(minimumInterval: 1.0 / 60, paused: false)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: false)) { context in
                 let p = phase(at: context.date)
                 let swing = pickaxeSwing(p)
                 let impact = oreImpactScale(p)

@@ -280,6 +280,7 @@
 		179A63146474BF866B2EF3B6 /* ChartKitLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02C4F4F843659678782F91C2 /* ChartKitLine.swift */; };
 		17D540F72BA8113777D6DB49 /* ProxyAddCustomModelSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1023CA01A35F2334BEC3E246 /* ProxyAddCustomModelSheet.swift */; };
 		17D65EDB1559A67106869749 /* TrendDataDigest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C37B34494C183F68A1E0FCF /* TrendDataDigest.swift */; };
+		17E76FEC2660B7821797A85A /* TrendDigestCacheStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C4E9A12B8D046F1A3E55C90 /* TrendDigestCacheStore.swift */; };
 		180A5EAFC6279BBC558CDA19 /* OpenBurnBarSignalCore in Frameworks */ = {isa = PBXBuildFile; productRef = B689B8A0A588DAB2C86A344E /* OpenBurnBarSignalCore */; };
 		181DC50DE6933F008FF43C81 /* QuotaPulseCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F45CCAEDCFFF8D5DC0535A /* QuotaPulseCard.swift */; };
 		183B7CB26C04E5AA7D355E29 /* BurnBarLocalOllamaLiveCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAD75190817551C1EBF13C93 /* BurnBarLocalOllamaLiveCatalogTests.swift */; };
@@ -647,6 +648,11 @@
 		3AB2B793E632E3621A8C1246 /* MemoryRecallBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0963B8DF182D45BD4ACD426 /* MemoryRecallBudgetTests.swift */; };
 		3AD9C5F6D7A98C0C7BDAD460 /* OpenBurnBarDracoDecompressor.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9723B212227C313C10D2A4C9 /* OpenBurnBarDracoDecompressor.mm */; };
 		3ADFADE6BA7A5F5A6C9AD46B /* UsageRefreshPipelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA1629DB0FF43124BE615BF /* UsageRefreshPipelineTests.swift */; };
+		12251879088BBF2E07BF683D /* ChartFactRowSQLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4C0F36C2D47EAB45913CA5 /* ChartFactRowSQLTests.swift */; };
+		E05E9D4A67F5B2D127380817 /* ChartSessionAnalyticsSQLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A4062C29F4773C9042B966 /* ChartSessionAnalyticsSQLTests.swift */; };
+		D8F5B6E061431D83B0E164AB /* DailySummaryIntersectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A89CFC3C0EBD768CB90D9B0 /* DailySummaryIntersectionTests.swift */; };
+		67EE85AB33E08BD22F205355 /* MacIdleUsageParserCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29538757289B77DE0999EA32 /* MacIdleUsageParserCacheTests.swift */; };
+		5DF25B67BA5740499C9DF097 /* ProviderQuotaRefreshTTLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13944F32EE09E0B52866363C /* ProviderQuotaRefreshTTLTests.swift */; };
 		3AF2963D5E7946738B461A0C /* OnboardingScanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2ED5F9C80005AF0B305FCBC8 /* OnboardingScanView.swift */; };
 		3B2B8B3477041BA536267F25 /* DataStore+ArtifactAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60B20854787F0B59380350BF /* DataStore+ArtifactAccess.swift */; };
 		3B3DE0FA0F493746E542C621 /* OpenBurnBarDaemonSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 201AD85A2BF9112C22212649 /* OpenBurnBarDaemonSupervisor.swift */; };
@@ -805,6 +811,8 @@
 		4C0D3C09DDFAF977F1BE9C8C /* ScreenShareViewerView+ControlInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EF826C72BE4F42B17FF60B8 /* ScreenShareViewerView+ControlInput.swift */; };
 		4C114288EC45CB2BF560BA95 /* ChartStudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCDE46C21A344240BB3C0583 /* ChartStudioStore.swift */; };
 		4C14EA073DDFBC81404ADDC4 /* UsageStore+FetchHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88DECD8D2321B7C87E36AD9E /* UsageStore+FetchHelpers.swift */; };
+		192905E9C8E6793896724CDC /* UsageDayIntersection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A441B2FD590CD8D8A736BC5 /* UsageDayIntersection.swift */; };
+		5B3A883906BAF7BAC2331A83 /* UsageStore+ChartAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A678D292F6281142CEB99AA2 /* UsageStore+ChartAnalytics.swift */; };
 		4C603ED9038E7D95670BBFB4 /* ProviderQuotaTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32450E00EE48DECF70532353 /* ProviderQuotaTypes.swift */; };
 		4C67B52EBBF3AF5D2E9B0F36 /* TextExpansionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EEE819EBFF6533EB6275C51 /* TextExpansionSettingsView.swift */; };
 		4C98533661764EC6A0399909 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C97C402301029F75A0AB5FA2 /* AuthStore.swift */; };
@@ -1015,6 +1023,8 @@
 		61E90207FB2CBF988FD0F635 /* ProviderQuotaServiceCredentialReadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C01896CF74165FE12FF88578 /* ProviderQuotaServiceCredentialReadTests.swift */; };
 		61EBCFD6F05102EB8AC25C9B /* CloudSyncTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AE23B999D2B88F8916759D6 /* CloudSyncTestSupport.swift */; };
 		61F29B2C91A360DF59ADCB2B /* ChartsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FDE9FB25BD5ED521A6D73A4 /* ChartsSnapshot.swift */; };
+		2D785652D3210A4C62B30A80 /* ChartFactRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEAF350D9BA10821F92A2F46 /* ChartFactRow.swift */; };
+		81DADB1F7604EDDB7C7D9A27 /* ChartSessionAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFCF7A7FEA8343F561958253 /* ChartSessionAnalytics.swift */; };
 		6233FA14201D6330FB4BBA13 /* DatabaseEncryptionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF9AF9EE746257E9866E4890 /* DatabaseEncryptionServiceTests.swift */; };
 		623DED4A892656C9B18B9794 /* PTYInteractiveSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51D506CC529E5A51217012BD /* PTYInteractiveSession.swift */; };
 		6265E6B725B634660E9AAD0E /* AlertSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47685867ACDF36FB41F98C6 /* AlertSettings.swift */; };
@@ -3391,6 +3401,8 @@
 		3FD870E7D703DBAD31B8B28A /* ComputerUseSystemCapabilityProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerUseSystemCapabilityProbe.swift; sourceTree = "<group>"; };
 		3FDE4AC490E442BFB4B2A32E /* OpenBurnBarChatEvidenceFormattingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenBurnBarChatEvidenceFormattingTests.swift; sourceTree = "<group>"; };
 		3FDE9FB25BD5ED521A6D73A4 /* ChartsSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartsSnapshot.swift; sourceTree = "<group>"; };
+		AEAF350D9BA10821F92A2F46 /* ChartFactRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartFactRow.swift; sourceTree = "<group>"; };
+		DFCF7A7FEA8343F561958253 /* ChartSessionAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartSessionAnalytics.swift; sourceTree = "<group>"; };
 		3FEDC5D916347D05BC8D362B /* CLIAssistantSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIAssistantSettings.swift; sourceTree = "<group>"; };
 		40070602241119EDB4199E31 /* ScreenShareViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenShareViewerView.swift; sourceTree = "<group>"; };
 		402EBEDE08E66A1F8A31BCB5 /* TestableCodexParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestableCodexParser.swift; sourceTree = "<group>"; };
@@ -4110,6 +4122,8 @@
 		885AF7F67F13E2BDE878804F /* test_onboardingCompleteView.onboardingComplete-dark.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "test_onboardingCompleteView.onboardingComplete-dark.png"; sourceTree = "<group>"; };
 		88C20284FE50E831F5962B9D /* LockedFeatureVeil.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockedFeatureVeil.swift; sourceTree = "<group>"; };
 		88DECD8D2321B7C87E36AD9E /* UsageStore+FetchHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+FetchHelpers.swift"; sourceTree = "<group>"; };
+		8A441B2FD590CD8D8A736BC5 /* UsageDayIntersection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageDayIntersection.swift; sourceTree = "<group>"; };
+		A678D292F6281142CEB99AA2 /* UsageStore+ChartAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UsageStore+ChartAnalytics.swift"; sourceTree = "<group>"; };
 		88E9D29E5D699AACB5BDE07B /* VisualCapturePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualCapturePreferences.swift; sourceTree = "<group>"; };
 		88F58C33AAA25B82EF7D2239 /* VectorSemanticProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorSemanticProvider.swift; sourceTree = "<group>"; };
 		892EFADFB4430BA8D0F80316 /* InsightsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsWorkspaceView.swift; sourceTree = "<group>"; };
@@ -4141,6 +4155,7 @@
 		8BE0F0AA67F2F0282761F5AD /* HermesInventoryImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesInventoryImportService.swift; sourceTree = "<group>"; };
 		8C13CEEC34882CF4C1EA15C0 /* LinuxIrohHostIdentityStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinuxIrohHostIdentityStore.swift; sourceTree = "<group>"; };
 		8C37B34494C183F68A1E0FCF /* TrendDataDigest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendDataDigest.swift; sourceTree = "<group>"; };
+		8C4E9A12B8D046F1A3E55C90 /* TrendDigestCacheStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendDigestCacheStore.swift; sourceTree = "<group>"; };
 		8C78E7F27C72A21B1A5C967B /* LiveCloudReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCloudReader.swift; sourceTree = "<group>"; };
 		8C906A54838E69381058F867 /* HermesGatewayRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesGatewayRepository.swift; sourceTree = "<group>"; };
 		8C974E44252F03DEF2ACBB35 /* PixelClockSettingsCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixelClockSettingsCard.swift; sourceTree = "<group>"; };
@@ -4822,6 +4837,11 @@
 		CF8982BC48CA33818633ADEF /* FounderPlanLedgerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FounderPlanLedgerTests.swift; sourceTree = "<group>"; };
 		CF9D57D55A8E0A339481D718 /* BurnBarDaemonServer+RPCTooling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BurnBarDaemonServer+RPCTooling.swift"; sourceTree = "<group>"; };
 		CFA1629DB0FF43124BE615BF /* UsageRefreshPipelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageRefreshPipelineTests.swift; sourceTree = "<group>"; };
+		0A4C0F36C2D47EAB45913CA5 /* ChartFactRowSQLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartFactRowSQLTests.swift; sourceTree = "<group>"; };
+		F2A4062C29F4773C9042B966 /* ChartSessionAnalyticsSQLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartSessionAnalyticsSQLTests.swift; sourceTree = "<group>"; };
+		2A89CFC3C0EBD768CB90D9B0 /* DailySummaryIntersectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailySummaryIntersectionTests.swift; sourceTree = "<group>"; };
+		29538757289B77DE0999EA32 /* MacIdleUsageParserCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacIdleUsageParserCacheTests.swift; sourceTree = "<group>"; };
+		13944F32EE09E0B52866363C /* ProviderQuotaRefreshTTLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderQuotaRefreshTTLTests.swift; sourceTree = "<group>"; };
 		CFA345553946D80237AADED8 /* ScreenShareViewerView+SmartZoom.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ScreenShareViewerView+SmartZoom.swift"; sourceTree = "<group>"; };
 		CFB37E7A88CA993C3702638D /* CacheHitRateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheHitRateTests.swift; sourceTree = "<group>"; };
 		CFC5E586D3A6B38ED01E8443 /* BurnBarQuotaSignalSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarQuotaSignalSnapshotTests.swift; sourceTree = "<group>"; };
@@ -5722,9 +5742,11 @@
 				63C9B8BD8A78996154DBA4AE /* SearchIndexStore.swift */,
 				96889FD8FBEEDACAAE318478 /* SwitcherProfileStore.swift */,
 				7A5E687D07E5D94BAAB0D218 /* TextExpansionSnippetStore.swift */,
+				8A441B2FD590CD8D8A736BC5 /* UsageDayIntersection.swift */,
 				7B15F549BE12FF89AA680D7C /* UsageReplaceGate.swift */,
 				77925C86C0EE4AE306B5C81E /* UsageStore.swift */,
 				764909F4B27DD402456A182C /* UsageStore+Accumulators.swift */,
+				A678D292F6281142CEB99AA2 /* UsageStore+ChartAnalytics.swift */,
 				3A3CF889122DD6FC34A85864 /* UsageStore+DeleteSync.swift */,
 				88DECD8D2321B7C87E36AD9E /* UsageStore+FetchHelpers.swift */,
 				3ECD012D195652DF08968B04 /* UsageStore+InsertHelpers.swift */,
@@ -6084,7 +6106,9 @@
 		229E77B1E800ED51554F41A4 /* Charts */ = {
 			isa = PBXGroup;
 			children = (
+				AEAF350D9BA10821F92A2F46 /* ChartFactRow.swift */,
 				CE4095BD97E91C6976710693 /* ChartInsightEngine.swift */,
+				DFCF7A7FEA8343F561958253 /* ChartSessionAnalytics.swift */,
 				5FB92C88F9A9B18778A5275F /* ChartsDataService.swift */,
 				3FDE9FB25BD5ED521A6D73A4 /* ChartsSnapshot.swift */,
 			);
@@ -7931,7 +7955,9 @@
 				A2E2526499AA8700D8774F5A /* CastMessageFramingTests.swift */,
 				47C67F5217DCDB4EA62809D9 /* CastWizardModelTests.swift */,
 				29DC9E83A8BCC4288F522377 /* ChartBucketingTests.swift */,
+				0A4C0F36C2D47EAB45913CA5 /* ChartFactRowSQLTests.swift */,
 				F4B751735FED52BF19B04566 /* ChartInsightEngineParsingTests.swift */,
+				F2A4062C29F4773C9042B966 /* ChartSessionAnalyticsSQLTests.swift */,
 				E2DAEDC3279A2AB48340A9A5 /* ChartsPageLayoutTests.swift */,
 				F91200A8BDC3D47E4B16F90C /* ChartsRouteTests.swift */,
 				047F4CD924BE6C4F27EDCE8F /* ChartsSnapshotBuilderTests.swift */,
@@ -7981,6 +8007,7 @@
 				E6B913076AFAAD1E802C370B /* CursorConnectorTests.swift */,
 				9668B82EB363E18BEC296205 /* DaemonSocketClientBufferTests.swift */,
 				3A9D269FE2712CEBCD15527B /* DailyDigestManagerTests.swift */,
+				2A89CFC3C0EBD768CB90D9B0 /* DailySummaryIntersectionTests.swift */,
 				72150B0FCBBA4E46C1D9C1F1 /* DashboardChatOverlayTests.swift */,
 				FD03FA5C727A21C26B983A76 /* DashboardConsentCoordinatorTests.swift */,
 				F1698A96284004113E4B39DC /* DashboardLayoutSettingsTests.swift */,
@@ -8037,6 +8064,7 @@
 				4CED4FC1890BB2D226DB1B6B /* LocalSearchSchemaStoreTests.swift */,
 				BB7E5E35C643562525822C79 /* MacAppStoreReviewComplianceTests.swift */,
 				48E683114E98DC82098B1EBF /* MacCloudVaultSignalActivationTests.swift */,
+				29538757289B77DE0999EA32 /* MacIdleUsageParserCacheTests.swift */,
 				48656C10F6FB8F85655840CA /* MacMediaCapabilityGateTests.swift */,
 				6A7A63EF1DE8CC08E4656221 /* MacOSIdleOcclusionGateTests.swift */,
 				393E83ABDA6D69750E837305 /* MacSentryScrubberTests.swift */,
@@ -8102,6 +8130,7 @@
 				E5B36452B9C637B74CAFCD5C /* ProviderQuotaAdapterCredentialReadTests.swift */,
 				A7CBBA515C19F01C0194C02A /* ProviderQuotaBucketElapsedResetTests.swift */,
 				1BBACE25666C69D44A08BEBE /* ProviderQuotaChipTests.swift */,
+				13944F32EE09E0B52866363C /* ProviderQuotaRefreshTTLTests.swift */,
 				C01896CF74165FE12FF88578 /* ProviderQuotaServiceCredentialReadTests.swift */,
 				853B0E0A43E3B6BC22214035 /* ProviderQuotaServiceCumulativeAndContextTests.swift */,
 				641A55D41C6E2219C9C614AB /* ProviderQuotaServiceMattersTests.swift */,
@@ -9556,6 +9585,7 @@
 				6D3B27B5F58F779AFDD9C6A8 /* ChartStudioPromptEngine.swift */,
 				B3E349ABE3F28F5893424F45 /* StandardGallery.swift */,
 				8C37B34494C183F68A1E0FCF /* TrendDataDigest.swift */,
+				8C4E9A12B8D046F1A3E55C90 /* TrendDigestCacheStore.swift */,
 				30FAFB5B828FF55B94393639 /* TrendInsightEngine.swift */,
 			);
 			path = ChartStudio;
@@ -11948,6 +11978,7 @@
 				DA9AA77F506B37BE7F0BE0DF /* TrackpadGlassSurface.swift in Sources */,
 				E12C583AC380EC6BAA3D9138 /* TrendAtlasCard.swift in Sources */,
 				17D65EDB1559A67106869749 /* TrendDataDigest.swift in Sources */,
+				17E76FEC2660B7821797A85A /* TrendDigestCacheStore.swift in Sources */,
 				F53A389585046AB4165F66DC /* TrendInsightEngine.swift in Sources */,
 				2AC548F413C62E53EAD74EB3 /* UIModePicker.swift in Sources */,
 				44AE05417602889478F61019 /* UserAvatarView.swift in Sources */,
@@ -12044,7 +12075,9 @@
 				D733171B6E2B5F9C87697CB6 /* CastWizardModelTests.swift in Sources */,
 				8E9B2AF9F302FEA1FA99F340 /* CastleStatusReaderTests.swift in Sources */,
 				6105AE16F167CAE878378FCA /* ChartBucketingTests.swift in Sources */,
+				12251879088BBF2E07BF683D /* ChartFactRowSQLTests.swift in Sources */,
 				6325F72EFB28EC8D2BEACBC8 /* ChartInsightEngineParsingTests.swift in Sources */,
+				E05E9D4A67F5B2D127380817 /* ChartSessionAnalyticsSQLTests.swift in Sources */,
 				2C016D0902CD28C31F7482A1 /* ChartsPageLayoutTests.swift in Sources */,
 				D5F98584B296B00837D1B05B /* ChartsRouteTests.swift in Sources */,
 				DC49F49C1C07D7DE92BB3401 /* ChartsSnapshotBuilderTests.swift in Sources */,
@@ -12108,6 +12141,7 @@
 				44C458706F554BE938B999AE /* CursorIntegrationTests.swift in Sources */,
 				FF8ABCDE8D137A7A9F0A59A2 /* DaemonSocketClientBufferTests.swift in Sources */,
 				9D9AA928BF4AAE85D5978E48 /* DailyDigestManagerTests.swift in Sources */,
+				D8F5B6E061431D83B0E164AB /* DailySummaryIntersectionTests.swift in Sources */,
 				C85DD4EFB4229EC9CFCAD0DC /* DashboardActionGlyphTests.swift in Sources */,
 				3C484F411E153C3ED74D21C7 /* DashboardChatOverlayTests.swift in Sources */,
 				06635CD83F64B01F57A6A166 /* DashboardChatWorkspaceViewTests.swift in Sources */,
@@ -12191,6 +12225,7 @@
 				AD592788106D88A61E5A5407 /* MacCopyTests.swift in Sources */,
 				B9AFCF2D8859ACEDFDC1A2DD /* MacEscrowCredentialProducerTests.swift in Sources */,
 				BF8D90CE9919D1D14EB29E3C /* MacFileTransferSecurityTests.swift in Sources */,
+				67EE85AB33E08BD22F205355 /* MacIdleUsageParserCacheTests.swift in Sources */,
 				D73ABDF4752EEBF7C923DB2B /* MacMediaCapabilityGateTests.swift in Sources */,
 				BE779FFBB6A01370CE209767 /* MacOSIdleOcclusionGateTests.swift in Sources */,
 				02AE961573B4FCB460C671A0 /* MacSentryScrubberTests.swift in Sources */,
@@ -12293,6 +12328,7 @@
 				322D05B56C82E2F6CE21A2A1 /* ProviderQuotaAdapterCredentialReadTests.swift in Sources */,
 				F45E3E01B4771AD381FC9CE2 /* ProviderQuotaBucketElapsedResetTests.swift in Sources */,
 				4D485406C46E1C27DED30608 /* ProviderQuotaChipTests.swift in Sources */,
+				5DF25B67BA5740499C9DF097 /* ProviderQuotaRefreshTTLTests.swift in Sources */,
 				61E90207FB2CBF988FD0F635 /* ProviderQuotaServiceCredentialReadTests.swift in Sources */,
 				BB9711F597E7E11A5C73ADBC /* ProviderQuotaServiceCumulativeAndContextTests.swift in Sources */,
 				4AF8759CF79E7ED2C16F8DF2 /* ProviderQuotaServiceMattersTests.swift in Sources */,
@@ -12546,12 +12582,14 @@
 				12D97F806FE6A07C1BE37D0C /* ChartBucketing.swift in Sources */,
 				2E3157FA9E403D9F01AE73DF /* ChartCardChrome.swift in Sources */,
 				CC9BF4E3B889DB3D39C46449 /* ChartCardView.swift in Sources */,
+				2D785652D3210A4C62B30A80 /* ChartFactRow.swift in Sources */,
 				E6B013A2E81A1B848E5E520A /* ChartInsightEngine.swift in Sources */,
 				DC04BF4CCE9BCB82CDBAA06E /* ChartKind.swift in Sources */,
 				EAAF34127C5146774D149211 /* ChartKitBars.swift in Sources */,
 				843459B29C0F33171F9B67AA /* ChartKitDonut.swift in Sources */,
 				14F541798FA1119A0843C73D /* ChartKitHeatmap.swift in Sources */,
 				179A63146474BF866B2EF3B6 /* ChartKitLine.swift in Sources */,
+				81DADB1F7604EDDB7C7D9A27 /* ChartSessionAnalytics.swift in Sources */,
 				FE6C14C017FB3509FD25B524 /* ChartsDataService.swift in Sources */,
 				3277CAC547C64017AA7C763F /* ChartsPageView.swift in Sources */,
 				6383BF72FD3FB4A3ECEE4067 /* ChartsReorderableGrid.swift in Sources */,
@@ -13322,9 +13360,11 @@
 				442410FD6755ECF0880387AE /* UsageAggregatorParsers+Codex.swift in Sources */,
 				5C5C9D09DA866B42DA466CD7 /* UsageAggregatorParsers+More.swift in Sources */,
 				68C7ABCAF8618BD25F64EB39 /* UsageAggregatorParsers.swift in Sources */,
+				192905E9C8E6793896724CDC /* UsageDayIntersection.swift in Sources */,
 				C1C37D73DD5AF67D040C1479 /* UsageRefreshPipeline.swift in Sources */,
 				03627E95E7CC0557AF8A0BD8 /* UsageReplaceGate.swift in Sources */,
 				58D49341CFB48E2C548E6782 /* UsageStore+Accumulators.swift in Sources */,
+				5B3A883906BAF7BAC2331A83 /* UsageStore+ChartAnalytics.swift in Sources */,
 				3E4CFAE74468C2001A5FB2C0 /* UsageStore+DeleteSync.swift in Sources */,
 				4C14EA073DDFBC81404ADDC4 /* UsageStore+FetchHelpers.swift in Sources */,
 				1E2FEE81FE64B18A78DC842A /* UsageStore+InsertHelpers.swift in Sources */,

@@ -677,6 +677,14 @@ internal class AssistantChatFirestoreMirror(
     private val firestore: FirebaseFirestore = Firebase.firestore,
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
 ) : AssistantChatCloudMirror {
+    private val signalLegacyPrivateFields =
+        setOf(
+            "contentSealed",
+            "sealedSchemaVersion",
+            "vaultKeyID",
+            "sealedPayload",
+        )
+
     private val json =
         Json {
             ignoreUnknownKeys = true
@@ -720,8 +728,24 @@ internal class AssistantChatFirestoreMirror(
                 aadContext = aadContext,
             )
         val payload = firestorePayload(thread, resolvedKey.vaultKeyID, sealedPayload)
-        addSignalEnvelopeIfAvailable(uid, thread.id, plaintextBytes, payload)
-        collection(uid).document(thread.id).set(payload).await()
+        val signalState = AndroidCloudVaultSignalPayloads.signalActivationState(SIGNAL_CHAT_DOMAIN)
+        AndroidCloudVaultSignalPayloads.writePayloadWithSignalPolicy(
+            payload = payload,
+            initialState = signalState,
+            finalStateProvider = {
+                AndroidCloudVaultSignalPayloads.signalActivationState(SIGNAL_CHAT_DOMAIN)
+            },
+            legacyPrivateFields = signalLegacyPrivateFields,
+            sealSignalEnvelope = {
+                signalEnvelope(uid, thread.id, plaintextBytes)
+            },
+            onOptionalSealFailure = { error ->
+                Log.w("AssistantChatFirestoreMirror", "Signal at-rest seal failed; writing chat legacy-only", error)
+            },
+            writePayload = { preparedPayload ->
+                collection(uid).document(thread.id).set(preparedPayload).await()
+            },
+        )
     }
 
     private fun firestorePayload(thread: AssistantChatThread, vaultKeyID: String, sealedPayload: CloudVaultSealedPayload): MutableMap<String, Any?> {
@@ -749,38 +773,28 @@ internal class AssistantChatFirestoreMirror(
         return payload
     }
 
-    private suspend fun addSignalEnvelopeIfAvailable(uid: String, threadID: String, plaintextBytes: ByteArray, payload: MutableMap<String, Any?>) {
-        // L41/at-rest Signal dual-write (item 3). The legacy AES-GCM "sealedPayload" already
-        // in `payload` is the FLOOR; the additive "signalEnvelope" is gated by the
-        // conversations_chat sealingScheme and is BEST-EFFORT. On ANY seal failure (e.g. a
-        // trusted device without a published identity) log and write legacy-only rather than
-        // abort the whole write — legacy is already end-to-end so no confidentiality is lost.
-        // (.set() below fully overwrites the doc, so an omitted envelope is implicitly cleared.)
-        runCatching {
-            if (AndroidCloudVaultSignalPayloads.signalSealingIsEnabled(SIGNAL_CHAT_DOMAIN)) {
-                val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
-                val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
-                AndroidSignalIdentityKeyStore.publishIfNeeded(
-                    uid = uid,
-                    deviceId = escrow.deviceId,
-                    identity = identity,
-                    firestore = firestore,
-                )
-                val recipients =
-                    AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
-                AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
-                    AndroidCloudVaultSignalPayloads.SignalEnvelopeMapRequest(
-                        domainID = SIGNAL_CHAT_DOMAIN,
-                        uid = uid,
-                        collection = "mobile_assistant_chats",
-                        docId = threadID,
-                        plaintext = plaintextBytes,
-                        localIdentity = identity,
-                        otherRecipients = recipients,
-                    ),
-                )?.let { payload["signalEnvelope"] = it }
-            }
-        }.onFailure { Log.w("AssistantChatFirestoreMirror", "Signal at-rest seal failed; writing chat legacy-only", it) }
+    private suspend fun signalEnvelope(uid: String, threadID: String, plaintextBytes: ByteArray): Map<String, Any>? {
+        val escrow = AndroidCloudVaultDeviceKeypair.loadOrCreate()
+        val identity = AndroidSignalIdentityKeyStore.loadOrCreate(escrow.deviceId, escrow.keyVersion)
+        AndroidSignalIdentityKeyStore.publishIfNeeded(
+            uid = uid,
+            deviceId = escrow.deviceId,
+            identity = identity,
+            firestore = firestore,
+        )
+        val recipients =
+            AndroidCloudVaultSignalPayloads.atRestRecipients(uid = uid, firestore = firestore, localIdentity = identity)
+        return AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
+            AndroidCloudVaultSignalPayloads.SignalEnvelopeMapRequest(
+                domainID = SIGNAL_CHAT_DOMAIN,
+                uid = uid,
+                collection = "mobile_assistant_chats",
+                docId = threadID,
+                plaintext = plaintextBytes,
+                localIdentity = identity,
+                otherRecipients = recipients,
+            ),
+        )
     }
 
     override suspend fun delete(uid: String, threadID: String) {

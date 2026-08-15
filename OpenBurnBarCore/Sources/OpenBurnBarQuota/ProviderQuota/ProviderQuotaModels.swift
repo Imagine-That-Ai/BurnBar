@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 // MARK: - Codex Models
 
@@ -30,19 +31,150 @@ public struct CodexRolloutScanCache: Codable, Equatable, Sendable {
     public var fileEntries: [String: CodexRolloutFileCacheEntry]
     public var latestRateLimitEvent: CodexRateLimitEvent?
     public var lastUpdatedAt: Date?
+    /// Directories this payload scanned. In-memory hop for merge-on-write;
+    /// missing on disk (pre-overlap caches) means "replace the whole map".
+    public var scannedDirectoryPaths: [String]
 
     public static let empty = CodexRolloutScanCache(
         schemaVersion: 1,
         fileEntries: [:],
         latestRateLimitEvent: nil,
-        lastUpdatedAt: nil
+        lastUpdatedAt: nil,
+        scannedDirectoryPaths: []
     )
+
+    public init(
+        schemaVersion: Int,
+        fileEntries: [String: CodexRolloutFileCacheEntry],
+        latestRateLimitEvent: CodexRateLimitEvent?,
+        lastUpdatedAt: Date?,
+        scannedDirectoryPaths: [String] = []
+    ) {
+        self.schemaVersion = schemaVersion
+        self.fileEntries = fileEntries
+        self.latestRateLimitEvent = latestRateLimitEvent
+        self.lastUpdatedAt = lastUpdatedAt
+        self.scannedDirectoryPaths = scannedDirectoryPaths
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case fileEntries
+        case latestRateLimitEvent
+        case lastUpdatedAt
+        case scannedDirectoryPaths
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        fileEntries = try container.decode([String: CodexRolloutFileCacheEntry].self, forKey: .fileEntries)
+        latestRateLimitEvent = try container.decodeIfPresent(
+            CodexRateLimitEvent.self,
+            forKey: .latestRateLimitEvent
+        )
+        lastUpdatedAt = try container.decodeIfPresent(Date.self, forKey: .lastUpdatedAt)
+        scannedDirectoryPaths = try container.decodeIfPresent(
+            [String].self,
+            forKey: .scannedDirectoryPaths
+        ) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(fileEntries, forKey: .fileEntries)
+        try container.encodeIfPresent(latestRateLimitEvent, forKey: .latestRateLimitEvent)
+        try container.encodeIfPresent(lastUpdatedAt, forKey: .lastUpdatedAt)
+        if !scannedDirectoryPaths.isEmpty {
+            try container.encode(scannedDirectoryPaths, forKey: .scannedDirectoryPaths)
+        }
+    }
+
+    /// Overlay `incoming` for keys under that scan's directories. Other roots stay.
+    /// Empty `incoming.scannedDirectoryPaths` is a full replace (legacy writers).
+    public func mergingScan(incoming: CodexRolloutScanCache) -> CodexRolloutScanCache {
+        let roots = incoming.scannedDirectoryPaths
+        guard !roots.isEmpty else { return incoming.persistingWithoutScanRoots() }
+
+        var merged = fileEntries
+        for key in merged.keys where Self.path(key, isUnder: roots) && incoming.fileEntries[key] == nil {
+            merged.removeValue(forKey: key)
+        }
+        for (key, value) in incoming.fileEntries where Self.path(key, isUnder: roots) {
+            merged[key] = value
+        }
+
+        let latest = merged.values
+            .compactMap(\.latestRateLimitEvent)
+            .max { $0.timestamp < $1.timestamp }
+        return CodexRolloutScanCache(
+            schemaVersion: max(schemaVersion, incoming.schemaVersion),
+            fileEntries: merged,
+            latestRateLimitEvent: latest,
+            lastUpdatedAt: incoming.lastUpdatedAt ?? lastUpdatedAt,
+            scannedDirectoryPaths: []
+        )
+    }
+
+    public func persistingWithoutScanRoots() -> CodexRolloutScanCache {
+        guard scannedDirectoryPaths.isEmpty else {
+            return CodexRolloutScanCache(
+                schemaVersion: schemaVersion,
+                fileEntries: fileEntries,
+                latestRateLimitEvent: latestRateLimitEvent,
+                lastUpdatedAt: lastUpdatedAt,
+                scannedDirectoryPaths: []
+            )
+        }
+        return self
+    }
+
+    public static func path(_ path: String, isUnder directories: [String]) -> Bool {
+        let standardized = (path as NSString).standardizingPath
+        for directory in directories {
+            let root = (directory as NSString).standardizingPath
+            if standardized == root { return true }
+            let prefix = root.hasSuffix("/") ? root : root + "/"
+            if standardized.hasPrefix(prefix) { return true }
+        }
+        return false
+    }
+}
+
+/// Merge `incoming` into a live locked box. Callers persist when `didChange` is true.
+public enum CodexRolloutScanCacheUpdate {
+    public static func apply(
+        incoming: CodexRolloutScanCache,
+        didChangeIncoming: Bool,
+        to box: Locked<CodexRolloutScanCache>
+    ) -> (cache: CodexRolloutScanCache, didChange: Bool) {
+        box.withLock { cache in
+            let merged = cache.mergingScan(incoming: incoming)
+            let changed = didChangeIncoming || merged != cache
+            cache = merged
+            return (merged, changed)
+        }
+    }
 }
 
 public struct CodexRateLimitScanResult: Sendable {
     public let latestEvent: CodexRateLimitEvent?
     public let cache: CodexRolloutScanCache
     public let didChangeCache: Bool
+    public let scannedDirectoryPaths: [String]
+
+    public init(
+        latestEvent: CodexRateLimitEvent?,
+        cache: CodexRolloutScanCache,
+        didChangeCache: Bool,
+        scannedDirectoryPaths: [String] = []
+    ) {
+        self.latestEvent = latestEvent
+        self.cache = cache
+        self.didChangeCache = didChangeCache
+        self.scannedDirectoryPaths = scannedDirectoryPaths
+    }
 }
 
 public struct CodexRolloutEnvelope: Decodable {

@@ -59,11 +59,33 @@ public final class MuseParser: LogParser, Sendable {
 
     // Injected seam for tests (mirrors ClineFormatParser / OpenCode patterns).
     private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(logDirectoryOverride: String? = nil, fileManager: FileManager = .default) {
+    public init(
+        logDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.logDirectoryOverride = logDirectoryOverride
         self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-muse-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.museParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "MuseParser"
+        )
     }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     public func parse() async throws -> ParseResult {
         try parseSynchronously(options: .default)
@@ -74,6 +96,8 @@ public final class MuseParser: LogParser, Sendable {
     }
 
     public func parseSynchronously(options: LogParseOptions = .default) throws -> ParseResult {
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
         let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let sessionsPath = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
         guard fileManager.fileExists(atPath: sessionsPath) else {
@@ -90,13 +114,51 @@ public final class MuseParser: LogParser, Sendable {
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         for file in candidates {
+            let cacheKey = file.standardizedFileURL.path
+            activePaths.insert(cacheKey)
             guard try gate.shouldRead(file) else { continue }
+            let signature = FileSignature(for: file, using: fileManager)
+            if !options.includeConversationBodies,
+               let signature,
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                sessionCacheHitCount.withLock { $0 += 1 }
+                usages.append(contentsOf: cached.sessions.map { $0.makeUsage(provider: .muse) })
+                continue
+            }
+
+            sessionScanCount.withLock { $0 += 1 }
             if let pair = tryParseFile(file: file, options: options) {
-                if let u = pair.usage { usages.append(u) }
+                if let u = pair.usage {
+                    usages.append(u)
+                    if let signature {
+                        parseCache.fileEntries[cacheKey] = CachedUsageBundleEntry(
+                            signature: signature,
+                            usages: [u]
+                        )
+                        cacheMutated = true
+                    }
+                }
                 if let c = pair.conversation { conversations.append(c) }
             }
+        }
+
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
         }
 
         return ParseResult(usages: usages, conversations: conversations)
@@ -106,7 +168,7 @@ public final class MuseParser: LogParser, Sendable {
 
     private func recursiveJSONLFiles(under root: URL) -> [URL] {
         var out: [URL] = []
-        guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else {
+        guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys, options: [.skipsHiddenFiles]) else {
             return out
         }
         for case let url as URL in enumerator {
@@ -121,7 +183,10 @@ public final class MuseParser: LogParser, Sendable {
         }
         // Fallback: if no session.jsonl found (e.g., test fixtures with flat files),
         // accept any *.jsonl directly under root.
-        if out.isEmpty, let contents = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
+        if out.isEmpty, let contents = try? fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys
+        ) {
             out.append(contentsOf: contents.filter { $0.pathExtension == "jsonl" })
         }
         return out.sorted { $0.path < $1.path }
@@ -201,7 +266,8 @@ public final class MuseParser: LogParser, Sendable {
 
             // Tool calls
             if payloadType == "tool_batch.effect.started" {
-                if let record = payload["record"] as? [String: Any], let name = record["tool_name"] as? String, !name.isEmpty {
+                if options.includeConversationBodies,
+                   let record = payload["record"] as? [String: Any], let name = record["tool_name"] as? String, !name.isEmpty {
                     toolNames.insert(name)
                 }
                 continue
@@ -218,12 +284,14 @@ public final class MuseParser: LogParser, Sendable {
 
                 switch eventKind {
                 case "started":
-                    if let prompt = event["prompt"] as? String, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if options.includeConversationBodies,
+                       let prompt = event["prompt"] as? String, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         promptTexts.append(prompt)
                         sequencePromptCount += 1
                     }
                 case "inbox_item_queued":
-                    if let body = event["body"] as? String, !body.isEmpty {
+                    if options.includeConversationBodies,
+                       let body = event["body"] as? String, !body.isEmpty {
                         // avoid duplicating started prompt (queued mirrors started)
                         // only add if not already counted
                         if promptTexts.last != body {
@@ -231,7 +299,8 @@ public final class MuseParser: LogParser, Sendable {
                         }
                     }
                 case "assistant_message_committed":
-                    if let text = event["text"] as? String, !text.isEmpty {
+                    if options.includeConversationBodies,
+                       let text = event["text"] as? String, !text.isEmpty {
                         assistantTexts.append(text)
                     }
                 case "model_completed":

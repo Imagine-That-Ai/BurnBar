@@ -24,6 +24,8 @@ final class ProviderQuotaAdapterRegistryTests: XCTestCase {
     func testRegistryDoesNotResolveUsageOnlyProviders() {
         let registry = ProviderQuotaAdapterRegistry.standard
 
+        XCTAssertFalse(AgentProvider.quotaSignalProviders.contains(.aider))
+        XCTAssertFalse(AgentProvider.aider.isQuotaSignalProvider)
         XCTAssertNil(registry.entry(for: .aider))
         XCTAssertNil(registry.entry(for: .hermes))
         XCTAssertNil(registry.entry(for: .piAgent))

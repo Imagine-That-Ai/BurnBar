@@ -79,10 +79,12 @@ struct UsageRefreshPipeline: Sendable {
     ///
     /// The normal refresh passes `false` so token usage can be persisted before
     /// the much more expensive optional conversation-indexing pass begins.
+    /// Indexing watermarks (`idx2:` / `minimumFileModificationDate` /
+    /// discovery tracker) cannot be supplied here — those skip old files
+    /// and would drop usage.
     func parse(
         from discovery: DiscoverResult,
         includeConversationBodies: Bool? = nil,
-        minimumFileModificationDate: Date? = nil,
         resourceGovernor: OpenBurnBarCore.ParserResourceGovernor? = nil
     ) async throws -> ParsedBatch {
         var result = ParsedBatch()
@@ -92,9 +94,8 @@ struct UsageRefreshPipeline: Sendable {
         for (provider, parser) in discovery.parserEntries {
             do {
                 let parseResult = try await parser.parse(
-                    options: OpenBurnBarCore.LogParseOptions(
+                    options: OpenBurnBarCore.LogParseOptions.usageAccounting(
                         includeConversationBodies: includeConversationBodies,
-                        minimumFileModificationDate: minimumFileModificationDate,
                         resourceGovernor: resourceGovernor
                     )
                 )

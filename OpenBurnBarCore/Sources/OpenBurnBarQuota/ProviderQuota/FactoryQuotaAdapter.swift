@@ -1,5 +1,6 @@
 import Foundation
 import OpenBurnBarKernel
+import OpenBurnBarLogParsers
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -25,22 +26,42 @@ import FoundationNetworking
 /// - Per-model breakdown (top models by session count)
 /// - Cache efficiency (cache read / total tokens)
 ///
-/// No estimates. No heuristics. Every number comes from droid's own tracking.
+/// Unchanged `*.settings.json` files resume from a mtime+size disk cache of
+/// **quota facts only** (token total, cache reads, session date, lane, model).
+/// Window membership (5h / 7d / 30d) is recomputed at fetch time from those
+/// facts. Conversation bodies and prompt text are not stored.
 
 public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
-    public init() {}
+    private let sessionsDirectoryOverride: URL?
+    private let cacheURLOverride: URL?
+    private let contentReadCount = Locked(0)
+
+    public init(
+        sessionsDirectoryOverride: URL? = nil,
+        cacheURLOverride: URL? = nil
+    ) {
+        self.sessionsDirectoryOverride = sessionsDirectoryOverride
+        self.cacheURLOverride = cacheURLOverride
+    }
+
+    var lastContentReadCount: Int { contentReadCount.read() }
 
     // MARK: - Constants
 
     public func fetch(context: ProviderQuotaAdapterContext) async throws -> ProviderQuotaSnapshot {
-        // 1. Try the billing API first (org billing data is authoritative for plan limits)
-        if let exactSnapshot = try? await fetchFactoryExactSnapshot(context: context) { // try?-ok(fallback to next source)
-            return exactSnapshot
-        }
+        contentReadCount.write(0)
+        // Test / harness override skips network so session-file cache tests
+        // cannot hang on the billing API or dashboard scraper.
+        if sessionsDirectoryOverride == nil {
+            // 1. Try the billing API first (org billing data is authoritative for plan limits)
+            if let exactSnapshot = try? await fetchFactoryExactSnapshot(context: context) { // try?-ok(fallback to next source)
+                return exactSnapshot
+            }
 
-        // 2. Try dashboard scraper for personal accounts (cookie-based, same pattern as Ollama Cloud)
-        if let personalSnapshot = try? await fetchFactoryPersonalSnapshot(context: context) { // try?-ok(fallback to next source)
-            return personalSnapshot
+            // 2. Try dashboard scraper for personal accounts (cookie-based, same pattern as Ollama Cloud)
+            if let personalSnapshot = try? await fetchFactoryPersonalSnapshot(context: context) { // try?-ok(fallback to next source)
+                return personalSnapshot
+            }
         }
 
         // 3. Try droid session tracking (always available, real token counts)
@@ -66,27 +87,49 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
     /// displayable quota buckets. Users can override in Settings → Providers
     /// once they confirm their plan tier. Marked `isEstimated` on the bucket
     /// so the UI reflects the inferred-vs-confirmed distinction.
+    public static let sessionFreshnessWindow: TimeInterval = 30 * 24 * 60 * 60
+
+    /// Files whose mtime is older than the 30-day window cannot contribute to
+    /// the 5h / 7d / 30d displayable buckets. Missing mtime fail-closes to a
+    /// full read.
+    public static func shouldSkipStaleSession(modifiedAt: Date?, freshnessCutoff: Date) -> Bool {
+        guard let modifiedAt else { return false }
+        return modifiedAt < freshnessCutoff
+    }
+
     private static let inferredMonthlyTokenCap: Double = 20_000_000
 
     private func fetchDroidSessionSnapshot(context: ProviderQuotaAdapterContext) async -> ProviderQuotaSnapshot? {
-        let sessionsURL = context.homeDirectoryURL
-            .appendingPathComponent(".factory", isDirectory: true)
-            .appendingPathComponent("sessions", isDirectory: true)
+        let sessionsURL = sessionsDirectoryOverride
+            ?? context.homeDirectoryURL
+                .appendingPathComponent(".factory", isDirectory: true)
+                .appendingPathComponent("sessions", isDirectory: true)
         let fileManager = context.fileManager
 
         guard fileManager.fileExists(atPath: sessionsURL.path) else { return nil }
 
-        // Collect all .settings.json files
+        // Collect all .settings.json files. Prefetch size/mtime so the cache
+        // signature does not re-stat after the enumerator.
         guard let enumerator = fileManager.enumerator(
             at: sessionsURL,
-            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            includingPropertiesForKeys: FileSignature.directoryListingPrefetchKeys,
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return nil }
 
         let now = Date()
         let fiveHoursAgo = now.addingTimeInterval(-5 * 60 * 60)
         let sevenDaysAgo = now.addingTimeInterval(-7 * 24 * 60 * 60)
-        let thirtyDaysAgo = now.addingTimeInterval(-30 * 24 * 60 * 60)
+        let thirtyDaysAgo = now.addingTimeInterval(-Self.sessionFreshnessWindow)
+
+        let cacheStore = ParserDiskCacheStore<FactorySessionQuotaCacheEntry>(
+            cacheURL: cacheURL(context: context, sessionsURL: sessionsURL),
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "FactoryQuotaAdapter"
+        )
+        var parseCache = cacheStore.load()
+        var cacheMutated = false
+        var activeKeys = Set<String>()
 
         // Lane-segregated accumulators. Sessions are filtered by
         // FactorySessionClassifier so user-configured custom proxies
@@ -105,79 +148,90 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         var cacheReadTokens: Int64 = 0
         var filesScanned = 0
         var filesWithUsage = 0
+        var sawSessionFile = false
         var factoryBilledSessions = 0
         var customProxySessions = 0
         var modelCounts: [String: Int] = [:]
         var laneCounts: [FactorySessionLane: Int] = [:]
+
+        func consume(_ facts: FactorySessionQuotaFacts) {
+            guard facts.total > 0 else { return }
+            filesWithUsage += 1
+            cacheReadTokens += facts.cacheRead
+            laneCounts[facts.lane, default: 0] += 1
+
+            switch facts.lane {
+            case .customProxy:
+                customProxyTokens += facts.total
+                customProxySessions += 1
+                return
+            case .factoryUnknown:
+                factoryUnknownTokens += facts.total
+                // Fall through — treat unknown Factory-billed models as
+                // Standard (the conservative choice — better to over-report
+                // Standard burn than to silently misattribute it to Core).
+                if facts.sessionDate >= thirtyDaysAgo { standardThirtyDay += facts.total }
+                if facts.sessionDate >= sevenDaysAgo { standardSevenDay  += facts.total }
+                if facts.sessionDate >= fiveHoursAgo { standardFiveHour  += facts.total }
+            case .standard:
+                if facts.sessionDate >= thirtyDaysAgo { standardThirtyDay += facts.total }
+                if facts.sessionDate >= sevenDaysAgo { standardSevenDay  += facts.total }
+                if facts.sessionDate >= fiveHoursAgo { standardFiveHour  += facts.total }
+            case .droidCore:
+                if facts.sessionDate >= thirtyDaysAgo { coreThirtyDay += facts.total }
+                if facts.sessionDate >= sevenDaysAgo { coreSevenDay  += facts.total }
+                if facts.sessionDate >= fiveHoursAgo { coreFiveHour  += facts.total }
+            }
+
+            factoryBilledSessions += 1
+            if let model = facts.model, !model.isEmpty {
+                modelCounts[model] = (modelCounts[model] ?? 0) + 1
+            }
+        }
 
         while let fileURL = enumerator.nextObject() as? URL {
             guard fileURL.pathExtension == "json",
                   fileURL.lastPathComponent.hasSuffix(".settings.json") else { continue }
 
             filesScanned += 1
+            sawSessionFile = true
 
-            guard let data = try? Data(contentsOf: fileURL), // try?-ok(skip unreadable session)
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed json)
-                  let usage = json["tokenUsage"] as? [String: Any] else { continue }
-
-            let total = FactorySessionClassifier.totalTokens(in: usage)
-            guard total > 0 else { continue }
-
-            filesWithUsage += 1
-            let cacheRead = (usage["cacheReadTokens"] as? Int64)
-                ?? (usage["cacheReadTokens"] as? Int).map(Int64.init)
-                ?? 0
-            cacheReadTokens += cacheRead
-
-            // Use providerLockTimestamp for accurate time-window bucketing
-            let sessionDate: Date? = {
-                if let ts = json["providerLockTimestamp"] as? String {
-                    let fmt = ISO8601DateFormatter()
-                    fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                    return fmt.date(from: ts) ?? ISO8601DateFormatter().date(from: ts)
-                }
-                return (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate // try?-ok(skip if no mtime)
-            }()
-
-            guard let sessionDate else { continue }
-
-            // Track models — only for sessions that actually counted, to
-            // avoid the "top model" line being dominated by custom proxy
-            // entries that don't touch Factory billing.
-            let lane = FactorySessionClassifier.lane(for: json)
-            laneCounts[lane, default: 0] += 1
-
-            switch lane {
-            case .customProxy:
-                customProxyTokens += total
-                customProxySessions += 1
+            let values = try? fileURL.resourceValues(forKeys: Set(FileSignature.directoryListingPrefetchKeys))
+            let modifiedAt = values?.contentModificationDate
+            if Self.shouldSkipStaleSession(modifiedAt: modifiedAt, freshnessCutoff: thirtyDaysAgo) {
                 continue
-            case .factoryUnknown:
-                factoryUnknownTokens += total
-                // Fall through — treat unknown Factory-billed models as
-                // Standard (the conservative choice — better to over-report
-                // Standard burn than to silently misattribute it to Core).
-                if sessionDate >= thirtyDaysAgo { standardThirtyDay += total }
-                if sessionDate >= sevenDaysAgo { standardSevenDay  += total }
-                if sessionDate >= fiveHoursAgo { standardFiveHour  += total }
-            case .standard:
-                if sessionDate >= thirtyDaysAgo { standardThirtyDay += total }
-                if sessionDate >= sevenDaysAgo { standardSevenDay  += total }
-                if sessionDate >= fiveHoursAgo { standardFiveHour  += total }
-            case .droidCore:
-                if sessionDate >= thirtyDaysAgo { coreThirtyDay += total }
-                if sessionDate >= sevenDaysAgo { coreSevenDay  += total }
-                if sessionDate >= fiveHoursAgo { coreFiveHour  += total }
             }
 
-            factoryBilledSessions += 1
-
-            if let model = json["model"] as? String {
-                modelCounts[model] = (modelCounts[model] ?? 0) + 1
+            let cacheKey = fileURL.standardizedFileURL.path
+            activeKeys.insert(cacheKey)
+            if let signature = values.flatMap(FileSignature.init(resourceValues:)),
+               let cached = parseCache.fileEntries[cacheKey],
+               cached.signature == signature {
+                consume(cached.facts)
+                continue
             }
+
+            guard let facts = readSessionFacts(from: fileURL, modifiedAt: modifiedAt) else { continue }
+            if let signature = values.flatMap(FileSignature.init(resourceValues:)) {
+                parseCache.fileEntries[cacheKey] = FactorySessionQuotaCacheEntry(
+                    signature: signature,
+                    facts: facts
+                )
+                cacheMutated = true
+            }
+            consume(facts)
         }
 
-        guard filesWithUsage > 0 else { return nil }
+        let staleKeys = parseCache.fileEntries.keys.filter { !activeKeys.contains($0) }
+        if !staleKeys.isEmpty {
+            parseCache.prune(staleKeys: Array(staleKeys))
+            cacheMutated = true
+        }
+        if cacheMutated {
+            cacheStore.persist(parseCache)
+        }
+
+        guard filesWithUsage > 0 || sawSessionFile else { return nil }
 
         // Combined Standard + Droid Core token totals for the "Total
         // Factory burn" buckets. Until Standard Usage is exhausted,
@@ -807,4 +861,52 @@ public struct FactoryQuotaAdapter: ProviderQuotaAdapter {
         }
         return nil
     }
+
+    private func cacheURL(context: ProviderQuotaAdapterContext, sessionsURL: URL) -> URL {
+        if let cacheURLOverride { return cacheURLOverride }
+        if sessionsDirectoryOverride != nil {
+            return sessionsURL.appendingPathComponent(".obb-factory-quota-cache.plist")
+        }
+        return context.appPaths.factoryQuotaCacheURL
+    }
+
+    private func readSessionFacts(from fileURL: URL, modifiedAt: Date?) -> FactorySessionQuotaFacts? {
+        contentReadCount.withLock { $0 += 1 }
+        guard let data = try? Data(contentsOf: fileURL), // try?-ok(skip unreadable session)
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(skip malformed json)
+              let usage = json["tokenUsage"] as? [String: Any] else {
+            return nil
+        }
+        let total = FactorySessionClassifier.totalTokens(in: usage)
+        let cacheRead = (usage["cacheReadTokens"] as? Int64)
+            ?? (usage["cacheReadTokens"] as? Int).map(Int64.init)
+            ?? 0
+        let sessionDate: Date? = {
+            if let ts = json["providerLockTimestamp"] as? String {
+                return ThreadSafeISO8601DateFormatter.parse(ts)
+            }
+            return modifiedAt
+        }()
+        guard let sessionDate else { return nil }
+        return FactorySessionQuotaFacts(
+            total: total,
+            cacheRead: cacheRead,
+            sessionDate: sessionDate,
+            lane: FactorySessionClassifier.lane(for: json),
+            model: json["model"] as? String
+        )
+    }
+}
+
+struct FactorySessionQuotaFacts: Codable, Equatable, Sendable {
+    let total: Int64
+    let cacheRead: Int64
+    let sessionDate: Date
+    let lane: FactorySessionLane
+    let model: String?
+}
+
+struct FactorySessionQuotaCacheEntry: Codable, Equatable, Sendable {
+    let signature: FileSignature
+    let facts: FactorySessionQuotaFacts
 }

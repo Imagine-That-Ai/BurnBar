@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "status": "passed",
-  "generatedAt": "2026-08-09T23:52:49Z",
+  "generatedAt": "2026-08-15T01:44:52Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
   "candidateReleaseTag": "v1.0.34",
-  "testedSourceCommit": "0d746441b5acf0ea6d83621598796711a75f10a3",
+  "testedSourceCommit": "aa4df8dfc695051b04e4c98737c52d7475775f58",
   "artifactDigests": [
     {
       "path": "OpenBurnBarCore/Package.swift",
-      "sha256": "19cd6b55d0236274214e815451e83ed4da08c5f289c79dd2359635aba86ad7b0"
+      "sha256": "45d6471d6de4030f4068ac81f1c1169ed3aa70b82db858d6fd99322897b9de35"
     },
     {
       "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",
@@ -48,7 +48,7 @@
     },
     {
       "path": "android/app/src/test/java/com/openburnbar/data/cloud/AndroidCloudVaultSignalPayloadsTest.kt",
-      "sha256": "a12a2f8bed86f42e151cdf62c19c317057aaad46fb52c56a4c74eaa8aab13b91"
+      "sha256": "3a913a6c7b3970d40301f950c7eb71bfab0a3c7ba97ef4b5a38ee238fed297b2"
     },
     {
       "path": "android/app/src/test/java/com/openburnbar/data/cloud/AndroidSignalIdentityKeyStoreTest.kt",

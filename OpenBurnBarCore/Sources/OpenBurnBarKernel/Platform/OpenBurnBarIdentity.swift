@@ -138,8 +138,52 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("ProviderQuotaScratch", isDirectory: true)
     }
 
+    public var kiloCodeQuotaCacheURL: URL {
+        providerQuotaScratchDirectory.appendingPathComponent("kilo_code_quota_cache.plist")
+    }
+
+    public var factoryQuotaCacheURL: URL {
+        providerQuotaScratchDirectory.appendingPathComponent("factory_quota_cache.plist")
+    }
+
+    public var aiderQuotaCacheURL: URL {
+        providerQuotaScratchDirectory.appendingPathComponent("aider_quota_cache.plist")
+    }
+
     public var vectorIndexesRootURL: URL {
         supportDirectory.appendingPathComponent("VectorIndexes", isDirectory: true)
+    }
+
+    public var grokParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("grok_parser_cache.json")
+    }
+
+    public var geminiCLIParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("gemini_cli_parser_cache.json")
+    }
+
+    public var cursorAgentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("cursor_agent_parser_cache.json")
+    }
+
+    public var copilotParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("copilot_parser_cache.json")
+    }
+
+    public var antigravityParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("antigravity_parser_cache.json")
+    }
+
+    public var gooseParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("goose_parser_cache.json")
+    }
+
+    public func clineFormatParserCacheURL(for provider: AgentProvider) -> URL {
+        supportDirectory.appendingPathComponent("\(provider.persistedToken)_parser_cache.json")
+    }
+
+    public func modelFilterParserCacheURL(for provider: AgentProvider) -> URL {
+        supportDirectory.appendingPathComponent("\(provider.persistedToken)_parser_cache.json")
     }
 
     public var claudeCodeParserCacheURL: URL {
@@ -152,6 +196,109 @@ public struct OpenBurnBarAppPaths: Sendable {
 
     public var junieParserCacheURL: URL {
         supportDirectory.appendingPathComponent("junie_parser_cache.json")
+    }
+
+    public var windsurfParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("windsurf_parser_cache.json")
+    }
+
+    public var warpParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("warp_parser_cache.json")
+    }
+
+    public var primeAgentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("prime_agent_parser_cache.json")
+    }
+
+    public var museParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("muse_parser_cache.json")
+    }
+
+    public var kimiParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("kimi_parser_cache.json")
+    }
+
+    public var hermesParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("hermes_parser_cache.json")
+    }
+
+    public var forgeDevParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("forge_dev_parser_cache.json")
+    }
+
+    public var augmentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("augment_parser_cache.json")
+    }
+
+    public var aiderParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("aider_parser_cache.json")
+    }
+
+    public var cursorParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("cursor_parser_cache.json")
+    }
+
+    public var openCodeParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("opencode_parser_cache.json")
+    }
+
+    public var piAgentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("pi_agent_parser_cache.json")
+    }
+
+    public var ompParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("omp_parser_cache.json")
+    }
+
+    public var openClawParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("openclaw_parser_cache.json")
+    }
+
+    public var ollamaParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("ollama_parser_cache.json")
+    }
+
+    /// AgentLens Copilot / Aider / Cursor / OpenCode / Pi / OpenClaw / Junie
+    /// keep Mac parse math (shutdown double-count, `state.json`, nested
+    /// wrappers). These files must never alias the Core parser caches above.
+    public var macCopilotParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_copilot_parser_cache.json")
+    }
+
+    public var macAiderParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_aider_parser_cache.json")
+    }
+
+    public var macCursorParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_cursor_parser_cache.json")
+    }
+
+    public var macOpenCodeParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_opencode_parser_cache.json")
+    }
+
+    public var macPiAgentParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_pi_agent_parser_cache.json")
+    }
+
+    public var macOpenClawParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_openclaw_parser_cache.json")
+    }
+
+    public var macJunieParserCacheURL: URL {
+        supportDirectory.appendingPathComponent("mac_junie_parser_cache.json")
+    }
+
+    public var macSemanticsParserCacheURLs: [URL] {
+        [
+            macCopilotParserCacheURL,
+            macAiderParserCacheURL,
+            macCursorParserCacheURL,
+            macOpenCodeParserCacheURL,
+            macPiAgentParserCacheURL,
+            macOpenClawParserCacheURL,
+            macJunieParserCacheURL
+        ]
     }
 
     public var claudeStatuslineBridgeScriptURL: URL {

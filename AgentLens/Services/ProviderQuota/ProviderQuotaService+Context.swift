@@ -40,9 +40,13 @@ extension ProviderQuotaService {
             mimoTokenPlanBillingCycle: mimoTokenPlanBillingCycleProvider(),
             codexRolloutScanCache: codexRolloutScanCacheBox.read(),
             updateCodexRolloutScanCache: { [codexCacheBox = codexRolloutScanCacheBox, store = snapshotStore] cache, didChange in
-                codexCacheBox.write(cache)
-                if didChange {
-                    store.persistCodexRolloutScanCache(cache)
+                let applied = CodexRolloutScanCacheUpdate.apply(
+                    incoming: cache,
+                    didChangeIncoming: didChange,
+                    to: codexCacheBox
+                )
+                if applied.didChange {
+                    store.persistCodexRolloutScanCache(applied.cache)
                 }
             },
             claudeCredentialsReader: claudeCredentialsReader,

@@ -2,11 +2,11 @@
 
 export const SITE = {
   name: "OpenBurnBar",
-  tagline: "Watch your AI coding agents.",
+  tagline: "Watch your agents. Before the bill.",
   domain: "burnbar.ai",
   url: "https://burnbar.ai",
   description:
-    "A local-first tool that watches AI coding agents — tokens burned, dollars spent, quota left — across Claude Code, Codex, Cursor, Copilot, and more.",
+    "Your agents don't send a receipt. We do. Live in the menu bar, from local logs. No telemetry. No account.",
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",

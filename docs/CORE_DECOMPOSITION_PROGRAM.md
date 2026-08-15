@@ -618,6 +618,23 @@ across 160 files, so the planned Kernel ceiling moves narrowly from 47,250 to 52
 force for any further Kernel growth; future bridge expansion requires decomposition or a
 separate reviewed ceiling change.
 
+**Idle usage/quota parse mining ceiling adjustment (2026-08-14):** the graphics/GRDB/quota
+mining work (#2244) adds mtime+size parser caches, OpenCode JSON-only `part` reads, and
+Kernel ISO-8601 / quota-refresh helpers in the existing owning modules. Measured sizes are
+`OpenBurnBarLogParsers` 16,472 LOC (35 files, at the file ceiling) and `OpenBurnBarKernel`
+47,446 LOC (154 files). Quota stays under its 13,000-LOC planned ceiling (12,501). New leaf
+targets would only duplicate parser/quota cache boundaries already covered by
+`ParserDiskCacheStore`. Planned ceilings move narrowly to 16,700 and 47,650 LOC (~228/204 LOC
+of bounded headroom); file-count ceilings, Quota's ceiling, and the main-target shim baseline
+stay unchanged. The deny-gate is otherwise unmodified.
+
+**Merge reconciliation (2026-08-15):** the Safari bridge ceiling (52,250, 2026-08-13
+above) and the parse-mining ceiling (47,650, 2026-08-14 above) were raised
+independently on diverging branches; the merged tree carries both bodies of
+Kernel code and measures 52,417 LOC. The planned Kernel ceiling moves to
+52,650 LOC (233 LOC of bounded headroom) — the sum of both approved increments,
+no new growth. File ceilings and the deny-gate are unchanged.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated

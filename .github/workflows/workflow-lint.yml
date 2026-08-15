@@ -38,6 +38,7 @@ on:
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
       - "scripts/ci/verify-libsignal-toolchain-preflight.mjs"
       - "scripts/ci/verify-libsignal-toolchain-preflight.test.mjs"
+      - "scripts/ci/verify-ci-cache-warm.test.mjs"
       - ".github/actions/ensure-libsignal-toolchain/action.yml"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
@@ -413,6 +414,9 @@ jobs:
         run: |
           node scripts/ci/verify-libsignal-toolchain-preflight.mjs
           node scripts/ci/verify-libsignal-toolchain-preflight.test.mjs
+
+      - name: Verify CI cache warm contract (Signal FFI + SPM on main)
+        run: node --test scripts/ci/verify-ci-cache-warm.test.mjs
 
       - name: Verify GitHub Actions pins
         run: |

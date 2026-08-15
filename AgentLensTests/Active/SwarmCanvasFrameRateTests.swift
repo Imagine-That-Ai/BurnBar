@@ -119,6 +119,113 @@ final class SwarmCanvasFrameRateTests: XCTestCase {
         XCTAssertEqual(a.bucketKey, b.bucketKey)
     }
 
+    @MainActor
+    func testLogoModeFillPlan_batchesByColorBucketInsteadOfPerParticle() {
+        let sim = SwarmSimulation(
+            particleCount: 900,
+            pace: .cinematic,
+            enabledProviderGlyphs: []
+        )
+        sim.assignMode(.shapeBurnBarLogo, at: 0)
+        sim.shapeSettledAt = 1
+        sim.enableSwarmSparkles = false
+
+        let plan = sim.planParticleFills(isBatteryThrottled: false)
+        XCTAssertGreaterThan(plan.drawnDotCount, 200, "fixture must draw a formed logo, not an empty field")
+        XCTAssertLessThan(
+            plan.colorBucketCount,
+            plan.drawnDotCount / 4,
+            "logo frames must batch fills by RGBA.bucketKey; per-particle fills regress constellation cost"
+        )
+        XCTAssertEqual(plan.sparkleFillCount, 0)
+        XCTAssertEqual(plan.totalFillCount, plan.colorBucketCount)
+    }
+
+    @MainActor
+    func testLogoModeFillPlan_sparklesStayDeferredAndStillBeatPerParticleFills() {
+        let sim = SwarmSimulation(
+            particleCount: 900,
+            pace: .cinematic,
+            enabledProviderGlyphs: []
+        )
+        sim.assignMode(.shapeBurnBarLogo, at: 0)
+        sim.shapeSettledAt = 1
+        sim.enableSwarmSparkles = true
+        sim.flowTime = 1.7
+
+        let plan = sim.planParticleFills(isBatteryThrottled: false)
+        XCTAssertGreaterThan(plan.drawnDotCount, 200)
+        XCTAssertLessThan(plan.totalFillCount, plan.drawnDotCount)
+        XCTAssertEqual(plan.totalFillCount, plan.colorBucketCount + plan.sparkleFillCount)
+    }
+
+    @MainActor
+    func testFillPlan_batteryThrottleHalvesDrawnDots() {
+        let sim = SwarmSimulation(
+            particleCount: 400,
+            pace: .cinematic,
+            enabledProviderGlyphs: []
+        )
+        sim.enableSwarmSparkles = false
+        let full = sim.planParticleFills(isBatteryThrottled: false)
+        let throttled = sim.planParticleFills(isBatteryThrottled: true)
+        let expectedThrottled = sim.particles.enumerated().filter { index, particle in
+            !particle.isGlyph && index % 2 == 0
+        }.count
+        XCTAssertEqual(full.drawnDotCount, sim.particles.filter { !$0.isGlyph }.count)
+        XCTAssertEqual(throttled.drawnDotCount, expectedThrottled)
+        XCTAssertLessThan(throttled.drawnDotCount, full.drawnDotCount)
+    }
+
+    func testUpperMedian_matchesSortedUpperMedian() {
+        let odd = [3.0, 1.0, 2.0]
+        XCTAssertEqual(SwarmSimulation.upperMedian(odd), odd.sorted()[odd.count / 2])
+        let even = [4.0, 1.0, 3.0, 2.0]
+        XCTAssertEqual(SwarmSimulation.upperMedian(even), even.sorted()[even.count / 2])
+        let duplicates = [1.5, 1.5, 1.5, 9.0]
+        XCTAssertEqual(SwarmSimulation.upperMedian(duplicates), duplicates.sorted()[duplicates.count / 2])
+    }
+
+    func testWebsiteBackgroundEditorial_capsFrameRateAt30() throws {
+        let mainBundlePath = Bundle.main.bundlePath
+        if mainBundlePath.contains("/openburnbar-app-tests/") {
+            throw XCTSkip("Skipping source code validation in sandboxed test runner.")
+        }
+        let source = try Self.loadSource("OpenBurnBarMobile/Views/Aurora/WebsiteBackgroundView.swift")
+        XCTAssertTrue(
+            source.contains("streamingThrottledFrameRate(30)"),
+            "Editorial dot-crest must request the 30 Hz cinematic cap instead of the 60 fps canvas default."
+        )
+    }
+
+    func testDecorativeLoadersAndHeroes_capFrameRateAt30() throws {
+        let mainBundlePath = Bundle.main.bundlePath
+        if mainBundlePath.contains("/openburnbar-app-tests/") {
+            throw XCTSkip("Skipping source code validation in sandboxed test runner.")
+        }
+        let cooking = try Self.loadSource("OpenBurnBarCore/Sources/OpenBurnBarUI/Views/CookingLoader.swift")
+        XCTAssertTrue(cooking.contains("minimumInterval: 1.0 / 30"), "Cooking loader is decorative; 30 fps is enough.")
+        XCTAssertFalse(cooking.contains("1.0 / 60"))
+        let mining = try Self.loadSource("OpenBurnBarCore/Sources/OpenBurnBarUI/Views/MiningPickLoader.swift")
+        XCTAssertTrue(mining.contains("minimumInterval: 1.0 / 30"), "Mining loader is decorative; 30 fps is enough.")
+        XCTAssertFalse(mining.contains("1.0 / 60"))
+        let hero = try Self.loadSource("OpenBurnBarMobile/Views/Store/CloudHeroAnimation.swift")
+        XCTAssertTrue(hero.contains("minimumInterval: 1.0 / 30.0"), "Cloud store orbit must not run uncapped.")
+        XCTAssertFalse(hero.contains("TimelineView(.animation) {"))
+        let egg = try Self.loadSource("OpenBurnBarMobile/Views/Aurora/EasterEgg/EasterEggEventCanvas.swift")
+        XCTAssertTrue(
+            egg.contains("minimumInterval: 1.0 / 30.0"),
+            "iOS easter-egg canvas must match the macOS 30 fps cap."
+        )
+        let formation = try Self.loadSource("OpenBurnBarCore/Sources/OpenBurnBarUI/Views/BurnBarLogoFormationView.swift")
+        XCTAssertTrue(
+            formation.contains("minimumInterval: 1.0 / 30.0"),
+            "Logo formation is decorative splash/onboarding; 30 fps matches the editorial cap."
+        )
+        XCTAssertTrue(formation.contains("dt = 1.0 / 30.0"), "Formation physics step must match the 30 fps timeline.")
+        XCTAssertFalse(formation.contains("1.0 / 45"))
+    }
+
     func testBucketKey_separatesDifferentColors() {
         let red = RGBA(r: 1.0, g: 0.0, b: 0.0, a: 1.0)
         let green = RGBA(r: 0.0, g: 1.0, b: 0.0, a: 1.0)

@@ -59,6 +59,7 @@ const FULL_PATTERNS = [
 
 const SAFE_NO_PRODUCT_PATTERNS = [
   /^(docs\/|droid-wiki\/|plans\/|\.github\/(?:ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)|CHANGELOG\.md$|README\.md$|AGENTS\.md$|CLAUDE\.md$)/,
+  /^launch-evidence\//,
   /^\.github\/workflows\//,
   /^(tests\/|scripts\/ci\/).*\.(?:py|mjs|js|sh|json|ya?ml)$/,
   /^windows\/tests\//,

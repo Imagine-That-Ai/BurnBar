@@ -145,6 +145,8 @@ final class ClaudeQuotaJSONLScannerTests: XCTestCase {
         try handle.close()
         try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-300)], ofItemAtPath: url.path)
 
-        XCTAssertEqual(try scan(now: now).fiveHourTokens, 150, "cache must invalidate when the transcript changes")
+        let grown = try scan(now: now)
+        XCTAssertEqual(grown.fiveHourTokens, 150, "cache must invalidate when the transcript changes")
+        XCTAssertLessThan(grown.bytesRead, 200, "append-only growth must resume from the previous newline, not re-read the prefix")
     }
 }

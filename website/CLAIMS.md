@@ -24,7 +24,8 @@ org is ambiguous in the repo today.
 
 | Claim                                                               | Source                                                                           |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| "Watch your AI agents. Before the bill." (headline)                 | Synthesized; tone matches `README.md:6`, `README.md:54-67`                       |
+| "Watch your agents. Before the bill." (headline)                    | Approved copy 2026-08-13 (Alberto); lived in `website/src/pages/index.astro`     |
+| "Your agents don't send a receipt. We do. Live in the menu bar, from local logs. No telemetry. No account." (hero sub) | Approved copy 2026-08-13 (Alberto); `SITE.description` + homepage hero           |
 | Local-first developer tool                                          | `docs/MISSION.md:5`, `docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md:5`                |
 | Tracks tokens, dollars, quota                                       | `README.md:54-67`                                                                |
 | Across Claude Code, Codex, Cursor, Copilot, Factory, MiniMax…       | `docs/PROVIDERS.md`, `AgentLens/Services/ProviderQuota/`                         |

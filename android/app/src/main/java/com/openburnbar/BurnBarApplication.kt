@@ -240,9 +240,9 @@ class BurnBarApplication : Application() {
         // the source-aware reader; this makes the override reachable). iOS
         // does this in MobileMediaBudgetStatusStore.
         com.openburnbar.data.computeruse.RemoteConfigBootstrap.activate()
-        // Signal at-rest activation: AND the registry scheme with a per-domain
-        // Remote Config kill switch (`signal_at_rest_<id>_enabled`), mirroring
-        // iOS `MobileCloudVaultSignalPayloads.signalSealingIsEnabled`. Source-aware
+        // Signal at-rest activation: AND the registry scheme with per-domain
+        // Remote Config enabled/required flags, mirroring iOS
+        // `MobileCloudVaultSignalPayloads.signalActivationState`. Source-aware
         // and DEFAULT-OFF: a STATIC value (no remote value fetched, no in-app
         // default registered) resolves false, so the producer path only emits
         // Signal envelopes once an operator explicitly flips the flag true. The
@@ -250,23 +250,22 @@ class BurnBarApplication : Application() {
         // (`signal_at_rest_<id>_hard_kill`) hard-kill flags win over the enabled
         // flag, matching the iOS/macOS activation readers — a hard kill flips
         // every Android producer off without touching the per-domain ramp. Any
-        // Firebase failure also resolves false — Android stays fail-closed.
+        // Firebase failure also resolves OFF — Android stays fail-closed.
         com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads.signalAtRestActivationProvider = { domainID ->
             runCatching {
                 val config = com.google.firebase.remoteconfig.FirebaseRemoteConfig.getInstance()
                 val hardKill = config.getValue("signal_at_rest_v1_hard_kill").asBoolean() ||
                     config.getValue("signal_at_rest_${domainID}_hard_kill").asBoolean()
-                if (hardKill) {
-                    false
-                } else {
-                    val value = config.getValue("signal_at_rest_${domainID}_enabled")
-                    if (value.source == com.google.firebase.remoteconfig.FirebaseRemoteConfig.VALUE_SOURCE_STATIC) {
-                        false
-                    } else {
-                        value.asBoolean()
-                    }
-                }
-            }.getOrDefault(false)
+                val enabledValue = config.getValue("signal_at_rest_${domainID}_enabled")
+                val enabledValueIsStatic =
+                    enabledValue.source == com.google.firebase.remoteconfig.FirebaseRemoteConfig.VALUE_SOURCE_STATIC
+                com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads.remoteActivationState(
+                    enabled = enabledValue.asBoolean(),
+                    required = config.getValue("signal_at_rest_${domainID}_required").asBoolean(),
+                    hardKill = hardKill,
+                    enabledValueIsStatic = enabledValueIsStatic,
+                )
+            }.getOrDefault(com.openburnbar.data.cloud.AndroidCloudVaultSignalPayloads.ActivationState.OFF)
         }
         // Crash reports are a separate diagnostics consent surface from opt-in
         // usage analytics. Default dark: a fresh install must not start
