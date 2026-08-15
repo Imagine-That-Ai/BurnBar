@@ -55,6 +55,11 @@ actor MemoryExtractionWorker {
     /// which is what keeps every pre-PR6 construction byte-identical to the
     /// chat-only behavior.
     private let usageAuthorityWritesEnabled: @Sendable () -> Bool
+    /// PR7: the Stage-2 semantic write funnel for the USAGE lane (embedding
+    /// registration + novelty gate + corroboration + salience seeding). nil
+    /// (the default, and every pre-PR7 construction) keeps the usage write
+    /// path byte-identical to PR6; the chat branch never consults this.
+    private let usageStage2: UsageMemoryEmbeddingService?
     private let nowProvider: @Sendable () -> Date
 
     /// Number of candidates dropped by the G7 gate during the most recent `drainNext()` call.
@@ -70,6 +75,7 @@ actor MemoryExtractionWorker {
             ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
         },
         usageAuthorityWritesEnabled: @escaping @Sendable () -> Bool = { false },
+        usageStage2: UsageMemoryEmbeddingService? = nil,
         extractor: @escaping Extractor
     ) {
         self.store = store
@@ -77,6 +83,7 @@ actor MemoryExtractionWorker {
         self.nowProvider = nowProvider
         self.authorityWritesEnabled = authorityWritesEnabled
         self.usageAuthorityWritesEnabled = usageAuthorityWritesEnabled
+        self.usageStage2 = usageStage2
         self.extractor = extractor
     }
 
@@ -145,6 +152,17 @@ actor MemoryExtractionWorker {
                 usageCandidatesByID = [:]
             }
 
+            // PR7: ensure the usage lane's embedding version is registered
+            // before any Stage-2 ref/match runs (idempotent; cached by the
+            // service). nil registration = no embedding provider ⇒ semantic
+            // checks are skipped per record but salience seeding still runs.
+            let stage2Registration: ControlPlaneStore.MemoryEmbeddingRegistration?
+            if isUsageJob, let usageStage2 {
+                stage2Registration = try await usageStage2.ensureRegistered(store: store)
+            } else {
+                stage2Registration = nil
+            }
+
             for (index, request) in requests.enumerated() {
                 // G7 candidate-DROP gate (PR-D1 must-fix #4): drop a secret/PII-bearing
                 // candidate instead of failing the whole batch, so one poisoned
@@ -189,7 +207,28 @@ actor MemoryExtractionWorker {
                 } else {
                     existing = try await store.fetchChatMemoryAuthorityRecord(id: memoryID)
                 }
-                if existing != nil {
+                if let existingMemory = existing {
+                    // PR7: deterministic ids land replays here. The authority
+                    // insert and the Stage-2 sidecar writes are separate
+                    // transactions, so a crash between them leaves a LIVE usage
+                    // row without its salience seed — heal it idempotently
+                    // (`ON CONFLICT DO NOTHING`) instead of skipping past the
+                    // gap forever. The embedding ref is deliberately NOT healed
+                    // here: a re-run's model output can differ from the sealed
+                    // body this row stores, and embedding divergent text under
+                    // the old id would poison the novelty match space.
+                    if isUsageJob, let usageStage2,
+                       existingMemory.validTo == nil, existingMemory.supersededBy == nil {
+                        try await store.seedMemorySalience(
+                            memoryID: memoryID,
+                            salience: Self.stage2SeedSalience(
+                                citations: request.citations,
+                                candidatesByID: usageCandidatesByID
+                            ),
+                            sourceTrust: usageStage2.policy.sourceTrust.trust(for: job.sourceKind),
+                            now: nowProvider()
+                        )
+                    }
                     continue
                 }
 
@@ -218,14 +257,30 @@ actor MemoryExtractionWorker {
                 quarantined.scope = job.scope
                 quarantined.reviewStatus = .quarantined
                 quarantined.citations = authoritativeCitations
-                _ = try await store.addMemoryAuthorityRecord(
-                    quarantined,
-                    id: memoryID,
-                    sourceKind: job.sourceKind,
-                    context: quarantined.context,
-                    now: nowProvider(),
-                    enabled: recordAuthorityEnabled()
-                )
+                if isUsageJob, let usageStage2 {
+                    // PR7: the Stage-2 semantic funnel decides whether this
+                    // memory is written at all (see the decision table on
+                    // `writeUsageMemoryThroughStage2`). Chat takes the plain
+                    // branch below byte-identically.
+                    try await writeUsageMemoryThroughStage2(
+                        stage2: usageStage2,
+                        registration: stage2Registration,
+                        request: quarantined,
+                        memoryID: memoryID,
+                        job: job,
+                        candidatesByID: usageCandidatesByID,
+                        enabled: recordAuthorityEnabled()
+                    )
+                } else {
+                    _ = try await store.addMemoryAuthorityRecord(
+                        quarantined,
+                        id: memoryID,
+                        sourceKind: job.sourceKind,
+                        context: quarantined.context,
+                        now: nowProvider(),
+                        enabled: recordAuthorityEnabled()
+                    )
+                }
             }
             // The batch's candidates are consumed by this completed pass (even the
             // ones the model found nothing durable in) — flip them `extracted` so
@@ -381,6 +436,254 @@ actor MemoryExtractionWorker {
             )
         }
         return citations
+    }
+
+    // MARK: - Stage-2 semantic admission (PR7)
+
+    /// Write one parsed usage memory through the Stage-2 funnel. Decision
+    /// table (cosine = score of the best LIVE usage-partition neighbor under
+    /// the registered embedding version):
+    ///
+    ///   cosine ≥ thresholds.duplicate (0.95)   NOT novel — strengthen, don't
+    ///                                          fork: no new row; bump the
+    ///                                          winner's corroboration; insert
+    ///                                          ONE `near_duplicate` link
+    ///                                          {from: suppressed extraction
+    ///                                          id, to: winner, score};
+    ///                                          audit `memory.corroborated`.
+    ///   cosine ∈ [thresholds.novelty (0.92),   Insert normally (ref +
+    ///             thresholds.duplicate)        salience seed) + ONE directed
+    ///                                          `near_duplicate` link
+    ///                                          {from: new, to: neighbor} —
+    ///                                          no reverse edge.
+    ///   cosine < thresholds.novelty            Novel: insert + embedding ref
+    ///   (or no neighbor)                       + salience seed.
+    ///   nil embedding                          Semantic checks SKIPPED (no
+    ///                                          novelty gate, no chat probe,
+    ///                                          no ref): the PR6 write + the
+    ///                                          salience seed. Exact-hash
+    ///                                          dedup inside the authority
+    ///                                          write still applies.
+    ///
+    /// Cross-source corroboration: BEFORE inserting, an exact bodyHash hit on
+    /// a LIVE `chat:`-partition row corroborates that chat memory INSTEAD of
+    /// inserting the usage twin (bump + audit). ASYMMETRY, documented: this
+    /// path records NO `memory_links` row — a `supports` edge needs both ends
+    /// to exist as authority rows and the usage side is never inserted here;
+    /// the corroboration counter + audit event carry the whole signal. The
+    /// duplicate path above DOES link because its score is Stage-3 clustering
+    /// input and its `from` id is the deterministic suppressed-extraction
+    /// trace (see `insertMemoryLink`).
+    ///
+    /// Ordering rationale: the usage lane's own partition is checked first
+    /// ("strengthen, don't fork" within the lane wins), then the cheap chat
+    /// probe, then the insert. All sidecar writes happen AFTER the `enabled`
+    /// guard below, so a mid-batch authority kill stops corroboration writes
+    /// exactly like it stops authority writes.
+    private func writeUsageMemoryThroughStage2(
+        stage2: UsageMemoryEmbeddingService,
+        registration: ControlPlaneStore.MemoryEmbeddingRegistration?,
+        request: MemoryAddRequest,
+        memoryID: MemoryID,
+        job: ControlPlaneStore.MemoryExtractionJob,
+        candidatesByID: [String: UsageMemoryCandidate],
+        enabled: Bool
+    ) async throws {
+        // Mirror `addMemoryAuthorityRecord`'s per-record gate FIRST: the
+        // corroborate paths below mutate sidecar state without reaching the
+        // authority write, so the lever must be re-checked here too.
+        guard enabled else { throw ControlPlaneStore.ChatMemoryAuthorityError.disabled }
+
+        let policy = stage2.policy
+        let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let seedSalience = Self.stage2SeedSalience(citations: request.citations, candidatesByID: candidatesByID)
+        let sourceTrust = policy.sourceTrust.trust(for: job.sourceKind)
+
+        // (a) Embed the body. nil (no provider registered, or NLEmbedding
+        // declined the text — e.g. non-English) ⇒ skip every semantic check.
+        let vector: [Float]?
+        if registration != nil {
+            vector = await stage2.embed(body)
+        } else {
+            vector = nil
+        }
+
+        if let vector, let registration {
+            // (b) Novelty gate within the usage partition (both usage kinds).
+            let neighbor = try await store.usageMemoryEmbeddingBestMatch(
+                queryVector: vector,
+                embeddingVersionID: registration.versionID,
+                dimension: registration.dimension
+            )
+            if let neighbor, neighbor.score >= policy.thresholds.duplicate {
+                try await recordCorroboration(
+                    winnerID: neighbor.memoryID,
+                    partition: .usage,
+                    job: job,
+                    seedSalience: seedSalience,
+                    seedSourceTrust: sourceTrust,
+                    scoreBucket: Self.stage2ScoreBucket(neighbor.score)
+                )
+                try await store.insertMemoryLink(
+                    from: memoryID,
+                    to: neighbor.memoryID,
+                    kind: .nearDuplicate,
+                    score: neighbor.score,
+                    createdBy: "stage2",
+                    now: nowProvider()
+                )
+                return
+            }
+
+            // (d) Cross-source corroboration: exact bodyHash vs the chat
+            // partition (cheap SQL — byte-identical bodies need no vectors).
+            if let chatMemoryID = try await store.chatPartitionBodyHashMatch(
+                bodyHash: ControlPlaneStore.sha256Hex(body),
+                scope: request.scope
+            ) {
+                try await recordCorroboration(
+                    winnerID: chatMemoryID,
+                    partition: .chat,
+                    job: job,
+                    seedSalience: seedSalience,
+                    seedSourceTrust: policy.sourceTrust.chat,
+                    scoreBucket: "exact"
+                )
+                return
+            }
+
+            // (e) Novel (or the near-dup band): durable insert + sidecar rows.
+            let memory = try await store.addMemoryAuthorityRecord(
+                request,
+                id: memoryID,
+                sourceKind: job.sourceKind,
+                context: request.context,
+                now: nowProvider(),
+                enabled: enabled
+            )
+            if let winnerID = memory.supersededBy {
+                // The authority write's exact-hash dedup folded the new row
+                // into an existing one the embedding lookup could not see (a
+                // pre-PR7 row without a ref). Strengthen the winner; never
+                // write ref/salience for a superseded row.
+                try await recordCorroboration(
+                    winnerID: winnerID,
+                    partition: .usage,
+                    job: job,
+                    seedSalience: seedSalience,
+                    seedSourceTrust: sourceTrust,
+                    scoreBucket: "exact"
+                )
+                return
+            }
+            try await store.upsertMemoryEmbeddingRef(
+                memoryID: memoryID,
+                embeddingVersionID: registration.versionID,
+                vector: vector,
+                now: nowProvider()
+            )
+            try await store.seedMemorySalience(
+                memoryID: memoryID,
+                salience: seedSalience,
+                sourceTrust: sourceTrust,
+                now: nowProvider()
+            )
+            // (c) The near-dup band [novelty, duplicate): both rows exist —
+            // record ONE directed edge from the new row to its neighbor.
+            if let neighbor, neighbor.score >= policy.thresholds.novelty {
+                try await store.insertMemoryLink(
+                    from: memoryID,
+                    to: neighbor.memoryID,
+                    kind: .nearDuplicate,
+                    score: neighbor.score,
+                    createdBy: "stage2",
+                    now: nowProvider()
+                )
+            }
+            return
+        }
+
+        // (a-nil) Embedding unavailable: the PR6 write + the salience seed.
+        let memory = try await store.addMemoryAuthorityRecord(
+            request,
+            id: memoryID,
+            sourceKind: job.sourceKind,
+            context: request.context,
+            now: nowProvider(),
+            enabled: enabled
+        )
+        if let winnerID = memory.supersededBy {
+            try await recordCorroboration(
+                winnerID: winnerID,
+                partition: .usage,
+                job: job,
+                seedSalience: seedSalience,
+                seedSourceTrust: sourceTrust,
+                scoreBucket: "exact"
+            )
+            return
+        }
+        try await store.seedMemorySalience(
+            memoryID: memoryID,
+            salience: seedSalience,
+            sourceTrust: sourceTrust,
+            now: nowProvider()
+        )
+    }
+
+    /// Corroboration = "the same durable fact was independently observed
+    /// again": bump the winner's salience-sidecar counter and emit a
+    /// non-sensitive `memory.corroborated` audit event — winner id, the
+    /// corroborating source kind, and a score bucket. NEVER bodies.
+    private func recordCorroboration(
+        winnerID: MemoryID,
+        partition: ControlPlaneStore.MemoryStoragePartition,
+        job: ControlPlaneStore.MemoryExtractionJob,
+        seedSalience: Double,
+        seedSourceTrust: Double,
+        scoreBucket: String
+    ) async throws {
+        let now = nowProvider()
+        try await store.bumpMemoryCorroboration(
+            id: winnerID,
+            seedSalience: seedSalience,
+            seedSourceTrust: seedSourceTrust,
+            now: now
+        )
+        try await store.appendMemoryAuditEvent(
+            action: "memory.corroborated",
+            projectID: ControlPlaneStore.memoryStorageProjectID(for: job.scope, partition: partition),
+            subjectID: winnerID,
+            labels: [
+                "memory_id": winnerID,
+                "source_kind": job.sourceKind.rawValue,
+                "score_bucket": scoreBucket
+            ],
+            now: now
+        )
+    }
+
+    /// The salience seed for one request: the highest Stage-0 `salience_hint`
+    /// among the spool candidates its citations resolve to. Citation
+    /// `messageID`s are the candidate-id lookup keys in both the raw (model)
+    /// and recomputed citation shapes, so this works on either.
+    static func stage2SeedSalience(
+        citations: [MemoryCitation],
+        candidatesByID: [String: UsageMemoryCandidate]
+    ) -> Double {
+        citations
+            .compactMap { citation -> Double? in
+                guard let candidateID = citation.messageID else { return nil }
+                return candidatesByID[candidateID]?.salienceHint
+            }
+            .max() ?? 0
+    }
+
+    /// Two-decimal floor bucket for audit labels (never the raw float — the
+    /// audit chain must stay stable and non-reversible): 0.9765 → "0.97".
+    static func stage2ScoreBucket(_ score: Double) -> String {
+        let clamped = min(max(score, 0), 1)
+        return String(format: "%.2f", (clamped * 100).rounded(.down) / 100)
     }
 
     private static func failureLabel(for error: Error) -> String {
