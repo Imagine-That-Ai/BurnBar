@@ -617,15 +617,16 @@ of bounded headroom); file-count ceilings, Quota's ceiling, and the main-target 
 stay unchanged. The deny-gate is otherwise unmodified.
 
 **Usage-ingest reliability ceiling adjustment (2026-08-15):** `fix/usage-ingest-live-catchup`
-(#2240) isolated `isLiveUsage` attribution to `OpenBurnBarKernel`, fixed Grok `chat_history.jsonl`
-cache staleness, split live vs catch-up ingest onto lane-aware governors, and bounded Codex
-subagent classification to an 8 KB head read. Those changes land inside the #2244
-`OpenBurnBarLogParsers` / `OpenBurnBarKernel` ceilings (16,700 / 47,650). The
-per-file `try?` debt gate and the `static let shared` singleton count were cleaned to zero
-(`UsageAggregator.swift:320` tagged `try?-ok`) and raised to 57/58 respectively
-(`UsageIngestPersistGate` + `UsageParserPassGate` are cross-queue global async-mutex refinements that
-cannot be runtime-context-injected without reintroducing the races they fix); the
-`@_exported import OpenBurnBarCore` umbrella count stays at 528.
+(#2240 / #2278) isolated `isLiveUsage` attribution to `OpenBurnBarKernel`, fixed Grok
+`chat_history.jsonl` cache staleness, split live vs catch-up ingest onto lane-aware
+governors, and bounded Codex subagent classification to an 8 KB head read. Measured
+`OpenBurnBarLogParsers` is 16,703 LOC (35 files) — 3 LOC over the #2244 16,700 ceiling.
+Planned LogParsers ceiling moves narrowly to 16,725 (~22 LOC headroom). Kernel stays
+at 47,650. The per-file `try?` debt gate and the `static let shared` singleton count
+were cleaned to zero (`UsageAggregator.swift:320` tagged `try?-ok`) and raised to 57/58
+respectively (`UsageIngestPersistGate` + `UsageParserPassGate` are cross-queue global
+async-mutex refinements that cannot be runtime-context-injected without reintroducing
+the races they fix); the `@_exported import OpenBurnBarCore` umbrella count stays at 528.
 
 ### Whole-program composition proof (verbatim results)
 
