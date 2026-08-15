@@ -14,7 +14,7 @@
  *         (bench-arena.ts auto-detects 127.0.0.1 and uses :5506)
  */
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { join, extname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
@@ -64,26 +64,42 @@ const server = createServer(async (req, res) => {
       res.end("Forbidden");
       return;
     }
-    const s = await stat(full).catch(() => null);
-    if (!s || !s.isFile()) {
+    // Open once and read through the handle so the stat/read happen against
+    // the same file — no check-then-read window for the path to be swapped.
+    let handle;
+    try {
+      handle = await open(full, "r");
+    } catch {
       res.writeHead(404);
       res.end("Not found");
       return;
     }
-    const data = await readFile(full);
-    res.writeHead(200, {
-      "Content-Type": MIME[extname(full)] ?? "application/octet-stream",
-      "Content-Security-Policy": CSP,
-      "Cross-Origin-Resource-Policy": "cross-origin",
-      "Cross-Origin-Embedder-Policy": "unsafe-none",
-      "X-Content-Type-Options": "nosniff",
-      "Referrer-Policy": "no-referrer",
-      "Cache-Control": "no-cache",
-    });
-    res.end(data);
+    try {
+      const s = await handle.stat();
+      if (!s.isFile()) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+      const data = await handle.readFile();
+      res.writeHead(200, {
+        "Content-Type": MIME[extname(full)] ?? "application/octet-stream",
+        "Content-Security-Policy": CSP,
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        "Cross-Origin-Embedder-Policy": "unsafe-none",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Cache-Control": "no-cache",
+      });
+      res.end(data);
+    } finally {
+      await handle.close();
+    }
   } catch (err) {
+    // Never surface the exception (it carries filesystem paths / stack detail).
+    console.error("arena serve error:", err);
     res.writeHead(500);
-    res.end(String(err));
+    res.end("Internal server error");
   }
 });
 
