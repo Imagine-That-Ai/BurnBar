@@ -88,47 +88,65 @@ extension UsageStore {
         let todayStart = calendar.startOfDay(for: now)
 
         return try await dbQueue.read { db in
+            let windows = TimeRange.allCases.map { ($0, $0.dateRange(now: now)) }
+            let aggregatesByRange = try Self.fetchUsageAggregateRowsByTimeRange(
+                db: db,
+                windows: windows
+            )
+            // One covering scan (newest `loadedUsageLimit` rows, all-time).
+            // Bounded windows previously each `SELECT * … LIMIT N` — five
+            // full-row decodes — even though provider/model totals already
+            // come from the GROUP BY fan-out. Session lists filter this
+            // newest-N set. Credential / project summaries fold from the
+            // same identity `GROUP BY` as provider/model (including a
+            // long-runner whose `startTime` is older than the newest N).
+            // Window **totals** still use intersection SQL and stay exact.
+            let coveringUsages = try Self.fetchUsageRows(
+                db: db,
+                dateRange: nil,
+                limit: loadedUsageLimit
+            )
             var windowSummaries: [TimeRange: DashboardUsageWindowSummary] = [:]
-            for timeRange in TimeRange.allCases {
-                windowSummaries[timeRange] = try Self.fetchWindowSummary(
-                    db: db,
-                    dateRange: timeRange.dateRange(),
-                    loadedUsageLimit: loadedUsageLimit
+            for (timeRange, dateRange) in windows {
+                let windowCovering: [TokenUsage]
+                if let dateRange {
+                    windowCovering = coveringUsages.filter { $0.intersects(dateRange: dateRange) }
+                } else {
+                    windowCovering = coveringUsages
+                }
+                windowSummaries[timeRange] = Self.makeWindowSummary(
+                    loadedUsages: windowCovering,
+                    aggregateRows: aggregatesByRange[timeRange] ?? []
                 )
             }
 
-            let allTime = windowSummaries[.allTime] ?? .empty
             let today = windowSummaries[.today] ?? .empty
 
-            var last7DayCosts: [Double] = []
-            var last7DayTokenTotals: [Int] = []
-            for offset in (0..<7).reversed() {
-                guard let day = calendar.date(byAdding: .day, value: -offset, to: todayStart),
-                      let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else {
-                    last7DayCosts.append(0)
-                    last7DayTokenTotals.append(0)
-                    continue
-                }
-                let totals = try Self.fetchUsageTotals(db: db, dateRange: day...nextDay)
-                last7DayCosts.append(totals.cost)
-                last7DayTokenTotals.append(totals.tokens)
+            let dayTotals = try Self.fetchOverlappingDayCostAndTokens(
+                db: db,
+                calendar: calendar,
+                todayStart: todayStart,
+                offsets: 0...7
+            )
+            let last7DayCosts = (0..<7).reversed().map { offset in
+                dayTotals[offset]?.cost ?? 0
+            }
+            let last7DayTokenTotals = (0..<7).reversed().map { offset in
+                dayTotals[offset]?.tokens ?? 0
+            }
+            let rollingDailyTotal = (1...7).reduce(0.0) { partial, offset in
+                partial + (dayTotals[offset]?.cost ?? 0)
             }
 
-            var rollingDailyTotal: Double = 0
-            for dayOffset in 1...7 {
-                guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: todayStart),
-                      let nextDay = calendar.date(byAdding: .day, value: 1, to: day) else { continue }
-                rollingDailyTotal += try Self.fetchUsageTotals(db: db, dateRange: day...nextDay).cost
-            }
-
+            let dailySummaries = try Self.fetchDailySummaries(db: db)
             return DashboardUsageSnapshot(
-                loadedUsages: allTime.usages,
+                loadedUsages: coveringUsages,
                 windowSummaries: windowSummaries,
                 rollingDailyAverage: rollingDailyTotal / 7,
-                distinctUsageDayCount: try Self.fetchDistinctUsageDayCount(db: db),
+                distinctUsageDayCount: dailySummaries.count,
                 last7DayCosts: last7DayCosts,
                 last7DayTokenTotals: last7DayTokenTotals,
-                dailySummaries: try Self.fetchDailySummaries(db: db),
+                dailySummaries: dailySummaries,
                 topProviderToday: today.providerSummaries
                     .max { $0.totalCost < $1.totalCost }
                     .map { ($0.provider, $0.totalCost) }

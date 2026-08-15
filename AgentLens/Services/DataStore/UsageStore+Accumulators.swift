@@ -43,7 +43,7 @@ struct UsageTotals: Equatable, Sendable { // pure-move: was private
     )
 }
 
-struct UsageAggregateRow { // pure-move: was private
+struct UsageAggregateRow: Equatable { // pure-move: was private
     let provider: AgentProvider
     let model: String
     let executionSourceID: String
@@ -52,6 +52,11 @@ struct UsageAggregateRow { // pure-move: was private
     let executionSourceConfidence: UsageProvenanceConfidence
     let provenanceConfidence: UsageProvenanceConfidence
     let provenanceMethod: UsageProvenanceMethod
+    let projectName: String
+    let providerAccountID: String?
+    let providerAccountLabel: String?
+    let providerAccountSource: ProviderAccountStorageScope?
+    let latestStartTime: Date
     let sessionCount: Int
     let inputTokens: Int
     let outputTokens: Int
@@ -77,6 +82,12 @@ struct UsageAggregateRow { // pure-move: was private
             .flatMap { UsageProvenanceConfidence(rawValue: $0) } ?? .unknown
         provenanceMethod = (row["provenanceMethod"] as? String)
             .flatMap { UsageProvenanceMethod(rawValue: $0) } ?? .unknown
+        projectName = row["projectName"] as? String ?? ""
+        providerAccountID = row["providerAccountID"] as? String
+        providerAccountLabel = row["providerAccountLabel"] as? String
+        providerAccountSource = (row["providerAccountSource"] as? String)
+            .flatMap { ProviderAccountStorageScope(rawValue: $0) }
+        latestStartTime = OpenBurnBarDatabase.parseDateValue(row["latestStartTime"]) ?? .distantPast
         sessionCount = UsageStore.intValue(row["sessionCount"])
         inputTokens = UsageStore.intValue(row["inputTokens"])
         outputTokens = UsageStore.intValue(row["outputTokens"])
@@ -85,6 +96,52 @@ struct UsageAggregateRow { // pure-move: was private
         reasoningTokens = UsageStore.intValue(row["reasoningTokens"])
         totalTokens = UsageStore.intValue(row["totalTokens"])
         cost = UsageStore.doubleValue(row["cost"])
+    }
+
+    init(
+        provider: AgentProvider,
+        model: String,
+        executionSourceID: String,
+        executionSourceName: String,
+        executionSourceKind: UsageExecutionSourceKind,
+        executionSourceConfidence: UsageProvenanceConfidence,
+        provenanceConfidence: UsageProvenanceConfidence,
+        provenanceMethod: UsageProvenanceMethod,
+        projectName: String = "",
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil,
+        providerAccountSource: ProviderAccountStorageScope? = nil,
+        latestStartTime: Date,
+        sessionCount: Int,
+        inputTokens: Int,
+        outputTokens: Int,
+        cacheCreationTokens: Int,
+        cacheReadTokens: Int,
+        reasoningTokens: Int,
+        totalTokens: Int,
+        cost: Double
+    ) {
+        self.provider = provider
+        self.model = model
+        self.executionSourceID = executionSourceID
+        self.executionSourceName = executionSourceName
+        self.executionSourceKind = executionSourceKind
+        self.executionSourceConfidence = executionSourceConfidence
+        self.provenanceConfidence = provenanceConfidence
+        self.provenanceMethod = provenanceMethod
+        self.projectName = projectName
+        self.providerAccountID = providerAccountID
+        self.providerAccountLabel = providerAccountLabel
+        self.providerAccountSource = providerAccountSource
+        self.latestStartTime = latestStartTime
+        self.sessionCount = sessionCount
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheCreationTokens = cacheCreationTokens
+        self.cacheReadTokens = cacheReadTokens
+        self.reasoningTokens = reasoningTokens
+        self.totalTokens = totalTokens
+        self.cost = cost
     }
 }
 
@@ -136,6 +193,196 @@ struct ProviderSummaryAccumulator { // pure-move: was private
             totalInputTokens: totalInputTokens,
             totalOutputTokens: totalOutputTokens,
             sessionCount: sessionCount,
+            modelBreakdown: modelData.values
+                .map { $0.modelUsage(providerTotalCost: totalCost) }
+                .sorted { $0.cost > $1.cost },
+            provenanceConfidence: dominantConfidence,
+            provenanceMethod: dominantMethod,
+            hasEstimatedContributions: hasAnyEstimated,
+            cacheEfficiency: CacheEfficiency(
+                inputTokens: totalInputTokens,
+                cacheCreationTokens: cacheCreationTokens,
+                cacheReadTokens: cacheReadTokens
+            )
+        )
+    }
+}
+
+struct CredentialSummaryAccumulator {
+    var accountLabel = ""
+    var accountSource: ProviderAccountStorageScope?
+    private var accountLabelTimestamp = Date.distantPast
+    private var accountSourceTimestamp = Date.distantPast
+    var totalCost: Double = 0
+    var totalTokens = 0
+    var totalInputTokens = 0
+    var totalOutputTokens = 0
+    var cacheCreationTokens = 0
+    var cacheReadTokens = 0
+    var sessionCount = 0
+    fileprivate var modelData: [String: ModelUsageAccumulator] = [:]
+    var dominantConfidence: UsageProvenanceConfidence = .unknown
+    var dominantMethod: UsageProvenanceMethod = .unknown
+    var bestCostSoFar: Double = 0
+    var hasAnyEstimated = false
+
+    init() {}
+
+    mutating func record(_ row: UsageAggregateRow) {
+        if let label = row.providerAccountLabel,
+           !label.isEmpty,
+           row.latestStartTime > accountLabelTimestamp
+               || (row.latestStartTime == accountLabelTimestamp
+                   && (accountLabel.isEmpty || label < accountLabel)) {
+            accountLabel = label
+            accountLabelTimestamp = row.latestStartTime
+        }
+        if let source = row.providerAccountSource,
+           row.latestStartTime > accountSourceTimestamp
+               || (row.latestStartTime == accountSourceTimestamp
+                   && (accountSource == nil || source.rawValue < accountSource?.rawValue ?? "")) {
+            accountSource = source
+            accountSourceTimestamp = row.latestStartTime
+        }
+        totalCost += row.cost
+        totalTokens += row.totalTokens
+        totalInputTokens += row.inputTokens
+        totalOutputTokens += row.outputTokens
+        cacheCreationTokens += row.cacheCreationTokens
+        cacheReadTokens += row.cacheReadTokens
+        sessionCount += row.sessionCount
+        modelData[row.model, default: ModelUsageAccumulator(modelName: row.model)].record(row)
+
+        let estimated = row.provenanceConfidence != .exact && row.provenanceConfidence != .derivedExact
+        hasAnyEstimated = hasAnyEstimated || estimated
+        let weight = row.cost > 0 ? row.cost : 0.001
+        if row.provenanceConfidence > dominantConfidence {
+            dominantConfidence = row.provenanceConfidence
+            dominantMethod = row.provenanceMethod
+            bestCostSoFar = weight
+        } else if row.provenanceConfidence == dominantConfidence && weight > bestCostSoFar {
+            dominantMethod = row.provenanceMethod
+            bestCostSoFar = weight
+        }
+    }
+
+    func summary(for provider: AgentProvider, accountID: String?) -> CredentialSummary? {
+        guard sessionCount > 0 else { return nil }
+        let resolvedLabel: String = {
+            if !accountLabel.isEmpty { return accountLabel }
+            if let id = accountID, !id.isEmpty {
+                return "\(provider.displayName) · …\(id.suffix(6))"
+            }
+            return "\(provider.displayName) · default"
+        }()
+        return CredentialSummary(
+            provider: provider,
+            accountID: accountID,
+            accountLabel: resolvedLabel,
+            accountSource: accountSource,
+            totalCost: totalCost,
+            totalTokens: totalTokens,
+            totalInputTokens: totalInputTokens,
+            totalOutputTokens: totalOutputTokens,
+            sessionCount: sessionCount,
+            modelBreakdown: modelData.values
+                .map { $0.modelUsage(providerTotalCost: totalCost) }
+                .sorted { $0.cost > $1.cost },
+            provenanceConfidence: dominantConfidence,
+            provenanceMethod: dominantMethod,
+            hasEstimatedContributions: hasAnyEstimated,
+            cacheEfficiency: CacheEfficiency(
+                inputTokens: totalInputTokens,
+                cacheCreationTokens: cacheCreationTokens,
+                cacheReadTokens: cacheReadTokens
+            )
+        )
+    }
+}
+
+private struct ProjectProviderRollup {
+    var sessionCount = 0
+    var totalTokens = 0
+    var cost: Double = 0
+    var inputTokens = 0
+    var cacheCreationTokens = 0
+    var cacheReadTokens = 0
+
+    mutating func record(_ row: UsageAggregateRow) {
+        sessionCount += row.sessionCount
+        totalTokens += row.totalTokens
+        cost += row.cost
+        inputTokens += row.inputTokens
+        cacheCreationTokens += row.cacheCreationTokens
+        cacheReadTokens += row.cacheReadTokens
+    }
+}
+
+struct ProjectSpendSummaryAccumulator {
+    var totalCost: Double = 0
+    var totalTokens = 0
+    var totalInputTokens = 0
+    var totalOutputTokens = 0
+    var cacheCreationTokens = 0
+    var cacheReadTokens = 0
+    var sessionCount = 0
+    fileprivate var modelData: [String: ModelUsageAccumulator] = [:]
+    private var providerData: [AgentProvider: ProjectProviderRollup] = [:]
+    var dominantConfidence: UsageProvenanceConfidence = .unknown
+    var dominantMethod: UsageProvenanceMethod = .unknown
+    var bestCostSoFar: Double = 0
+    var hasAnyEstimated = false
+
+    init() {}
+
+    mutating func record(_ row: UsageAggregateRow) {
+        totalCost += row.cost
+        totalTokens += row.totalTokens
+        totalInputTokens += row.inputTokens
+        totalOutputTokens += row.outputTokens
+        cacheCreationTokens += row.cacheCreationTokens
+        cacheReadTokens += row.cacheReadTokens
+        sessionCount += row.sessionCount
+        modelData[row.model, default: ModelUsageAccumulator(modelName: row.model)].record(row)
+        providerData[row.provider, default: ProjectProviderRollup()].record(row)
+
+        let estimated = row.provenanceConfidence != .exact && row.provenanceConfidence != .derivedExact
+        hasAnyEstimated = hasAnyEstimated || estimated
+        let weight = row.cost > 0 ? row.cost : 0.001
+        if row.provenanceConfidence > dominantConfidence {
+            dominantConfidence = row.provenanceConfidence
+            dominantMethod = row.provenanceMethod
+            bestCostSoFar = weight
+        } else if row.provenanceConfidence == dominantConfidence && weight > bestCostSoFar {
+            dominantMethod = row.provenanceMethod
+            bestCostSoFar = weight
+        }
+    }
+
+    func summary(projectName: String) -> ProjectSpendSummary? {
+        guard sessionCount > 0 else { return nil }
+        return ProjectSpendSummary(
+            projectName: projectName,
+            totalCost: totalCost,
+            totalTokens: totalTokens,
+            totalInputTokens: totalInputTokens,
+            totalOutputTokens: totalOutputTokens,
+            sessionCount: sessionCount,
+            providerBreakdown: providerData.map { provider, rollup in
+                ProviderUsage(
+                    provider: provider,
+                    sessionCount: rollup.sessionCount,
+                    totalTokens: rollup.totalTokens,
+                    cost: rollup.cost,
+                    percentage: totalCost > 0 ? (rollup.cost / totalCost) * 100 : 0,
+                    cacheEfficiency: CacheEfficiency(
+                        inputTokens: rollup.inputTokens,
+                        cacheCreationTokens: rollup.cacheCreationTokens,
+                        cacheReadTokens: rollup.cacheReadTokens
+                    )
+                )
+            }
+            .sorted { $0.cost > $1.cost },
             modelBreakdown: modelData.values
                 .map { $0.modelUsage(providerTotalCost: totalCost) }
                 .sorted { $0.cost > $1.cost },
@@ -342,6 +589,7 @@ private struct ProviderUsageAccumulator {
 
 struct DailySummaryAccumulator { // pure-move: was private
     let dayString: String
+    let dateOverride: Date?
     var providerCosts: [AgentProvider: Double] = [:]
     var totalInputTokens = 0
     var totalOutputTokens = 0
@@ -352,8 +600,9 @@ struct DailySummaryAccumulator { // pure-move: was private
     var sessionCount = 0
     var models: Set<String> = []
 
-    init(dayString: String) {
+    init(dayString: String, date: Date? = nil) {
         self.dayString = dayString
+        self.dateOverride = date
     }
 
     mutating func record(row: Row, provider: AgentProvider, model: String) {
@@ -370,7 +619,8 @@ struct DailySummaryAccumulator { // pure-move: was private
     }
 
     var summary: DailyUsageSummary? {
-        guard let date = Self.dayFormatter.date(from: dayString) else { return nil }
+        let date = dateOverride ?? Self.dayFormatter.date(from: dayString)
+        guard let date else { return nil }
         return DailyUsageSummary(
             date: date,
             provider: providerCosts.max { $0.value < $1.value }?.key ?? .factory,
@@ -381,7 +631,7 @@ struct DailySummaryAccumulator { // pure-move: was private
             totalTokens: totalTokens,
             totalCost: totalCost,
             sessionCount: sessionCount,
-            models: Array(models)
+            models: models.sorted()
         )
     }
 

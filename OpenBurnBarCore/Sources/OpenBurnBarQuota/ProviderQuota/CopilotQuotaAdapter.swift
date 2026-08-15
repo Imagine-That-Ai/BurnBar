@@ -144,7 +144,7 @@ public struct CopilotQuotaAdapter: ProviderQuotaAdapter {
         let usage = try decoder.decode(CopilotUsageResponse.self, from: data)
 
         let resetsAt = usage.quotaResetDate
-            .flatMap { ISO8601DateFormatter().date(from: $0) }
+            .flatMap { ThreadSafeISO8601DateFormatter.parseBasic($0) }
 
         var buckets: [ProviderQuotaBucket] = []
 

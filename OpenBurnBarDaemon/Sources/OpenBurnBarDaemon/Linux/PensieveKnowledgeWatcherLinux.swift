@@ -253,7 +253,7 @@ public final class PensieveKnowledgeWatcher: Sendable {
         guard let files = eligibleFiles(in: root), !files.isEmpty else { return 0 }
         let dir = queueDirectoryURL.appendingPathComponent("change-manifests", isDirectory: true)
         try? fileSystem.createDirectory(at: dir, withIntermediateDirectories: true)
-        let stamp = ISO8601DateFormatter().string(from: Date())
+        let stamp = ThreadSafeISO8601DateFormatter.formatBasic(Date())
         let name = "\(root.sourceKind.rawValue)-\(stamp.replacingOccurrences(of: ":", with: "-")).json"
         let url = dir.appendingPathComponent(name, isDirectory: false)
         let payload: [String: Any] = [
@@ -283,18 +283,18 @@ public final class PensieveKnowledgeWatcher: Sendable {
         let sentinelDir = queueDirectoryURL.appendingPathComponent("session-end-signals", isDirectory: true)
         try? fileSystem.createDirectory(at: sentinelDir, withIntermediateDirectories: true)
         var signalled = 0
-        let formatter = ISO8601DateFormatter()
         for fileURL in files {
             guard let attrs = try? fileSystem.attributesOfItem(atPath: fileURL.path),
                   let modified = attrs[.modificationDate] as? Date else { continue }
             guard Date().timeIntervalSince(modified) >= debounceInterval else { continue }
-            let keyMaterial = fileURL.path + "@" + formatter.string(from: modified)
+            let stamp = ThreadSafeISO8601DateFormatter.formatBasic(modified)
+            let keyMaterial = fileURL.path + "@" + stamp
             let key = djb2Hex(keyMaterial)
             let sentinelURL = sentinelDir.appendingPathComponent("\(key).json", isDirectory: false)
             guard !fileSystem.fileExists(atPath: sentinelURL.path) else { continue }
             let payload: [String: Any] = [
                 "sessionPath": fileURL.path,
-                "modifiedAt": formatter.string(from: modified),
+                "modifiedAt": stamp,
                 "sourceKind": PensieveSourceKind.chatMemory.rawValue,
                 "schemaVersion": 1
             ]

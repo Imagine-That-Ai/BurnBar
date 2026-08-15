@@ -11,7 +11,7 @@ public enum CodexRolloutScanner {
         var didChangeCache = false
 
         let files = candidateDirectories
-            .flatMap { findRolloutFiles(in: $0, fileManager: fileManager) }
+            .flatMap { findRolloutFiles(in: $0, freshnessCutoff: freshnessCutoff, fileManager: fileManager) }
             .compactMap { file -> (URL, CodexRolloutFileSignature)? in
                 guard let signature = fileSignature(for: file) else { return nil }
                 return (file, signature)
@@ -21,6 +21,7 @@ public enum CodexRolloutScanner {
             }
 
         let activePaths = Set(files.map { $0.0.standardizedFileURL.path })
+        let scannedDirectoryPaths = candidateDirectories.map { $0.standardizedFileURL.path }
 
         for (file, signature) in files {
             let path = file.standardizedFileURL.path
@@ -36,7 +37,9 @@ public enum CodexRolloutScanner {
             didChangeCache = true
         }
 
-        let stalePaths = Set(updatedCache.fileEntries.keys).subtracting(activePaths)
+        let stalePaths = Set(updatedCache.fileEntries.keys).subtracting(activePaths).filter { path in
+            CodexRolloutScanCache.path(path, isUnder: scannedDirectoryPaths)
+        }
         if !stalePaths.isEmpty {
             for stalePath in stalePaths {
                 updatedCache.fileEntries.removeValue(forKey: stalePath)
@@ -55,10 +58,13 @@ public enum CodexRolloutScanner {
             didChangeCache = true
         }
 
+        updatedCache.scannedDirectoryPaths = scannedDirectoryPaths
+
         return CodexRateLimitScanResult(
             latestEvent: latestEvent,
             cache: updatedCache,
-            didChangeCache: didChangeCache
+            didChangeCache: didChangeCache,
+            scannedDirectoryPaths: scannedDirectoryPaths
         )
     }
 
@@ -127,16 +133,31 @@ public enum CodexRolloutScanner {
         )
     }
 
-    static func findRolloutFiles(in directory: URL, fileManager: FileManager = .default) -> [URL] {
+    static func findRolloutFiles(
+        in directory: URL,
+        freshnessCutoff: Date? = nil,
+        fileManager: FileManager = .default
+    ) -> [URL] {
         guard fileManager.fileExists(atPath: directory.path) else { return [] }
+        let keys: [URLResourceKey] = [
+            .contentModificationDateKey,
+            .fileSizeKey,
+            .isRegularFileKey
+        ]
         let enumerator = fileManager.enumerator(
             at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey],
+            includingPropertiesForKeys: keys,
             options: [.skipsHiddenFiles]
         )
         var files: [URL] = []
         while let url = enumerator?.nextObject() as? URL {
             guard url.lastPathComponent.hasPrefix("rollout-"), url.pathExtension == "jsonl" else { continue }
+            if let freshnessCutoff {
+                let values = try? url.resourceValues(forKeys: Set(keys)) // try?-ok(mtime skip)
+                if let modifiedAt = values?.contentModificationDate, modifiedAt < freshnessCutoff {
+                    continue
+                }
+            }
             files.append(url)
         }
         return files

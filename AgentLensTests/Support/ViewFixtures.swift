@@ -21,7 +21,9 @@ enum ViewTestFixtures {
         executionSourceID: String? = nil,
         executionSourceName: String? = nil,
         executionSourceKind: UsageExecutionSourceKind? = nil,
-        executionSourceConfidence: UsageProvenanceConfidence? = nil
+        executionSourceConfidence: UsageProvenanceConfidence? = nil,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
     ) -> TokenUsage {
         TokenUsage(
             provider: provider,
@@ -36,7 +38,9 @@ enum ViewTestFixtures {
             executionSourceID: executionSourceID,
             executionSourceName: executionSourceName,
             executionSourceKind: executionSourceKind,
-            executionSourceConfidence: executionSourceConfidence
+            executionSourceConfidence: executionSourceConfidence,
+            providerAccountID: providerAccountID,
+            providerAccountLabel: providerAccountLabel
         )
     }
 

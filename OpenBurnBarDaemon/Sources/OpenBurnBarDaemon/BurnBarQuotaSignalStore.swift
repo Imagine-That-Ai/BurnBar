@@ -269,7 +269,7 @@ public actor BurnBarQuotaSignalStore {
     }
 
     private static func iso8601Date(from raw: String) -> Date? {
-        if let date = ISO8601DateFormatter().date(from: raw) {
+        if let date = ThreadSafeISO8601DateFormatter.parseBasic(raw) {
             return date
         }
         let formatter = DateFormatter()

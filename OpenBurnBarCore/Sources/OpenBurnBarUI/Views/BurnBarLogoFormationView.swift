@@ -758,7 +758,7 @@ private struct ProviderGlyphConstellationLayer: View {
     @Published var glyphs: [Glyph] = []
     @Published var interactionNonce: Int = 0
     private var timer: Timer?
-    private let dt = 1.0 / 45.0
+    private let dt = 1.0 / 30.0
     private let swapCooldown = 1.15
     private var providerCount: Int
     private var providerCursor: Int = 0
@@ -909,7 +909,7 @@ private struct FormationDriver: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 45.0)) { _ in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { _ in
             FormationHero(p: min(sim.t / 5.0, 1.0), time: sim.t, glyphs: sim.glyphs,
                           logoName: logoName, providerDots: assets?.providerDots ?? [], dots: assets?.dots ?? [])
         }

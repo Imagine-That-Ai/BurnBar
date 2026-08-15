@@ -103,24 +103,19 @@ public struct WarpQuotaAdapter: ProviderQuotaAdapter {
         let logFiles = candidateLogFiles(in: directory, fileManager: context.fileManager, context: context)
 
         for file in logFiles.reversed() {
-            guard let data = try? Data(contentsOf: file), // try?-ok(skip unreadable telemetry log)
-                  let content = String(data: data, encoding: .utf8) else {
+            guard let scan = Self.scanLogForCredit(at: file),
+                  let bucket = scan.bucket else {
                 continue
             }
-
-            for object in WarpParser.extractBodyJSONObjects(from: content).reversed() {
-                if let bucket = findCreditBucket(in: object) {
-                    return ProviderQuotaSnapshot(
-                        provider: .warp,
-                        fetchedAt: Date(),
-                        source: .localSession,
-                        confidence: .unavailable,
-                        managementURL: "https://app.warp.dev/",
-                        statusMessage: "Warp credit quota inferred from local Warp app telemetry. Set a Warp API key for exact quota data.",
-                        buckets: [bucket]
-                    )
-                }
-            }
+            return ProviderQuotaSnapshot(
+                provider: .warp,
+                fetchedAt: Date(),
+                source: .localSession,
+                confidence: .unavailable,
+                managementURL: "https://app.warp.dev/",
+                statusMessage: "Warp credit quota inferred from local Warp app telemetry. Set a Warp API key for exact quota data.",
+                buckets: [bucket]
+            )
         }
 
         return ProviderQuotaSnapshot(
@@ -160,7 +155,67 @@ public struct WarpQuotaAdapter: ProviderQuotaAdapter {
             }
     }
 
-    private func findCreditBucket(in value: Any) -> ProviderQuotaBucket? {
+    // MARK: - Telemetry tail scan
+
+    /// Newest credit bucket is almost always in the last append. Read that
+    /// suffix first; UTF-8 split or a miss fail-closes to a full-file read so
+    /// remaining% / `resetsAt` stay bit-identical.
+    static let telemetryTailBytes = CodexQuotaScanPolicy.tailReadBytes
+
+    struct TelemetryCreditScan: Equatable, Sendable {
+        var bucket: ProviderQuotaBucket?
+        var bytesRead: Int
+        var usedFullFile: Bool
+    }
+
+    static func scanLogForCredit(
+        at file: URL,
+        tailBytes: Int = telemetryTailBytes
+    ) -> TelemetryCreditScan? {
+        do {
+            let handle = try FileHandle(forReadingFrom: file)
+            defer { try? handle.close() } // try?-ok(handle teardown)
+            let fileSize = try handle.seekToEnd()
+            let boundedTail = max(tailBytes, 1)
+
+            if fileSize > UInt64(boundedTail) {
+                try handle.seek(toOffset: fileSize - UInt64(boundedTail))
+                let tailData = try handle.read(upToCount: boundedTail) ?? Data()
+                if let text = String(data: tailData, encoding: .utf8),
+                   let bucket = newestCreditBucket(in: text) {
+                    return TelemetryCreditScan(
+                        bucket: bucket,
+                        bytesRead: tailData.count,
+                        usedFullFile: false
+                    )
+                }
+            }
+
+            try handle.seek(toOffset: 0)
+            let fullData = try handle.readToEnd() ?? Data()
+            guard let content = String(data: fullData, encoding: .utf8) else {
+                return nil
+            }
+            return TelemetryCreditScan(
+                bucket: newestCreditBucket(in: content),
+                bytesRead: fullData.count,
+                usedFullFile: true
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    static func newestCreditBucket(in content: String) -> ProviderQuotaBucket? {
+        for object in WarpParser.extractBodyJSONObjects(from: content).reversed() {
+            if let bucket = findCreditBucket(in: object) {
+                return bucket
+            }
+        }
+        return nil
+    }
+
+    private static func findCreditBucket(in value: Any) -> ProviderQuotaBucket? {
         if let dictionary = value as? [String: Any] {
             if let bucket = creditBucket(from: dictionary) {
                 return bucket
@@ -180,7 +235,7 @@ public struct WarpQuotaAdapter: ProviderQuotaAdapter {
         return nil
     }
 
-    private func creditBucket(from dictionary: [String: Any]) -> ProviderQuotaBucket? {
+    private static func creditBucket(from dictionary: [String: Any]) -> ProviderQuotaBucket? {
         guard dictionary.keys.contains(where: { $0.lowercased().contains("credit") || $0.lowercased().contains("budget") }) else {
             return nil
         }
@@ -248,7 +303,7 @@ public struct WarpQuotaAdapter: ProviderQuotaAdapter {
         )
     }
 
-    private func number(in dictionary: [String: Any], keys: [String]) -> Double? {
+    private static func number(in dictionary: [String: Any], keys: [String]) -> Double? {
         for key in keys {
             guard let value = dictionary[key] else { continue }
             if let double = value as? Double { return double }
@@ -262,7 +317,7 @@ public struct WarpQuotaAdapter: ProviderQuotaAdapter {
         return nil
     }
 
-    private func date(in dictionary: [String: Any], keys: [String]) -> Date? {
+    private static func date(in dictionary: [String: Any], keys: [String]) -> Date? {
         for key in keys {
             guard let value = dictionary[key] else { continue }
             if let string = value as? String {

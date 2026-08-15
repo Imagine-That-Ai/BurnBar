@@ -3,9 +3,11 @@
 
 XcodeGen can regenerate stable project content with different 24-character PBX
 object identifiers and quoted TEMP_<UUID> package-product identifiers. Those
-identifiers are implementation details. The rest of the pbxproj is the
-contract: sources, targets, build phases, settings, entitlements, package
-products, and shell scripts must already match the generated project.
+identifiers are implementation details. Source/test membership, targets, build
+settings, entitlements, package products, and shell scripts must already match
+the generated project. List order inside `children` / `files` / `targets` is
+not the contract: XcodeGen's macOS localized sort and hand-registration can
+permute the same members.
 """
 
 from __future__ import annotations
@@ -22,11 +24,29 @@ PBX_ID_PATTERN = r"[A-F0-9]{24}"
 TEMP_ID_PATTERN = r"TEMP_[A-F0-9]{8}(?:-[A-F0-9]{4}){3}-[A-F0-9]{12}"
 PBX_ID = re.compile(rf"\b(?:{PBX_ID_PATTERN}|{TEMP_ID_PATTERN})\b")
 OBJECTS_DECL = re.compile(r"\bobjects\s*=\s*\{")
+# Object headers are one line. Do not use DOTALL + `.*?`: a failed match
+# then `offset += 1` rescans the rest of a 1.5MB pbxproj from every byte
+# and the drift job times out before it can report membership.
 OBJECT_ENTRY = re.compile(
-    rf'\s*"?(?P<id>{PBX_ID_PATTERN}|{TEMP_ID_PATTERN})"?(?:\s*/\*\s*(?P<comment>.*?)\s*\*/)?\s*=\s*\{{',
-    re.DOTALL,
+    rf'"?(?P<id>{PBX_ID_PATTERN}|{TEMP_ID_PATTERN})"?'
+    rf"(?:[ \t]*/\*[ \t]*(?P<comment>[^*]*?)[ \t]*\*/)?[ \t]*=[ \t]*\{{",
 )
 ISA = re.compile(r"\bisa\s*=\s*(?P<isa>[A-Za-z0-9_]+)\s*;")
+# Multiline OpenStep ID lists (children / files / targets / dependencies).
+# Hand-patched pbxproj files often insert new sources in ASCII order while
+# XcodeGen 2.45.4 uses macOS localizedStandardCompare. Membership is the
+# contract; permutation of the same IDs is not.
+# Do not match these lists with `=\s*(\n` + a greedy line-eater: that
+# backtracks through the rest of an XCBuildConfiguration `buildSettings`
+# block (many `KEY = VALUE;` lines after `GCC_PREPROCESSOR_DEFINITIONS = (`)
+# and hung the 15-minute drift job. Scan line-by-line instead.
+ID_LIST_OPEN = re.compile(r"=\s*\(\s*$")
+ID_LIST_CLOSE = re.compile(r"^[ \t]*\)")
+ID_LIST_ENTRY = re.compile(
+    rf"^(?P<indent>[ \t]*)"
+    rf'(?P<id>"?(?:{PBX_ID_PATTERN}|{TEMP_ID_PATTERN}|PBX_[a-f0-9]+|<PBXID>|[a-f0-9]{{64}})"?)\s*'
+    rf"(?:/\*\s*(?P<comment>.*?)\s*\*/\s*)?,?\s*$"
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -80,10 +100,18 @@ def _extract_objects_block(text: str) -> ObjectsBlock:
 
     objects: list[PBXObject] = []
     offset = 0
-    while offset < len(body):
+    body_len = len(body)
+    while offset < body_len:
+        while offset < body_len and body[offset] in " \t\r\n":
+            offset += 1
+        if offset >= body_len:
+            break
         match = OBJECT_ENTRY.match(body, offset)
         if match is None:
-            offset += 1
+            newline = body.find("\n", offset)
+            if newline == -1:
+                break
+            offset = newline + 1
             continue
         object_open = open_brace + 1 + match.end() - 1
         object_close = _find_matching_brace(text, object_open)
@@ -95,7 +123,10 @@ def _extract_objects_block(text: str) -> ObjectsBlock:
                 body=object_body,
             )
         )
-        offset = object_close - open_brace
+        next_offset = object_close - open_brace
+        if next_offset <= offset:
+            raise ValueError("pbxproj object parser did not advance")
+        offset = next_offset
 
     if not objects:
         raise ValueError("no PBX objects parsed from project.pbxproj")
@@ -115,6 +146,63 @@ def _replace_ids(text: str, replacements: dict[str, str], unknown: str = "<PBXID
     return PBX_ID.sub(lambda match: replacements.get(match.group(0), unknown), text)
 
 
+def _sort_id_reference_lists(text: str) -> str:
+    """Sort membership lists so equivalent source sets compare equal."""
+
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return text
+    out: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not ID_LIST_OPEN.search(line.rstrip("\n")):
+            out.append(line)
+            index += 1
+            continue
+
+        entries: list[tuple[str, str]] = []
+        indent = ""
+        cursor = index + 1
+        valid = True
+        while cursor < len(lines):
+            raw = lines[cursor]
+            stripped = raw.rstrip("\n")
+            if ID_LIST_CLOSE.match(stripped):
+                break
+            if not stripped.strip():
+                cursor += 1
+                continue
+            parsed = ID_LIST_ENTRY.match(stripped)
+            if parsed is None:
+                valid = False
+                break
+            if not indent:
+                indent = parsed.group("indent")
+            entries.append((parsed.group("comment") or "", parsed.group("id")))
+            cursor += 1
+        else:
+            valid = False
+
+        if not valid or not entries:
+            out.append(line)
+            index += 1
+            continue
+
+        out.append(line)
+        for comment, object_id in sorted(entries, key=lambda item: (item[0], item[1])):
+            comment_suffix = f" /* {comment} */" if comment else ""
+            out.append(f"{indent}{object_id}{comment_suffix},\n")
+        out.append(lines[cursor])
+        index = cursor + 1
+
+    return "".join(out)
+
+
+def _semantic_body(body: str, replacements: dict[str, str], unknown: str = "<PBXID>") -> str:
+    return _sort_id_reference_lists(_replace_ids(body, replacements, unknown=unknown))
+
+
 def _semantic_object_labels(objects: list[PBXObject]) -> dict[str, str]:
     by_id = {obj.id: obj for obj in objects}
     fingerprints = {
@@ -123,7 +211,7 @@ def _semantic_object_labels(objects: list[PBXObject]) -> dict[str, str]:
                 [
                     f"isa={_object_isa(obj)}",
                     f"comment={obj.comment}",
-                    _replace_ids(obj.body, {}, unknown="<PBXID>"),
+                    _semantic_body(obj.body, {}, unknown="<PBXID>"),
                 ]
             )
         )
@@ -140,7 +228,7 @@ def _semantic_object_labels(objects: list[PBXObject]) -> dict[str, str]:
                     [
                         f"isa={_object_isa(obj)}",
                         f"comment={obj.comment}",
-                        _replace_ids(obj.body, fingerprints, unknown="<PBXID>"),
+                        _semantic_body(obj.body, fingerprints, unknown="<PBXID>"),
                     ]
                 )
             )
@@ -157,7 +245,7 @@ def _canonicalize_text(text: str) -> str:
     for obj in block.objects:
         label = labels[obj.id]
         comment = f" /* {obj.comment} */" if obj.comment else ""
-        body = _replace_ids(obj.body, labels)
+        body = _semantic_body(obj.body, labels)
         canonical_entries.append((label, f"\t\t{label}{comment} = {{{body}\t\t}};\n"))
 
     canonical_body = "\n" + "".join(entry for _, entry in sorted(canonical_entries)) + "\t"

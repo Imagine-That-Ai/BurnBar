@@ -98,6 +98,7 @@ struct QuotaArcDial: View {
                 )
                 .padding(2)
                 .rotationEffect(.degrees(-90))
+                .compositingGroup()
                 .shadow(color: pressureColor(for: fraction).opacity(0.22), radius: 6, y: 0)
                 .animation(DesignSystem.Animation.gentle, value: fraction)
         } else {
@@ -132,6 +133,7 @@ struct QuotaArcDial: View {
                 )
                 .padding(20)
                 .rotationEffect(.degrees(-90))
+                .compositingGroup()
                 .shadow(color: pressureColor(for: fraction).opacity(0.20), radius: 4, y: 0)
                 .animation(DesignSystem.Animation.gentle, value: fraction)
         } else {

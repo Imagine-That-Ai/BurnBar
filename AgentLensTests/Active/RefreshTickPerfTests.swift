@@ -428,40 +428,249 @@ final class ReloadUsagesIfChangedTests: XCTestCase {
     }
 
     /// The load-bearing equality: the marker-gated tick path must surface the
-    /// exact same aggregates as the legacy always-full recompute it replaced.
-    func test_tickPathAggregatesEqualLegacyFullRecompute() async throws {
+    /// same aggregates as the dashboard snapshot init path (SQL window totals
+    /// + hydration-limit covering rows). It must not `SELECT *` the ledger.
+    func test_tickPathAggregatesEqualDashboardSnapshot() async throws {
         let store = try makeStore()
         store.nowProvider = { [noon] in noon }
         try await store.insertChunked(makeRealisticUsageHistory(), chunkSize: 500)
 
-        // New path: marker-gated reload.
         await store.reloadUsagesIfChanged()
 
-        // Old path: unconditional full fetch + rebuild on a fresh view model.
-        let allRows = try await store.fetchAllUsage()
-        let legacy = DashboardUsageViewModel()
-        legacy.replaceUsages(allRows)
+        let snapshot = try await store.fetchDashboardUsageSnapshot(loadedUsageLimit: 5_000)
+        let expected = DashboardUsageViewModel()
+        expected.replaceUsageSnapshot(snapshot)
 
-        XCTAssertEqual(store.usages.count, allRows.count)
+        XCTAssertEqual(store.usages.count, snapshot.loadedUsages.count)
         let vm = store.usageViewModel
-        XCTAssertEqual(vm.totalCostAllTime, legacy.totalCostAllTime, accuracy: 1e-9)
-        XCTAssertEqual(vm.totalCostToday, legacy.totalCostToday, accuracy: 1e-9)
-        XCTAssertEqual(vm.totalCostThisWeek, legacy.totalCostThisWeek, accuracy: 1e-9)
-        XCTAssertEqual(vm.totalCostThisMonth, legacy.totalCostThisMonth, accuracy: 1e-9)
-        XCTAssertEqual(vm.totalTokensAllTime, legacy.totalTokensAllTime)
-        XCTAssertEqual(vm.totalTokensThisWeek, legacy.totalTokensThisWeek)
-        XCTAssertEqual(vm.rollingDailyAverage, legacy.rollingDailyAverage, accuracy: 1e-9)
-        XCTAssertEqual(vm.last7DayCosts.count, legacy.last7DayCosts.count)
-        for (lhs, rhs) in zip(vm.last7DayCosts, legacy.last7DayCosts) {
+        XCTAssertEqual(vm.totalCostAllTime, expected.totalCostAllTime, accuracy: 1e-9)
+        XCTAssertEqual(vm.totalCostToday, expected.totalCostToday, accuracy: 1e-9)
+        XCTAssertEqual(vm.totalCostThisWeek, expected.totalCostThisWeek, accuracy: 1e-9)
+        XCTAssertEqual(vm.totalCostThisMonth, expected.totalCostThisMonth, accuracy: 1e-9)
+        XCTAssertEqual(vm.totalTokensAllTime, expected.totalTokensAllTime)
+        XCTAssertEqual(vm.totalTokensThisWeek, expected.totalTokensThisWeek)
+        XCTAssertEqual(vm.rollingDailyAverage, expected.rollingDailyAverage, accuracy: 1e-9)
+        XCTAssertEqual(vm.last7DayCosts.count, expected.last7DayCosts.count)
+        for (lhs, rhs) in zip(vm.last7DayCosts, expected.last7DayCosts) {
             XCTAssertEqual(lhs, rhs, accuracy: 1e-9)
         }
         XCTAssertEqual(
             vm.providerSummaries.map { "\($0.provider.rawValue):\($0.sessionCount):\($0.totalTokens)" },
-            legacy.providerSummaries.map { "\($0.provider.rawValue):\($0.sessionCount):\($0.totalTokens)" }
+            expected.providerSummaries.map { "\($0.provider.rawValue):\($0.sessionCount):\($0.totalTokens)" }
         )
         XCTAssertEqual(
             vm.modelSummaries.map { "\($0.modelName):\($0.sessionCount):\($0.totalTokens)" },
-            legacy.modelSummaries.map { "\($0.modelName):\($0.sessionCount):\($0.totalTokens)" }
+            expected.modelSummaries.map { "\($0.modelName):\($0.sessionCount):\($0.totalTokens)" }
         )
+    }
+}
+
+// MARK: - Idle persist skip
+
+@MainActor
+final class UsagePersistSkipTests: XCTestCase {
+    func test_persistContentFingerprint_ignoresIdentityAndCreatedAt() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let a = TokenUsage(
+            id: UUID(),
+            provider: .factory,
+            sessionId: "session-1",
+            projectName: "p",
+            model: "m",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1.25,
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            createdAt: start
+        )
+        let b = TokenUsage(
+            id: UUID(),
+            provider: .factory,
+            sessionId: "session-1",
+            projectName: "p",
+            model: "m",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1.25,
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            createdAt: start.addingTimeInterval(9)
+        )
+        XCTAssertNotEqual(a.id, b.id)
+        XCTAssertEqual(
+            UsageStore.persistContentFingerprint([a]),
+            UsageStore.persistContentFingerprint([b])
+        )
+        XCTAssertEqual(
+            UsageStore.persistContentFingerprint([a, b]),
+            UsageStore.persistContentFingerprint([b, a])
+        )
+    }
+
+    func test_persistContentFingerprint_includesUpsertVisibleMetadata() {
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        func usage(
+            executionSourceName: String = "Old CLI",
+            executionSourceKind: UsageExecutionSourceKind = .cli,
+            executionSourceConfidence: UsageProvenanceConfidence = .lowConfidenceEstimate,
+            providerAccountLabel: String = "Old account",
+            providerAccountSource: ProviderAccountStorageScope = .localOnly
+        ) -> TokenUsage {
+            TokenUsage(
+                provider: .factory,
+                sessionId: "session-1",
+                projectName: "p",
+                model: "m",
+                inputTokens: 10,
+                outputTokens: 5,
+                costUSD: 1.25,
+                startTime: start,
+                endTime: start.addingTimeInterval(60),
+                executionSourceID: "factory-cli",
+                executionSourceName: executionSourceName,
+                executionSourceKind: executionSourceKind,
+                executionSourceConfidence: executionSourceConfidence,
+                providerAccountID: "account-1",
+                providerAccountLabel: providerAccountLabel,
+                providerAccountSource: providerAccountSource
+            )
+        }
+
+        let fingerprint = UsageStore.persistContentFingerprint([usage()])
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(executionSourceName: "Current CLI")])
+        )
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(executionSourceKind: .desktopApp)])
+        )
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(executionSourceConfidence: .exact)])
+        )
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(providerAccountLabel: "Current account")])
+        )
+        XCTAssertNotEqual(
+            fingerprint,
+            UsageStore.persistContentFingerprint([usage(providerAccountSource: .deviceKeychain)])
+        )
+    }
+
+    func test_insertChunked_persistsNameAndLabelOnlyCorrection() async throws {
+        let queue = try DatabaseQueue()
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        func usage(
+            executionSourceName: String,
+            providerAccountLabel: String
+        ) -> TokenUsage {
+            TokenUsage(
+                provider: .factory,
+                sessionId: "metadata-correction",
+                projectName: "p",
+                model: "m",
+                inputTokens: 10,
+                outputTokens: 5,
+                costUSD: 1.25,
+                startTime: start,
+                endTime: start.addingTimeInterval(60),
+                executionSourceID: "factory-cli",
+                executionSourceName: executionSourceName,
+                executionSourceKind: .cli,
+                executionSourceConfidence: .lowConfidenceEstimate,
+                providerAccountID: "account-1",
+                providerAccountLabel: providerAccountLabel,
+                providerAccountSource: .localOnly
+            )
+        }
+        let original = usage(
+            executionSourceName: "Old CLI",
+            providerAccountLabel: "Old account"
+        )
+        let corrected = usage(
+            executionSourceName: "Current desktop",
+            providerAccountLabel: "Current account"
+        )
+
+        try await usageStore.insertChunked([original])
+        XCTAssertFalse(usageStore.shouldSkipUnchangedPersist([corrected]))
+        try await usageStore.insertChunked([corrected])
+
+        let persisted = try await queue.read { db in
+            try XCTUnwrap(UsageStore.fetchUsageRows(db: db, dateRange: nil, limit: 1).first)
+        }
+        XCTAssertEqual(persisted.executionSourceName, "Current desktop")
+        XCTAssertEqual(persisted.executionSourceKind, original.executionSourceKind)
+        XCTAssertEqual(persisted.executionSourceConfidence, original.executionSourceConfidence)
+        XCTAssertEqual(persisted.providerAccountLabel, "Current account")
+        XCTAssertEqual(persisted.providerAccountSource, original.providerAccountSource)
+        XCTAssertEqual(persisted.executionSourceID, original.executionSourceID)
+        XCTAssertEqual(persisted.totalTokens, original.totalTokens)
+        XCTAssertEqual(persisted.costUSD, original.costUSD, accuracy: 0.000_000_001)
+        XCTAssertEqual(persisted.startTime, original.startTime)
+        XCTAssertEqual(persisted.endTime, original.endTime)
+    }
+
+    func test_insertChunked_skipsUnchangedIdleBatch() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        let rows = makeRealisticUsageHistory()
+
+        try await usageStore.insertChunked(rows, chunkSize: 50)
+        XCTAssertTrue(usageStore.shouldSkipUnchangedPersist(rows))
+
+        tracer.resetLog()
+        try await usageStore.insertChunked(rows, chunkSize: 50)
+        let inserts = tracer.queryLog.filter {
+            $0.sql.uppercased().contains("INSERT INTO TOKEN_USAGE")
+        }
+        XCTAssertEqual(inserts.count, 0, "Idle tick must not re-issue upserts when content is unchanged")
+    }
+
+    func test_insertChunked_writesAgainWhenContentChanges() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        _ = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let usageStore = UsageStore(dbQueue: queue)
+        let tracer = OpenBurnBarQueryTracer.shared
+        let start = Date(timeIntervalSince1970: 1_700_000_000)
+        let original = TokenUsage(
+            provider: .factory,
+            sessionId: "session-1",
+            projectName: "p",
+            model: "m",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 1.0,
+            startTime: start,
+            endTime: start.addingTimeInterval(60)
+        )
+        try await usageStore.insertChunked([original], chunkSize: 50)
+
+        let corrected = TokenUsage(
+            provider: .factory,
+            sessionId: "session-1",
+            projectName: "p",
+            model: "m",
+            inputTokens: 10,
+            outputTokens: 5,
+            costUSD: 2.0,
+            startTime: start,
+            endTime: start.addingTimeInterval(60)
+        )
+        XCTAssertFalse(usageStore.shouldSkipUnchangedPersist([corrected]))
+
+        tracer.resetLog()
+        try await usageStore.insertChunked([corrected], chunkSize: 50)
+        let inserts = tracer.queryLog.filter {
+            $0.sql.uppercased().contains("INSERT INTO TOKEN_USAGE")
+        }
+        XCTAssertGreaterThan(inserts.count, 0)
     }
 }

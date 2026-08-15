@@ -145,10 +145,9 @@ final class UsageRefreshPipelineTests: XCTestCase {
         XCTAssertTrue(parsed.allConversations.isEmpty)
     }
 
-    func test_parseStageForwardsMinimumFileModificationDate() async throws {
+    func test_parseStageNeverForwardsIndexingWatermarks() async throws {
         let store = try makeInMemoryDataStore()
         let recorder = ParseOptionsRecorder()
-        let cutoff = Date(timeIntervalSince1970: 1_800_000_000)
         let pipeline = UsageRefreshPipeline(
             parsers: [.factory: RecordingParser(recorder: recorder)],
             dataStore: store,
@@ -162,18 +161,19 @@ final class UsageRefreshPipelineTests: XCTestCase {
                 )
             ),
             settings: RefreshSettingsSnapshot(
-                conversationIndexingEnabled: false,
+                conversationIndexingEnabled: true,
                 snapshotAPIs: []
             )
         )
 
         _ = try await pipeline.parse(
             from: pipeline.discover(),
-            minimumFileModificationDate: cutoff
+            includeConversationBodies: false
         )
 
-        let recordedDates = await recorder.minimumDateSnapshot()
-        XCTAssertEqual(recordedDates, [cutoff])
+        let recorded = await recorder.watermarkSnapshot()
+        XCTAssertEqual(recorded.dates, [nil])
+        XCTAssertEqual(recorded.trackersPresent, [false])
     }
 
     func test_refreshPipelineReplacesInvalidatedLifetimeAndDayRows() async throws {
@@ -572,18 +572,20 @@ private struct RepairParser: LogParser {
 private actor ParseOptionsRecorder {
     private var values: [Bool] = []
     private var minimumDates: [Date?] = []
+    private var trackersPresent: [Bool] = []
 
     func record(_ options: LogParseOptions) {
         values.append(options.includeConversationBodies)
         minimumDates.append(options.minimumFileModificationDate)
+        trackersPresent.append(options.fileDiscoveryTracker != nil)
     }
 
     func snapshot() -> [Bool] {
         values
     }
 
-    func minimumDateSnapshot() -> [Date?] {
-        minimumDates
+    func watermarkSnapshot() -> (dates: [Date?], trackersPresent: [Bool]) {
+        (minimumDates, trackersPresent)
     }
 }
 
