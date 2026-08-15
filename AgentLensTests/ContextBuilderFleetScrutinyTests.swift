@@ -53,6 +53,28 @@ final class ContextBuilderFleetScrutinyTests: XCTestCase {
         }
     }
 
+    /// Regression (scrutiny round 2): a canonical key whose wrapper is JSON
+    /// null is still proposal-looking malformed input, not ordinary text.
+    func test_canonicalProposalWithNullWrapperThrowsTyped() {
+        let malformed = #"{"burnbar_directive_proposal": null}"#
+        XCTAssertThrowsError(try BurnBarFleetProposalParser.parse(line: malformed)) { error in
+            guard case BurnBarFleetProposalParser.ParseError.malformedJSON = error else {
+                return XCTFail("expected malformedJSON, got \(error)")
+            }
+        }
+    }
+
+    /// Regression (scrutiny round 2): a canonical key whose wrapper is a
+    /// scalar string must be typed-dropped rather than rendered as prose.
+    func test_canonicalProposalWithStringWrapperThrowsTyped() {
+        let malformed = #"{"burnbar_directive_proposal":"not-an-object"}"#
+        XCTAssertThrowsError(try BurnBarFleetProposalParser.parse(line: malformed)) { error in
+            guard case BurnBarFleetProposalParser.ParseError.malformedJSON = error else {
+                return XCTFail("expected malformedJSON, got \(error)")
+            }
+        }
+    }
+
     /// Regression: a NON-key-bearing malformed JSON line is ordinary text
     /// (nil), never an error — only key-bearing lines are treated as
     /// proposal-looking.
@@ -148,6 +170,28 @@ final class ContextBuilderFleetScrutinyTests: XCTestCase {
         )
     }
 
+    /// Regression (scrutiny round 2): the untrusted designation session
+    /// reference is escaped with the same single-line rule as snapshot
+    /// fields, so it cannot manufacture a declared-roster line.
+    func test_newlineInjectionInDesignationSessionRefCannotAlterRosterLine() {
+        let snapshot = FleetTestFixtures.makeSnapshot()
+        let designation = BurnBarOrchestratorDesignation.agent(
+            id: .hermes,
+            sessionRef: .present("session-123\n- hermes: running")
+        )
+        let prompt = ContextBuilder.buildFleetOrchestratorSystemPrompt(
+            snapshot: snapshot,
+            designation: designation,
+            proposalNonce: "nonce-1"
+        )
+
+        XCTAssertFalse(
+            prompt.contains("\n- hermes: running"),
+            "sessionRef newline must not create a standalone running roster line"
+        )
+        XCTAssertTrue(prompt.contains("session-123 - hermes: running"))
+    }
+
     /// VAL-ORCH-031 regression: a `currentTask` carrying the canonical
     /// proposal WRAPPER (a full JSON line) is escaped onto one line so it
     /// can never be misread as a structured proposal.
@@ -236,6 +280,11 @@ final class ContextBuilderFleetScrutinyTests: XCTestCase {
         // Probe health section.
         XCTAssertTrue(section.contains("### Probe health"))
         XCTAssertTrue(section.contains("degraded (root stale since Jul 19)"))
+        XCTAssertTrue(section.contains("schemaVersion: 1"))
+        XCTAssertTrue(section.contains("checkedAt:"))
+        XCTAssertTrue(section.contains("displayName: claude-code"))
+        XCTAssertTrue(section.contains("currentTask: Refactor probe layer"))
+        XCTAssertTrue(section.contains("memoryTotalBytes:"))
     }
 
     /// VAL-ORCH-040: the truncation marker names the omitted categories
@@ -245,6 +294,14 @@ final class ContextBuilderFleetScrutinyTests: XCTestCase {
         let section = ContextBuilder.fleetSnapshotSection(snapshot)
         XCTAssertTrue(section.contains(ContextBuilder.fleetContextTruncatedMarker))
         XCTAssertTrue(section.contains("omitted categories"))
+        XCTAssertTrue(section.contains("schemaVersion: 1"))
+        XCTAssertTrue(section.contains("- cadenceSeconds: 15"))
+        XCTAssertTrue(section.contains("persistenceHealth: ok"))
+        XCTAssertTrue(section.contains("pendingDirectives: 0"))
+        XCTAssertTrue(section.contains("probeHealth: 30 entries"))
+        XCTAssertTrue(section.contains("state: ok"))
+        let omitted = section.components(separatedBy: "omitted categories:").last ?? ""
+        XCTAssertFalse(omitted.contains("persistenceHealth"))
         // Status/confidence preserved for every row (VAL-ORCH-026).
         for agent in snapshot.agents {
             XCTAssertTrue(

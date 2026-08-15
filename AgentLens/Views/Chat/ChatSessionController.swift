@@ -351,7 +351,6 @@ final class ChatSessionController {
     /// or erase the newer stream's pending proposal.
     private struct GenerationContext {
         let assistantId: String
-        let proposalNonce: String
         var pendingProposal: BurnBarFleetProposalWire?
     }
 
@@ -608,7 +607,7 @@ extension ChatSessionController {
         )
         firstAssistantBadgeShown = true
         messages.append(placeholder)
-        let context = GenerationContext(assistantId: assistantId, proposalNonce: proposalNonce ?? "")
+        let context = GenerationContext(assistantId: assistantId)
         generation = context
 
         // Wraps the caller's proposal callback with the generation guard:
@@ -805,23 +804,21 @@ extension ChatSessionController {
             buffer.removeSubrange(...newlineIndex)
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
-            if let onProposal {
-                do {
-                    if let proposal = try BurnBarFleetProposalParser.parse(
-                        line: line,
-                        proposalNonce: proposalNonce
-                    ) {
-                        onProposal(proposal)
-                        continue
-                    }
-                } catch {
-                    // A line that LOOKS like a proposal but violates the
-                    // canonical shape (injection attempt, malformed JSON,
-                    // unknown kind/agent, nonce mismatch) is dropped — never
-                    // rendered as assistant text, never a proposal
-                    // (VAL-ORCH-031).
+            do {
+                if let proposal = try BurnBarFleetProposalParser.parse(
+                    line: line,
+                    proposalNonce: proposalNonce
+                ) {
+                    onProposal?(proposal)
                     continue
                 }
+            } catch {
+                // A line that LOOKS like a proposal but violates the
+                // canonical shape (injection attempt, malformed JSON,
+                // unknown kind/agent, nonce mismatch) is dropped — never
+                // rendered as assistant text, never a proposal
+                // (VAL-ORCH-031).
+                continue
             }
             appendStreamingText(trimmed, to: &pieces)
         }
@@ -947,6 +944,9 @@ extension ChatSessionController {
             // (VAL-ORCH-012). A dismissed directive is never delivered
             // (VAL-ORCH-013).
             if shouldDeliver {
+                guard messages[idx].deliveryRecoveryRequired == false else {
+                    return
+                }
                 let approvedDirective = BurnBarFleetDirective(
                     id: recorded.id,
                     kind: recorded.kind,
@@ -1001,8 +1001,24 @@ extension ChatSessionController {
         } catch {
             let saveError = error
             let message = "Proposal error could not be saved locally: \(saveError.localizedDescription)"
+            let failed = ChatMessageRecord(
+                id: updated.id,
+                role: updated.role,
+                content: updated.content,
+                timestamp: updated.timestamp,
+                cliUsed: updated.cliUsed,
+                transcriptPieces: updated.transcriptPieces,
+                cancelled: updated.cancelled,
+                proposalJSON: updated.proposalJSON,
+                proposalDecision: updated.proposalDecision,
+                proposalDecidedAt: updated.proposalDecidedAt,
+                deliveryState: updated.deliveryState,
+                deliveryRecoveryRequired: updated.deliveryRecoveryRequired,
+                proposalError: message
+            )
+            messages[idx] = failed
             persistenceError = message
-            persistRecoveryJournal(updated)
+            persistRecoveryJournal(failed)
         }
     }
 
@@ -1015,6 +1031,10 @@ extension ChatSessionController {
     func cancelGeneration() {
         streamTask?.cancel()
         cliBridge.cancel()
+        // Invalidate the token before the cancelled CLI can deliver any late
+        // output. Its guarded proposal callback and finalize path must not
+        // attach a phantom card to the cancelled message.
+        generation = nil
         isStreaming = false
         activeStreamMessageId = nil
     }

@@ -420,18 +420,26 @@ delivered") never produces a proposal, a record, or a delivery.
   they can never carry the nonce or a bare canonical-wrapper line; newline
   and canonical-wrapper injection regression tests cover both.
 - **Malformed proposal lines are DROPPED.** A line that carries the canonical
-  key but is not valid JSON throws the typed `ParseError.malformedJSON`; the
-  stream consumer drops it — it is never rendered as assistant text.
+  key but is not valid JSON, or whose wrapper is not a dictionary (`null`,
+  string, or array), throws the typed `ParseError.malformedJSON`; the stream
+  consumer drops it — it is never rendered as assistant text. The deterministic
+  fixture modes `proposal-malformed` and `proposal-wrapper-malformed` cover
+  both shapes.
 - **Under-cap completeness.** Below the prompt cap the fleet context renders
-  EVERY snapshot field deterministically: agent signal sources,
-  process/lastActivityAt, probeHealth, persistenceHealth, thermal/power/disk
-  detail, and orchestrator pendingDirectives. Truncation omits ONLY the
-  documented verbose categories (per-agent signal detail, per-agent
-  task/process detail, machine sensor detail, repo grouping, probe-health
-  detail) and emits the explicit `fleet context truncated` marker with
-  `generatedAt` + preserved aggregates (VAL-ORCH-026/040).
+  EVERY snapshot field deterministically: schemaVersion, cadenceSeconds,
+  agent/repo identity, signal sources, process/lastActivityAt,
+  probeHealth.checkedAt/state/root, persistenceHealth, every machine metric,
+  and orchestrator designation/setAt/pendingDirectives. Truncation preserves
+  all non-verbose fields, row identity/status/confidence, and probe-health
+  state. It omits ONLY per-agent signal detail, per-agent
+  task/process/model/note detail, and repo grouping, and emits the explicit
+  `fleet context truncated` marker (VAL-ORCH-026/040).
+- **Designation-field escaping.** The orchestrator `sessionRef` is an
+  untrusted prompt field and uses the same CR/LF-to-space escaping as agent
+  and probe fields. It cannot create a standalone declared-roster line.
 - **Cancellation race isolation.** Each stream owns a generation context
-  (assistant id + nonce + pending proposal); `finalizeStream` only finalizes
+  (assistant id + nonce + pending proposal); cancellation invalidates that
+  context before the CLI is cancelled, and `finalizeStream` only finalizes
   shared proposal/streaming state for the matching generation, so a rapid
   cancel→send can never attach a newer stream's proposal to an old message
   or erase the newer stream's pending proposal (VAL-ORCH-023).
@@ -451,9 +459,11 @@ delivered") never produces a proposal, a record, or a delivery.
   `proposalError`), with the pending proposal preserved and retryable —
   `streamError` alone is never relied on, because ChatPanel does not render
   it (VAL-ORCH-027). Critical proposal/decision/delivery saves surface their
-  persistence failure the same way (no silent `try?`). A malformed persisted
-  proposalJSON renders visibly non-actionable with no approve/dismiss
-  buttons.
+  persistence failure the same way (no silent `try?`). The save-failure
+  version of `proposalError` is itself journaled durably. Approval delivery is
+  blocked until the local approved/delivery state saves or the recovery journal
+  is present. A malformed persisted proposalJSON renders visibly
+  non-actionable with no approve/dismiss/retry/reconcile buttons.
 
 ### Proposal lifecycle (VAL-ORCH-011/012/013/032)
 
@@ -472,8 +482,8 @@ delivered") never produces a proposal, a record, or a delivery.
   pending — never auto-approved/recorded/delivered.
 
 If local chat persistence fails after daemon acceptance, the app keeps the
-complete card in a recovery journal and shows a typed persistence error. A
-relaunch reconciles any approved `delivering` row against the daemon before
+complete card in a recovery journal and shows a typed persistence error; it
+does not start delivery. A relaunch reconciles any approved `delivering` row against the daemon before
 offering another delivery attempt. A known terminal daemon record is adopted
 without redelivery; an approved record becomes a typed retryable interrupted
 failure; if the daemon is unavailable, the card remains visibly blocked until
@@ -549,11 +559,13 @@ well-known file, and the UI after the next completed fleet tick
 
 The injected snapshot section respects `BurnBarChatContextBudget.maxFleetContextChars`
 (12,000 chars). When the cap forces omission, the section carries the
-deterministic marker **"fleet context truncated"** with the snapshot
-`generatedAt`, preserved aggregate counts (`runningCount`, `countsByAgent`),
-every agent row's status/confidence, and the categories omitted (per-agent
-signal detail, machine detail, repo grouping). Identical snapshots produce
-byte-identical prompts.
+deterministic marker **"fleet context truncated"** with every non-verbose
+authoritative field (schemaVersion, cadence, machine/persistence/orchestrator
+state, probe-health state), the snapshot `generatedAt`, preserved aggregate
+counts (`runningCount`, `countsByAgent`), every agent row's
+identity/status/confidence, and the categories omitted (per-agent signal
+detail, per-agent task/process/model/note detail, repo grouping). Identical
+snapshots produce byte-identical prompts.
 
 ---
 

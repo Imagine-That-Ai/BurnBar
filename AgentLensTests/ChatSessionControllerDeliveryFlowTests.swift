@@ -310,4 +310,128 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         XCTAssertNotNil(approved.proposalDecidedAt)
         failSaves = false
     }
+
+    func test_localDecisionPersistenceFailureBlocksDelivery() async throws {
+        let snapshot = freshSnapshot()
+        var failSaves = true
+        var controllerThreadID = DataStore.legacyChatThreadID
+        let channel = StubDeliveryChannel(outcome: .delivered)
+        let controller = makeController(
+            snapshot: snapshot,
+            cliBridge: makeFakeCLIBridge(mode: "proposal"),
+            deliveryChannelProvider: { target in
+                guard target == .hermes else { return nil }
+                return channel
+            },
+            saveChatMessage: { message, _ in
+                if failSaves, message.proposalDecision != nil || message.deliveryState != nil {
+                    throw NSError(domain: "ChatPersistence", code: 8, userInfo: [
+                        NSLocalizedDescriptionKey: "sandbox database is read-only"
+                    ])
+                }
+                try self.store.saveChatMessage(message, threadID: controllerThreadID)
+            }
+        )
+        controller.startNewChatThread()
+        controllerThreadID = controller.activeThreadID
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForProposal(controller)
+
+        let pending = try XCTUnwrap(lastAssistantMessage(controller))
+        controller.approveProposal(messageID: pending.id)
+        try await Task.sleep(nanoseconds: 250_000_000)
+
+        let failed = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertEqual(failed.proposalDecision, .approved)
+        XCTAssertTrue(failed.deliveryRecoveryRequired)
+        XCTAssertTrue(failed.proposalError?.contains("saving it locally failed") == true)
+        XCTAssertTrue(
+            channel.deliveredDirectives.isEmpty,
+            "delivery must not start until approved state is locally durable"
+        )
+        failSaves = false
+    }
+
+    func test_proposalErrorSaveFailureIsJournaledWithVisibleRetryState() throws {
+        let snapshot = freshSnapshot()
+        var failProposalErrorSave = true
+        var controllerThreadID = DataStore.legacyChatThreadID
+        let controller = makeController(
+            snapshot: snapshot,
+            saveChatMessage: { message, _ in
+                if failProposalErrorSave, message.proposalError != nil {
+                    throw NSError(domain: "ChatPersistence", code: 9, userInfo: [
+                        NSLocalizedDescriptionKey: "sandbox database is read-only"
+                    ])
+                }
+                try self.store.saveChatMessage(message, threadID: controllerThreadID)
+            }
+        )
+        controller.startNewChatThread()
+        controllerThreadID = controller.activeThreadID
+        let wire = BurnBarFleetProposalWire(
+            id: "persist-error",
+            kind: .askStatus,
+            targetAgent: .hermes,
+            payload: "Report current status"
+        )
+        let pending = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            proposalJSON: try XCTUnwrap(wire.encode())
+        )
+        try store.saveChatMessage(pending, threadID: controller.activeThreadID)
+        controller.messages = [pending]
+
+        controller.setProposalError(messageID: pending.id, error: "Daemon is unavailable")
+
+        let inMemory = try XCTUnwrap(controller.messages.first)
+        XCTAssertNil(inMemory.proposalDecision)
+        XCTAssertNotNil(inMemory.proposalJSON)
+        XCTAssertTrue(inMemory.proposalError?.contains("could not be saved locally") == true)
+
+        let relaunched = makeController(snapshot: snapshot)
+        relaunched.loadPersistedMessages()
+        let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
+        XCTAssertNil(restored.proposalDecision)
+        XCTAssertNotNil(restored.proposalJSON)
+        XCTAssertTrue(
+            restored.proposalError?.contains("could not be saved locally") == true,
+            "the durable recovery record must preserve the local save failure"
+        )
+        relaunched.clearRecoveryJournal(for: pending.id)
+        failProposalErrorSave = false
+    }
+
+    func test_malformedApprovedFailedCardHasNoActionableControls() {
+        let malformed = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            proposalJSON: #"{"burnbar_directive_proposal": null}"#,
+            proposalDecision: .approved,
+            deliveryState: .failed(reason: "gateway unavailable"),
+            proposalError: "Malformed proposal payload"
+        )
+        XCTAssertFalse(
+            ChatMessageView.hasActionableProposal(malformed),
+            "malformed persisted cards must not expose delivery retry/reconcile controls"
+        )
+
+        let validWire = BurnBarFleetProposalWire(
+            id: "valid",
+            kind: .askStatus,
+            targetAgent: .hermes,
+            payload: "status"
+        )
+        let valid = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            proposalJSON: validWire.encode(),
+            proposalDecision: .approved,
+            deliveryState: .failed(reason: "gateway unavailable")
+        )
+        XCTAssertTrue(ChatMessageView.hasActionableProposal(valid))
+    }
 }

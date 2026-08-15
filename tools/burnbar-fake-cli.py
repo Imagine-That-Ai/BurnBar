@@ -26,6 +26,12 @@ Usage (all modes are selected by env, never by live-model state):
                                    emit a canonical-key-bearing line that is
                                    NOT valid JSON (malformed-proposal-line
                                    regression: must be DROPPED, never shown)
+  BURNBAR_FAKE_CLI_MODE=proposal-wrapper-malformed
+                                   emit canonical-key JSON with null and
+                                   string wrappers (typed malformed fixture)
+  BURNBAR_FAKE_CLI_MODE=late-proposal
+                                   ignore cancellation, then emit a canonical
+                                   proposal after the generation is cancelled
   BURNBAR_FAKE_CLI_MODE=combo     dispatch on the USER MESSAGE so one shimmed
                                    bridge can serve two different generations:
                                    "hang-first" → ignore SIGTERM and sleep
@@ -87,7 +93,9 @@ def record_self_write():
     os.makedirs(d, exist_ok=True)
     mode = os.environ.get("BURNBAR_FAKE_CLI_MODE", "default")
     prompt = prompt_from_argv()
-    nonce = proposal_nonce_from_prompt(prompt) if mode in ("proposal", "combo") else "-"
+    nonce = proposal_nonce_from_prompt(prompt) if mode in (
+        "proposal", "combo", "late-proposal"
+    ) else "-"
     user_hint = ""
     if prompt and "User:\n" in prompt:
         user_hint = prompt.rsplit("User:\n", 1)[-1].strip()[:40]
@@ -224,6 +232,28 @@ def main():
         # A canonical-key-bearing line that is NOT valid JSON: the app must
         # drop it (typed malformed error), never render it as assistant text.
         emit_text('{"burnbar_directive_proposal": {"id": "m4-malformed", "kind": "askStatus", "targetAgent": "hermes", "payload": "truncated' + "\n")
+        sys.exit(0)
+
+    if mode == "proposal-wrapper-malformed":
+        # Valid JSON with a canonical key but a non-dictionary wrapper. The
+        # app must type-drop both lines rather than render them as prose.
+        emit_text('{"burnbar_directive_proposal": null}\n')
+        emit_text('{"burnbar_directive_proposal": "not-an-object"}\n')
+        sys.exit(0)
+
+    if mode == "late-proposal":
+        prompt = prompt_from_argv()
+        if not prompt:
+            prompt = sys.stdin.read()
+        nonce = proposal_nonce_from_prompt(prompt)
+        proposal = dict(PROPOSAL_TEMPLATE)
+        if nonce:
+            proposal["burnbar_directive_proposal_nonce"] = nonce
+        # Ignore cancellation long enough to exercise the late-callback
+        # generation guard, then emit output from the cancelled process.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        time.sleep(0.5)
+        emit_text(json.dumps(proposal) + "\n")
         sys.exit(0)
 
     if mode == "combo":

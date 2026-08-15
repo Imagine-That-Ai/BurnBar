@@ -347,6 +347,31 @@ final class ChatSessionControllerOrchestratorTests: ChatSessionControllerOrchest
         XCTAssertTrue(controller.messages.count >= 4, "next send appends user + assistant messages")
     }
 
+    /// Regression (scrutiny round 2): a cancelled CLI that emits a proposal
+    /// after cancellation cannot attach an actionable proposal to the
+    /// cancelled assistant message.
+    func test_lateProposalFromCancelledGenerationIsDropped() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(
+            snapshot: snapshot,
+            cliBridge: makeFakeCLIBridge(mode: "late-proposal")
+        )
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "cancel before proposal"
+        let sendTask = Task { await controller.send() }
+
+        await waitForStreaming(controller, shouldStream: true)
+        controller.cancelGeneration()
+        await sendTask.value
+        await waitForLastMessage(controller, cancelled: true)
+
+        let cancelled = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertTrue(cancelled.cancelled)
+        XCTAssertNil(cancelled.proposalJSON, "late output from a cancelled generation is never actionable")
+        XCTAssertEqual(directiveRecordCalls, 0)
+    }
+
     // MARK: - Pending proposal survives relaunch (VAL-ORCH-032)
 
     func test_pendingProposalSurvivesAppRelaunchNeverAutoApproved() async throws {
@@ -413,6 +438,27 @@ final class ChatSessionControllerOrchestratorTests: ChatSessionControllerOrchest
         XCTAssertNil(last?.proposalJSON, "malformed key-bearing line never becomes a proposal")
         XCTAssertFalse(last?.content.contains("burnbar_directive_proposal") == true, "never rendered as assistant text")
         XCTAssertEqual(directiveRecordCalls, 0, "no record from a malformed proposal line")
+    }
+
+    /// Scrutiny round 2 regression: valid JSON with canonical null/string
+    /// wrappers is typed malformed and dropped, not appended as assistant
+    /// prose.
+    func test_keyBearingWrongWrapperTypesAreDroppedNotRendered() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(
+            snapshot: snapshot,
+            cliBridge: makeFakeCLIBridge(mode: "proposal-wrapper-malformed")
+        )
+        controller.startNewChatThread()
+        controller.setMode(.orchestrator)
+        controller.inputText = "ask hermes for status"
+        await controller.send()
+        await waitForStream(controller)
+
+        let last = try XCTUnwrap(lastAssistantMessage(controller))
+        XCTAssertNil(last.proposalJSON)
+        XCTAssertFalse(last.content.contains("burnbar_directive_proposal"))
+        XCTAssertEqual(directiveRecordCalls, 0)
     }
 
     // MARK: - Scrutiny round 1: cancellation race isolation (blocking)

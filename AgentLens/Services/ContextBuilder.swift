@@ -405,7 +405,9 @@ extension ContextBuilder {
     /// Honesty invariants:
     /// - every agent row's status/confidence is preserved (rows are never
     ///   dropped, even when verbose signal detail is omitted);
-    /// - `runningCount` and `countsByAgent` are always preserved;
+    /// - `schemaVersion`, `cadenceSeconds`, `runningCount`,
+    ///   `countsByAgent`, machine health, orchestrator state, and probe health
+    ///   are always preserved;
     /// - when the cap forces omission, the explicit
     ///   `fleet context truncated` marker names `generatedAt` and the
     ///   categories omitted (VAL-ORCH-026/040);
@@ -463,6 +465,7 @@ extension ContextBuilder {
     /// with generatedAt + preserved aggregates.
     static func fleetSnapshotSection(_ snapshot: BurnBarFleetSnapshot) -> String {
         var lines: [String] = []
+        lines.append("- schemaVersion: \(snapshot.schemaVersion)")
         lines.append("- generatedAt: \(Self.fleetDateString(snapshot.generatedAt))")
         lines.append("- cadenceSeconds: \(snapshot.cadenceSeconds)")
         lines.append("- runningCount: \(snapshot.runningCount)")
@@ -481,7 +484,7 @@ extension ContextBuilder {
             lines.append("- (none)")
         } else {
             for repo in snapshot.repos {
-                let ids = repo.agents.map(\.wireValue).joined(separator: ", ")
+                let ids = repo.agents.map { escapedSnapshotValue($0.wireValue) }.joined(separator: ", ")
                 lines.append("- \(escapedSnapshotValue(repo.projectName)): \(ids)")
             }
         }
@@ -490,10 +493,9 @@ extension ContextBuilder {
         if snapshot.probeHealth.isEmpty {
             lines.append("- (none)")
         } else {
+            lines.append("- probeHealth: \(snapshot.probeHealth.count) entries")
             for health in snapshot.probeHealth {
-                lines.append(
-                    "- \(health.agent.wireValue): \(probeHealthStateLine(health.state)) · root: \(escapedSnapshotValue(health.rootPath))"
-                )
+                lines.append(probeHealthLine(health))
             }
         }
 
@@ -504,25 +506,41 @@ extension ContextBuilder {
         return section
     }
 
-    /// The deterministic truncated form: preserves the marker, `generatedAt`,
-    /// and the aggregate counts, and names the categories omitted
-    /// (VAL-ORCH-040). Only the documented verbose categories are omitted —
-    /// never whole rows or counts.
+    /// The deterministic truncated form preserves every non-verbose
+    /// authoritative field: schema/cadence, aggregates, machine health,
+    /// orchestrator state, every row's identity/status/confidence and
+    /// probe-health state. Only the documented verbose categories are
+    /// omitted (VAL-ORCH-040).
     private static func truncatedFleetSection(_ snapshot: BurnBarFleetSnapshot) -> String {
         var lines: [String] = []
         lines.append("\(fleetContextTruncatedMarker): snapshot context exceeded the size cap")
+        lines.append("- schemaVersion: \(snapshot.schemaVersion)")
         lines.append("- generatedAt: \(Self.fleetDateString(snapshot.generatedAt))")
+        lines.append("- cadenceSeconds: \(snapshot.cadenceSeconds)")
         lines.append("- runningCount: \(snapshot.runningCount)")
         lines.append("- countsByAgent: \(countsLine(snapshot.countsByAgent))")
-        lines.append("- agents: \(snapshot.agents.count) rows (status/confidence preserved for every row)")
+        lines.append("- machine: \(machineLine(snapshot.machine))")
+        lines.append("- persistenceHealth: \(persistenceHealthLine(snapshot.persistenceHealth))")
+        lines.append("- orchestrator: \(orchestratorLine(snapshot.orchestrator))")
+        lines.append("- agents: \(snapshot.agents.count) rows (identity/status/confidence preserved for every row)")
         lines.append(
-            "- omitted categories: per-agent signal detail, per-agent task/process detail, "
-                + "machine sensor detail, repo grouping, probe-health detail"
+            "- omitted categories: per-agent signal detail, per-agent task/process/model/note detail, "
+                + "repo grouping"
         )
         lines.append("")
-        lines.append("### Agents (status/confidence only)")
+        lines.append("### Agents (identity/status/confidence)")
         for agent in snapshot.agents {
-            lines.append("- \(agent.id.wireValue): \(agent.status.rawValue) / \(agent.confidence.rawValue)")
+            lines.append(agentSummaryLine(agent))
+        }
+        lines.append("")
+        lines.append("### Probe health")
+        if snapshot.probeHealth.isEmpty {
+            lines.append("- (none)")
+        } else {
+            lines.append("- probeHealth: \(snapshot.probeHealth.count) entries")
+            for health in snapshot.probeHealth {
+                lines.append(probeHealthLine(health))
+            }
         }
         return lines.joined(separator: "\n")
     }
@@ -548,9 +566,14 @@ extension ContextBuilder {
         case .burnBarManaged:
             return "- designation: burnBarManaged"
         case .agent(let id, let sessionRef):
-            var line = "- designation: agent(\(id.wireValue))"
-            if let ref = sessionRef.value {
-                line += " sessionRef: \(ref)"
+            var line = "- designation: agent(\(escapedSnapshotValue(id.wireValue)))"
+            switch sessionRef {
+            case .absent:
+                line += " sessionRef: <absent>"
+            case .null:
+                line += " sessionRef: null"
+            case .present(let ref):
+                line += " sessionRef: \(escapedSnapshotValue(ref))"
             }
             return line
         }
@@ -559,7 +582,9 @@ extension ContextBuilder {
     private static func countsLine(_ counts: [String: Int]) -> String {
         let sorted = counts.sorted { $0.key < $1.key }
         if sorted.isEmpty { return "{}" }
-        return sorted.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+        return sorted
+            .map { "\(escapedSnapshotValue($0.key))=\($0.value)" }
+            .joined(separator: ", ")
     }
 
     /// Escapes a snapshot-provided value for single-line embedding
@@ -597,22 +622,19 @@ extension ContextBuilder {
     }
 
     private static func machineLine(_ machine: BurnBarMachineStatus) -> String {
-        var parts: [String] = []
-        if let cpu = machine.cpuPercent {
-            parts.append("cpu \(FleetFormatting.formatCPU(cpu))")
-        }
-        if let used = machine.memoryUsedBytes, machine.memoryTotalBytes > 0 {
-            parts.append("mem \(FleetFormatting.formatMemory(used: used, total: machine.memoryTotalBytes))")
-        }
-        if let load = machine.loadAverage, !load.isEmpty {
-            parts.append("load \(FleetFormatting.formatLoadAverage(load))")
-        }
-        if let disk = machine.diskFreeBytes {
-            parts.append("diskFree \(FleetFormatting.formatDiskFree(disk))")
-        }
-        parts.append(sensorLine("thermal", machine.thermal))
-        parts.append(sensorLine("power", machine.power))
-        return parts.joined(separator: " · ")
+        let load = machine.loadAverage.map { values in
+            "[" + values.map { String($0) }.joined(separator: ", ") + "]"
+        } ?? "null"
+        let fields: [String] = [
+            "cpuPercent: \(machine.cpuPercent.map { String($0) } ?? "null")",
+            "memoryUsedBytes: \(machine.memoryUsedBytes.map { String($0) } ?? "null")",
+            "memoryTotalBytes: \(machine.memoryTotalBytes)",
+            "loadAverage: \(load)",
+            "diskFreeBytes: \(machine.diskFreeBytes.map { String($0) } ?? "null")",
+            sensorLine("thermal", machine.thermal),
+            sensorLine("power", machine.power)
+        ]
+        return fields.joined(separator: " · ")
     }
 
     private static func persistenceHealthLine(_ health: BurnBarFleetPersistenceHealth) -> String {
@@ -629,6 +651,8 @@ extension ContextBuilder {
         parts.append("pendingDirectives: \(state.pendingDirectives)")
         if let setAt = state.setAt {
             parts.append("setAt: \(fleetDateString(setAt))")
+        } else {
+            parts.append("setAt: null")
         }
         return parts.joined(separator: " · ")
     }
@@ -644,45 +668,65 @@ extension ContextBuilder {
         }
     }
 
+    private static func probeHealthLine(_ health: BurnBarFleetProbeHealth) -> String {
+        "- \(escapedSnapshotValue(health.agent.wireValue)): state: \(probeHealthStateLine(health.state))"
+            + " · root: \(escapedSnapshotValue(health.rootPath))"
+            + " · checkedAt: \(fleetDateString(health.checkedAt))"
+    }
+
+    private static func agentSummaryLine(_ agent: BurnBarFleetAgent) -> String {
+        "- \(escapedSnapshotValue(agent.id.wireValue)): \(agent.status.rawValue) / \(agent.confidence.rawValue)"
+            + " · displayName: \(escapedSnapshotValue(agent.displayName))"
+            + " · projectName: \(optionalSnapshotString(agent.projectName))"
+            + " · lastActivityAt: \(optionalSnapshotDate(agent.lastActivityAt))"
+    }
+
+    private static func optionalSnapshotString(_ value: String?) -> String {
+        value.map(escapedSnapshotValue) ?? "null"
+    }
+
+    private static func optionalSnapshotDate(_ value: Date?) -> String {
+        value.map(fleetDateString) ?? "null"
+    }
+
     private static func agentLine(_ agent: BurnBarFleetAgent) -> String {
-        var parts: [String] = ["\(agent.id.wireValue): \(agent.status.rawValue) (\(agent.confidence.rawValue))"]
-        if let task = agent.currentTask, !task.isEmpty {
-            parts.append("task: \(escapedSnapshotValue(task))")
-        }
-        if let project = agent.projectName, !project.isEmpty {
-            parts.append("repo: \(escapedSnapshotValue(project))")
-        }
-        if let model = agent.model, !model.isEmpty {
-            parts.append("model: \(escapedSnapshotValue(model))")
-        }
-        if let note = agent.note, !note.isEmpty {
-            parts.append("note: \(escapedSnapshotValue(note))")
-        }
-        if let lastActivity = agent.lastActivityAt {
-            parts.append("lastActivityAt: \(fleetDateString(lastActivity))")
-        }
+        var parts: [String] = [
+            "\(escapedSnapshotValue(agent.id.wireValue)): \(agent.status.rawValue) (\(agent.confidence.rawValue))",
+            "displayName: \(escapedSnapshotValue(agent.displayName))",
+            "currentTask: \(optionalSnapshotString(agent.currentTask))",
+            "projectName: \(optionalSnapshotString(agent.projectName))",
+            "model: \(optionalSnapshotString(agent.model))",
+            "lastActivityAt: \(optionalSnapshotDate(agent.lastActivityAt))"
+        ]
         if let process = agent.process {
-            var processParts = ["pid \(process.pid)"]
-            if let cpu = process.cpuPercent {
-                processParts.append("cpu \(FleetFormatting.formatCPU(cpu))")
-            }
-            if let memory = process.memoryBytes {
-                processParts.append("mem \(FleetFormatting.formatBytes(memory))")
-            }
-            if let startedAt = process.startedAt {
-                processParts.append("startedAt \(fleetDateString(startedAt))")
-            }
-            parts.append("process: " + processParts.joined(separator: ", "))
+            let processParts = [
+                "pid \(process.pid)",
+                "cpuPercent: \(process.cpuPercent.map { String($0) } ?? "null")",
+                "memoryBytes: \(process.memoryBytes.map { String($0) } ?? "null")",
+                "startedAt \(optionalSnapshotDate(process.startedAt))"
+            ]
+            parts.append("process: {" + processParts.joined(separator: ", ") + "}")
+        } else {
+            parts.append("process: null")
         }
         if !agent.signals.isEmpty {
             let signals = agent.signals.map { signal -> String in
                 var line = "\(escapedSnapshotValue(signal.kind)):\(escapedSnapshotValue(signal.path))"
                 if let detail = signal.detail, !detail.isEmpty {
                     line += " (\(escapedSnapshotValue(detail)))"
+                } else {
+                    line += " (detail: null)"
                 }
                 return line
             }
             parts.append("signals: " + signals.joined(separator: " | "))
+        } else {
+            parts.append("signals: []")
+        }
+        if let note = agent.note {
+            parts.append("note: \(escapedSnapshotValue(note))")
+        } else {
+            parts.append("note: null")
         }
         return "- " + parts.joined(separator: " · ")
     }
@@ -785,11 +829,17 @@ enum BurnBarFleetProposalParser {
             throw ParseError.malformedJSON
         }
 
-        guard let proposal = object[proposalKey] as? [String: Any] else {
+        guard object[proposalKey] != nil else {
             // Valid JSON without the canonical key → ordinary text. This is
             // the injection rejection path: approval-looking JSON that lacks
             // the canonical shape never parses as a proposal (VAL-ORCH-031).
             return nil
+        }
+        guard let proposal = object[proposalKey] as? [String: Any] else {
+            // A canonical key with a non-dictionary wrapper is still
+            // proposal-looking malformed input. It must be typed-dropped,
+            // never rendered as ordinary assistant text.
+            throw ParseError.malformedJSON
         }
 
         // Provenance binding (VAL-ORCH-031): when a per-send nonce is

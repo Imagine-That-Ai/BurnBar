@@ -58,6 +58,15 @@ struct ChatMessageView: View {
         transcript.last { $0.kind == .text }?.id
     }
 
+    /// Proposal actions are permitted only when the persisted canonical
+    /// payload decodes. This policy is shared by the card's decision and
+    /// delivery/recovery controls so malformed persisted cards cannot expose
+    /// a retry that silently no-ops.
+    static func hasActionableProposal(_ message: ChatMessageRecord) -> Bool {
+        guard let proposalJSON = message.proposalJSON else { return false }
+        return BurnBarFleetProposalWire.decode(json: proposalJSON) != nil
+    }
+
     var body: some View {
         HStack(alignment: .bottom, spacing: DesignSystem.Spacing.sm) {
             if message.role == .user {
@@ -134,7 +143,7 @@ struct ChatMessageView: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
             proposalHeader
             proposalBody(proposal: proposal)
-            proposalErrorRow
+            proposalErrorRow(proposal: proposal)
             proposalActions(proposal: proposal, decision: decision)
         }
         .frame(maxWidth: 300, alignment: .leading)
@@ -207,7 +216,7 @@ struct ChatMessageView: View {
     /// which ChatPanel does not display. The pending proposal is preserved
     /// so the action stays retryable.
     @ViewBuilder
-    private var proposalErrorRow: some View {
+    private func proposalErrorRow(proposal: BurnBarFleetProposalWire?) -> some View {
         if let proposalError = message.proposalError, !proposalError.isEmpty {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.xs) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -228,7 +237,7 @@ struct ChatMessageView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Proposal error: \(proposalError)")
 
-            if message.deliveryRecoveryRequired, message.deliveryState == nil,
+            if proposal != nil, message.deliveryRecoveryRequired, message.deliveryState == nil,
                message.proposalDecision == .approved,
                let onReconcileDelivery {
                 Button("Reconcile with daemon") {
@@ -250,38 +259,40 @@ struct ChatMessageView: View {
         proposal: BurnBarFleetProposalWire?,
         decision: ChatProposalDecision?
     ) -> some View {
-        if let decision {
-            let isApproved = decision == .approved
-            HStack(spacing: DesignSystem.Spacing.xs) {
-                Image(systemName: isApproved ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
-                Text(isApproved ? "Approved" : "Dismissed")
+        if proposal != nil {
+            if let decision {
+                let isApproved = decision == .approved
+                HStack(spacing: DesignSystem.Spacing.xs) {
+                    Image(systemName: isApproved ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
+                    Text(isApproved ? "Approved" : "Dismissed")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
+                }
+
+                if isApproved, let deliveryState = message.deliveryState {
+                    deliveryStateRow(deliveryState)
+                }
+            } else if let onApproveProposal, let onDismissProposal {
+                // Only a DECODED proposal offers live consent controls: a
+                // malformed persisted payload renders visibly non-actionable
+                // above (scrutiny round 1).
+                HStack(spacing: DesignSystem.Spacing.sm) {
+                    Button(message.proposalError == nil ? "Approve" : "Retry approval") {
+                        onApproveProposal(message.id)
+                    }
                     .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(isApproved ? DesignSystem.Colors.success : DesignSystem.Colors.error)
-            }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignSystem.Colors.success)
+                    .accessibilityLabel(message.proposalError == nil ? "Approve proposal" : "Retry proposal approval")
 
-            if isApproved, let deliveryState = message.deliveryState {
-                deliveryStateRow(deliveryState)
-            }
-        } else if proposal != nil, let onApproveProposal, let onDismissProposal {
-            // Only a DECODED proposal offers live consent controls: a
-            // malformed persisted payload renders visibly non-actionable
-            // above (scrutiny round 1).
-            HStack(spacing: DesignSystem.Spacing.sm) {
-                Button(message.proposalError == nil ? "Approve" : "Retry approval") {
-                    onApproveProposal(message.id)
+                    Button("Dismiss") {
+                        onDismissProposal(message.id)
+                    }
+                    .font(DesignSystem.Typography.caption)
+                    .buttonStyle(.bordered)
                 }
-                .font(DesignSystem.Typography.caption)
-                .buttonStyle(.borderedProminent)
-                .tint(DesignSystem.Colors.success)
-                .accessibilityLabel(message.proposalError == nil ? "Approve proposal" : "Retry proposal approval")
-
-                Button("Dismiss") {
-                    onDismissProposal(message.id)
-                }
-                .font(DesignSystem.Typography.caption)
-                .buttonStyle(.bordered)
             }
         }
     }
