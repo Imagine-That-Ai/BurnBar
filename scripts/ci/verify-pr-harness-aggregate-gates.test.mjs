@@ -29,7 +29,9 @@ const DOMAIN_CORE_WORKFLOW = ".github/workflows/domain-core.yml";
 const HEADLESS_WORKFLOW = ".github/workflows/headless-app-build.yml";
 const FAST_WORKFLOW = ".github/workflows/fast-feedback.yml";
 const NATIVE_WORKFLOW = ".github/workflows/pr-native-fast.yml";
+const SECURITY_WORKFLOW = ".github/workflows/security-pr.yml";
 const BRANCH_PROTECTION = "governance/branch-protection.main.json";
+const CHECKOUT_TIMEOUT_FLOOR_MINUTES = 15;
 const roots = [];
 
 process.on("exit", () => {
@@ -65,14 +67,40 @@ function runGate(root) {
   }
 }
 
+function workflowJobs(source) {
+  const jobs = /^jobs:\s*$/mu.exec(source);
+  assert.ok(jobs, "missing workflow jobs map");
+  const body = source.slice(jobs.index + jobs[0].length);
+  const starts = [...body.matchAll(/^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$/gmu)];
+  return starts.map((match, index) => {
+    const end = starts[index + 1]?.index ?? body.length;
+    return [match[1], body.slice(match.index, end)];
+  });
+}
+
 function workflowJob(source, name) {
-  const start = source.indexOf(`  ${name}:\n`);
-  assert.notEqual(start, -1, `missing workflow job ${name}`);
-  const remainder = source.slice(start + 2);
-  const next = remainder.search(/^  [A-Za-z0-9_-]+:\n/mu);
-  return next === -1
-    ? source.slice(start)
-    : source.slice(start, start + 2 + next);
+  const job = workflowJobs(source).find(([candidate]) => candidate === name)?.[1];
+  assert.ok(job, `missing workflow job ${name}`);
+  return job;
+}
+
+function checkoutTimeoutOffenders(root) {
+  const dir = join(root, ".github", "workflows");
+  const offenders = [];
+  for (const file of readdirSync(dir).filter((name) => /\.ya?ml$/u.test(name)).sort()) {
+    const source = readFileSync(join(dir, file), "utf8");
+    for (const [job, body] of workflowJobs(source)) {
+      const timeout = body.match(/^    timeout-minutes:\s*(\d+)\s*$/mu);
+      if (
+        timeout &&
+        Number.parseInt(timeout[1], 10) < CHECKOUT_TIMEOUT_FLOOR_MINUTES &&
+        body.includes("actions/checkout")
+      ) {
+        offenders.push(`${file}:${job}=${timeout[1]}`);
+      }
+    }
+  }
+  return offenders;
 }
 
 function workflowStep(job, name) {
@@ -393,7 +421,7 @@ const rafStep = appBuildSteps.get("macOS rAF pause prerequisite (P-PERF-3)");
 const buildStep = appBuildSteps.get("Build AgentLens app for real-process CPU gate");
 const realGateStep = appBuildSteps.get("Enforce real macOS idle/occluded CPU budget (P-PERF-3)");
 const evidenceStep = appBuildSteps.get("Upload macOS idle/occlusion CPU evidence");
-const appTestStep = appBuildSteps.get("Build + test the AgentLens app target");
+const appTestStep = appBuildSteps.get("Build + run bounded AgentLens app smoke tests");
 
 check("P-PERF-3 runs the deterministic rAF test before building the real OpenBurnBar app", () => {
   assert.ok(rafStep && buildStep && realGateStep && evidenceStep, "missing P-PERF-3 workflow step");
@@ -444,9 +472,36 @@ check("app tests reuse the real-process build instead of compiling the product t
   assert.match(driver, /derived_data_dir="\$\(create_derived_data_dir\)"/u);
 });
 
+check("PR App Gate uses the bounded smoke catalog and leaves the full suite to harness", () => {
+  assert.equal(jobField(appBuildJob, "timeout-minutes"), "90");
+  const test = stepRun(appTestStep);
+  assert.match(
+    test,
+    /source scripts\/lib\/openburnbar-release-app-test-filters\.sh/u,
+  );
+  assert.match(
+    test,
+    /OPENBURNBAR_APP_TEST_FILTERS="\$\(openburnbar_release_app_test_filters_env\)"/u,
+  );
+  assert.match(test, /OPENBURNBAR_APP_TEST_ATTEMPTS=2/u);
+  assert.match(test, /OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE=180/u);
+  assert.match(test, /OPENBURNBAR_APP_TEST_MAX_ALLOWANCE=360/u);
+  assert.doesNotMatch(
+    appBuildJob,
+    /name: Enforce app diff coverage/u,
+    "bounded smoke coverage cannot enforce full-suite diff coverage",
+  );
+  const harness = readFileSync(join(REPO_ROOT, WORKFLOW), "utf8");
+  const harnessAppJob = workflowJob(harness, "app-xctest");
+  const harnessAppTestStep = workflowStep(harnessAppJob, "Run OpenBurnBar app tests");
+  assert.match(
+    stepRun(harnessAppTestStep),
+    /OPENBURNBAR_ENABLE_COVERAGE=YES \.\/scripts\/test-openburnbar-app\.sh/u,
+  );
+});
+
 const fastWorkflow = readFileSync(join(REPO_ROOT, FAST_WORKFLOW), "utf8");
 const rustJob = workflowJob(fastWorkflow, "rust-deny-fast");
-const sqlcipherJob = workflowJob(fastWorkflow, "sqlcipher-codec-policy");
 const fastGate = workflowJob(fastWorkflow, "fast-feedback-gate");
 const fastStep = workflowStep(fastGate, "Check all fast jobs passed");
 const fastScript = stepScript(fastStep);
@@ -456,29 +511,39 @@ check("every checkout-bearing CI job tolerates a slow checkout", () => {
   // A job whose budget expires during actions/checkout is reported by GitHub as
   // CANCELLED, and the CI Gate aggregator fails closed on a cancelled component
   // -- so an ordinary slow checkout ejects the whole merge-queue candidate. The
-  // pack is ~866MB and a tip checkout has been observed taking 3min+ under
-  // contention. This originally guarded one job (SQLCipher), was widened to
-  // fast-feedback.yml, and is now repo-wide: the required-context detector jobs
-  // (Detect native/dist/windows changes) live in other workflows and were the
-  // ones still ejecting candidates. Any job that runs actions/checkout must
-  // budget >= 6 minutes.
-  const dir = join(REPO_ROOT, ".github/workflows");
-  const offenders = [];
-  for (const file of readdirSync(dir).filter((f) => f.endsWith(".yml"))) {
-    const src = readFileSync(join(dir, file), "utf8");
-    for (const m of src.matchAll(/\n  ([a-z0-9_-]+):\n((?:    .*\n|\n)*)/gu)) {
-      const [, job, body] = m;
-      const t = body.match(/^    timeout-minutes: (\d+)$/mu);
-      if (t && Number.parseInt(t[1], 10) < 6 && body.includes("actions/checkout")) {
-        offenders.push(`${file}:${job}=${t[1]}`);
-      }
-    }
-  }
+  // pack is ~866MB. On 2026-08-10, required jobs were cancelled after spending
+  // their entire 8- and 10-minute budgets inside checkout, while the Firestore
+  // rules job took 10m27s and still passed under a larger cap. This originally
+  // guarded one job (SQLCipher), was widened to fast-feedback.yml, and is now
+  // repo-wide. Any job that runs actions/checkout must budget at least 15
+  // minutes so checkout can finish and the actual check still gets time to run.
+  const offenders = checkoutTimeoutOffenders(REPO_ROOT);
   assert.deepEqual(
     offenders,
     [],
-    `checkout-bearing jobs must budget >=6 min: ${JSON.stringify(offenders)}`,
+    `checkout-bearing jobs must budget >=${CHECKOUT_TIMEOUT_FLOOR_MINUTES} min: ${JSON.stringify(offenders)}`,
   );
+});
+
+check("checkout timeout guard catches a ten-minute OSV budget", () => {
+  const root = mkdtempSync(join(tmpdir(), "checkout-timeout-guard-"));
+  roots.push(root);
+  const workflows = join(root, ".github", "workflows");
+  mkdirSync(workflows, { recursive: true });
+
+  const source = readFileSync(join(REPO_ROOT, SECURITY_WORKFLOW), "utf8");
+  const osvJob = workflowJob(source, "osv-scanner");
+  const mutatedJob = osvJob.replace(
+    /^    timeout-minutes:\s*\d+\s*$/mu,
+    "    timeout-minutes: 10\n",
+  );
+  assert.notEqual(mutatedJob, osvJob, "OSV timeout mutation must change the job");
+  writeFileSync(
+    join(root, SECURITY_WORKFLOW),
+    source.replace(osvJob, mutatedJob),
+  );
+
+  assert.deepEqual(checkoutTimeoutOffenders(root), ["security-pr.yml:osv-scanner=10"]);
 });
 
 check("Rust path detector is mandatory and only a proven unchanged path may skip Rust", () => {
@@ -646,6 +711,34 @@ check("desired main branch protection keeps immutable security checks beside the
   assert.equal(protection.required_pull_request_reviews.dismiss_stale_reviews, true);
   assert.equal(protection.required_pull_request_reviews.require_last_push_approval, true);
   assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
+  assert.ok(
+    gate.required_contexts.includes("Domain Core PR Gate"),
+    "merge_group full set must keep Domain Core PR Gate",
+  );
+
+  const fastGate = JSON.parse(
+    readFileSync(join(REPO_ROOT, "governance/burnbar-ci-gate.fast.json"), "utf8"),
+  );
+  // Fast PR eligibility (#2230) drops the slow walls. Domain Core PR Gate is a
+  // wall when rust=true (~60m with Apple app spool); keep it on merge_group /
+  // classic BP, not the 45m PR umbrella.
+  for (const slowWall of [
+    "App build + test (AgentLens)",
+    "Mobile build + unit test",
+    "Daemon PR Gate",
+    "Android PR Gate",
+    "PR Windows Full Gate",
+    "Domain Core PR Gate",
+  ]) {
+    assert.ok(
+      !fastGate.required_contexts.includes(slowWall),
+      `fast gate must not require slow wall: ${slowWall}`,
+    );
+  }
+  assert.ok(
+    fastGate.required_contexts.includes("Domain Core Trusted Deletion Guard"),
+    "fast gate must keep the always-on trusted deletion guard",
+  );
 
   const umbrella = readFileSync(join(REPO_ROOT, ".github/workflows/burnbar-ci-gate.yml"), "utf8");
   assert.match(

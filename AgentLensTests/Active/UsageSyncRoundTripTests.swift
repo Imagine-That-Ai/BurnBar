@@ -595,6 +595,57 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertFalse(docData.keys.contains("token"))
     }
 
+    func test_providerAccountUpload_skipsServerManagedAccountsWithoutBlockingLocalMetadata() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let localAccounts = [
+            makeProviderAccount(
+                id: "local-keychain",
+                providerID: .openAI,
+                label: "Local Keychain",
+                sourceDeviceID: nil,
+                storageScope: .deviceKeychain,
+                createdAt: now
+            ),
+            makeProviderAccount(
+                id: "local-metadata",
+                providerID: .anthropic,
+                label: "Local Metadata",
+                sourceDeviceID: nil,
+                storageScope: .localOnly,
+                createdAt: now.addingTimeInterval(1)
+            )
+        ]
+        let serverManagedAccounts = [
+            makeProviderAccount(
+                id: "cloud-refreshable",
+                providerID: .codex,
+                label: "Cloud Refreshable",
+                sourceDeviceID: nil,
+                storageScope: .cloudRefreshable,
+                createdAt: now.addingTimeInterval(2)
+            ),
+            makeProviderAccount(
+                id: "server-private",
+                providerID: .mimo,
+                label: "Server Private",
+                sourceDeviceID: nil,
+                storageScope: .serverPrivate,
+                createdAt: now.addingTimeInterval(3)
+            )
+        ]
+        for account in localAccounts + serverManagedAccounts {
+            try await dataStore.upsertProviderAccount(account)
+        }
+
+        await providerAccountSync.uploadAccounts()
+
+        let docs = fakeGateway.documents(under: "users/test-uid-1/provider_accounts")
+        XCTAssertEqual(Set(docs.keys), [
+            "users/test-uid-1/provider_accounts/local-keychain",
+            "users/test-uid-1/provider_accounts/local-metadata"
+        ])
+    }
+
     func test_providerAccountDownload_importsRemoteAccountMetadataWithoutCredentialFields() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let encodedNow = ISO8601DateFormatter().string(from: now)
@@ -809,6 +860,105 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertFalse(allUsage[0].isRemote)
     }
 
+    /// Billing provenance must survive the full cloud round trip. Both rows are
+    /// stamped AGAINST what provider/source heuristics would guess, so a
+    /// receiving device that re-derived the kind instead of reading the synced
+    /// field would flip both — turning a subscription-bridged daemon call into
+    /// real wallet spend and a BYO-key Claude Code session into plan value.
+    func test_usageRoundTrip_preservesExplicitBillingKindAcrossDevices() async throws {
+        let start = Date()
+        let subscriptionRouted = TokenUsage(
+            provider: .codex,
+            sessionId: "session-subscription-routed",
+            projectName: "BillingProvenance",
+            model: "gpt-5.6-codex",
+            inputTokens: 100,
+            outputTokens: 50,
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            usageSource: .daemon,
+            provenanceConfidence: .exact,
+            billingKind: .subscription
+        )
+        let apiKeyRouted = TokenUsage(
+            provider: .claudeCode,
+            sessionId: "session-api-routed",
+            projectName: "BillingProvenance",
+            model: "claude-3-5-sonnet",
+            inputTokens: 200,
+            outputTokens: 80,
+            startTime: start,
+            endTime: start.addingTimeInterval(60),
+            usageSource: .providerLog,
+            provenanceConfidence: .exact,
+            billingKind: .api
+        )
+        try await dataStore.insert(subscriptionRouted)
+        try await dataStore.insert(apiKeyRouted)
+
+        await usageSync.sync()
+
+        // Upload direction: the field is actually on the wire.
+        let uploadedPaths = [subscriptionRouted, apiKeyRouted].map {
+            "users/test-uid-1/usage/test-device-1_\($0.id.uuidString)"
+        }
+        let uploadedSubscription = try XCTUnwrap(fakeGateway.documentData(at: uploadedPaths[0]))
+        let uploadedAPI = try XCTUnwrap(fakeGateway.documentData(at: uploadedPaths[1]))
+        XCTAssertEqual(uploadedSubscription["billingKind"] as? String, "subscription")
+        XCTAssertEqual(uploadedAPI["billingKind"] as? String, "api")
+
+        // Re-attribute the uploaded docs to a peer device (leaving the document
+        // id — and therefore the sealed-name AAD — untouched) so the downloader
+        // treats them as remote rows, then read them back.
+        let peerDeviceId = "peer-device-billing"
+        for (path, data) in zip(uploadedPaths, [uploadedSubscription, uploadedAPI]) {
+            var reattributed = data
+            reattributed["deviceId"] = peerDeviceId
+            fakeGateway.setDocumentData(reattributed, at: path)
+        }
+        fakeGateway.setDocumentData([
+            "deviceName": "Peer MacBook",
+            "platform": "macOS"
+        ], at: "users/test-uid-1/devices/\(peerDeviceId)")
+
+        await downloadSync.sync()
+
+        let downloaded = try await dataStore.fetchAllUsage().filter { $0.isRemote }
+        XCTAssertEqual(downloaded.count, 2)
+        let bySession = Dictionary(uniqueKeysWithValues: downloaded.map { ($0.sessionId, $0.billingKind) })
+        XCTAssertEqual(bySession["session-subscription-routed"], .subscription)
+        XCTAssertEqual(bySession["session-api-routed"], .api)
+    }
+
+    /// Peer documents uploaded before `billingKind` existed carry no field. The
+    /// receiver must classify them exactly as the local v60 backfill would
+    /// rather than storing a permanent `unknown`.
+    func test_usageDownload_classifiesLegacyPeerDocWithoutBillingKind() async throws {
+        let peerDeviceId = "peer-device-legacy"
+        let now = Date()
+        fakeGateway.setDocumentData([
+            "id": UUID().uuidString,
+            "deviceId": peerDeviceId,
+            "provider": AgentProvider.cursor.rawValue,
+            "sessionId": "legacy-peer-session",
+            "model": "gpt-4",
+            "inputTokens": 200,
+            "outputTokens": 100,
+            "usageSource": UsageSource.providerLog.rawValue,
+            "totalTokens": 300,
+            "cost": 0.015,
+            "startTime": Timestamp(date: now),
+            "endTime": Timestamp(date: now.addingTimeInterval(100)),
+            "updatedAt": Timestamp(date: now)
+        ], at: "users/test-uid-1/usage/\(peerDeviceId)_\(UUID().uuidString)")
+
+        await downloadSync.sync()
+
+        let downloaded = try await dataStore.fetchAllUsage().filter { $0.isRemote }
+        XCTAssertEqual(downloaded.count, 1)
+        XCTAssertEqual(downloaded.first?.billingKind, .subscription)
+    }
+
     func test_firestoreOnlyUsageUpload_isAppendSafeAndIdempotent() async throws {
         let first = TokenUsage(
             provider: .claudeCode,
@@ -848,7 +998,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         XCTAssertTrue(unsyncedAfterAppend.isEmpty)
     }
 
-    func test_firestoreOnlyProviderAccountUpload_mergesAndPreservesExistingDocuments() async throws {
+    func test_firestoreOnlyProviderAccountUpload_replacesLegacyFieldsWithCanonicalSchema() async throws {
         let now = Date(timeIntervalSince1970: 1_700_020_000)
         fakeGateway.setDocumentData([
             "legacyMarker": "preserve-me"
@@ -876,7 +1026,7 @@ final class UsageSyncRoundTripTests: XCTestCase {
         let docs = fakeGateway.documents(under: "users/test-uid-1/provider_accounts")
         XCTAssertEqual(docs.count, 2)
         let anthropic = try XCTUnwrap(docs["users/test-uid-1/provider_accounts/anthropic-main"])
-        XCTAssertEqual(anthropic["legacyMarker"] as? String, "preserve-me")
+        XCTAssertNil(anthropic["legacyMarker"])
         XCTAssertEqual(anthropic["label"] as? String, "Anthropic Main")
         XCTAssertNotNil(docs["users/test-uid-1/provider_accounts/codex-main"])
     }

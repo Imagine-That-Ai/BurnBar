@@ -98,7 +98,7 @@ final class FirestoreIrohPairingPublicKeyProvider: IrohPairingPublicKeyProviding
     }
 }
 
-enum FirestoreIrohPairingPublicKeyError: Error, Equatable {
+enum FirestoreIrohPairingPublicKeyError: Error, Equatable, LocalizedError {
     case publicKeyNotFound
     case invalidPublicKey
     /// The directory advertised a host key that differs from the one pinned on
@@ -110,6 +110,21 @@ enum FirestoreIrohPairingPublicKeyError: Error, Equatable {
     /// The Keychain pin could not be read/written; fail closed rather than dial an
     /// unpinned key.
     case hostKeyPinUnavailable(status: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .publicKeyNotFound:
+            return "The Mac has not published a Mercury identity yet."
+        case .invalidPublicKey:
+            return "The Mac published an invalid Mercury identity."
+        case .hostKeyPinMismatch:
+            return "This Mac's secure Mercury identity changed. Re-pair it before connecting."
+        case .hostKeyAwaitingConfirmation:
+            return "Confirm the Mercury safety code on both devices before connecting."
+        case .hostKeyPinUnavailable(let status):
+            return "This device could not read its saved Mac identity from Keychain (status \(status))."
+        }
+    }
 }
 
 actor PublicKeyCache {

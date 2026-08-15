@@ -96,6 +96,15 @@ data class FirestoreGatewaySignalKeyDeliveryDoc(
 
 @Keep
 @IgnoreExtraProperties
+data class FirestoreGatewaySignalAtRestSenderAuthDoc(
+    val senderIdentityKeyId: String = "",
+    val senderIdentityKeyB64: String = "",
+    val signatureB64: String = "",
+    val signatureVersion: Long = 1,
+)
+
+@Keep
+@IgnoreExtraProperties
 data class FirestoreGatewaySignalEnvelopeDoc(
     val signalEnvelopeFormatVersion: Long = 0,
     val mode: String = "",
@@ -104,6 +113,27 @@ data class FirestoreGatewaySignalEnvelopeDoc(
     val ciphertextLayer: FirestoreGatewaySignalCiphertextLayerDoc = FirestoreGatewaySignalCiphertextLayerDoc(),
     val keyDelivery: FirestoreGatewaySignalKeyDeliveryDoc = FirestoreGatewaySignalKeyDeliveryDoc(),
     val binding: FirestoreGatewaySignalBindingDoc = FirestoreGatewaySignalBindingDoc(),
+    val senderAuth: FirestoreGatewaySignalAtRestSenderAuthDoc? = null,
+)
+
+@Keep
+@IgnoreExtraProperties
+data class FirestoreHermesGatewaySignalPrekeyBundleDoc(
+    val version: Long = 1,
+    val bundleId: String = "",
+    val identityKeyId: String = "",
+    val identityKeyB64: String = "",
+    val registrationId: Long = 0,
+    val deviceId: Long = 0,
+    val signedPreKeyId: Long = 0,
+    val signedPreKeyPublicB64: String = "",
+    val signedPreKeySignatureB64: String = "",
+    val oneTimePreKeyId: Long = 0,
+    val oneTimePreKeyPublicB64: String = "",
+    val kyberPreKeyId: Long = 0,
+    val kyberPreKeyPublicB64: String = "",
+    val kyberPreKeySignatureB64: String = "",
+    val generatedAt: String = "",
 )
 
 @Keep
@@ -131,6 +161,7 @@ data class FirestoreHermesGatewayClientDoc(
     val agentPreferredRelayEnvelopeVersion: Long? = null,
     val agentSupportsHpkeV3: Boolean? = null,
     val agentSupportsSignalEnvelope: Boolean? = null,
+    val agentSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = null,
     val agentPlatform: String? = null,
     val agentAppBuild: String? = null,
     val phoneRelayPublicKey: String? = null,
@@ -140,6 +171,7 @@ data class FirestoreHermesGatewayClientDoc(
     val phonePreferredRelayEnvelopeVersion: Long? = null,
     val phoneSupportsHpkeV3: Boolean? = null,
     val phoneSupportsSignalEnvelope: Boolean? = null,
+    val phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = null,
     val phonePlatform: String? = null,
     val phoneAppBuild: String? = null,
     val agentRatchetIdentityPublicKey: String? = null,

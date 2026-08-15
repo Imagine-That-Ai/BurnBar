@@ -29,6 +29,29 @@ if [[ "$metadata" != "$expected" ]]; then
   exit 1
 fi
 
+metadata_offline="$(OPENBURNBAR_PRINT_PUBLIC_LINUX_DOWNLOAD_METADATA=1 bash "$verifier" "$site_config")"
+offline_feed_line="$(printf '%s\n' "$metadata_offline" | sed -n '7p')"
+if [[ -n "$offline_feed_line" ]]; then
+  echo "expected an empty feed URL (skip) when SITE.linuxUpdateBaseUrl is absent and no env override is set, got: $offline_feed_line" >&2
+  exit 1
+fi
+
+with_update_base="$tmpdir/with-update-base.ts"
+sed 's#linuxDownloadBaseUrl: "https://downloads.example.test/linux-v9.9.9",#linuxDownloadBaseUrl: "https://downloads.example.test/linux-v9.9.9",\n  linuxUpdateBaseUrl: "https://updates.example.test/",#' "$site_config" >"$with_update_base"
+metadata_feed="$(OPENBURNBAR_PRINT_PUBLIC_LINUX_DOWNLOAD_METADATA=1 bash "$verifier" "$with_update_base")"
+derived_feed_line="$(printf '%s\n' "$metadata_feed" | sed -n '7p')"
+if [[ "$derived_feed_line" != "https://updates.example.test/latest-linux.json" ]]; then
+  echo "expected feed URL derived from SITE.linuxUpdateBaseUrl, got: $derived_feed_line" >&2
+  exit 1
+fi
+
+insecure_update_base="$tmpdir/insecure-update-base.ts"
+sed 's#linuxUpdateBaseUrl: "https://updates.example.test/",#linuxUpdateBaseUrl: "http://updates.example.test/",#' "$with_update_base" >"$insecure_update_base"
+if OPENBURNBAR_PRINT_PUBLIC_LINUX_DOWNLOAD_METADATA=1 bash "$verifier" "$insecure_update_base" >/dev/null 2>&1; then
+  echo "expected verifier to reject non-https Linux update feed hosts" >&2
+  exit 1
+fi
+
 bad_scheme="$tmpdir/bad-scheme.ts"
 sed 's#https://downloads.example.test#http://downloads.example.test#' "$site_config" >"$bad_scheme"
 if OPENBURNBAR_PRINT_PUBLIC_LINUX_DOWNLOAD_METADATA=1 bash "$verifier" "$bad_scheme" >/dev/null 2>&1; then

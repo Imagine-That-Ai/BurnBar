@@ -86,6 +86,71 @@ final class TextExpansionSyncServiceTests: XCTestCase {
         let unsynced = try await dataStore.fetchUnsyncedTextExpansionSnippets()
         XCTAssertTrue(unsynced.isEmpty)
     }
+
+    func testFakeGatewayExposesNoRawSignalPayloadFirestore() {
+        // The protocol's default implementation is the fake-path contract:
+        // fakes never surface a real SDK handle, so tests never resolve the
+        // global Firestore singleton.
+        XCTAssertNil(fakeGateway.rawSignalPayloadFirestore())
+    }
+
+    func testSignalPayloadFirestoreThrowsWhenGatewayHasNoRawHandle() {
+        let service = TextExpansionSyncService(
+            context: context,
+            vaultKeyStore: vaultKeyStore,
+            vaultKeyPublisher: vaultKeyPublisher
+        )
+
+        XCTAssertThrowsError(try service.signalPayloadFirestore()) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                TextExpansionSignalSyncError.signalFirestoreUnavailable.errorDescription
+            )
+        }
+    }
+
+    func testSignalSyncErrorsCarryOperatorReadableDescriptions() {
+        XCTAssertEqual(
+            TextExpansionSignalSyncError.vaultKeyMismatch.errorDescription,
+            "Signal identity and CloudVault resolved different vault keys. Re-verify this device before syncing snippets."
+        )
+        XCTAssertEqual(
+            TextExpansionSignalSyncError.signalFirestoreUnavailable.errorDescription,
+            "The Firestore gateway does not expose a raw handle for Signal payload sealing. Snippet sync was skipped."
+        )
+    }
+
+    func testSnippetFromSignalPayloadRoundTripsISO8601Snippet() throws {
+        let snippet = TextExpansionSnippet(
+            id: "snippet-signal-1",
+            title: "Signal Greeting",
+            trigger: "sig",
+            body: "Sealed hi",
+            mode: .staticText,
+            scope: TextExpansionScope(surfaces: [.inAppThread]),
+            revision: 2,
+            createdAt: Date(timeIntervalSince1970: 1_780_000_100),
+            updatedAt: Date(timeIntervalSince1970: 1_780_000_200)
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        let payload = try encoder.encode(snippet)
+
+        let decoded = try XCTUnwrap(TextExpansionSyncService.snippetFromSignalPayload(payload))
+
+        XCTAssertEqual(decoded.id, snippet.id)
+        XCTAssertEqual(decoded.title, snippet.title)
+        XCTAssertEqual(decoded.trigger, snippet.trigger)
+        XCTAssertEqual(decoded.body, snippet.body)
+        XCTAssertEqual(decoded.revision, snippet.revision)
+        XCTAssertEqual(decoded.createdAt, snippet.createdAt)
+        XCTAssertEqual(decoded.updatedAt, snippet.updatedAt)
+    }
+
+    func testSnippetFromSignalPayloadReturnsNilForUndecodablePayload() {
+        XCTAssertNil(TextExpansionSyncService.snippetFromSignalPayload(Data("not a snippet".utf8)))
+    }
 }
 
 @MainActor

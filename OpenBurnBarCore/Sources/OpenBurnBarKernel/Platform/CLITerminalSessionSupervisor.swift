@@ -198,6 +198,13 @@ public enum CLIQuotaExhaustionClassifier {
                 "jetbrains ai quota",
                 "remaining balance"
             ]
+        case .primeAgent:
+            cliSpecificPatterns = [
+                "prime quota",
+                "prime-agent quota",
+                "prime agent quota",
+                "prime limit"
+            ]
         }
 
         let candidates = trimmed

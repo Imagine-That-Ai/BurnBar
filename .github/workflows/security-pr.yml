@@ -1,8 +1,8 @@
 name: PR Security Gate
 
 # Fast (<3 min) security checks that run on every pull request.
-# Swift CodeQL still runs nightly (see codeql.yml); JS/TS + Python CodeQL runs
-# on relevant PRs in codeql-pr.yml.
+# Swift CodeQL still runs nightly (see codeql.yml); JS/TS + Python + Java/Kotlin
+# CodeQL runs on PR + merge_group in codeql-pr.yml.
 #
 # Checks:
 #   1. Secret detection via gitleaks
@@ -63,9 +63,11 @@ jobs:
   secret-detection:
     name: Secret Detection (gitleaks)
     runs-on: ubuntu-latest
-    # Scans every commit in the PR range; binary-heavy branches blew the
-    # old 5 min budget at checkout/scan.
-    timeout-minutes: 15
+    # Scans every commit in the PR range and therefore cannot use the blobless
+    # optimization available to path-only detectors. Binary-heavy branches and
+    # degraded GitHub checkout have exhausted both the old 5 and 15 minute
+    # budgets before the fail-closed scan could run.
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -74,6 +76,9 @@ jobs:
 
       - name: Install gitleaks
         run: go install github.com/zricethezav/gitleaks/v8@v8.28.0
+
+      - name: Self-test publishable-tree path handling
+        run: bash scripts/security/__tests__/scan-publishable-tree.test.sh
 
       - name: Verify gitleaks allowlist boundary
         run: node scripts/ci/verify-gitleaks-allowlist-boundary.mjs
@@ -122,7 +127,7 @@ jobs:
     name: Dependency Review (CVE check)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -131,6 +136,14 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0 (node24-native)
         with:
           fail-on-severity: high
+          # Deliberately no allow-ghsas: the action's vulnerability allowlist
+          # is advisory-ID-wide, so any exception would also suppress the same
+          # GHSA for every newly introduced dependency, not just the reviewed
+          # package/version that justified it. This gate reviews only the PR's
+          # dependency diff, so an unchanged base-pinned dependency covered by
+          # the paired time-boxed npm/OSV policy never trips it, while a PR
+          # that adds or downgrades into a vulnerable version always fails
+          # closed here and gets explicit human review.
           # Allow known-safe license exceptions. BlueOak-1.0.0 is a permissive
           # npm ecosystem license used by tar and related transitive packages;
           # allow it so patched releases can land without vulnerable downgrades.
@@ -162,7 +175,7 @@ jobs:
   npm-audit:
     name: npm Audit (Node package locks)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -188,10 +201,22 @@ jobs:
   remote-installer-policy:
     name: Remote Installer Policy
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # 3 minutes covers the scan itself, but a full clone of this repo's 8.6 GiB
+    # history repeatedly consumed the entire budget and cancelled the job in
+    # actions/checkout (run 31025374942: 3m10s in checkout, zero work done).
+    # The blobless sparse fetch below removes that failure mode; the headroom
+    # keeps a slow fetch from being reported as a policy violation.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+        with:
+          # The scanner walks `git ls-files .github scripts .agents` only.
+          filter: blob:none
+          sparse-checkout: |
+            .github
+            scripts
+            .agents
 
       - name: Self-test remote installer policy
         run: bash scripts/ci/verify-no-remote-shell-installers.test.sh
@@ -202,7 +227,7 @@ jobs:
   production-deploy-auth-policy:
     name: Production Deploy Auth Policy
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -232,10 +257,19 @@ jobs:
   codeowners-security-trees:
     name: CODEOWNERS Security Trees
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # See remote-installer-policy above: a full-history clone alone exceeded the
+    # old 3-minute cap (run 31025374942: cancelled after 3m22s in checkout).
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+        with:
+          # The verifier only reads .github/CODEOWNERS and the tracked
+          # .github/** and scripts/** trees it asserts coverage for.
+          filter: blob:none
+          sparse-checkout: |
+            .github
+            scripts
 
       - name: Verify security-sensitive CODEOWNERS rules
         run: bash scripts/ci/verify-codeowners-security-trees.sh
@@ -243,7 +277,7 @@ jobs:
   vendored-agent-provenance:
     name: Vendored Agent Provenance
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -274,10 +308,27 @@ jobs:
   signal-activation-parity:
     name: Signal Activation Parity (fail-closed default)
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # 15 rather than 3: the check itself is a few seconds of Node, but a full
+    # clone of this repo's 8.6 GiB history consumed the entire 3-minute budget
+    # and cancelled the job inside actions/checkout with zero work done (run
+    # 31040880338: 3m02s in checkout). Same pathology, and same remedy, as
+    # remote-installer-policy and codeowners-security-trees above.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
+        with:
+          # verify-signal-activation-parity.sh reads exactly these trees:
+          # functions/src/hermesGatewayEnvelope.ts,
+          # packages/data-domains/registry.json, and any *.json under
+          # launch-evidence/ and remoteconfig/.
+          filter: blob:none
+          sparse-checkout: |
+            functions/src
+            packages/data-domains
+            launch-evidence
+            remoteconfig
+            scripts
 
       # Enforces SECURITY.md's claim that all Signal at-rest levers stay at the fail-closed
       # default (no production sealingScheme, empty gateway signal-version set, no committed RC
@@ -289,7 +340,7 @@ jobs:
   browser-target-policy:
     name: Browser Target Policy (SSRF / DNS-rebinding)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -304,7 +355,9 @@ jobs:
   osv-scanner:
     name: OSV Scanner (open source vulnerabilities)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Merge-queue runs 31394861587 and 31395500157 exhausted the old
+    # five-minute budget inside checkout on 2026-08-10, before OSV could start.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -331,6 +384,7 @@ jobs:
             --lockfile=services/hermes-realtime-relay/package-lock.json
             --lockfile=services/hosted-mcp/package-lock.json
             --lockfile=tools/app-store-connect/package-lock.json
+            --lockfile=tools/hermes-platform-burnbar/signal-runtime/package-lock.json
             --lockfile=tools/openburnbar-mcp-remote/package-lock.json
             --lockfile=tools/schema-sync/package-lock.json
             --lockfile=website/package-lock.json
@@ -338,7 +392,9 @@ jobs:
   hosted-mcp-security-smoke:
     name: Hosted MCP Security Smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # PR run 31396652837 spent the full former 8-minute budget in checkout
+    # on 2026-08-10, so the required security smoke never started.
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native)
@@ -377,7 +433,7 @@ jobs:
   hosted-mcp-isolation-proofs:
     name: Hosted MCP Isolation Proofs (local, deterministic)
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     # RR-11: the live cross-tenant / revocation / entitlement / cap / at-rest
     # proofs in scripts/test-hosted-mcp-security.sh and
     # functions/scripts/prove-hosted-mcp-live.mjs SKIP in token-less CI, so the

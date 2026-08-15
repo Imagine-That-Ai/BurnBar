@@ -61,7 +61,7 @@ final class RollbackService {
                 )?.keyData
                 let parsed: [RollbackSnapshot] = documents.compactMap { doc in
                     Self.decodeSnapshot(
-                        data: doc.data(),
+                        data: doc.data() as NSDictionary,
                         documentID: doc.documentID,
                         sessionID: sessionID,
                         vaultKey: vaultKey
@@ -94,12 +94,34 @@ final class RollbackService {
             Task { @MainActor in
                 guard let self else { return }
                 let documents = snapshot?.documents ?? []
-                let vaultKey = try? await MobileCloudVaultKeyAccess.keyForReading(
+                let resolvedKey = try? await MobileCloudVaultKeyAccess.keyForReading(
                     uid: uid,
                     firestore: self.firestoreProvider()
-                )?.keyData
+                )
+                let trustedKeys: [String: Data] = if let identity = resolvedKey?.signalIdentity {
+                    await MobileCloudVaultSignalPayloads.trustedSenderPublicKeys(
+                        uid: uid,
+                        firestore: self.firestoreProvider(),
+                        localIdentity: identity
+                    )
+                } else { [:] }
                 let parsed: [RollbackRequest] = documents.compactMap { doc in
-                    Self.decodeRequest(data: doc.data(), documentID: doc.documentID, vaultKey: vaultKey)
+                    let signalData = try? resolvedKey.flatMap { key in
+                        try MobileCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                            doc.data(),
+                            uid: uid,
+                            collection: "rollback_requests",
+                            docId: doc.documentID,
+                            signalIdentity: key.signalIdentity,
+                            trustedSenderPublicKeys: trustedKeys
+                        )
+                    }
+                    return Self.decodeRequest(
+                        data: doc.data() as NSDictionary,
+                        documentID: doc.documentID,
+                        vaultKey: resolvedKey?.keyData,
+                        signalPlaintext: signalData ?? nil
+                    )
                 }
                 self.pendingRequests = parsed
             }
@@ -113,20 +135,59 @@ final class RollbackService {
         guard FirebaseApp.app() != nil else { throw RollbackError.firebaseUnavailable }
         guard let uid = Auth.auth().currentUser?.uid else { throw RollbackError.notSignedIn }
         let request = RollbackRequest(sessionID: sessionID, scope: scope, requestedBy: requestedBy)
-        let vaultKey = try await MobileCloudVaultKeyAccess
+        let resolvedKey = try await MobileCloudVaultKeyAccess
             .keyForWriting(uid: uid, firestore: firestoreProvider())
-            .keyData
         let ref = firestoreProvider()
             .collection("users").document(uid)
             .collection("rollback_requests").document(request.id)
-        try await ref.setData(Self.encodeRequest(request, vaultKey: vaultKey))
+        var payload = try Self.encodeRequest(request, vaultKey: resolvedKey.keyData)
+        let signalState = MobileCloudVaultSignalPayloads.signalActivationState(domainID: "conversations_chat")
+        if signalState != .off {
+            let scopeData = try JSONEncoder().encode(request.scope)
+            let privatePayload: NSDictionary = [
+                "id": request.id,
+                "sessionID": request.sessionID,
+                "scopeJSON": String(data: scopeData, encoding: .utf8) ?? "{}",
+                "requestedAt": ISO8601DateFormatter().string(from: request.requestedAt),
+                "requestedBy": request.requestedBy,
+                "status": request.status.rawValue,
+                "schemaVersion": 1
+            ]
+            let plaintext = try JSONSerialization.data(withJSONObject: privatePayload, options: [.sortedKeys])
+            do {
+                if let envelope = try await MobileCloudVaultSignalPayloads.signalEnvelopeIfEnabled(
+                    domainID: "conversations_chat",
+                    uid: uid,
+                    firestore: firestoreProvider(),
+                    collection: "rollback_requests",
+                    docId: request.id,
+                    plaintext: plaintext,
+                    resolvedKey: resolvedKey
+                ) {
+                    payload["signalEnvelope"] = envelope
+                    if signalState == .required {
+                        payload.removeValue(forKey: "sealedScope")
+                        payload.removeValue(forKey: "sealedErrorMessage")
+                        payload.removeValue(forKey: "sealedPayload")
+                    }
+                }
+            } catch {
+                if signalState == .required { throw error }
+            }
+        }
+        try MobileCloudVaultSignalPayloads.requireEnvelopeIfRequired(
+            payload: payload,
+            state: signalState,
+            domainID: "conversations_chat"
+        )
+        try await ref.setData(payload)
         return request
     }
 
     // MARK: - Decoding
 
     static func decodeSnapshot(
-        data: [String: Any],
+        data: NSDictionary,
         documentID: String,
         sessionID: String,
         vaultKey: Data?
@@ -171,31 +232,55 @@ final class RollbackService {
         )
     }
 
-    static func decodeRequest(data: [String: Any], documentID: String, vaultKey: Data?) -> RollbackRequest? {
+    static func decodeRequest(
+        data: NSDictionary,
+        documentID: String,
+        vaultKey: Data?,
+        signalPlaintext: Data? = nil
+    ) -> RollbackRequest? {
+        var signal: NSDictionary = [:]
+        if let signalPlaintext,
+           let object = try? JSONSerialization.jsonObject(with: signalPlaintext),
+           let dictionary = object as? NSDictionary {
+            signal = dictionary
+        } else if MobileCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat") {
+            return nil
+        }
+        let signalIsEmpty = signal.allKeys.isEmpty
+        let source = signalIsEmpty ? data : signal
         guard
-            let sessionID = data["sessionID"] as? String,
+            let sessionID = source["sessionID"] as? String,
             let scopeRaw = openSealedString(
-                data: data,
+                data: signalIsEmpty ? data : NSDictionary(dictionary: ["scopeJSON": source["scopeJSON"] as Any]),
                 sealedField: "sealedScope",
                 legacyField: "scopeJSON",
                 vaultKey: vaultKey
             ),
             let scope = try? JSONDecoder().decode(RollbackScope.self, from: Data(scopeRaw.utf8)),
-            let statusRaw = data["status"] as? String,
+            // MUTABLE rollback state lives on the LIVE document: the Mac claim
+            // path updates top-level `status`, `resolvedAt`, and
+            // `sealedErrorMessage` without resealing the Signal envelope (the
+            // envelope is created once at request time with `status: pending`).
+            // Prefer the live fields so an `in_flight`/resolved request never
+            // decodes as pending off the stale envelope; the Signal payload is
+            // authoritative only for the private immutable fields and is the
+            // fallback for docs the Mac has not touched yet.
+            let statusRaw = (data["status"] as? String) ?? (source["status"] as? String),
             // Route through the tolerant resolver so the legacy camelCase
             // `"inFlight"` wire value (and `cancelled`) decode; a genuinely
             // unknown status still drops the row via the guard.
             let status = RollbackRequest.Status(wireValue: statusRaw)
         else { return nil }
-        let requestedAt = (data["requestedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
-        let resolvedAt = (data["resolvedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
-        let requestedBy = (data["requestedBy"] as? String) ?? "unknown"
+        let requestedAt = (source["requestedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
+        let resolvedAt = ((data["resolvedAt"] as? String) ?? (source["resolvedAt"] as? String))
+            .flatMap { ISO8601DateFormatter().date(from: $0) }
+        let requestedBy = (source["requestedBy"] as? String) ?? "unknown"
         let errorMessage = openSealedString(
             data: data,
             sealedField: "sealedErrorMessage",
             legacyField: "errorMessage",
             vaultKey: vaultKey
-        )
+        ) ?? (signal["errorMessage"] as? String)
         return RollbackRequest(
             id: documentID,
             sessionID: sessionID,
@@ -233,7 +318,7 @@ final class RollbackService {
     /// when the sealed field is absent. A present sealed field is authoritative:
     /// decrypt it or fail closed instead of leaking a stale plaintext sibling.
     private static func openSealedString(
-        data: [String: Any],
+        data: NSDictionary,
         sealedField: String,
         legacyField: String,
         vaultKey: Data?
@@ -248,7 +333,7 @@ final class RollbackService {
     /// Opens a sealed `[String]` (sealed as one JSON array), falling back to a
     /// legacy plaintext `[String]` field only when the sealed field is absent.
     private static func openSealedStringArray(
-        data: [String: Any],
+        data: NSDictionary,
         sealedField: String,
         legacyField: String,
         vaultKey: Data?

@@ -33,7 +33,7 @@ import {
   verifyLinuxAppCheckEd25519Signature,
 } from "./linuxAppCheckDeviceCrypto.js";
 import { checkPublicHttpEndpointRateLimit } from "./publicRateLimit.js";
-import { boundedTrimmedString } from "./shared.js";
+import { boundedTrimmedString } from "./shared/validators.js";
 
 export const LINUX_APP_CHECK_REJECTION_REASON = {
   appNotAllowlisted: "linux_app_not_allowlisted",

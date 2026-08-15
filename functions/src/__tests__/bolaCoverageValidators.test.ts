@@ -78,11 +78,11 @@ function syntheticProviderWebhookEntry(): EndpointAuthorizationEntry {
   };
 }
 
-function writeSyntheticRepo(handlerSource: string): string {
+function writeSyntheticRepo(handlerSource: string, coverageSource = runtimeCoverageSource): string {
   const repoRoot = mkdtempSync(join(tmpdir(), "openburnbar-bola-validator-"));
   mkdirSync(join(repoRoot, "functions/src/__tests__/bola"), { recursive: true });
   mkdirSync(join(repoRoot, "functions/src/callables"), { recursive: true });
-  writeFileSync(join(repoRoot, COVERAGE_FILE), runtimeCoverageSource);
+  writeFileSync(join(repoRoot, COVERAGE_FILE), coverageSource);
   writeFileSync(join(repoRoot, "functions/src", HANDLER_FILE), handlerSource);
   return repoRoot;
 }
@@ -95,6 +95,20 @@ describe("BOLA coverage validators", () => {
       const root = tempRoots.pop();
       if (root) rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("recognizes an apostrophe inside a double-quoted runtime test title", () => {
+    const title = "synthetic rejects another host's object";
+    const coverageSource = runtimeCoverageSource.replace("synthetic rejects cross-user object access", title);
+    const entry = syntheticEntry();
+    entry.bolaCoverage[0] = { ...entry.bolaCoverage[0], test: title };
+    const repoRoot = writeSyntheticRepo(
+      "export async function run(request) { return db.doc(`users/${request.auth.uid}/documents/doc-1`).get(); }",
+      coverageSource,
+    );
+    tempRoots.push(repoRoot);
+
+    expect(validateEndpointBolaCoverage(entry, repoRoot)).toEqual([]);
   });
 
   it("rejects object handlers that build users/{uid} from callable payload template data", () => {

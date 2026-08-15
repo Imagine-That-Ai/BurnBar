@@ -54,10 +54,13 @@ final class BurnBarCatalogTests: XCTestCase {
         XCTAssertEqual(gpt56Terra.outputPerMToken, 15, accuracy: 0.001)
         XCTAssertEqual(gpt56Terra.cacheCreationPerMToken ?? 0, 3.125, accuracy: 0.001)
         XCTAssertEqual(gpt56Terra.cacheReadPerMToken, 0.25, accuracy: 0.001)
-        XCTAssertEqual(gpt56Luna.inputPerMToken, 1, accuracy: 0.001)
-        XCTAssertEqual(gpt56Luna.outputPerMToken, 6, accuracy: 0.001)
-        XCTAssertEqual(gpt56Luna.cacheCreationPerMToken ?? 0, 1.25, accuracy: 0.001)
-        XCTAssertEqual(gpt56Luna.cacheReadPerMToken, 0.1, accuracy: 0.001)
+        // Repriced to OpenAI's post-July-2026 rates (the launch prices were
+        // 1/6/1.25/0.1). Luna is the AI Inbox's verifier model, so an out-of-date
+        // pin here would misreport that feature's spend.
+        XCTAssertEqual(gpt56Luna.inputPerMToken, 0.2, accuracy: 0.001)
+        XCTAssertEqual(gpt56Luna.outputPerMToken, 1.2, accuracy: 0.001)
+        XCTAssertEqual(gpt56Luna.cacheCreationPerMToken ?? 0, 0.25, accuracy: 0.001)
+        XCTAssertEqual(gpt56Luna.cacheReadPerMToken, 0.02, accuracy: 0.001)
         XCTAssertEqual(gpt55.inputPerMToken, 5, accuracy: 0.001)
         XCTAssertEqual(gpt55.outputPerMToken, 30, accuracy: 0.001)
         XCTAssertEqual(gpt55.cacheReadPerMToken, 0.5, accuracy: 0.001)

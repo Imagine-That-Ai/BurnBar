@@ -35,6 +35,7 @@ class MenuBarTileService : TileService() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 data = Uri.parse("burnbar://quickglance")
             }
+        intent.setPackage(packageName)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             val pi =
                 PendingIntent.getActivity(

@@ -71,8 +71,35 @@ public struct ParserConversationCacheScrubber {
             appPaths.claudeCodeParserCacheURL,
             appPaths.supportDirectory.appendingPathComponent("openclaude_parser_cache.json"),
             appPaths.factoryDroidParserCacheURL,
-            appPaths.junieParserCacheURL
+            appPaths.junieParserCacheURL,
+            appPaths.grokParserCacheURL,
+            appPaths.geminiCLIParserCacheURL,
+            appPaths.cursorAgentParserCacheURL,
+            appPaths.copilotParserCacheURL,
+            appPaths.antigravityParserCacheURL,
+            appPaths.gooseParserCacheURL,
+            appPaths.windsurfParserCacheURL,
+            appPaths.warpParserCacheURL,
+            appPaths.primeAgentParserCacheURL,
+            appPaths.museParserCacheURL,
+            appPaths.kimiParserCacheURL,
+            appPaths.hermesParserCacheURL,
+            appPaths.forgeDevParserCacheURL,
+            appPaths.augmentParserCacheURL,
+            appPaths.aiderParserCacheURL,
+            appPaths.cursorParserCacheURL,
+            appPaths.openCodeParserCacheURL,
+            appPaths.piAgentParserCacheURL,
+            appPaths.ompParserCacheURL,
+            appPaths.openClawParserCacheURL,
+            appPaths.ollamaParserCacheURL,
+            appPaths.clineFormatParserCacheURL(for: .cline),
+            appPaths.clineFormatParserCacheURL(for: .kiloCode),
+            appPaths.clineFormatParserCacheURL(for: .rooCode),
+            appPaths.modelFilterParserCacheURL(for: .zai),
+            appPaths.modelFilterParserCacheURL(for: .minimax)
         ]
+        urls.append(contentsOf: appPaths.macSemanticsParserCacheURLs)
 
         if let dynamicURLs = try? fileManager.contentsOfDirectory( // try?-ok(optional cache directory scan)
             at: appPaths.supportDirectory,

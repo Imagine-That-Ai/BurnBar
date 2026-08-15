@@ -19,11 +19,14 @@ import org.junit.runner.RunWith
 class AndroidSignalProducerInstrumentedTest {
     @Test
     fun signalEnvelopeRoundTripsForLocalAndPeerOnDevice() {
-        AndroidCloudVaultSignalPayloads.signalSealingOverrideProvider = { true }
+        AndroidCloudVaultSignalPayloads.signalActivationOverrideProvider = {
+            AndroidCloudVaultSignalPayloads.ActivationState.ENABLED
+        }
         try {
             val local = AndroidSignalIdentityKeypair.generate("android-on-device-a", 1)
             val peer = AndroidSignalIdentityKeypair.generate("android-on-device-b", 1)
             val plaintext = "on-device signal at-rest payload".toByteArray()
+            val trustedSenders = mapOf(local.identityKeyId to local.publicKeyData)
 
             val map =
                 AndroidCloudVaultSignalPayloads.signalEnvelopeMapIfEnabled(
@@ -58,6 +61,7 @@ class AndroidSignalProducerInstrumentedTest {
                     collection = "mobile_assistant_chats",
                     docId = "thread-on-device",
                     localIdentity = peer,
+                    trustedSenderPublicKeys = trustedSenders,
                 ),
             )
             // Relocation guard holds on device too.
@@ -71,7 +75,7 @@ class AndroidSignalProducerInstrumentedTest {
                 )
             }
         } finally {
-            AndroidCloudVaultSignalPayloads.signalSealingOverrideProvider = null
+            AndroidCloudVaultSignalPayloads.signalActivationOverrideProvider = null
         }
     }
 

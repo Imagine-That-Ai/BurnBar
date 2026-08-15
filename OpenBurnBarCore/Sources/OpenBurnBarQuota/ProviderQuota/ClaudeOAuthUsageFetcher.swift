@@ -1,4 +1,5 @@
 import Foundation
+import OpenBurnBarKernel
 
 #if canImport(FoundationNetworking)
 import FoundationNetworking
@@ -433,10 +434,9 @@ public struct ClaudeOAuthUsageFetcher {
         guard let json else {
             return nil
         }
-        let formatter = ISO8601DateFormatter()
-        let fetchedAt = (json["fetchedAt"] as? String).flatMap { formatter.date(from: $0) }
-        let fiveHourResetsAt = (json["fiveHourResetsAt"] as? String).flatMap { formatter.date(from: $0) }
-        let sevenDayResetsAt = (json["sevenDayResetsAt"] as? String).flatMap { formatter.date(from: $0) }
+        let fetchedAt = (json["fetchedAt"] as? String).flatMap { ThreadSafeISO8601DateFormatter.parseBasic($0) }
+        let fiveHourResetsAt = (json["fiveHourResetsAt"] as? String).flatMap { ThreadSafeISO8601DateFormatter.parseBasic($0) }
+        let sevenDayResetsAt = (json["sevenDayResetsAt"] as? String).flatMap { ThreadSafeISO8601DateFormatter.parseBasic($0) }
         guard let fetchedAt,
               let payloadDict = json["payload"] as? [String: Any] else {
             return nil
@@ -452,16 +452,15 @@ public struct ClaudeOAuthUsageFetcher {
     }
 
     private func writeCache(payload: ClaudeRateLimits, fetchedAt: Date) {
-        let formatter = ISO8601DateFormatter()
         var envelope: [String: Any] = [
-            "fetchedAt": formatter.string(from: fetchedAt),
+            "fetchedAt": ThreadSafeISO8601DateFormatter.formatBasic(fetchedAt),
             "payload": payload.rawDictionary
         ]
         if let reset = payload.window(named: "five_hour")?.resetsAt {
-            envelope["fiveHourResetsAt"] = formatter.string(from: reset)
+            envelope["fiveHourResetsAt"] = ThreadSafeISO8601DateFormatter.formatBasic(reset)
         }
         if let reset = payload.window(named: "seven_day")?.resetsAt {
-            envelope["sevenDayResetsAt"] = formatter.string(from: reset)
+            envelope["sevenDayResetsAt"] = ThreadSafeISO8601DateFormatter.formatBasic(reset)
         }
         let parent = cacheURL.deletingLastPathComponent()
         try? fileManager.value.createDirectory(at: parent, withIntermediateDirectories: true) // try?-ok(idempotent mkdir)
@@ -485,12 +484,12 @@ public struct ClaudeOAuthUsageFetcher {
         guard let data = try? Data(contentsOf: attemptMarkerURL), // try?-ok(best-effort marker read)
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], // try?-ok(optional marker parse)
               let iso = json["lastAttempt"] as? String else { return nil }
-        return ISO8601DateFormatter().date(from: iso)
+        return ThreadSafeISO8601DateFormatter.parseBasic(iso)
     }
 
     private func recordFetchAttempt(now: Date) {
         let envelope: [String: String] = [
-            "lastAttempt": ISO8601DateFormatter().string(from: now)
+            "lastAttempt": ThreadSafeISO8601DateFormatter.formatBasic(now)
         ]
         let parent = attemptMarkerURL.deletingLastPathComponent()
         try? fileManager.value.createDirectory(at: parent, withIntermediateDirectories: true) // try?-ok(idempotent mkdir)
@@ -597,14 +596,11 @@ public struct ClaudeRateLimits: Sendable, Equatable {
     }
 
     private static func firstDate(in payload: [String: Any], keys: [String]) -> Date? {
-        let iso = ISO8601DateFormatter()
-        let isoWithFractionalSeconds = ISO8601DateFormatter()
-        isoWithFractionalSeconds.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         for key in keys {
             if let v = payload[key] as? Double { return Date(timeIntervalSince1970: v) }
             if let v = payload[key] as? Int { return Date(timeIntervalSince1970: Double(v)) }
             if let s = payload[key] as? String {
-                if let parsed = iso.date(from: s) ?? isoWithFractionalSeconds.date(from: s) { return parsed }
+                if let parsed = ThreadSafeISO8601DateFormatter.parse(s) { return parsed }
                 if let unix = Double(s) { return Date(timeIntervalSince1970: unix) }
             }
         }

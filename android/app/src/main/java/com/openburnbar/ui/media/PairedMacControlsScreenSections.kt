@@ -64,6 +64,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.BurnBarApplication
+import com.openburnbar.data.cloud.MercuryDeviceRegistrationState
+import com.openburnbar.data.cloud.userMessage
 import com.openburnbar.data.media.MediaControlStreamCoordinator
 import com.openburnbar.irohrelay.HermesRealtimeRelayCallAck
 import com.openburnbar.irohrelay.HermesRealtimeRelayMirrorAck
@@ -104,6 +106,7 @@ private fun rememberPairedMacControlsSession(connectionID: String?): PairedMacCo
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val app = context.applicationContext as? BurnBarApplication
+    val registrationState by BurnBarApplication.mercuryDeviceRegistrationState.collectAsState()
     val streams = rememberPairedMacCoordinatorStreams()
     val local = rememberPairedMacControlsLocalState()
     val premium = rememberPairedMacPremiumUi()
@@ -119,6 +122,7 @@ private fun rememberPairedMacControlsSession(connectionID: String?): PairedMacCo
             connectionID = connectionID,
             scope = scope,
             app = app,
+            registrationState = registrationState,
             streams = streams,
             local = local,
             premium = premium,
@@ -131,6 +135,7 @@ private data class PairedMacControlsSessionAssembly(
     val connectionID: String?,
     val scope: kotlinx.coroutines.CoroutineScope,
     val app: BurnBarApplication?,
+    val registrationState: MercuryDeviceRegistrationState,
     val streams: PairedMacCoordinatorStreams,
     val local: PairedMacControlsLocalState,
     val premium: PairedMacPremiumUi,
@@ -146,7 +151,13 @@ private fun assemblePairedMacControlsSession(assembly: PairedMacControlsSessionA
             assembly.local,
         )
     val writeCallbacks = buildPairedMacWriteCallbacks(assembly.streams, assembly.local)
-    val uiState = buildPairedMacUiState(assembly.streams, assembly.local, assembly.premium)
+    val uiState =
+        buildPairedMacUiState(
+            streams = assembly.streams,
+            local = assembly.local,
+            premium = assembly.premium,
+            registrationState = assembly.registrationState,
+        )
     val uiActions =
         buildPairedMacControlsUiActions(
             context =
@@ -173,6 +184,8 @@ private fun buildPairedMacEffectsBinding(
     connectionID = connectionID,
     app = app,
     coordinator = streams.coordinator,
+    phase = streams.phase,
+    statusMessage = local.statusMessage,
     pendingRequestID = local.pendingRequestID,
     ack = streams.ack,
     pendingCallRequestID = local.pendingCallRequestID,
@@ -198,9 +211,10 @@ private fun buildPairedMacUiState(
     streams: PairedMacCoordinatorStreams,
     local: PairedMacControlsLocalState,
     premium: PairedMacPremiumUi,
+    registrationState: MercuryDeviceRegistrationState,
 ): PairedMacControlsUiState = PairedMacControlsUiState(
     phase = streams.phase,
-    statusMessage = local.statusMessage,
+    statusMessage = local.statusMessage ?: registrationState.userMessage(),
     pendingRequestID = local.pendingRequestID,
     pendingCallRequestID = local.pendingCallRequestID,
     recoveringMercury = local.recoveringMercury,
@@ -453,7 +467,7 @@ private fun PairedMacControlsScreenLayout(state: PairedMacControlsUiState, actio
                 pendingRequestID = state.pendingRequestID,
                 modifier = Modifier.fillMaxWidth(),
             )
-            state.statusMessage?.let { message ->
+            (state.statusMessage ?: state.phase.actionRequiredMessage())?.let { message ->
                 PairedMacControlsStatusBanner(message = message)
             }
             Spacer(Modifier.weight(1f))
@@ -465,9 +479,19 @@ private fun PairedMacControlsScreenLayout(state: PairedMacControlsUiState, actio
 @Composable
 internal fun PairedMacControlsScreenEffects(binding: PairedMacControlsEffectsBinding) {
     PairedMacControlsConnectionEffect(binding)
+    PairedMacControlsActionRecoveryEffect(binding)
     PairedMacControlsMirrorAckEffect(binding)
     PairedMacControlsMirrorTimeoutEffect(binding)
     PairedMacControlsCallEffects(binding)
+}
+
+@Composable
+private fun PairedMacControlsActionRecoveryEffect(binding: PairedMacControlsEffectsBinding) {
+    LaunchedEffect(binding.phase, binding.statusMessage) {
+        if (shouldClearMercuryActionRequiredStatus(binding.statusMessage, binding.phase)) {
+            binding.onStatusMessageChange(null)
+        }
+    }
 }
 
 @Composable
@@ -544,10 +568,10 @@ private suspend fun handleRemoteUnlockMirrorRetry(binding: PairedMacControlsEffe
 private fun PairedMacControlsMirrorTimeoutEffect(binding: PairedMacControlsEffectsBinding) {
     LaunchedEffect(binding.pendingRequestID) {
         val requestID = binding.pendingRequestID ?: return@LaunchedEffect
-        delay(15_000)
+        delay(MIRROR_ACK_TIMEOUT_MS)
         if (binding.pendingRequestID == requestID) {
             binding.onPendingRequestIDChange(null)
-            binding.onStatusMessageChange("No response from the Mac. Open BurnBar on the Mac, enable Local Network, then try again.")
+            binding.onStatusMessageChange(MIRROR_NO_RESPONSE_MESSAGE)
         }
     }
 }
@@ -568,7 +592,7 @@ private fun PairedMacControlsCallEffects(binding: PairedMacControlsEffectsBindin
         delay(15_000)
         if (binding.pendingCallRequestID == requestID) {
             binding.onPendingCallRequestIDChange(null)
-            binding.onStatusMessageChange("No call response from the Mac. Open BurnBar on the Mac, enable Local Network, then try again.")
+            binding.onStatusMessageChange(CALL_NO_RESPONSE_MESSAGE)
         }
     }
 }
@@ -684,7 +708,10 @@ internal fun PairedMacControlsDockSection(state: PairedMacControlsUiState, actio
 @Composable
 private fun PairedMacControlsDockButtons(state: PairedMacControlsUiState, actions: PairedMacControlsUiActions) {
     val fileEnabled = state.coordinator != null && state.phase is MediaControlStreamCoordinator.Phase.Live && !state.sendingFile
-    val mirrorEnabled = state.pendingRequestID == null && !state.recoveringMercury
+    val mirrorEnabled =
+        state.pendingRequestID == null &&
+            !state.recoveringMercury &&
+            !state.phase.requiresOperatorAction()
     val callEnabled = state.pendingCallRequestID == null
     val scales = rememberPairedMacDockButtonScales(state.usePremiumSOTAUX)
 
@@ -985,20 +1012,21 @@ private fun rememberPairedMacButtonScale(interactionSource: MutableInteractionSo
     return scale
 }
 
-private fun pairedMacPhaseDotColor(phase: MediaControlStreamCoordinator.Phase): Color = when (phase) {
-    MediaControlStreamCoordinator.Phase.Live -> AuroraColors.successDark
-    MediaControlStreamCoordinator.Phase.Dialing,
-    is MediaControlStreamCoordinator.Phase.Reconnecting,
-    -> AuroraColors.amber
-    is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
+private fun pairedMacPhaseDotColor(phase: MediaControlStreamCoordinator.Phase): Color = when {
+    phase is MediaControlStreamCoordinator.Phase.Live -> AuroraColors.successDark
+    phase.requiresOperatorAction() -> AuroraColors.amber
+    phase is MediaControlStreamCoordinator.Phase.Dialing ||
+        phase is MediaControlStreamCoordinator.Phase.Reconnecting -> AuroraColors.amber
+    phase is MediaControlStreamCoordinator.Phase.Failed -> AuroraColors.errorDark
     else -> Color(0xFF4B5563)
 }
 
-private fun pairedMacPhaseStatusLabel(phase: MediaControlStreamCoordinator.Phase): String = when (phase) {
-    MediaControlStreamCoordinator.Phase.Live -> "Live"
-    MediaControlStreamCoordinator.Phase.Dialing,
-    is MediaControlStreamCoordinator.Phase.Reconnecting,
-    -> "Connecting"
-    is MediaControlStreamCoordinator.Phase.Failed -> "Error"
+private fun pairedMacPhaseStatusLabel(phase: MediaControlStreamCoordinator.Phase): String = when {
+    phase is MediaControlStreamCoordinator.Phase.Live -> "Live"
+    phase.requiresTrustedDeviceApproval() -> "Approval needed"
+    phase.requiresFreshMacPairing() -> "Open Mac"
+    phase is MediaControlStreamCoordinator.Phase.Dialing ||
+        phase is MediaControlStreamCoordinator.Phase.Reconnecting -> "Connecting"
+    phase is MediaControlStreamCoordinator.Phase.Failed -> "Error"
     else -> "Offline"
 }

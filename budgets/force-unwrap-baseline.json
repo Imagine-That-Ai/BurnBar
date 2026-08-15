@@ -1,9 +1,9 @@
 {
   "note": "Force-unwrap (!) site budget across AgentLens/, OpenBurnBarMobile/, OpenBurnBarCore/Sources/, OpenBurnBarDaemon/Sources/, OpenBurnBarKeyboard/, OpenBurnBarWidget/. Shrink-only: count may only decrease as sites are removed. Excludes try! and as! (governed by force_try / force_cast) and implicitly-unwrapped optional type declarations (governed by implicitly_unwrapped_optional). String interpolation expressions are counted (executable code). Regenerate via scripts/debt/check-force-unwrap-budget.sh --update.",
-  "total": 215,
+  "total": 213,
   "files": [
     {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/AssistantRuntimeID.swift",
+      "path": "OpenBurnBarCore/Sources/OpenBurnBarAssistantModels/AssistantRuntimeID.swift",
       "count": 13
     },
     {
@@ -168,10 +168,6 @@
     },
     {
       "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/FusionSessionSpend.swift",
-      "count": 2
-    },
-    {
-      "path": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift",
       "count": 2
     },
     {

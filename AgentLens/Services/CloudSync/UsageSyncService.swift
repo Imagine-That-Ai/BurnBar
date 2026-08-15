@@ -445,6 +445,13 @@ final class UsageSyncService: CloudSyncDomain, Sendable {
             "cacheReadTokens": usage.cacheReadTokens,
             "reasoningTokens": usage.reasoningTokens,
             "usageSource": usage.usageSource.rawValue,
+            // Billing provenance is a persisted dimension, not something the
+            // receiver can re-derive: the peer would fall back to
+            // provider/source heuristics and turn an explicitly stamped
+            // subscription daemon row into real wallet spend. The `usage`
+            // collection rule is `ownerWritableNonSecret` (no field allowlist,
+            // <80 keys), so this key needs no firestore.rules change.
+            "billingKind": usage.billingKind.rawValue,
             "executionSourceID": usage.executionSourceID,
             "executionSourceName": usage.executionSourceName,
             "executionSourceKind": usage.executionSourceKind.rawValue,

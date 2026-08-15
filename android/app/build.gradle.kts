@@ -56,7 +56,7 @@ plugins {
 
 val openBurnBarAppVersionName =
     providers.gradleProperty("openBurnBarAppVersionName")
-        .orElse("1.0.30")
+        .orElse("1.0.34")
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
 
@@ -253,7 +253,7 @@ android {
         applicationId = "com.openburnbar"
         minSdk = 26
         targetSdk = 35
-        versionCode = 40
+        versionCode = 46
         versionName = openBurnBarAppVersionName.get()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -685,7 +685,6 @@ dependencies {
     // googleid bridge returns the ID token that Firebase Auth exchanges.
     implementation("androidx.credentials:credentials:1.6.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
-    implementation("com.google.android.gms:play-services-auth:21.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.0")
 
     // Google Play Billing for BurnBar Pro (Hosted Quota + hosted LLM + encrypted cloud search).

@@ -20,6 +20,7 @@ const ACTIVATION = Object.freeze({
   abiVersion: CANDIDATE.abiVersion,
   sourceSha256: CANDIDATE.sourceSha256,
   changedPathsSha256: "e".repeat(64),
+  releaseCommit: "d".repeat(40),
 });
 
 function sha(value) {
@@ -341,7 +342,10 @@ test("rejects a candidate-only rollback artifact whose release commit equals the
           ),
           {
             promotionVerifier: () => [],
-            activationVerifier: () => ACTIVATION,
+            activationVerifier: () => ({
+              ...ACTIVATION,
+              releaseCommit: CANDIDATE.candidateCommit,
+            }),
           },
         ),
       /rollback artifact release commit must be distinct from the candidate commit/u,

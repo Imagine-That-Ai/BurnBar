@@ -34,8 +34,7 @@ const releaseDocs = read("docs/RELEASE_MACOS.md");
 // This is intentionally duplicated from SITE. Changing the public DMG URL must
 // update this audited live URL in the same PR, after the replacement artifact is
 // published and manually verified.
-const AUDITED_LIVE_MAC_DOWNLOAD_URL =
-  "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.26/OpenBurnBar-1.0.26-macOS.dmg";
+const AUDITED_LIVE_MAC_DOWNLOAD_URL = "https://downloads.burnbar.ai/OpenBurnBar-1.0.29-macOS.dmg";
 
 const TRUSTED_GITHUB_RELEASE_PATH =
   /^\/Imagine-That-Ai\/BurnBar\/releases\/download\/[^/]+(?:\/OpenBurnBar-[A-Za-z0-9._-]+-macOS\.dmg)?$/;
@@ -144,20 +143,34 @@ if (macUpdateBaseUrlRaw) {
   );
 }
 
-assert.match(downloadPage, /public macOS DMG is served from GitHub Releases/);
-assert.match(downloadPage, /branded\s+direct-download host is being republished/);
-assert.match(downloadPage, /<h1 class="pagehead__h">Get OpenBurnBar<\/h1>/);
+assert.match(downloadPage, /macOS DMG is served from OpenBurnBar's first-party download host/);
+assert.match(downloadPage, /checksum\s+matches the immutable GitHub Release asset/);
+assert.match(
+  downloadPage,
+  /<BaseLayout[\s\S]*?ambientEffects=\{false\}[\s\S]*?>/,
+  "download page must suppress ambient canvases so platform choices stay visually unobstructed"
+);
+assert.match(
+  downloadPage,
+  /<h1 class="pagehead__h" data-pretext-native>[\s\S]*?<span>Get<\/span>[\s\S]*?<span class="pagehead__product">OpenBurnBar<\/span>[\s\S]*?<\/h1>/,
+  "download hero must keep the product name as one non-breaking visual unit"
+);
+assert.match(
+  downloadPage,
+  /\.pagehead__product \{[^}]*white-space: nowrap;/,
+  "download hero product name must not split mid-word on narrow screens"
+);
 assert.doesNotMatch(
   downloadPage,
   /Get OpenBurnBar\.<\/h1>/,
   "download hero punctuation must not wrap onto its own line on narrow screens"
 );
-assert.match(downloadPage, /Current public button uses the GitHub Release DMG fallback/);
-assert.match(downloadPage, /Branded direct-download releases are Developer ID signed/);
+assert.match(downloadPage, /First-party download host with immutable release provenance/);
+assert.match(downloadPage, /Developer ID signed, notarized, and stapled/);
 assert.doesNotMatch(
   downloadPage,
-  /<li>Signed with Developer ID \+ notarized \+ stapled<\/li>/,
-  "the emergency GitHub fallback must not be presented as the signed direct-download lane"
+  /branded\s+direct-download host is being republished/,
+  "the live first-party download host must not be described as unavailable"
 );
 assert.match(sourcePage, /corresponding source archive/);
 assert.match(sourcePage, /signed macOS\s+DMG, ZIP, SBOM, checksums, and release\s+metadata/);

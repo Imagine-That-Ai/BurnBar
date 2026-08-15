@@ -13,6 +13,7 @@ import {
   parseRepositoryIdentityOutput,
   parseRepositoryVariablesOutput,
   parseUtmListOutput,
+  parseXcdeviceListOutput,
   parseXcrunDeviceOutput,
   validateLinuxGuestCoordinationRoot,
   validateMacCoordinationRoot,
@@ -58,9 +59,42 @@ function devicesOutput({ available = true, offline = false, duplicate = false } 
   return lines.join("\n");
 }
 
+function xcdeviceOutput({ available = true, duplicate = false, simulatorOnly = false } = {}) {
+  const rows = [
+    {
+      simulator: true,
+      available: true,
+      name: "QA iPad Simulator",
+      modelName: "iPad Air 11-inch (M4)",
+      identifier: "AAAA0004-AAAA0004-AAAA0004-AAAA0004",
+    },
+  ];
+  if (!simulatorOnly && available) {
+    rows.push({
+      simulator: false,
+      available: true,
+      name: "QA iPad",
+      modelName: "iPad Air 11-inch (M4)",
+      identifier: "AAAA0001-AAAA0001-AAAA0001",
+      interface: "usb",
+    });
+  }
+  if (duplicate) {
+    rows.push({
+      simulator: false,
+      available: true,
+      name: "Second QA iPad",
+      modelName: "iPad Air 11-inch (M4)",
+      identifier: "AAAA0003-AAAA0003-AAAA0003",
+      interface: "usb",
+    });
+  }
+  return JSON.stringify(rows, null, 2);
+}
+
 function runner({
   id = 129,
-  name = "ImagineThat-CI-M5Max-macOS",
+  name = "ImagineThat-CI-M4-MacMini-macOS",
   os = "macOS",
   status = "online",
   busy = false,
@@ -114,6 +148,7 @@ function readyInput(overrides = {}) {
     utmOutput: utmOutput(),
     variablesOutput: variablesOutput(),
     devicesOutput: devicesOutput(),
+    xcdeviceOutput: xcdeviceOutput(),
     runnersOutput: runnersOutput(),
     runnerGroupsOutput: runnerGroupsOutput(),
     runnerGroupRunnersOutputs: { [RUNNER_GROUP_ID]: runnerGroupRunnersOutput() },
@@ -146,6 +181,7 @@ test("stopped VM, missing roots, offline iPad, and unavailable runner are report
     utmOutput: utmOutput("stopped"),
     variablesOutput: variablesOutput([]),
     devicesOutput: devicesOutput({ available: false, offline: true }),
+    xcdeviceOutput: xcdeviceOutput({ simulatorOnly: true }),
     runnersOutput: runnersOutput([runner({ status: "offline", busy: false })]),
   }));
   assert.equal(report.ready, false);
@@ -275,6 +311,32 @@ test("xcrun parser accepts one available physical iPad and rejects duplicate, am
   );
 });
 
+test("xcdevice corroborates a physical iPad when xctrace parks it offline", () => {
+  const parsed = parseXcdeviceListOutput(xcdeviceOutput());
+  assert.equal(parsed.availableCount, 1);
+  assert.equal(parsed.source, "xcdevice");
+  assert.equal(parsed.selected.simulator, false);
+  assert.throws(() => parseXcdeviceListOutput(xcdeviceOutput({ duplicate: true })), /more than one available physical iPad/u);
+
+  const corroborated = evaluateP16HostPreflight(readyInput({
+    devicesOutput: devicesOutput({ available: false, offline: true }),
+    xcdeviceOutput: xcdeviceOutput(),
+  }));
+  const ipad = corroborated.checks.find((check) => check.id === "physicalIPad");
+  assert.equal(ipad.status, "pass");
+  assert.equal(ipad.details.discoverySource, "xcdevice-corroborated");
+  assert.equal(ipad.details.offlineCount, 1);
+
+  const stillBlocked = evaluateP16HostPreflight(readyInput({
+    devicesOutput: devicesOutput({ available: false, offline: true }),
+    xcdeviceOutput: xcdeviceOutput({ simulatorOnly: true }),
+  }));
+  assert.equal(
+    stillBlocked.checks.find((check) => check.id === "physicalIPad").code,
+    "physical_ipad_unavailable",
+  );
+});
+
 test("runner parser requires real macOS OS state, every label, online status, and non-busy capacity", () => {
   const parsed = parseOrganizationRunnersOutput(runnersOutput([
     runner(),
@@ -282,7 +344,7 @@ test("runner parser requires real macOS OS state, every label, online status, an
     runner({ id: 131, name: "Spoofed OS", os: "Linux" }),
     runner({ id: 132, name: "Missing label", labels: REQUIRED_RUNNER_LABELS.slice(0, -1) }),
   ]));
-  assert.deepEqual(parsed.eligible, [{ id: 129, name: "ImagineThat-CI-M5Max-macOS" }]);
+  assert.deepEqual(parsed.eligible, [{ id: 129, name: "ImagineThat-CI-M4-MacMini-macOS" }]);
   assert.equal(parsed.labelMatchCount, 2);
   assert.throws(
     () => parseOrganizationRunnersOutput(runnersOutput([
@@ -293,7 +355,7 @@ test("runner parser requires real macOS OS state, every label, online status, an
   );
   assert.throws(
     () => parseOrganizationRunnersOutput(runnersOutput([
-      runner({ labels: [...REQUIRED_RUNNER_LABELS, "IOS"] }),
+      runner({ labels: [...REQUIRED_RUNNER_LABELS, "MACOS"] }),
     ])),
     /duplicate label/u,
   );
@@ -381,6 +443,7 @@ test("the live collector invokes only the bounded read-only command set", () => 
     ["utmctl list", utmOutput()],
     ["gh api --paginate --slurp", variablesOutput()],
     ["xcrun xctrace list", devicesOutput()],
+    ["xcrun xcdevice list", xcdeviceOutput()],
   ]);
   const commandRunner = (command, args) => {
     calls.push([command, ...args]);

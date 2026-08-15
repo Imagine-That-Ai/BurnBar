@@ -1,13 +1,20 @@
 {
   "status": "not_ready",
-  "runtimeCryptoCore": "official_libsignal_device_to_device_and_at_rest_proofs_merged; gateway_cutover_migration_telemetry_and_counsel_pending",
+  "runtimeCryptoCore": "official_libsignal_device_to_device_and_at_rest_proofs_merged; durable_phone_gateway_runtime_wired_and_locally_verified; gateway_cutover_migration_telemetry_and_counsel_pending",
   "officialLibsignalPin": {
     "tag": "v0.94.4",
     "tagObject": "03c449017b57eccbda715b8b018dce5dff603ac6",
     "commit": "46d867c986f66201e34e7ae20ce423eec742bf3f"
   },
-  "blockingReason": "Signal phase2 is merged to main and Swift/Kotlin/CryptoKit proof tests pass, but final launch readiness still requires gateway write cutover evidence, migration telemetry, physical-device Phase-E activation evidence, real iroh QA, and counsel approval.",
+  "blockingReason": "The pinned official libsignal Rust bridge and Swift/Kotlin/Node bindings, durable phone gateway runtime, local gateway KATs, full mobile tests, Android tests, and a signed physical-iPad install/launch are verified. Final launch readiness still requires live gateway text/control and attachment write cutover evidence, private-domain Signal activation evidence, migration telemetry, real iroh QA, and counsel approval.",
   "completedEvidence": [
+    {
+      "id": "rust_core_bridge",
+      "status": "complete",
+      "proof": "The official libsignal v0.94.4 Rust shared bridge is consumed through its Swift FFI, Kotlin/Android JNI, and Node bindings at one verified pin. Representative protocol, interop, at-rest, replay, and identity tests pass on all three consumers, and the vendored fork has no crypto-core divergence.",
+      "command": "bash scripts/ci/verify-libsignal-pin.sh && bash scripts/ci/verify-libsignal-submodule-delta.sh && npm test --prefix packages/libsignal-bridge && swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-release-rust-bridge-swift --disable-swift-testing --filter OpenBurnBarSignalCoreTests && cd android && ./gradlew :app:testDebugUnitTest --tests '*AndroidSignalSession*' --tests '*AndroidSignalInteropKatTest' --tests '*AndroidCloudVaultSignalPayloadsTest' --tests '*AndroidSignalIdentityKeyStoreTest' --no-daemon",
+      "evidencePath": "launch-evidence/libsignal-rust-core-bridge-v1.0.34.json"
+    },
     {
       "id": "node_protocol_harness",
       "status": "complete",
@@ -27,6 +34,13 @@
       "command": "npm test --prefix packages/signal-envelope-contracts && npm run build --prefix functions && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/dataExport.test.ts src/__tests__/hermesGatewaySealedEvent.test.ts --reporter=verbose && npm run test:hermes-gateway --prefix ../functions && npm test --prefix ../services/hosted-mcp && npm test --prefix ../services/hermes-realtime-relay"
     },
     {
+      "id": "hermes_gateway_signal_v4_local_kat",
+      "status": "complete",
+      "proof": "Swift official-libsignal Gateway loopback, native Hermes sidecar PQXDH/Double Ratchet restart, Python adapter smoke, attachment binding, and CloudVault rules/telemetry tests pass. This is local implementation evidence only; it does not prove physical-device activation, production migration traffic, or counsel approval.",
+      "command": "swift test --package-path OpenBurnBarCore --scratch-path /tmp/obb-signal-runtime-core --filter testGatewayV4EnvelopeRoundTripUsesSignalCiphertext && npm --prefix tools/hermes-platform-burnbar/signal-runtime test && npm --prefix functions run build && cd functions && npx vitest run src/__tests__/hermesGatewaySignalEnvelope.test.ts src/__tests__/hermesGatewayAttachmentInit.test.ts && cd .. && npm --prefix functions run test:firestore-rules && PYTHONPATH=. uv run --with pytest pytest tests/test_signal_migration_evidence.py tests/test_libsignal_runtime_readiness.py && node --test scripts/ops/collect-signal-migration-evidence.test.mjs",
+      "evidencePath": "launch-evidence/hermes-gateway-signal-v4-local-kat-v1.0.30.json"
+    },
+    {
       "id": "swift_round_trips",
       "status": "complete",
       "proof": "Merged main passes Swift official-libsignal X3DH/PQXDH session round-trip, persistence reload, iroh loopback session transport, and CryptoKit-opens-libsignal HPKE at-rest KAT.",
@@ -39,6 +53,13 @@
       "command": "ANDROID_HOME=\"$HOME/Library/Android/sdk\" ./gradlew :app:testDebugUnitTest --tests \"*AndroidSignalSession*\" --tests \"*AndroidSignalInteropKatTest\" --tests \"*AndroidCloudVaultSignalPayloadsTest\" --tests \"*AndroidSignalIdentityKeyStoreTest\""
     },
     {
+      "id": "signal_phone_runtime_local_and_physical_launch",
+      "status": "complete",
+      "proof": "The iOS phone runtime persists official libsignal identity/session/prekey material and implements PQXDH bundle publication plus Signal-ciphertext routing for outbound control/text and inbound replies. The local Gateway v4 ciphertext KAT, focused mobile seal/rollback tests, Swift core tests, Functions build/full unit suite, and Android compile/JVM tests pass. A signed source-gRPC iOS 27 build installed and stayed alive on a physical iPad.",
+      "command": "swift test --package-path OpenBurnBarCore --disable-sandbox; FIREBASE_SOURCE_FIRESTORE=1 xcodebuild -disableAutomaticPackageResolution -project OpenBurnBar.xcodeproj -scheme OpenBurnBarMobileUnitTests -destination id=4CD09CFC-5105-4FF7-AB44-A33E723E06CD test CODE_SIGNING_ALLOWED=NO -only-testing:OpenBurnBarMobileTests/CLIAgentMissionDispatcherSealTests -only-testing:OpenBurnBarMobileTests/RollbackServiceSealTests -only-testing:OpenBurnBarMobileTests/ApprovalPolicyStoreSealTests -only-testing:OpenBurnBarMobileTests/AgentSubscriptionTopicSealTests; cd android && ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon; npm run build --prefix functions; xcrun devicectl device install app --device 00008132-001158191E9A401C /tmp/obb-signal-ipad-final-2/Build/Products/Debug-iphoneos/OpenBurnBarMobile.app; xcrun devicectl device process launch --device 00008132-001158191E9A401C --terminate-existing com.openburnbar.app",
+      "evidencePath": "launch-evidence/signal-phone-runtime-physical-ipad-v1.json"
+    },
+    {
       "id": "phase2_main_merge",
       "status": "complete",
       "proof": "origin/main fast-forwarded to 143675f6f; branch protection restored with required checks/review/admin enforcement.",
@@ -48,7 +69,7 @@
   "requiredGates": [
     {
       "id": "rust_core_bridge",
-      "status": "pending",
+      "status": "complete",
       "proof": "Shared Rust libsignal adapter with stable FFI contracts for Swift, Kotlin, and Node."
     },
     {
@@ -92,6 +113,6 @@
       "proof": "Counsel signs off before public app-store, direct-download, extension, npm, Docker, or hosted-service release that links libsignal."
     }
   ],
-  "generatedAt": "2026-06-06T16:47:17.942Z",
+  "generatedAt": "2026-08-04T15:40:44Z",
   "mergedMainEvidence": "launch-evidence/signal-phase2-main-merge-evidence-20260606T164717Z.json"
 }

@@ -146,7 +146,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
         let payload = try ApprovalPolicyStore.encode(policy, uid: testUID, documentID: docID, vaultKey: key)
 
         let decoded = try XCTUnwrap(
-            ApprovalPolicyStore.decode(documentID: docID, data: payload, vaultKey: key, uid: testUID)
+            ApprovalPolicyStore.decode(documentID: docID, data: payload as NSDictionary, vaultKey: key, uid: testUID)
         )
 
         // Private fields are recovered.
@@ -174,7 +174,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
             targetProject: "OtherProject"
         ))
         XCTAssertNil(
-            ApprovalPolicyStore.decode(documentID: "ap_wrong_document", data: payload, vaultKey: key, uid: testUID),
+            ApprovalPolicyStore.decode(documentID: "ap_wrong_document", data: payload as NSDictionary, vaultKey: key, uid: testUID),
             "v2 sealed approval policies must be bound to the Firestore document ID via AAD"
         )
     }
@@ -200,7 +200,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
 
         // Decodes with a key (sealed fields absent -> legacy path).
         let withKey = try XCTUnwrap(
-            ApprovalPolicyStore.decode(documentID: "legacy", data: legacy, vaultKey: try CloudVaultCrypto.generateVaultKey())
+            ApprovalPolicyStore.decode(documentID: "legacy", data: legacy as NSDictionary, vaultKey: try CloudVaultCrypto.generateVaultKey())
         )
         XCTAssertEqual(withKey.displayLabel, "Legacy label")
         XCTAssertEqual(withKey.targetProject, "LegacyProj")
@@ -209,7 +209,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
 
         // And without any key on this device (still legacy plaintext).
         let noKey = try XCTUnwrap(
-            ApprovalPolicyStore.decode(documentID: "legacy", data: legacy, vaultKey: nil)
+            ApprovalPolicyStore.decode(documentID: "legacy", data: legacy as NSDictionary, vaultKey: nil)
         )
         XCTAssertEqual(noKey.displayLabel, "Legacy label")
         XCTAssertEqual(noKey.targetProject, "LegacyProj")
@@ -225,7 +225,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
 
         // No key on this device: displayLabel is required, so the whole record
         // is dropped rather than surfacing any plaintext (there is none to leak).
-        let decoded = ApprovalPolicyStore.decode(documentID: docID, data: payload, vaultKey: nil, uid: testUID)
+        let decoded = ApprovalPolicyStore.decode(documentID: docID, data: payload as NSDictionary, vaultKey: nil, uid: testUID)
         XCTAssertNil(decoded)
     }
 
@@ -237,7 +237,7 @@ final class ApprovalPolicyStoreSealTests: XCTestCase {
 
         // A different vault key cannot open the envelopes -> sealed fields resolve
         // to nil; the required displayLabel is unreadable so the record is dropped.
-        let decoded = ApprovalPolicyStore.decode(documentID: docID, data: payload, vaultKey: try CloudVaultCrypto.generateVaultKey(), uid: testUID)
+        let decoded = ApprovalPolicyStore.decode(documentID: docID, data: payload as NSDictionary, vaultKey: try CloudVaultCrypto.generateVaultKey(), uid: testUID)
         XCTAssertNil(decoded)
     }
 

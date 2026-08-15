@@ -86,6 +86,7 @@ internal data class YouRootStores(
 )
 
 internal data class YouRootNavigation(
+    val onOpenConnectedDevices: () -> Unit,
     val onOpenSmartDisplays: () -> Unit,
     val onOpenMenuBarPrefs: () -> Unit,
     val onOpenChatTiles: () -> Unit,
@@ -273,7 +274,10 @@ private fun YouRootSettingsRows(syncHealthLabel: String, devices: List<DeviceRec
         onClick = openCloud,
     )
     YouSettingsRow(icon = Icons.Filled.Cloud, title = "Cloud Sync", subtitle = syncHealthLabel) {}
-    ConnectedDevicesRow(devices = devices) {}
+    ConnectedDevicesRow(
+        devices = devices,
+        onClick = navigation.onOpenConnectedDevices,
+    )
     YouSettingsRow(
         icon = Icons.Filled.Tv,
         title = "Smart Displays",

@@ -80,8 +80,10 @@ struct DaemonSettingsView: View {
         .background(DesignSystem.Colors.background)
         .navigationTitle("Daemon")
         .task {
+            // attach is idempotent after the first bind — it no longer re-fires
+            // repair/Keychain sweeps on every Settings → Daemon visit.
             daemonManager.attach(dataStore: dataStore)
-            await daemonManager.refreshHealth()
+            await daemonManager.refreshHealth(mode: .statusOnly)
         }
     }
 
@@ -207,7 +209,7 @@ struct DaemonLifecycleDetailView: View {
     @ViewBuilder private var statusActionButtons: some View {
         HStack(spacing: DesignSystem.Spacing.sm) {
             Button("Refresh") {
-                Task { await daemonManager.refreshHealth() }
+                Task { await daemonManager.refreshHealth(mode: .statusOnly) }
             }
             .buttonStyle(.bordered)
 
@@ -217,7 +219,7 @@ struct DaemonLifecycleDetailView: View {
                     case .healthy:
                         await daemonManager.repair()
                     case .checking:
-                        await daemonManager.refreshHealth()
+                        await daemonManager.refreshHealth(mode: .statusOnly)
                     case .notInstalled, .unhealthy:
                         await daemonManager.installAndStart()
                     }

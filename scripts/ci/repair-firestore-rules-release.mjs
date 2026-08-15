@@ -20,7 +20,15 @@
  * deploy failure output contains "409" and "Requested entity already exists").
  *
  * Auth mirrors check-firestore-deploy-drift.mjs (gcloud auth print-access-token).
- * Usage: node scripts/ci/repair-firestore-rules-release.mjs <project>
+ * Usage: node scripts/ci/repair-firestore-rules-release.mjs <project> [rulesPath]
+ *
+ * rulesPath (or the FIRESTORE_RULES_PATH env var) must point at the exact
+ * firestore.rules file the failed deploy uploaded. It defaults to the repo
+ * checkout's firestore.rules, which is only correct when the deploy shipped
+ * that same file (deploy-firestore.yml compacts it in place). The trusted
+ * staging deploy ships a candidate copy from a staging directory instead, so
+ * it must pass that copy explicitly or the repair would match main's rules
+ * and skip the just-uploaded candidate ruleset.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -35,6 +43,24 @@ const RULES_API_BASE = "https://firebaserules.googleapis.com/v1";
 const FIRESTORE_RELEASE = "cloud.firestore";
 
 // ─── Pure helpers (exported for unit testing) ─────────────────────────────
+
+/**
+ * Resolve the path of the firestore.rules file the deploy actually shipped.
+ * Precedence: explicit CLI argument, FIRESTORE_RULES_PATH env var, then the
+ * repo checkout's firestore.rules. Relative paths resolve against cwd so the
+ * caller's working directory semantics match readFileSync.
+ *
+ * @param {object} opts
+ * @param {string[]} opts.argv — process.argv
+ * @param {object} opts.env — process.env
+ * @param {string} opts.repoRoot — repository root fallback
+ * @returns {string} absolute path to the deployed firestore.rules
+ */
+export function resolveRulesSourcePath({ argv, env, repoRoot: root }) {
+  const explicit = argv[3] || env.FIRESTORE_RULES_PATH;
+  if (explicit) return resolve(explicit);
+  return resolve(root, "firestore.rules");
+}
 
 /**
  * Detect whether a deploy failure output is a 409 "Requested entity already
@@ -194,7 +220,8 @@ async function getFirestoreRelease({ project, token, fetchImpl }) {
 /**
  * PATCH the cloud.firestore release to point to a new ruleset.
  * Matches the Firebase Rules API PATCH contract: the Release resource is
- * nested under `release`, and rulesetName is selected by updateMask.
+ * nested under `release`. The API currently rejects an updateMask here even
+ * though the discovery document advertises it, so omit the optional mask.
  */
 async function patchFirestoreRelease({ project, token, fetchImpl, rulesetName }) {
   const releaseName = `projects/${project}/releases/${FIRESTORE_RELEASE}`;
@@ -207,7 +234,6 @@ async function patchFirestoreRelease({ project, token, fetchImpl, rulesetName })
           name: releaseName,
           rulesetName,
         },
-        updateMask: "rulesetName",
       },
       token,
       project,
@@ -313,14 +339,21 @@ function accessToken(project) {
 async function main() {
   const project = process.env.FIREBASE_PROJECT || process.argv[2];
   if (!project) {
-    console.error("Usage: repair-firestore-rules-release.mjs <project>");
+    console.error("Usage: repair-firestore-rules-release.mjs <project> [rulesPath]");
     process.exit(2);
   }
 
   const token = accessToken(project);
+  const rulesPath = resolveRulesSourcePath({
+    argv: process.argv,
+    env: process.env,
+    repoRoot,
+  });
+  // rulesSourceForDeploy compaction is idempotent, so passing an
+  // already-compacted deploy copy yields the same expected content.
   const expectedRulesContent = rulesSourceForDeploy(
     "firestore.rules",
-    readFileSync(resolve(repoRoot, "firestore.rules"), "utf8"),
+    readFileSync(rulesPath, "utf8"),
   );
   const result = await repairFirestoreRelease({
     project,

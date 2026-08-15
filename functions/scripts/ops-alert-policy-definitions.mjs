@@ -207,7 +207,7 @@ export const OPS_SLO_ALERT_POLICIES = [
           ],
           comparison: "COMPARISON_GT",
           thresholdValue: 0,
-          duration: "60s",
+          duration: "0s",
           trigger: { count: 1 },
         },
       },

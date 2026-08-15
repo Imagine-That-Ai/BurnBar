@@ -33,6 +33,13 @@ final class FirestoreRepository {
 
     private var db: Firestore { Firestore.firestore() }
 
+    /// Sanctioned resolution point for the raw Firestore handle (R-GH6 raw
+    /// Firestore ratchet). Call sites that must hand the concrete SDK handle
+    /// to vault/codec helpers resolve it here instead of calling
+    /// `Firestore.firestore()` directly, so handle configuration stays owned
+    /// by the repository layer.
+    nonisolated static var database: Firestore { Firestore.firestore() }
+
     nonisolated func currentUserDisplayID() -> String? {
         guard FirebaseApp.app() != nil else { return nil }
         return Self.redactedUserID(Auth.auth().currentUser?.uid)
@@ -41,6 +48,15 @@ final class FirestoreRepository {
     nonisolated static func redactedUserID(_ uid: String?) -> String? {
         guard let uid, uid.isEmpty == false else { return nil }
         return "…\(uid.suffix(5))"
+    }
+
+    /// Stable per-user token for in-process refresh gating. Unlike
+    /// `currentUserDisplayID()` this is deliberately not redacted: the value
+    /// never leaves the process, and a redacted suffix could collide across
+    /// users, letting one user's refresh cooldown block the next sign-in.
+    nonisolated func currentUserScopeID() -> String? {
+        guard FirebaseApp.app() != nil else { return nil }
+        return Auth.auth().currentUser?.uid
     }
 
     /// Synchronously loads the locally-escrowed Cloud Vault key for the signed-in

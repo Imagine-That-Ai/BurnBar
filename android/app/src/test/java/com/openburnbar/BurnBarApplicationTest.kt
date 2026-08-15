@@ -147,15 +147,15 @@ class BurnBarApplicationTest {
     }
 
     @Test
-    fun `force restart keeps live and dialing coordinators but not reconnecting`() {
+    fun `force restart never reuses a coordinator lease`() {
         fun reuse(phase: MediaControlStreamCoordinator.Phase) = MediaControlCoordinatorReusePolicy.shouldReuse(
             activeConnectionID = "mac-1",
             phase = phase,
             selection = IrohPairingSelection.Candidate("mac-1", 1L),
             forceRestart = true,
         )
-        assertTrue(reuse(MediaControlStreamCoordinator.Phase.Live))
-        assertTrue(reuse(MediaControlStreamCoordinator.Phase.Dialing))
+        assertFalse(reuse(MediaControlStreamCoordinator.Phase.Live))
+        assertFalse(reuse(MediaControlStreamCoordinator.Phase.Dialing))
         assertFalse(reuse(MediaControlStreamCoordinator.Phase.Reconnecting(nextAttemptInMillis = 1_000L)))
     }
 
@@ -190,6 +190,77 @@ class BurnBarApplicationTest {
                 expectedEpoch = 8L,
                 currentUid = "account-b",
                 currentEpoch = 8L,
+            ),
+        )
+    }
+
+    @Test
+    fun `same account auth callbacks do not tear down a live Mercury coordinator`() {
+        assertFalse(
+            ControllerAuthStatePolicy.shouldReconcile(
+                previousUid = "account-a",
+                nextUid = "account-a",
+            ),
+        )
+        assertTrue(
+            ControllerAuthStatePolicy.shouldReconcile(
+                previousUid = null,
+                nextUid = "account-a",
+            ),
+        )
+        assertTrue(
+            ControllerAuthStatePolicy.shouldReconcile(
+                previousUid = "account-a",
+                nextUid = null,
+            ),
+        )
+    }
+
+    @Test
+    fun `Mercury production identity accepts only durable Android escrow device ids`() {
+        assertEquals(
+            "android-0123456789abcdef",
+            durableAndroidPeerDeviceId("  android-0123456789abcdef  "),
+        )
+        assertTrue(runCatching { durableAndroidPeerDeviceId("") }.isFailure)
+        assertTrue(runCatching { durableAndroidPeerDeviceId("SM-S921U") }.isFailure)
+        assertTrue(runCatching { durableAndroidPeerDeviceId("Alberto's Samsung") }.isFailure)
+    }
+
+    @Test
+    fun `fresh Mercury lease reuses only the exact verified pairing target`() {
+        val selection = IrohPairingSelection.Candidate("mac-1", 42L)
+
+        assertTrue(
+            canReuseVerifiedCoordinatorTarget(
+                cachedConnectionID = "mac-1",
+                cachedPublishedAtMillis = 42L,
+                cachedTargetPresent = true,
+                selection = selection,
+            ),
+        )
+        assertFalse(
+            canReuseVerifiedCoordinatorTarget(
+                cachedConnectionID = "mac-2",
+                cachedPublishedAtMillis = 42L,
+                cachedTargetPresent = true,
+                selection = selection,
+            ),
+        )
+        assertFalse(
+            canReuseVerifiedCoordinatorTarget(
+                cachedConnectionID = "mac-1",
+                cachedPublishedAtMillis = 41L,
+                cachedTargetPresent = true,
+                selection = selection,
+            ),
+        )
+        assertFalse(
+            canReuseVerifiedCoordinatorTarget(
+                cachedConnectionID = "mac-1",
+                cachedPublishedAtMillis = 42L,
+                cachedTargetPresent = false,
+                selection = selection,
             ),
         )
     }

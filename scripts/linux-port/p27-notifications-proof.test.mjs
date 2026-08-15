@@ -103,7 +103,7 @@ function attestation(root, raw) {
         item(
           "/etc/xdg/autostart/openburnbar.desktop",
           Buffer.from(
-            "[Desktop Entry]\nExec=openburnbar-linux-desktop --background\n",
+            "[Desktop Entry]\nExec=/usr/bin/openburnbar-linux-desktop --background\n",
           ),
           "0644",
         ),
@@ -292,7 +292,7 @@ function fixture() {
     },
     autostart: {
       path: "/etc/xdg/autostart/openburnbar.desktop",
-      exec: "openburnbar-linux-desktop --background",
+      exec: "/usr/bin/openburnbar-linux-desktop --background",
       enabled: true,
       ownedByPackage: true,
       loginStartObserved: true,

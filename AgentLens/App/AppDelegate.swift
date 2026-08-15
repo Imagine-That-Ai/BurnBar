@@ -130,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func applicationDidFinishLaunchingOnMainActor() {
         guard enforceSingleOpenBurnBarInstance() else { return }
-        OpenBurnBarRuntime.beginHarnessHostActivityIfNeeded()
+        OpenBurnBarRuntime.beginApplicationHostActivityIfNeeded()
 
         NSAppleEventManager.shared().setEventHandler(
             self,
@@ -159,6 +159,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // for — on every foreground and once right after a local revoke.
         observeCloudVaultRotationPickupTriggers()
         pickUpPendingCloudVaultRotations(force: true)
+    }
+
+    nonisolated func applicationShouldTerminateAfterLastWindowClosed(
+        _ sender: NSApplication
+    ) -> Bool {
+        false
     }
     private func installPerformanceGateVisibilityControlIfNeeded() {
         guard OpenBurnBarRuntime.isPerformanceGateLaunch,
@@ -248,8 +254,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 forName: NSApplication.didResignActiveNotification,
                 object: nil,
                 queue: .main
-            ) { _ in
+            ) { [weak self] _ in
                 Task { @MainActor in
+                    // The glass tray sits at `.statusBar` with
+                    // `hidesOnDeactivate = false`, so leaving it open when the
+                    // user clicks another app keeps BurnBar chrome glued above
+                    // everything. Close it on resign so the desktop behaves
+                    // like any other Mac app.
+                    self?.closePopoverOnResignActive()
                     Analytics.shared.track(.appBackgrounded)
                 }
             }

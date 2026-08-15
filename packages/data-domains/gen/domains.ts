@@ -106,13 +106,16 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
     "title": "Conversations & Chat",
     "icon": "bubble.left.and.bubble.right.fill",
     "encryptionTier": "end_to_end",
-    "summary": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, approval rules, agent personas, subscription graph edges, and conversation recall metadata are sealed on-device before Firestore receives them.",
+    "sealingScheme": "signal-hpke-identity-seal-v1",
+    "summary": "Assistant chats, CLI agent transcripts, mobile mission prompts/results, saved text snippets, rollback scope/diagnostics, approval rules, agent personas, subscription graph edges, conversation recall metadata, and AI Inbox findings are sealed on-device before Firestore receives them. NOTE: your per-item AI Inbox state — read, archived, snoozed, and the useful/not-useful verdict — rides as plain status metadata so every device converges on the same inbox; the item title, body, and evidence stay sealed.",
     "serverSees": [
       "provider/runtime identifiers",
       "message counts",
       "status/routing metadata",
       "timestamps",
-      "device ids"
+      "device ids",
+      "AI Inbox item kind/priority/lifecycle",
+      "AI Inbox read, archive, snooze, and feedback verdicts"
     ],
     "deviceOnly": [
       "chat titles",
@@ -126,7 +129,8 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "rollback error diagnostics",
       "approval policy labels/globs/projects",
       "agent persona text",
-      "subscription graph edges and display text"
+      "subscription graph edges and display text",
+      "AI Inbox titles, summaries, and evidence"
     ],
     "firestorePaths": [
       "conversations",
@@ -138,13 +142,21 @@ export const DATA_DOMAINS: readonly DataDomain[] = [
       "rollback_requests",
       "approval_policies",
       "agent_identities",
-      "subscription_topics"
+      "subscription_topics",
+      "ai_inbox_items",
+      "ai_inbox_item_state"
     ],
     "signalSealedCollections": [
       "conversations",
       "chat_threads",
       "mobile_assistant_chats",
-      "cli_agent_mission_requests"
+      "cli_sessions",
+      "cli_agent_mission_requests",
+      "text_snippets",
+      "rollback_requests",
+      "approval_policies",
+      "agent_identities",
+      "subscription_topics"
     ],
     "storagePaths": [],
     "countSource": "chat_threads",

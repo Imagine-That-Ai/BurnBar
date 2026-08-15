@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
+
+import { prepareFunctionsRuntimePackage } from "./prepare-functions-runtime-package.mjs";
 
 const SCHEMA_VERSION = "openburnbar.staging-function-targets.v1";
 const TARGETS_RE =
@@ -87,13 +95,14 @@ if (packageJson.main !== "lib/index.js") {
   );
 }
 
-if (!targets) {
-  console.log(
-    "Scoped staging Functions entrypoint: all-functions mode; package entrypoint unchanged.",
-  );
-  process.exit(0);
-}
-if (!TARGETS_RE.test(targets))
+// Candidate source is built and tested before artifact packaging. The trusted
+// deploy artifact contains compiled lib/ plus locked local packages only, so no
+// npm lifecycle/build/test script is valid inside Cloud Build. Removing every
+// script also prevents candidate-controlled lifecycle code from executing
+// after the trusted workflow has authenticated.
+packageJson.scripts = {};
+
+if (targets && !TARGETS_RE.test(targets))
   fail(
     "targets must be a comma-separated list of explicit Firebase Functions selectors",
   );
@@ -110,8 +119,15 @@ if (
 }
 
 const requestedNames = targets
-  .split(",")
-  .map((target) => target.slice("functions:".length));
+  ? targets.split(",").map((target) => target.slice("functions:".length))
+  : Object.keys(manifest.targets);
+if (requestedNames.length === 0) {
+  fail("staging target manifest must approve at least one Function");
+}
+for (const targetName of requestedNames) {
+  if (!TARGETS_RE.test(`functions:${targetName}`))
+    fail(`target ${targetName} is not a valid Firebase Functions selector`);
+}
 if (new Set(requestedNames).size !== requestedNames.length)
   fail("targets must not contain duplicates");
 
@@ -160,8 +176,25 @@ writeAtomic(outputPath, generated);
 
 packageJson.main = "lib/staging-scoped-index.cjs";
 writeAtomic(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+prepareFunctionsRuntimePackage(functionsDir);
+
+// The trusted deploy must receive the resolved selector list so a blank input
+// deploys with a filtered `--only functions:<name>,...` scope. An unscoped
+// `--only functions` deploy against the scoped entrypoint would ask the
+// non-interactive Firebase CLI to delete every remote function missing from
+// the manifest and abort.
+const resolvedTargets = requestedNames
+  .map((targetName) => `functions:${targetName}`)
+  .join(",");
+if (process.env.GITHUB_OUTPUT) {
+  appendFileSync(
+    process.env.GITHUB_OUTPUT,
+    `function_targets=${resolvedTargets}\n`,
+    "utf8",
+  );
+}
 
 const digest = createHash("sha256").update(generated).digest("hex");
 console.log(
-  `Scoped staging Functions entrypoint: ${requestedNames.length} target(s), sha256=${digest}`,
+  `Scoped staging Functions entrypoint: ${requestedNames.length} reviewed target(s), sha256=${digest}`,
 );

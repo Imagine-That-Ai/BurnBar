@@ -21,6 +21,7 @@ import {
   ConsecutiveBreaker,
   ExponentialBackoff,
   handleAll,
+  handleWhen,
   IPolicy,
   retry,
   timeout,
@@ -137,6 +138,37 @@ const externalTimeout = timeout(EXTERNAL_API_TIMEOUT_MS, TimeoutStrategy.Aggress
 /** Generic external API resilience policy. */
 export const externalApiPolicy: IPolicy = wrap(externalTimeout, externalRetry, externalBreaker);
 
+/**
+ * Google Play reports an already-consumed one-time product as "not owned".
+ * Concurrent verification can legitimately produce that response after another
+ * invocation consumed the same token. It must be re-read from Play before being
+ * accepted, but it is not retryable and must not count against the provider
+ * circuit breaker.
+ */
+export function isGooglePlayPurchaseNotOwnedError(error: unknown): boolean {
+  return error instanceof Error && /product purchase is not owned by the user/i.test(error.message);
+}
+
+const googlePlayConsumeErrors = handleWhen((error) => !isGooglePlayPurchaseNotOwnedError(error));
+const googlePlayConsumeBreaker = circuitBreaker(googlePlayConsumeErrors, {
+  halfOpenAfter: EXTERNAL_API_HALF_OPEN_AFTER_MS,
+  breaker: new ConsecutiveBreaker(EXTERNAL_API_BREAKER_FAILURE_THRESHOLD),
+});
+googlePlayConsumeBreaker.onBreak(() => {
+  logError({
+    event: "circuit_breaker_tripped",
+    service: "google_play_consume",
+    state: "open",
+  });
+});
+const googlePlayConsumeRetry = retry(googlePlayConsumeErrors, {
+  maxAttempts: EXTERNAL_API_RETRY_MAX_ATTEMPTS,
+  backoff: makeBackoff(),
+});
+
+/** Google Play consume policy that excludes the expected already-consumed race. */
+export const googlePlayConsumePolicy: IPolicy = wrap(externalTimeout, googlePlayConsumeRetry, googlePlayConsumeBreaker);
+
 const providerPolicies = new Map<string, IPolicy>();
 
 function normalizeProviderPolicyKey(providerKey: string): string {
@@ -160,6 +192,39 @@ export function providerApiPolicy(providerKey: string): IPolicy {
 
 export function resetProviderApiPoliciesForTests(): void {
   providerPolicies.clear();
+}
+
+// ── Model inference (paid LLM completions) ────────────────────────────────────
+
+/**
+ * Paid model-inference calls (OpenRouter usage curation): a single attempt
+ * with a 60 s cap and a provider-isolated breaker.
+ *
+ * Deliberately NO retry wrap: a completion is paid, non-idempotent work, and a
+ * timed-out attempt may still finish (and bill) upstream, so replaying it
+ * could double-spend — callers release their reservation on failure instead.
+ * The longer timeout exists because multimodal completions legitimately exceed
+ * the generic 20 s external-API cap. The breaker is per provider key so an
+ * inference outage cannot short-circuit unrelated external integrations.
+ */
+const MODEL_INFERENCE_TIMEOUT_MS = 60_000;
+const modelInferencePolicies = new Map<string, IPolicy>();
+
+export function modelInferencePolicy(providerKey: string): IPolicy {
+  const normalized = normalizeProviderPolicyKey(providerKey);
+  const existing = modelInferencePolicies.get(normalized);
+  if (existing) return existing;
+
+  const policy = wrap(
+    timeout(MODEL_INFERENCE_TIMEOUT_MS, TimeoutStrategy.Aggressive),
+    makeExternalApiBreaker(`model_inference:${normalized}`),
+  );
+  modelInferencePolicies.set(normalized, policy);
+  return policy;
+}
+
+export function resetModelInferencePoliciesForTests(): void {
+  modelInferencePolicies.clear();
 }
 
 // ── Firestore circuit breaker ─────────────────────────────────────────────────
@@ -195,15 +260,22 @@ export const firestorePolicy: IPolicy = wrap(firestoreTimeout, firestoreBulkhead
  * Wraps any async operation with the given policy and a descriptive label.
  * Logs failures with context for easier debugging.
  */
-export async function withResilience<T>(policy: IPolicy, label: string, fn: () => Promise<T>): Promise<T> {
+export async function withResilience<T>(
+  policy: IPolicy,
+  label: string,
+  fn: () => Promise<T>,
+  options?: { expectedError?: (error: unknown) => boolean },
+): Promise<T> {
   try {
     return await policy.execute(fn);
   } catch (err) {
-    logError({
-      event: "resilience_failure",
-      label,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    if (!options?.expectedError?.(err)) {
+      logError({
+        event: "resilience_failure",
+        label,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     throw err;
   }
 }

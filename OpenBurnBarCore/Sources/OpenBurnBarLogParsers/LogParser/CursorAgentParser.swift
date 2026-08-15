@@ -14,13 +14,40 @@ import OpenBurnBarParserSupport
 /// Computes accurate, fine-grained token counts:
 ///   - **Input tokens**: User prompts + system prompts + tool output returns (context size).
 ///   - **Output tokens**: Assistant text + thinking/reasoning blocks + tool call arguments.
+/// Idle usage ticks resume unchanged transcripts from a mtime+size disk cache
+/// (token totals only — never conversation bodies). Nested `summary.json`
+/// participates in the signature so a sidecar model/title change busts the hit.
 public final class CursorAgentParser: LogParser, Sendable {
     public let provider: AgentProvider = .cursorAgent
     let logDirectoryOverride: String?
+    private let fileManager: FileManager
+    private let cacheStore: ParserDiskCacheStore<CachedUsageEntry<CompositeFileSignature<FileSignature>>>
+    private let sessionScanCount = Locked(0)
+    private let sessionCacheHitCount = Locked(0)
 
-    public init(logDirectoryOverride: String? = nil) {
+    public init(
+        logDirectoryOverride: String? = nil,
+        fileManager: FileManager = .default,
+        appPaths: OpenBurnBarAppPaths = .live()
+    ) {
         self.logDirectoryOverride = logDirectoryOverride
+        self.fileManager = fileManager
+        let cacheURL: URL
+        if let override = logDirectoryOverride {
+            cacheURL = URL(fileURLWithPath: override).appendingPathComponent(".obb-cursor-agent-parser-cache.plist")
+        } else {
+            cacheURL = appPaths.cursorAgentParserCacheURL
+        }
+        self.cacheStore = ParserDiskCacheStore(
+            cacheURL: cacheURL,
+            fileManager: fileManager,
+            schemaVersion: 1,
+            logLabel: "CursorAgentParser"
+        )
     }
+
+    var lastSessionScanCount: Int { sessionScanCount.read() }
+    var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
 
     struct SettingsFile: Decodable {
         let model: String?
@@ -35,19 +62,28 @@ public final class CursorAgentParser: LogParser, Sendable {
     }
 
     public func parseSynchronously(options: LogParseOptions = .default) throws -> ParseResult {
-        let fm = FileManager.default
-        let gate = ParserFileReadGate(options: options, fileManager: fm)
+        sessionScanCount.write(0)
+        sessionCacheHitCount.write(0)
+        let gate = ParserFileReadGate(options: options, fileManager: fileManager)
         let sessionsRoot = logDirectoryOverride ?? NSString(string: provider.logDirectory).expandingTildeInPath
 
-        guard fm.fileExists(atPath: sessionsRoot) else {
+        guard fileManager.fileExists(atPath: sessionsRoot) else {
             return ParseResult(usages: [], conversations: [])
         }
 
         var usages: [TokenUsage] = []
         var conversations: [ConversationRecord] = []
+        var parseCache = cacheStore.load()
+        var activePaths = Set<String>()
+        var cacheMutated = false
+        defer {
+            if cacheMutated {
+                cacheStore.persist(parseCache)
+            }
+        }
 
         let sessionsURL = URL(fileURLWithPath: sessionsRoot)
-        let contents = (try? fm.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+        let contents = (try? fileManager.contentsOfDirectory(at: sessionsURL, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
 
         for item in contents {
             let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
@@ -58,37 +94,114 @@ public final class CursorAgentParser: LogParser, Sendable {
                 let chatHistoryJSONL = item.appendingPathComponent("chat_history.jsonl")
                 let historyJSONL = item.appendingPathComponent("history.jsonl")
 
-                let transcriptFile = fm.fileExists(atPath: transcriptJSONL.path) ? transcriptJSONL :
-                                    (fm.fileExists(atPath: chatHistoryJSONL.path) ? chatHistoryJSONL :
-                                    (fm.fileExists(atPath: historyJSONL.path) ? historyJSONL : nil))
+                let transcriptFile = fileManager.fileExists(atPath: transcriptJSONL.path) ? transcriptJSONL :
+                                    (fileManager.fileExists(atPath: chatHistoryJSONL.path) ? chatHistoryJSONL :
+                                    (fileManager.fileExists(atPath: historyJSONL.path) ? historyJSONL : nil))
 
                 guard let file = transcriptFile else { continue }
                 let summaryURL = item.appendingPathComponent("summary.json")
                 var sessionFiles = [file]
-                if fm.fileExists(atPath: summaryURL.path) {
+                let hasSummary = fileManager.fileExists(atPath: summaryURL.path)
+                if hasSummary {
                     sessionFiles.append(summaryURL)
                 }
+                let cacheKey = file.standardizedFileURL.path
+                activePaths.insert(cacheKey)
                 guard try gate.shouldRead(sessionFiles) else { continue }
 
-                if let pair = try parseSession(
+                if try appendCachedOrParsed(
                     file: file,
                     sessionId: sessionId,
-                    summaryURL: sessionFiles.count == 2 ? summaryURL : nil
+                    summaryURL: hasSummary ? summaryURL : nil,
+                    options: options,
+                    parseCache: &parseCache,
+                    cacheKey: cacheKey,
+                    cacheMutated: &cacheMutated,
+                    usages: &usages,
+                    conversations: &conversations
                 ) {
-                    if let usage = pair.usage { usages.append(usage) }
-                    if options.includeConversationBodies, let conv = pair.conversation { conversations.append(conv) }
+                    continue
                 }
             } else if item.pathExtension == "jsonl" {
+                let cacheKey = item.standardizedFileURL.path
+                activePaths.insert(cacheKey)
                 guard try gate.shouldRead(item) else { continue }
                 let sessionId = item.deletingPathExtension().lastPathComponent
-                if let pair = try parseSession(file: item, sessionId: sessionId, summaryURL: nil) {
-                    if let usage = pair.usage { usages.append(usage) }
-                    if options.includeConversationBodies, let conv = pair.conversation { conversations.append(conv) }
-                }
+                _ = try appendCachedOrParsed(
+                    file: item,
+                    sessionId: sessionId,
+                    summaryURL: nil,
+                    options: options,
+                    parseCache: &parseCache,
+                    cacheKey: cacheKey,
+                    cacheMutated: &cacheMutated,
+                    usages: &usages,
+                    conversations: &conversations
+                )
             }
         }
 
+        let stalePaths = Set(parseCache.fileEntries.keys).subtracting(activePaths)
+        if !stalePaths.isEmpty {
+            for stalePath in stalePaths {
+                parseCache.fileEntries.removeValue(forKey: stalePath)
+            }
+            cacheMutated = true
+        }
+
         return ParseResult(usages: usages, conversations: conversations)
+    }
+
+    private func appendCachedOrParsed(
+        file: URL,
+        sessionId: String,
+        summaryURL: URL?,
+        options: LogParseOptions,
+        parseCache: inout ParserDiskCache<CachedUsageEntry<CompositeFileSignature<FileSignature>>>,
+        cacheKey: String,
+        cacheMutated: inout Bool,
+        usages: inout [TokenUsage],
+        conversations: inout [ConversationRecord]
+    ) throws -> Bool {
+        let signature = sessionSignature(transcript: file, summaryURL: summaryURL)
+        if !options.includeConversationBodies,
+           let signature,
+           let cached = parseCache.fileEntries[cacheKey],
+           cached.signature == signature {
+            sessionCacheHitCount.withLock { $0 += 1 }
+            usages.append(cached.totals.makeUsage(provider: .cursorAgent, sessionId: sessionId))
+            return true
+        }
+
+        sessionScanCount.withLock { $0 += 1 }
+        if let pair = try parseSession(
+            file: file,
+            sessionId: sessionId,
+            summaryURL: summaryURL,
+            includeConversationBodies: options.includeConversationBodies
+        ) {
+            if let usage = pair.usage {
+                usages.append(usage)
+                if let signature {
+                    parseCache.fileEntries[cacheKey] = CachedUsageEntry(signature: signature, usage: usage)
+                    cacheMutated = true
+                }
+            }
+            if options.includeConversationBodies, let conv = pair.conversation {
+                conversations.append(conv)
+            }
+        }
+        return true
+    }
+
+    private func sessionSignature(
+        transcript: URL,
+        summaryURL: URL?
+    ) -> CompositeFileSignature<FileSignature>? {
+        guard let primary = FileSignature(for: transcript, using: fileManager) else { return nil }
+        let settings = summaryURL.flatMap { FileSignature(for: $0, using: fileManager) }
+        if summaryURL != nil, settings == nil { return nil }
+        return CompositeFileSignature(primary: primary, settings: settings)
     }
 
     // MARK: - Session Parsing
@@ -96,12 +209,13 @@ public final class CursorAgentParser: LogParser, Sendable {
     private func parseSession(
         file: URL,
         sessionId: String,
-        summaryURL: URL?
+        summaryURL: URL?,
+        includeConversationBodies: Bool
     ) throws -> (usage: TokenUsage?, conversation: ConversationRecord?)? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(open fail skip session)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
-        let mtime = (try? FileManager.default.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(mtime fallback Date)
+        let mtime = (try? fileManager.attributesOfItem(atPath: file.path)[.modificationDate]) as? Date // try?-ok(mtime fallback Date)
 
         // Optional metadata from summary.json
         var summaryModel: String?
@@ -110,7 +224,7 @@ public final class CursorAgentParser: LogParser, Sendable {
         var summaryCwd: String?
 
         if let summaryURL,
-           FileManager.default.fileExists(atPath: summaryURL.path),
+           fileManager.fileExists(atPath: summaryURL.path),
            let data = try? Data(contentsOf: summaryURL), // try?-ok(optional sidecar read)
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { // try?-ok(optional summary decode)
             summaryModel = json["model"] as? String ?? (json["current_model_id"] as? String)
@@ -142,11 +256,6 @@ public final class CursorAgentParser: LogParser, Sendable {
         var calculatedCacheCreationTokens = 0
         var calculatedOutputTokens = 0
 
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let fallbackDate = ISO8601DateFormatter()
-        fallbackDate.formatOptions = [.withInternetDateTime]
-
         for line in handle.readAllUTF8Lines() {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(malformed line skip)
@@ -161,7 +270,7 @@ public final class CursorAgentParser: LogParser, Sendable {
             let timestampStr = json["timestamp"] as? String ?? json["created_at"] as? String
 
             if let timestampStr,
-               let date = dateFormatter.date(from: timestampStr) ?? fallbackDate.date(from: timestampStr) {
+               let date = ThreadSafeISO8601DateFormatter.parse(timestampStr) {
                 if acc.startTime == nil { acc.startTime = date }
                 acc.endTime = date
             }
@@ -175,14 +284,16 @@ public final class CursorAgentParser: LogParser, Sendable {
                 acc.userMessageCount += 1
 
                 if !content.isEmpty {
-                    acc.userWords += wordCount(content)
-                    if acc.firstUserText == nil {
-                        let cleaned = stripMetadataTags(content)
-                        if !cleaned.isEmpty {
-                            acc.firstUserText = String(cleaned.prefix(120))
+                    if includeConversationBodies {
+                        acc.userWords += wordCount(content)
+                        if acc.firstUserText == nil {
+                            let cleaned = stripMetadataTags(content)
+                            if !cleaned.isEmpty {
+                                acc.firstUserText = String(cleaned.prefix(120))
+                            }
                         }
+                        appendText(&acc.fullText, content, isAssistant: false)
                     }
-                    appendText(&acc.fullText, content, isAssistant: false)
                 }
 
                 if acc.sessionModel == nil {
@@ -206,7 +317,9 @@ public final class CursorAgentParser: LogParser, Sendable {
                             turnToolCallArgChars += Self.stringLength(of: val)
                         }
                     }
-                    if let toolName = toolCall["name"] as? String, !toolName.isEmpty {
+                    if let toolName = toolCall["name"] as? String,
+                       includeConversationBodies,
+                       !toolName.isEmpty {
                         acc.toolNames.insert(toolName)
                     }
                 }
@@ -241,10 +354,12 @@ public final class CursorAgentParser: LogParser, Sendable {
                 currentAssistantMsgCount += 1
 
                 if !content.isEmpty {
-                    acc.lastAssistantText = content
-                    acc.assistantMessageCount += 1
-                    acc.assistantWords += wordCount(content)
-                    appendText(&acc.fullText, content, isAssistant: true)
+                    if includeConversationBodies {
+                        acc.lastAssistantText = content
+                        acc.assistantMessageCount += 1
+                        acc.assistantWords += wordCount(content)
+                        appendText(&acc.fullText, content, isAssistant: true)
+                    }
                 }
                 if !thinking.isEmpty {
                     acc.thinkingChars += thinking.count
@@ -256,7 +371,8 @@ public final class CursorAgentParser: LogParser, Sendable {
                 currentToolOutputChars += content.count
                 acc.toolOutputChars += content.count
 
-                if type == "VIEW_FILE" || content.contains("File Path: `file:///") {
+                if includeConversationBodies,
+                   type == "VIEW_FILE" || content.contains("File Path: `file:///") {
                     if let path = extractFilePath(from: content) {
                         acc.filePaths.insert(path)
                     }
@@ -329,6 +445,10 @@ public final class CursorAgentParser: LogParser, Sendable {
             provenanceConfidence: .exact,
             estimatorVersion: ""
         )
+
+        guard includeConversationBodies else {
+            return (usage, nil)
+        }
 
         let sortedFiles = Array(acc.filePaths.sorted().prefix(20))
         let sortedTools = Array(acc.toolNames.sorted().prefix(20))

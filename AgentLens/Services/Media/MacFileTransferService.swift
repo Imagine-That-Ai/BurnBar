@@ -399,12 +399,14 @@ final class MacFileTransferService: ObservableObject {
             lastError = .publishFailed("control stream read: \(error.localizedDescription)")
         }
         let invalidation = await registry.invalidateWithResult(lease)
-        if invalidation.didInvalidate, let mercuryControlStreamCloseHandler {
+        if let mercuryControlStreamCloseHandler {
             await mercuryControlStreamCloseHandler(
                 uid,
                 connectionID,
                 lease.id,
-                invalidation.removedLastStreamForConnection
+                invalidation.didInvalidate
+                    ? invalidation.removedLastStreamForConnection
+                    : false
             )
         }
         Self.log.info("mac_control_stream_closed connectionID=\(connectionID, privacy: .public)")

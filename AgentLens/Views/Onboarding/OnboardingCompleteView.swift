@@ -1,6 +1,15 @@
 import SwiftUI
 
 struct OnboardingCompleteView: View {
+    struct Summary: Equatable {
+        let sessionCount: Int
+        let providerCount: Int
+        let selectedProviderCount: Int
+        let headline: String
+        let body: String
+        let showsEmptyHistoryNotice: Bool
+    }
+
     let dataStore: DataStore
     let selectedProviders: Set<AgentProvider>
     let onOpenDashboard: () -> Void
@@ -9,13 +18,45 @@ struct OnboardingCompleteView: View {
     @State private var checkmarkScale: CGFloat = 0.3
     @State private var checkmarkOpacity: Double = 0
 
-    private var sessionCount: Int { dataStore.totalUsageSessionCount }
-    private var providerCount: Int {
-        dataStore.providerSummaries(for: .allTime).count
+    private var summary: Summary {
+        Self.summary(dataStore: dataStore, selectedProviders: selectedProviders)
+    }
+
+    /// Pure presentation copy used by the view and host-safe unit tests.
+    /// Keep this free of SwiftUI layout so XCTest never has to inspect a
+    /// GeometryReader/animation tree (ViewInspector has crashed the host here).
+    static func summary(
+        dataStore: DataStore,
+        selectedProviders: Set<AgentProvider>
+    ) -> Summary {
+        let sessionCount = dataStore.totalUsageSessionCount
+        let providerCount = dataStore.providerSummaries(for: .allTime).count
+        let selectedProviderCount = selectedProviders.count
+        let headline: String
+        if sessionCount > 0 {
+            headline =
+                "Found \(sessionCount) session\(sessionCount == 1 ? "" : "s") across \(providerCount) provider\(providerCount == 1 ? "" : "s")"
+        } else {
+            headline = "You're all set"
+        }
+        let body =
+            "OpenBurnBar is now tracking \(selectedProviderCount) agent\(selectedProviderCount == 1 ? "" : "s"). Your dashboard, session logs, and Hermes chat are ready."
+        return Summary(
+            sessionCount: sessionCount,
+            providerCount: providerCount,
+            selectedProviderCount: selectedProviderCount,
+            headline: headline,
+            body: body,
+            showsEmptyHistoryNotice: sessionCount == 0
+        )
     }
 
     var body: some View {
         VStack(spacing: DesignSystem.Spacing.xl) {
+            // Center the hero within the scroll viewport by sizing the content to
+            // the available height. This runtime GeometryReader is safe: the host
+            // crash came from ViewInspector walking this tree in XCTest, and
+            // OnboardingCompleteViewTests is ViewInspector-free by design.
             GeometryReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: DesignSystem.Spacing.xl) {
@@ -29,24 +70,18 @@ struct OnboardingCompleteView: View {
                             .accessibilityHidden(true)
 
                         VStack(spacing: DesignSystem.Spacing.sm) {
-                            if sessionCount > 0 {
-                                Text("Found \(sessionCount) session\(sessionCount == 1 ? "" : "s") across \(providerCount) provider\(providerCount == 1 ? "" : "s")")
-                                    .font(DesignSystem.Typography.headline)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                                    .multilineTextAlignment(.center)
-                            } else {
-                                Text("You're all set")
-                                    .font(DesignSystem.Typography.headline)
-                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                            }
+                            Text(summary.headline)
+                                .font(DesignSystem.Typography.headline)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                .multilineTextAlignment(.center)
 
-                            Text("OpenBurnBar is now tracking \(selectedProviders.count) agent\(selectedProviders.count == 1 ? "" : "s"). Your dashboard, session logs, and Hermes chat are ready.")
+                            Text(summary.body)
                                 .font(DesignSystem.Typography.caption)
                                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                                 .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
 
-                            if sessionCount == 0 {
+                            if summary.showsEmptyHistoryNotice {
                                 HStack(spacing: DesignSystem.Spacing.xs) {
                                     Image(systemName: "info.circle")
                                         .font(.system(size: 11))

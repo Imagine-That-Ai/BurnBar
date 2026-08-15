@@ -28,6 +28,19 @@ function parseStringList(raw: unknown): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Firebase CLI launches the Functions SDK control server once to discover
+ * trigger metadata before it loads and attaches the project's dotenv values.
+ * That child gets FUNCTIONS_CONTROL_API=true but no deployed Cloud Run service
+ * identity. Treat only that narrow local process as deployment discovery.
+ *
+ * K_SERVICE / FUNCTION_TARGET keep this from becoming a production bypass if
+ * an operator ever misconfigures FUNCTIONS_CONTROL_API as a runtime variable.
+ */
+function isFirebaseDeploymentDiscovery(): boolean {
+  return process.env.FUNCTIONS_CONTROL_API === "true" && !process.env.K_SERVICE && !process.env.FUNCTION_TARGET;
+}
+
 function parseAppStoreEnvironmentValue(raw: unknown): EnvConfig["appStore"]["environment"] {
   switch (raw) {
     case "Production":
@@ -328,6 +341,15 @@ function buildAppleProductIds(
   };
 }
 
+function stripeSetting(
+  stripe: Record<string, unknown>,
+  environmentName: string,
+  configName: string,
+  fallback = "",
+): string {
+  return process.env[environmentName] ?? configString(stripe, configName) ?? fallback;
+}
+
 /** Stripe price identifiers and webhook/secret keys. */
 function buildStripeSettings(
   stripe: Record<string, unknown>,
@@ -338,48 +360,71 @@ function buildStripeSettings(
   | "stripeBurnBarCloudAnnualPriceID"
   | "stripeBurnBarCloudProMonthlyPriceID"
   | "stripeBurnBarCloudProAnnualPriceID"
+  | "stripeBurnBarUltraMonthlyPriceID"
+  | "stripeBurnBarUltraAnnualPriceID"
   | "stripeAgentControl100ActionsPriceID"
   | "stripeFlooRelay50GBPriceID"
   | "stripeElderWandSearches100PriceID"
   | "stripeElderWandSearches500PriceID"
+  | "stripeRedirectURLAllowlist"
   | "stripeSecretKey"
   | "stripeWebhookSecret"
 > {
+  const stripeBurnBarProPriceID = stripeSetting(stripe, "STRIPE_BURNBAR_PRO_PRICE_ID", "burnbar_pro_price_id");
   return {
-    stripeBurnBarProPriceID:
-      process.env.STRIPE_BURNBAR_PRO_PRICE_ID ?? configString(stripe, "burnbar_pro_price_id") ?? "",
-    stripeBurnBarCloudMonthlyPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID ??
-      configString(stripe, "burnbar_cloud_monthly_price_id") ??
-      process.env.STRIPE_BURNBAR_PRO_PRICE_ID ??
-      configString(stripe, "burnbar_pro_price_id") ??
-      "",
-    stripeBurnBarCloudAnnualPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID ?? configString(stripe, "burnbar_cloud_annual_price_id") ?? "",
-    stripeBurnBarCloudProMonthlyPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID ??
-      configString(stripe, "burnbar_cloud_pro_monthly_price_id") ??
-      "",
-    stripeBurnBarCloudProAnnualPriceID:
-      process.env.STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID ??
-      configString(stripe, "burnbar_cloud_pro_annual_price_id") ??
-      "",
-    stripeAgentControl100ActionsPriceID:
-      process.env.STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID ??
-      configString(stripe, "agent_control_100_actions_price_id") ??
-      "",
-    stripeFlooRelay50GBPriceID:
-      process.env.STRIPE_FLOO_RELAY_50GB_PRICE_ID ?? configString(stripe, "floo_relay_50gb_price_id") ?? "",
-    stripeElderWandSearches100PriceID:
-      process.env.STRIPE_ELDER_WAND_SEARCHES_100_PRICE_ID ??
-      configString(stripe, "elder_wand_searches_100_price_id") ??
-      "",
-    stripeElderWandSearches500PriceID:
-      process.env.STRIPE_ELDER_WAND_SEARCHES_500_PRICE_ID ??
-      configString(stripe, "elder_wand_searches_500_price_id") ??
-      "",
-    stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? configString(stripe, "secret_key") ?? "",
-    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? configString(stripe, "webhook_secret") ?? "",
+    stripeBurnBarProPriceID,
+    stripeBurnBarCloudMonthlyPriceID: stripeSetting(
+      stripe,
+      "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+      "burnbar_cloud_monthly_price_id",
+      stripeBurnBarProPriceID,
+    ),
+    stripeBurnBarCloudAnnualPriceID: stripeSetting(
+      stripe,
+      "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID",
+      "burnbar_cloud_annual_price_id",
+    ),
+    stripeBurnBarCloudProMonthlyPriceID: stripeSetting(
+      stripe,
+      "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID",
+      "burnbar_cloud_pro_monthly_price_id",
+    ),
+    stripeBurnBarCloudProAnnualPriceID: stripeSetting(
+      stripe,
+      "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID",
+      "burnbar_cloud_pro_annual_price_id",
+    ),
+    stripeBurnBarUltraMonthlyPriceID: stripeSetting(
+      stripe,
+      "STRIPE_BURNBAR_ULTRA_MONTHLY_PRICE_ID",
+      "burnbar_ultra_monthly_price_id",
+    ),
+    stripeBurnBarUltraAnnualPriceID: stripeSetting(
+      stripe,
+      "STRIPE_BURNBAR_ULTRA_ANNUAL_PRICE_ID",
+      "burnbar_ultra_annual_price_id",
+    ),
+    stripeAgentControl100ActionsPriceID: stripeSetting(
+      stripe,
+      "STRIPE_AGENT_CONTROL_100_ACTIONS_PRICE_ID",
+      "agent_control_100_actions_price_id",
+    ),
+    stripeFlooRelay50GBPriceID: stripeSetting(stripe, "STRIPE_FLOO_RELAY_50GB_PRICE_ID", "floo_relay_50gb_price_id"),
+    stripeElderWandSearches100PriceID: stripeSetting(
+      stripe,
+      "STRIPE_ELDER_WAND_SEARCHES_100_PRICE_ID",
+      "elder_wand_searches_100_price_id",
+    ),
+    stripeElderWandSearches500PriceID: stripeSetting(
+      stripe,
+      "STRIPE_ELDER_WAND_SEARCHES_500_PRICE_ID",
+      "elder_wand_searches_500_price_id",
+    ),
+    stripeRedirectURLAllowlist: parseStringList(
+      stripeSetting(stripe, "STRIPE_REDIRECT_URL_ALLOWLIST", "redirect_url_allowlist"),
+    ),
+    stripeSecretKey: stripeSetting(stripe, "STRIPE_SECRET_KEY", "secret_key"),
+    stripeWebhookSecret: stripeSetting(stripe, "STRIPE_WEBHOOK_SECRET", "webhook_secret"),
   };
 }
 
@@ -584,8 +629,12 @@ function buildConfig(): EnvConfig {
   const kmsKeyName = process.env.KMS_KEY_NAME || configString(openburnbar, "kms_key_name") || "";
 
   const isEmulator = !!process.env.FUNCTIONS_EMULATOR || !!process.env.FIRESTORE_EMULATOR_HOST;
+  const isDeploymentDiscovery = isFirebaseDeploymentDiscovery();
   const looksProd =
-    !isEmulator && projectId !== "demo-project" && !/(^|-)(demo|test|local|dev|emulator)(-|$)/i.test(projectId);
+    !isEmulator &&
+    !isDeploymentDiscovery &&
+    projectId !== "demo-project" &&
+    !/(^|-)(demo|test|local|dev|emulator)(-|$)/i.test(projectId);
 
   const enforceAppCheck = resolveEnforceAppCheck(openburnbar, projectId, looksProd);
   const requireHighRiskNonce = resolveRequireHighRiskNonce(openburnbar, projectId, looksProd, enforceAppCheck);

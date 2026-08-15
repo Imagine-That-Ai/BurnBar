@@ -6,6 +6,53 @@ import OpenBurnBarCore
 @MainActor
 final class HermesConversationListViewTests: XCTestCase {
 
+    // MARK: - Chat transport routing
+
+    func testSuggestedMacRelayWinsOverBurnBarGateway() {
+        XCTAssertFalse(HermesChatTransportPolicy.shouldSendViaBurnBarGateway(
+            isHostReachable: false,
+            hasSuggestedRelay: true,
+            hasActiveGatewayClient: true,
+            isCLIMode: false
+        ))
+    }
+
+    func testBurnBarGatewayIsUsedWhenHostAndMacRelayAreUnavailable() {
+        XCTAssertTrue(HermesChatTransportPolicy.shouldSendViaBurnBarGateway(
+            isHostReachable: false,
+            hasSuggestedRelay: false,
+            hasActiveGatewayClient: true,
+            isCLIMode: false
+        ))
+    }
+
+    func testReachableHostWinsOverBurnBarGateway() {
+        XCTAssertFalse(HermesChatTransportPolicy.shouldSendViaBurnBarGateway(
+            isHostReachable: true,
+            hasSuggestedRelay: false,
+            hasActiveGatewayClient: true,
+            isCLIMode: false
+        ))
+    }
+
+    func testCLIModeNeverUsesBurnBarGateway() {
+        XCTAssertFalse(HermesChatTransportPolicy.shouldSendViaBurnBarGateway(
+            isHostReachable: false,
+            hasSuggestedRelay: false,
+            hasActiveGatewayClient: true,
+            isCLIMode: true
+        ))
+    }
+
+    func testNoAvailableTransportDoesNotSelectBurnBarGateway() {
+        XCTAssertFalse(HermesChatTransportPolicy.shouldSendViaBurnBarGateway(
+            isHostReachable: false,
+            hasSuggestedRelay: false,
+            hasActiveGatewayClient: false,
+            isCLIMode: false
+        ))
+    }
+
     // MARK: - Sorting
 
     func testSessionsSortedByLastActiveDescending() {

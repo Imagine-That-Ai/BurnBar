@@ -38,6 +38,21 @@ final class ThreadSafeISO8601DateFormatterStaticParseTests: XCTestCase {
         XCTAssertNil(ThreadSafeISO8601DateFormatter.parseBasic("not-a-date"))
     }
 
+    func testFormatBasicMatchesDefaultFormatter() {
+        let date = Date(timeIntervalSince1970: 1_781_008_496)
+        XCTAssertEqual(
+            ThreadSafeISO8601DateFormatter.formatBasic(date),
+            ISO8601DateFormatter().string(from: date)
+        )
+    }
+
+    func testFormatFractionalRoundTripsThroughParse() {
+        let date = Date(timeIntervalSince1970: 1_781_008_496.789)
+        let formatted = ThreadSafeISO8601DateFormatter.formatFractional(date)
+        let parsed = ThreadSafeISO8601DateFormatter.parse(formatted)
+        XCTAssertEqual(parsed?.timeIntervalSince1970 ?? 0, date.timeIntervalSince1970, accuracy: 0.001)
+    }
+
     func testConcurrentParsesOnSharedCacheStayCorrect() {
         // The cached formatters are shared across every parser thread; a race
         // would surface as a nil or wrong Date under contention.

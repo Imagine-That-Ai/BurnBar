@@ -420,6 +420,80 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertEqual(snap?.buckets.count, 1)
     }
 
+    func testProviderAccountRefreshDecodesProductionZaiResponseWithoutEmbeddedID() throws {
+        let response: [String: Any] = [
+            "provider": "zai",
+            "providerID": "zai",
+            "accountID": "zai_default",
+            "accountLabel": "Z.AI",
+            "accountStorageScope": "cloud_refreshable",
+            "sourceKind": "provider",
+            "sourceId": "zai_default",
+            "fetchedAt": "2026-07-28T20:14:31.423Z",
+            "source": "Z.ai usage monitor",
+            "confidence": "high",
+            "statusMessage": "Fetched from Z.ai (Zhipu) account endpoint.",
+            "buckets": [
+                [
+                    "name": "5-hour window",
+                    "used": 17.0,
+                    "limit": 100.0,
+                    "remaining": 83.0,
+                    "window": "rollingHours"
+                ]
+            ],
+            "schemaVersion": 2,
+            "updatedAt": "2026-07-28T20:14:31.423Z"
+        ]
+
+        XCTAssertNil(response["id"], "Callable responses mirror Firestore document data, not its separate document ID")
+
+        let snapshot = try ProviderAccountsAPI.decodeRefreshProviderAccountQuotaResponse(
+            response,
+            accountID: "zai_default"
+        )
+
+        XCTAssertEqual(snapshot.id, "zai_zai_default_zai_default")
+        XCTAssertEqual(snapshot.providerID, ProviderID(rawValue: "zai"))
+        XCTAssertEqual(snapshot.accountID, "zai_default")
+        XCTAssertEqual(snapshot.sourceId, "zai_default")
+        XCTAssertEqual(snapshot.source, "Z.ai usage monitor")
+        XCTAssertEqual(snapshot.buckets.first?.name, "5-hour window")
+        XCTAssertEqual(snapshot.buckets.first?.remaining, 83)
+    }
+
+    func testProviderAccountRefreshDecodesBridgedZaiResponseWithoutQuotaBuckets() throws {
+        let response = NSDictionary(dictionary: [
+            "sourceId": "zai_default",
+            "schemaVersion": 2,
+            "accountID": "zai_default",
+            "accountStorageScope": "cloud_refreshable",
+            "sourceKind": "provider",
+            "provider": "zai",
+            "providerID": "zai",
+            "accountLabel": "Zai Max",
+            "buckets": NSArray(),
+            "confidence": "low",
+            "source": "Z.ai standard API",
+            "statusMessage": "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
+            "fetchedAt": "2026-07-29T03:25:49.482Z",
+            "updatedAt": "2026-07-29T03:25:49.482Z"
+        ])
+
+        let snapshot = try ProviderAccountsAPI.decodeRefreshProviderAccountQuotaResponse(
+            response,
+            accountID: "zai_default"
+        )
+
+        XCTAssertEqual(snapshot.id, "zai_zai_default_zai_default")
+        XCTAssertEqual(snapshot.providerID, ProviderID(rawValue: "zai"))
+        XCTAssertEqual(snapshot.accountID, "zai_default")
+        XCTAssertEqual(snapshot.sourceId, "zai_default")
+        XCTAssertEqual(snapshot.source, "Z.ai standard API")
+        XCTAssertEqual(snapshot.confidence, .low)
+        XCTAssertTrue(snapshot.buckets.isEmpty)
+    }
+
     func testDesktopSyncedQuotaSnapshotDecodesThroughProductionNormalizer() throws {
         let snap = repo.decodeQuotaSnapshot(
             from: Self.desktopSyncedQuotaDoc,
@@ -874,6 +948,208 @@ final class FirestoreNormalizationTests: XCTestCase {
         XCTAssertTrue(display.isEmpty)
     }
 
+    func testQuotaStoreFreshEmptySnapshotShadowsOldBucketedSnapshot() {
+        let newer = Date()
+        let older = newer.addingTimeInterval(-13 * 60 * 60)
+        let oldBucketed = quotaSnapshot(
+            id: "zai-old-coding-plan",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Z.ai Coding Plan",
+            bucketName: "5-hour window",
+            used: 17,
+            remaining: 83,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let freshEmpty = ProviderQuotaSnapshot(
+            id: "zai_zai_default_zai_default",
+            provider: "zai",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Zai Max",
+            accountStorageScope: .cloudRefreshable,
+            sourceKind: .provider,
+            sourceId: "zai_default",
+            fetchedAt: newer,
+            source: "Z.ai standard API",
+            confidence: .low,
+            statusMessage: "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
+            buckets: [],
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([oldBucketed, freshEmpty])
+
+        XCTAssertTrue(display.isEmpty)
+    }
+
+    func testQuotaStoreFreshEmptySnapshotShadowsLegacySeparatorVariantAccount() {
+        let newer = Date()
+        let older = newer.addingTimeInterval(-13 * 60 * 60)
+        let legacyBucketed = quotaSnapshot(
+            id: "zai_zai-default_daemon-slot:zai:default",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai-default",
+            accountLabel: "Z.ai Coding Plan",
+            bucketName: "Zai Token Usage 5 Hour Limits",
+            used: 17,
+            remaining: 83,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let freshEmpty = ProviderQuotaSnapshot(
+            id: "zai_zai_default_zai_default",
+            provider: "zai",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Zai Max",
+            accountStorageScope: .cloudRefreshable,
+            sourceKind: .provider,
+            sourceId: "zai_default",
+            fetchedAt: newer,
+            source: "Z.ai standard API",
+            confidence: .low,
+            statusMessage: "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
+            buckets: [],
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([legacyBucketed, freshEmpty])
+
+        XCTAssertTrue(display.isEmpty)
+    }
+
+    func testQuotaStoreFreshEmptySnapshotShadowsRecentBucketedSnapshot() {
+        let newer = Date()
+        // Two hours old: well inside the 12-hour freshness window, so the
+        // merge cannot rely on staleness filtering to retire these buckets.
+        let older = newer.addingTimeInterval(-2 * 60 * 60)
+        let recentBucketed = quotaSnapshot(
+            id: "zai-recent-coding-plan",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Z.ai Coding Plan",
+            bucketName: "5-hour window",
+            used: 17,
+            remaining: 83,
+            fetchedAt: older,
+            updatedAt: older
+        )
+        let freshEmpty = ProviderQuotaSnapshot(
+            id: "zai_zai_default_zai_default",
+            provider: "zai",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "zai_default",
+            accountLabel: "Zai Max",
+            accountStorageScope: .cloudRefreshable,
+            sourceKind: .provider,
+            sourceId: "zai_default",
+            fetchedAt: newer,
+            source: "Z.ai standard API",
+            confidence: .low,
+            statusMessage: "Z.ai credentials are valid, but this account does not expose Coding Plan quota.",
+            buckets: [],
+            updatedAt: newer
+        )
+
+        let display = QuotaStore.displayReadyQuotaSnapshots([recentBucketed, freshEmpty])
+
+        XCTAssertTrue(display.isEmpty)
+    }
+
+    func testQuotaStoreKeepsDistinctSeparatorBearingAccountIDs() {
+        let now = Date()
+        let dashAccount = quotaSnapshot(
+            id: "zai_team-a",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "team-a",
+            accountLabel: "Team A (dash)",
+            bucketName: "5-hour window",
+            used: 17,
+            remaining: 83,
+            fetchedAt: now,
+            updatedAt: now
+        )
+        let underscoreAccount = quotaSnapshot(
+            id: "zai_team_a",
+            providerID: ProviderID(rawValue: "zai"),
+            accountID: "team_a",
+            accountLabel: "Team A (underscore)",
+            bucketName: "Weekly window",
+            used: 40,
+            remaining: 60,
+            fetchedAt: now,
+            updatedAt: now
+        )
+
+        // The backend accepts `team-a` and `team_a` as distinct accounts;
+        // only the legacy `<provider>-default` / `<provider>_default` alias
+        // is reconciled.
+        let display = QuotaStore.displayReadyQuotaSnapshots([dashAccount, underscoreAccount])
+
+        XCTAssertEqual(display.count, 2)
+        XCTAssertEqual(Set(display.compactMap(\.accountID)), ["team-a", "team_a"])
+    }
+
+    func testProviderQuotaRefreshGateSharesInFlightAndCooldownAcrossStores() {
+        let gate = ProviderQuotaRefreshGate(minimumInterval: 60)
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let cloudAccount = providerAccount(
+            id: "zai_default",
+            providerID: ProviderID(rawValue: "zai"),
+            label: "Z.ai",
+            sortKey: 0,
+            now: now
+        )
+        let scopeKey = QuotaStore.refreshGateScopeKey(userID: "user-a", account: cloudAccount)
+
+        XCTAssertTrue(gate.acquire(scopeKey: scopeKey, now: now))
+        XCTAssertFalse(gate.acquire(scopeKey: scopeKey, now: now))
+
+        gate.release(scopeKey: scopeKey)
+        XCTAssertFalse(gate.acquire(scopeKey: scopeKey, now: now.addingTimeInterval(59)))
+        XCTAssertTrue(gate.acquire(scopeKey: scopeKey, now: now.addingTimeInterval(60)))
+    }
+
+    func testProviderQuotaRefreshGateScopesCooldownToSignedInUser() {
+        let gate = ProviderQuotaRefreshGate(minimumInterval: 60)
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let cloudAccount = providerAccount(
+            id: "zai_default",
+            providerID: ProviderID(rawValue: "zai"),
+            label: "Z.ai",
+            sortKey: 0,
+            now: now
+        )
+        let firstUserKey = QuotaStore.refreshGateScopeKey(userID: "user-a", account: cloudAccount)
+        let secondUserKey = QuotaStore.refreshGateScopeKey(userID: "user-b", account: cloudAccount)
+        XCTAssertNotEqual(firstUserKey, secondUserKey)
+
+        XCTAssertTrue(gate.acquire(scopeKey: firstUserKey, now: now))
+        gate.release(scopeKey: firstUserKey)
+
+        // A user switch within the cooldown window must not inherit the
+        // previous user's cooldown; the backend limit is per user + provider.
+        XCTAssertFalse(gate.acquire(scopeKey: firstUserKey, now: now.addingTimeInterval(1)))
+        XCTAssertTrue(gate.acquire(scopeKey: secondUserKey, now: now.addingTimeInterval(1)))
+    }
+
+    func testRefreshGateScopeKeyGatesSelfHostedLocalAccountsIndividually() {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let firstLocal = localOnlyAccount(id: "claude-mac-1", providerID: .claudeCode, now: now)
+        let secondLocal = localOnlyAccount(id: "claude-mac-2", providerID: .claudeCode, now: now)
+        let firstKey = QuotaStore.refreshGateScopeKey(userID: "user-a", account: firstLocal)
+        let secondKey = QuotaStore.refreshGateScopeKey(userID: "user-a", account: secondLocal)
+        XCTAssertNotEqual(firstKey, secondKey)
+
+        // Local runner refreshes have no shared backend rate limit, so a
+        // "refresh all accounts" pass must reach every local account.
+        let gate = ProviderQuotaRefreshGate(minimumInterval: 60)
+        XCTAssertTrue(gate.acquire(scopeKey: firstKey, now: now))
+        XCTAssertTrue(gate.acquire(scopeKey: secondKey, now: now))
+    }
+
     func testQuotaStoreDisplaySnapshotsDropsProviderLevelSnapshotWhenAccountSnapshotsExist() {
         let now = Date(timeIntervalSince1970: 1_779_000_000)
         let providerLevel = quotaSnapshot(
@@ -1192,6 +1468,20 @@ final class FirestoreNormalizationTests: XCTestCase {
             storageScope: .cloudRefreshable,
             redactedLabel: "redacted",
             sortKey: sortKey,
+            createdAt: now,
+            updatedAt: now
+        )
+    }
+
+    private func localOnlyAccount(id: String, providerID: ProviderID, now: Date) -> ProviderAccountDoc {
+        ProviderAccountDoc(
+            id: id,
+            providerID: providerID,
+            label: id,
+            status: .connected,
+            credentialKind: .token,
+            storageScope: .localOnly,
+            redactedLabel: "redacted",
             createdAt: now,
             updatedAt: now
         )

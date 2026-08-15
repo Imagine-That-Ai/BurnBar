@@ -15,7 +15,9 @@ name: Sentry Error -> GitHub Issue
 
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    # Twice daily (was every 4h — 180 runs/month for a backlog sync that has
+    # no urgency; the lookback below covers the full window between runs).
+    - cron: '10 6,18 * * *'
   workflow_dispatch:
     inputs:
       lookback_hours:
@@ -54,7 +56,7 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          LOOKBACK_HOURS: ${{ inputs.lookback_hours || '4' }}
+          LOOKBACK_HOURS: ${{ inputs.lookback_hours || '13' }}
           MIN_OCCURRENCES: ${{ inputs.min_occurrences || '1' }}
         run: python3 scripts/sentry_issue_sync.py
 
@@ -71,5 +73,5 @@ jobs:
             echo "- openburnbar-android (Android app)"
             echo "- burnbar-website (landing site)"
             echo ""
-            echo "Lookback: ${{ inputs.lookback_hours || '4' }} hours"
+            echo "Lookback: ${{ inputs.lookback_hours || '13' }} hours"
           } >> "$GITHUB_STEP_SUMMARY"

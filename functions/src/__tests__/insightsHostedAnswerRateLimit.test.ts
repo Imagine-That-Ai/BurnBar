@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("firebase-functions/params", () => ({
+  defineInt: (_name: string, options: { default?: number } = {}) => ({
+    value: () => options.default ?? 0,
+  }),
   defineSecret: (name: string) => ({
     name,
     value: () => mocks.secretValues.get(name) ?? "",

@@ -75,6 +75,7 @@ internal fun screenShareNeedsAutomaticRecovery(
     nowMillis: Long,
     lastPeerHeartbeatAtMillis: Long,
 ): Boolean {
+    if (phase is VideoReceivePipeline.Phase.Failed) return true
     if (phase !is VideoReceivePipeline.Phase.Running) return false
     if (stats.lastFrameAtMillis <= 0L) return false
 
@@ -424,6 +425,8 @@ internal data class RemoteKeyboardCaptureChange(
     val deletedCount: Int,
 )
 
+internal fun shouldDismissRemoteKeyboardCapture(hasShownKeyboard: Boolean, isKeyboardVisible: Boolean): Boolean = hasShownKeyboard && !isKeyboardVisible
+
 internal fun remoteKeyboardDiff(oldText: String, newText: String): RemoteKeyboardDiff {
     var prefix = 0
     val commonPrefixLimit = minOf(oldText.length, newText.length)
@@ -499,14 +502,26 @@ internal class SurfaceCallback(
     private val pipeline: VideoReceivePipeline,
     private val scope: CoroutineScope,
 ) : SurfaceHolder.Callback {
+    private val lifecycleGate = pipeline.surfaceLifecycleGate
+
     override fun surfaceCreated(holder: SurfaceHolder) {
-        scope.launch { pipeline.start(holder.surface) }
+        val token = lifecycleGate.claim(holder.surface)
+        scope.launch {
+            lifecycleGate.runIfCurrent(token) {
+                pipeline.start(holder.surface)
+            }
+        }
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        scope.launch { pipeline.stop() }
+        val token = lifecycleGate.retire(holder.surface) ?: return
+        scope.launch {
+            lifecycleGate.runIfCurrent(token) {
+                pipeline.stop()
+            }
+        }
     }
 }
 internal fun screenMirrorControlIcon(mode: ScreenMirrorControlMode): ImageVector = when (mode) {

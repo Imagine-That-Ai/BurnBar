@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "authorityScope": "cloudvault-search",
+  "authorityGeneration": 3,
+  "candidate": {
+    "candidateCommit": "99ba1f66b02d4721077bbce652b84c2304bacf7c",
+    "coreVersion": "0.1.0",
+    "abiVersion": 3,
+    "sourceSha256": "1c4bc3ef9f8593d96b3f33570909770d7df5ca5a1ae2734f40d6e32c3360697c"
+  },
+  "unsignedBundle": {
+    "path": "config/domain-core-promotion-bundles/cloudvault-search/3.json",
+    "sha256": "a46c7234287d3144a6fd4fe9b247840e2b3e1c8327b09c9e083afa4b5a3f6f15",
+    "sourceRunId": 30754893279,
+    "sourceRunAttempt": 1
+  },
+  "provenance": {
+    "path": "config/domain-core-promotion-provenance/cloudvault-search/3.json",
+    "sha256": "f680d849e67305c4e0e5fa0b3df80e63a8566dc34596d6641ff7d1f50bdba9f4",
+    "signerWorkflow": ".github/workflows/domain-core-promotion-proof.yml",
+    "signerRunId": 30756990617,
+    "signerRunAttempt": 1,
+    "trustedMainCommit": "99ba1f66b02d4721077bbce652b84c2304bacf7c",
+    "policySha256": "4e5b800a20c5e3a3176430eb2b8baa75443a57a167966793024b59e67f3e82c8",
+    "evaluatorSha256": "609ad9b3ee25d4b660c221d80d7e68b6562830904484f7b8e684a4d83f8b8dec"
+  },
+  "status": "attested",
+  "generatedAt": "2026-08-02T16:41:16Z",
+  "evidenceUri": "https://github.com/Imagine-That-Ai/BurnBar/attestations/38437922"
+}

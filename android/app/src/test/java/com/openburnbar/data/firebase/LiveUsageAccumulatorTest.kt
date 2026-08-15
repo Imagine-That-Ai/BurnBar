@@ -2,9 +2,13 @@
 package com.openburnbar.data.firebase
 
 import com.openburnbar.data.models.TokenUsage
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -71,6 +75,26 @@ class LiveUsageAccumulatorTest {
     @Test
     fun `empty accumulator emits an empty list`() {
         assertEquals(emptyList<TokenUsage>(), LiveUsageAccumulator().snapshot())
+    }
+}
+
+class LiveUsageListenerExecutorTest {
+    @Test
+    fun `process lifetime listener executor remains available across collectors`() {
+        val first = LiveUsageListenerExecutor.executor
+        val firstDelivery = CountDownLatch(1)
+        first.execute(firstDelivery::countDown)
+
+        assertTrue(firstDelivery.await(2, TimeUnit.SECONDS))
+        assertFalse(first.isShutdown)
+
+        val second = LiveUsageListenerExecutor.executor
+        val laterDelivery = CountDownLatch(1)
+        second.execute(laterDelivery::countDown)
+
+        assertSame(first, second)
+        assertTrue(laterDelivery.await(2, TimeUnit.SECONDS))
+        assertFalse(second.isShutdown)
     }
 }
 

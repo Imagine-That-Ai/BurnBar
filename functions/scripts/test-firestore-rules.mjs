@@ -272,9 +272,9 @@ function sealedMissionStatePatch(ownerUid, id, overrides = {}) {
 }
 
 // Canonical at-rest CloudVault Signal envelope fixture, mirroring
-// packages/signal-envelope-contracts at-rest wire shape. Direct client writes must
-// reject even this well-formed shape; per-coordinate overrides let tests prove the
-// fail-closed posture stays in place for relocation and pollution attempts.
+// packages/signal-envelope-contracts at-rest wire shape. Exact owner-scoped
+// documents are accepted; per-coordinate overrides prove relocation and
+// pollution attempts stay fail-closed.
 function signalAtRestEnvelope({
   uid,
   collection,
@@ -303,7 +303,7 @@ function signalAtRestEnvelope({
         {
           recipientKind: "device",
           recipientIdentityKeyId: "device-key-1",
-          recipientIdentityKeyB64: "cHVibGljLWtleQ==",
+          recipientIdentityKeyB64: Buffer.alloc(33, 7).toString("base64"),
           sealedContentKeyB64: "c2VhbGVkLWtleQ==",
         },
       ],
@@ -321,8 +321,8 @@ function signalAtRestEnvelope({
     },
     senderAuth: senderAuth === null ? undefined : {
       senderIdentityKeyId: "device-key-1",
-      senderIdentityKeyB64: "cHVibGljLWtleQ==",
-      signatureB64: "c2lnbmF0dXJlLWZpeHR1cmU=",
+      senderIdentityKeyB64: Buffer.alloc(33, 8).toString("base64"),
+      signatureB64: Buffer.alloc(64, 9).toString("base64"),
       signatureVersion: 1,
       ...senderAuth,
     },
@@ -2252,6 +2252,128 @@ test("owners can mirror CLI agent transcripts for mobile assistant tiles", async
   );
 });
 
+test("owners can mirror sealed AI Inbox items for mobile", async () => {
+  const macDb = authedDb("iris");
+  const otherDb = authedDb("mallory");
+  const itemPath = "users/iris/ai_inbox_items/inb_alpha";
+  await seedCloudVaultState("iris");
+
+  const validItem = (id, overrides = {}) => ({
+    id,
+    fingerprint: `stuck_pr:${id}`,
+    kind: "stuck_pr",
+    priority: 2,
+    state: "new",
+    occurrenceCount: 1,
+    firstSeenAt: serverTimestamp(),
+    lastSeenAt: serverTimestamp(),
+    modelProvenance: "local-rules",
+    hasMemoryCandidates: false,
+    schemaVersion: 1,
+    contentSealed: true,
+    sealedSchemaVersion: 2,
+    vaultKeyID: TEST_VAULT_KEY_ID,
+    sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("iris", "ai_inbox_items", id, "sealedPayload")),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  });
+
+  await assertSucceeds(setDoc(doc(macDb, itemPath), validItem("inb_alpha")));
+  await assertSucceeds(getDoc(doc(macDb, itemPath)));
+  await assertFails(getDoc(doc(otherDb, itemPath)));
+
+  // The whole point of the sealed split: the title/body/evidence may never ride
+  // top-level, and no key outside the codec allowlist is accepted.
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_title"), validItem("inb_title", { title: "PR #1975 has stalled" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_summary"), validItem("inb_summary", { summary: "leaked body" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_project"), validItem("inb_project", { projectName: "BurnBar" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_extra"), validItem("inb_extra", { notInAllowlist: true }))
+  );
+
+  // Enum + range constraints.
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_kind"), validItem("inb_kind", { kind: "not_a_kind" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_state"), validItem("inb_state", { state: "archived" }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_p0"), validItem("inb_p0", { priority: 0 }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_p5"), validItem("inb_p5", { priority: 5 }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_neg"), validItem("inb_neg", { occurrenceCount: -1 }))
+  );
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_unsealed"), validItem("inb_unsealed", { contentSealed: false }))
+  );
+  // The doc id must match the payload id, so an item cannot be filed under another's key.
+  await assertFails(
+    setDoc(doc(macDb, "users/iris/ai_inbox_items/inb_mismatch"), validItem("inb_alpha"))
+  );
+  // AAD is path-bound: a payload sealed for a different doc must not transplant.
+  await assertFails(
+    setDoc(
+      doc(macDb, "users/iris/ai_inbox_items/inb_aad"),
+      validItem("inb_aad", {
+        sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("iris", "ai_inbox_items", "inb_alpha", "sealedPayload")),
+      })
+    )
+  );
+
+  await assertSucceeds(deleteDoc(doc(macDb, itemPath)));
+});
+
+test("any owner device may write AI Inbox item state, with a constrained feedback enum", async () => {
+  const phoneDb = authedDb("ivan");
+  const otherDb = authedDb("mallory");
+  const statePath = "users/ivan/ai_inbox_item_state/inb_alpha";
+
+  const validState = (id, overrides = {}) => ({
+    id,
+    readAt: serverTimestamp(),
+    archivedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    updatedByDeviceID: "iphone-1",
+    ...overrides,
+  });
+
+  await assertSucceeds(setDoc(doc(phoneDb, statePath), validState("inb_alpha")));
+  await assertSucceeds(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_useful"), validState("inb_useful", { feedback: "useful" }))
+  );
+  await assertSucceeds(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_wrong"), validState("inb_wrong", { feedback: "wrong" }))
+  );
+  await assertSucceeds(getDoc(doc(phoneDb, statePath)));
+  await assertFails(getDoc(doc(otherDb, statePath)));
+
+  // Feedback must not become a free-text side channel.
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_free"), validState("inb_free", { feedback: "a sentence of private text" }))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_extra"), validState("inb_extra", { note: "not allowlisted" }))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_mismatch"), validState("inb_alpha"))
+  );
+  await assertFails(
+    setDoc(doc(phoneDb, "users/ivan/ai_inbox_item_state/inb_stamp"), validState("inb_stamp", { updatedAt: "2026-08-04" }))
+  );
+
+  await assertSucceeds(deleteDoc(doc(phoneDb, statePath)));
+});
+
 test("conversation and session-log backup require hosted cloud entitlement", async () => {
   const db = authedDb("carol");
   await seedCloudVaultState("carol");
@@ -3913,10 +4035,9 @@ test("T2 mobile_assistant_chats denies plaintext content and unlisted keys", asy
   );
 });
 
-// L37 (rules half) — client-direct writes must not carry Signal at-rest
-// `signalEnvelope`. Firestore rules cannot deep-validate every recipient wrap
-// or verify senderAuth signatures, so this surface is callable/Admin-only.
-test("L37 signalEnvelope is rejected on mobile_assistant_chats direct writes", async () => {
+// L37 — exact owner-scoped Signal at-rest writes are accepted, while
+// relocation/forgery/type-confusion vectors remain denied.
+test("L37 signalEnvelope is accepted on exact mobile_assistant_chats direct writes", async () => {
   const db = authedDb("sig-owner");
   await seedCloudVaultState("sig-owner");
   const threadPath = "users/sig-owner/mobile_assistant_chats/thread-1";
@@ -3942,9 +4063,9 @@ test("L37 signalEnvelope is rejected on mobile_assistant_chats direct writes", a
   // 1. Legacy sealed CloudVault writes still work without the Signal envelope.
   await assertSucceeds(setDoc(doc(db, threadPath), baseThread));
 
-  // 2. Even a well-formed envelope bound to THIS exact path is rejected on the
-  // direct client path; it must be sanitized and persisted by an Admin/callable.
-  await assertFails(setDoc(doc(db, threadPath), { ...baseThread, signalEnvelope: goodEnvelope }));
+  // 2. A well-formed envelope bound to THIS exact path is accepted on the
+  // owner-scoped direct client path.
+  await assertSucceeds(setDoc(doc(db, threadPath), { ...baseThread, signalEnvelope: goodEnvelope }));
 
   // 3. The IDENTICAL envelope written at a DIFFERENT doc path fails closed (relocation):
   //    binding.docId="thread-1" no longer matches the path's threadId="thread-2".
@@ -4043,78 +4164,9 @@ test("L37 signalEnvelope is rejected on mobile_assistant_chats direct writes", a
   }
 });
 
-// L37 (rules half) — the same direct-write ban on the second client-writable
-// at-rest body collection (cli_agent_mission_requests).
-test("L37 signalEnvelope is rejected on cli_agent_mission_requests direct writes", async () => {
-  const phoneDb = authedDb("ivy-sig");
-  await seedCloudVaultState("ivy-sig");
-  const requestPath = "users/ivy-sig/cli_agent_mission_requests/mission-1";
-
-  const goodEnvelope = signalAtRestEnvelope({
-    uid: "ivy-sig",
-    collection: "cli_agent_mission_requests",
-    docId: "mission-1",
-  });
-
-  // Legacy sealed CloudVault mission writes still work without the Signal envelope.
-  await assertSucceeds(setDoc(doc(phoneDb, requestPath), sealedMissionBase("ivy-sig", "mission-1")));
-
-  // Even a well-formed envelope bound to this mission doc is rejected on the
-  // direct client path; it must be sanitized and persisted by an Admin/callable.
-  await assertFails(
-    setDoc(doc(phoneDb, requestPath), sealedMissionBase("ivy-sig", "mission-1", { signalEnvelope: goodEnvelope }))
-  );
-
-  // Cross-collection binding (envelope says it belongs to mobile_assistant_chats) fails.
-  await assertFails(
-    setDoc(
-      doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-2"),
-      sealedMissionBase("ivy-sig", "mission-2", {
-        signalEnvelope: signalAtRestEnvelope({
-          uid: "ivy-sig",
-          collection: "mobile_assistant_chats",
-          docId: "mission-2",
-        }),
-      })
-    )
-  );
-
-  // Same-collection wrong docId (relocation within the collection) fails.
-  await assertSucceeds(
-    setDoc(doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-3"), sealedMissionBase("ivy-sig", "mission-3"))
-  );
-  await assertFails(
-    setDoc(
-      doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-3"),
-      sealedMissionBase("ivy-sig", "mission-3", {
-        signalEnvelope: signalAtRestEnvelope({
-          uid: "ivy-sig",
-          collection: "cli_agent_mission_requests",
-          docId: "mission-DIFFERENT",
-        }),
-      })
-    )
-  );
-
-  // Cross-user uid in the binding fails (the path owner is ivy-sig).
-  await assertFails(
-    setDoc(
-      doc(phoneDb, "users/ivy-sig/cli_agent_mission_requests/mission-4"),
-      sealedMissionBase("ivy-sig", "mission-4", {
-        signalEnvelope: signalAtRestEnvelope({
-          uid: "someone-else",
-          collection: "cli_agent_mission_requests",
-          docId: "mission-4",
-        }),
-      })
-    )
-  );
-});
-
-// L37 — a (well-formed) signalEnvelope on a collection that was NOT wired (cli_sessions)
-// is rejected by that collection's hasOnly allowlist. Proves the optional field was added
-// per-collection, fail-closed by default — not globally.
-test("L37 signalEnvelope is rejected on a not-wired collection (cli_sessions hasOnly)", async () => {
+// L37 — cli_sessions is one of the ten explicitly wired collections; the
+// generic gate must accept its exact Signal mirror shape.
+test("L37 signalEnvelope is accepted on cli_sessions exact mirror shape", async () => {
   const db = authedDb("nw-owner");
   await seedCloudVaultState("nw-owner");
   const base = {
@@ -4129,7 +4181,7 @@ test("L37 signalEnvelope is rejected on a not-wired collection (cli_sessions has
     sealedPayload: sealedPayload(TEST_VAULT_KEY_ID, "c2VhbGVk", cloudVaultAAD("nw-owner", "cli_sessions", "sess-1", "sealedPayload")),
   };
   await assertSucceeds(setDoc(doc(db, "users/nw-owner/cli_sessions/sess-1"), base));
-  await assertFails(
+  await assertSucceeds(
     setDoc(doc(db, "users/nw-owner/cli_sessions/sess-2"), {
       ...base,
       id: "sess-2",
@@ -4273,9 +4325,9 @@ test("T5 conversations deny plaintext smuggled on the merge-update path", async 
 });
 
 // L37b (rules half) — Mac client-direct collections chat_threads + conversations
-// also reject Signal at-rest `signalEnvelope`; normal sealed CloudVault writes
-// remain accepted.
-test("L37b signalEnvelope is rejected on chat_threads + conversations direct writes", async () => {
+// accept exact owner/path-bound Signal at-rest writes; relocation and collection
+// mismatches remain denied, while normal legacy rows remain readable/writable.
+test("L37b signalEnvelope is accepted only on exact chat_threads + conversations paths", async () => {
   const db = authedDb("sigb-owner");
   await seedCloudVaultState("sigb-owner");
   await seedHostedCloudEntitlement("sigb-owner");
@@ -4300,8 +4352,8 @@ test("L37b signalEnvelope is rejected on chat_threads + conversations direct wri
   });
   // 1. Legacy sealed CloudVault chat-thread writes still work without the Signal envelope.
   await assertSucceeds(setDoc(doc(db, "users/sigb-owner/chat_threads/ct-1"), threadBase));
-  // 2. Even a well-formed envelope bound to THIS exact path is rejected direct.
-  await assertFails(
+  // 2. A well-formed envelope bound to THIS exact path is accepted.
+  await assertSucceeds(
     setDoc(doc(db, "users/sigb-owner/chat_threads/ct-1"), { ...threadBase, signalEnvelope: goodThreadEnv })
   );
   // 3. The SAME envelope at a different doc fails closed (binding.docId no longer matches).
@@ -4345,8 +4397,8 @@ test("L37b signalEnvelope is rejected on chat_threads + conversations direct wri
   });
   // 1. Legacy sealed CloudVault conversation writes still work without the Signal envelope.
   await assertSucceeds(setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-1"), convBase));
-  // 2. Even a well-formed envelope bound to THIS exact path is rejected direct.
-  await assertFails(
+  // 2. A well-formed envelope bound to THIS exact path is accepted.
+  await assertSucceeds(
     setDoc(doc(db, "users/sigb-owner/conversations/conv-sig-1"), { ...convBase, signalEnvelope: goodConvEnv })
   );
   // 3. Relocation to a different conversation doc fails closed.

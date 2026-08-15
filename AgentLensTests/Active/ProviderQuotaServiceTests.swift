@@ -4123,10 +4123,16 @@ final class ProviderQuotaServiceTests: XCTestCase {
 
         let snapshots = service.snapshots(for: AgentProvider.claudeCode)
         let gmail = try XCTUnwrap(snapshots.first { $0.accountLabel == "gmail" })
-        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: ProviderID(rawValue: "anthropic"))
+        // The daemon calls this provider "anthropic". The account identity is
+        // canonicalized to `claude-code` on the way out, because that is the
+        // only id `snapshots(for:)` and `AgentProvider.fromProviderID` know —
+        // an account left under the alias fetches quota nobody can find.
+        let persistedAccounts = try await dataStore.fetchProviderAccounts(
+            providerID: AgentProvider.claudeCode.providerID
+        )
 
-        XCTAssertEqual(gmail.accountID, "anthropic-gmail")
-        XCTAssertEqual(gmail.sourceId, "daemon-slot:anthropic:gmail")
+        XCTAssertEqual(gmail.accountID, "claude-code-gmail")
+        XCTAssertEqual(gmail.sourceId, "daemon-slot:claude-code:gmail")
         XCTAssertEqual(gmail.buckets.map { $0.key }.sorted(), ["claude-five_hour", "claude-seven_day"])
         let fiveHour = try XCTUnwrap(gmail.buckets.first { $0.key == "claude-five_hour" })
         let sevenDay = try XCTUnwrap(gmail.buckets.first { $0.key == "claude-seven_day" })
@@ -4135,7 +4141,7 @@ final class ProviderQuotaServiceTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(fiveHour.remainingPercent).rounded(), 92)
         XCTAssertEqual(try XCTUnwrap(sevenDay.remainingPercent).rounded(), 79)
         XCTAssertEqual(observedAuthorizations.read(), ["Bearer sk-ant-oat-gmail"])
-        XCTAssertEqual(persistedAccounts.map { $0.id }, ["anthropic-gmail"])
+        XCTAssertEqual(persistedAccounts.map { $0.id }, ["claude-code-gmail"])
         XCTAssertEqual(persistedAccounts.first?.label, "gmail")
     }
 
@@ -5906,8 +5912,11 @@ extension ProviderQuotaServiceTests {
         let snapshots = service.snapshots(for: AgentProvider.kimi)
         XCTAssertFalse(snapshots.isEmpty, "Expected Kimi snapshot from Moonshot daemon slot bleed-over")
 
-        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: ProviderID(rawValue: "moonshot"))
-        XCTAssertEqual(persistedAccounts.map(\.id), ["moonshot-session"])
+        // "moonshot" is the catalog's id for Kimi; the account identity is
+        // canonicalized to Kimi's own so the projected account resolves back
+        // to a provider.
+        let persistedAccounts = try await dataStore.fetchProviderAccounts(providerID: AgentProvider.kimi.providerID)
+        XCTAssertEqual(persistedAccounts.map(\.id), ["kimi-session"])
         XCTAssertEqual(persistedAccounts.first?.label, "Browser Session")
         XCTAssertEqual(persistedAccounts.first?.storageScope, .deviceKeychain)
     }

@@ -155,7 +155,7 @@ require_pattern 'testGetOrCreatePersistedKey_throwsTypedErrorWhenKeychainAddFail
 require_pattern 'testGRDBRuntimeReportsSQLCipherVersion' AgentLensTests/Active/DatabaseEncryptionServiceTests.swift "GRDB SQLCipher runtime regression test is missing"
 require_pattern 'testKeyedOpen_writesEncryptedDatabase' AgentLensTests/Active/DatabaseEncryptionServiceTests.swift "keyed-open encryption regression test is missing"
 require_pattern 'testReleaseGateRequiresActiveSQLCipherWhenEnabled' AgentLensTests/Active/DatabaseEncryptionServiceTests.swift "release SQLCipher regression test is missing"
-require_pattern 'testCoordinatorHandlesExistingPlaintextDatabaseWhenEncryptionEnabled' AgentLensTests/Active/DatabaseEncryptionServiceTests.swift "plaintext migration/rejection regression test is missing"
+require_pattern 'testCoordinatorMigratesLegacyPlaintextDatabaseWhenEncryptionPreferenceIsFalse' AgentLensTests/Active/DatabaseEncryptionServiceTests.swift "plaintext migration/rejection regression test is missing"
 
 require_tree_absent '(^|[^[:alnum:]_])(sqlite3|GRDB|DatabaseQueue|DatabasePool|OpenBurnBarDataStore|BurnBarDaemonDatabaseCipher)([^[:alnum:]_]|$)' \
   OpenBurnBarDaemon/Sources/OpenBurnBarPrivilegedInputExecution \

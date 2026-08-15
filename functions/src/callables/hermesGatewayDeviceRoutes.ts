@@ -11,6 +11,8 @@ import { db } from "../adminRuntime.js";
 import { recordOrUndefined, stripUndefinedObject } from "../guards.js";
 import {
   gatewayPlaintextWriteAllowed,
+  gatewaySignalEnvelopeV4Disabled,
+  gatewaySignalRequiredMode,
   HERMES_GATEWAY_DEVICE_SESSION_TTL_MS,
   HERMES_GATEWAY_SCHEMA_VERSION,
   generateHermesGatewayDeviceCode,
@@ -28,6 +30,8 @@ import {
   type HermesGatewayRelayEnvelopeCapabilities,
 } from "../hermesGateway.js";
 import type { HermesGatewayClientDoc } from "../types/generated/hermes-gateway.js";
+import type { HermesGatewaySignalPrekeyBundleDoc } from "../types/generated/hermes-gateway.js";
+import { parseGatewaySignalPrekeyBundle } from "../hermesGatewaySignalPrekeys.js";
 import { boundedTrimmedString } from "./shared.js";
 import {
   type HttpRequest,
@@ -59,10 +63,11 @@ function buildDeviceStartSession(options: {
   agentRelay: ParsedRelayPublicKey | undefined;
   agentCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined;
   agentRatchet: ParsedRatchetPrekeyBundle | undefined;
+  agentSignalPrekeyBundle: HermesGatewaySignalPrekeyBundleDoc | undefined;
   now: Timestamp;
   expiresAt: Timestamp;
 }): Record<string, unknown> {
-  const { agentRelay, agentCapabilities, agentRatchet } = options;
+  const { agentRelay, agentCapabilities, agentRatchet, agentSignalPrekeyBundle } = options;
   return stripUndefinedObject({
     deviceCode: options.deviceCode,
     userCode: options.userCode,
@@ -81,6 +86,7 @@ function buildDeviceStartSession(options: {
     agentPreferredRelayEnvelopeVersion: agentCapabilities?.preferredRelayEnvelopeVersion,
     agentSupportsHpkeV3: agentCapabilities?.supportsHpkeV3,
     agentSupportsSignalEnvelope: agentCapabilities?.supportsSignalEnvelope,
+    agentSignalPrekeyBundle,
     agentPlatform: agentCapabilities?.platform,
     agentAppBuild: agentCapabilities?.appBuild,
     agentRatchetIdentityPublicKey: agentRatchet?.identityPublicKey,
@@ -148,6 +154,19 @@ export async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Pr
   const agentRatchet = parseRatchetPrekeyBundle(body, "agent", (message) => {
     throw httpError(400, "invalid_agent_ratchet_prekey", message);
   });
+  const agentSignalPrekeyBundle = parseGatewaySignalPrekeyBundle(body, "agent", (message) => {
+    throw httpError(400, "invalid_agent_signal_prekey_bundle", message);
+  });
+  if (agentCapabilities?.supportsSignalEnvelope === true && !agentSignalPrekeyBundle) {
+    throw httpError(
+      400,
+      "missing_agent_signal_prekey_bundle",
+      "A client advertising Signal v4 must publish an official-libsignal PQXDH prekey bundle.",
+    );
+  }
+  if (gatewaySignalRequiredMode() && agentCapabilities?.supportsSignalEnvelope !== true) {
+    throw httpError(412, "signal_capability_required");
+  }
 
   await db.doc(`hermes_gateway_device_sessions/${deviceCode}`).set(
     buildDeviceStartSession({
@@ -162,6 +181,7 @@ export async function handleDeviceStart(req: HttpRequest, res: HttpResponse): Pr
       agentRelay,
       agentCapabilities,
       agentRatchet,
+      agentSignalPrekeyBundle,
       now,
       expiresAt,
     }),
@@ -208,6 +228,10 @@ function approvedDevicePollBody(
     phonePreferredRelayEnvelopeVersion: clientDoc.phonePreferredRelayEnvelopeVersion,
     phoneSupportsHpkeV3: clientDoc.phoneSupportsHpkeV3,
     phoneSupportsSignalEnvelope: clientDoc.phoneSupportsSignalEnvelope,
+    phoneSignalPrekeyBundle: clientDoc.phoneSignalPrekeyBundle,
+    supportsSignalEnvelope: clientDoc.supportsSignalEnvelope === true,
+    signalRequired: gatewaySignalRequiredMode(),
+    signalEnvelopeV4Disabled: gatewaySignalEnvelopeV4Disabled(),
     phoneRatchetIdentityPublicKey: clientDoc.phoneRatchetIdentityPublicKey,
     phoneRatchetSigningPublicKey: clientDoc.phoneRatchetSigningPublicKey,
     phoneRatchetSignedPreKeyPublicKey: clientDoc.phoneRatchetSignedPreKeyPublicKey,

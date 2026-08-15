@@ -11,6 +11,7 @@ rules_version = '2';
 // - users/{uid}/cloud_profile, sync_watermarks, sync_status, cloud_settings, recent_usage
 // - users/{uid}/cloud_search_index_manifest, remote_mcp_clients, remote_mcp_grants, remote_mcp_audit_events, remote_mcp_rate_limits
 // - users/{uid}/cli_sessions, cli_agent_mission_requests
+// - users/{uid}/ai_inbox_items, ai_inbox_item_state
 // - users/{uid}/escrow_devices, escrow_public_keys, signal_identity_public_keys, escrow_grants, escrow_envelopes, escrow_audit_events
 // - server-only: provider_account_secret_refs, users/{uid}/_rate_limits, users/{uid}/rollup_jobs
 // - public read-only: model_benchmark_snapshots, model_benchmark_source_status
@@ -269,8 +270,9 @@ service cloud.firestore {
     }
 
     function validRootUserProfileWrite(userId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "uid",
           "displayName",
           "email",
@@ -288,22 +290,22 @@ service cloud.firestore {
           "settingsVersion",
           "schemaVersion"
         ])
-        && (!("uid" in request.resource.data) || request.resource.data.uid == userId)
-        && (!("displayName" in request.resource.data) || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 200))
-        && (!("email" in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 320))
-        && (!("photoURL" in request.resource.data) || (request.resource.data.photoURL is string && request.resource.data.photoURL.size() <= 2000))
-        && (!("avatarURL" in request.resource.data) || (request.resource.data.avatarURL is string && request.resource.data.avatarURL.size() <= 2000))
-        && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
-        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp)
-        && (!("lastSeenAt" in request.resource.data) || request.resource.data.lastSeenAt is timestamp)
-        && (!("sourceDeviceId" in request.resource.data) || (request.resource.data.sourceDeviceId is string && request.resource.data.sourceDeviceId.size() <= 256))
-        && (!("deviceId" in request.resource.data) || (request.resource.data.deviceId is string && request.resource.data.deviceId.size() <= 256))
-        && (!("platform" in request.resource.data) || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80))
-        && (!("appVersion" in request.resource.data) || (request.resource.data.appVersion is string && request.resource.data.appVersion.size() <= 80))
-        && (!("timezone" in request.resource.data) || (request.resource.data.timezone is string && request.resource.data.timezone.size() <= 120))
-        && (!("locale" in request.resource.data) || (request.resource.data.locale is string && request.resource.data.locale.size() <= 40))
-        && (!("settingsVersion" in request.resource.data) || (request.resource.data.settingsVersion is int && request.resource.data.settingsVersion >= 1 && request.resource.data.settingsVersion <= 10000))
-        && (!("schemaVersion" in request.resource.data) || (request.resource.data.schemaVersion is int && request.resource.data.schemaVersion >= 1 && request.resource.data.schemaVersion <= 100));
+        && (!("uid" in d) || d.uid == userId)
+        && (!("displayName" in d) || (d.displayName is string && d.displayName.size() <= 200))
+        && (!("email" in d) || (d.email is string && d.email.size() <= 320))
+        && (!("photoURL" in d) || (d.photoURL is string && d.photoURL.size() <= 2000))
+        && (!("avatarURL" in d) || (d.avatarURL is string && d.avatarURL.size() <= 2000))
+        && (!("createdAt" in d) || d.createdAt is timestamp)
+        && (!("updatedAt" in d) || d.updatedAt is timestamp)
+        && (!("lastSeenAt" in d) || d.lastSeenAt is timestamp)
+        && (!("sourceDeviceId" in d) || (d.sourceDeviceId is string && d.sourceDeviceId.size() <= 256))
+        && (!("deviceId" in d) || (d.deviceId is string && d.deviceId.size() <= 256))
+        && (!("platform" in d) || (d.platform is string && d.platform.size() <= 80))
+        && (!("appVersion" in d) || (d.appVersion is string && d.appVersion.size() <= 80))
+        && (!("timezone" in d) || (d.timezone is string && d.timezone.size() <= 120))
+        && (!("locale" in d) || (d.locale is string && d.locale.size() <= 40))
+        && (!("settingsVersion" in d) || (d.settingsVersion is int && d.settingsVersion >= 1 && d.settingsVersion <= 10000))
+        && (!("schemaVersion" in d) || (d.schemaVersion is int && d.schemaVersion >= 1 && d.schemaVersion <= 100));
     }
 
     function validPixelClockConfig(pixelClock) {
@@ -1090,11 +1092,12 @@ service cloud.firestore {
     }
 
     // ---- Signal at-rest CloudVault envelopes ------------------------------------
-    // Client-direct writes MUST NOT include `signalEnvelope`. Firestore rules cannot
-    // iterate and deep-validate every recipient wrap or verify senderAuth signatures,
-    // so production Signal-at-rest producers must route through an Admin/callable path
-    // that sanitizes the full envelope before persisting. This keeps the backend
-    // zero-plaintext while avoiding a shallow-rules validation bypass.
+    // Legacy per-collection validators keep using `forbidsDirectSignalEnvelope`
+    // so their compatibility path cannot accidentally accept a mixed shape. The
+    // ten exact Signal mirror matches below authorize a separately validated,
+    // path-bound `signalEnvelope` with no cleartext private fields. Rules cannot
+    // verify Ed25519 signatures or iterate every recipient wrap; the Admin/callable
+    // path validates every wrap, while clients verify sender auth cryptographically.
     function forbidsDirectSignalEnvelope() {
       return !("signalEnvelope" in request.resource.data);
     }
@@ -1140,6 +1143,82 @@ service cloud.firestore {
         && value.size() <= maxLen
         && value.size() % 4 == 0
         && value.matches("^[A-Za-z0-9+/]*={0,2}$");
+    }
+
+    // Direct-client Signal at-rest writes are allowed only through the exact
+    // owner-scoped mirror gate below. Rules cannot verify Ed25519 signatures or
+    // iterate every wrap, but they can enforce the zero-plaintext outer shape,
+    // exact path binding, sender-auth wire lengths, and collection allowlists.
+    // The Admin/callable path remains stricter and validates every wrap.
+    function validDirectSignalAtRestEnvelope(userId, collectionId, documentId) {
+      let value = ("signalEnvelope" in request.resource.data)
+        ? request.resource.data.signalEnvelope
+        : {};
+      return value is map
+        && value.keys().hasOnly([
+          "signalEnvelopeFormatVersion", "mode", "relayEncryption",
+          "ciphertextLayer", "keyDelivery", "binding", "senderAuth"
+        ])
+        && value.signalEnvelopeFormatVersion == 1
+        && value.mode == "at-rest"
+        && value.relayEncryption == "signal-hpke-identity-seal-v1"
+        && value.ciphertextLayer is map
+        && value.ciphertextLayer.keys().hasOnly(["payloadCiphertextB64", "payloadAADLabel", "schemaVersion"])
+        && value.ciphertextLayer.payloadCiphertextB64 is string
+        && value.ciphertextLayer.payloadCiphertextB64.size() > 0
+        && value.ciphertextLayer.payloadCiphertextB64.size() <= 1100000
+        && value.ciphertextLayer.payloadCiphertextB64.size() % 4 == 0
+        && value.ciphertextLayer.payloadCiphertextB64.matches("^[A-Za-z0-9+/]*={0,2}$")
+        && value.ciphertextLayer.payloadAADLabel is string
+        && value.ciphertextLayer.payloadAADLabel.size() > 0
+        && value.ciphertextLayer.payloadAADLabel.size() <= 120
+        && value.ciphertextLayer.payloadAADLabel.matches("^[A-Za-z0-9:_-]+$")
+        && value.ciphertextLayer.schemaVersion == 1
+        && value.keyDelivery is map
+        && value.keyDelivery.keys().hasOnly(["scheme", "wraps", "contentKeyLength"])
+        && value.keyDelivery.scheme == "signal-hpke-identity-seal-v1"
+        && value.keyDelivery.contentKeyLength == 32
+        && value.keyDelivery.wraps is list
+        && value.keyDelivery.wraps.size() >= 1
+        && value.keyDelivery.wraps.size() <= 32
+        && value.binding is map
+        && value.binding.keys().hasOnly(["uid", "scope", "collection", "docId", "field", "mode", "formatVersion"])
+        && value.binding.uid == userId
+        && value.binding.scope == "cloudvault"
+        && value.binding.collection == collectionId
+        && value.binding.docId == documentId
+        && value.binding.field == "signalEnvelope"
+        && value.binding.mode == "at-rest"
+        && value.binding.formatVersion == 1
+        && value.senderAuth is map
+        && value.senderAuth.keys().hasOnly(["senderIdentityKeyId", "senderIdentityKeyB64", "signatureB64", "signatureVersion"])
+        && value.senderAuth.senderIdentityKeyId is string
+        && value.senderAuth.senderIdentityKeyId.size() > 0
+        && value.senderAuth.senderIdentityKeyId.size() <= 160
+        && value.senderAuth.senderIdentityKeyB64 is string
+        && value.senderAuth.senderIdentityKeyB64.size() == 44
+        && value.senderAuth.senderIdentityKeyB64.matches("^[A-Za-z0-9+/]*={0,2}$")
+        && value.senderAuth.signatureB64 is string
+        && value.senderAuth.signatureB64.size() == 88
+        && value.senderAuth.signatureB64.matches("^[A-Za-z0-9+/]*={0,2}$")
+        && value.senderAuth.signatureVersion == 1;
+    }
+
+    // Fast, collection-scoped validator used only from the ten exact match
+    // blocks below. Keep this function small: calling a dynamic ten-way branch
+    // from the catch-all user-document match exhausts Firestore's expression
+    // budget even for unrelated writes.
+    function validSignalAtRestMirrorWrite(userId, collectionId, documentId, allowedKeys) {
+      return ("signalEnvelope" in request.resource.data)
+        ? (
+          ownerWritableNonSecret(userId)
+          && ((collectionId == "conversations" || collectionId == "chat_threads")
+            ? hasActiveHostedQuotaEntitlement(userId)
+            : true)
+          && validDirectSignalAtRestEnvelope(userId, collectionId, documentId)
+          && request.resource.data.keys().hasOnly(allowedKeys)
+        )
+        : false;
     }
 
     function matchesCurrentVaultKey(userId, vaultKeyID) {
@@ -1232,9 +1311,9 @@ service cloud.firestore {
     }
 
     // M-007: use this only on writers that already emit path-bound AAD. Today
-    // that is `conversations`, `chat_threads`, `mobile_assistant_chats`, and
-    // `cli_sessions`; other sealed surfaces stay on `validSealedPayloadForUser`
-    // until their clients migrate.
+    // that is `conversations`, `chat_threads`, `mobile_assistant_chats`,
+    // `cli_sessions`, and `ai_inbox_items`; other sealed surfaces stay on
+    // `validSealedPayloadForUser` until their clients migrate.
     function validPathBoundSealedPayloadForUser(userId, vaultKeyID, payload, collection, docId) {
       return matchesCurrentVaultKey(userId, vaultKeyID)
         && validPathBoundCloudSealedPayload(userId, collection, docId, payload)
@@ -1767,6 +1846,7 @@ service cloud.firestore {
         "usage", "budgetRules", "budgetEvents", "conversations",
         "chat_threads", "text_snippets", "mobile_assistant_chats",
         "cli_sessions", "cli_agent_mission_requests", "agent_import_jobs",
+        "ai_inbox_items", "ai_inbox_item_state",
         "mission_groups", "approval_policies", "rollback_requests",
         "agent_identities", "subscription_topics", "session_logs",
         "project_memory_snapshots", "cloud_search_documents",
@@ -1805,6 +1885,7 @@ service cloud.firestore {
       allow delete: if ownsUserNamespace(userId) && collectionId in [
         "usage", "budgetRules", "chat_threads", "text_snippets",
         "mobile_assistant_chats", "cli_sessions", "agent_import_jobs",
+        "ai_inbox_items", "ai_inbox_item_state",
         "mission_groups", "approval_policies", "rollback_requests",
         "agent_identities", "subscription_topics", "session_logs",
         "project_memory_snapshots", "cloud_search_documents",
@@ -1833,6 +1914,82 @@ service cloud.firestore {
         && ownsUserNamespace(userId)
         && escrowDocumentLimits()
         && hasNoPlaintextSecretFields();
+
+
+    }
+
+    // Signal-at-rest direct-client mirrors. These are deliberately separate
+    // matches so unrelated user writes do not evaluate ten collection schemas.
+    match /users/{userId}/conversations/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "conversations", documentId, [
+        "id", "deviceId", "provider", "sessionId", "messageCount", "userWordCount", "assistantWordCount",
+        "startTime", "endTime", "updatedAt", "sourceType", "version", "deletedAt", "source",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/chat_threads/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "chat_threads", documentId, [
+        "threadId", "messageCount", "createdAt", "updatedAt", "deviceId", "contentIncluded",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("threadId" in request.resource.data) && request.resource.data.threadId == documentId;
+    }
+
+    match /users/{userId}/mobile_assistant_chats/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "mobile_assistant_chats", documentId, [
+        "id", "runtime", "createdAt", "updatedAt", "messageCount", "contentSealed", "sealedSchemaVersion",
+        "vaultKeyID", "sealedPayload", "labelColorHex", "isPinned", "priorityOrder", "lastMessageRole",
+        "lastAssistantMessageID", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/cli_sessions/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "cli_sessions", documentId, [
+        "id", "agent", "sourceKind", "createdAt", "updatedAt", "endedAt", "schemaVersion", "contentSealed",
+        "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "messageCount", "lastMessageRole",
+        "lastAssistantMessageID", "tokenUsage", "encryptedTranscriptAvailable", "labelColorHex", "isPinned",
+        "priorityOrder", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/text_snippets/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "text_snippets", documentId, [
+        "id", "uid", "sourceDeviceID", "triggerHash", "mode", "isEnabled", "revision", "createdAt", "updatedAt",
+        "deletedAt", "schemaVersion", "encryption", "sealedTitle", "sealedTrigger", "sealedBody", "sealedScope",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId
+        && ("uid" in request.resource.data) && request.resource.data.uid == userId;
+    }
+
+    match /users/{userId}/rollback_requests/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "rollback_requests", documentId, [
+        "id", "sessionID", "requestedAt", "requestedBy", "status", "resolvedAt", "schemaVersion", "source",
+        "sealedScope", "sealedErrorMessage", "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/approval_policies/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "approval_policies", documentId, [
+        "decision", "missionKind", "toolName", "runtimeID", "createdAt", "expiresAt", "matchCount", "schemaVersion",
+        "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject", "projectKeyHash", "fileGlobHash",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("decision" in request.resource.data) && request.resource.data.decision in ["approve", "deny"];
+    }
+
+    match /users/{userId}/agent_identities/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "agent_identities", documentId, [
+        "id", "runtimeID", "glyph", "paletteHex", "tier", "availability", "installSource", "capabilities",
+        "dispatchTransport", "lastSevenDays", "lastRefreshedAt", "updatedAt", "sealedDisplayName", "sealedTagline",
+        "sealedPersonas", "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]) && ("id" in request.resource.data) && request.resource.data.id == documentId;
+    }
+
+    match /users/{userId}/subscription_topics/{documentId} {
+      allow create, update: if validSignalAtRestMirrorWrite(userId, "subscription_topics", documentId, [
+        "cadence", "consentGivenAt", "isMuted", "deliveryMode", "minimumEventImportance", "deliveryCountThisMonth",
+        "lastDeliveredAt", "updatedAt", "sealedAgentURI", "sealedTopicID", "sealedDisplayName", "sealedDescription",
+        "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload", "signalEnvelope"
+      ]);
     }
 
     // Usage rows seal the project name into `sealedProjectName` (with an opaque
@@ -2054,6 +2211,103 @@ service cloud.firestore {
         && validCliSessionMirror();
     }
 
+    // AI Inbox items mirrored from the Mac so a phone can read "what happened
+    // while I wasn't watching" with the Mac asleep. Same sealed contract as
+    // `cli_sessions`: routing metadata stays top-level so mobile can sort,
+    // filter, and badge without a key; the title/body/evidence live only inside
+    // `sealedPayload`. The key list must equal `AIInboxMirrorCodec.documentKeys`
+    // — a field added there without a matching entry here is silently rejected.
+    match /users/{userId}/ai_inbox_items/{itemId} {
+      function validAIInboxMirror() {
+        let d = request.resource.data;
+        return d.keys().hasOnly([
+          "id",
+          "fingerprint",
+          "kind",
+          "priority",
+          "state",
+          "occurrenceCount",
+          "firstSeenAt",
+          "lastSeenAt",
+          "resolvedAt",
+          "modelProvenance",
+          "hasMemoryCandidates",
+          "schemaVersion",
+          "contentSealed",
+          "sealedSchemaVersion",
+          "vaultKeyID",
+          "sealedPayload",
+          "updatedAt"
+        ])
+        && d.id == itemId
+        && d.kind in [
+          "ci_waste",
+          "promised_not_landed",
+          "uncommitted_work",
+          "cost_anomaly",
+          "stuck_pr",
+          "index_health",
+          "brief",
+          "budget",
+          "system"
+        ]
+        && d.state in ["new", "updated", "resolved", "expired"]
+        && d.priority is int
+        && d.priority >= 1
+        && d.priority <= 4
+        && d.occurrenceCount is int
+        && d.occurrenceCount >= 0
+        && d.occurrenceCount <= 100000
+        && d.fingerprint is string
+        && d.fingerprint.size() <= 256
+        && d.modelProvenance is string
+        && d.modelProvenance.size() <= 256
+        && d.hasMemoryCandidates is bool
+        && d.firstSeenAt is timestamp
+        && d.lastSeenAt is timestamp
+        && (!("resolvedAt" in d) || d.resolvedAt is timestamp)
+        && d.updatedAt is timestamp
+        && d.schemaVersion is int
+        && d.contentSealed == true
+        && d.sealedSchemaVersion == 2
+        && validPathBoundSealedPayloadForUser(userId, d.vaultKeyID, d.sealedPayload, "ai_inbox_items", itemId)
+        && forbidsSealedPlaintextContentFields();
+      }
+
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validAIInboxMirror();
+    }
+
+    // Per-item user intent (read / archived / snoozed / feedback). Split from the
+    // Mac-owned item because the state is user-owned: whichever device the user
+    // acted on writes it, and every other device converges by reading it. Carries
+    // no content, so any signed-in owner device may write it — the constrained
+    // `feedback` enum keeps the field from becoming a free-text side channel.
+    match /users/{userId}/ai_inbox_item_state/{itemId} {
+      function validAIInboxItemState() {
+        let d = request.resource.data;
+        return d.keys().hasOnly([
+          "id",
+          "readAt",
+          "archivedAt",
+          "snoozedUntil",
+          "feedback",
+          "updatedAt",
+          "updatedByDeviceID"
+        ])
+        && d.id == itemId
+        && d.updatedAt is timestamp
+        && (!("readAt" in d) || d.readAt is timestamp)
+        && (!("archivedAt" in d) || d.archivedAt is timestamp)
+        && (!("snoozedUntil" in d) || d.snoozedUntil is timestamp)
+        && (!("feedback" in d) || d.feedback in ["useful", "not_useful", "wrong"])
+        && (!("updatedByDeviceID" in d) || (d.updatedByDeviceID is string && d.updatedByDeviceID.size() <= 160));
+      }
+
+      allow create, update: if ownerWritableNonSecret(userId)
+        && validAIInboxItemState();
+    }
+
     // Mobile Insights mission dispatch. iOS/iPadOS/Android create pending
     // requests; the signed-in Mac claims them, runs the local agent, then
     // writes status and a small preview back for mobile.
@@ -2172,6 +2426,7 @@ service cloud.firestore {
       }
 
       function validCliAgentMissionRequest() {
+        let d = request.resource.data;
         return validCliAgentMissionRequestKeys()
         && request.resource.data.id is string
         && request.resource.data.id.size() <= 512
@@ -2180,7 +2435,7 @@ service cloud.firestore {
         && matchesCurrentVaultKey(userId, request.resource.data.vaultKeyID)
         && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedPayload)
         && request.resource.data.sealedPayload.vaultKeyID == request.resource.data.vaultKeyID
-        && (!("sealedStatePayload" in request.resource.data) || (
+        && (!("sealedStatePayload" in d) || (
           request.resource.data.sealedStateSchemaVersion == 1
           && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
           && validPathBoundCloudSealedPayloadAt(userId, "cli_agent_mission_requests", requestId, "sealedStatePayload", request.resource.data.sealedStatePayload)
@@ -2189,29 +2444,29 @@ service cloud.firestore {
         && validCliMissionKind(request.resource.data.missionKind)
         && validCliMissionRuntime(request.resource.data.requestedRuntime)
         && validCliMissionSource(request.resource.data.source)
-        && (!("deliveryMode" in request.resource.data) || validCliMissionDeliveryMode(request.resource.data.deliveryMode))
-        && (!("presentationMode" in request.resource.data) || validCliMissionPresentationMode(request.resource.data.presentationMode))
+        && (!("deliveryMode" in d) || validCliMissionDeliveryMode(request.resource.data.deliveryMode))
+        && (!("presentationMode" in d) || validCliMissionPresentationMode(request.resource.data.presentationMode))
         && request.resource.data.status is string
         && request.resource.data.schemaVersion is int
-        && (!("depth" in request.resource.data) || validCliMissionDepth(request.resource.data.depth))
+        && (!("depth" in d) || validCliMissionDepth(request.resource.data.depth))
         && validCliMissionApprovalControls()
-        && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
-        && (!("selectedRuntime" in request.resource.data) || validCliMissionRuntime(request.resource.data.selectedRuntime))
-        && (!("approvalStatus" in request.resource.data) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
-        && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
-        && (!("lastEventSequence" in request.resource.data) || request.resource.data.lastEventSequence is int)
-        && (!("siblingIndex" in request.resource.data) || (request.resource.data.siblingIndex is int && request.resource.data.siblingIndex >= 0 && request.resource.data.siblingIndex < 16))
-        && (!("siblingCount" in request.resource.data) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
-        && (!("isGroupChild" in request.resource.data) || request.resource.data.isGroupChild is bool)
-        && (!("sourceSkillID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.sourceSkillID, 80))
-        && (!("sourceSurface" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.sourceSurface, 80))
-        && (!("requestedModelID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.requestedModelID, 160))
-        && (!("parentHermesThreadID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.parentHermesThreadID, 160))
-        && (!("clientThreadID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.clientThreadID, 160))
-        && (!("parentSessionID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.parentSessionID, 160))
-        && (!("personaID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.personaID, 160))
-        && (!("groupID" in request.resource.data) || validCliMissionMetadataToken(request.resource.data.groupID, 160))
-        && (!("resumeAction" in request.resource.data) || validCliMissionResumeAction(request.resource.data.resumeAction))
+        && (!("claimedBy" in d) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
+        && (!("selectedRuntime" in d) || validCliMissionRuntime(request.resource.data.selectedRuntime))
+        && (!("approvalStatus" in d) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
+        && (!("approvedByDeviceId" in d) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
+        && (!("lastEventSequence" in d) || request.resource.data.lastEventSequence is int)
+        && (!("siblingIndex" in d) || (request.resource.data.siblingIndex is int && request.resource.data.siblingIndex >= 0 && request.resource.data.siblingIndex < 16))
+        && (!("siblingCount" in d) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
+        && (!("isGroupChild" in d) || request.resource.data.isGroupChild is bool)
+        && (!("sourceSkillID" in d) || validCliMissionMetadataToken(request.resource.data.sourceSkillID, 80))
+        && (!("sourceSurface" in d) || validCliMissionMetadataToken(request.resource.data.sourceSurface, 80))
+        && (!("requestedModelID" in d) || validCliMissionMetadataToken(request.resource.data.requestedModelID, 160))
+        && (!("parentHermesThreadID" in d) || validCliMissionMetadataToken(request.resource.data.parentHermesThreadID, 160))
+        && (!("clientThreadID" in d) || validCliMissionMetadataToken(request.resource.data.clientThreadID, 160))
+        && (!("parentSessionID" in d) || validCliMissionMetadataToken(request.resource.data.parentSessionID, 160))
+        && (!("personaID" in d) || validCliMissionMetadataToken(request.resource.data.personaID, 160))
+        && (!("groupID" in d) || validCliMissionMetadataToken(request.resource.data.groupID, 160))
+        && (!("resumeAction" in d) || validCliMissionResumeAction(request.resource.data.resumeAction))
         // The exact hasOnly([...]) allowlist above contains neither plaintext
         // content fields nor signalEnvelope. Repeating either deny check here
         // pushes the full fan-out child payload past Firestore's 1000-expression
@@ -3200,8 +3455,9 @@ service cloud.firestore {
 	      }
 
 	      function validCloudVaultRotationCheckpoint(checkpointId) {
+	        let d = request.resource.data;
 	        return ownerWritableNonSecret(userId)
-	          && request.resource.data.keys().hasOnly([
+	          && d.keys().hasOnly([
 	            "domainID",
 	            "status",
 	            "scannedDocumentCount",
@@ -3209,23 +3465,23 @@ service cloud.firestore {
 	            "changedFieldCount",
 	            "updatedAt"
 	          ])
-	          && request.resource.data.domainID == checkpointId
-	          && request.resource.data.status in [
+	          && d.domainID == checkpointId
+	          && d.status in [
 		            "documents_pending_storage",
 		            "documents_complete",
 		            "storage_rewrapping",
 		            "storage_complete",
 		            "failed"
 		          ]
-	          && request.resource.data.scannedDocumentCount is int
-	          && request.resource.data.scannedDocumentCount >= 0
-	          && request.resource.data.scannedDocumentCount <= 10000000
-	          && request.resource.data.rewrappedDocumentCount is int
-	          && request.resource.data.rewrappedDocumentCount >= 0
-	          && request.resource.data.rewrappedDocumentCount <= 10000000
-	          && request.resource.data.changedFieldCount is int
-	          && request.resource.data.changedFieldCount >= 0
-	          && request.resource.data.changedFieldCount <= 10000000;
+	          && d.scannedDocumentCount is int
+	          && d.scannedDocumentCount >= 0
+	          && d.scannedDocumentCount <= 10000000
+	          && d.rewrappedDocumentCount is int
+	          && d.rewrappedDocumentCount >= 0
+	          && d.rewrappedDocumentCount <= 10000000
+	          && d.changedFieldCount is int
+	          && d.changedFieldCount >= 0
+	          && d.changedFieldCount <= 10000000;
 	      }
 
 	      allow update: if validCloudVaultRotationJobClientUpdate();
@@ -3308,7 +3564,8 @@ service cloud.firestore {
       }
 
       function validProviderAccountDocument() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id",
           "providerID",
           "label",
@@ -3333,7 +3590,7 @@ service cloud.firestore {
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.keys().hasAll([
+        && d.keys().hasAll([
           "id",
           "providerID",
           "label",
@@ -3347,35 +3604,35 @@ service cloud.firestore {
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.id == accountId
-        && request.resource.data.providerID is string
-        && request.resource.data.providerID.size() <= 80
-        && request.resource.data.label is string
-        && request.resource.data.label.size() <= 160
-        && (!("identityHint" in request.resource.data) || (request.resource.data.identityHint is string && request.resource.data.identityHint.size() <= 256))
-        && request.resource.data.status in ["connected", "disconnected", "stale", "error", "disabled", "deleted"]
-        && request.resource.data.credentialKind in ["token", "bearer", "session", "cookie", "plan"]
-        && request.resource.data.storageScope in ["cloud_refreshable", "local_only", "device_keychain", "server_private"]
-        && !providerAccountRefreshSweepCandidate(request.resource.data)
-        && request.resource.data.redactedLabel is string
-        && request.resource.data.redactedLabel.size() <= 160
-        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
-        && (!("linkedSwitcherProfileID" in request.resource.data) || (request.resource.data.linkedSwitcherProfileID is string && request.resource.data.linkedSwitcherProfileID.size() <= 160))
-        && request.resource.data.isDefault is bool
-        && request.resource.data.sortKey is number
-        && (!("lastValidatedAt" in request.resource.data) || (request.resource.data.lastValidatedAt is string && request.resource.data.lastValidatedAt.size() <= 80))
-        && (!("lastRefreshAt" in request.resource.data) || (request.resource.data.lastRefreshAt is string && request.resource.data.lastRefreshAt.size() <= 80))
-        && (!("lastErrorCode" in request.resource.data) || (request.resource.data.lastErrorCode is string && request.resource.data.lastErrorCode.size() <= 160))
-        && (!("endpointProfileID" in request.resource.data) || (request.resource.data.endpointProfileID is string && request.resource.data.endpointProfileID.size() <= 160))
-        && (!("region" in request.resource.data) || request.resource.data.region in ["cn", "sgp", "ams", "global"])
-        && (!("tokenPlanTier" in request.resource.data) || request.resource.data.tokenPlanTier in ["lite", "standard", "pro", "max"])
-        && (!("tokenPlanBillingCycle" in request.resource.data) || request.resource.data.tokenPlanBillingCycle in ["monthly", "annual"])
-        && (!("authMethodID" in request.resource.data) || (request.resource.data.authMethodID is string && request.resource.data.authMethodID.size() <= 160))
-        && request.resource.data.schemaVersion is number
-        && request.resource.data.createdAt is string
-        && request.resource.data.createdAt.size() <= 80
-        && request.resource.data.updatedAt is string
-        && request.resource.data.updatedAt.size() <= 80;
+        && d.id == accountId
+        && d.providerID is string
+        && d.providerID.size() <= 80
+        && d.label is string
+        && d.label.size() <= 160
+        && (!("identityHint" in d) || (d.identityHint is string && d.identityHint.size() <= 256))
+        && d.status in ["connected", "disconnected", "stale", "error", "disabled", "deleted"]
+        && d.credentialKind in ["token", "bearer", "session", "cookie", "plan"]
+        && d.storageScope in ["cloud_refreshable", "local_only", "device_keychain", "server_private"]
+        && !providerAccountRefreshSweepCandidate(d)
+        && d.redactedLabel is string
+        && d.redactedLabel.size() <= 160
+        && (!("sourceDeviceID" in d) || (d.sourceDeviceID is string && d.sourceDeviceID.size() <= 160))
+        && (!("linkedSwitcherProfileID" in d) || (d.linkedSwitcherProfileID is string && d.linkedSwitcherProfileID.size() <= 160))
+        && d.isDefault is bool
+        && d.sortKey is number
+        && (!("lastValidatedAt" in d) || (d.lastValidatedAt is string && d.lastValidatedAt.size() <= 80))
+        && (!("lastRefreshAt" in d) || (d.lastRefreshAt is string && d.lastRefreshAt.size() <= 80))
+        && (!("lastErrorCode" in d) || (d.lastErrorCode is string && d.lastErrorCode.size() <= 160))
+        && (!("endpointProfileID" in d) || (d.endpointProfileID is string && d.endpointProfileID.size() <= 160))
+        && (!("region" in d) || d.region in ["cn", "sgp", "ams", "global"])
+        && (!("tokenPlanTier" in d) || d.tokenPlanTier in ["lite", "standard", "pro", "max"])
+        && (!("tokenPlanBillingCycle" in d) || d.tokenPlanBillingCycle in ["monthly", "annual"])
+        && (!("authMethodID" in d) || (d.authMethodID is string && d.authMethodID.size() <= 160))
+        && d.schemaVersion is number
+        && d.createdAt is string
+        && d.createdAt.size() <= 80
+        && d.updatedAt is string
+        && d.updatedAt.size() <= 80;
       }
 
       allow create, update: if ownerWritableNonSecret(userId)
@@ -3959,7 +4216,8 @@ service cloud.firestore {
       }
 
       function validEscrowDeviceDocument(deviceId) {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "deviceId",
           "deviceName",
           "platform",
@@ -3983,44 +4241,44 @@ service cloud.firestore {
           "signalIdentityReapprovalRequired",
           "signalIdentityRepairedAt"
         ])
-        && request.resource.data.deviceId == deviceId
-        && request.resource.data.deviceName is string
-        && request.resource.data.deviceName.size() <= 256
-        && request.resource.data.platform is string
-        && request.resource.data.platform.size() <= 80
-        && request.resource.data.trustState in ["pending", "trusted", "revoked"]
-        && (!("appVersion" in request.resource.data) || (request.resource.data.appVersion is string && request.resource.data.appVersion.size() <= 80))
-        && (!("publicKeyFingerprint" in request.resource.data) || (request.resource.data.publicKeyFingerprint is string && request.resource.data.publicKeyFingerprint.size() <= 256))
-        && (!("keyVersion" in request.resource.data) || request.resource.data.keyVersion is int)
-        && (!("approvedByDeviceId" in request.resource.data) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
-        && (!("trustChainVersion" in request.resource.data) || request.resource.data.trustChainVersion == 1)
-        && (!("trustChainAlgorithm" in request.resource.data) || request.resource.data.trustChainAlgorithm == "signal-identity-xeddsa-v1")
-        && (!("trustChainSignature" in request.resource.data)
-          || (request.resource.data.trustChainSignature is string
-            && request.resource.data.trustChainSignature.size() >= 64
-            && request.resource.data.trustChainSignature.size() <= 256
-            && request.resource.data.trustChainSignature.matches("^[A-Za-z0-9+/=]+$")))
-        && (!("targetSignalIdentityKeyId" in request.resource.data)
-          || (request.resource.data.targetSignalIdentityKeyId is string && request.resource.data.targetSignalIdentityKeyId.size() <= 200))
-        && (!("targetSignalIdentityPublicKeyFingerprint" in request.resource.data)
-          || (request.resource.data.targetSignalIdentityPublicKeyFingerprint is string
-            && request.resource.data.targetSignalIdentityPublicKeyFingerprint.size() <= 128))
-        && (!("approvedBySignalIdentityKeyId" in request.resource.data)
-          || (request.resource.data.approvedBySignalIdentityKeyId is string && request.resource.data.approvedBySignalIdentityKeyId.size() <= 200))
-        && (!("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)
-          || (request.resource.data.approvedBySignalIdentityPublicKeyFingerprint is string
-            && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint.size() <= 128))
-        && (!("signalIdentityRepairVersion" in request.resource.data)
-          || request.resource.data.signalIdentityRepairVersion == 1)
-        && (!("signalIdentityRepairAlgorithm" in request.resource.data)
-          || request.resource.data.signalIdentityRepairAlgorithm == "escrow-possession-challenge-v1")
-        && (!("signalIdentityReapprovalRequired" in request.resource.data)
-          || request.resource.data.signalIdentityReapprovalRequired is bool)
-        && (!("signalIdentityRepairedAt" in request.resource.data)
-          || request.resource.data.signalIdentityRepairedAt is timestamp)
-        && (!("approvedAt" in request.resource.data) || request.resource.data.approvedAt is timestamp)
-        && (!("createdAt" in request.resource.data) || request.resource.data.createdAt is timestamp)
-        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
+        && d.deviceId == deviceId
+        && d.deviceName is string
+        && d.deviceName.size() <= 256
+        && d.platform is string
+        && d.platform.size() <= 80
+        && d.trustState in ["pending", "trusted", "revoked"]
+        && (!("appVersion" in d) || (d.appVersion is string && d.appVersion.size() <= 80))
+        && (!("publicKeyFingerprint" in d) || (d.publicKeyFingerprint is string && d.publicKeyFingerprint.size() <= 256))
+        && (!("keyVersion" in d) || d.keyVersion is int)
+        && (!("approvedByDeviceId" in d) || (d.approvedByDeviceId is string && d.approvedByDeviceId.size() <= 160))
+        && (!("trustChainVersion" in d) || d.trustChainVersion == 1)
+        && (!("trustChainAlgorithm" in d) || d.trustChainAlgorithm == "signal-identity-xeddsa-v1")
+        && (!("trustChainSignature" in d)
+          || (d.trustChainSignature is string
+            && d.trustChainSignature.size() >= 64
+            && d.trustChainSignature.size() <= 256
+            && d.trustChainSignature.matches("^[A-Za-z0-9+/=]+$")))
+        && (!("targetSignalIdentityKeyId" in d)
+          || (d.targetSignalIdentityKeyId is string && d.targetSignalIdentityKeyId.size() <= 200))
+        && (!("targetSignalIdentityPublicKeyFingerprint" in d)
+          || (d.targetSignalIdentityPublicKeyFingerprint is string
+            && d.targetSignalIdentityPublicKeyFingerprint.size() <= 128))
+        && (!("approvedBySignalIdentityKeyId" in d)
+          || (d.approvedBySignalIdentityKeyId is string && d.approvedBySignalIdentityKeyId.size() <= 200))
+        && (!("approvedBySignalIdentityPublicKeyFingerprint" in d)
+          || (d.approvedBySignalIdentityPublicKeyFingerprint is string
+            && d.approvedBySignalIdentityPublicKeyFingerprint.size() <= 128))
+        && (!("signalIdentityRepairVersion" in d)
+          || d.signalIdentityRepairVersion == 1)
+        && (!("signalIdentityRepairAlgorithm" in d)
+          || d.signalIdentityRepairAlgorithm == "escrow-possession-challenge-v1")
+        && (!("signalIdentityReapprovalRequired" in d)
+          || d.signalIdentityReapprovalRequired is bool)
+        && (!("signalIdentityRepairedAt" in d)
+          || d.signalIdentityRepairedAt is timestamp)
+        && (!("approvedAt" in d) || d.approvedAt is timestamp)
+        && (!("createdAt" in d) || d.createdAt is timestamp)
+        && (!("updatedAt" in d) || d.updatedAt is timestamp);
       }
 
       function validEscrowDeviceCreate(deviceId) {
@@ -4033,6 +4291,7 @@ service cloud.firestore {
       }
 
       function validEscrowDeviceUpdate(deviceId) {
+        let d = request.resource.data;
         // Trust and cryptographic identity fields are server-only via the escrow
         // callables. Client updates are limited to display metadata so a stolen
         // owner session cannot swap fingerprints, platforms, approvers, or
@@ -4042,73 +4301,73 @@ service cloud.firestore {
         // `!("X" in resource.data) || ...` idiom permitted introducing a field on a
         // document seeded without it (e.g. adding publicKeyFingerprint) — closed here.
         return validEscrowDeviceDocument(deviceId)
-          && request.resource.data.deviceId == resource.data.deviceId
-          && request.resource.data.platform == resource.data.platform
-          && request.resource.data.trustState == resource.data.trustState
+          && d.deviceId == resource.data.deviceId
+          && d.platform == resource.data.platform
+          && d.trustState == resource.data.trustState
           && ((("publicKeyFingerprint" in resource.data)
-              && request.resource.data.publicKeyFingerprint == resource.data.publicKeyFingerprint)
+              && d.publicKeyFingerprint == resource.data.publicKeyFingerprint)
             || (!("publicKeyFingerprint" in resource.data)
-              && !("publicKeyFingerprint" in request.resource.data)))
+              && !("publicKeyFingerprint" in d)))
           && ((("keyVersion" in resource.data)
-              && request.resource.data.keyVersion == resource.data.keyVersion)
+              && d.keyVersion == resource.data.keyVersion)
             || (!("keyVersion" in resource.data)
-              && !("keyVersion" in request.resource.data)))
+              && !("keyVersion" in d)))
           && ((("approvedByDeviceId" in resource.data)
-              && request.resource.data.approvedByDeviceId == resource.data.approvedByDeviceId)
+              && d.approvedByDeviceId == resource.data.approvedByDeviceId)
             || (!("approvedByDeviceId" in resource.data)
-              && !("approvedByDeviceId" in request.resource.data)))
+              && !("approvedByDeviceId" in d)))
           && ((("trustChainVersion" in resource.data)
-              && request.resource.data.trustChainVersion == resource.data.trustChainVersion)
+              && d.trustChainVersion == resource.data.trustChainVersion)
             || (!("trustChainVersion" in resource.data)
-              && !("trustChainVersion" in request.resource.data)))
+              && !("trustChainVersion" in d)))
           && ((("trustChainAlgorithm" in resource.data)
-              && request.resource.data.trustChainAlgorithm == resource.data.trustChainAlgorithm)
+              && d.trustChainAlgorithm == resource.data.trustChainAlgorithm)
             || (!("trustChainAlgorithm" in resource.data)
-              && !("trustChainAlgorithm" in request.resource.data)))
+              && !("trustChainAlgorithm" in d)))
           && ((("trustChainSignature" in resource.data)
-              && request.resource.data.trustChainSignature == resource.data.trustChainSignature)
+              && d.trustChainSignature == resource.data.trustChainSignature)
             || (!("trustChainSignature" in resource.data)
-              && !("trustChainSignature" in request.resource.data)))
+              && !("trustChainSignature" in d)))
           && ((("targetSignalIdentityKeyId" in resource.data)
-              && request.resource.data.targetSignalIdentityKeyId == resource.data.targetSignalIdentityKeyId)
+              && d.targetSignalIdentityKeyId == resource.data.targetSignalIdentityKeyId)
             || (!("targetSignalIdentityKeyId" in resource.data)
-              && !("targetSignalIdentityKeyId" in request.resource.data)))
+              && !("targetSignalIdentityKeyId" in d)))
           && ((("targetSignalIdentityPublicKeyFingerprint" in resource.data)
-              && request.resource.data.targetSignalIdentityPublicKeyFingerprint == resource.data.targetSignalIdentityPublicKeyFingerprint)
+              && d.targetSignalIdentityPublicKeyFingerprint == resource.data.targetSignalIdentityPublicKeyFingerprint)
             || (!("targetSignalIdentityPublicKeyFingerprint" in resource.data)
-              && !("targetSignalIdentityPublicKeyFingerprint" in request.resource.data)))
+              && !("targetSignalIdentityPublicKeyFingerprint" in d)))
           && ((("approvedBySignalIdentityKeyId" in resource.data)
-              && request.resource.data.approvedBySignalIdentityKeyId == resource.data.approvedBySignalIdentityKeyId)
+              && d.approvedBySignalIdentityKeyId == resource.data.approvedBySignalIdentityKeyId)
             || (!("approvedBySignalIdentityKeyId" in resource.data)
-              && !("approvedBySignalIdentityKeyId" in request.resource.data)))
+              && !("approvedBySignalIdentityKeyId" in d)))
           && ((("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
-              && request.resource.data.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
+              && d.approvedBySignalIdentityPublicKeyFingerprint == resource.data.approvedBySignalIdentityPublicKeyFingerprint)
             || (!("approvedBySignalIdentityPublicKeyFingerprint" in resource.data)
-              && !("approvedBySignalIdentityPublicKeyFingerprint" in request.resource.data)))
+              && !("approvedBySignalIdentityPublicKeyFingerprint" in d)))
           && ((("signalIdentityRepairVersion" in resource.data)
-              && request.resource.data.signalIdentityRepairVersion == resource.data.signalIdentityRepairVersion)
+              && d.signalIdentityRepairVersion == resource.data.signalIdentityRepairVersion)
             || (!("signalIdentityRepairVersion" in resource.data)
-              && !("signalIdentityRepairVersion" in request.resource.data)))
+              && !("signalIdentityRepairVersion" in d)))
           && ((("signalIdentityRepairAlgorithm" in resource.data)
-              && request.resource.data.signalIdentityRepairAlgorithm == resource.data.signalIdentityRepairAlgorithm)
+              && d.signalIdentityRepairAlgorithm == resource.data.signalIdentityRepairAlgorithm)
             || (!("signalIdentityRepairAlgorithm" in resource.data)
-              && !("signalIdentityRepairAlgorithm" in request.resource.data)))
+              && !("signalIdentityRepairAlgorithm" in d)))
           && ((("signalIdentityReapprovalRequired" in resource.data)
-              && request.resource.data.signalIdentityReapprovalRequired == resource.data.signalIdentityReapprovalRequired)
+              && d.signalIdentityReapprovalRequired == resource.data.signalIdentityReapprovalRequired)
             || (!("signalIdentityReapprovalRequired" in resource.data)
-              && !("signalIdentityReapprovalRequired" in request.resource.data)))
+              && !("signalIdentityReapprovalRequired" in d)))
           && ((("signalIdentityRepairedAt" in resource.data)
-              && request.resource.data.signalIdentityRepairedAt == resource.data.signalIdentityRepairedAt)
+              && d.signalIdentityRepairedAt == resource.data.signalIdentityRepairedAt)
             || (!("signalIdentityRepairedAt" in resource.data)
-              && !("signalIdentityRepairedAt" in request.resource.data)))
+              && !("signalIdentityRepairedAt" in d)))
           && ((("approvedAt" in resource.data)
-              && request.resource.data.approvedAt == resource.data.approvedAt)
+              && d.approvedAt == resource.data.approvedAt)
             || (!("approvedAt" in resource.data)
-              && !("approvedAt" in request.resource.data)))
+              && !("approvedAt" in d)))
           && ((("createdAt" in resource.data)
-              && request.resource.data.createdAt == resource.data.createdAt)
+              && d.createdAt == resource.data.createdAt)
             || (!("createdAt" in resource.data)
-              && !("createdAt" in request.resource.data)));
+              && !("createdAt" in d)));
       }
 
       allow create: if ownsUserNamespace(userId)

@@ -8,8 +8,8 @@ struct iPadDevicesSettingsView: View {
     @State private var newName = ""
     @State private var showRenameSheet = false
     @State private var showRevokeConfirmation = false
-    @State private var showCleanupConfirmation = false
     @State private var deviceToRevoke: DeviceRecord?
+    @State private var deviceToApprove: DeviceRecord?
     @State private var linuxDeviceToApprove: LinuxAppCheckDeviceRecord?
     @State private var linuxDeviceToRevoke: LinuxAppCheckDeviceRecord?
     @State private var isReprobingHermes = false
@@ -60,14 +60,10 @@ struct iPadDevicesSettingsView: View {
             if hermesService != nil {
                 hermesRelaySection
             }
-            smartHubSection
             thisDeviceSection
             otherDevicesSection
             linuxAppCheckDevicesSection
-
-            if !store.staleDuplicates.isEmpty {
-                duplicatesSection
-            }
+            smartHubSection
         }
         .navigationTitle("Devices & Sync")
         .accessibilityIdentifier("devicesSync.screen")
@@ -86,6 +82,16 @@ struct iPadDevicesSettingsView: View {
                 onCancel: { showSafetyCompareSheet = false }
             )
         }
+        .sheet(item: $deviceToApprove) { device in
+            DeviceTrustSafetyCompareSheet(
+                device: device,
+                onConfirm: {
+                    deviceToApprove = nil
+                    Task { await store.approve(device) }
+                },
+                onCancel: { deviceToApprove = nil }
+            )
+        }
         .alert("Revoke Device?", isPresented: $showRevokeConfirmation) {
             Button("Cancel", role: .cancel) { deviceToRevoke = nil }
             Button("Revoke", role: .destructive) {
@@ -95,14 +101,6 @@ struct iPadDevicesSettingsView: View {
             }
         } message: {
             Text("This device will lose access to your OpenBurnBar data.")
-        }
-        .alert("Remove duplicate copies?", isPresented: $showCleanupConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Remove \(store.staleDuplicates.count)", role: .destructive) {
-                Task { await store.revokeStaleDuplicates() }
-            }
-        } message: {
-            Text("Older Firestore copies of devices that share the same name will be revoked. Active devices stay connected.")
         }
         .alert(
             "Approve Linux Device?",
@@ -200,6 +198,7 @@ struct iPadDevicesSettingsView: View {
                         }
                     }
                     .foregroundStyle(MobileTheme.Colors.accent)
+                    .accessibilityIdentifier("devicesSync.approveThisDevice")
                 }
 
                 Button("Rename") {
@@ -221,7 +220,7 @@ struct iPadDevicesSettingsView: View {
                 Text("No other devices connected.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(store.otherDevices, id: \.id) { device in
+                ForEach(store.otherDevices) { device in
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(device.displayName)
@@ -232,14 +231,40 @@ struct iPadDevicesSettingsView: View {
                         }
                         Spacer()
                         trustBadge(for: device.trustState)
-                        Button {
-                            deviceToRevoke = device
-                            showRevokeConfirmation = true
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(MobileTheme.Colors.error)
+                        if store.actionInFlightFor == device.id {
+                            ProgressView()
+                                .controlSize(.small)
+                                .accessibilityLabel("Updating \(device.displayName)")
+                        } else {
+                            switch device.trustState {
+                            case .pending:
+                                Button {
+                                    deviceToApprove = device
+                                } label: {
+                                    Label("Approve", systemImage: "checkmark.shield")
+                                }
+                                .disabled(
+                                    store.actionInFlightFor != nil
+                                        || !device.hasVerifiedSafetyCode
+                                )
+                                .accessibilityIdentifier(
+                                    "devicesSync.approve.\(device.id)"
+                                )
+                            case .trusted:
+                                Button {
+                                    deviceToRevoke = device
+                                    showRevokeConfirmation = true
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(MobileTheme.Colors.error)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Revoke \(device.displayName)")
+                                .disabled(store.actionInFlightFor != nil)
+                            case .current, .revoked:
+                                EmptyView()
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -521,48 +546,6 @@ struct iPadDevicesSettingsView: View {
         return "Last seen \(formatter.localizedString(for: date, relativeTo: Date()))"
     }
 
-    // MARK: - Duplicate Cleanup
-
-    private var duplicatesSection: some View {
-        settingsSection(
-            "Stale duplicates",
-            footer: "Old Firestore copies of this iPhone left over from previous installs. Removing them is safe - the active device stays connected."
-        ) {
-            let duplicates = store.staleDuplicates
-            let preview = Array(duplicates.prefix(8))
-
-            ForEach(preview, id: \.id) { device in
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(device.displayName)
-                            .font(.body)
-                        Text(device.id.prefix(8))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                        if let seen = device.lastSeen {
-                            Text("Last seen \(seen.formatted(.relative(presentation: .numeric)))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    trustBadge(for: device.trustState)
-                }
-            }
-            if duplicates.count > preview.count {
-                Text("\(duplicates.count - preview.count) more stale copies will be removed by cleanup.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Button(role: .destructive) {
-                showCleanupConfirmation = true
-            } label: {
-                Label("Clean up \(duplicates.count) duplicates", systemImage: "sparkles")
-                    .font(.body)
-            }
-        }
-    }
-
     // MARK: - Smart Hub (Cast Now)
 
     @ViewBuilder
@@ -669,12 +652,10 @@ struct iPadDevicesSettingsView: View {
 
 // MARK: - Device Trust Safety-Code Compare
 
-/// Stream 6 — the "Compare this code on your other device" confirmation step
-/// shown before a device is approved (only when the safety-code compare feature
-/// flag is ON). Renders the device's stored fingerprint as a grouped safety code
-/// using the shared formatter so this device and the approving device display
-/// byte-identical codes. UX only — confirmation calls the same unchanged approve
-/// path; server-side fingerprint enforcement is a later PR.
+/// "Compare this code on your other device" confirmation shown before
+/// cross-device approval. The shared formatter renders the server-verified
+/// fingerprint identically on both devices; approval remains fail-closed unless
+/// that verified safety code is present.
 struct DeviceTrustSafetyCompareSheet: View {
     let device: DeviceRecord?
     let onConfirm: () -> Void

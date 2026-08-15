@@ -6,27 +6,14 @@
  * `import { X } from "../shared"` / "./shared" call sites keep resolving unchanged.
  */
 
-import { type WriteBatch } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 
-import { db } from "../adminRuntime.js";
 import { HOSTED_QUOTA_PROVIDERS } from "./shared/accounts.js";
 
 export const REMOTE_MCP_TOKEN_HMAC_SECRET = defineSecret("REMOTE_MCP_TOKEN_HMAC_SECRET");
 export const REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64 = defineSecret("REMOTE_MCP_TOKEN_ED25519_PRIVATE_KEY_BASE64");
 
-export async function commitBatchedWrites(
-  writes: Array<(batch: WriteBatch) => void>,
-  maxWritesPerBatch = 450,
-): Promise<void> {
-  for (let start = 0; start < writes.length; start += maxWritesPerBatch) {
-    const batch = db.batch();
-    for (const write of writes.slice(start, start + maxWritesPerBatch)) {
-      write(batch);
-    }
-    await batch.commit();
-  }
-}
+export { commitBatchedWrites } from "./shared/firestoreWrites.js";
 
 // ---------------------------------------------------------------------------
 // Re-exports — preserve the historical `../shared` / `./shared` import surface.
@@ -94,20 +81,29 @@ export {
   writeBurnBarProEntitlement,
   paidEntitlementWriteWouldDowngrade,
   creditCloudProTopUp,
+  reconcileCloudProTopUpReversal,
 } from "./shared/entitlements.js";
 
 export {
   STRIPE_API_SECRETS,
   STRIPE_WEBHOOK_SECRETS,
-  GOOGLE_PLAY_ACTIVE_STATES,
   requireConfiguredStripe,
   requireConfiguredStripeWebhookSecret,
   getOrCreateStripeCustomer,
-  googlePlayLineItemForProduct,
-  googlePlayExpiryMillis,
   applyStripeCheckoutSession,
   applyStripeSubscription,
+  reconcileStripeInvoice,
+  reconcileStripeCharge,
+  reconcileStripeRefund,
+  reconcileStripeDispute,
+  reconcileStripeCreditNote,
+  deactivateStripeCustomerEntitlements,
+  assertStripeCustomerCanStartSubscriptionCheckout,
+  findReusableStripeSubscriptionCheckoutSession,
+  expireOpenStripeSubscriptionCheckoutSessions,
 } from "./shared/stripe.js";
+
+export { GOOGLE_PLAY_ACTIVE_STATES, selectGooglePlaySubscriptionLineItem } from "./shared/googlePlay.js";
 
 export {
   normalizeCloudConnectAuthMethodID,

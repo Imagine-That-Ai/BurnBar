@@ -111,6 +111,36 @@ describe("parseProviderAccountDoc (characterization)", () => {
     });
   });
 
+  it("normalizes legacy Firestore Timestamp date fields to ISO strings", () => {
+    const timestamp = (iso: string) => ({
+      toDate: () => new Date(iso),
+    });
+    const raw = {
+      id: "minimax_default",
+      providerID: "minimax",
+      label: "MiniMax",
+      status: "connected",
+      credentialKind: "bearer",
+      storageScope: "cloud_refreshable",
+      redactedLabel: "minimax_***",
+      isDefault: true,
+      sortKey: 0,
+      schemaVersion: 1,
+      createdAt: timestamp("2026-05-28T11:27:54.279Z"),
+      updatedAt: timestamp("2026-05-30T22:20:10.235Z"),
+      lastValidatedAt: timestamp("2026-05-07T04:39:32.412Z"),
+      lastRefreshAt: timestamp("2026-06-18T16:25:03.517Z"),
+    };
+
+    expect(parseProviderAccountDoc(raw)).toMatchObject({
+      id: "minimax_default",
+      createdAt: "2026-05-28T11:27:54.279Z",
+      updatedAt: "2026-05-30T22:20:10.235Z",
+      lastValidatedAt: "2026-05-07T04:39:32.412Z",
+      lastRefreshAt: "2026-06-18T16:25:03.517Z",
+    });
+  });
+
   it("returns undefined for a non-record input", () => {
     expect(parseProviderAccountDoc(null)).toBeUndefined();
     expect(parseProviderAccountDoc("nope")).toBeUndefined();
@@ -137,6 +167,8 @@ describe("parseProviderAccountDoc (characterization)", () => {
     expect(parseProviderAccountDoc({ ...base, storageScope: "nope" })).toBeUndefined();
     expect(parseProviderAccountDoc({ ...base, isDefault: "yes" })).toBeUndefined();
     expect(parseProviderAccountDoc({ ...base, sortKey: "3" })).toBeUndefined();
+    expect(parseProviderAccountDoc({ ...base, createdAt: { notATimestamp: true } })).toBeUndefined();
+    expect(parseProviderAccountDoc({ ...base, updatedAt: { notATimestamp: true } })).toBeUndefined();
   });
 });
 

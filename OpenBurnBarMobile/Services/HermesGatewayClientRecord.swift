@@ -5,6 +5,7 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 // MARK: - Hermes Gateway client records
 //
@@ -45,13 +46,18 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
     let agentRatchetSignedPreKeyId: String?
     let agentRatchetSignedPreKeySignature: String?
     let agentSupportsRatchetV1: Bool?
+    let agentSupportsSignalEnvelope: Bool?
+    let agentSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     let phoneRatchetIdentityPublicKey: String?
     let phoneRatchetSigningPublicKey: String?
     let phoneRatchetSignedPreKeyPublicKey: String?
     let phoneRatchetSignedPreKeyId: String?
     let phoneRatchetSignedPreKeySignature: String?
     let phoneSupportsRatchetV1: Bool?
+    let phoneSupportsSignalEnvelope: Bool?
+    let phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     let supportsRatchetV1: Bool
+    let supportsSignalEnvelope: Bool
     let revokedAt: String?
     let createdAt: String
     let updatedAt: String
@@ -99,6 +105,13 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
             && Self.nonEmpty(phoneRatchetSignedPreKeySignature)
     }
 
+    var canSignalToAgent: Bool {
+        supportsSignalEnvelope
+            && agentSupportsSignalEnvelope != false
+            && agentSignalPrekeyBundle != nil
+            && phoneSignalPrekeyBundle != nil
+    }
+
     /// Treat an unset `oversightMode` as the safe `supervised` default so the
     /// phone never implies a gateway is running autonomously when the server
     /// hasn't explicitly opted into it.
@@ -109,6 +122,14 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
     var isSwitchingModel: Bool {
         guard let pendingModelId, !pendingModelId.isEmpty else { return false }
         return pendingModelId != runtimeModelId
+    }
+
+    static func == (lhs: HermesGatewayClientRecord, rhs: HermesGatewayClientRecord) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -145,13 +166,18 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         case agentRatchetSignedPreKeyId
         case agentRatchetSignedPreKeySignature
         case agentSupportsRatchetV1
+        case agentSupportsSignalEnvelope
+        case agentSignalPrekeyBundle
         case phoneRatchetIdentityPublicKey
         case phoneRatchetSigningPublicKey
         case phoneRatchetSignedPreKeyPublicKey
         case phoneRatchetSignedPreKeyId
         case phoneRatchetSignedPreKeySignature
         case phoneSupportsRatchetV1
+        case phoneSupportsSignalEnvelope
+        case phoneSignalPrekeyBundle
         case supportsRatchetV1
+        case supportsSignalEnvelope
         case revokedAt
         case createdAt
         case updatedAt
@@ -198,13 +224,18 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
             agentRatchetSignedPreKeyId: try container.decodeIfPresent(String.self, forKey: .agentRatchetSignedPreKeyId),
             agentRatchetSignedPreKeySignature: try container.decodeIfPresent(String.self, forKey: .agentRatchetSignedPreKeySignature),
             agentSupportsRatchetV1: try container.decodeIfPresent(Bool.self, forKey: .agentSupportsRatchetV1),
+            agentSupportsSignalEnvelope: try container.decodeIfPresent(Bool.self, forKey: .agentSupportsSignalEnvelope),
+            agentSignalPrekeyBundle: try container.decodeIfPresent(FirestoreHermesGatewaySignalPrekeyBundleDoc.self, forKey: .agentSignalPrekeyBundle),
             phoneRatchetIdentityPublicKey: try container.decodeIfPresent(String.self, forKey: .phoneRatchetIdentityPublicKey),
             phoneRatchetSigningPublicKey: try container.decodeIfPresent(String.self, forKey: .phoneRatchetSigningPublicKey),
             phoneRatchetSignedPreKeyPublicKey: try container.decodeIfPresent(String.self, forKey: .phoneRatchetSignedPreKeyPublicKey),
             phoneRatchetSignedPreKeyId: try container.decodeIfPresent(String.self, forKey: .phoneRatchetSignedPreKeyId),
             phoneRatchetSignedPreKeySignature: try container.decodeIfPresent(String.self, forKey: .phoneRatchetSignedPreKeySignature),
             phoneSupportsRatchetV1: try container.decodeIfPresent(Bool.self, forKey: .phoneSupportsRatchetV1),
-            supportsRatchetV1: try container.decodeIfPresent(Bool.self, forKey: .supportsRatchetV1) ?? false
+            phoneSupportsSignalEnvelope: try container.decodeIfPresent(Bool.self, forKey: .phoneSupportsSignalEnvelope),
+            phoneSignalPrekeyBundle: try container.decodeIfPresent(FirestoreHermesGatewaySignalPrekeyBundleDoc.self, forKey: .phoneSignalPrekeyBundle),
+            supportsRatchetV1: try container.decodeIfPresent(Bool.self, forKey: .supportsRatchetV1) ?? false,
+            supportsSignalEnvelope: try container.decodeIfPresent(Bool.self, forKey: .supportsSignalEnvelope) ?? false
         )
     }
 
@@ -243,13 +274,18 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         agentRatchetSignedPreKeyId: String? = nil,
         agentRatchetSignedPreKeySignature: String? = nil,
         agentSupportsRatchetV1: Bool? = nil,
+        agentSupportsSignalEnvelope: Bool? = nil,
+        agentSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = nil,
         phoneRatchetIdentityPublicKey: String? = nil,
         phoneRatchetSigningPublicKey: String? = nil,
         phoneRatchetSignedPreKeyPublicKey: String? = nil,
         phoneRatchetSignedPreKeyId: String? = nil,
         phoneRatchetSignedPreKeySignature: String? = nil,
         phoneSupportsRatchetV1: Bool? = nil,
-        supportsRatchetV1: Bool = false
+        phoneSupportsSignalEnvelope: Bool? = nil,
+        phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc? = nil,
+        supportsRatchetV1: Bool = false,
+        supportsSignalEnvelope: Bool = false
     ) {
         self.id = id
         self.displayName = displayName
@@ -281,13 +317,18 @@ struct HermesGatewayClientRecord: Decodable, Identifiable, Hashable, Sendable {
         self.agentRatchetSignedPreKeyId = agentRatchetSignedPreKeyId
         self.agentRatchetSignedPreKeySignature = agentRatchetSignedPreKeySignature
         self.agentSupportsRatchetV1 = agentSupportsRatchetV1
+        self.agentSupportsSignalEnvelope = agentSupportsSignalEnvelope
+        self.agentSignalPrekeyBundle = agentSignalPrekeyBundle
         self.phoneRatchetIdentityPublicKey = phoneRatchetIdentityPublicKey
         self.phoneRatchetSigningPublicKey = phoneRatchetSigningPublicKey
         self.phoneRatchetSignedPreKeyPublicKey = phoneRatchetSignedPreKeyPublicKey
         self.phoneRatchetSignedPreKeyId = phoneRatchetSignedPreKeyId
         self.phoneRatchetSignedPreKeySignature = phoneRatchetSignedPreKeySignature
         self.phoneSupportsRatchetV1 = phoneSupportsRatchetV1
+        self.phoneSupportsSignalEnvelope = phoneSupportsSignalEnvelope
+        self.phoneSignalPrekeyBundle = phoneSignalPrekeyBundle
         self.supportsRatchetV1 = supportsRatchetV1
+        self.supportsSignalEnvelope = supportsSignalEnvelope
         self.revokedAt = revokedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -352,13 +393,18 @@ extension HermesGatewayClientRecord {
             agentRatchetSignedPreKeyId: Self.string(data["agentRatchetSignedPreKeyId"]),
             agentRatchetSignedPreKeySignature: Self.string(data["agentRatchetSignedPreKeySignature"]),
             agentSupportsRatchetV1: data["agentSupportsRatchetV1"] as? Bool,
+            agentSupportsSignalEnvelope: data["agentSupportsSignalEnvelope"] as? Bool,
+            agentSignalPrekeyBundle: Self.signalPrekeyBundle(data["agentSignalPrekeyBundle"]),
             phoneRatchetIdentityPublicKey: Self.string(data["phoneRatchetIdentityPublicKey"]),
             phoneRatchetSigningPublicKey: Self.string(data["phoneRatchetSigningPublicKey"]),
             phoneRatchetSignedPreKeyPublicKey: Self.string(data["phoneRatchetSignedPreKeyPublicKey"]),
             phoneRatchetSignedPreKeyId: Self.string(data["phoneRatchetSignedPreKeyId"]),
             phoneRatchetSignedPreKeySignature: Self.string(data["phoneRatchetSignedPreKeySignature"]),
             phoneSupportsRatchetV1: data["phoneSupportsRatchetV1"] as? Bool,
-            supportsRatchetV1: (data["supportsRatchetV1"] as? Bool) ?? false
+            phoneSupportsSignalEnvelope: data["phoneSupportsSignalEnvelope"] as? Bool,
+            phoneSignalPrekeyBundle: Self.signalPrekeyBundle(data["phoneSignalPrekeyBundle"]),
+            supportsRatchetV1: (data["supportsRatchetV1"] as? Bool) ?? false,
+            supportsSignalEnvelope: (data["supportsSignalEnvelope"] as? Bool) ?? false
         )
     }
 
@@ -378,6 +424,15 @@ extension HermesGatewayClientRecord {
 
     private static func string(_ raw: Any?) -> String? {
         ParsePrimitives.string(raw)
+    }
+
+    private static func signalPrekeyBundle(_ raw: Any?) -> FirestoreHermesGatewaySignalPrekeyBundleDoc? {
+        guard let map = raw as? NSDictionary,
+              JSONSerialization.isValidJSONObject(map),
+              let data = try? JSONSerialization.data(withJSONObject: map),
+              let bundle = try? JSONDecoder().decode(FirestoreHermesGatewaySignalPrekeyBundleDoc.self, from: data)
+        else { return nil }
+        return bundle
     }
 
     private static func intArray(_ raw: Any?, fallback: [Int]) -> [Int] {

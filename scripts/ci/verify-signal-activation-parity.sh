@@ -2,11 +2,10 @@
 # SOTASIGNAL Phase F / L11 / L34 — activation parity & fail-closed default gate.
 #
 # The Signal feature has several independent activation levers (compile-time
-# constants, the data-domains registry sealingScheme, and — at Phase E — a Remote
-# Config template). They MUST agree, and until Phase E they MUST all read "OFF /
-# empty / fail-closed". This script asserts the shipped constants encode that safe
-# default and that no committed Remote Config template silently flips a Signal flag
-# ON. It is a drift gate: any accidental activation fails CI.
+# constants, the data-domains registry sealingScheme, runtime required flags, hard
+# kills, and Remote Config). They MUST agree: binaries may be Signal-capable while
+# every committed/default runtime lever stays OFF. This script verifies both the
+# guarded activation path and the fail-closed default.
 #
 # Usage: scripts/ci/verify-signal-activation-parity.sh
 set -euo pipefail
@@ -29,17 +28,23 @@ if (/HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS\s*=\s*new Set<number>\(\
 } else {
   fail("HERMES_GATEWAY_PRODUCTION_SIGNAL_ENVELOPE_VERSIONS is NOT empty — production v4 would be accepted");
 }
+if (/gatewaySignalEnvelopeV4Disabled\(\)[\s\S]*return new Set<number>\(\)[\s\S]*gatewaySignalRequiredMode\(\)[\s\S]*HERMES_GATEWAY_RELAY_KEY_VERSION_SIGNAL/.test(gw)) {
+  ok("gateway v4 activation requires required-mode and remains subordinate to the hard kill");
+} else {
+  fail("gateway v4 required-mode / hard-kill activation contract drifted");
+}
 
-// (2) Data-domains registry: no end_to_end domain may have a 'signal' sealingScheme.
+// (2) Data-domains registry: conversations_chat is compiled Signal-capable and
+// declares all ten private producers. Runtime Remote Config remains OFF below.
 const registry = JSON.parse(readFileSync("packages/data-domains/registry.json", "utf8"));
 const domains = registry.domains ?? [];
 const activated = domains.filter(
   (d) => typeof d.sealingScheme === "string" && /signal/i.test(d.sealingScheme),
 );
-if (activated.length === 0) {
-  ok(`no domain carries a 'signal' sealingScheme (${domains.length} domains, all cloudvault default)`);
+if (activated.length === 1 && activated[0].id === "conversations_chat") {
+  ok("conversations_chat is the only Signal-capable data domain");
 } else {
-  fail(`domains already on a signal sealingScheme: ${activated.map((d) => `${d.id}=${d.sealingScheme}`).join(", ")}`);
+  fail(`expected only conversations_chat on a Signal scheme; got: ${activated.map((d) => `${d.id}=${d.sealingScheme}`).join(", ") || "none"}`);
 }
 
 // (2b) Producer-coverage honesty gate: the gate is keyed by DOMAIN id but producers
@@ -61,10 +66,35 @@ for (const d of activated) {
   } else {
     ok(`${d.id} declares signalSealedCollections (${sealed.length}/${paths.size} collections Signal-sealed): ${sealed.join(", ")}`);
   }
+  if (d.id === "conversations_chat") {
+    // Pin the EXACT set of Signal producers by name (stronger than the old
+    // count pin): the ten private collections below emit signalEnvelopes.
+    // The AI Inbox collections ride in this domain but are NOT Signal
+    // producers — ai_inbox_items is sealed with AES-GCM AIInboxMirrorCodec
+    // envelopes and ai_inbox_item_state is intentionally plain status
+    // metadata — so they are explicitly declared non-Signal here. Any other
+    // unsealed collection added to this domain still fails closed.
+    const EXPECTED_SEALED = [
+      "conversations", "chat_threads", "mobile_assistant_chats", "cli_sessions",
+      "cli_agent_mission_requests", "text_snippets", "rollback_requests",
+      "approval_policies", "agent_identities", "subscription_topics",
+    ];
+    const KNOWN_NON_SIGNAL = new Set(["ai_inbox_items", "ai_inbox_item_state"]);
+    const sealedSet = new Set(sealed);
+    const missing = EXPECTED_SEALED.filter((c) => !sealedSet.has(c));
+    const extra = sealed.filter((c) => !EXPECTED_SEALED.includes(c));
+    if (missing.length || extra.length) {
+      fail(`conversations_chat must declare Signal producer coverage for exactly the ten private collections (missing: ${missing.join(", ") || "none"}; extra: ${extra.join(", ") || "none"})`);
+    }
+    const undeclared = [...paths].filter((c) => !sealedSet.has(c) && !KNOWN_NON_SIGNAL.has(c));
+    if (undeclared.length) {
+      fail(`conversations_chat carries collections that are neither Signal-sealed nor known non-Signal: ${undeclared.join(", ")}`);
+    }
+  }
 }
 
 // (3) No committed Remote Config template may set a Signal flag true.
-const SIGNAL_RC_KEYS = /(signal_envelope_v4_enabled|signal_at_rest_[a-z_]+_enabled|escrow_fingerprint_enforcement)/;
+const SIGNAL_RC_KEYS = /(signal_envelope_v4_enabled|signal_at_rest_[a-z_]+_(enabled|required)|escrow_fingerprint_enforcement)/;
 function scan(dir) {
   if (!existsSync(dir)) return;
   for (const entry of readdirSync(dir)) {
@@ -85,7 +115,7 @@ scan("remoteconfig");
 ok("no committed Remote Config template flips a Signal flag ON");
 
 console.log(failures === 0
-  ? "\nactivation parity OK — all Signal levers are at the fail-closed default."
-  : `\nactivation parity FAILED — ${failures} lever(s) drifted from the safe default.`);
+  ? "\nactivation parity OK — Signal-capable binaries remain runtime-gated and hard-kill reversible."
+  : `\nactivation parity FAILED — ${failures} activation contract(s) drifted.`);
 process.exit(failures === 0 ? 0 : 1);
 NODE

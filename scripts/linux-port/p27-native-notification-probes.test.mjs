@@ -87,7 +87,7 @@ function dependencies(
     }),
     autostartState: () => ({
       path: "/etc/xdg/autostart/openburnbar.desktop",
-      exec: "openburnbar-linux-desktop --background",
+      exec: "/usr/bin/openburnbar-linux-desktop --background",
       enabled: true,
       ownedByPackage: true,
       sha256: "a".repeat(64),

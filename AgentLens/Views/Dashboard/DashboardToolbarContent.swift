@@ -34,6 +34,7 @@ extension DashboardView {
                 currentRoute: mainRoute,
                 activeChatBackend: chatController.chatBackend,
                 pendingMemoryCount: pendingMemoryReviewCount,
+                inboxUnreadCount: aiInboxUnreadCount,
                 onNavigate: { route in
                     withAnimation(DesignSystem.Animation.standard) {
                         navigate(to: route)
@@ -180,6 +181,7 @@ extension DashboardView {
                 currentRoute: mainRoute,
                 activeChatBackend: chatController.chatBackend,
                 pendingMemoryCount: pendingMemoryReviewCount,
+                inboxUnreadCount: aiInboxUnreadCount,
                 onNavigate: { route in
                     withAnimation(DesignSystem.Animation.standard) {
                         navigate(to: route)
@@ -193,6 +195,7 @@ extension DashboardView {
 
             HStack(spacing: 0) {
                 dashboardDeckRouteButton(.overview)
+                dashboardDeckRouteButton(.controlDeck)
                 dashboardDeckRouteButton(.charts)
                 dashboardDeckRouteButton(.insights)
                 dashboardDeckRouteButton(.projects)
@@ -1237,7 +1240,9 @@ private struct DashboardQuickAccessItem: Identifiable, Codable, Hashable {
     ]
 }
 
-private extension DashboardMainRoute {
+// Internal rather than file-private so `DashboardViewIntegrationTests` can
+// round-trip the identifiers persisted in `dashboard.quickAccess.v1`.
+extension DashboardMainRoute {
     static func quickAccessRoute(rawValue: String) -> DashboardMainRoute? {
         switch rawValue {
         case "overview": return .overview
@@ -1248,8 +1253,10 @@ private extension DashboardMainRoute {
         case "missions": return .missions
         case "sessionLogs": return .sessionLogs
         case "memoryReview": return .memoryReview
+        case "inbox": return .inbox
         case "chat": return .chat
         case "quota": return .quota
+        case "controlDeck": return .controlDeck
         default: return nil
         }
     }

@@ -11,12 +11,12 @@ message the agent — and supervise it — from the BurnBar iOS/macOS apps.
   messages to the agent.
 - **Replies** via `/messages` and **typing** state via `/typing`.
 - **Attachments** via `/attachments/init` + signed upload + `/attachments/finalize`.
-- **End-to-end relay encryption** (`p256-hkdf-sha256-aesgcm`, via
-  `gateway.crypto.relay_e2ee`): once the paired phone publishes a relay public
-  key, the adapter seals every outgoing reply body / attachment to the phone's key
-  and opens phone-sealed inbound events with its own key; on an E2E-paired link it
-  refuses to send plaintext. The BurnBar Cloud gateway is a blind relay — it never
-  sees message/event/attachment bodies, sender names, or file names.
+- **Official Signal v4 transport** (PQXDH + Double Ratchet, via the native
+  `@signalapp/libsignal-client` bridge): when the paired peer advertises a pinned
+  public prekey bundle, text/control payloads use `signalEnvelope` and legacy relay
+  sealing is not selected. Attachments use an opaque AES-GCM body; the body key and
+  manifest are inside a Signal envelope bound to `attachment-manifest:<id>`.
+  The gateway never sees plaintext or the body key.
 - **Safety-code comparison** after setup: when E2E is enabled, the CLI prints the
   same short code BurnBar shows in the Private messages sheet. Matching codes
   prove the phone pinned this agent key at first pairing.
@@ -46,6 +46,16 @@ message the agent — and supervise it — from the BurnBar iOS/macOS apps.
   `https://api.burnbar.ai/v1/hermes-gateway`).
 - `BURNBAR_ACCESS_TOKEN` — bearer token minted when the device code is approved.
 - `BURNBAR_HOME_CHANNEL` — default destination id (default `burnbar:home`).
+- `BURNBAR_SIGNAL_ENABLE=1` — advertise/use Signal v4 when the server returns a
+  peer bundle.
+- `BURNBAR_SIGNAL_REQUIRED=1` — fail closed if Signal v4 cannot be initialized;
+  never downgrade to relay/ratchet/plaintext.
+- `BURNBAR_SIGNAL_STATE_DIR` — encrypted sidecar state directory (default is an
+  OS-specific Hermes state directory).
+- `BURNBAR_SIGNAL_PEER_BUNDLE_JSON` — testing/controlled bootstrap override. In
+  production this is populated by authenticated Gateway pairing; never paste
+  private keys here.
+
 
 Optional:
 
@@ -77,6 +87,9 @@ From the Hermes repo root:
 # Plugin registration, event mapping, send/typing/attachments, oversight,
 # runtime status + model switch, and the relay seal -> open round-trip.
 scripts/run_tests.sh tests/gateway/test_burnbar_plugin.py tests/gateway/test_relay_e2ee.py
+
+# Official native Signal sidecar KAT (PQXDH, envelope, restart persistence)
+(cd tools/hermes-platform-burnbar/signal-runtime 2>/dev/null || cd plugins/platforms/burnbar/signal-runtime) && npm test
 
 # Deterministic smoke against a fake gateway (copies the plugin into a checkout).
 python plugins/platforms/burnbar/smoke_local.py smoke --hermes-repo .

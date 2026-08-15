@@ -1,0 +1,180 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const workflow = readFileSync(
+  new URL("../../.github/workflows/release.yml", import.meta.url),
+  "utf8",
+);
+
+function workflowJobs(source) {
+  const jobsStart = source.indexOf("\njobs:\n");
+  assert.notEqual(jobsStart, -1, "release workflow must define jobs");
+  const jobs = source.slice(jobsStart + "\njobs:\n".length);
+  const headings = [...jobs.matchAll(/^  ([A-Za-z0-9_-]+):\n/gmu)];
+  return new Map(
+    headings.map((heading, index) => {
+      const start = heading.index;
+      const end = headings[index + 1]?.index ?? jobs.length;
+      return [heading[1], jobs.slice(start, end)];
+    }),
+  );
+}
+
+const jobs = workflowJobs(workflow);
+
+function job(name) {
+  const block = jobs.get(name);
+  assert.ok(block, `release workflow must define ${name}`);
+  return block;
+}
+
+test("promote=true selects the dedicated promotion root and skips every build root", () => {
+  const rootJobs = [...jobs]
+    .filter(([, block]) => !/^    needs:/mu.test(block))
+    .map(([name]) => name);
+  assert.deepEqual(rootJobs, [
+    "release-promotion",
+    "release-functions-gate",
+    "release-extension-gate",
+    "release-supply-chain-gate",
+    "release-preflight",
+  ]);
+
+  assert.match(
+    job("release-promotion"),
+    /^    if: github\.event_name == 'workflow_dispatch' && inputs\.promote$/mu,
+  );
+  const buildRootGuard =
+    /^    if: \(startsWith\(github\.ref, 'refs\/tags\/v'\) \|\| github\.event_name == 'workflow_dispatch'\) && !\(github\.event_name == 'workflow_dispatch' && inputs\.promote\)$/mu;
+  for (const name of rootJobs.slice(1)) {
+    assert.match(
+      job(name),
+      buildRootGuard,
+      `${name} must be disabled for promote=true`,
+    );
+  }
+});
+
+test("normal publication is permanently non-promoting", () => {
+  const publication = job("domain-core-native-release-evidence");
+  assert.match(publication, /^\s+PROMOTE: "false"$/mu);
+  assert.match(publication, /--promote "\$PROMOTE"/u);
+  assert.doesNotMatch(publication, /PROMOTE:.*inputs\.promote/u);
+  assert.equal(
+    [...workflow.matchAll(/^\s+PROMOTE: "false"$/gmu)].length,
+    1,
+    "release workflow must have one explicit non-promoting publication input",
+  );
+});
+
+test("remote audit and every public-trust check precede the sole promotion command", () => {
+  const promotion = job("release-promotion");
+  const orderedMarkers = [
+    "promote-github-release.mjs audit",
+    'gpg --homedir "$keyring" --batch --verify',
+    "verify-release-attestations.sh",
+    "cosign verify-blob-attestation",
+    "verify-apple-appcheck-release-artifact.sh",
+    "verify-public-macos-download-trust.sh",
+    "macos-r2-publication.mjs preflight",
+    "Retain authoritative R2 publication handoff",
+    "scripts/upload-macos-downloads-r2.sh",
+    "promote-github-release.mjs promote",
+  ];
+  let previous = -1;
+  for (const marker of orderedMarkers) {
+    const current = promotion.indexOf(marker);
+    assert.ok(current > previous, `${marker} must appear in audited order`);
+    previous = current;
+  }
+  assert.equal(
+    [...workflow.matchAll(/promote-github-release\.mjs promote/gmu)].length,
+    1,
+    "release workflow must expose exactly one promotion command",
+  );
+});
+
+test("promotion serializes and activates GitHub latest only after verified R2 publication", () => {
+  const promotion = job("release-promotion");
+  assert.match(
+    promotion,
+    /concurrency:\s*\n\s*# GitHub's global `latest` pointer[\s\S]*group: openburnbar-release-promotion-global[\s\S]*cancel-in-progress: false/u,
+  );
+  assert.match(
+    promotion,
+    /OPENBURNBAR_EXPECTED_LIVE_VERSION: \$\{\{ inputs\.expected_live_macos_version \}\}[\s\S]*OPENBURNBAR_EXPECTED_LIVE_COMMIT: \$\{\{ inputs\.expected_live_macos_commit \}\}/u,
+  );
+  const handoffIndex = promotion.indexOf(
+    "Retain authoritative R2 publication handoff",
+  );
+  const publishIndex = promotion.indexOf(
+    "bash scripts/upload-macos-downloads-r2.sh",
+  );
+  const promoteIndex = promotion.indexOf("promote-github-release.mjs promote");
+  assert.ok(handoffIndex >= 0 && publishIndex > handoffIndex);
+  assert.ok(
+    promoteIndex > publishIndex,
+    "GitHub latest must be the final activation after exact R2 public verification",
+  );
+});
+
+test("the audit binds the operator-declared governed domain-core profile", () => {
+  assert.match(
+    job("release-promotion"),
+    /--domain-core-profile "\$\{\{ inputs\.domain_core_profile \}\}"/u,
+  );
+});
+
+test("successful promotion retains the exact receipt and asset directory for R2", () => {
+  const promotion = job("release-promotion");
+  const handoffIndex = promotion.indexOf(
+    "Retain authoritative R2 publication handoff",
+  );
+  assert.ok(
+    handoffIndex > promotion.indexOf("macos-r2-publication.mjs preflight"),
+    "R2 handoff must be retained only after exact local preflight succeeds",
+  );
+  assert.match(
+    promotion,
+    /macos-r2-publication-inputs-\$\{\{ steps\.release\.outputs\.release_commit \}\}-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u,
+  );
+  assert.match(
+    promotion,
+    /\$\{\{ steps\.release\.outputs\.asset_dir \}\}\/[\s\S]*\$\{\{ steps\.release\.outputs\.receipt_path \}\}/u,
+  );
+  assert.match(promotion, /retention-days: 90/u);
+});
+
+test("a published legacy GPG checksum signature must verify before promotion", () => {
+  const promotion = job("release-promotion");
+  assert.match(
+    promotion,
+    /checksums-v\$\{VERSION\}\.txt\.asc is published but RELEASE_SIGNING_KEY is not configured/u,
+  );
+  assert.match(
+    promotion,
+    /gpg --homedir "\$keyring" --batch --verify "\$signature" "\$checksums"/u,
+  );
+});
+
+test("live feed verification follows the exact successful promotion", () => {
+  const verification = job("verify-live-update-feed");
+  assert.match(verification, /^    needs: \[release-promotion\]$/mu);
+  assert.match(
+    verification,
+    /^    if: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.promote == true && needs\.release-promotion\.result == 'success' \}\}$/mu,
+  );
+  assert.match(verification, /^          ref: \$\{\{ inputs\.tag \}\}$/mu);
+});
+
+test("workflow YAML contains no direct GitHub release mutation", () => {
+  assert.doesNotMatch(
+    workflow,
+    /\bgh\s+release\s+(?:create|delete|edit|upload)\b/u,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /\bgh\s+api\b[^\n]*(?:--method|-X)\s+(?:DELETE|PATCH|POST|PUT)\b/u,
+  );
+});

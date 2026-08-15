@@ -7,9 +7,11 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  collection,
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   writeBatch,
@@ -30,6 +32,7 @@ const OWNER_READABLE_COLLECTIONS = [
   "usage", "budgetRules", "budgetEvents", "conversations",
   "chat_threads", "text_snippets", "mobile_assistant_chats",
   "cli_sessions", "cli_agent_mission_requests", "agent_import_jobs",
+  "ai_inbox_items", "ai_inbox_item_state",
   "mission_groups", "approval_policies", "rollback_requests",
   "agent_identities", "subscription_topics", "session_logs",
   "project_memory_snapshots", "cloud_search_documents",
@@ -125,6 +128,16 @@ try {
     await assertFails(getDoc(doc(bob, path)));
   }
 
+  // Android listens to the complete entitlement collection so it can resolve
+  // Cloud, Pro, and Ultra atomically. Prove the owner-scoped list/query rule,
+  // not only individual document reads.
+  await assertSucceeds(
+    getDocs(collection(alice, `users/${aliceUid}/entitlements`)),
+  );
+  await assertFails(
+    getDocs(collection(bob, `users/${aliceUid}/entitlements`)),
+  );
+
   await assertFails(getDoc(doc(alice, `users/${aliceUid}/not_allowlisted/probe`)));
   await assertFails(
     setDoc(doc(alice, `users/${aliceUid}/not_allowlisted/new`), { safe: true }),
@@ -166,6 +179,9 @@ try {
       getDoc(doc(alice, `users/${aliceUid}/${collectionId}/probe`)),
     );
   }
+  await assertFails(
+    getDocs(collection(alice, `users/${aliceUid}/entitlements`)),
+  );
 
   console.log(
     `rules consolidation parity passed for ${OWNER_READABLE_COLLECTIONS.length} owner-readable collections`,

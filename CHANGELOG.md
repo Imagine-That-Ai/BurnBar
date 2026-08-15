@@ -7,6 +7,363 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Metered usage-memory curation gateway (U4)
+- **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
+  token-metered gateway for cloud usage-memory curation inference
+  (text lane = any active Pro on deepseek-v4-flash; multimodal lane =
+  Pro Max/Ultra on minimax-m3). Reserve-before-spend / settle-to-actual
+  Firestore ledger with monthly + daily lane meters, Remote Config-tunable
+  limits, and a `usage_curation_enabled` kill flag. Every request pins
+  OpenRouter routing to CoreWeave (US) with fallbacks disabled, provider
+  data collection denied, and ZDR required; candidate text rides inside an
+  untrusted-data fence with fence-marker neutralization. See
+  `docs/USAGE_CURATION_METERING.md`.
+
+### Changed - Approved first-run + homepage copy
+- Homepage hero now uses Alberto-approved copy: **Watch your agents. Before the
+  bill.** plus the locked receipt subhead, the real `/brand/logo-*.png` mark, and
+  **Download for Mac — {shipping version}**.
+- macOS first-launch popover (`OnboardingView`) uses the real `AppLogo` brand
+  mark and the locked tip copy: **Look up. That's the app.** / menu-bar receipt /
+  Claude or Codex / **Got it**.
+
+### Added - Spend provenance: real API dollars vs subscription value
+- **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
+  across the macOS/Windows/Linux migrators with deterministic backfill): `api`
+  (per-token dollars leaving a wallet — deepseek, OpenRouter, gateway keys,
+  billing APIs), `subscription` (imputed list-price value of plan-covered
+  harness work — Claude Code on Max, Codex, Cursor, Copilot…), or an honest
+  `unknown` bucket that is never silently folded into either side.
+- **Spend Lens on the burn chart**: liquid-glass `All / Split / Overlay`
+  capsule. Split shows real dollars and plan value side by side; Overlay
+  breaks both out on one shared axis (ember = money, glacier = plan).
+  Persisted per user.
+- **The AI Inbox daily budget now guards real dollars only**: subscription-
+  routed model calls no longer consume `dailyBudgetUSD` (opt back in with the
+  new "Count subscription spend" setting). Budget/status copy stops saying
+  "no model calls" when it means "rule-based fallback".
+
+### Added - AI Inbox Founder Lens: judgment packs, replies, and compounding plans
+- **Founder Lens judgment layer** (`BurnBarFounderLens`): engOps and
+  productStrategy packs distilled from real founder/VC/engineering doctrine
+  (gstack, YC, a16z, Sequoia, Horowitz, 2026 agent-readiness practice) as
+  snapshot-tested code constants — the zero-egress rule-based path carries
+  the same judgment as the model path. Voice ban list enforced by tests;
+  `lens:vN` stamped into item provenance.
+- **NextMoveRouter** (Swift-only): every substantive item ends with exactly
+  one primary next move; refuted/unclear findings lose theirs. Models never
+  author actions.
+- **Reply threads** (`daemon.inbox.thread.get` / `daemon.inbox.reply`): keyed
+  by condition fingerprint so conversations survive item resolve/reopen
+  churn. Fail-closed gate order: feature switches → egress guard → daily
+  budget → NEW per-reply budget (`perReplyBudgetUSD`, default $0.10) → G8
+  `LLMSafeContent` fences on every untrusted surface. Refusals are stated
+  reasons, never silent drops; reply spend lands in the authoritative usage
+  ledger.
+- **Founder Plan Ledger** (migration `v59_founder_lens`): accepted
+  suggestions become durable plans/steps with lifecycle, append-only audit
+  events, and grades (terminal outcomes auto-seed; explicit grades
+  override). Accept/update/grade are human-confirmed config-capability RPCs;
+  the analyst/reply model can only propose.
+- **Execution spine reuse**: Promote to mission (`daemon.mission.create`,
+  `recommendation: review`) and follow-up creation bind `mission_id` /
+  `followup_id` back onto plan steps — no second mission system.
+- **Compounding memory**: Remember routes plan steps through the existing
+  quarantine→approve Chat Memory Authority with `ai-inbox:plan:*`
+  provenance; approved snippets are pushed to the daemon
+  (`daemon.inbox.memory.export`, full-set replacement so revocations
+  propagate by omission) and re-enter every analyst/reply prompt as fenced
+  "standing commitments". Pensieve `chat_memory` sync stays gated on
+  approved + provenance + Pro Max/Ultra.
+- **Mac UI**: Discuss section on item detail (thread, composer, refusal
+  explanations, Accept-into-plan cards with provenance badges).
+- **MCP**: read-only `burnbar_inbox_plans_list` / `burnbar_inbox_plans_get`
+  (fenced, trust-signaled; deliberately no write tool).
+- Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
+
+## [1.0.34] - 2026-08-15
+
+### Changed - Instant graphics, GRDB, and quota mining
+- **Constellation / logo swarm fills** now batch every live draw path
+  (swarm, formed logo, color-driver) by `RGBA.bucketKey` instead of one
+  `ctx.fill` per particle. Sparkles stay a deferred overlay. Wallpaper
+  stays on the existing 30 Hz organic-motion cap.
+- **Dashboard snapshot** builds last-7-day cost/token series and the
+  rolling average from one overlapping-day SQL scan instead of 14
+  per-day round-trips. Window membership is unchanged (intersection
+  predicate), so long-running sessions still count on every overlapped
+  day. Today / 7d / 30d / month / all-time aggregates are one `GROUP BY`
+  with per-window membership flags. Workspace artifact and projection
+  counts are one `GROUP BY status` each.
+- **Idle usage persist** skips the `token_usage` upsert storm when a
+  refresh tick re-parses byte-identical session totals and nothing else
+  has written the table. New UUIDs/`createdAt` values do not bust the
+  skip gate.
+- **Grok Build quota/usage ticks** resume `updates.jsonl` from a
+  mtime+size disk cache (token breakdowns only) so unchanged
+  `~/.grok/sessions/` trees are not re-scanned. Codex and Claude already
+  had this shape.
+- **Chart Studio / Burn / Trend Atlas** memoize digest-derived gallery
+  facts and insights so Hermes streaming and Compose recomposition do
+  not rebuild them per token. Editorial backdrop is capped at 30 fps;
+  substrate radius uses an in-place upper median; quota dial shadows
+  flatten through a compositing group.
+- **Quota refresh** follows `QuotaRefreshPolicy` on Mac and Linux
+  (30m / 10m / 3m by remaining fraction). SuperGrok pacing tail-reads
+  the 2h window; Claude JSONL quota scans resume on append-only growth;
+  Codex rollout walks skip files older than the 7-day cutoff.
+- **Charts page** uses one covering SQL scan (all-time, or last 31 days
+  for every bounded range) and splits selected vs heatmap rows in memory
+  with the intersection predicate. Conversation first-index writes land
+  in chunks of 64 inside one transaction each (upsert + projection
+  enqueue). Factory skips `.settings.json` older than 30 days; Antigravity
+  history.jsonl tail-reads the 5h window. Decorative loaders, the Cloud
+  store orbit, and the iOS easter-egg canvas cap at 30 fps. Database
+  workspace snapshot reads overlap instead of awaiting one-by-one.
+- **Warp quota fallback** tail-reads the last 512 KB of `warp_network*.log`
+  for the newest credit bucket and only rereads the whole file when the
+  tail has no credits or is not valid UTF-8. **Gemini CLI** usage ticks
+  resume unchanged `session-*.json(l)` files from a mtime+size cache
+  (token totals only) and skip transcript markdown on usage-only passes.
+  Cursor Agent and Antigravity usage parsers share the process-wide
+  ISO-8601 formatter; Cursor Agent skips conversation assembly on
+  usage-only ticks. Factory quota timestamps use the same formatter.
+  Logo formation (splash/onboarding) matches the 30 fps decorative cap.
+- **Idle usage ticks** resume unchanged Cursor Agent, Cline-family,
+  Copilot, Antigravity, and Goose transcripts from a mtime+size cache
+  (token totals only). Copilot's process-log fallback integers and
+  Antigravity's settings-model string participate in the signature.
+  Quota spend/reset parsers reuse `ThreadSafeISO8601DateFormatter`
+  (`parse` for fractional-then-basic, `parseBasic` where the default
+  formatter's acceptance must not widen).
+- **Remaining Core usage parsers** (Warp, Prime, Muse, Kimi, Windsurf,
+  Hermes, Forge, Augment, Aider, Cursor SQLite, OpenCode, Pi, OMP,
+  OpenClaw, Ollama, Junie, ModelFilter) resume unchanged session files
+  from the same mtime+size cache. SQLite signatures include `-wal` when
+  present and ignore `-shm` (a read-only open rewrites shm without
+  changing totals). ModelFilter caches empty bundles for non-matching
+  Factory sessions so zai/minimax ticks do not rescan every other
+  provider's jsonl. Quota cache writes reuse `formatBasic`.
+- **Mac-semantics idle caches** resume Copilot / Aider / Cursor /
+  OpenCode / Pi / OpenClaw / Junie on the AgentLens parse math (not Core
+  aliases), in dedicated `mac_*_parser_cache.json` files so isomorphic
+  signatures cannot decode Mac totals as a Core hit. Daily summaries
+  use intersection membership with a dedicated equality test. Quota
+  provider / account / switcher phases overlap after Codex rollout
+  merge-on-write. Warp usage resumes append-only logs from the last
+  complete Body. Windsurf / Hermes reuse listing stats for discovery
+  and gateway signatures; Forge skips `.forge.db` probes when a home
+  child directory mtime is unchanged.
+- **Distinct usage days, OpenCode `part`, Kilo quota, and Charts analytics.**
+  Dashboard distinct-day count uses intersection membership (same days as
+  daily summaries) instead of `DATE(startTime)`. OpenCode usage-only ticks
+  skip `part` when every session has explicit token buckets and otherwise
+  query only the zero-bucket message ids. Kilo Code quota resumes unchanged
+  `ui_messages.json` files from a mtime+size cache of totals only. Charts
+  heatmap / outliers / entropy have a SQL twin that matches
+  `ChartsSnapshot.build` without decoding full `TokenUsage` rows. The Charts
+  page covering scan now loads `ChartFactRow` columns only (burn / cache /
+  provenance / histogram / Spend Lens included), so all-time no longer
+  `SELECT *` / `decodeUsage`. Attribution still clamps `startTime`.
+- **Dashboard persist ticks** reload with `fetchDashboardUsageSnapshot` (the
+  same SQL window totals + hydration covering rows as init) instead of
+  `fetchAllUsage` / `SELECT *`. The snapshot itself decodes covering rows
+  once and filters them for bounded windows. **Factory quota** resumes
+  unchanged `*.settings.json` from a mtime+size cache of totals / lane /
+  session date only. Goose, Gemini CLI, Claude Code, Mac Pi, Forge, Muse,
+  and Factory listings prefetch size/mtime so cache signatures do not
+  re-stat.
+- **Forge home discovery** reuses the `$HOME` child list when home mtime is
+  unchanged (still re-stats known children for `.forge.db`). Dashboard
+  covering scans name `decodeUsage` columns instead of `SELECT *`.
+  Credential / project summaries fold from the window `GROUP BY` so a
+  long-runner older than the newest N covering rows still appears.
+  OpenCode `part` selects payload/id columns; Kilo quota lists tasks via
+  URL `contentsOfDirectory` and drops the extra `fileExists`. Copilot,
+  Warp, Augment, Prime, Muse, Mac OpenClaw, and shared local-parser
+  listings prefetch size/mtime for `FileSignature`.
+- **Aider quota, ChartFactRow index decode, and ISO-8601 reuse.** Aider
+  analytics JSONL resumes from a mtime+size cache of tokens/cost/time
+  plus a byte offset past the last terminated line (no prompt text).
+  Charts / dashboard covering scans decode GRDB rows by SELECT ordinal
+  through a cached statement cursor. Date fallbacks and daemon Pensieve
+  sentinels reuse `ThreadSafeISO8601DateFormatter` instead of allocating
+  a formatter per string or per file.
+- **Usage watermarks, OpenCode JSON-only `part`, and pool EQP.** Usage
+  refresh parse cannot carry indexing `idx2:` / `minimumFileModificationDate`
+  / discovery tracker (`LogParseOptions.usageAccounting`). OpenCode
+  usage-only ticks bound JSON-only `part` rows with `json_extract` on an
+  existing payload column (no invented message-id column). On-disk
+  `EXPLAIN QUERY PLAN` shows unsynced rows already use
+  `token_usage_sync_pending_idx`; no covering-index migration. Production
+  `DatabasePool` reader count is 8. Aider stays off `quotaSignalProviders`.
+
+### Fixed - Domain-core protected signer path vs GitHub Actions API
+
+- Accept the bare workflow `path` returned by GitHub Actions run metadata
+  (`.github/workflows/domain-core-promotion-proof.yml`) when validating the
+  protected promotion signer run. The gate previously required a
+  `path@refs/heads/main` suffix that the live API does not emit, so `v1.0.33`
+  OpenBurnBar Release passed Preflight and hydrated expired Actions artifacts,
+  then failed Shared Rust verify on a false signer-path mismatch.
+
+- Bumped Google Play `versionCode` to `46` with `versionName` `1.0.34`, and Mac
+  `CURRENT_PROJECT_VERSION` to `76`.
+
+## [1.0.33] - 2026-08-09
+
+### Fixed - Domain-core release gate Actions artifact expiry
+
+- When GitHub Actions artifacts for the activated Shared Rust candidate expire
+  (org retention overrides the workflow's 90-day request), the native release
+  gate now hydrates the attested candidate bundle from committed promotion
+  evidence and regenerates the byte-identical rollback profile, then continues
+  Sigstore verification. Unblocks `v1.0.32` OpenBurnBar Release after Preflight
+  passed but Shared Rust verify failed on expired run `30754893279`.
+
+- Bumped Google Play `versionCode` to `45` with `versionName` `1.0.33`, and Mac
+  `CURRENT_PROJECT_VERSION` to `75`.
+
+## [1.0.32] - 2026-08-09
+
+### Fixed - Release preflight Lob false positives
+
+- Broadened the publishable-tree TruffleHog Lob filter so camelCase XCTest
+  identifiers (and docs/Vendor mentions) are not treated as verified Lob
+  test-mode API keys — unblocking the Mac/iOS/Android release cut after
+  `v1.0.31` failed Release Preflight.
+
+- Bumped Google Play `versionCode` to `44` with `versionName` `1.0.32`, and Mac
+  `CURRENT_PROJECT_VERSION` to `74`.
+
+## [1.0.31] - 2026-08-09
+
+### Changed - Menu bar popover liquid glass redesign
+
+- Rebuilt the macOS menu bar popover for clearer burn/quota reading in light and
+  dark Liquid Glass: stronger header copy, single primary quota bars with
+  percent-left and resets-in lines, and tighter tray chrome contrast.
+
+### Fixed - Release cut continuity
+
+- Cut `1.0.31` because repository rules forbid deleting the existing `v1.0.30`
+  tag after the first release attempt failed preflight. This build includes the
+  liquid-glass popover and the publishable-tree Lob false-positive filter.
+
+- Bumped Google Play `versionCode` to `43` with `versionName` `1.0.31`, and Mac
+  `CURRENT_PROJECT_VERSION` to `73`.
+
+## [1.0.30] - 2026-08-08
+
+### Added - Muse (Meta) first-class provider
+
+- **Muse is now a first-class provider at parity with Hermes, Codex, and Droid**: auto-detected at `~/.local/share/muse/sessions/**/*.jsonl` with no manual config; `MuseParser` extracts per-turn `input_tokens`/`output_tokens`/`cached_tokens`/`cache_read_tokens`/`reasoning_tokens`, tool calls (`tool_batch.effect.started`), and prompts (`started`/`inbox_item_queued`) from the envelope JSONL, with microsecond `recorded_at` timestamps and subagent session support (`subagent/<uuid>/session.jsonl`). Cost uses catalog pricing for `muse-spark-1.2` (standard $1.25/$4.25/$0.15) and `muse-spark-1.2-contributor` ($0.10/$0.20/$0.002) with fallback to `ModelPricing.fallback` when the model is unknown. Handles empty logs, truncated JSONL, missing fields, and multi-model sessions. Installed Muse is auto-detected with no manual config (like Droid/Hermes/Codex).
+
+### Added - Prime Agent (Prime Intellect) first-class provider
+
+- **Prime Agent is now a first-class provider at parity with Hermes, Codex, and Droid**: auto-detected at `~/.prime/agent/sessions/*.jsonl` with no manual config; `PrimeAgentParser` extracts per-turn `input`/`output`/`cacheRead`/`cacheWrite` and exact USD cost from `message.usage.cost.total` (fallback to `ModelPricing` catalog when cost is zero). Sessions appear in the meter with correct tokens and $ cost; pricing falls back gracefully when the model is unknown. Handles empty logs, truncated JSONL, and multi-model sessions.
+
+### Added - Prime Agent OpenBurnBar proxy
+
+- Added Prime Agent OpenBurnBar proxy: `node scripts/prime-agent-openburnbar-proxy.mjs` syncs the local gateway catalog into `~/.prime/agent/models.json` as `openburnbar/*` so `prime-agent /model` and `prime-agent --provider openburnbar --model claude-sonnet-4-6` route through BurnBar's loopback gateway (accounting + failover), matching the existing Claude Code / Codex / Droid / Forge / OpenCode wiring. Supports `--live` (gateway-first), `--status`, `--print`, and `--remove`; API key resolves at request time from the LaunchAgent plist → keychain → env var. Docs: `docs/PROVIDERS.md` → Prime Agent via OpenBurnBar Gateway.
+
+### Fixed - Mercury release build reliability
+
+- **Made clean Mercury XCFramework release builds deterministic across current
+  Apple toolchains**: the cross-target builder keeps host proc-macro dylibs
+  intact, strips debug data only from the final packaged archives, isolates its
+  Cargo target directory, and serializes Cargo by default.
+
+### Fixed - Trusted device identity control
+
+- **Kept every distinct trusted-device registration visible and independently
+  revocable**: a phone reinstall or identity rotation can no longer hide a stale
+  trusted registration behind the replacement device's matching name and
+  platform. Trusted Devices now shows a short identity suffix for precise,
+  accessible revocation.
+
+### Fixed - Android Mercury keyboard reliability
+
+- **Made the screen-share keyboard reliably open and reopen on Android**:
+  manually tapping Type no longer closes the keyboard merely because the Mac
+  has not reported text-field focus, while keyboards opened automatically still
+  follow the remote focus lifecycle. Dismissing the Android IME now clears the
+  selected Type state so one tap reopens it, with JVM policy coverage and a
+  physical-Samsung open, dismiss, and reopen regression test.
+
+### Fixed - Audited GitHub release promotion
+
+- **Made stable release promotion a verified second phase**: tag publication
+  remains explicitly non-latest, while a `promote=true` retry must audit the
+  exact published tag, metadata, attestations, asset bytes, GitHub asset IDs,
+  sizes, and SHA-256 digests before the sole `--latest` mutation. The workflow
+  then proves GitHub's latest endpoint still returns that unchanged release
+  before validating the live updater feed. The audit binds the governed
+  `domain_core_profile`: a rollback release promotes without the native
+  domain-core evidence it never publishes (anything present is still verified),
+  a published legacy GPG checksum signature must verify against the audited
+  checksums file, and iOS release predicates now validate their embedded App
+  Store Connect receipt end to end.
+
+### Fixed - Stripe entitlement reconciliation
+
+- **Made temporary Stripe-bound operator grants yield to the verified lifecycle
+  for that exact subscription**: the first signed webhook now replaces the
+  bridge grant with real renewal dates and restores normal cancellation,
+  refund, and dispute revocation. Grants for another subscription or platform
+  remain protected.
+
+### Fixed - Android Mercury trust recovery
+
+- **Made Android screen mirroring recover cleanly after a reinstall changes the
+  phone's trusted-device identity**: Mercury now preserves the actionable
+  approval failure throughout automatic reconnect attempts, directs the user
+  to the exact Trusted Devices screen on the Mac, disables misleading mirror
+  retries until approval is granted, and resumes automatically afterward.
+
+### Fixed - Linux packaged launcher identity
+
+- **Pinned every DEB, RPM, and Arch desktop launcher to the package-owned
+  `/usr/bin/openburnbar-linux-desktop` executable**: login autostart, normal
+  launch, safe mode, and Tauri's generated menu entry can no longer be
+  shadowed by a stale `/usr/local/bin` or user `PATH` copy. Installed tray and
+  notification proof now verifies the absolute launcher and the canonical
+  `open-burn-bar` DEB/RPM package identity.
+
+### Fixed - Full-history CI checkout reliability
+
+- **Kept fail-closed compliance, secret-scanning, and public-download gates
+  alive through slow GitHub checkouts**: the recursive-submodule
+  product-license lane and full-history gitleaks scan now have enough runtime
+  headroom to execute, while the macOS and Linux public-download change
+  detectors use blobless full-history clones plus a bounded 60-minute ceiling.
+  All four lanes now reach their security logic instead of being canceled
+  during checkout.
+- **Kept the fail-closed Domain Core PR gate alive through slow checkouts**:
+  the required `Domain Core PR Gate` lane and its `promotion-contracts`
+  prerequisite now budget 60 minutes for their full-history
+  deletion-candidate clones (which must keep blobs for ancestry and
+  historical-content proofs), and each trusted default-branch evaluator
+  checkout stays bounded to a depth-1 sparse fetch of the evaluator scripts
+  instead of a second full-history clone.
+- **Removed a monolithic macOS test-host deadlock from the required app gate**:
+  the two cross-thread memory-citation database tests now run in the existing
+  fresh-host phase, where their focused suite completes deterministically,
+  while the exact fresh-host result count rises from 126 to 128 so neither
+  test can be skipped without failing the gate.
+
+### Fixed - Z.ai cloud quota refresh
+
+- **Restored Z.ai quota refresh for both Coding Plan and standard API
+  accounts**: Coding Plan monitor requests now use Z.ai's required raw-token
+  authorization while standard API validation keeps Bearer authentication.
+  Valid accounts without a Coding Plan now return an honest empty quota
+  snapshot instead of a server error or a fabricated balance. Coding
+  Plan-only keys that the standard API rejects now pass connection
+  validation via the monitor endpoint, and transient monitor failures
+  (network errors, 5xx) propagate as refresh errors instead of overwriting
+  valid quota with an empty snapshot.
+
 ### Added - Execution-source attribution
 
 - **Split model usage by the product that executed each request** with a
@@ -117,7 +474,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   active paid subscription. Committed `droid-wiki/` pages still reconcile to
   mem0 through the post-commit hook and nightly mirror job.
 
-## [1.0.30] - 2026-07-17
+### Changed — Android Play version metadata
+
+- Bumped Google Play `versionCode` to `42` with `versionName` `1.0.30` so the
+  three-platform cut can publish a fresh AAB after `1.0.29` (`versionCode` 39).
+
 
 ### Added — Shared Rust Console release evidence
 

@@ -54,7 +54,7 @@ object SettingsManifest {
             SettingsItem(
                 id = "root.connectedDevices",
                 section = SettingsSection.DEVICES,
-                pageRoute = SettingsPageRoute.ROOT,
+                pageRoute = SettingsPageRoute.CONNECTED_DEVICES,
                 anchorId = SettingsAnchor.CONNECTED_DEVICES,
                 title = "Connected Devices",
                 subtitle = "Manage which devices can read your data",
@@ -364,6 +364,8 @@ object SettingsManifest {
             AgentProvider.COPILOT -> keywords.addAll(listOf("github", "github copilot"))
             AgentProvider.ANTIGRAVITY -> keywords.addAll(listOf("antigravity", "antigravity cli", "antigravity-cli", "gemini", "deepmind"))
             AgentProvider.JUNIE -> keywords.addAll(listOf("junie", "junie cli", "jetbrains", "jetbrains junie", "jetbrains-junie"))
+            AgentProvider.PRIME_AGENT -> keywords.addAll(listOf("prime", "prime agent", "prime-agent", "prime intellect"))
+            AgentProvider.MUSE -> keywords.addAll(listOf("muse", "meta muse", "meta-muse", "muse code"))
             else -> Unit
         }
 

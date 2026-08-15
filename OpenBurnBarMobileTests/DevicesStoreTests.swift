@@ -302,7 +302,7 @@ final class DevicesStoreTests: XCTestCase {
         return ("linux_\(digest)", fingerprint, publicKey.base64EncodedString())
     }
 
-    func testDisplayDevicesCollapseStaleCopiesAndKeepCleanupRecords() async {
+    func testDisplayDevicesPreserveDistinctRegistrationsWithMatchingNamesAndPlatforms() async {
         let now = Date(timeIntervalSinceReferenceDate: 10_000)
         let reader = FakeDevicesCloudReader(devices: [
             DeviceRecord(
@@ -353,13 +353,18 @@ final class DevicesStoreTests: XCTestCase {
 
         await store.load()
 
-        XCTAssertEqual(store.devices.map(\.id), ["iphone-current", "mac-mini", "samsung", "macbook-old"])
-        XCTAssertEqual(store.devices.count, 4)
-        XCTAssertEqual(store.otherDevices.map(\.id), ["mac-mini", "samsung", "macbook-old"])
-        XCTAssertEqual(store.staleDuplicates.map(\.id), ["macbook-new", "iphone-old"])
+        XCTAssertEqual(
+            store.devices.map(\.id),
+            ["iphone-current", "macbook-new", "mac-mini", "samsung", "iphone-old", "macbook-old"]
+        )
+        XCTAssertEqual(store.devices.count, 6)
+        XCTAssertEqual(
+            store.otherDevices.map(\.id),
+            ["macbook-new", "mac-mini", "samsung", "iphone-old", "macbook-old"]
+        )
     }
 
-    func testHundredsOfStaleCopiesStillRenderAsRealDeviceCount() async {
+    func testHundredsOfSameNameRegistrationsRemainIndividuallyManageable() async {
         let now = Date(timeIntervalSinceReferenceDate: 15_000)
         let stalePhones = (0..<300).map { index in
             DeviceRecord(
@@ -405,12 +410,52 @@ final class DevicesStoreTests: XCTestCase {
 
         await store.load()
 
-        XCTAssertEqual(store.devices.map(\.id), ["iphone-current", "macbook", "mac-mini", "samsung"])
-        XCTAssertEqual(store.devices.count, 4)
-        XCTAssertEqual(store.staleDuplicates.count, 300)
+        XCTAssertEqual(store.devices.count, 304)
+        XCTAssertEqual(Set(store.devices.map(\.id)).count, 304)
+        XCTAssertTrue(store.devices.map(\.id).contains("iphone-stale-299"))
     }
 
-    func testTrustedDeviceWinsOverNewerPendingDuplicate() async {
+    func testApprovePendingDeviceUsesGatewayAndRefreshes() async throws {
+        let targetKey = P256.KeyAgreement.PrivateKey().publicKey.x963Representation
+        let target = DeviceRecord(
+            id: "pending-mac",
+            displayName: "Pending Mac",
+            platform: "macOS",
+            trustState: .pending,
+            publicKeyFingerprint: Data(SHA256.hash(data: targetKey)).base64EncodedString(),
+            publicKeyData: targetKey.base64EncodedString()
+        )
+        let reader = FakeDevicesCloudReader(devices: [Self.currentDevice(), target])
+        let gateway = FakeDeviceTrustGateway()
+        let store = DevicesStore(reader: reader, trustGateway: gateway)
+        await store.load()
+
+        await store.approve(target)
+
+        XCTAssertEqual(gateway.approvedDeviceIDs, ["pending-mac"])
+        XCTAssertEqual(reader.loadDevicesCallCount, 2)
+        XCTAssertNil(store.lastError)
+    }
+
+    func testApproveFailsClosedWithoutVerifiedSafetyCode() async {
+        let target = DeviceRecord(
+            id: "pending-mac",
+            displayName: "Pending Mac",
+            platform: "macOS",
+            trustState: .pending
+        )
+        let reader = FakeDevicesCloudReader(devices: [Self.currentDevice(), target])
+        let gateway = FakeDeviceTrustGateway()
+        let store = DevicesStore(reader: reader, trustGateway: gateway)
+        await store.load()
+
+        await store.approve(target)
+
+        XCTAssertTrue(gateway.approvedDeviceIDs.isEmpty)
+        XCTAssertNotNil(store.lastError)
+    }
+
+    func testTrustedAndPendingSameNameDevicesRemainDistinct() async {
         let now = Date(timeIntervalSinceReferenceDate: 20_000)
         let reader = FakeDevicesCloudReader(devices: [
             DeviceRecord(
@@ -432,8 +477,30 @@ final class DevicesStoreTests: XCTestCase {
 
         await store.load()
 
-        XCTAssertEqual(store.devices.map(\.id), ["trusted-mac"])
-        XCTAssertEqual(store.staleDuplicates.map(\.id), ["pending-mac"])
+        XCTAssertEqual(store.devices.map(\.id), ["pending-mac", "trusted-mac"])
+    }
+
+    func testRevokeUsesSelectedStableDeviceIdentityWhenNamesMatch() async {
+        let first = DeviceRecord(
+            id: "iphone-registration-a",
+            displayName: "Alberto iPhone",
+            platform: "iOS",
+            trustState: .trusted
+        )
+        let second = DeviceRecord(
+            id: "iphone-registration-b",
+            displayName: "Alberto iPhone",
+            platform: "iOS",
+            trustState: .trusted
+        )
+        let reader = FakeDevicesCloudReader(devices: [first, second])
+        let gateway = FakeDeviceTrustGateway()
+        let store = DevicesStore(reader: reader, trustGateway: gateway)
+        await store.load()
+
+        await store.revoke(second)
+
+        XCTAssertEqual(gateway.revokedDeviceIDs, ["iphone-registration-b"])
     }
 }
 
@@ -566,6 +633,7 @@ private actor BlockingLinuxAppCheckDeviceManager: LinuxAppCheckDeviceManaging {
 @MainActor
 private final class FakeDevicesCloudReader: CloudReader {
     private let devices: [DeviceRecord]
+    private(set) var loadDevicesCallCount = 0
 
     init(devices: [DeviceRecord]) {
         self.devices = devices
@@ -580,7 +648,8 @@ private final class FakeDevicesCloudReader: CloudReader {
     }
 
     func loadDevices() async throws -> [DeviceRecord] {
-        devices
+        loadDevicesCallCount += 1
+        return devices
     }
 
     func loadAvailableEnvelopes() async throws -> [AvailableEnvelope] {
@@ -598,7 +667,15 @@ private final class FakeDevicesCloudReader: CloudReader {
 
 @MainActor
 private final class FakeDeviceTrustGateway: DeviceTrustGateway {
+    private(set) var approvedDeviceIDs: [String] = []
+    private(set) var revokedDeviceIDs: [String] = []
+
     func bootstrapApproveSelf() async throws {}
+    func approve(deviceID: String) async throws {
+        approvedDeviceIDs.append(deviceID)
+    }
     func renameSelf(_ newName: String) async throws {}
-    func revoke(deviceID: String) async throws {}
+    func revoke(deviceID: String) async throws {
+        revokedDeviceIDs.append(deviceID)
+    }
 }

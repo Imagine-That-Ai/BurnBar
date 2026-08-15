@@ -55,6 +55,7 @@ final class SettingsManager {
     let routedClientWiring: RoutedClientWiringSettings
     let textExpansion: TextExpansionSettings
     let elderWand: ElderWandSettings
+    let visualCapture: VisualCapturePreferences
     private var computerUseRemoteConfigTask: Task<Void, Never>?
     private(set) var hasResolvedComputerUseRemoteConfig = false
 
@@ -107,6 +108,7 @@ final class SettingsManager {
         self.routedClientWiring = RoutedClientWiringSettings(persistence: coordinator)
         self.textExpansion = TextExpansionSettings(persistence: coordinator)
         self.elderWand = ElderWandSettings(persistence: coordinator)
+        self.visualCapture = VisualCapturePreferences(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(
@@ -608,16 +610,14 @@ final class SettingsManager {
     }
 
     var databaseEncryptionEnabled: Bool {
-        get { index.databaseEncryptionEnabled }
-        set { index.databaseEncryptionEnabled = newValue }
+        index.databaseEncryptionEnabled
     }
 
     /// Legacy banner flag from the pre-fail-closed database-encryption rollout.
-    /// Current encrypted startup must throw before opening plaintext; this remains
-    /// only so older defaults can be read/cleared without changing persisted keys.
+    /// Current encrypted startup must throw before opening plaintext. This
+    /// read-only compatibility value is always false after settings migration.
     var plaintextDatabaseAcknowledged: Bool {
-        get { index.plaintextDatabaseAcknowledged }
-        set { index.plaintextDatabaseAcknowledged = newValue }
+        index.plaintextDatabaseAcknowledged
     }
 
     var preferredIndexEmbeddingVersionID: String {
@@ -1448,6 +1448,39 @@ final class SettingsManager {
 
     enum SettingsJSONEncodingError: Error {
         case nonUTF8Output
+    }
+
+    // MARK: - Visual Capture (Both toggle)
+
+    var visualCaptureSourceToggleEnabled: Bool {
+        get { visualCapture.visualCaptureSourceToggleEnabled }
+        set { visualCapture.visualCaptureSourceToggleEnabled = newValue }
+    }
+
+    var visualCaptureGlobalDefault: VisualCaptureSource {
+        get { visualCapture.visualCaptureGlobalDefault }
+        set { visualCapture.visualCaptureGlobalDefault = newValue }
+    }
+
+    var visualCapturePerProvider: [AgentProvider: VisualCaptureSource] {
+        get { visualCapture.visualCapturePerProvider }
+        set { visualCapture.visualCapturePerProvider = newValue }
+    }
+
+    func visualCaptureSource(for provider: AgentProvider) -> VisualCaptureSource {
+        visualCapture.visualCaptureSource(for: provider)
+    }
+
+    func isToggleEligible(_ provider: AgentProvider) -> Bool {
+        visualCapture.isToggleEligible(provider)
+    }
+
+    func setVisualCaptureSource(_ source: VisualCaptureSource, for provider: AgentProvider) {
+        visualCapture.setVisualCaptureSource(source, for: provider)
+    }
+
+    func clearVisualCaptureSource(for provider: AgentProvider) {
+        visualCapture.clearVisualCaptureSource(for: provider)
     }
 
     // MARK: - Explicit Save

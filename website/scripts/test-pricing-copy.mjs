@@ -23,12 +23,18 @@ const plans = await read("src/components/PricingPlans.astro");
 const wandModule = await read("src/components/WandPricingModule.astro");
 const stripAstro = (src) =>
   src.replace(/---[\s\S]*?---/, "").replace(/<style>[\s\S]*?<\/style>/g, "");
-const pricingPublicText = stripAstro(pricing) + "\n" + stripAstro(plans) + "\n" + stripAstro(wandModule);
+const pricingPublicText =
+  stripAstro(pricing) + "\n" + stripAstro(plans) + "\n" + stripAstro(wandModule);
 const faq = await read("src/data/faq.ts");
 const claims = await read("CLAIMS.md");
 const supportMacros = await read("src/data/supportMacros.ts");
 const publicPricingCopy = [pricing, plans, wandModule, faq, claims, supportMacros].join("\n");
 
+assert.match(
+  pricing,
+  /<BaseLayout[\s\S]*?ambientEffects=\{false\}[\s\S]*?>/,
+  "pricing page must suppress ambient canvases so plan comparison stays visually unobstructed"
+);
 assert.match(site, /pricing:\s*{/, "site constants must expose a structured pricing catalog");
 assert.doesNotMatch(
   site,
@@ -63,11 +69,7 @@ assert.match(publicPricingCopy, /\$24\.99/, "Cloud Pro monthly price must be pub
 assert.match(publicPricingCopy, /\$249\/year|\$249\/yr/, "Cloud Pro annual price must be public");
 assert.match(publicPricingCopy, /\$59\.99/, "Ultra monthly price must be public");
 assert.match(publicPricingCopy, /\$599\/year|\$599\/yr/, "Ultra annual price must be public");
-assert.match(
-  publicPricingCopy,
-  /100 knowledge sources/,
-  "Ultra source limit must be public"
-);
+assert.match(publicPricingCopy, /100 knowledge sources/, "Ultra source limit must be public");
 // CLAIMS.md may reference internal source naming; the rendered surfaces may not.
 assert.doesNotMatch(
   [pricing, plans, wandModule, faq, supportMacros].join("\n"),
@@ -95,37 +97,21 @@ for (const [tier, cap] of [
   ["Cloud Pro", 8],
   ["Ultra", 16]
 ]) {
-  assert.match(site, new RegExp(`wandParallelMax:\\s*${cap}`), `${tier} Wand cap must be in site data`);
+  assert.match(
+    site,
+    new RegExp(`wandParallelMax:\\s*${cap}`),
+    `${tier} Wand cap must be in site data`
+  );
 }
 assert.match(publicPricingCopy, /Free opens 1/i, "Free Wand cap must be public");
 assert.match(publicPricingCopy, /Cloud opens 3/i, "Cloud Wand cap must be public");
 assert.match(publicPricingCopy, /Cloud Pro opens 8/i, "Cloud Pro Wand cap must be public");
 assert.match(publicPricingCopy, /Ultra opens 16/i, "Ultra Wand cap must be public");
-assert.match(
-  publicPricingCopy,
-  /Headmaster/i,
-  "Headmaster's Wand must be named in public copy"
-);
-assert.match(
-  publicPricingCopy,
-  /Pareto/i,
-  "Pareto Wand must be named in public copy"
-);
-assert.match(
-  publicPricingCopy,
-  /Highest capability/i,
-  "Headmaster's tagline must be present"
-);
-assert.match(
-  publicPricingCopy,
-  /Best quality per quota/i,
-  "Pareto tagline must be present"
-);
-assert.match(
-  publicPricingCopy,
-  /Go wider/i,
-  "Upgrade persuasion copy must be present"
-);
+assert.match(publicPricingCopy, /Headmaster/i, "Headmaster's Wand must be named in public copy");
+assert.match(publicPricingCopy, /Pareto/i, "Pareto Wand must be named in public copy");
+assert.match(publicPricingCopy, /Highest capability/i, "Headmaster's tagline must be present");
+assert.match(publicPricingCopy, /Best quality per quota/i, "Pareto tagline must be present");
+assert.match(publicPricingCopy, /Go wider/i, "Upgrade persuasion copy must be present");
 assert.match(
   publicPricingCopy,
   /model tokens still come from/i,
@@ -142,6 +128,111 @@ assert.match(
   "Wand copy must say model tokens come from the user's own providers"
 );
 assert.match(publicPricingCopy, /prepaid before use/i, "top-up copy must say prepaid before use");
+assert.doesNotMatch(
+  publicPricingCopy,
+  /14-day|free trial/i,
+  "unsupported trial claims must not be public"
+);
+assert.doesNotMatch(
+  publicPricingCopy,
+  /available on (?:the )?web, App Store, and Google Play/i,
+  "Google Play must not be presented as a currently available purchase surface"
+);
+assert.match(
+  publicPricingCopy,
+  /Play Store (?:launch is pending|listing|opens)/i,
+  "Android purchase copy must disclose that the public Play listing is pending"
+);
+for (const tier of ["cloud", "cloud_pro", "ultra"]) {
+  assert.match(
+    plans,
+    new RegExp(`href="/subscribe\\?tier=${tier}&(?:amp;)?cadence=monthly"`),
+    `${tier} CTA must enter the web subscription flow`
+  );
+  assert.match(
+    plans,
+    new RegExp(`data-subscribe-tier="${tier}"`),
+    `${tier} CTA must expose its cadence-update contract`
+  );
+}
+assert.match(
+  plans,
+  /updateSubscriptionLinks\(annual \? "annual" : "monthly"\)/,
+  "billing toggle must update paid subscription CTAs to annual cadence"
+);
+// `[^}]*` keeps every structural assertion inside a single declaration block,
+// so a match can never leak into a later, unrelated rule.
+assert.match(
+  plans,
+  /\.billing \{[^}]*display: grid;[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*width: min\(100%, 20rem\);/,
+  "billing toggle must reserve equal, mobile-safe space for monthly and annual options"
+);
+assert.match(
+  plans,
+  /<span class="billing__note mono">\s*<strong>Save ~\{headlineSave\}%<\/strong> with annual billing/,
+  "annual savings must be secondary copy outside the two equal billing controls"
+);
+assert.doesNotMatch(
+  plans,
+  /<button[^>]*data-billing-set="annual"[^>]*>[\s\S]*?billing__save[\s\S]*?<\/button>/,
+  "annual savings must not crowd the annual option inside the segmented control"
+);
+assert.match(
+  plans,
+  /@media \(max-width: 400px\) \{\s*\.billing__opt \{[^}]*padding: 0\.5rem 0\.55rem;/,
+  "billing options must compact on narrow phones so both tracks fit at 320px"
+);
+assert.match(
+  plans,
+  /:global\(:root\[data-theme="light"\]\) \.topups \{[^}]*background: rgba\(255, 255, 255, 0\.7\)/,
+  "pricing top-ups must use a light vellum surface in light mode"
+);
+for (const selector of ["\\.wand-rail", "\\.wand-ladder__row", "\\.wand-mode", "\\.wand-cta"]) {
+  assert.match(
+    wandModule,
+    new RegExp(
+      `:global\\(:root\\[data-theme="light"\\]\\) ${selector} \\{[^}]*background:[\\s\\S]*?(?:rgba\\(255, 255, 255|color-mix\\(in oklab, var\\(--ink-base\\))`
+    ),
+    `${selector} must define a paper-safe light-mode background`
+  );
+}
+assert.match(
+  pricing,
+  /:global\(:root\[data-theme="light"\]\) \.defs > div \{[^}]*background: rgba\(255, 255, 255, 0\.72\)/,
+  "pricing detail rows must use a light vellum surface in light mode"
+);
+for (const token of ["--plan-text-bright", "--plan-text-base", "--plan-text-mute", "--plan-line"]) {
+  assert.match(
+    plans,
+    new RegExp(`${token}:\\s*rgba\\(255, 255, 255, 0\\.\\d+\\)`),
+    `${token} must be declared (not merely referenced) for dark pricing cards`
+  );
+}
+const dimDeclaration = plans.match(/--plan-text-dim:\s*rgba\(255, 255, 255, (0\.\d+)\)/);
+assert.ok(
+  dimDeclaration && Number(dimDeclaration[1]) >= 0.62,
+  "--plan-text-dim must be declared at an AA-safe opacity (>= 0.62) for small dark-card text"
+);
+const cardBackdrop = plans.match(/\.plan \{[^}]*rgba\(10, 10, 15, (0\.\d+)\)/);
+assert.ok(
+  cardBackdrop && Number(cardBackdrop[1]) >= 0.9,
+  "plan card backdrop must stay opaque enough (>= 0.9 alpha) for AA text contrast over the light theme"
+);
+assert.match(
+  plans,
+  /\.plan__name \{[^}]*color: var\(--plan-text-bright\)/,
+  "plan headings must use explicit dark-card text"
+);
+assert.match(
+  plans,
+  /\.plan__list li \{[^}]*color: var\(--plan-text-base\)/,
+  "plan feature copy must use explicit dark-card text"
+);
+assert.match(
+  plans,
+  /\.plan__sub \{[^}]*color: var\(--plan-text-mute\)/,
+  "plan summaries must use explicit dark-card text"
+);
 assert.match(
   publicPricingCopy,
   /grandfathered/i,

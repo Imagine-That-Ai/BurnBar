@@ -90,4 +90,48 @@ final class CLIAuthDiscoveryTests: XCTestCase {
         XCTAssertEqual(recorded.authState, .authenticated(lastRefresh: nil))
         XCTAssertEqual(recorded.accountDescription, "Junie local sessions")
     }
+
+    func test_primeAgentDiscoveryTreatsConfigHomeAsAuthAndSurfacesLocalSessions() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-prime-auth-\(UUID().uuidString)", isDirectory: true)
+        let configDir = tempRoot.appendingPathComponent(".prime", isDirectory: true)
+        let sessionsDir = configDir.appendingPathComponent("agent/sessions", isDirectory: true)
+        let executableURL = tempRoot.appendingPathComponent("prime-agent")
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        try "#!/bin/sh\n".write(to: executableURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+        CLILaunchAdapter.executableResolver = { cliType in
+            cliType == .primeAgent ? executableURL : nil
+        }
+        CLILaunchAdapter.environmentProvider = { [:] }
+
+        let missingHome = CLIAuthDiscovery.discoverAuthState(
+            for: .primeAgent,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(missingHome.authState, .notAuthenticated)
+        XCTAssertNil(missingHome.accountDescription)
+
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+        let configOnly = CLIAuthDiscovery.discoverAuthState(
+            for: .primeAgent,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(configOnly.authState, .authenticated(lastRefresh: nil))
+        XCTAssertNil(configOnly.accountDescription)
+
+        try "session\n".write(
+            to: sessionsDir.appendingPathComponent("session-001.jsonl"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let recorded = CLIAuthDiscovery.discoverAuthState(
+            for: .primeAgent,
+            configDirectoryOverride: configDir.path
+        )
+        XCTAssertEqual(recorded.authState, .authenticated(lastRefresh: nil))
+        XCTAssertEqual(recorded.accountDescription, "Prime Agent local sessions")
+    }
 }

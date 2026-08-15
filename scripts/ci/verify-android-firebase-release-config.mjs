@@ -62,7 +62,7 @@ try {
   fail(`google-services.json is invalid JSON: ${error.message}`);
 }
 
-const summary = validateConfig(payload, { expected, strictRelease });
+validateConfig(payload, { expected, strictRelease });
 
 if (base64EnvName) {
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
@@ -76,9 +76,6 @@ if (base64EnvName) {
 console.log(
   [
     "Firebase Android config verified:",
-    `package=${summary.packageName}`,
-    `apiKeys=${summary.apiKeyCount}`,
-    `androidOauthCerts=${summary.androidOauthCertificateCount}`,
     `strictRelease=${strictRelease ? "true" : "false"}`,
   ].join(" ")
 );

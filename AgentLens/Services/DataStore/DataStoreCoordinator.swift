@@ -194,13 +194,12 @@ final class DataStoreCoordinator {
 
     // MARK: - Initialization
 
-    /// Creates the database pool. Reads `databaseEncryptionEnabled` directly from
-    /// UserDefaults so this can be called before SettingsManager is initialized.
-    /// Enables WAL mode for better read concurrency and write performance.
+    /// Creates the production database pool. Encryption-at-rest is mandatory
+    /// (B-DATA-1), so legacy persisted opt-outs are normalized before any file is
+    /// opened. `DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)`
+    /// remains available only to explicit migration and test tooling.
     ///
-    /// Encryption-at-rest is default-ON for new installs (B-DATA-1): when the key
-    /// has no persisted value we treat it as enabled. Existing installs keep their
-    /// stored value.
+    /// Enables WAL mode for better read concurrency and write performance.
     ///
     /// **Fail-closed invariant.** When encryption is enabled, this method never
     /// opens the store plaintext. If the build is missing SQLCipher or Keychain
@@ -210,18 +209,7 @@ final class DataStoreCoordinator {
     /// startup instead of silently violating the data-at-rest contract.
     private static func makeDatabaseOpenResult(path: String) throws -> DatabaseOpenResult {
         let defaults = UserDefaults.standard
-        // Default-on for new installs: only treat as disabled when explicitly stored false.
-        let encryptionEnabled = (defaults.object(forKey: "databaseEncryptionEnabled") as? Bool) ?? true
-
-        guard encryptionEnabled else {
-            var config = try DatabaseEncryptionService.makeConfiguration(encryptionKey: nil)
-            installStartupPragmas(on: &config)
-            installDebugQueryTracer(on: &config)
-            return DatabaseOpenResult(
-                pool: try openDatabasePool(path: path, configuration: config),
-                migrationBackupConfigurationBuilder: nil
-            )
-        }
+        normalizeLegacyEncryptionPreferences(in: defaults)
 
         guard DatabaseEncryptionService.isCipherAvailable() else {
             AppLogger.dataStore.error(
@@ -353,6 +341,12 @@ final class DataStoreCoordinator {
     /// plaintext fallback when SQLCipher is unavailable.
     static let plaintextFallbackAcknowledgedDefaultsKey = "databaseEncryptionPlaintextFallbackAcknowledged"
 
+    private static func normalizeLegacyEncryptionPreferences(in defaults: UserDefaults) {
+        defaults.set(true, forKey: "databaseEncryptionEnabled")
+        defaults.removeObject(forKey: plaintextFallbackAcknowledgedDefaultsKey)
+        defaults.removeObject(forKey: "plaintextDatabaseAcknowledged")
+    }
+
     #if DEBUG
     static func makeDatabasePoolForTesting(path: String) throws -> DatabasePool {
         try makeDatabasePool(path: path)
@@ -454,7 +448,7 @@ final class DataStoreCoordinator {
     }
 
     /// No-change short-circuit shared by BOTH replace paths (the periodic
-    /// cadence tick lands in `replaceUsages` via `reloadUsagesIfChanged`
+    /// cadence tick lands in `replaceUsageSnapshot` via `reloadUsagesIfChanged`
     /// when the usage write marker advanced, while init/deleteAll land in
     /// `replaceUsageSnapshot`). A content-identical replacement before the
     /// next time-window boundary only refreshes `lastRefresh`; everything
@@ -498,7 +492,7 @@ final class DataStoreCoordinator {
         await refresh()
     }
 
-    /// Periodic-tick apply: reloads the full usage set ONLY when the usage
+    /// Periodic-tick apply: reloads the dashboard snapshot ONLY when the usage
     /// table content changed since the last reload (write marker advanced)
     /// or a rendered time-window boundary passed (midnight / rolling 7d/30d
     /// decay — the same boundary contract as `UsageReplaceGate`).
@@ -507,9 +501,11 @@ final class DataStoreCoordinator {
     /// O(total-history): an idle tick previously refetched + re-sorted +
     /// re-aggregated every `token_usage` row before the fingerprint gate
     /// could discard the result; now it performs one actor hop to read an
-    /// integer and returns. When content DID change, the reload runs the
-    /// exact same full `fetchAllUsage` → `replaceUsages` path as before, so
-    /// displayed numbers are bit-identical to the previous architecture.
+    /// integer and returns. When content DID change, the reload uses the
+    /// same `fetchDashboardUsageSnapshot` path as init (`GROUP BY` window
+    /// totals + `quickHydrationLimit` covering rows) — not `SELECT *` /
+    /// `fetchAllUsage` — so displayed numbers stay SQL-accurate without
+    /// decoding the entire ledger.
     func reloadUsagesIfChanged() async {
         let marker = await actor.usageTableWriteMarker
         let now = nowProvider()
@@ -524,9 +520,11 @@ final class DataStoreCoordinator {
             // may already be visible in the rows, and the next tick then
             // reloads once more. Never the reverse (stale rows recorded
             // under a newer marker).
-            let allUsages = try await actor.usageStore.fetchAllUsage()
+            let snapshot = try await actor.fetchDashboardUsageSnapshot(
+                loadedUsageLimit: Self.quickHydrationLimit
+            )
             lastReloadedUsageWriteMarker = marker
-            replaceUsages(allUsages)
+            replaceUsageSnapshot(snapshot)
         } catch {
             AppLogger.dataStore.silentFailure("reload_usages_if_changed_failed", error: error)
         }

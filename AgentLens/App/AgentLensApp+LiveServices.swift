@@ -341,6 +341,14 @@ extension OpenBurnBarApp {
                         await aggregator?.refreshAll()
                         await context.daemonManager.refreshHealth()
                         await context.operatingLayer.refreshControllerRuntime()
+                        // The AI Inbox is written by the daemon in another
+                        // process, so there is nothing local to observe. Nudge
+                        // the badge on the same pass rather than registering a
+                        // second timer — the read is one COUNT.
+                        NotificationCenter.default.post(
+                            name: DashboardView.inboxBadgeRefreshNotification,
+                            object: nil
+                        )
                     }
                 )
             )

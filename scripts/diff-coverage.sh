@@ -275,6 +275,36 @@ COVERAGE_ALLOWLIST = {
         "and data decisions are covered by ChartsRouteTests, "
         "ChartsPageLayoutTests, and DashboardUsageViewModelTests."
     ),
+    "AgentLens/Views/Inbox/InboxView.swift": (
+        "SwiftUI inbox list rendering: liquid-glass composition, swipe/context "
+        "menus, scroll anchoring, and the animated empty state require a live "
+        "window server. Every behavior decision lives in the closure-injected "
+        "model covered by InboxModelTests (filtering, ranking, sections, "
+        "optimistic actions, deep-link selection); the row's presentation "
+        "helpers (InboxRowView.plainPreview, the InboxPresentation "
+        "icon/tint/label vocabulary) are covered by AIInboxViewFormattingTests."
+    ),
+    "AgentLens/Views/Inbox/InboxItemDetailView.swift": (
+        "SwiftUI detail layout, markdown text rendering, and "
+        "NSWorkspace/NSPasteboard evidence actions require a live window "
+        "server. The provenance formatting (friendlyModelNames) is covered by "
+        "AIInboxViewFormattingTests; the memory-approval route by "
+        "InboxMemoryApprovalHandlerTests; the evidence jump resolution by "
+        "InboxConversationJumpResolverTests."
+    ),
+    "AgentLens/Views/Settings/AIInboxSettingsView.swift": (
+        "SwiftUI settings layout plus live daemon socket round trips "
+        "(load/persist/runNow through OpenBurnBarDaemonSocketClient) cannot "
+        "execute under headless XCTest. The pure copy and formatting helpers "
+        "(egressExplanation, cadenceLabel, runTint, runLabel) and the "
+        "BurnBarInboxConfig.with clamp-preserving rebuild wrappers are covered "
+        "by AIInboxViewFormattingTests."
+    ),
+    "AgentLens/Views/Settings/PrivacyIndexingSettingsView.swift": (
+        "SwiftUI settings row wiring adding the AI Inbox entry point; renders "
+        "only under a live window server. The inbox surface it links to is "
+        "covered by InboxModelTests and AIInboxViewFormattingTests."
+    ),
     "AgentLens/Views/Components/ProviderLogoView.swift": (
         "Provider asset selection and SwiftUI image rendering require the app "
         "resource bundle; provider grouping remains covered by "
@@ -296,16 +326,50 @@ COVERAGE_ALLOWLIST = {
         "CLIAgentMissionEventFactory paths; the remaining changed lines are "
         "callback wiring that requires emulator/integration coverage."
     ),
+    "AgentLens/Services/CloudSync/CLIAgentSessionMirror.swift": (
+        "Live Firestore CLI-session writer. The changed NSDictionary bridge and "
+        "document write execute only after Firebase account, vault-key, and "
+        "Firestore resolution; record builders and sealed codec decisions are "
+        "covered by CLIAgentSessionMirrorTests. The live writer needs emulator "
+        "or deployed-Firebase integration coverage."
+    ),
     "AgentLens/Services/CloudSync/ChatThreadSyncService.swift": (
         "Live Firestore sync service with snapshot/write callbacks. Merge and "
         "round-trip behavior is covered by ChatThreadSyncServiceTests and "
         "cloud-sync integration tests; XCTest line attribution cannot execute "
         "the live listener lifecycle deterministically."
     ),
+    "AgentLens/Services/CloudSync/CloudSyncFirestoreGateway.swift": (
+        "The changed default Firestore resolver and live SDK adapter require a "
+        "configured Firebase app and live Firestore handle, which hermetic "
+        "XCTest intentionally does not create. The protocol bridge and "
+        "firestoreData conversion are exercised by fake-gateway cloud-sync "
+        "tests; live SDK construction needs emulator integration coverage."
+    ),
     "AgentLens/Services/CloudSync/DownloadSyncService.swift": (
         "Live cloud-download listener/writer orchestration. Download policy and "
         "round-trip behavior are covered through injected sync tests; changed "
         "listener plumbing requires Firebase emulator/integration coverage."
+    ),
+    "AgentLens/Services/CloudSync/CloudSyncCoordinator.swift": (
+        "Live sync-loop scheduling glue: the changed lines register the AI "
+        "Inbox mirror in the coordinator's periodic pass, which only executes "
+        "against a signed-in Firebase account. The mirror's watermark, "
+        "sealing, state download, and pruning behavior is covered by "
+        "AIInboxSyncServiceTests through the injected fake gateway."
+    ),
+    "AgentLens/Services/CloudSyncService.swift": (
+        "Live Firestore service facade; the changed lines wire "
+        "AIInboxSyncService into the live service construction, which requires "
+        "a configured Firebase app. The sync behavior itself is covered by "
+        "AIInboxSyncServiceTests via CloudSyncContext with a fake gateway."
+    ),
+    "AgentLens/Services/OpenBurnBarDaemon/OpenBurnBarDaemonNotificationRelay.swift": (
+        "UNUserNotificationCenter authorization prompts and notification "
+        "delivery need a live notification center and app bundle identity that "
+        "headless XCTest does not have. The openburnbar://inbox deep link the "
+        "relay emits is covered by AIInboxViewFormattingTests "
+        "(NavigationCoordinator.handleDeepLink routing)."
     ),
     "AgentLens/Services/CloudSync/HermesRelayHostService.swift": (
         "Runtime iroh/Hermes host wiring: starts live relay services, media "
@@ -325,6 +389,20 @@ COVERAGE_ALLOWLIST = {
         "and deterministic plan builder are covered by "
         "MacEscrowCredentialProducerTests; the live collaborators require "
         "Firebase/keychain integration coverage."
+    ),
+    "AgentLens/Services/CloudSync/TextExpansionSyncService.swift": (
+        "The changed Signal-enabled upload/download path resolves a live "
+        "Firestore handle, Remote Config gate, vault key, and trusted-device "
+        "recipient set. Hermetic tests cover the inactive Signal path and "
+        "fake-gateway round trips; the enabled SDK seam requires Firebase "
+        "emulator integration coverage."
+    ),
+    "AgentLens/Services/MacCloudVaultSignalPayloads.swift": (
+        "Signal envelope production and enabled legacy-fallback handling require "
+        "a configured Firebase app plus live trusted-device Firestore reads. "
+        "Activation policy, crypto helpers, and the inactive lazy-lookup path "
+        "are covered by app tests; enabled recipient resolution needs emulator "
+        "integration coverage."
     ),
     "AgentLens/Services/DataControlCenterViewModel.swift": (
         "macOS Data & Privacy Control Center callable hub. The changed lines "
@@ -523,6 +601,45 @@ COVERAGE_ALLOWLIST = {
         "payload checks run in the dedicated native smoke job, not inside the "
         "Swift package XCTest coverage target, so line attribution here would "
         "be misleading."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/Contracts/BurnBarRPCIPCCanon.generated.swift": (
+        "Generated by tools/ipc/generate-burnbarrpc-canon.mjs; byte-currency "
+        "with the generator output is enforced by the `--check` gate in "
+        "fast-feedback and linux-pr-gate. Data-only canon entries with no "
+        "independent executable logic; the RPC wire names it canonizes are "
+        "pinned by BurnBarRPCContractsTests."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarKernel/OpenBurnBarDistributedNotifications.swift": (
+        "Cross-process notification name and userInfo-key string constants "
+        "only; LLVM emits no coverage counters for constant-only declarations. "
+        "The daemon-side posting behavior is covered by the "
+        "LocalNotificationBridge tests, and the inbox category routing by "
+        "AIInboxServiceEndToEndTests notification assertions."
+    ),
+    "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/AIInbox/BurnBarAIInboxSchema.swift": (
+        "Declarative DDL string constants with no executable logic; LLVM "
+        "emits no coverage counters for the file. Byte parity with the two "
+        "migration copies is enforced by AIInboxSchemaParityTests, and the "
+        "statements execute through BurnBarAIInboxStore.bootstrapSchema, "
+        "which AIInboxStoreTests exercises against a real SQLite database."
+    ),
+    "OpenBurnBarCore/Sources/OpenBurnBarUI/Views/MissionControl/": (
+        "SwiftUI mission-console rendering: liquid-glass surfaces, hero and "
+        "constellation canvases, composer chrome, and situation-room layout "
+        "require a live window server to line-hit. The decision logic is "
+        "line-gated in the package lane: forecast cost/runtime math, mission "
+        "kind metadata, FAB gauge configuration, and cost/token formatting are "
+        "covered by MissionConsoleTests (MissionConsoleForecastTests, "
+        "MissionConsoleKindTests, MissionFABGaugeConfigurationTests, "
+        "MissionConsoleFormattingTests), and the mission-control RPC surface "
+        "by OpenBurnBarMissionControlContractsTests."
+    ),
+    "tools/DebugBridge/": (
+        "Local debug-bridge dev tool: a standalone SPM package that is never "
+        "compiled into the app coverage-bearing target, so this lane can never "
+        "produce line evidence for it. Its auth/lifecycle decisions (healthz "
+        "auth exemption, tap auth requirement, boot-token rotation) are "
+        "covered by its own StateServerSmokeTests package test target."
     ),
 }
 

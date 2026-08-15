@@ -4,6 +4,27 @@ import OpenBurnBarCore
 
 private let hermesE2ELogger = Logger(subsystem: "com.openburnbar.mobile", category: "HermesE2E")
 
+/// Chooses the chat transport before a view intercepts a send.
+///
+/// A signed, fresh Mac relay is the normal fallback when the local HTTP host
+/// is unreachable. BurnBar Cloud Gateway is only a last-resort chat path when
+/// no such relay is available. Keeping this decision pure and shared prevents
+/// the conversation-list and transcript surfaces from routing the same runtime
+/// state differently.
+enum HermesChatTransportPolicy {
+    nonisolated static func shouldSendViaBurnBarGateway(
+        isHostReachable: Bool,
+        hasSuggestedRelay: Bool,
+        hasActiveGatewayClient: Bool,
+        isCLIMode: Bool
+    ) -> Bool {
+        !isCLIMode
+            && !isHostReachable
+            && !hasSuggestedRelay
+            && hasActiveGatewayClient
+    }
+}
+
 /// Relay/transport routing decisions for the Hermes chat surface: which
 /// `HermesConnectionRecord`s are usable Mac relay candidates, which relay
 /// to suggest, which relay a send should prefer, and which endpoint URLs
@@ -112,6 +133,29 @@ final class HermesTransportSelector {
             return selected
         }
 
+        return suggestedRelayConnection ?? relayConnections.first
+    }
+
+    /// Resolves a Mercury target from the already-loaded, security-filtered
+    /// relay catalog. Opening a visible "My Mac" tile must not block on a
+    /// redundant Firestore refresh: that refresh can remain pending while the
+    /// cached signed heartbeat is already fresh enough to dial.
+    ///
+    /// Synthetic `paired-mac:` routes intentionally fall through to the
+    /// selected/suggested relay because their suffix is a UI identity, not a
+    /// Hermes connection document id.
+    func cachedMercuryRelay(
+        routedConnectionID: String,
+        selected: HermesConnectionRecord
+    ) -> HermesConnectionRecord? {
+        if !routedConnectionID.hasPrefix("paired-mac:"),
+           let exact = relayConnections.first(where: { $0.id == routedConnectionID }) {
+            return exact
+        }
+        if selected.mode == .relayLink,
+           let selectedRelay = relayConnections.first(where: { $0.id == selected.id }) {
+            return selectedRelay
+        }
         return suggestedRelayConnection ?? relayConnections.first
     }
 

@@ -743,6 +743,49 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.suggestedRelayConnection?.id, "relay-new")
     }
 
+    func testCachedMercuryRelayUsesExactFreshRelayWithoutDiscoveryRefresh() {
+        let exact = relayConnection(
+            id: "relay-exact",
+            lastSeenAt: Date().addingTimeInterval(-15)
+        )
+        let newer = relayConnection(
+            id: "relay-newer",
+            lastSeenAt: Date()
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, newer, exact]
+
+        XCTAssertEqual(
+            service.cachedMercuryRelay(for: exact.id)?.id,
+            exact.id
+        )
+    }
+
+    func testCachedMercuryRelayResolvesSyntheticPairedMacRouteToSuggestedRelay() {
+        let relay = relayConnection(
+            id: "relay-current",
+            lastSeenAt: Date()
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, relay]
+
+        XCTAssertEqual(
+            service.cachedMercuryRelay(for: "paired-mac:albertos-mac")?.id,
+            relay.id
+        )
+    }
+
+    func testCachedMercuryRelayRejectsStaleCachedRecord() {
+        let stale = relayConnection(
+            id: "relay-stale",
+            lastSeenAt: Date().addingTimeInterval(-60 * 60)
+        )
+        let service = HermesService(relayTransport: FakeHermesRelayTransport())
+        service.connections = [.localDefault, stale]
+
+        XCTAssertNil(service.cachedMercuryRelay(for: stale.id))
+    }
+
     func testSuggestedRelayConnectionRejectsStaleOnlineRelay() {
         let stale = HermesConnectionRecord(
             id: "relay-stale",
@@ -2842,16 +2885,21 @@ final class HermesServiceTests: XCTestCase {
         XCTAssertEqual(service.messages.map(\.role), [.user, .assistant])
     }
 
-    private func relayConnection() -> HermesConnectionRecord {
+    private func relayConnection(
+        id: String = "relay-mac",
+        lastSeenAt: Date = Date()
+    ) -> HermesConnectionRecord {
         HermesConnectionRecord(
-            id: "relay-mac",
+            id: id,
             displayName: "Mac Hermes Relay",
             mode: .relayLink,
             status: .online,
             relayPublicKey: HermesRelayCrypto.generatePrivateKey().publicKeyBase64,
             relayKeyVersion: HermesRelayCrypto.gatewayRelayKeyVersionV3,
             relayEncryption: HermesRelayCrypto.relayEncryptionV3,
-            capabilities: ["chat_completions", "remote_relay"]
+            capabilities: ["chat_completions", "remote_relay"],
+            lastSeenAt: lastSeenAt,
+            updatedAt: lastSeenAt
         )
     }
 
@@ -3624,6 +3672,7 @@ private final class AuthBoundaryGateway: AuthGateway {
 @MainActor
 private final class AuthBoundaryDeviceTrustGateway: DeviceTrustGateway {
     func bootstrapApproveSelf() async throws {}
+    func approve(deviceID: String) async throws {}
     func renameSelf(_ newName: String) async throws {}
     func revoke(deviceID: String) async throws {}
 }

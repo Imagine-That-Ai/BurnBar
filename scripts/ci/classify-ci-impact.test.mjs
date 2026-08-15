@@ -1,11 +1,32 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { classifyEvent, classifyPaths, LANES } from "./classify-ci-impact.mjs";
+import {
+  classifyEvent,
+  classifyPaths,
+  DOMAIN_CORE_OWNED_PATH_GLOBS,
+  gitDiff,
+  LANES,
+} from "./classify-ci-impact.mjs";
 
 test("documentation and ordinary workflow changes skip product suites", () => {
   const result = classifyPaths(["docs/CI.md", ".github/workflows/triage.yml"]);
   assert.equal(result.full, false);
   for (const lane of LANES) assert.equal(result[lane], false);
+});
+
+test("launch-evidence attestation JSON is no-product (honest skip/require)", () => {
+  for (const path of [
+    "launch-evidence/libsignal-rust-core-bridge-v1.0.34.json",
+    "launch-evidence/latest-agpl-store-legal-packet.json",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    for (const lane of LANES) assert.equal(result[lane], false, `${path}:${lane}`);
+  }
 });
 
 test("isolated tests select only their owning product", () => {
@@ -38,6 +59,23 @@ test("domain-core transitive consumers select the Rust lane", () => {
     "windows/tests/quota/ProviderQuotaTests.cs",
     "apps/console/lib/escrow.ts",
     "functions/src/health.ts",
+  ]) {
+    assert.equal(classifyPaths([path]).rust, true, path);
+  }
+});
+
+test("the migrated Domain Core trigger policy routes every governed glob", () => {
+  assert.equal(DOMAIN_CORE_OWNED_PATH_GLOBS.length, 184);
+  for (const glob of DOMAIN_CORE_OWNED_PATH_GLOBS) {
+    const representative = glob
+      .replaceAll("**", "nested/owned.txt")
+      .replaceAll("*", "owned")
+      .replaceAll("?", "x");
+    assert.equal(classifyPaths([representative]).rust, true, glob);
+  }
+  for (const path of [
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift",
   ]) {
     assert.equal(classifyPaths([path]).rust, true, path);
   }
@@ -82,6 +120,92 @@ test("merge-group uses its exact base and synthetic head", () => {
   });
   assert.equal(result.android, true);
   assert.equal(result.macos, false);
+});
+
+test("push uses the exact before and after commits", () => {
+  const event = { before: "base", after: "head" };
+  const result = classifyEvent(event, "push", (base, head) => {
+    assert.equal(base, "base");
+    assert.equal(head, "head");
+    return ["docs/README.md"];
+  });
+  assert.equal(result.full, false);
+  for (const lane of LANES) assert.equal(result[lane], false);
+});
+
+test("push diffs retain governed deletions alongside safe changes", (context) => {
+  const repo = mkdtempSync(join(tmpdir(), "burnbar-ci-impact-"));
+  context.after(() => rmSync(repo, { recursive: true, force: true }));
+  execFileSync("git", ["init", "-q"], { cwd: repo });
+  execFileSync("git", ["config", "user.name", "CI Test"], { cwd: repo });
+  execFileSync("git", ["config", "user.email", "ci@example.invalid"], {
+    cwd: repo,
+  });
+  // Temp fixture commits must not inherit the agent's global commit.gpgsign.
+  execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repo });
+  const governed =
+    "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift";
+  mkdirSync(
+    join(repo, "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels"),
+    {
+      recursive: true,
+    },
+  );
+  writeFileSync(join(repo, governed), "governed\n");
+  execFileSync("git", ["add", "."], { cwd: repo });
+  execFileSync("git", ["commit", "-q", "-m", "base"], { cwd: repo });
+  const base = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repo,
+    encoding: "utf8",
+  }).trim();
+  rmSync(join(repo, governed));
+  mkdirSync(join(repo, "docs"), { recursive: true });
+  writeFileSync(join(repo, "docs/README.md"), "safe\n");
+  execFileSync("git", ["add", "-A"], { cwd: repo });
+  execFileSync("git", ["commit", "-q", "-m", "delete governed file"], {
+    cwd: repo,
+  });
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repo,
+    encoding: "utf8",
+  }).trim();
+  const paths = gitDiff(base, head, repo);
+  assert.deepEqual(paths.sort(), [governed, "docs/README.md"].sort());
+  const result = classifyEvent(
+    { before: base, after: head },
+    "push",
+    (from, to) => gitDiff(from, to, repo),
+  );
+  assert.equal(result.rust, true);
+  assert.equal(result.full, false);
+});
+
+test("push with an unavailable exact range fails closed to a full run", () => {
+  const event = { before: "unavailable-base", after: "unavailable-head" };
+  const attempted = [];
+  const result = classifyEvent(event, "push", (base, head) => {
+    attempted.push([base, head]);
+    throw new Error("event commits are outside the shallow checkout");
+  });
+  // Only the exact before..after range is acceptable proof input; a partial
+  // range such as HEAD^..HEAD would under-classify multi-commit pushes.
+  assert.deepEqual(attempted, [["unavailable-base", "unavailable-head"]]);
+  assert.equal(result.full, true);
+  assert.equal(result.rust, true);
+});
+
+test("push with an unresolved all-zero boundary fails closed", () => {
+  let diffCalled = false;
+  const result = classifyEvent(
+    { before: "0".repeat(40), after: "a".repeat(40) },
+    "push",
+    () => {
+      diffCalled = true;
+      return [];
+    },
+  );
+  assert.equal(diffCalled, false);
+  assert.equal(result.full, true);
 });
 
 test("unresolvable event diff fails closed", () => {

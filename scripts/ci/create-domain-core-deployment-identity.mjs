@@ -113,9 +113,13 @@ function validateReleaseGate(raw, candidate, commit) {
     candidate,
     "release gate rollback candidate",
   );
+  // The gate re-derives activation P from the committed authority files, so
+  // activationCommit is P (an ancestor of the deployment commit R) and the
+  // deployment commit binds through activation.releaseCommit.
   if (
     raw.activation?.candidateCommit !== candidate.candidateCommit ||
-    raw.activation?.activationCommit !== commit ||
+    raw.activation?.releaseCommit !== commit ||
+    !/^[0-9a-f]{40}$/u.test(raw.activation?.activationCommit ?? "") ||
     raw.activation?.coreVersion !== candidate.coreVersion ||
     raw.activation?.abiVersion !== candidate.abiVersion ||
     raw.activation?.sourceSha256 !== candidate.sourceSha256 ||

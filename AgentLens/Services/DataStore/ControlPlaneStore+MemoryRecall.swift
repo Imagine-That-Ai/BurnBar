@@ -5,16 +5,29 @@ import OpenBurnBarCore
 
 extension ControlPlaneStore {
     func fetchChatMemoryAuthorityRecord(id: MemoryID) async throws -> Memory? {
-        try await dbQueue.read { db in
+        try await fetchMemoryAuthorityRecord(id: id, sourceKinds: [.chat])
+    }
+
+    /// Fetch one authority row by id, guarded to the caller's source kinds so
+    /// chat/usage code paths can never touch daemon-owned `code` rows (or each
+    /// other) by accident.
+    func fetchMemoryAuthorityRecord(
+        id: MemoryID,
+        sourceKinds: Set<MemorySourceKind>
+    ) async throws -> Memory? {
+        let kindClause = Self.memorySourceKindInClause(column: "source_kind", kinds: sourceKinds)
+        return try await dbQueue.read { db in
+            var arguments: [any DatabaseValueConvertible] = [id]
+            arguments.append(contentsOf: kindClause.arguments)
             guard let row = try Row.fetchOne(
                 db,
                 sql: """
                 SELECT *
                 FROM agent_memories
-                WHERE id = ? AND source_kind = ?
+                WHERE id = ? AND \(kindClause.sql)
                 LIMIT 1
                 """,
-                arguments: [id, MemorySourceKind.chat.rawValue]
+                arguments: StatementArguments(arguments)
             ) else {
                 return nil
             }
@@ -111,16 +124,26 @@ extension ControlPlaneStore {
     }
 
     func fetchActiveChatMemoryAuthorityRecords(scope: MemoryScope? = nil, kind: MemoryKind? = nil) async throws -> [Memory] {
-        try await dbQueue.read { db in
-            var predicates = ["source_kind = ?", "valid_to IS NULL"]
-            var arguments: [any DatabaseValueConvertible] = [MemorySourceKind.chat.rawValue]
+        try await fetchActiveMemoryAuthorityRecords(sourceKinds: [.chat], scope: scope, kind: kind)
+    }
+
+    func fetchActiveMemoryAuthorityRecords(
+        sourceKinds: Set<MemorySourceKind>,
+        scope: MemoryScope? = nil,
+        kind: MemoryKind? = nil
+    ) async throws -> [Memory] {
+        let kindClause = Self.memorySourceKindInClause(column: "source_kind", kinds: sourceKinds)
+        let partition = MemoryStoragePartition(sourceKinds)
+        return try await dbQueue.read { db in
+            var predicates = [kindClause.sql, "valid_to IS NULL"]
+            var arguments: [any DatabaseValueConvertible] = kindClause.arguments
             if let kind {
                 predicates.append("kind = ?")
                 arguments.append(kind.rawValue)
             }
             if let scope {
                 predicates.append("project_id = ?")
-                arguments.append(Self.memoryStorageProjectID(for: scope))
+                arguments.append(Self.memoryStorageProjectID(for: scope, partition: partition))
                 Self.appendScopePredicates(scope, to: &predicates, arguments: &arguments)
             }
             let rows = try Row.fetchAll(

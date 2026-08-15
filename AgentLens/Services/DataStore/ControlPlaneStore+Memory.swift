@@ -100,19 +100,48 @@ extension ControlPlaneStore {
         now: Date = Date(),
         enabled: Bool = ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
     ) async throws -> Memory {
+        try await addMemoryAuthorityRecord(
+            request,
+            id: id,
+            sourceKind: .chat,
+            now: now,
+            enabled: enabled
+        )
+    }
+
+    /// Single choke point for app-owned authority writes: G7 secret/PII gate,
+    /// sealed snapshot, provenance, audit, and exact-hash dedup all happen here
+    /// for every `sourceKind`. Chat callers use the `addChatMemoryAuthorityRecord`
+    /// wrapper above and are byte-identical to the pre-parameterization behavior;
+    /// usage callers pass their own kind, gate-derived `enabled`, and an
+    /// optional extraction `context` sentence for the sealed snapshot.
+    func addMemoryAuthorityRecord(
+        _ request: MemoryAddRequest,
+        id: MemoryID = UUID().uuidString,
+        sourceKind: MemorySourceKind = .chat,
+        context: String? = nil,
+        now: Date = Date(),
+        enabled: Bool = ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault
+    ) async throws -> Memory {
         guard enabled else { throw ChatMemoryAuthorityError.disabled }
         let body = request.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard body.isEmpty == false else { throw ChatMemoryAuthorityError.emptyBody }
+
+        let partition = MemoryStoragePartition(sourceKind)
+        // Usage kinds dedup against each other (shared partition); chat and code
+        // dedup only against themselves.
+        let dedupSourceKinds: Set<MemorySourceKind> =
+            partition == .usage ? MemorySourceKind.usageKinds : [sourceKind]
 
         let secretLabels = Self.memoryGateFindingIDs(in: body)
         if secretLabels.isEmpty == false {
             try await appendMemoryAuditEvent(
                 action: "memory.secret_rejected",
-                projectID: Self.memoryStorageProjectID(for: request.scope),
+                projectID: Self.memoryStorageProjectID(for: request.scope, partition: partition),
                 subjectID: id,
                 labels: [
                     "memory_id": id,
-                    "source_kind": MemorySourceKind.chat.rawValue,
+                    "source_kind": sourceKind.rawValue,
                     "labels": secretLabels.joined(separator: ",")
                 ],
                 now: now
@@ -123,7 +152,7 @@ extension ControlPlaneStore {
         let bodyHash = Self.sha256Hex(body)
         let snapshotSlug = Self.memorySnapshotSlug(id)
         let bodyRef = Self.memorySnapshotRef(snapshotSlug)
-        let storageProjectID = Self.memoryStorageProjectID(for: request.scope)
+        let storageProjectID = Self.memoryStorageProjectID(for: request.scope, partition: partition)
         let nowString = Self.iso8601String(now)
         let citations = request.citations
         let snapshotJSON = try Self.memoryBodySnapshotJSON(
@@ -131,23 +160,26 @@ extension ControlPlaneStore {
             body: body,
             bodyHash: bodyHash,
             citations: citations,
-            createdAt: now
+            createdAt: now,
+            sourceKind: sourceKind,
+            context: context
         )
         let auditLabels = [
             "body_ref:\(bodyRef)",
             "memory_id:\(id)",
             "review_status:\(request.reviewStatus.rawValue)",
-            "source_kind:\(MemorySourceKind.chat.rawValue)"
+            "source_kind:\(sourceKind.rawValue)"
         ].sorted()
 
         let dedupState = try await dbQueue.write { db -> (validTo: Date?, supersededBy: MemoryID?) in
-            let duplicateRows = try Self.chatMemoryDuplicateCandidates(
+            let duplicateRows = try Self.memoryDuplicateCandidates(
                 db: db,
                 bodyHash: bodyHash,
                 storageProjectID: storageProjectID,
                 kind: request.kind,
                 scope: request.scope,
-                excludingID: id
+                excludingID: id,
+                sourceKinds: dedupSourceKinds
             )
             let winnerID = Self.memoryDedupWinnerID(
                 duplicateRows: duplicateRows,
@@ -176,7 +208,7 @@ extension ControlPlaneStore {
                     bodyRef,
                     snapshotJSON,
                     bodyHash,
-                    MemorySourceKind.chat.rawValue,
+                    sourceKind.rawValue,
                     now,
                     now
                 ]
@@ -199,7 +231,9 @@ extension ControlPlaneStore {
                     id,
                     storageProjectID,
                     request.kind.rawValue,
-                    "chat",
+                    // Legacy v50 `scope` text column: chat rows shipped as the
+                    // literal "chat"; usage rows carry their raw source kind.
+                    sourceKind == .chat ? "chat" : sourceKind.rawValue,
                     request.confidence,
                     bodyRef,
                     bodyRef,
@@ -210,7 +244,7 @@ extension ControlPlaneStore {
                     newSupersededBy,
                     now,
                     now,
-                    MemorySourceKind.chat.rawValue,
+                    sourceKind.rawValue,
                     request.reviewStatus.rawValue,
                     request.scope.userID,
                     request.scope.agentID,
@@ -230,7 +264,7 @@ extension ControlPlaneStore {
                     arguments: [
                         Self.memoryProvenanceID(memoryID: id, citationID: citation.id),
                         id,
-                        "chat_message",
+                        Self.memoryProvenanceSourceKind(for: sourceKind).rawValue,
                         citation.threadLogicalID,
                         citation.messageID,
                         citation.role,
@@ -251,12 +285,13 @@ extension ControlPlaneStore {
                 labels: auditLabels,
                 nowString: nowString
             )
-            try Self.mergeDuplicateChatMemories(
+            try Self.mergeDuplicateMemories(
                 db: db,
                 duplicateRows: duplicateRows,
                 newID: id,
                 winnerID: winnerID,
                 storageProjectID: storageProjectID,
+                sourceKinds: dedupSourceKinds,
                 now: now,
                 nowString: nowString
             )
@@ -265,7 +300,7 @@ extension ControlPlaneStore {
 
         return Memory(
             id: id,
-            sourceKind: .chat,
+            sourceKind: sourceKind,
             kind: request.kind,
             scope: request.scope,
             confidence: request.confidence,

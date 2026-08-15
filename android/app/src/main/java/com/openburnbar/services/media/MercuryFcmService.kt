@@ -55,6 +55,10 @@ class MercuryFcmService : FirebaseMessagingService() {
             serviceScope.launch { postAgentReplyNotification(data) }
             return
         }
+        if (type == "ai_inbox_item") {
+            postAIInboxNotification(data)
+            return
+        }
         if (type != "media_incoming_call") return
         serviceScope.launch {
             val routing = resolveIncomingCallRouting(data) ?: return@launch
@@ -82,23 +86,21 @@ class MercuryFcmService : FirebaseMessagingService() {
         MediaSessionForegroundService.ensureNotificationChannel(this)
 
         val acceptIntent =
-            Intent().apply {
-                setClass(this@MercuryFcmService, IncomingCallActivity::class.java)
+            Intent(this, IncomingCallActivity::class.java).apply {
                 action = IncomingCallActivity.ACTION_ACCEPT
-                setPackage(packageName)
                 putExtra(IncomingCallActivity.EXTRA_CONNECTION_ID, connectionId)
                 putExtra(IncomingCallActivity.EXTRA_CALLER_NAME, callerName)
                 putExtra(IncomingCallActivity.EXTRA_CALLER_INITIAL, callerInitial)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
+        acceptIntent.setPackage(packageName)
         val declineIntent =
-            Intent().apply {
-                setClass(this@MercuryFcmService, IncomingCallActivity::class.java)
+            Intent(this, IncomingCallActivity::class.java).apply {
                 action = IncomingCallActivity.ACTION_DECLINE
-                setPackage(packageName)
                 putExtra(IncomingCallActivity.EXTRA_CONNECTION_ID, connectionId)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
+        declineIntent.setPackage(packageName)
         val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val acceptPending = PendingIntent.getActivity(this, 1, acceptIntent, pendingFlags)
         val declinePending = PendingIntent.getActivity(this, 2, declineIntent, pendingFlags)
@@ -161,8 +163,28 @@ class MercuryFcmService : FirebaseMessagingService() {
         manager.createNotificationChannel(channel)
     }
 
+    /**
+     * Its own channel, not the agent-reply one: inbox alerts and chat replies
+     * are different enough that a user who mutes one should keep the other.
+     */
+    internal fun ensureInboxChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel(INBOX_CHANNEL_ID) != null) return
+        val channel =
+            NotificationChannel(
+                INBOX_CHANNEL_ID,
+                "Inbox alerts",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = "Urgent findings from the OpenBurnBar AI Inbox"
+            }
+        manager.createNotificationChannel(channel)
+    }
+
     companion object {
         const val NOTIFICATION_ID = 0x4D435A02
         const val AGENT_REPLY_CHANNEL_ID = "agent_replies"
+        const val INBOX_CHANNEL_ID = "burnbar_inbox"
     }
 }

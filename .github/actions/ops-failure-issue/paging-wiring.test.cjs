@@ -243,7 +243,7 @@ test("Hosting opens and closes its incident for tag and manual non-dry-run outco
   const job = extractJob("deploy-hosting.yml", "hosting-smoke-result");
   assert.match(
     job,
-    /^    if: \$\{\{ always\(\) && github\.event\.inputs\.dry_run != 'true' \}\}$/m
+    /^    if: \$\{\{ always\(\) && \(github\.event_name != 'workflow_dispatch' \|\| inputs\.dry_run != true\) \}\}$/m
   );
   const open = extractStep(
     job,

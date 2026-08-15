@@ -91,16 +91,55 @@ final class DashboardViewIntegrationTests: XCTestCase {
         XCTAssertFalse(view.showCommandPalette)
     }
 
-    func test_primarySectionsContainSevenRoutes() {
-        XCTAssertEqual(DashboardMainRoute.primarySections.count, 7)
+    func test_primarySectionsContainEightRoutes() {
+        XCTAssertEqual(DashboardMainRoute.primarySections.count, 8)
+        XCTAssertTrue(DashboardMainRoute.primarySections.contains(.inbox))
         XCTAssertTrue(DashboardMainRoute.primarySections.contains(.chat))
         XCTAssertTrue(DashboardMainRoute.primarySections.contains(.quota))
         XCTAssertTrue(DashboardMainRoute.primarySections.contains(.memoryReview))
     }
 
     func test_primarySectionIndexIsOneBased() {
-        XCTAssertEqual(DashboardMainRoute.chat.primarySectionIndex, 1)
-        XCTAssertEqual(DashboardMainRoute.memoryReview.primarySectionIndex, 7)
+        XCTAssertEqual(DashboardMainRoute.inbox.primarySectionIndex, 1)
+        XCTAssertEqual(DashboardMainRoute.chat.primarySectionIndex, 2)
+        XCTAssertEqual(DashboardMainRoute.memoryReview.primarySectionIndex, 8)
         XCTAssertNil(DashboardMainRoute.overview.primarySectionIndex)
+    }
+
+    // MARK: - Control Deck route
+
+    /// The deck is a full-width workspace: the provider/model sidebar is not
+    /// about its content, so it must collapse the way Inbox and Quota do.
+    func test_controlDeckDoesNotWantTheProviderSidebar() {
+        XCTAssertFalse(DashboardView.routeWantsProviderSidebar(.controlDeck))
+    }
+
+    /// `primarySections` is positional and drives ⌘1–⌘8. Adding the deck to it
+    /// would renumber every existing user's shortcuts, so this must stay eight.
+    func test_controlDeckIsNotAPrimarySection() {
+        XCTAssertFalse(DashboardMainRoute.primarySections.contains(.controlDeck))
+        XCTAssertNil(DashboardMainRoute.controlDeck.primarySectionIndex)
+        XCTAssertEqual(DashboardMainRoute.primarySections.count, 8)
+    }
+
+    func test_controlDeckRouteMetadata() throws {
+        let view = try makeDashboardView()
+        XCTAssertEqual(view.routeTitle(.controlDeck), "Control Deck")
+        XCTAssertEqual(DashboardMainRoute.controlDeck.title(), "Control Deck")
+        XCTAssertEqual(
+            DashboardMainRoute.controlDeck.systemImage(),
+            "slider.horizontal.below.square.filled.and.square"
+        )
+        XCTAssertEqual(
+            DashboardMainRoute.controlDeck.subtitle(),
+            "Every feature, live, one click deep"
+        )
+    }
+
+    /// Round-trips the identifier persisted in `dashboard.quickAccess.v1`, so
+    /// the deck can be pinned like any other destination.
+    func test_controlDeckIsPinnableViaQuickAccess() {
+        XCTAssertEqual(DashboardMainRoute.quickAccessRoute(rawValue: "controlDeck"), .controlDeck)
+        XCTAssertNil(DashboardMainRoute.quickAccessRoute(rawValue: "controlDeckling"))
     }
 }

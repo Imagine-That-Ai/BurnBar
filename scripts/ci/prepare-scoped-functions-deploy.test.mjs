@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const preparer = join(scriptDir, "prepare-scoped-functions-deploy.mjs");
+const repoRoot = join(scriptDir, "..", "..");
 const root = mkdtempSync(join(tmpdir(), "openburnbar-scoped-functions-"));
 const functionsDir = join(root, "functions");
 const libDir = join(functionsDir, "lib");
@@ -25,6 +26,10 @@ function resetFixture(manifestOverrides = {}) {
   writeFileSync(
     join(functionsDir, "package.json"),
     '{"name":"fixture","main":"lib/index.js"}\n',
+  );
+  writeFileSync(
+    join(functionsDir, "package-lock.json"),
+    '{"name":"fixture","lockfileVersion":3,"requires":true,"packages":{"":{"name":"fixture"}}}\n',
   );
   writeFileSync(
     join(libDir, "callables", "selected.js"),
@@ -54,12 +59,22 @@ function resetFixture(manifestOverrides = {}) {
   );
 }
 
+const githubOutputPath = join(root, "github-output");
+
 function run(targets) {
+  writeFileSync(githubOutputPath, "");
   return spawnSync(
     process.execPath,
     [preparer, "--targets", targets, "--functions-dir", functionsDir],
-    { encoding: "utf8" },
+    {
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_OUTPUT: githubOutputPath },
+    },
   );
+}
+
+function readResolvedTargets() {
+  return readFileSync(githubOutputPath, "utf8");
 }
 
 function expectFailure(label, targets) {
@@ -79,6 +94,8 @@ try {
   );
   if (packageJson.main !== "lib/staging-scoped-index.cjs")
     throw new Error("package main was not scoped");
+  if (Object.keys(packageJson.scripts ?? {}).length !== 0)
+    throw new Error("scoped package retained executable scripts");
   const require = createRequire(import.meta.url);
   const exports = require(join(libDir, "staging-scoped-index.cjs"));
   if (
@@ -87,6 +104,11 @@ try {
   ) {
     throw new Error(
       "generated entrypoint did not isolate the requested export",
+    );
+  }
+  if (readResolvedTargets() !== "function_targets=functions:selected\n") {
+    throw new Error(
+      "explicit selection did not emit its resolved deploy selectors",
     );
   }
 
@@ -113,14 +135,86 @@ try {
   expectFailure("missing compiled module", "functions:missing");
 
   resetFixture();
-  const allFunctions = run("");
-  if (allFunctions.status !== 0)
-    throw new Error(`all-functions mode failed:\n${allFunctions.stderr}`);
+  writeFileSync(
+    join(libDir, "callables", "unrelated.js"),
+    "exports.unrelated = () => 'unrelated';\n",
+  );
+  const reviewedDefaults = run("");
+  if (reviewedDefaults.status !== 0)
+    throw new Error(
+      `reviewed-default mode failed:\n${reviewedDefaults.stderr}`,
+    );
   if (
     JSON.parse(readFileSync(join(functionsDir, "package.json"), "utf8"))
-      .main !== "lib/index.js"
+      .main !== "lib/staging-scoped-index.cjs"
   ) {
-    throw new Error("all-functions mode changed package main");
+    throw new Error("reviewed-default mode did not scope package main");
+  }
+  if (
+    Object.keys(
+      JSON.parse(readFileSync(join(functionsDir, "package.json"), "utf8"))
+        .scripts ?? {},
+    ).length !== 0
+  ) {
+    throw new Error("reviewed-default mode retained executable scripts");
+  }
+  const reviewedEntrypoint = join(libDir, "staging-scoped-index.cjs");
+  delete require.cache[require.resolve(reviewedEntrypoint)];
+  const reviewedExports = require(reviewedEntrypoint);
+  if (
+    reviewedExports.selected() !== "selected" ||
+    reviewedExports.unrelated() !== "unrelated" ||
+    Object.keys(reviewedExports).sort().join(",") !== "selected,unrelated"
+  ) {
+    throw new Error(
+      "blank target input did not export exactly the reviewed staging manifest",
+    );
+  }
+  if (
+    readResolvedTargets() !==
+    "function_targets=functions:selected,functions:unrelated\n"
+  ) {
+    throw new Error(
+      "blank target input did not emit the resolved manifest deploy selectors",
+    );
+  }
+
+  const productionManifest = JSON.parse(
+    readFileSync(
+      join(repoRoot, "functions", "staging-deploy-targets.json"),
+      "utf8",
+    ),
+  );
+  const requiredCommercialTargets = [
+    "burnBarHermesGateway",
+    "latestRouterRundown",
+    "startCliLink",
+    "pollCliLink",
+    "createStripeBurnBarProCheckoutSession",
+    "createStripeBurnBarProPortalSession",
+    "verifyGooglePlayBurnBarProSubscription",
+    "verifyGooglePlayCloudProTopUp",
+    "stripeBurnBarProWebhook",
+    "googlePlayDeveloperNotifications",
+    "reconcileGooglePlayVoidedPurchasesDaily",
+    "beginEntitlementBinding",
+    "verifyHostedQuotaEntitlement",
+    "verifyCloudProTopUp",
+    "restoreHostedQuotaEntitlement",
+    "appStoreServerNotificationsV2",
+    "reconcileHostedEntitlementsDaily",
+  ];
+  for (const target of requiredCommercialTargets) {
+    const entry = productionManifest.targets?.[target];
+    if (
+      !entry ||
+      typeof entry.module !== "string" ||
+      typeof entry.export !== "string"
+    ) {
+      throw new Error(
+        `commercial staging target ${target} is missing a valid manifest binding`,
+      );
+    }
   }
 
   console.log(

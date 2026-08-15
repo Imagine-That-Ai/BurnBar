@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpsError } from "firebase-functions/v2/https";
 
-const { mockCreate, mockGet, mockDoc } = vi.hoisted(() => {
+const { mockCreate, mockGet, mockSet, mockDoc } = vi.hoisted(() => {
   const mockCreate = vi.fn();
   const mockGet = vi.fn();
+  const mockSet = vi.fn();
   const mockDoc = vi.fn(() => ({
     create: mockCreate,
     get: mockGet,
+    set: mockSet,
   }));
-  return { mockCreate, mockGet, mockDoc };
+  return { mockCreate, mockGet, mockSet, mockDoc };
 });
 
 vi.mock("../adminRuntime.js", () => ({
@@ -24,7 +26,10 @@ describe("googlePlayTokenClaims", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreate.mockResolvedValue(undefined);
-    mockGet.mockResolvedValue({ get: (field: string) => (field === "uid" ? "other-uid" : undefined) });
+    mockSet.mockResolvedValue(undefined);
+    mockGet.mockResolvedValue({
+      get: (field: string) => (field === "uid" ? "other-uid" : field === "kind" ? "subscription" : undefined),
+    });
   });
 
   it("uses a top-level collection path for global token binding", () => {
@@ -62,7 +67,9 @@ describe("googlePlayTokenClaims", () => {
   it("allows idempotent reclaim for the same uid", async () => {
     const alreadyExists = Object.assign(new Error("exists"), { code: 6 });
     mockCreate.mockRejectedValueOnce(alreadyExists);
-    mockGet.mockResolvedValueOnce({ get: () => "uid-same" });
+    mockGet.mockResolvedValueOnce({
+      get: (field: string) => (field === "uid" ? "uid-same" : field === "kind" ? "topup" : undefined),
+    });
 
     await expect(
       claimGooglePlayPurchaseToken({
@@ -72,5 +79,31 @@ describe("googlePlayTokenClaims", () => {
         kind: "topup",
       }),
     ).resolves.toBeUndefined();
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        productID: "com.openburnbar.proMax.monthly",
+        kind: "topup",
+      }),
+      { merge: true },
+    );
+  });
+
+  it("rejects reuse of a token across subscription and top-up claim kinds", async () => {
+    const alreadyExists = Object.assign(new Error("exists"), { code: 6 });
+    mockCreate.mockRejectedValueOnce(alreadyExists);
+    mockGet.mockResolvedValueOnce({
+      get: (field: string) => (field === "uid" ? "uid-same" : field === "kind" ? "subscription" : undefined),
+    });
+
+    await expect(
+      claimGooglePlayPurchaseToken({
+        uid: "uid-same",
+        purchaseTokenHash: "hash-4",
+        productID: "com.openburnbar.agentcontrol.actions100",
+        kind: "topup",
+      }),
+    ).rejects.toMatchObject({
+      code: "failed-precondition",
+    } satisfies Partial<HttpsError>);
   });
 });

@@ -15,6 +15,7 @@ import { enforceAuthAndAppCheck } from "../auth.js";
 import { stripUndefinedObject } from "../guards.js";
 import {
   gatewayApprovalExpiryISO,
+  gatewaySignalAttachmentBindingMatches,
   gatewayPlaintextWriteAllowed,
   HERMES_GATEWAY_MAX_ATTACHMENT_BYTES,
   HERMES_GATEWAY_SCHEMA_VERSION,
@@ -107,6 +108,12 @@ export async function handleAttachmentInit(req: HttpRequest, res: HttpResponse):
     body.signalEnvelope != null
       ? requireProductionGatewaySignalEnvelope(body.signalEnvelope, "signalEnvelope")
       : undefined;
+  if (signalEnvelope) {
+    const attachmentId = typeof body.attachmentId === "string" ? body.attachmentId : "";
+    if (!gatewaySignalAttachmentBindingMatches(signalEnvelope, attachmentId)) {
+      throw new HttpsError("invalid-argument", "attachment_signal_binding_mismatch");
+    }
+  }
   const sealedEnvelope =
     body.relayEnvelope != null ? requireProductionGatewayRelayEnvelope(body.relayEnvelope, "relayEnvelope") : undefined;
   const ratchetEnvelope =

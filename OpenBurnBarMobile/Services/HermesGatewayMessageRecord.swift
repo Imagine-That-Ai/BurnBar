@@ -5,6 +5,7 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 // MARK: - Hermes Gateway message records
 //
@@ -50,6 +51,7 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     let enc: String?
     let relayEncryption: String?
     let relayKeyVersion: Int?
+    let signalEnvelopeData: Data?
     let ratchetEnvelope: HermesRatchetEnvelope?
     let ratchetEnvelopeCiphertextBase64: String?
     let ratchetEnvelopeAlgorithm: String?
@@ -110,6 +112,9 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             ?? (relayEnvelope?["relayKeyVersion"] as? Int)
             ?? (data["relayKeyVersion"] as? NSNumber)?.intValue
             ?? (data["relayKeyVersion"] as? Int)
+        self.signalEnvelopeData = Self.encodeSignalEnvelope(
+            Self.dictionary(data["signalEnvelope"]).map { $0 as NSDictionary }
+        )
         let ratchetEnvelope = Self.dictionary(data["ratchetEnvelope"])
         let ratchetHeader = Self.dictionary(ratchetEnvelope?["header"])
         self.ratchetEnvelope = Self.decodeRatchetEnvelope(ratchetEnvelope)
@@ -126,7 +131,18 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
     /// True when the reply carries a sealed body that must be opened with the
     /// phone's relay key (vs. a legacy plaintext doc).
     var isSealed: Bool {
-        isRelaySealed || isRatchetSealed
+        isSignalSealed || isRelaySealed || isRatchetSealed
+    }
+
+    private var isSignalSealed: Bool {
+        signalEnvelope?.mode == "transport"
+            && signalEnvelope?.binding.scope == "gateway"
+            && signalEnvelope?.keyDelivery.signalMessageB64?.isEmpty == false
+    }
+
+    private var signalEnvelope: FirestoreGatewaySignalEnvelopeDoc? {
+        guard let signalEnvelopeData else { return nil }
+        return try? JSONDecoder().decode(FirestoreGatewaySignalEnvelopeDoc.self, from: signalEnvelopeData)
     }
 
     private var isRelaySealed: Bool {
@@ -265,6 +281,12 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
         // sender. A swapped/forged sender key fails the GCM tag, so a compromised
         // relay can no longer seal a forged reply to this phone's public key.
         resolved.requiresSealedReply = pinStore.requiresSealedReplies(uid: uid, clientId: clientId)
+        // Gateway v4 is opened asynchronously by `decodedSignalText`; keep the
+        // record sealed (and therefore non-renderable) until that official
+        // libsignal session has recovered the private payload.
+        if isSignalSealed {
+            return resolved
+        }
         if isRatchetSealed {
             return decodedRatchetText(uid: uid, targetClient: targetClient, resolved: resolved)
         }
@@ -319,6 +341,47 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
             }
         } catch {
             resolved.resolvedText = nil
+        }
+        return resolved
+    }
+
+    /// Open a Gateway v4 reply with the durable official libsignal session. This
+    /// remains separate from the synchronous legacy decoder because the session
+    /// actor serializes libsignal store access across snapshot callbacks.
+    func decodedSignalText(
+        uid: String,
+        targetClient: HermesGatewayClientRecord?
+    ) async -> HermesGatewayMessageRecord {
+        guard
+            isSignalSealed,
+            let targetClient,
+            targetClient.canSignalToAgent,
+            let signalEnvelope,
+            let slotId = signalEnvelope.binding.slotId,
+            let envelopeData = try? JSONEncoder().encode(signalEnvelope)
+        else { return self }
+        var resolved = self
+        do {
+            let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
+            let session = try HermesGatewaySignalRuntime.session(
+                uid: uid,
+                targetClient: targetClient,
+                deviceId: deviceId
+            )
+            let plaintext = try await session.provider.open(
+                envelopeData: envelopeData,
+                uid: uid,
+                clientId: clientId,
+                slotId: slotId
+            )
+            let payload = try JSONDecoder().decode(SealedGatewayPayload.self, from: plaintext)
+            resolved.resolvedText = payload.text
+            resolved.resolvedActionId = payload.actionId
+            resolved.resolvedKind = payload.kind
+        } catch {
+            resolved.resolvedText = nil
+            resolved.resolvedActionId = nil
+            resolved.resolvedKind = nil
         }
         return resolved
     }
@@ -438,6 +501,21 @@ struct HermesGatewayMessageRecord: Identifiable, Hashable, Sendable {
               let data = try? JSONSerialization.data(withJSONObject: raw)
         else { return nil }
         return try? JSONDecoder().decode(HermesRatchetEnvelope.self, from: data)
+    }
+
+    static func decodeSignalEnvelope(_ raw: NSDictionary?) -> FirestoreGatewaySignalEnvelopeDoc? {
+        guard let raw,
+              JSONSerialization.isValidJSONObject(raw),
+              let data = try? JSONSerialization.data(withJSONObject: raw)
+        else { return nil }
+        return try? JSONDecoder().decode(FirestoreGatewaySignalEnvelopeDoc.self, from: data)
+    }
+
+    static func encodeSignalEnvelope(_ raw: NSDictionary?) -> Data? {
+        guard let raw,
+              JSONSerialization.isValidJSONObject(raw)
+        else { return nil }
+        return try? JSONSerialization.data(withJSONObject: raw)
     }
 }
 

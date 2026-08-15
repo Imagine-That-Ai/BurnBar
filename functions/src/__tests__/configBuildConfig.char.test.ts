@@ -41,6 +41,12 @@ const TOUCHED = [
   "HOSTED_QUOTA_RUNNER_ALLOWED_HOSTS",
   "STRIPE_BURNBAR_PRO_PRICE_ID",
   "STRIPE_BURNBAR_CLOUD_MONTHLY_PRICE_ID",
+  "STRIPE_BURNBAR_CLOUD_ANNUAL_PRICE_ID",
+  "STRIPE_BURNBAR_CLOUD_PRO_MONTHLY_PRICE_ID",
+  "STRIPE_BURNBAR_CLOUD_PRO_ANNUAL_PRICE_ID",
+  "STRIPE_BURNBAR_ULTRA_MONTHLY_PRICE_ID",
+  "STRIPE_BURNBAR_ULTRA_ANNUAL_PRICE_ID",
+  "STRIPE_REDIRECT_URL_ALLOWLIST",
   "APP_STORE_ENV",
   "APP_STORE_APPLE_APP_ID",
   "APP_STORE_BUNDLE_ID",
@@ -109,10 +115,13 @@ describe("buildConfig characterization (via getConfig)", () => {
     expect(cfg.stripeBurnBarCloudAnnualPriceID).toBe("");
     expect(cfg.stripeBurnBarCloudProMonthlyPriceID).toBe("");
     expect(cfg.stripeBurnBarCloudProAnnualPriceID).toBe("");
+    expect(cfg.stripeBurnBarUltraMonthlyPriceID).toBe("");
+    expect(cfg.stripeBurnBarUltraAnnualPriceID).toBe("");
     expect(cfg.stripeAgentControl100ActionsPriceID).toBe("");
     expect(cfg.stripeFlooRelay50GBPriceID).toBe("");
     expect(cfg.stripeElderWandSearches100PriceID).toBe("");
     expect(cfg.stripeElderWandSearches500PriceID).toBe("");
+    expect(cfg.stripeRedirectURLAllowlist).toEqual([]);
     expect(cfg.stripeSecretKey).toBe("");
     expect(cfg.stripeWebhookSecret).toBe("");
 
@@ -161,6 +170,9 @@ describe("buildConfig characterization (via getConfig)", () => {
     process.env.MAX_CREDENTIAL_LENGTH = "4096";
     process.env.ROLLUP_BATCH_SIZE = "notanumber"; // non-finite => default
     process.env.STRIPE_BURNBAR_PRO_PRICE_ID = "price_compat_123";
+    process.env.STRIPE_BURNBAR_ULTRA_MONTHLY_PRICE_ID = "price_ultra_monthly_123";
+    process.env.STRIPE_BURNBAR_ULTRA_ANNUAL_PRICE_ID = "price_ultra_annual_123";
+    process.env.STRIPE_REDIRECT_URL_ALLOWLIST = "burnbar.ai, www.burnbar.ai";
     process.env.APP_STORE_ENV = "Production";
     process.env.APP_STORE_APPLE_APP_ID = "1234567890";
     process.env.APP_STORE_BUNDLE_ID = "com.example.override";
@@ -173,6 +185,9 @@ describe("buildConfig characterization (via getConfig)", () => {
     expect(cfg.stripeBurnBarProPriceID).toBe("price_compat_123");
     // Compatibility fallthrough: cloud monthly inherits the legacy pro price id.
     expect(cfg.stripeBurnBarCloudMonthlyPriceID).toBe("price_compat_123");
+    expect(cfg.stripeBurnBarUltraMonthlyPriceID).toBe("price_ultra_monthly_123");
+    expect(cfg.stripeBurnBarUltraAnnualPriceID).toBe("price_ultra_annual_123");
+    expect(cfg.stripeRedirectURLAllowlist).toEqual(["burnbar.ai", "www.burnbar.ai"]);
     expect(cfg.appStore.environment).toBe("Production");
     expect(cfg.appStore.appAppleId).toBe(1234567890);
     expect(cfg.appStore.bundleId).toBe("com.example.override");

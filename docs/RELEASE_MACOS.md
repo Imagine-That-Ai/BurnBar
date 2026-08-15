@@ -7,10 +7,10 @@ Pushing a `v*` tag builds, signs, notarizes, staples, and publishes a GitHub Rel
 
 OpenBurnBar should ship through both channels, but not as the exact same binary.
 
-| Channel | Use it for | Constraints |
-|---|---|---|
-| Mac App Store | Discovery, Apple-hosted updates, App Store trust, Apple billing, simpler install for conservative users | App Sandbox is required; system-level Computer Use, broad filesystem access, direct LaunchAgent installation, and other unsandboxed helper behavior must be disabled or redesigned behind MAS-safe APIs |
-| Direct download | Power-user build with full local daemon, faster hotfixes, system Computer Use, notarized DMG/ZIP, website-driven onboarding | We own hosting, updater, billing/support, and trust messaging; must keep Developer ID signing, hardened runtime, notarization, stapling, checksums, and smoke tests green |
+| Channel         | Use it for                                                                                                                  | Constraints                                                                                                                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mac App Store   | Discovery, Apple-hosted updates, App Store trust, Apple billing, simpler install for conservative users                     | App Sandbox is required; system-level Computer Use, broad filesystem access, direct LaunchAgent installation, and other unsandboxed helper behavior must be disabled or redesigned behind MAS-safe APIs |
+| Direct download | Power-user build with full local daemon, faster hotfixes, system Computer Use, notarized DMG/ZIP, website-driven onboarding | We own hosting, updater, billing/support, and trust messaging; must keep Developer ID signing, hardened runtime, notarization, stapling, checksums, and smoke tests green                               |
 
 The product policy is:
 
@@ -52,18 +52,67 @@ AGPL/libsignal-linked review binaries until counsel signs off. The upload path
 fails unless `OPENBURNBAR_AGPL_STORE_LEGAL_REVIEW=approved` is set by the
 operator after counsel approval.
 
-Upload the customer-facing direct-download artifacts to the Cloudflare R2 bucket
-behind the branded `downloads.burnbar.ai` host with:
+The protected `promote=true` workflow publishes and verifies the exact audited
+candidate in the Cloudflare R2 bucket behind `downloads.burnbar.ai` before it
+makes the GitHub release latest. The commands below are the manual recovery
+path for an interrupted R2 publication:
 
 ```bash
 scripts/setup-macos-downloads-r2.sh
+
+# Download the exact handoff retained after audit and before activation.
+handoff_dir="$(mktemp -d)"
+gh run download <release-workflow-run-id> \
+  --repo Imagine-That-Ai/BurnBar \
+  --name "macos-r2-publication-inputs-<release-commit>-<run-id>-<run-attempt>" \
+  --dir "$handoff_dir"
+
+OPENBURNBAR_RELEASE_ASSET_DIR="$handoff_dir/release-promotion-assets" \
+OPENBURNBAR_RELEASE_RECEIPT="$handoff_dir/release-promotion-receipt.json" \
+OPENBURNBAR_RELEASE_VERSION="<version>" \
+OPENBURNBAR_RELEASE_TAG="v<version>" \
+OPENBURNBAR_RELEASE_COMMIT="<full-release-commit>" \
+OPENBURNBAR_EXPECTED_LIVE_VERSION="<currently-live-version>" \
+OPENBURNBAR_EXPECTED_LIVE_COMMIT="<currently-live-full-commit>" \
 scripts/upload-macos-downloads-r2.sh
 ```
 
-The setup script creates the R2 bucket and can bind the branded custom domain. The
-upload script reads the current macOS release file/version from `website/src/data/site.ts`,
-uploads the DMG, ZIP, `appcast.xml`, `latest-macos.json`, checksums, SBOM, and release metadata from
-`website/public/downloads/`, and verifies the public DMG, appcast, and latest-metadata URLs. Defaults:
+The setup script creates the R2 bucket and can bind the branded custom domain.
+The promotion job retains one authoritative handoff containing its exact
+downloaded GitHub Release asset directory and immutable promotion-audit receipt
+before any public pointer changes.
+The R2 uploader requires both. Before resolving Wrangler or making any provider
+call, it verifies every receipt asset's size and GitHub SHA-256 digest, then
+reuses the release-promotion checksum and update-metadata validators to bind the
+version, tag, commit, DMG/ZIP/source names, DMG byte length and SHA-256, Sparkle
+signature, appcast, and release metadata. The Sparkle signature is verified over
+the exact DMG using `SUPublicEDKey` extracted from the receipt-bound app ZIP;
+the current checkout is not trusted for that key. The audited feeds must already
+use the exact `OPENBURNBAR_MAC_UPDATE_BASE_URL`; publication never rewrites
+signed or checksummed update metadata.
+
+Only after that complete preflight succeeds does it publish:
+
+1. immutable versioned artifacts: DMG, ZIP, checksums, SBOM, corresponding
+   source, and source digest;
+2. `release-metadata.json`;
+3. `latest-macos.json`, then `appcast.xml` as the final activation pointer.
+
+It then downloads every published R2 object with bounded retries, no-cache
+headers, and cache-busting query parameters; the public bytes must match the
+audited local size and SHA-256 and pass the same exact release bindings. A
+missing final discovery file therefore produces zero R2 writes, while a stale
+edge cache is retried rather than mistaken for the new candidate. Before any
+write, the uploader seals the audited bytes into a private snapshot and
+compare-and-swaps all three mutable public pointers against the operator-declared
+live version/commit. It permits only a newer version or an exact same-candidate
+retry. A failure after mutable publication starts attempts to restore and verify
+the prior bytes; an unverified restore is a manual-recovery HOLD.
+
+The uploader intentionally does not read `website/src/data/site.ts` or
+`website/public/downloads/`: those describe the already-published public release
+and may remain on the previous version until the replacement artifact has passed
+public trust verification. Defaults:
 
 - R2 bucket: `openburnbar-downloads`
 - Public download URL: `https://downloads.burnbar.ai`
@@ -72,6 +121,14 @@ If the bucket or host changes, override with `OPENBURNBAR_R2_BUCKET` and
 `OPENBURNBAR_R2_PUBLIC_BASE_URL`. Keep `SITE.macDownloadBaseUrl` in
 `website/src/data/site.ts` on a first-party host; raw `r2.dev` bucket URLs are a
 storage implementation detail, not the customer-facing trust boundary.
+The repository variable `OPENBURNBAR_MAC_UPDATE_BASE_URL` is required before
+tagging and must equal the stable R2 public base. Mutable GitHub
+`releases/latest/download` URLs are rejected for release handoffs.
+
+R2 publication is not website activation. Keep the website release pointer and
+audited live URL on the previous version until the exact R2 candidate has passed
+the public byte verifier and the macOS signing/notarization/trust gate. Update
+and deploy the website separately, last.
 
 ### Website download preflight
 
@@ -104,6 +161,27 @@ enough. The `Public macOS Download Trust` workflow runs this check automatically
 when `website/src/data/site.ts` changes, so a future button update cannot
 silently point users at an unsigned, unstapled, or Keychain-broken DMG.
 
+### Temporary v1.0.29 profile-certificate exception
+
+The immutable public `v1.0.29` DMG predates the current certificate/profile
+pairing: its app is signed by one valid Developer ID certificate while its
+embedded all-devices profile lists a different certificate from the same
+release setup. The public-download verifier may bypass only that profile
+certificate-membership comparison when every value below matches exactly:
+
+- Version: `1.0.29`
+- DMG SHA-256: `fc0926b4e7ae0c9e155d9be6711a06119f7a2fff2f7df8448fd34ca052db9d96`
+- Bundle signer SHA-256: `2B5CCCC3256C4FE179A7C34614152AE3B940D21EB9193F36D312BAAD82C762BB`
+- Sole profile certificate SHA-256: `F6D16CF680A35D2C27805517469FC6427CDFFFD3D2207C13FFF13CC0F10F6A6A`
+
+The exception does not bypass the DMG digest check, Gatekeeper, notarization,
+stapling, deep signature validation, Developer ID/team identity, entitlements,
+Firebase configuration, App Check scan, Keychain profile authorization, daemon
+launch/signing verification, or final Gatekeeper execution assessment. Normal
+release packaging still invokes the certificate verifier without legacy
+artifact context and therefore remains fail-closed. Remove the exception and
+its tests as soon as the public download moves away from `v1.0.29`.
+
 Release artifacts must also include the shipped Firebase client plist and the
 app's `MAC_APP_DIRECT` provisioning profile. The plist is client configuration,
 not a private signing secret. The profile authorizes Firebase Auth's macOS
@@ -123,13 +201,15 @@ the direct-download release lane, upload the signed/notarized artifacts, restore
 `SITE.macDownloadBaseUrl` to `https://downloads.burnbar.ai`, and rerun the same
 guard before deployment.
 
-The app's default direct-update feed is the stable GitHub Release asset URL
-`https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json`.
-That feed is generated by `.github/workflows/release.yml` and must include a
-non-empty Sparkle `sparkle:edSignature`; the app ignores unsigned update
-metadata. `SITE.macUpdateBaseUrl` controls the public feed links on
-`/download`, and `OPENBURNBAR_MAC_UPDATE_BASE_URL` can intentionally move a
-release feed to R2 or a branded download host.
+The app's default direct-update feeds are
+`https://downloads.burnbar.ai/latest-macos.json` and
+`https://downloads.burnbar.ai/appcast.xml`. Both the custom updater and Sparkle
+therefore use the governed R2 rollback pointers. The release artifact scan
+fails if either packaged Info.plist value drifts. The workflow still promotes
+the same audited GitHub release last so already-shipped clients that poll the
+legacy GitHub-latest URL can discover the transition release only after every
+R2 byte is publicly verified. `SITE.macUpdateBaseUrl` controls the public feed
+links on `/download`.
 
 The direct-download app bundle declares `SUPublicEDKey`
 `613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=`. Its matching private seed is
@@ -168,6 +248,7 @@ git push origin v0.2.0
 ```
 
 The `tag-release.sh` script:
+
 - Validates semver format
 - Checks that the version in `project.yml` matches the tag
 - Verifies the version exists in `CHANGELOG.md`
@@ -175,6 +256,7 @@ The `tag-release.sh` script:
 - Pushes the tag to origin
 
 The workflow will:
+
 1. Require the protected `release` GitHub environment before any Apple signing material is available to the job
 2. Scan the publishable tree with `gitleaks` and verified-secret `trufflehog`
 3. Run Swift, app, and TypeScript tests. Release Swift/app tests intentionally run without coverage instrumentation; coverage belongs to PR/CI gates, while release publication needs bounded pass/fail proof.
@@ -191,7 +273,11 @@ The workflow will:
 13. Write release metadata JSON with version, commit, timestamp, update feed, and runner metadata
 14. Upload the DMG, ZIP, update feeds, checksums, optional checksum signature, SBOM, Sigstore bundles/predicates, and metadata as Actions artifacts
 15. Run release smoke from the uploaded DMG artifact, including app launch and authenticated daemon health
-16. Publish a GitHub Release with the same downloaded artifacts and mark it as the repository's latest release
+16. Publish a GitHub Release with the same downloaded artifacts as explicitly
+    non-latest. A separate `workflow_dispatch` with `promote=true` audits the
+    already-published tag, metadata, attestations, and every asset byte,
+    publishes and verifies the exact R2 candidate, and only then makes that
+    exact release GitHub's latest release.
 
 `notarytool` and `stapler` are wrapped by
 `scripts/ci/release-command-watchdog.py` in release CI. Apple's `--timeout` flag
@@ -203,6 +289,46 @@ protected release job timeout.
 Run the release workflow from the release tag ref (for example
 `gh workflow run release.yml --ref v1.0.5 ...`) so the Sigstore certificate
 identity is bound to `refs/tags/v1.0.5`, not the moving default branch.
+
+Tag-triggered publication and ordinary manual retries always pass
+`--latest=false`; publishing assets must never silently repoint the public
+updater channel. After the non-latest release is published and independently
+approved, promote it by dispatching the same workflow from the immutable tag:
+
+```bash
+gh workflow run release.yml \
+  --ref v1.0.5 \
+  -f tag=v1.0.5 \
+  -f promote=true \
+  -f expected_live_macos_version=1.0.4 \
+  -f expected_live_macos_commit=<currently-live-full-commit>
+```
+
+The promotion retry downloads and verifies the complete existing asset set,
+checks each GitHub asset ID, size, and SHA-256 digest against the audited bytes,
+and rechecks the exact release metadata. It retains the exact handoff, performs
+the R2 compare-and-swap against the declared live coordinates, uploads and
+publicly verifies every candidate byte, and only then may it perform the single
+`gh release edit ... --latest` mutation. GitHub latest is the final activation
+for legacy installed clients. If that final mutation fails, the verified R2
+candidate remains staged but the legacy client channel is unchanged; stop on a
+manual-recovery HOLD and retry with the same candidate coordinates as the
+expected live R2 release. The workflow finally verifies that
+`releases/latest` resolves to the same release and unchanged asset identities
+before the live Sparkle feed gate runs. A missing, substituted, extra, or
+concurrently changed asset blocks promotion.
+
+The `domain_core_profile` input must declare the governed profile the release
+was published under. `public-production` (the default) requires the complete
+native domain-core evidence set: the Apple, Android, and iOS Sigstore bundles,
+the iOS archive, and the App Store Connect receipt. `public-production-rollback`
+promotes a governed all-legacy rollback release, which publishes no native
+domain-core evidence; any evidence asset that is present is still fully
+verified. A declared profile that does not match the published asset set fails
+closed before any mutation. When `checksums-vVERSION.txt.asc` is published, the
+promotion lane verifies the detached GPG signature against the audited
+checksums file and fails if `RELEASE_SIGNING_KEY` is not configured to verify
+it.
 
 Before approving a promoted release, verify that the tag still points at the
 current `origin/main` tip. If `main` advances after the tag is cut, cancel the
@@ -272,19 +398,19 @@ provenance, publish, and live feed verification still run.
 
 Each release includes:
 
-| Asset | Purpose |
-|-------|---------|
-| `OpenBurnBar-VERSION-macOS.dmg` | Signed, notarized DMG installer |
-| `OpenBurnBar-VERSION-macOS.zip` | Signed app archive |
-| `appcast.xml` | Sparkle-compatible direct-download update appcast; production releases must include `sparkle:edSignature` |
-| `latest-macos.json` | Machine-readable latest release feed consumed by the direct-download app; unsigned metadata is ignored |
-| `checksums-vVERSION.txt` | SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata |
-| `checksums-vVERSION.txt.asc` | GPG detached signature (if configured) |
-| `sbom-vVERSION.spdx.json` | Software Bill of Materials (SPDX format) |
-| `*.sigstore.json` | Sigstore verification bundles for keyless blob attestations |
-| `*.predicate.json` | Release-artifact predicates bound into the Sigstore blob attestations |
-| `OpenBurnBar-VERSION-corresponding-source.tar.gz` | Corresponding source archive for AGPL-covered binaries and services |
-| `release-metadata.json` | Build provenance: version, commit, timestamp, update feed, runner |
+| Asset                                             | Purpose                                                                                                   |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `OpenBurnBar-VERSION-macOS.dmg`                   | Signed, notarized DMG installer                                                                           |
+| `OpenBurnBar-VERSION-macOS.zip`                   | Signed app archive                                                                                        |
+| `appcast.xml`                                     | Sparkle-compatible direct-download update appcast; production releases must include `sparkle:edSignature` |
+| `latest-macos.json`                               | Machine-readable latest release feed consumed by the direct-download app; unsigned metadata is ignored    |
+| `checksums-vVERSION.txt`                          | SHA256/SHA512 checksums for DMG, ZIP, source archive, appcast, and latest metadata                        |
+| `checksums-vVERSION.txt.asc`                      | GPG detached signature (if configured)                                                                    |
+| `sbom-vVERSION.spdx.json`                         | Software Bill of Materials (SPDX format)                                                                  |
+| `*.sigstore.json`                                 | Sigstore verification bundles for keyless blob attestations                                               |
+| `*.predicate.json`                                | Release-artifact predicates bound into the Sigstore blob attestations                                     |
+| `OpenBurnBar-VERSION-corresponding-source.tar.gz` | Corresponding source archive for AGPL-covered binaries and services                                       |
+| `release-metadata.json`                           | Build provenance: version, commit, timestamp, update feed, runner                                         |
 
 ## Release provenance
 
@@ -323,7 +449,11 @@ python3 -m json.tool sbom-v0.2.0.spdx.json | head -30
 ## Manual rerun path
 
 Use `workflow_dispatch` on `.github/workflows/release.yml` and provide an existing `v*` tag.
-The workflow checks out that exact tag before building. This is intended for release recovery without creating a new tag.
+The workflow checks out that exact tag before building. This is intended for
+release recovery without creating a new tag. Leave `promote=false` for
+packaging or publication recovery. Set `promote=true` only after the stable,
+already-published release is ready for the public updater channel; prerelease
+tags are rejected and cannot become latest.
 
 ## Release environment and tag protection
 
@@ -379,21 +509,21 @@ See [RELEASE_ROLLBACK.md](RELEASE_ROLLBACK.md) for the full rollback decision tr
 
 Tagged releases are **fail-hard**: if any required secret below is missing, the workflow fails and no fallback unsigned release is produced.
 
-| Secret | Description |
-|--------|-------------|
-| `APPLE_TEAM_ID` | 10-character Apple Developer Team ID |
-| `APPLE_SIGNING_IDENTITY` | Developer ID identity, e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_CERTIFICATE_P12` | Base64-encoded `.p12` (Developer ID cert + private key) |
-| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting `.p12` |
-| `APPLE_NOTARY_KEY_ID` | App Store Connect API key ID |
-| `APPLE_NOTARY_ISSUER_ID` | App Store Connect API issuer ID (required for team keys, optional for individual keys) |
-| `APPLE_NOTARY_API_KEY_P8` | Base64-encoded contents of `AuthKey_<KEYID>.p8` |
-| `OPENBURNBAR_APP_PROFILE_BASE64` | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; required so Firebase Auth can use the app Keychain access group |
-| `FIREBASE_PLIST_BASE64` | Base64-encoded Firebase plist for CI |
-| `FIREBASE_APP_CHECK_DEBUG_TOKEN` | Firebase App Check debug token for CI |
-| `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast |
-| `OPENBURNBAR_MAC_UPDATE_BASE_URL` | *(Optional)* Override for generated update feed URLs; defaults to the GitHub Release latest-download host |
-| `RELEASE_SIGNING_KEY` | *(Optional)* Base64-encoded GPG private key for signing checksums |
+| Secret                                                                                                | Description                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APPLE_TEAM_ID`                                                                                       | 10-character Apple Developer Team ID                                                                                                                 |
+| `APPLE_SIGNING_IDENTITY`                                                                              | Developer ID identity, e.g. `Developer ID Application: Your Name (TEAMID)`                                                                           |
+| `APPLE_CERTIFICATE_P12`                                                                               | Base64-encoded `.p12` (Developer ID cert + private key)                                                                                              |
+| `APPLE_CERTIFICATE_PASSWORD`                                                                          | Password used when exporting `.p12`                                                                                                                  |
+| `APPLE_NOTARY_KEY_ID`                                                                                 | App Store Connect API key ID                                                                                                                         |
+| `APPLE_NOTARY_ISSUER_ID`                                                                              | App Store Connect API issuer ID (required for team keys, optional for individual keys)                                                               |
+| `APPLE_NOTARY_API_KEY_P8`                                                                             | Base64-encoded contents of `AuthKey_<KEYID>.p8`                                                                                                      |
+| `OPENBURNBAR_APP_PROFILE_BASE64`                                                                      | Base64-encoded `MAC_APP_DIRECT` provisioning profile for `com.openburnbar.app`; required so Firebase Auth can use the app Keychain access group      |
+| `FIREBASE_PLIST_BASE64`                                                                               | Base64-encoded Firebase plist for CI                                                                                                                 |
+| `FIREBASE_APP_CHECK_DEBUG_TOKEN`                                                                      | Firebase App Check debug token for CI                                                                                                                |
+| `OPENBURNBAR_SPARKLE_PRIVATE_KEY_BASE64` / `OPENBURNBAR_SPARKLE_ED_SIGNATURE` / `SPARKLE_SIGN_UPDATE` | Sparkle EdDSA signing source for direct-download update appcast                                                                                      |
+| `OPENBURNBAR_MAC_UPDATE_BASE_URL`                                                                     | Required stable first-party HTTPS base for generated update feeds (normally `https://downloads.burnbar.ai`); mutable GitHub latest URLs are rejected |
+| `RELEASE_SIGNING_KEY`                                                                                 | _(Optional)_ Base64-encoded GPG private key for signing checksums                                                                                    |
 
 Never commit raw Apple credentials. Local `.p12`, `.p8`, provisioning profile,
 and developer-profile files are ignored by `.gitignore`; the workflow decodes

@@ -85,7 +85,8 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         if (routeLivingThemeIntent(intent)) return
-        handleIntent(intent)
+        enableOpenBurnBarScreenPrivacy()
+        handleIntent(intent, warmStart = true)
     }
 
     private fun routeLivingThemeIntent(intent: Intent?): Boolean {
@@ -98,11 +99,41 @@ class MainActivity : FragmentActivity() {
         return true
     }
 
-    private fun handleIntent(intent: Intent?) {
+    private fun handleIntent(intent: Intent?, warmStart: Boolean = false) {
         MainActivityIntentActions.stashPendingPromptFromIntent(intent)
+        routeDeepLink(intent, warmStart)
         MainActivityE2EMissionActions.launchFromIntent(this, intent)
         MainActivityE2EHermesActions.launchFromIntent(this, intent)
         MainActivityE2EComputerUseActions.launchFromIntent(this, intent)
+    }
+
+    /**
+     * Captures the item id carried by a `burnbar://inbox/{itemId}` link.
+     *
+     * Navigation owns the *destination*: both `burnbar://inbox` and
+     * `burnbar://inbox/{itemId}` are declared as `navDeepLink` patterns on the
+     * Inbox composable (see `BurnBarNavHostSections.kt`), so Navigation matches
+     * the launch intent and lands on the tab for free.
+     *
+     * What Navigation cannot do is *select the row*: the id addresses a
+     * Firestore document that has not been fetched or decrypted yet when the
+     * intent is routed. So the id is stashed here and
+     * [com.openburnbar.ui.inbox.InboxScreen] claims it once its rows exist.
+     *
+     * Navigation also cannot handle the WARM case at all: `navDeepLink`
+     * matching runs against the launch intent only, so a link delivered via
+     * [onNewIntent] would stash the id and then leave the user on whatever tab
+     * was open. For warm intents [InboxPendingNavigation] asks the nav host to
+     * move to the Inbox tab itself.
+     */
+    private fun routeDeepLink(intent: Intent?, warmStart: Boolean) {
+        when (val route = BurnBarDeepLink.parseIntent(intent)) {
+            is BurnBarDeepLinkRoute.Inbox -> {
+                InboxPendingItem.stash(route.itemId)
+                if (warmStart) InboxPendingNavigation.request()
+            }
+            null -> Unit
+        }
     }
 
     companion object {

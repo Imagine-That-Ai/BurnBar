@@ -391,6 +391,19 @@ public enum AgentProviderIngestionCatalog {
             quotaSignal: false
         ),
         Entry(
+            provider: .devin,
+            agentProviderCase: "devin",
+            providerID: "devin",
+            displayLabel: "Devin",
+            aliases: ["devin-desktop", "devin-cli"],
+            linuxLogicalPath: "~/.config/Devin/sessions",
+            macOSLogicalPath: "~/Library/Application Support/Devin/sessions",
+            filePattern: "*.jsonl",
+            ingestion: .unavailable,
+            coverageNote: "Devin Desktop supersedes Windsurf branding, but no Devin session parser is registered yet. Keep the provider visible with unavailable local usage until a real parser ships.",
+            quotaSignal: false
+        ),
+        Entry(
             provider: .warp,
             agentProviderCase: "warp",
             providerID: "warp",
@@ -450,6 +463,32 @@ public enum AgentProviderIngestionCatalog {
             aliases: ["jetbrains-junie"],
             linuxLogicalPath: "~/.junie/sessions",
             macOSLogicalPath: "~/.junie/sessions",
+            filePattern: "*.jsonl",
+            ingestion: .localParser,
+            coverageNote: "Local parser registered in ParserRegistry.",
+            quotaSignal: false
+        ),
+        Entry(
+            provider: .primeAgent,
+            agentProviderCase: "primeAgent",
+            providerID: "prime-agent",
+            displayLabel: "Prime Agent",
+            aliases: ["prime", "prime-agent"],
+            linuxLogicalPath: "~/.prime/agent/sessions",
+            macOSLogicalPath: "~/.prime/agent/sessions",
+            filePattern: "*.jsonl",
+            ingestion: .localParser,
+            coverageNote: "Local parser registered in ParserRegistry.",
+            quotaSignal: false
+        ),
+        Entry(
+            provider: .muse,
+            agentProviderCase: "muse",
+            providerID: "muse",
+            displayLabel: "Muse",
+            aliases: ["muse-code", "meta-muse"],
+            linuxLogicalPath: "~/.local/share/muse/sessions",
+            macOSLogicalPath: "~/.local/share/muse/sessions",
             filePattern: "*.jsonl",
             ingestion: .localParser,
             coverageNote: "Local parser registered in ParserRegistry.",

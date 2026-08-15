@@ -22,6 +22,7 @@ const relayTopUp = SITE.pricing.topUps[1]!;
 <BaseLayout
   title="Pricing"
   description="OpenBurnBar pricing — Local at $0, BurnBar Cloud at $7.99/mo, Cloud Pro at $24.99/mo, Ultra at $59.99/mo. Annual plans save ~18%."
+  ambientEffects={false}
 >
   <section class="pagehead">
     <div class="container pagehead__inner">
@@ -51,26 +52,26 @@ const relayTopUp = SITE.pricing.topUps[1]!;
         <div>
           <dt>How am I billed?</dt>
           <dd>
-            Billing runs through the platform where you buy: Apple App Store, Google Play, or Stripe
-            Checkout. We never see your card. Manage or cancel from that platform's billing
-            settings.
+            Web billing runs through Stripe Checkout; Apple purchases run through the App Store.
+            Android purchasing will open with the public Play Store listing. We never see your card.
+            Manage or cancel from the platform where you bought.
           </dd>
         </div>
         <div>
-          <dt>Is there a free trial?</dt>
+          <dt>Are there introductory offers?</dt>
           <dd>
-            BurnBar Cloud monthly and annual include a 14-day introductory free trial for new
-            subscribers. BurnBar Cloud Pro, BurnBar Ultra, and top-ups do not have an introductory
-            trial.
+            No introductory offer is promised. Checkout shows the exact amount and renewal cadence
+            before you confirm.
           </dd>
         </div>
         <div>
           <dt>What about refunds and chargebacks?</dt>
           <dd>
-            Apple and Google purchases follow their store refund policies. Stripe purchases can be
-            handled through support. When a refund or chargeback is confirmed, the matching
-            entitlement is revoked during reconciliation. Consumed top-ups are non-refundable except
-            where store policy or law requires it.
+            Apple purchases follow App Store policy. Google Play purchases will follow Play policy
+            once the public Android listing opens. Stripe purchases can be handled through support.
+            When a refund or chargeback is confirmed, the matching entitlement is revoked during
+            reconciliation. Consumed top-ups are non-refundable except where policy or law requires
+            it.
           </dd>
         </div>
         <div>
@@ -130,9 +131,9 @@ const relayTopUp = SITE.pricing.topUps[1]!;
         <div>
           <dt>Sign-in requirement?</dt>
           <dd>
-            A Firebase account is required so the entitlement document can be bound to your UID.
-            Store purchases also require the matching Apple ID or Google Play account; Stripe uses
-            the signed-in OpenBurnBar account.
+            A Firebase account is required so the entitlement document can be bound to your UID. App
+            Store purchases require the matching Apple ID; future Google Play purchases will require
+            the matching Play account. Stripe uses the signed-in OpenBurnBar account.
           </dd>
         </div>
         <div>
@@ -233,6 +234,14 @@ const relayTopUp = SITE.pricing.topUps[1]!;
     color: var(--text-base);
     font-size: 0.95rem;
     line-height: 1.55;
+  }
+  :global(:root[data-theme="light"]) .defs > div {
+    border-color: var(--ink-line);
+    border-top-color: var(--ink-line-bright);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow:
+      0 1px 2px rgba(22, 19, 14, 0.04),
+      0 22px 46px -34px rgba(22, 19, 14, 0.4);
   }
   @media (max-width: 720px) {
     .defs > div {

@@ -265,6 +265,14 @@ struct ScreenShareViewerView: View {
                     .scaleEffect(visibleViewport.scale)
                     .offset(visibleViewport.offset)
                     .clipped()
+                    .accessibilityElement()
+                    .accessibilityIdentifier("mercury.screen.video")
+                    .accessibilityLabel("Mac screen video")
+                    .accessibilityValue(
+                        coordinator.displayAspectRatio == nil
+                            ? "Awaiting first frame"
+                            : "Streaming"
+                    )
                     .contentShape(Rectangle())
                     .gesture(viewportGesture(in: proxy.size))
                     .onTapGesture(count: 3) {
@@ -326,6 +334,8 @@ struct ScreenShareViewerView: View {
                         .contentShape(Rectangle())
                         .gesture(controlSurfaceGesture(in: proxy.size, contentRect: contentRect, viewport: visibleViewport))
                         .simultaneousGesture(controlMagnifyGesture(in: proxy.size))
+                        .accessibilityElement()
+                        .accessibilityIdentifier("mercury.screen.controlSurface")
                         .accessibilityLabel("Mac screen control surface")
                 }
 

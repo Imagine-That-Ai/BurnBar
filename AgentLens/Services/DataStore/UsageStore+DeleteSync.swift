@@ -67,11 +67,16 @@ extension UsageStore {
 
     func fetchUnsynced() async throws -> [TokenUsage] {
         try await dbQueue.read { db -> [TokenUsage] in
-            let rows = try Row.fetchAll(
-                db,
-                sql: "SELECT * FROM token_usage WHERE syncedAt IS NULL AND isRemote = 0 ORDER BY startTime ASC LIMIT 400"
+            try Self.compactMapCachedRows(
+                db: db,
+                sql: """
+                    SELECT \(Self.usageDecodeSelectColumns.joined(separator: ", "))
+                    FROM token_usage
+                    WHERE syncedAt IS NULL AND isRemote = 0
+                    ORDER BY startTime ASC LIMIT 400
+                    """,
+                transform: Self.decodeUsage
             )
-            return rows.compactMap(Self.decodeUsage)
         }
     }
 

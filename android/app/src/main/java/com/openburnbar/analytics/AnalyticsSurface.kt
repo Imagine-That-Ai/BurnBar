@@ -23,6 +23,7 @@ enum class AnalyticsSurface(val wire: String) {
     BUDGET("budget"),
     CLOUD_SYNC("cloud_sync"),
     ACCOUNT("account"),
+    INBOX("inbox"),
     OTHER("other"),
     ;
 
@@ -39,6 +40,7 @@ enum class AnalyticsSurface(val wire: String) {
             return when (head) {
                 "pulse" -> DASHBOARD_OVERVIEW
                 "burn" -> DASHBOARD_ACTIVITY
+                "inbox" -> INBOX
                 "insights", "insights_workspace", "agent_insights" -> INSIGHTS
                 "streams" -> DASHBOARD
                 "hermes", "assistants", "agent", "mercury_call" -> CHAT

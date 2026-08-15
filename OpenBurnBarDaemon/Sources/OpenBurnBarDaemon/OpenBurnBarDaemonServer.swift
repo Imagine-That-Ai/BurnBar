@@ -120,6 +120,36 @@ public actor BurnBarDaemonServer {
     let databaseRecoveryService: BurnBarDatabaseRecoveryBundleService?
     let textExpansionService: BurnBarTextExpansionService?
     var resumeService: BurnBarResumeService?
+    /// The AI Inbox is opened lazily for the same reason as code memory: chat
+    /// owns first-use database creation on a fresh profile, so binding it at
+    /// init would leave the inbox unavailable until the next daemon restart.
+    private var aiInboxStorage: BurnBarAIInboxService?
+    private var aiInboxBootstrapAttempted = false
+    /// Last bootstrap failure (cleared on success / forced retry). Surfaced in
+    /// inbox RPC errors so Settings does not claim the index path is missing
+    /// when the real problem is cipher/key/schema.
+    private var aiInboxBootstrapFailure: String?
+    var aiInbox: BurnBarAIInboxService? {
+        ensureAIInboxBootstrapped()
+    }
+
+    /// Human-readable reason the AI Inbox control plane is unavailable, or nil
+    /// when the service is ready. Used by RPC error payloads.
+    var aiInboxUnavailabilityReason: String? {
+        if aiInboxStorage != nil { return nil }
+        if let aiInboxBootstrapFailure {
+            return aiInboxBootstrapFailure
+        }
+        let path = configuration.indexDatabasePath?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if path.isEmpty {
+            return "The AI Inbox is not available. Configure OPENBURNBAR_INDEX_DATABASE_PATH and restart the daemon."
+        }
+        if FileManager.default.fileExists(atPath: path) == false {
+            return "The AI Inbox is waiting for the index database at \(path) to be created."
+        }
+        return "The AI Inbox is not available yet."
+    }
     let ownsChatThreadService: Bool
     private let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
@@ -130,6 +160,7 @@ public actor BurnBarDaemonServer {
     private var heartbeatTask: Task<Void, Never>?
     private var oauthRefreshTask: Task<Void, Never>?
     private var localUsageIngestionTask: Task<Void, Never>?
+    private var aiInboxStartedLoop = false
     public init(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(),
@@ -655,6 +686,75 @@ public actor BurnBarDaemonServer {
         }
     }
 
+    /// Opens the AI Inbox service after the configured database path becomes a
+    /// real file. A missing file is not a failed attempt (chat may create it).
+    /// Permanent open failures are sticky; transient lock/busy failures leave
+    /// the door open for the next RPC / Settings Retry.
+    @discardableResult
+    func ensureAIInboxBootstrapped(forceRetry: Bool = false) -> BurnBarAIInboxService? {
+        if let aiInboxStorage {
+            return aiInboxStorage
+        }
+        if forceRetry {
+            aiInboxBootstrapAttempted = false
+            aiInboxBootstrapFailure = nil
+        }
+        guard aiInboxBootstrapAttempted == false else { return nil }
+        guard let path = configuration.indexDatabasePath?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            path.isEmpty == false,
+            FileManager.default.fileExists(atPath: path) else {
+            return nil
+        }
+
+        do {
+            let service = try BurnBarAIInboxService(
+                databasePath: path,
+                usageRecorder: usageRecorder,
+                configStore: configStore
+            )
+            aiInboxStorage = service
+            aiInboxBootstrapFailure = nil
+            aiInboxBootstrapAttempted = true
+            logger.info("ai_inbox_bootstrap_succeeded", metadata: ["path": path])
+            // Late bootstrap (index database created after daemon startup, or
+            // a Settings → Retry) must still start the periodic loop — startup
+            // only starts it when bootstrap succeeded there and then. Without
+            // this, a fresh profile gets a service that answers RPCs but never
+            // ticks in the background until the daemon restarts.
+            if configuration.startsMissionControlBackgroundLoops, aiInboxStartedLoop == false {
+                Task { await service.start() }
+                aiInboxStartedLoop = true
+            }
+            return service
+        } catch {
+            let detail = error.localizedDescription
+            aiInboxBootstrapFailure = detail
+            let transient = Self.isTransientAIInboxBootstrapFailure(detail)
+            // Sticky only for permanent failures so a SQLITE_BUSY blip during
+            // app ingestion cannot disable the inbox until the next reboot.
+            aiInboxBootstrapAttempted = (transient == false)
+            logger.warning(
+                "ai_inbox_bootstrap_failed",
+                metadata: [
+                    "path": path,
+                    "error": detail,
+                    "transient": transient ? "true" : "false"
+                ]
+            )
+            return nil
+        }
+    }
+
+    private static func isTransientAIInboxBootstrapFailure(_ detail: String) -> Bool {
+        let lowered = detail.lowercased()
+        return lowered.contains("busy")
+            || lowered.contains("locked")
+            || lowered.contains("database is locked")
+            || lowered.contains("sqlite_busy")
+            || lowered.contains("sqlite_locked")
+    }
+
     /// Opens the project code-memory store exactly once after the configured
     /// database path becomes a real file. This method is actor-isolated through
     /// `BurnBarDaemonServer`, so concurrent RPCs cannot race store construction.
@@ -1123,6 +1223,14 @@ public actor BurnBarDaemonServer {
         #endif
         if configuration.startsMissionControlBackgroundLoops {
             await missionControlService.startBackgroundLoops()
+            // Reuses the mission-control loop flag so in-process test servers do
+            // not spawn a background analyst. The inbox is additionally gated by
+            // its own persisted `enabled` flag, which is false until the user
+            // opts in — the loop wakes, sees disabled, and goes back to sleep.
+            if let inbox = ensureAIInboxBootstrapped() {
+                await inbox.start()
+                aiInboxStartedLoop = true
+            }
         } else {
             logger.debug(
                 "mission_control_background_loops_disabled",
@@ -1205,6 +1313,10 @@ public actor BurnBarDaemonServer {
         oauthRefreshTask = nil
         localUsageIngestionTask?.cancel()
         localUsageIngestionTask = nil
+        if aiInboxStartedLoop, let aiInboxStorage {
+            await aiInboxStorage.stop()
+            aiInboxStartedLoop = false
+        }
         let acceptTask = acceptLoopTask
         acceptLoopTask = nil
         acceptTask?.cancel()
@@ -1434,6 +1546,17 @@ public actor BurnBarDaemonServer {
                 return try await handleChatRPC(
                     method: method,
                     decoder: decoder,
+                    requestData: requestData
+                )
+            case .inboxList, .inboxGet, .inboxRunsRecent,
+                 .inboxConfigGet, .inboxConfigUpdate, .inboxRunNow,
+                 .inboxThreadGet, .inboxReply,
+                 .inboxPlansList, .inboxPlansGet, .inboxPlansAccept,
+                 .inboxPlansUpdateStep, .inboxPlansGrade, .inboxMemoryExport:
+                return try await handleInboxRPC(
+                    method: method,
+                    decoder: decoder,
+                    request: request,
                     requestData: requestData
                 )
             case .proxyRouteLogRecent, .proxyRouteLogClear,

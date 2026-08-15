@@ -10,7 +10,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -35,7 +35,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -51,7 +51,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       all-updates:
         patterns: ["*"]
@@ -64,7 +64,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     groups:
       all-updates:
         patterns: ["*"]
@@ -74,10 +74,10 @@ updates:
     directory: "/windows"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "tuesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -90,10 +90,10 @@ updates:
     directory: "/firestore-rules-tests"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "wednesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       all-updates:
         patterns: ["*"]
@@ -103,10 +103,10 @@ updates:
     directory: "/quota-runner"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "wednesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       all-updates:
         patterns: ["*"]
@@ -116,10 +116,10 @@ updates:
     directory: "/services/hosted-mcp"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "wednesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       all-updates:
         patterns: ["*"]
@@ -129,10 +129,10 @@ updates:
     directory: "/services/hosted-mcp"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "wednesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -145,10 +145,10 @@ updates:
     directory: "/services/hermes-realtime-relay"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "wednesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 2
     groups:
       all-updates:
         patterns: ["*"]
@@ -158,10 +158,10 @@ updates:
     directory: "/android"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "tuesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -174,10 +174,10 @@ updates:
     directory: "/crates/openburnbar-iroh"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "tuesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -192,10 +192,10 @@ updates:
     directory: "/OpenBurnBarCore"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "tuesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -208,10 +208,10 @@ updates:
     directory: "/OpenBurnBarDaemon"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "tuesday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -248,10 +248,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -264,10 +264,10 @@ updates:
     directory: "/apps/linux-desktop"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -280,10 +280,10 @@ updates:
     directory: "/packages/design-tokens"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -296,10 +296,10 @@ updates:
     directory: "/packages/entitlements"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -312,10 +312,10 @@ updates:
     directory: "/packages/libsignal-bridge"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -328,10 +328,10 @@ updates:
     directory: "/packages/libsignal-protocol"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -344,10 +344,10 @@ updates:
     directory: "/packages/signal-envelope-contracts"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -360,10 +360,10 @@ updates:
     directory: "/scripts/linux-port"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -376,10 +376,26 @@ updates:
     directory: "/tools/app-store-connect"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      lockfile-updates:
+        patterns: ["*"]
+        update-types: ["minor", "patch", "major"]
+
+  - package-ecosystem: "npm"
+    directory: "/tools/hermes-platform-burnbar/signal-runtime"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -392,10 +408,10 @@ updates:
     directory: "/tools/openburnbar-mcp-remote"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -408,10 +424,10 @@ updates:
     directory: "/tools/schema-sync"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "deps"
       include: "scope"
@@ -425,10 +441,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
+      day: "thursday"
       time: "09:00"
       timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 1
     commit-message:
       prefix: "ci"
       include: "scope"
@@ -439,4 +455,3 @@ updates:
       all-updates:
         patterns: ["*"]
         update-types: ["minor", "patch", "major"]
-

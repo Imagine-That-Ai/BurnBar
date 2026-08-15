@@ -157,34 +157,43 @@ enum ConversationCloudSealer {
         guard data["contentSealed"] as? Bool == true || data["sealedPayload"] != nil || data["signalEnvelope"] != nil else {
             return nil
         }
-        // Signal-first open (item 3); fall through to legacy AES-GCM on any failure (rollout
-        // compatibility, matching iOS/Android). Requires uid + docId (the binding coordinates).
-        // trustedSenderPublicKeys enables CROSS-DEVICE sender-auth verification (a doc written
-        // by another trusted device); empty => only self-authored docs verify, others fall back.
-        if data["signalEnvelope"] != nil, let uid, let docId {
+        let signalRequired = MacCloudVaultSignalPayloads.signalSealingIsRequired(domainID: "conversations_chat")
+        // Signal-first. A legacy-only row remains readable during migration, but a PRESENT
+        // Signal envelope may not downgrade in required mode.
+        if data["signalEnvelope"] != nil {
+            guard let uid, let docId else {
+                if signalRequired { return nil }
+                return openLegacy(data as NSDictionary, keyData: keyData, uid: uid, docId: docId)
+            }
             do {
                 if let bytes = try MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
                     data, uid: uid, collection: "conversations", docId: docId,
                     signalIdentity: signalIdentity, trustedSenderPublicKeys: trustedSenderPublicKeys
-                ), let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) { // try?-ok(decode verified bytes, legacy fallback)
-                    return payload
+                ) {
+                    if let payload = try? decoder.decode(ConversationCloudPrivatePayload.self, from: bytes) { // try?-ok(verified payload parse)
+                        return payload
+                    }
+                    if signalRequired { return nil }
                 }
-            } catch let signalError as OpenBurnBarSignalCoreError
-                where !signalError.allowsLegacyAtRestFallback(senderSetComplete: false) {
-                // C1: stripped / forged sender-auth (or relocated AAD binding) is a
-                // downgrade attack — fail CLOSED, never decode the unauthenticated
-                // legacy payload. The hard sender-auth failures fail closed
-                // regardless of senderSetComplete; unknown-sender stays lenient for
-                // rollout since legacy needs the E2EE vault key an attacker lacks.
-                return nil
-            } catch MacCloudVaultSignalPayloadError.signalBindingMismatch {
-                // Relocated / replayed envelope — fail CLOSED.
-                return nil
             } catch {
-                // Legacy AES-GCM fallback (rollout compatibility, matching iOS/Android).
+                if signalRequired || !MacCloudVaultSignalPayloads.allowsLegacyAtRestFallback(
+                    for: error,
+                    senderSetComplete: false
+                ) {
+                    return nil
+                }
                 logger.warning("Signal conversation payload open fell back to legacy vault payload: \(String(describing: error), privacy: .private)")
             }
         }
+        return openLegacy(data as NSDictionary, keyData: keyData, uid: uid, docId: docId)
+    }
+
+    private static func openLegacy(
+        _ data: NSDictionary,
+        keyData: Data?,
+        uid: String?,
+        docId: String?
+    ) -> ConversationCloudPrivatePayload? {
         guard let keyData,
               let envelope = CloudVaultCrypto.sealedPayload(from: data["sealedPayload"]) else {
             return nil

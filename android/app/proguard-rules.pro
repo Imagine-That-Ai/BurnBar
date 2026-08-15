@@ -3,6 +3,18 @@
 -keepattributes *Annotation*
 -dontwarn com.google.firebase.**
 
+# Firebase discovers ComponentRegistrar implementations by class name from
+# AndroidManifest metadata, then invokes their public no-argument constructors.
+# Keep both the names and constructors explicitly: AGP 9/R8 can otherwise
+# optimize the constructors away even when firebase-components' consumer rules
+# are present, causing the signed release app to crash in Application.onCreate.
+-keep class com.google.firebase.**Registrar {
+    public <init>();
+}
+-keep class * implements com.google.firebase.components.ComponentRegistrar {
+    public <init>();
+}
+
 # BurnBarApplication loads DebugAppCheckProviderFactory via Class.forName
 # when this APK is built for Firebase App Distribution. R8 has no static
 # reference to walk, so keep the factory + its companion storage classes.

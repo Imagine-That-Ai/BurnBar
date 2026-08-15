@@ -181,8 +181,39 @@ extension MercuryRouter {
             requesterName: req.requesterDisplayName,
             requestedAt: req.requestedAt
         )
+        schedulePendingMirrorRequestExpiry(for: pending)
         Self.log.info("router_mirror_request_ringing requestID=\(req.requestId, privacy: .public)")
         Self.debugTrace("router_mirror_request_ringing requestID=\(req.requestId)")
+    }
+
+    private func schedulePendingMirrorRequestExpiry(for request: PendingRequest) {
+        pendingMirrorRequestExpiryTask?.cancel()
+        let timeoutNanoseconds = UInt64(pendingMirrorRequestTimeoutSeconds * 1_000_000_000)
+        pendingMirrorRequestExpiryTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: timeoutNanoseconds)
+            } catch {
+                return
+            }
+            guard let self,
+                  self.claimPendingMirrorRequest(request, cancelExpiryTask: false) else {
+                return
+            }
+            if self.activeMirrorViewers.isEmpty {
+                self.phase = .idle
+            } else {
+                self.setStreamingPhaseIfNeeded()
+            }
+            await self.respond(
+                requestID: request.id,
+                decision: .denied,
+                detail: "Mirror request expired",
+                frame: request.frame,
+                replySender: request.replySender
+            )
+            Self.log.info("router_mirror_request_expired requestID=\(request.id, privacy: .public)")
+            Self.debugTrace("router_mirror_request_expired requestID=\(request.id)")
+        }
     }
 
     func handleMirrorStop(frame: HermesRealtimeRelayFrame, controlStreamID: UUID?) async {
@@ -357,6 +388,8 @@ extension MercuryRouter {
         if !wasJoiningExistingSession {
             phase = .starting(requestID: request.id)
         }
+        pendingMirrorRequestExpiryTask?.cancel()
+        pendingMirrorRequestExpiryTask = nil
         pendingRequest = nil
         guard let mirrorRequest = request.frame.media?.mirrorRequest else {
             await respond(

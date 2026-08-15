@@ -84,8 +84,8 @@ jobs:
       - self-hosted
       - macos
       - arm64
-      - m5max
-      - ios
+      # Exact host that owns the paired physical iPad (ImagineThat-CI-M4-MacMini-macOS).
+      - p16-physical-ipad
     timeout-minutes: 30
     steps:
       - name: Check out the exact evidence source
@@ -2432,7 +2432,7 @@ jobs:
           }
           trap cleanup EXIT
           chmod 700 "$raw_input" "$evidence_root"
-          for report in linux-desktop-session-report.json runtime-perf-samples.jsonl packaged-route-session-transcript.json matched-performance-macos.json; do
+          for report in linux-desktop-session-report.json runtime-perf-samples.jsonl tray-reconnect-handler-acks.jsonl tray-reconnect-daemon-health.log tray-reconnect-receipts.jsonl packaged-route-session-transcript.json matched-performance-macos.json; do
             test -f "$input_root/$report"
             install -m 600 "$input_root/$report" "$raw_input/$report"
           done

@@ -341,11 +341,11 @@ test("HONEST CLAIMS: W3 sealed private collections are folded into conversations
 
 // ── sealingScheme: an OPTIONAL, apps-internal at-rest sealing codename ────────
 // (signalification Stream 5). It records HOW an end_to_end domain is sealed at
-// rest (CloudVault AES-GCM today; a future Signal HPKE identity seal) WITHOUT
+// rest (CloudVault AES-GCM or the runtime-gated Signal HPKE identity seal) WITHOUT
 // changing the tier or leaking the codename to the public trust surface. These
 // assertions bind the field to reality so it can never be misused.
 
-test("sealingScheme: pensieve carries the CloudVault at-rest scheme; future Signal scheme is NOT set yet", () => {
+test("sealingScheme: Pensieve remains CloudVault and conversations_chat is runtime-gated Signal", () => {
   const pensieve = registry.domains.find((d) => d.id === "pensieve");
   assert.ok(pensieve, "expected the pensieve domain");
   // Today's value is the existing CloudVault AES-GCM at-rest seal.
@@ -354,15 +354,12 @@ test("sealingScheme: pensieve carries the CloudVault at-rest scheme; future Sign
     "cloudvault-aesgcm-v2",
     "pensieve sealingScheme must record the current CloudVault AES-GCM at-rest seal",
   );
-  // Flag-OFF: the future Signal HPKE identity seal must NOT be advertised in the
-  // registry until the client-side ciphertext path actually ships.
-  for (const d of registry.domains) {
-    assert.notEqual(
-      d.sealingScheme,
-      "signal-hpke-identity-seal-v1",
-      `${d.id} must not advertise the Signal at-rest scheme before the client ciphertext path ships`,
-    );
-  }
+  const signalDomains = registry.domains.filter((d) => d.sealingScheme === "signal-hpke-identity-seal-v1");
+  assert.deepEqual(
+    signalDomains.map((d) => d.id),
+    ["conversations_chat"],
+    "only the fully wired conversations_chat domain may be compiled Signal-capable",
+  );
 });
 
 test("sealingScheme: tier invariance — declaring a sealing scheme never changes the encryption tier", () => {
@@ -444,8 +441,19 @@ test("signalSealedCollections: conversations_chat declares exactly the wired+pro
   assert.ok(cc, "expected the conversations_chat domain");
   assert.deepEqual(
     [...(cc.signalSealedCollections ?? [])].sort(),
-    ["chat_threads", "cli_agent_mission_requests", "conversations", "mobile_assistant_chats"],
-    "conversations_chat must document the 4 collections that actually have Signal producers (the other 6 paths stay legacy-only)",
+    [
+      "agent_identities",
+      "approval_policies",
+      "chat_threads",
+      "cli_agent_mission_requests",
+      "cli_sessions",
+      "conversations",
+      "mobile_assistant_chats",
+      "rollback_requests",
+      "subscription_topics",
+      "text_snippets",
+    ],
+    "conversations_chat must document all ten private collections with Signal producers",
   );
 });
 

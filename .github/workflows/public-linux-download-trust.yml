@@ -1,5 +1,15 @@
 name: Public Linux Download Trust
 
+concurrency:
+  group: public-linux-download-trust-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('run-{0}', github.run_id) }}
+  # Only pull_request runs share a group and get cancelled. merge_group runs are
+  # the merge-queue's own proof and `push` runs are the per-commit post-merge
+  # record, so both get a unique per-run group that can never collide: a shared
+  # group evicts a *pending* run even with cancel-in-progress false, because
+  # GitHub keeps at most one queued run per group. Same pattern and reasoning as
+  # `.github/workflows/security-pr.yml`.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -14,14 +24,20 @@ on:
 jobs:
   detect-public-linux-download-change:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # This detector needs every commit/tree to compare PR and merge-group
+    # candidates against their exact base, but it never reads repository file
+    # contents. Avoid downloading the large blob pack and leave enough time for
+    # GitHub-hosted checkout degradation without weakening the fail-closed gate.
+    timeout-minutes: 60
     outputs:
       changed: ${{ steps.detect.outputs.changed }}
       gate_changed: ${{ steps.detect.outputs.gate_changed }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
+          persist-credentials: false
           fetch-depth: 0
+          filter: blob:none
 
       - id: detect
         name: Detect public Linux download config changes
@@ -59,7 +75,7 @@ jobs:
     needs: detect-public-linux-download-change
     if: ${{ needs.detect-public-linux-download-change.outputs.gate_changed == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
       - name: Install SITE parser dependency

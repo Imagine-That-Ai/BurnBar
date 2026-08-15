@@ -200,19 +200,24 @@ done
 isolated_test_filters=(
     "OpenBurnBarTests/MediaSessionCoordinatorTests/testActiveScreenShareStopsWhenAdmissionIsRevoked"
     "OpenBurnBarTests/MediaSessionCoordinatorTests/testStartScreenShareRollsBackAfterCaptureStartFailureAndCanRetry"
+    "OpenBurnBarTests/MemoryActivationEndToEndTests"
+    "OpenBurnBarTests/MemoryCitationJumpThreadResolutionTests"
+    "OpenBurnBarTests/MemoryCloudSyncDomainTests"
+    "OpenBurnBarTests/MemoryDropTelemetryTests"
     "OpenBurnBarTests/ProjectionChunkerTests"
     "OpenBurnBarTests/ProjectionPipelineServiceTests"
     "OpenBurnBarTests/ProjectionPipelineServiceMattersTests"
     "OpenBurnBarTests/ProjectionStoreLifecycleTests"
 )
-isolated_test_expected_count=121
+isolated_test_expected_count=133
 main_skip_test_filters=()
 run_isolated_test_phase=0
 if ((${#test_filters[@]} == 1)) && [[ "${test_filters[0]}" == "OpenBurnBarTests" ]]; then
     # These tests pass together in a fresh host but are contaminated by
-    # process-global media/GRDB state after the 1,900-test monolithic run.
-    # Keep the complete projection surface mandatory in one clean XCTest
-    # process so newly added projection tests cannot inherit that state.
+    # process-global media/StoreKit/GRDB state after the monolithic run.
+    # Keep the complete state-sensitive memory, citation, cloud-sync, and
+    # projection surfaces mandatory in one clean XCTest process so newly added
+    # tests cannot inherit that state.
     main_skip_test_filters=("${isolated_test_filters[@]}")
     run_isolated_test_phase=1
 fi
@@ -264,6 +269,25 @@ invocation_start_epoch="$(date +%s)"
 # Telemetry
 # ---------------------------------------------------------------------------
 
+# Failure diagnostics that must survive cleanup. Attempt xcresults live inside
+# the derived-data dir, which is deleted both by odd-numbered retry refreshes
+# and by the EXIT trap — long before CI's artifact upload step runs. When a
+# test hangs, XCTest attaches the hung process's thread backtraces to that
+# attempt's xcresult, so losing the bundle makes a 10-minute hang undiagnosable
+# from the streamed log alone. Copy every non-passing attempt's bundle here.
+diagnostics_dir="$artifact_root/test-openburnbar-app-diagnostics"
+
+preserve_diagnostic_xcresult() {
+    # Args: xcresult_path
+    local bundle="$1"
+    [ -d "$bundle" ] || return 0
+    mkdir -p "$diagnostics_dir"
+    local dest
+    dest="$diagnostics_dir/$(basename "$bundle")"
+    rm -rf "$dest"
+    cp -R "$bundle" "$dest" 2>/dev/null || true
+}
+
 emit_attempt_event() {
     # Args: attempt exit_code outcome duration_seconds xcresult_path
     local attempt="$1"
@@ -271,6 +295,10 @@ emit_attempt_event() {
     local outcome="$3"
     local duration="$4"
     local xcresult_path="$5"
+    case "$outcome" in
+        passed|xcode_false_negative_passed|isolated_passed) ;;
+        *) preserve_diagnostic_xcresult "$xcresult_path" ;;
+    esac
     local timestamp
     timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     python3 - "$attempt" "$exit_code" "$outcome" "$duration" "$xcresult_path" "$timestamp" "$attempt_log_path" <<'PY'
@@ -475,8 +503,10 @@ if actual != expected or passed != expected or failed != 0 or result != "Passed"
 }
 
 # Truncate the per-invocation telemetry stream so each fresh run is self-
-# contained for diagnostics. Append-only within the run.
+# contained for diagnostics. Append-only within the run. The preserved-xcresult
+# diagnostics directory is reset for the same reason.
 : > "$attempt_log_path"
+rm -rf "$diagnostics_dir"
 
 "$repo_root/scripts/lib/prepare-signal-ffi-xcframework.sh"
 

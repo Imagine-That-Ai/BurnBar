@@ -150,6 +150,11 @@ final class MercuryRouter: ObservableObject {
         _ connectionID: String,
         _ peerNodeID: String
     ) async throws -> (publicKey: PhoneControlVerifyingKey, requiredAttestationHashBlake3: String?)
+    typealias PhoneControlEnrollmentGrantIssuer = @MainActor (
+        _ connectionID: String,
+        _ controllerDeviceID: String,
+        _ controllerPeerNodeID: String
+    ) async throws -> Void
 
     @Published var phase: Phase = .idle
     @Published var lastError: String?
@@ -160,6 +165,7 @@ final class MercuryRouter: ObservableObject {
     let peerSource: MercuryPeerSource
     let consentStore: MercuryConsentStore
     let cooldownSeconds: TimeInterval
+    let pendingMirrorRequestTimeoutSeconds: TimeInterval
     let clock: @Sendable () -> Date
     let startScreenShare: ScreenShareStarter
     let ensureComputerUseSession: ComputerUseSessionEnsurer?
@@ -168,6 +174,7 @@ final class MercuryRouter: ObservableObject {
     let remoteUnlockReadiness: MacRemoteUnlockReadinessService
     let phoneControlAuthorityValidatorProvider: PhoneControlAuthorityValidatorProvider
     let phoneControlAuthorityRegistrationProvider: PhoneControlAuthorityRegistrationProvider?
+    let phoneControlEnrollmentGrantIssuer: PhoneControlEnrollmentGrantIssuer?
     let localStreamingCapabilityProvider: LocalStreamingCapabilityProvider
 
     var mirrorSinkFactory: MirrorSinkFactory?
@@ -205,6 +212,7 @@ final class MercuryRouter: ObservableObject {
     var remoteStreamingCapabilitiesByConnectionID: [String: MercuryStreamingCapabilitySnapshot] = [:]
     var remoteStreamingCapabilitiesByControlStreamID: [UUID: MercuryStreamingCapabilitySnapshot] = [:]
     var cooldownTask: Task<Void, Never>?
+    var pendingMirrorRequestExpiryTask: Task<Void, Never>?
     var remoteUnlockResumeTask: Task<Void, Never>?
     var mirrorStartupTasks: [String: Task<Void, Never>] = [:]
     var mirrorStartupTaskIDs: [String: UUID] = [:]
@@ -221,10 +229,12 @@ final class MercuryRouter: ObservableObject {
         remoteUnlockReadiness: MacRemoteUnlockReadinessService = .shared,
         phoneControlAuthorityValidatorProvider: @escaping PhoneControlAuthorityValidatorProvider = { nil },
         phoneControlAuthorityRegistrationProvider: PhoneControlAuthorityRegistrationProvider? = MercuryRouter.defaultPhoneControlAuthorityRegistrationProvider(),
+        phoneControlEnrollmentGrantIssuer: PhoneControlEnrollmentGrantIssuer? = nil,
         localStreamingCapabilityProvider: @escaping LocalStreamingCapabilityProvider = {
             MercuryRouter.cachedLocalStreamingCapabilities
         },
         cooldownSeconds: TimeInterval = 30,
+        pendingMirrorRequestTimeoutSeconds: TimeInterval = 20,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.sessionCoordinator = sessionCoordinator
@@ -252,9 +262,11 @@ final class MercuryRouter: ObservableObject {
         }
         self.maxMirrorViewers = max(1, maxMirrorViewers)
         self.cooldownSeconds = cooldownSeconds
+        self.pendingMirrorRequestTimeoutSeconds = max(0.01, pendingMirrorRequestTimeoutSeconds)
         self.clock = clock
         self.phoneControlAuthorityValidatorProvider = phoneControlAuthorityValidatorProvider
         self.phoneControlAuthorityRegistrationProvider = phoneControlAuthorityRegistrationProvider
+        self.phoneControlEnrollmentGrantIssuer = phoneControlEnrollmentGrantIssuer
         installHostAuthGateListeners()
     }
 
@@ -284,6 +296,7 @@ final class MercuryRouter: ObservableObject {
     }
 
     deinit {
+        pendingMirrorRequestExpiryTask?.cancel()
         remoteUnlockResumeTask?.cancel()
         mirrorStartupTasks.values.forEach { $0.cancel() }
         mirrorStartupTaskIDs.removeAll()

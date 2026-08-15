@@ -63,6 +63,12 @@ enum BurnBarDaemonDatabaseCipher {
     private static let keychainService = "com.openburnbar.database-encryption"
     private static let keychainKeyAccount = "database-encryption-key-v1"
 
+    /// Owner-only file the macOS app writes so an adhoc/Debug daemon (or a
+    /// LaunchAgent that cannot satisfy the Keychain ACL) can still unlock the
+    /// shared SQLCipher database. Same support-directory pattern as
+    /// `daemon-socket-auth-token`.
+    static let daemonReadableKeyFileName = "daemon-database-encryption-key"
+
     /// The 16-byte magic header every *plaintext* SQLite 3 file begins with. A
     /// SQLCipher-encrypted file's first page is ciphertext and does NOT carry it,
     /// so its presence/absence distinguishes the two without the key. Identical to
@@ -74,7 +80,12 @@ enum BurnBarDaemonDatabaseCipher {
 
     /// Returns the app's stored database encryption key, or `nil` when no key has
     /// been provisioned (encryption never enabled) or the Keychain is unreadable
-    /// (e.g. device locked). Mirrors `DatabaseEncryptionService.getKey()`.
+    /// (e.g. device locked / ACL rejects the daemon identity).
+    ///
+    /// Resolution order on macOS:
+    /// 1. Keychain item (same coordinates as `DatabaseEncryptionService`)
+    /// 2. Owner-only support-directory file written by the app for LaunchAgent /
+    ///    adhoc Debug daemons that hit `errSecAuthFailed` (-25293) on Keychain
     static func resolveKey() -> String? {
 #if canImport(Security)
         let query: [String: Any] = [
@@ -89,10 +100,20 @@ enum BurnBarDaemonDatabaseCipher {
         let status = withKeychainUserInteractionDisabled {
             SecItemCopyMatching(query as CFDictionary, &result)
         }
-        guard status == errSecSuccess, let data = result as? Data else {
-            return nil
+        if status == errSecSuccess, let data = result as? Data,
+           let key = String(data: data, encoding: .utf8),
+           key.isEmpty == false {
+            return key
         }
-        return String(data: data, encoding: .utf8)
+#if DEBUG
+        // Debug-only fallback matching the app's DEBUG-gated key file writer.
+        // A signed Release daemon must satisfy the Keychain ACL; if it cannot,
+        // the encrypted index stays closed rather than reading key material
+        // from disk (SECURITY.md: key exists only in Keychain).
+        return resolveKeyFromDaemonReadableFile()
+#else
+        return nil
+#endif
 #else
         let custodian = LinuxSecretStoreFactory.production()
         return try? custodian
@@ -100,6 +121,25 @@ enum BurnBarDaemonDatabaseCipher {
             .secret
 #endif
     }
+
+#if canImport(Security)
+    /// Reads `~/Library/Application Support/OpenBurnBar/daemon-database-encryption-key`
+    /// when Keychain ACL rejects the daemon process.
+    private static func resolveKeyFromDaemonReadableFile(
+        fileManager: FileManager = .default
+    ) -> String? {
+        let support = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/OpenBurnBar", isDirectory: true)
+        let fileURL = support.appendingPathComponent(daemonReadableKeyFileName, isDirectory: false)
+        guard let data = try? Data(contentsOf: fileURL),
+              let key = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              key.isEmpty == false else {
+            return nil
+        }
+        return key
+    }
+#endif
 
     /// Resolve the app key AND validate its charset, returning it only when it is
     /// safe to interpolate into a single-quoted `PRAGMA key` literal. Used by the
@@ -461,6 +501,7 @@ enum BurnBarDaemonDatabaseCipher {
     private static func makePlaintextMigrationConfiguration() -> Configuration {
         var configuration = Configuration()
         configuration.busyMode = .timeout(5)
+        configuration.maximumReaderCount = 8
         return configuration
     }
 

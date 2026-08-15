@@ -1,10 +1,15 @@
 {
-  "build": "45",
-  "bundleId": "com.openburnbar.app",
+  "appcast": "appcast.xml",
+  "build_timestamp": "2026-07-06T21:21:31Z",
   "channel": "direct-download",
-  "commit": "c1f01dc4e4dee71177c19fea4e9b5f35aa4817b7",
-  "createdAt": "2026-06-18T15:29:02Z",
-  "dmg": "OpenBurnBar-1.0.5-macOS.dmg",
-  "version": "1.0.5",
-  "zip": "OpenBurnBar-1.0.5-macOS.zip"
+  "commit": "ba39ea388fb9775938d4f51fd76cb16ec2cb38b1",
+  "correspondingSource": "OpenBurnBar-1.0.29-corresponding-source.tar.gz",
+  "latestMetadata": "latest-macos.json",
+  "runner_arch": "ARM64",
+  "runner_name": "GitHub Actions 1000248389",
+  "runner_os": "macOS",
+  "sparkleEdSignaturePresent": true,
+  "tag": "v1.0.29",
+  "updateBaseUrl": "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download",
+  "version": "1.0.29"
 }

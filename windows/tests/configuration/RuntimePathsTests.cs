@@ -3,6 +3,22 @@ using Xunit;
 
 namespace OpenBurnBar.App.Configuration.Tests;
 
+/// <summary>
+/// Serializes test classes that mutate the process-global LOCALAPPDATA
+/// environment variable. xUnit runs distinct collections in parallel, so
+/// without this, one class restoring LOCALAPPDATA to null (its CI default on
+/// Linux) races another class between its set and its assertion.
+/// </summary>
+[CollectionDefinition(Name)]
+public sealed class LocalAppDataEnvironmentCollection
+{
+    public const string Name = "LOCALAPPDATA environment";
+}
+
+// Shares a collection with AppConfigurationTests: both mutate the
+// process-global LOCALAPPDATA variable, so they must never run in parallel
+// with each other.
+[Collection(LocalAppDataEnvironmentCollection.Name)]
 public sealed class RuntimePathsTests
 {
     [Fact]

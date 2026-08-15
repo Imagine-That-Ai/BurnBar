@@ -16,19 +16,19 @@
   "dependencies": {
     "@openburnbar/entitlements": "file:../../packages/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:../../packages/signal-envelope-contracts",
-    "firebase-admin": "13.10.0"
+    "firebase-admin": "14.2.0"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
     "@types/node": "^24.6.0",
     "eslint": "9.39.4",
-    "globals": "17.6.0",
+    "globals": "17.9.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "8.60.1"
   },
   "overrides": {
     "uuid": "11.1.1",
-    "brace-expansion": "^5.0.8",
+    "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3"
   },
   "license": "AGPL-3.0-only"

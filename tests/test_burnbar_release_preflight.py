@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import re
 import subprocess
@@ -5,6 +6,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_release_preflight_module():
+    path = ROOT / "scripts/ci/check_burnbar_release_preflight.py"
+    spec = importlib.util.spec_from_file_location("burnbar_release_preflight_test", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def current_release_tag() -> str:
@@ -72,6 +82,23 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     assert "owner emergency approval: repo.releaseTag" not in result.stderr
 
 
+def test_owner_emergency_lane_never_claims_normal_release_readiness():
+    module = load_release_preflight_module()
+    stdout_lines, stderr_lines = module.success_posture(
+        source_provenance_only=False,
+        owner_emergency_approval=True,
+        owner_emergency_runtime_hold=True,
+    )
+
+    stdout = "\n".join(stdout_lines)
+    stderr = "\n".join(stderr_lines)
+    assert "emergency artifact release preflight is authorized" in stdout
+    assert "product release preflight is ready" not in stdout
+    assert "not signed external-counsel approval" in stderr
+    assert "Runtime readiness remains HOLD" in stderr
+    assert "Normal BurnBar release readiness still requires" in stderr
+
+
 def test_release_preflight_strictly_validates_claimed_approval(tmp_path):
     evidence = tmp_path / "forged-approved.json"
     evidence.write_text(
@@ -132,6 +159,15 @@ def test_product_release_workflows_invoke_release_preflight():
     assert "--allow-owner-emergency-approval" in release_body
     assert '--expected-release-tag "${{ steps.version.outputs.tag_name }}"' in release_body
     assert "--allow-owner-emergency-approval" not in deploy_body
+    # Real tag deploys still run the full product preflight; dry-runs keep only
+    # source-provenance so they can prove tag/candidate binding before counsel
+    # and runtime readiness are GO.
+    assert "if: steps.tag.outputs.dry_run != 'true'" in deploy_body
+    product_step = deploy_body.split("- name: BurnBar product release preflight", 1)[1]
+    product_step = product_step.split("- name:", 1)[0]
+    assert "if: steps.tag.outputs.dry_run != 'true'" in product_step
+    assert "check_burnbar_release_preflight.py" in product_step
+    assert "--source-provenance-only" not in product_step
 
     hosting_body = (ROOT / ".github/workflows/deploy-hosting.yml").read_text(encoding="utf-8")
     assert "check_burnbar_release_preflight.py" not in hosting_body
@@ -182,10 +218,23 @@ def test_release_build_and_release_job_has_packaging_headroom():
     assert "timeout-minutes: 300" in build_job
     assert "Cold-runner worst case stays well under five hours" in build_job
     assert "Build signed Android release bundle" in build_job
+    assert ":app:bundleRelease :app:assembleRelease" in build_job
+    assert "run-android-release-startup-smoke.sh" in build_job
     assert "Notarize and staple DMG" in build_job
     # Codex P1 on PR #1281: the fail-hard signing-secret check must live in the
     # environment-bound packaging job, where environment-scoped secrets resolve.
     assert "Validate strict release secrets" in build_job
+
+
+def test_android_release_proguard_preserves_reflective_firebase_registrars():
+    rules = (ROOT / "android/app/proguard-rules.pro").read_text(encoding="utf-8")
+
+    assert "-keep class com.google.firebase.**Registrar" in rules
+    assert (
+        "-keep class * implements com.google.firebase.components.ComponentRegistrar"
+        in rules
+    )
+    assert rules.count("public <init>();") >= 2
 
 
 def test_release_workflow_keeps_quiet_xcode_build_alive():

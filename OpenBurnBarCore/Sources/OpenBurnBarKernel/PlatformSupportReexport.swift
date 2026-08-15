@@ -1,1 +1,2 @@
 @_exported import OpenBurnBarAssistantModels
+@_exported import OpenBurnBarInboxModels

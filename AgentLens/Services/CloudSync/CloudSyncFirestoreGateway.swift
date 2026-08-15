@@ -11,6 +11,15 @@ protocol CloudSyncFirestoreGateway: AnyObject, Sendable {
     func runTransaction(
         _ updateBlock: @escaping (CloudSyncTransactionGateway) throws -> Bool
     ) async throws -> Bool
+    /// Raw SDK handle for APIs whose signatures require a `Firestore` value
+    /// (e.g. `MacCloudVaultSignalPayloads` / `MacCloudVaultKeyAccess`). Only the
+    /// live gateway owns a real handle; fakes return `nil` so tests never
+    /// resolve the global singleton.
+    func rawSignalPayloadFirestore() -> Firestore?
+}
+
+extension CloudSyncFirestoreGateway {
+    func rawSignalPayloadFirestore() -> Firestore? { nil }
 }
 
 protocol CloudSyncCollectionGateway: AnyObject, Sendable {
@@ -76,10 +85,27 @@ protocol CloudSyncDocumentSnapshotGateway: AnyObject, Sendable {
 // (override for tests); the SDK is internally thread-safe. sendable-allowlist: firebase-sdk-handle
 /// Thin wrapper around real Firebase Firestore SDK.
 final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked Sendable {
+    /// Sanctioned resolution point for the raw Firestore handle (R-GH6 raw
+    /// Firestore ratchet). Call sites that must hand the concrete SDK handle
+    /// to vault/Signal helpers resolve it here instead of calling
+    /// `Firestore.firestore()` directly, so handle configuration stays owned
+    /// by the gateway layer.
+    static var sdkHandle: Firestore { Firestore.firestore() }
+
     private let firestoreOverride: Firestore?
 
     init(firestore: Firestore? = nil) {
         self.firestoreOverride = firestore
+    }
+
+    /// Returns the live SDK handle for legacy adapters that still accept a
+    /// Firestore value instead of the gateway protocol.
+    static func defaultFirestore() -> Firestore {
+        Firestore.firestore()
+    }
+
+    static func firestoreData(_ value: NSDictionary) -> [String: Any] {
+        value as? [String: Any] ?? [:]
     }
 
     func collection(_ collectionPath: String) -> CloudSyncCollectionGateway {
@@ -111,8 +137,14 @@ final class CloudSyncFirestoreLiveGateway: CloudSyncFirestoreGateway, @unchecked
         }
     }
 
+    // cov:ignore-start -- returns the live SDK handle; resolving it requires a configured FirebaseApp, which unit tests never have. The nil default is unit-tested via CloudSyncFirestoreFakeGateway.
+    func rawSignalPayloadFirestore() -> Firestore? {
+        firestore
+    }
+    // cov:ignore-end
+
     private var firestore: Firestore {
-        firestoreOverride ?? Firestore.firestore()
+        firestoreOverride ?? Self.defaultFirestore()
     }
 }
 

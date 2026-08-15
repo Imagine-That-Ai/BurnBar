@@ -38,6 +38,11 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
                     tier: MacCloudEntitlementStore.shared.currentTier
                 )
             },
+            // cov:ignore-start -- live Firebase singleton wiring; the refresh-before-admission behavior is unit-tested through the injected entitlementRefreshProvider in MacMediaCapabilityGateTests
+            entitlementRefreshProvider: {
+                await MacCloudEntitlementStore.shared.refreshMediaAuthorityIfNeeded()
+            },
+            // cov:ignore-end
             usageProvider: {
                 quotaUsageStore.currentSnapshot
             },
@@ -61,12 +66,14 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
     }
 
     typealias EntitlementProvider = @MainActor () -> EntitlementState
+    typealias EntitlementRefreshProvider = @MainActor () async -> Void
     typealias UsageProvider = @MainActor () -> MediaQuotaUsageSnapshot
     typealias BudgetProvider = @MainActor () -> MediaBudgetStatus
     typealias ConcurrentSessionsProvider = @MainActor (MediaStreamClass.Feature) -> Int
     typealias KillSwitchProvider = @MainActor () -> Bool
 
     private let entitlementProvider: EntitlementProvider
+    private let entitlementRefreshProvider: EntitlementRefreshProvider
     private let usageProvider: UsageProvider
     private let budgetProvider: BudgetProvider
     private let concurrentSessionsProvider: ConcurrentSessionsProvider
@@ -74,12 +81,14 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
 
     init(
         entitlementProvider: @escaping EntitlementProvider,
+        entitlementRefreshProvider: @escaping EntitlementRefreshProvider = {},
         usageProvider: @escaping UsageProvider,
         budgetProvider: @escaping BudgetProvider,
         concurrentSessionsProvider: @escaping ConcurrentSessionsProvider,
         killSwitchProvider: @escaping KillSwitchProvider
     ) {
         self.entitlementProvider = entitlementProvider
+        self.entitlementRefreshProvider = entitlementRefreshProvider
         self.usageProvider = usageProvider
         self.budgetProvider = budgetProvider
         self.concurrentSessionsProvider = concurrentSessionsProvider
@@ -115,7 +124,8 @@ final class MacMediaCapabilityGate: MediaCapabilityGate {
         sessionByteBudget: Int64?,
         transferDirection: MediaCapabilityTransferDirection?
     ) async -> MediaCapabilityCheck {
-        await MainActor.run {
+        await entitlementRefreshProvider()
+        return await MainActor.run {
             let entitlement = entitlementProvider()
             guard entitlement.active else {
                 return .denied(reason: .entitlementMissing)

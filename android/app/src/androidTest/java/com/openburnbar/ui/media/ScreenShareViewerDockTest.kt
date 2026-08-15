@@ -3,6 +3,7 @@ package com.openburnbar.ui.media
 import android.graphics.Color as AndroidColor
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -10,19 +11,27 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.openburnbar.data.media.VideoReceivePipeline
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -32,6 +41,116 @@ import org.junit.runner.RunWith
 class ScreenShareViewerDockTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test
+    fun typeKeyReopensKeyboardWithOneTapAfterSystemDismissal() {
+        composeRule.setContent {
+            MaterialTheme {
+                var typingOpen by remember { mutableStateOf(false) }
+                var openGroup by remember { mutableStateOf<MirrorControlGroup?>(null) }
+                Box(
+                    modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black),
+                ) {
+                    ScreenMirrorToolsDock(
+                        state =
+                        MirrorDockUiState(
+                            collapsed = false,
+                            openGroup = openGroup,
+                            fit = ScreenMirrorFit.FIT,
+                            controlMode = ScreenMirrorControlMode.TOUCH,
+                            typingOpen = typingOpen,
+                            statsVisible = false,
+                            phaseLabel = "Live",
+                            trayScale = 1f,
+                            stats = VideoReceivePipeline.Stats(widthPx = 1920, heightPx = 1080),
+                            availableDisplays = emptyList(),
+                            activeDisplayId = null,
+                            smartZoomMode = SmartZoomMode.SMART,
+                            smartZoomAutoFollowing = false,
+                            autoKeyboardOnTextFocus = false,
+                            controlStatus = null,
+                        ),
+                        actions =
+                        MirrorDockActions(
+                            onSelectDisplay = {},
+                            onTrayScaleChange = {},
+                            onToggleCollapsed = {},
+                            onSelectGroup = { openGroup = it },
+                            onToggleStats = {},
+                            onCycleFit = {},
+                            onCycleControlMode = {},
+                            onSelectSmartZoomMode = {},
+                            onSelectControlMode = {},
+                            onAutoKeyboardOnTextFocusChange = {},
+                            onToggleTyping = { typingOpen = !typingOpen },
+                            onScrollUp = {},
+                            onScrollDown = {},
+                            onEscape = {},
+                            onCommandTab = {},
+                            onPasteClipboardToMac = {},
+                            onGrabClipboardFromMac = {},
+                            onPanic = {},
+                            onTrustControlDevice = {},
+                            onReconnect = {},
+                            onEnterPictureInPicture = {},
+                            onClose = {},
+                        ),
+                    )
+                    if (typingOpen) {
+                        RemoteKeyboardCaptureField(
+                            onText = {},
+                            onKey = {},
+                            onDismiss = { typingOpen = false },
+                        )
+                    }
+                }
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Keys").performClick()
+        composeRule.onNodeWithContentDescription("Type on Mac").performClick()
+        // Samsung may briefly place a focus-stealing system overlay above a
+        // freshly installed instrumentation target. Mercury must recover as
+        // soon as the app regains window focus.
+        composeRule.waitUntil(timeoutMillis = 10_000) { isImeVisible() }
+
+        Espresso.pressBack()
+        composeRule.waitUntil(timeoutMillis = 5_000) { !isImeVisible() }
+
+        composeRule.onNodeWithContentDescription("Type on Mac").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) { isImeVisible() }
+    }
+
+    @Test
+    fun remoteKeyboardBridgeDoesNotStealBottomLeftMirrorTap() {
+        val mirrorTapCount = AtomicInteger(0)
+        composeRule.setContent {
+            MaterialTheme {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .clickable { mirrorTapCount.incrementAndGet() },
+                    )
+                    RemoteKeyboardCaptureField(
+                        modifier = Modifier.align(Alignment.BottomStart),
+                        onText = {},
+                        onKey = {},
+                        onDismiss = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onRoot().performTouchInput {
+            click(Offset(x = 24f, y = height - 24f))
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { mirrorTapCount.get() == 1 }
+    }
 
     @Test
     fun expandedDockGroupsControlsIntoCascadingShelves() {
@@ -146,4 +265,7 @@ class ScreenShareViewerDockTest {
             accentPixels > 40,
         )
     }
+
+    private fun isImeVisible(): Boolean = ViewCompat.getRootWindowInsets(composeRule.activity.window.decorView)
+        ?.isVisible(WindowInsetsCompat.Type.ime()) == true
 }

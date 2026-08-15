@@ -17,12 +17,14 @@ export const REQUIRED_VARIABLES = Object.freeze([
   "OPENBURNBAR_P16_MACOS_COORDINATION_ROOT",
   "OPENBURNBAR_P16_LINUX_COORDINATION_ROOT",
 ]);
+// Pin P-16 to the Mac that owns the paired physical iPad. Do not use
+ // aspirational hardware labels (for example m5max) that no online runner
+ // currently carries — that queues forever against an unreachable selector.
 export const REQUIRED_RUNNER_LABELS = Object.freeze([
   "self-hosted",
   "macOS",
   "ARM64",
-  "m5max",
-  "ios",
+  "p16-physical-ipad",
 ]);
 
 const UUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/iu;
@@ -290,6 +292,49 @@ export function parseXcrunDeviceOutput(raw) {
   };
 }
 
+export function parseXcdeviceListOutput(raw) {
+  const parsed = parseJson(raw, "xcdevice list");
+  if (!Array.isArray(parsed)) {
+    fail("malformed_input", "xcdevice list output must be a JSON array");
+  }
+  const availableIPads = [];
+  const identifiers = new Set();
+  for (const [index, rawRow] of parsed.entries()) {
+    const row = plainObject(rawRow, `xcdevice list row ${index + 1}`);
+    const name = safeString(row.name, "xcdevice device name");
+    const identifier = safeString(row.identifier, "xcdevice device identifier");
+    if (!DEVICE_IDENTIFIER.test(identifier)) {
+      fail("malformed_input", "xcdevice device identifier is malformed");
+    }
+    if (identifiers.has(identifier)) {
+      fail("duplicate_input", "xcdevice list contains a duplicate device identifier");
+    }
+    identifiers.add(identifier);
+    const simulator = row.simulator === true;
+    const available = row.available === true;
+    const isIPad = /\bipad\b/iu.test(name) || /\bipad\b/iu.test(String(row.modelName ?? ""));
+    if (simulator || !available || !isIPad) continue;
+    if (/\bsimulator\b/iu.test(name)) {
+      fail("spoofed_device", "xcdevice list contains a Simulator-labelled physical iPad claim");
+    }
+    availableIPads.push({ name, identifier });
+  }
+  if (availableIPads.length > 1) {
+    fail("ambiguous_ipad", "more than one available physical iPad was discovered");
+  }
+  const selected = availableIPads[0] ?? null;
+  return {
+    availableCount: availableIPads.length,
+    offlineCount: 0,
+    source: "xcdevice",
+    selected: selected === null ? null : {
+      name: selected.name,
+      identifierSha256: crypto.createHash("sha256").update(selected.identifier).digest("hex"),
+      simulator: false,
+    },
+  };
+}
+
 function normalizedLabel(value) {
   return value.toLocaleLowerCase("en-US");
 }
@@ -544,18 +589,35 @@ export function evaluateP16HostPreflight(input, dependencies = {}) {
   }
 
   try {
-    const devices = parseXcrunDeviceOutput(commandOutput("devicesOutput"));
+    let devices = parseXcrunDeviceOutput(commandOutput("devicesOutput"));
+    let discoverySource = "xctrace";
+    if (
+      (devices.availableCount !== 1 || devices.selected === null)
+      && typeof input.xcdeviceOutput === "string"
+      && input.xcdeviceOutput.length > 0
+    ) {
+      const corroborated = parseXcdeviceListOutput(input.xcdeviceOutput);
+      if (corroborated.availableCount === 1 && corroborated.selected !== null) {
+        devices = {
+          availableCount: corroborated.availableCount,
+          offlineCount: devices.offlineCount,
+          selected: corroborated.selected,
+        };
+        discoverySource = "xcdevice-corroborated";
+      }
+    }
     if (devices.availableCount !== 1 || devices.selected === null) {
       addBlocker(
         "physicalIPad",
         "physical_ipad_unavailable",
         "Exactly one available physical non-Simulator iPad is required.",
-        { availableCount: devices.availableCount, offlineCount: devices.offlineCount },
+        { availableCount: devices.availableCount, offlineCount: devices.offlineCount, discoverySource },
       );
     } else {
       addPass("physicalIPad", "Exactly one available physical non-Simulator iPad was discovered.", {
         ...devices.selected,
         offlineCount: devices.offlineCount,
+        discoverySource,
       });
     }
   } catch (error) {
@@ -651,6 +713,14 @@ export const READ_ONLY_COMMANDS = Object.freeze([
     key: "devicesOutput",
     command: "xcrun",
     args: Object.freeze(["xctrace", "list", "devices"]),
+  }),
+  Object.freeze({
+    // CoreDevice inventory. xctrace intermittently parks a USB-paired iPad
+    // under Devices Offline while xcdevice reports available=true; use this
+    // as a bounded corroborating source, never as a Simulator authority.
+    key: "xcdeviceOutput",
+    command: "xcrun",
+    args: Object.freeze(["xcdevice", "list"]),
   }),
   Object.freeze({
     key: "runnersOutput",

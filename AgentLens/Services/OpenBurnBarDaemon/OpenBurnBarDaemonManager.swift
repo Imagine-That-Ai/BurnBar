@@ -20,6 +20,15 @@ struct OpenBurnBarDaemonRuntimePaths: Hashable {
         supportDirectory.appendingPathComponent("daemon-socket-auth-token", isDirectory: false)
     }
 
+    /// Owner-only copy of the SQLCipher key for LaunchAgent / adhoc Debug
+    /// daemons that cannot satisfy the Keychain ACL (`errSecAuthFailed`).
+    var databaseEncryptionKeyFileURL: URL {
+        supportDirectory.appendingPathComponent(
+            "daemon-database-encryption-key",
+            isDirectory: false
+        )
+    }
+
     var providerConfigURL: URL {
         supportDirectory.appendingPathComponent("provider-config.json", isDirectory: false)
     }
@@ -357,11 +366,14 @@ final class OpenBurnBarDaemonManager {
         self.computerUseCloudMeteringRecorder = computerUseCloudMeteringRecorder
     }
 
-    /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the main actor or the UI hangs.
-    /// `nonisolated` so the work runs off the main actor (SE-0338); it only calls
-    /// the passed `@Sendable` closure, so it needs no detached task.
-    nonisolated func daemonRPC<T: Sendable>(_ work: @Sendable () throws -> T) async throws -> T {
-        try work()
+    /// Unix socket RPC uses blocking `connect`/`read` loops. Must not run on the
+    /// main actor or Settings/Dashboard beachballs. Always hop onto a detached
+    /// task — a bare `nonisolated async` body is not enough when the caller is
+    /// `@MainActor` and the work never suspends before the blocking I/O.
+    nonisolated func daemonRPC<T: Sendable>(_ work: @Sendable @escaping () throws -> T) async throws -> T {
+        try await Task.detached(priority: .userInitiated) {
+            try work()
+        }.value
     }
 
     /// Process launch and `waitUntilExit` are blocking Foundation calls. Keep them off the main actor.
@@ -430,12 +442,24 @@ final class OpenBurnBarDaemonManager {
     }
 
     func attach(dataStore: DataStore, cloudSyncService: CloudSyncService? = nil) {
+        let isFirstAttach = self.dataStore == nil
         self.dataStore = dataStore
         if let cloudSyncService {
             uploadPendingUsageAfterImport = { [weak cloudSyncService] in
                 await cloudSyncService?.uploadPending()
             }
         }
+        // Keep the daemon-readable SQLCipher key file fresh even on re-attach.
+        // Adhoc Debug LaunchAgents often cannot read the Keychain ACL and need
+        // this owner-only file to open the encrypted index (AI Inbox, search).
+        _ = DatabaseEncryptionService.syncDaemonReadableKeyMaterial(
+            to: paths.databaseEncryptionKeyFileURL
+        )
+        // Re-entering Settings → Daemon used to call attach on every visit and
+        // re-fire repair + full refresh + credential Keychain sweeps, blanking
+        // the sheet and beachballing the app. Only the first attach boots that
+        // background work; later attaches just rebind the dataStore.
+        guard isFirstAttach else { return }
         Task { @MainActor in
             OpenBurnBarDaemonLocalNotificationRelay.shared.start(settingsManager: settingsManager)
         }
@@ -491,7 +515,22 @@ final class OpenBurnBarDaemonManager {
         await refreshHealth()
     }
 
+    /// How much work `refreshHealth` is allowed to do.
+    ///
+    /// - `statusOnly`: one health RPC. Safe for Settings navigation.
+    /// - `full`: also may repair the installed daemon, rebuild the activity
+    ///   snapshot (up to 10k conversations), and refresh runtime config. Use
+    ///   from background cadence / explicit Repair — never from tab switches.
+    enum HealthRefreshMode: Sendable {
+        case statusOnly
+        case full
+    }
+
     func refreshHealth() async {
+        await refreshHealth(mode: .full)
+    }
+
+    func refreshHealth(mode: HealthRefreshMode) async {
         // Crash-loop backoff: skip health probe if supervisor says not yet.
         if !OpenBurnBarDaemonSupervisor.shouldProbeNow(
             state: supervisionState,
@@ -500,7 +539,8 @@ final class OpenBurnBarDaemonManager {
             return
         }
 
-        await exportControllerActivitySnapshotIfStale()
+        // Probe health first so Settings/Daemon UI is not blocked behind the
+        // activity-snapshot rebuild (up to 10k conversations).
         status = .checking
         let socketURL = paths.socketURL
         let requestHealth = dependencies.requestHealth
@@ -520,14 +560,14 @@ final class OpenBurnBarDaemonManager {
             } else {
                 status = .healthy(snapshot)
                 supervisionState = .healthy
-                if await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
+                if mode == .full, await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
                     return
                 }
             }
             lastError = nil
         } catch {
             if isInstalled {
-                if await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
+                if mode == .full, await refreshInstalledDaemonIfNeededForCurrentAppBuild() {
                     return
                 }
                 let heartbeatDetail = isDaemonHeartbeatStale
@@ -547,6 +587,8 @@ final class OpenBurnBarDaemonManager {
                 supervisionState = .idle
             }
         }
+        guard mode == .full else { return }
+        await exportControllerActivitySnapshotIfStale()
         await refreshRuntimeSnapshot()
     }
 

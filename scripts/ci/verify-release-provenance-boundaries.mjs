@@ -195,7 +195,7 @@ function hasShellFlag(source, flag) {
   return new RegExp(`(^|\\s)${escaped}(\\s|$)`, "u").test(source);
 }
 
-function namedStepBlock(file, source, stepName, message) {
+function namedStepBlock(file, source, stepName, message, { allowedIf } = {}) {
   const stepBlocks = workflowStepBlocks(source, stepName);
   if (stepBlocks.length === 0) {
     fail(file, `${message}: missing step`);
@@ -205,8 +205,16 @@ function namedStepBlock(file, source, stepName, message) {
     fail(file, `${message}: duplicate step name ${stepName}`);
   }
   const stepBlock = stepBlocks[0];
-  if (/^ {8}if\s*:/mu.test(stepBlock)) {
-    fail(file, `${message}: protected step must not be conditional`);
+  const ifLines = [...stepBlock.matchAll(/^ {8}if\s*:\s*(.*\S)\s*$/gmu)];
+  if (ifLines.length > 0) {
+    if (!allowedIf) {
+      fail(file, `${message}: protected step must not be conditional`);
+    } else if (ifLines.length > 1 || !allowedIf.test(ifLines[0][1])) {
+      fail(
+        file,
+        `${message}: protected step condition must match the approved guard`,
+      );
+    }
   }
   return stepBlock;
 }
@@ -274,11 +282,18 @@ function requireNoContinueOnError(file, source, message) {
   if (offenders.length > 0) fail(file, `${message}: ${offenders.join("; ")}`);
 }
 
+// Dry-runs prove tag binding and source integrity without claiming the
+// product lane is launch-ready, so the production deploy workflow may skip
+// the product preflight for dry-runs only. This is the sole condition the
+// protected step may carry, and only where allowDryRunSkip is set.
+const DRY_RUN_SKIP_GUARD =
+  /^(?:\$\{\{\s*)?steps\.tag\.outputs\.dry_run\s*!=\s*'true'(?:\s*\}\})?$/u;
+
 function requireProductReleasePreflight(
   file,
   source,
   message,
-  { allowOwnerEmergencyApproval = false } = {},
+  { allowOwnerEmergencyApproval = false, allowDryRunSkip = false } = {},
 ) {
   requireNoPattern(
     file,
@@ -292,6 +307,7 @@ function requireProductReleasePreflight(
     source,
     "BurnBar product release preflight",
     message,
+    allowDryRunSkip ? { allowedIf: DRY_RUN_SKIP_GUARD } : {},
   );
   const runBlock = shellRunBlockFromStep(stepBlock);
   if (!runBlock) {
@@ -1058,6 +1074,7 @@ function verifyProductionDeployWorkflow() {
     file,
     source,
     "production deploy product preflight must be mandatory",
+    { allowDryRunSkip: true },
   );
 }
 

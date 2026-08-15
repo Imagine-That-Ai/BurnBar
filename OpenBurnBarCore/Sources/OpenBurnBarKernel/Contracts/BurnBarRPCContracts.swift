@@ -186,6 +186,28 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case databaseRecoveryStatus = "daemon.database.recovery.status"
     case databaseRecoveryBundleExport = "daemon.database.recovery_bundle.export"
     case databaseRecoveryBundleImport = "daemon.database.recovery_bundle.import"
+    /// AI Inbox — daemon-resident proactive analyst. Reads are observability
+    /// shaped; config/run mutations spend money and are classified with config.
+    case inboxList = "daemon.inbox.list"
+    case inboxGet = "daemon.inbox.get"
+    case inboxRunsRecent = "daemon.inbox.runs.recent"
+    case inboxConfigGet = "daemon.inbox.config.get"
+    case inboxConfigUpdate = "daemon.inbox.config.update"
+    case inboxRunNow = "daemon.inbox.run_now"
+    /// Founder Lens: fingerprint-keyed reply threads. `thread.get` is a read;
+    /// `reply` spends model budget and is config-scoped.
+    case inboxThreadGet = "daemon.inbox.thread.get"
+    case inboxReply = "daemon.inbox.reply"
+    /// Founder Plan Ledger. Reads observability; accept/update/grade are
+    /// human-confirmed mutations, config-scoped.
+    case inboxPlansList = "daemon.inbox.plans.list"
+    case inboxPlansGet = "daemon.inbox.plans.get"
+    case inboxPlansAccept = "daemon.inbox.plans.accept"
+    case inboxPlansUpdateStep = "daemon.inbox.plans.update_step"
+    case inboxPlansGrade = "daemon.inbox.plans.grade"
+    /// App → daemon push of approved chat-authority snippets (full-set
+    /// replacement, so revocations propagate by omission).
+    case inboxMemoryExport = "daemon.inbox.memory.export"
     case runResume = "run.resume"
 }
 

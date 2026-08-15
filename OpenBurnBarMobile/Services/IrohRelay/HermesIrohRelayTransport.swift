@@ -284,10 +284,16 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
     /// chat request has happened, so tapping "My Mac" is enough to bring
     /// Mercury online.
     func ensureMediaControlStream(connectionID: String) async throws {
+        #if DEBUG
+        NSLog("OpenBurnBarMercury ensure_media_control_start connectionID=\(connectionID)")
+        #endif
         if let existing = mediaControlCoordinators[connectionID] {
             switch existing.phase {
             case .live, .dialing:
                 lastMediaControlConnectionID = connectionID
+                #if DEBUG
+                NSLog("OpenBurnBarMercury ensure_media_control_reuse connectionID=\(connectionID) phase=\(String(describing: existing.phase))")
+                #endif
                 return
             case .idle, .stopped, .failed, .reconnecting:
                 await existing.stop()
@@ -300,12 +306,21 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         guard mediaControlReceiver != nil else {
             throw HermesServiceError.relayUnavailable("Mercury receiver is not installed.")
         }
+        #if DEBUG
+        NSLog("OpenBurnBarMercury ensure_media_control_fetch_key connectionID=\(connectionID)")
+        #endif
         let publicKey = try await pairingPublicKeyProvider.fetchPublicKey(uid: uid)
+        #if DEBUG
+        NSLog("OpenBurnBarMercury ensure_media_control_key_ready connectionID=\(connectionID) bytes=\(publicKey.count)")
+        #endif
         startMediaControlCoordinatorIfNeeded(
             uid: uid,
             connectionID: connectionID,
             pairingPublicKey: publicKey
         )
+        #if DEBUG
+        NSLog("OpenBurnBarMercury ensure_media_control_coordinator_started connectionID=\(connectionID)")
+        #endif
     }
 
     /// Mercury Phase 8 — read-only accessor for the active control-stream
@@ -347,6 +362,9 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
         connectionID: String,
         relayPublicKey: Data
     ) async throws -> any IrohRelayStream {
+        #if DEBUG
+        NSLog("OpenBurnBarMercury open_media_control_verify_start connectionID=\(connectionID)")
+        #endif
         let publisher = IrohPairingPublisher(directory: directory)
         let verifiedTarget = try await publisher.fetchAndVerify(
             uid: uid,
@@ -354,12 +372,33 @@ final class HermesIrohRelayTransport: HermesRelayTransporting {
             publicKey: relayPublicKey,
             now: now()
         )
+        #if DEBUG
+        NSLog(
+            "OpenBurnBarMercury open_media_control_verify_complete connectionID=%@ nodeID=%@ directAddresses=%d",
+            connectionID,
+            verifiedTarget.nodeId,
+            verifiedTarget.directAddresses.count
+        )
+        NSLog("OpenBurnBarMercury open_media_control_transport_start connectionID=\(connectionID)")
+        #endif
         let transport = try await transport(relayURL: verifiedTarget.relayURL)
+        #if DEBUG
+        NSLog("OpenBurnBarMercury open_media_control_transport_complete connectionID=\(connectionID)")
+        NSLog("OpenBurnBarMercury open_media_control_route_start connectionID=\(connectionID)")
+        #endif
         try await registerControllerRouteBeforeConnect(uid: uid, connectionID: connectionID)
-        return try await transport.connect(
+        #if DEBUG
+        NSLog("OpenBurnBarMercury open_media_control_route_complete connectionID=\(connectionID)")
+        NSLog("OpenBurnBarMercury open_media_control_dial_start connectionID=\(connectionID)")
+        #endif
+        let stream = try await transport.connect(
             to: verifiedTarget,
             timeout: Self.defaultMediaControlConnectTimeout
         )
+        #if DEBUG
+        NSLog("OpenBurnBarMercury open_media_control_dial_complete connectionID=\(connectionID)")
+        #endif
+        return stream
     }
 
     func openComputerUseControlStream(

@@ -157,6 +157,7 @@ private fun breadcrumb(item: SettingsItem): String {
     val pageLabel =
         when (item.pageRoute) {
             SettingsPageRoute.ROOT -> ""
+            SettingsPageRoute.CONNECTED_DEVICES -> "Connected Devices"
             SettingsPageRoute.SMART_DISPLAYS -> "Smart Displays"
             SettingsPageRoute.MENU_BAR_PREFS -> "Quick-Glance"
             SettingsPageRoute.THEME_PREFS -> "Theme & SOTA UX"

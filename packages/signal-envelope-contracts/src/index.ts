@@ -60,6 +60,13 @@ export interface SignalAtRestKeyDelivery {
   contentKeyLength: 32;
 }
 
+export interface SignalAtRestSenderAuth {
+  senderIdentityKeyId: string;
+  senderIdentityKeyB64: string;
+  signatureB64: string;
+  signatureVersion: 1;
+}
+
 export interface SignalEnvelope {
   signalEnvelopeFormatVersion: number;
   mode: SignalEnvelopeMode;
@@ -68,6 +75,7 @@ export interface SignalEnvelope {
   ciphertextLayer: SignalCiphertextLayer;
   keyDelivery: SignalTransportKeyDelivery | SignalAtRestKeyDelivery;
   binding: SignalBinding;
+  senderAuth?: SignalAtRestSenderAuth;
 }
 
 const SIGNAL_ENVELOPE_FIELDS = new Set([
@@ -78,6 +86,7 @@ const SIGNAL_ENVELOPE_FIELDS = new Set([
   "ciphertextLayer",
   "keyDelivery",
   "binding",
+  "senderAuth",
 ]);
 
 const SIGNAL_CIPHERTEXT_LAYER_FIELDS = new Set(["payloadCiphertextB64", "payloadAADLabel", "schemaVersion"]);
@@ -110,11 +119,21 @@ const SIGNAL_AT_REST_WRAP_FIELDS = new Set([
   "recipientIdentityKeyB64",
   "sealedContentKeyB64",
 ]);
+const SIGNAL_AT_REST_SENDER_AUTH_FIELDS = new Set([
+  "senderIdentityKeyId",
+  "senderIdentityKeyB64",
+  "signatureB64",
+  "signatureVersion",
+]);
 
 function recordOrUndefined(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function hasOnly(record: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  return Object.keys(record).every((key) => allowed.has(key));
 }
 
 function stripUndefined<T extends Record<string, unknown>>(record: T): T {
@@ -151,6 +170,24 @@ function base64Within(raw: unknown, maxLength: number): string | undefined {
     return undefined;
   }
   return value;
+}
+
+function base64Exact(raw: unknown, byteLength: number): string | undefined {
+  const value = base64Within(raw, Math.ceil(byteLength / 3) * 4);
+  if (!value) {return undefined;}
+  return Buffer.from(value, "base64").length === byteLength ? value : undefined;
+}
+
+function sanitizeAtRestSenderAuth(raw: unknown): SignalAtRestSenderAuth | undefined {
+  const record = recordOrUndefined(raw);
+  if (!record) {return undefined;}
+  const senderIdentityKeyId = boundedText(record.senderIdentityKeyId, SIGNAL_MAX_ID);
+  const senderIdentityKeyB64 = base64Exact(record.senderIdentityKeyB64, 33);
+  const signatureB64 = base64Exact(record.signatureB64, 64);
+  if (!senderIdentityKeyId || !senderIdentityKeyB64 || !signatureB64 || record.signatureVersion !== 1) {
+    return undefined;
+  }
+  return { senderIdentityKeyId, senderIdentityKeyB64, signatureB64, signatureVersion: 1 };
 }
 
 function sanitizeCiphertextLayer(raw: unknown): SignalCiphertextLayer | undefined {
@@ -288,7 +325,16 @@ export function sanitizeSignalEnvelope(raw: unknown, expectedMode?: SignalEnvelo
   const keyDelivery =
     mode === "transport" ? sanitizeTransportDelivery(record.keyDelivery) : sanitizeAtRestDelivery(record.keyDelivery);
   const binding = sanitizeBinding(record.binding, { mode, scope: mode === "transport" ? "gateway" : undefined });
-  if (!ciphertextLayer || !keyDelivery || !binding) {return undefined;}
+  const senderAuth = mode === "at-rest" && record.senderAuth !== undefined
+    ? sanitizeAtRestSenderAuth(record.senderAuth)
+    : undefined;
+  if (
+    !ciphertextLayer ||
+    !keyDelivery ||
+    !binding ||
+    (mode === "transport" && record.senderAuth !== undefined) ||
+    (mode === "at-rest" && record.senderAuth !== undefined && !senderAuth)
+  ) {return undefined;}
   return stripUndefined({
     signalEnvelopeFormatVersion,
     mode,
@@ -297,11 +343,50 @@ export function sanitizeSignalEnvelope(raw: unknown, expectedMode?: SignalEnvelo
     ciphertextLayer,
     keyDelivery,
     binding,
+    senderAuth,
   }) as SignalEnvelope;
 }
 
 export function isSignalEnvelope(value: unknown, expectedMode?: SignalEnvelopeMode): value is SignalEnvelope {
   return sanitizeSignalEnvelope(value, expectedMode) !== undefined;
+}
+
+function exactSignalEnvelopeShape(raw: unknown, mode: SignalEnvelopeMode): boolean {
+  const record = recordOrUndefined(raw);
+  const ciphertextLayer = recordOrUndefined(record?.ciphertextLayer);
+  const keyDelivery = recordOrUndefined(record?.keyDelivery);
+  const binding = recordOrUndefined(record?.binding);
+  if (
+    !record ||
+    !ciphertextLayer ||
+    !keyDelivery ||
+    !binding ||
+    !hasOnly(record, SIGNAL_ENVELOPE_FIELDS) ||
+    !hasOnly(ciphertextLayer, SIGNAL_CIPHERTEXT_LAYER_FIELDS) ||
+    !hasOnly(binding, SIGNAL_BINDING_FIELDS)
+  ) {return false;}
+  if (mode === "transport") {
+    return hasOnly(keyDelivery, SIGNAL_TRANSPORT_KEY_DELIVERY_FIELDS) && record.senderAuth === undefined;
+  }
+  const wraps = Array.isArray(keyDelivery.wraps) ? keyDelivery.wraps : [];
+  const senderAuth = recordOrUndefined(record.senderAuth);
+  return (
+    hasOnly(keyDelivery, SIGNAL_AT_REST_KEY_DELIVERY_FIELDS) &&
+    wraps.every((item) => {
+      const wrap = recordOrUndefined(item);
+      return wrap !== undefined && hasOnly(wrap, SIGNAL_AT_REST_WRAP_FIELDS);
+    }) &&
+    (senderAuth === undefined || hasOnly(senderAuth, SIGNAL_AT_REST_SENDER_AUTH_FIELDS))
+  );
+}
+
+/** Strict sanitizer for production writes; export sanitation remains redacting/loose. */
+export function sanitizeSignalEnvelopeStrict(
+  raw: unknown,
+  expectedMode: SignalEnvelopeMode,
+): SignalEnvelope | undefined {
+  if (!exactSignalEnvelopeShape(raw, expectedMode)) {return undefined;}
+  return sanitizeSignalEnvelope(raw, expectedMode);
 }
 
 /**

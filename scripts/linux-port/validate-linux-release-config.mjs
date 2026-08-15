@@ -88,7 +88,11 @@ const packageSources = {
   '/etc/xdg/autostart/openburnbar.desktop': '../../../packaging/linux/autostart/openburnbar.desktop'
 };
 for (const packageType of ['deb', 'rpm']) {
-  const files = tauri.bundle?.linux?.[packageType]?.files ?? {};
+  const bundle = tauri.bundle?.linux?.[packageType] ?? {};
+  const files = bundle.files ?? {};
+  if (bundle.desktopTemplate !== '../../../packaging/linux/tauri-installed.desktop') {
+    failures.push(`${packageType} must use the canonical installed desktop template`);
+  }
   for (const [destination, source] of Object.entries(packageSources)) {
     if (files[destination] !== source) {
       failures.push(`${packageType} must package ${source} at ${destination}`);

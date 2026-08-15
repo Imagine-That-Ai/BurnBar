@@ -42,6 +42,7 @@ ROW_IDS = (
 STATES = {
     "rollout",
     "promotion_approved",
+    "activation_annulled",
     "rust_authoritative_with_rollback",
     "deletion_approved",
     "rollback_active",
@@ -169,6 +170,7 @@ POST_DELETION_PRIMITIVE_RULES = (
 )
 RECEIPT_TRANSITIONS = {
     "promotion": "promotion",
+    "activationAnnulment": "annulment",
     "stableRelease": "stable_release",
     "rollback": "rollback",
     "deletionReview": "deletion_review",
@@ -181,6 +183,7 @@ RELEASE_PROVENANCE_ROOT = "config/domain-core-release-provenance"
 DELETION_PLAN_ROOT = "config/domain-core-deletion-plans"
 DELETION_REVIEWERS_PATH = "config/domain-core-deletion-reviewers.json"
 BUILD_PROFILE_PATH = "config/domain-core-build-profiles.json"
+CONTROL_PLANE_MANIFEST_PATH = "config/domain-core-control-plane-manifest.json"
 PROMOTION_SCOPES = {
     "quota": "quota",
     "cloudVault": "cloudvault",
@@ -253,6 +256,7 @@ RELEASE_ARTIFACT_IDENTITIES = {
 }
 ACTIVATION_ALLOWED_EXACT_PATHS = {
     BUILD_PROFILE_PATH,
+    CONTROL_PLANE_MANIFEST_PATH,
     "config/domain-core-legacy-deletion.json",
 }
 ACTIVATION_ALLOWED_PREFIXES = (
@@ -263,6 +267,19 @@ ACTIVATION_ALLOWED_PREFIXES = (
     f"{ROLLBACK_COMPLETION_ROOT}/",
     "docs/runbooks/shared-rust-",
     "docs/SHARED_RUST_DOMAIN_",
+)
+ACTIVATION_ATTESTED_SOURCE_PREFIX = "crates/openburnbar-domain-core/"
+# Mirror of DEPLOYED_ARTIFACT_PREFIXES in scripts/lib/domain-core-activation.mjs.
+# Promotion sidecars pin the Rust source fingerprint, not the deployed artifact
+# bytes, so incidental protected-main commits must never touch the vendored
+# bindings, wasm packages, or prebuilt binaries that production executes.
+DEPLOYED_ARTIFACT_PREFIXES = (
+    "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/Generated/",
+    "Vendor/OpenBurnBarDomainCore.xcframework/",
+    "Vendor/openburnbar-domain-core.aar",
+    "android/openburnbar-domain-core/src/main/java/uniffi/",
+    "apps/console/vendor/openburnbar-domain-core-wasm/",
+    "functions/vendor/openburnbar/domain-core-wasm/",
 )
 GUARD_WORKFLOW_PATH = ".github/workflows/domain-core-deletion-guard.yml"
 GUARD_VERIFIER_PATH = "scripts/ci/verify-domain-core-legacy-deletion.py"
@@ -1588,6 +1605,7 @@ def validate_receipt(
             "approvedAt",
             "commit",
             "promotionAttestation",
+            "activationAnnulment",
             "release",
             "rollback",
             "deletionReview",
@@ -1631,6 +1649,7 @@ def validate_receipt(
     commit = require_commit(repo_root, receipt["commit"], f"receipt {receipt_path}")
     transition_fields = {
         "promotion": "promotionAttestation",
+        "annulment": "activationAnnulment",
         "stable_release": "release",
         "rollback": "rollback",
         "deletion_review": "deletionReview",
@@ -1771,6 +1790,8 @@ def required_receipts(state: str) -> set[str]:
         return set()
     if state == "promotion_approved":
         return {"promotion"}
+    if state == "activation_annulled":
+        return {"promotion", "activationAnnulment"}
     if state == "rust_authoritative_with_rollback":
         return {"promotion", "stableRelease"}
     if state == "rollback_active":
@@ -1967,6 +1988,7 @@ def validate_superseded_authority(
     generation: int,
     value: Any,
     approved_at: datetime,
+    candidate: str,
 ) -> datetime:
     link = require_object(value, "promotionAttestation.supersedes")
     exact_keys(
@@ -1976,9 +1998,13 @@ def validate_superseded_authority(
         "promotionAttestation.supersedes",
     )
     transition = link["transition"]
-    names = {"rollback": "rollback.json", "stable_release": "stable_release.json"}
+    names = {
+        "annulment": "annulment.json",
+        "rollback": "rollback.json",
+        "stable_release": "stable_release.json",
+    }
     if transition not in names:
-        raise GateError("promotionAttestation.supersedes.transition must be rollback or stable_release")
+        raise GateError("promotionAttestation.supersedes.transition must be annulment, rollback, or stable_release")
     expected_path = f"{RECEIPT_ROOT}/{row_id}/{generation - 1}/{names[transition]}"
     path_value = repository_path(link["path"], "promotionAttestation.supersedes.path")
     if path_value != expected_path:
@@ -2004,6 +2030,32 @@ def validate_superseded_authority(
     previous_approved = parse_rfc3339_utc(previous.get("approvedAt"), "previous authority receipt.approvedAt")
     if previous_approved >= approved_at:
         raise GateError("promotion approval must be later than the superseded authority")
+    if transition == "annulment":
+        annulment_payload = require_object(
+            previous.get("activationAnnulment"),
+            "previous annulment receipt.activationAnnulment",
+        )
+        annulled_candidate = require_commit(
+            repo_root,
+            require_object(
+                annulment_payload.get("candidate"),
+                "previous annulment receipt.activationAnnulment.candidate",
+            ).get("candidateCommit"),
+            "previous annulment receipt annulled candidate",
+        )
+        advanced_main = require_commit(
+            repo_root,
+            annulment_payload.get("advancedMainCommit"),
+            "previous annulment receipt.activationAnnulment.advancedMainCommit",
+        )
+        if candidate == annulled_candidate:
+            raise GateError("promotion after annulment must attest a fresh replacement candidate")
+        require_ancestor(
+            repo_root,
+            advanced_main,
+            candidate,
+            "promotion after annulment replacement candidate",
+        )
     if transition == "rollback":
         activated_at = parse_rfc3339_utc(
             require_object(previous.get("rollback"), "previous rollback receipt.rollback").get("activatedAt"),
@@ -2325,6 +2377,7 @@ def validate_promotion_attestation(
             generation,
             pointer["supersedes"],
             promotion.approved_at,
+            candidate,
         )
     return candidate, bundle_digest, expected_identity["coreVersion"]
 
@@ -2748,6 +2801,146 @@ def validate_rollback_receipt(
     return activated_at
 
 
+def validate_activation_annulment_receipt(
+    repo_root: Path,
+    row_id: str,
+    generation: int,
+    annulment: Receipt,
+    promotion: Receipt,
+    base_ref: str | None = None,
+) -> None:
+    payload = annulment.payload
+    fields = {
+        "promotionReceiptSha256",
+        "candidate",
+        "activation",
+        "advancedMainCommit",
+        "reason",
+        "replacementCandidateRequired",
+    }
+    exact_keys(payload, fields, fields, f"row {row_id} activationAnnulment")
+    if payload["promotionReceiptSha256"] != promotion.digest:
+        raise GateError(f"row {row_id}: activation annulment does not bind the current promotion receipt")
+    if annulment.approved_at <= promotion.approved_at:
+        raise GateError(f"row {row_id}: activation annulment approval must follow promotion approval")
+    if (
+        payload["reason"] != "release_train_advanced_before_stable_receipt"
+        or payload["replacementCandidateRequired"] is not True
+    ):
+        raise GateError(f"row {row_id}: activation annulment must require a replacement exact-main candidate")
+
+    candidate = require_commit(
+        repo_root,
+        require_object(payload["candidate"], f"row {row_id} activationAnnulment.candidate").get("candidateCommit"),
+        f"row {row_id} activationAnnulment.candidate",
+    )
+    expected_candidate = candidate_identity_at_commit(repo_root, candidate)
+    if payload["candidate"] != expected_candidate or candidate != promotion.commit:
+        raise GateError(f"row {row_id}: activation annulment candidate does not match the promoted candidate")
+
+    activation = require_object(payload["activation"], f"row {row_id} activationAnnulment.activation")
+    activation_fields = {
+        "candidateCommit",
+        "activationCommit",
+        "coreVersion",
+        "abiVersion",
+        "sourceSha256",
+        "changedPathsSha256",
+    }
+    exact_keys(
+        activation,
+        activation_fields,
+        activation_fields,
+        f"row {row_id} activationAnnulment.activation",
+    )
+    activation_commit = require_commit(
+        repo_root,
+        activation["activationCommit"],
+        f"row {row_id} activationAnnulment.activation.activationCommit",
+    )
+    if activation != validate_annullable_activation_closure(repo_root, candidate, activation_commit):
+        raise GateError(f"row {row_id}: activation annulment does not bind the exact stale activation")
+
+    advanced_main = require_commit(
+        repo_root,
+        payload["advancedMainCommit"],
+        f"row {row_id} activationAnnulment.advancedMainCommit",
+    )
+    if annulment.commit != advanced_main:
+        raise GateError(f"row {row_id}: activation annulment commit must equal advancedMainCommit")
+    require_ancestor(repo_root, activation_commit, advanced_main, f"row {row_id} activation annulment")
+    head = require_commit(
+        repo_root,
+        git_output(repo_root, ["rev-parse", "HEAD"], "activation annulment checkout").strip(),
+        "activation annulment checkout",
+    )
+    require_ancestor(repo_root, advanced_main, head, f"row {row_id} activation annulment checkout")
+    if base_ref is None:
+        trusted_main_tip = head
+    else:
+        trusted_main_tip = git_output(
+            repo_root,
+            ["rev-parse", f"{base_ref}^{{commit}}"],
+            f"row {row_id} activation annulment protected main",
+        ).strip()
+        if not COMMIT_RE.fullmatch(trusted_main_tip):
+            raise GateError(f"row {row_id}: activation annulment cannot resolve the protected main base")
+    require_ancestor(
+        repo_root,
+        advanced_main,
+        trusted_main_tip,
+        f"row {row_id} activation annulment protected main",
+    )
+    if advanced_main == activation_commit:
+        raise GateError(f"row {row_id}: activation annulment requires main to advance beyond activation P")
+
+    changed = [
+        line
+        for line in git_output(
+            repo_root,
+            ["diff", "--name-only", "--diff-filter=ACDMRTUXB", f"{activation_commit}..{advanced_main}"],
+            f"row {row_id} activation annulment main advance",
+        ).splitlines()
+        if line
+    ]
+    incidental = sorted(
+        path
+        for path in changed
+        if path not in ACTIVATION_ALLOWED_EXACT_PATHS
+        and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+    )
+    if not incidental:
+        raise GateError(
+            f"row {row_id}: activation annulment requires an incidental main advance outside the activation path set"
+        )
+
+    activation_modes, _ = public_production_profile_at_commit(repo_root, activation_commit)
+    if activation_modes[profile_domain_for_row(row_id)] != "rust":
+        raise GateError(f"row {row_id}: annulled activation did not contain the Rust public profile")
+    stable_tags = [
+        tag
+        for tag in git_output(
+            repo_root,
+            ["tag", "--points-at", activation_commit],
+            f"row {row_id} activation release tags",
+        ).splitlines()
+        if re.fullmatch(r"(?:linux-|windows-)?v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", tag)
+    ]
+    if stable_tags:
+        raise GateError(
+            f"row {row_id}: activation with a stable release tag cannot be annulled: {', '.join(sorted(stable_tags))}"
+        )
+    for transition in ("stable_release", "rollback", "deletion_review"):
+        relative = f"{RECEIPT_ROOT}/{row_id}/{generation}/{transition}.json"
+        if secure_path(
+            repo_root,
+            relative,
+            f"row {row_id} activation annulment {transition}",
+            must_exist=False,
+        ).exists():
+            raise GateError(f"row {row_id}: activation cannot be annulled after {transition} authority exists")
+
+
 def validate_receipt_chain(
     repo_root: Path,
     row_id: str,
@@ -2757,6 +2950,7 @@ def validate_receipt_chain(
     evidence_verifier: SignedEvidenceVerifier | Any | None = None,
     targets: list[Target] | None = None,
     deletion_reviewers: dict[str, set[str]] | None = None,
+    base_ref: str | None = None,
 ) -> tuple[str, str, str] | None:
     if state == "rollout":
         if generation != 0:
@@ -2769,6 +2963,17 @@ def validate_receipt_chain(
     candidate, report_digest, core_version = validate_promotion_attestation(
         repo_root, row_id, generation, promotion, evidence_verifier
     )
+
+    annulment = receipts.get("activationAnnulment")
+    if annulment is not None:
+        validate_activation_annulment_receipt(
+            repo_root,
+            row_id,
+            generation,
+            annulment,
+            promotion,
+            base_ref,
+        )
 
     stable = receipts.get("stableRelease")
     if stable is not None:
@@ -3121,8 +3326,10 @@ def validate_rollback_history(
         stable_after_deletion_files = stable_files | {"deletion_review.json"}
         rollback_files = receipt_file_names(required_receipts("rollback_active"))
         rollback_after_deletion_files = rollback_files | {"deletion_review.json"}
+        annulment_files = receipt_file_names(required_receipts("activation_annulled"))
         valid_files = (
             {
+                frozenset(annulment_files),
                 frozenset(stable_files),
                 frozenset(stable_after_deletion_files),
                 frozenset(rollback_files),
@@ -3147,15 +3354,25 @@ def validate_rollback_history(
                 "promotion",
                 seen,
             ),
-            "stableRelease": validate_receipt(
+        }
+        if "annulment.json" in actual_files:
+            historical["activationAnnulment"] = validate_receipt(
+                repo_root,
+                f"{relative}/{generation}/annulment.json",
+                row_id,
+                generation,
+                "annulment",
+                seen,
+            )
+        else:
+            historical["stableRelease"] = validate_receipt(
                 repo_root,
                 f"{relative}/{generation}/stable_release.json",
                 row_id,
                 generation,
                 "stable_release",
                 seen,
-            ),
-        }
+            )
         if "rollback.json" in actual_files:
             historical["rollback"] = validate_receipt(
                 repo_root,
@@ -3177,7 +3394,13 @@ def validate_rollback_history(
         validate_receipt_chain(
             repo_root,
             row_id,
-            "rollback_active" if "rollback" in historical else "rust_authoritative_with_rollback",
+            (
+                "activation_annulled"
+                if "activationAnnulment" in historical
+                else "rollback_active"
+                if "rollback" in historical
+                else "rust_authoritative_with_rollback"
+            ),
             generation,
             historical,
             evidence_verifier,
@@ -3588,7 +3811,12 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         "rollout": {"rollout", "promotion_approved"},
         "promotion_approved": {
             "promotion_approved",
+            "activation_annulled",
             "rust_authoritative_with_rollback",
+        },
+        "activation_annulled": {
+            "activation_annulled",
+            "promotion_approved",
         },
         "rust_authoritative_with_rollback": {
             "rust_authoritative_with_rollback",
@@ -3640,7 +3868,12 @@ def validate_ledger_transition(repo_root: Path, base_ref: str | None, current_ma
         if not isinstance(base_generation, int) or isinstance(base_generation, bool):
             raise GateError(f"row {row_id}: base authority generation is invalid")
         starts_new_generation = (
-            base_state in {"rollback_active", "rust_authoritative_with_rollback"}
+            base_state
+            in {
+                "activation_annulled",
+                "rollback_active",
+                "rust_authoritative_with_rollback",
+            }
             and current_state == "promotion_approved"
         )
         expected_generation = base_generation + 1 if starts_new_generation else base_generation
@@ -3705,8 +3938,88 @@ def core_version_at_commit(repo_root: Path, commit: str) -> str:
     return version
 
 
-def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_commit: str) -> list[str]:
-    require_ancestor(repo_root, candidate_commit, activation_commit, "domain-core activation")
+def _first_parent_activation_changed_paths(
+    repo_root: Path,
+    candidate_commit: str,
+    activation_commit: str,
+    *,
+    label: str,
+    incidental_label: str,
+) -> list[str]:
+    # Mirror of firstParentActivationChangedPaths in
+    # scripts/lib/domain-core-activation.mjs. The strict release closure and
+    # the annulment closure share one first-parent walk so both sides of the
+    # gate (and the JS resolver) bind the identical path set — and therefore
+    # the identical changedPathsSha256 — for a given candidate..activation
+    # range. Path-disjoint protected-main commits are excluded as incidental;
+    # the activation commit itself stays path-restricted; mixed commits,
+    # attested Rust source drift, and deployed-artifact drift fail closed.
+    require_ancestor(repo_root, candidate_commit, activation_commit, f"domain-core {label}")
+    if candidate_commit == activation_commit:
+        raise GateError(f"domain-core {label} commit must be distinct from the candidate commit")
+    activation_commits = [
+        line
+        for line in git_output(
+            repo_root,
+            ["rev-list", "--first-parent", "--reverse", f"{candidate_commit}..{activation_commit}"],
+            f"domain-core {label} first-parent history",
+        ).splitlines()
+        if line
+    ]
+    incidental_paths: set[str] = set()
+    for commit in activation_commits:
+        commit_lineage = git_output(
+            repo_root,
+            ["rev-list", "--parents", "-n", "1", commit],
+            f"domain-core {label} parent",
+        ).split()
+        if len(commit_lineage) < 2:
+            raise GateError(f"domain-core {label} commit must have a parent")
+        commit_paths = [
+            line
+            for line in git_output(
+                repo_root,
+                [
+                    "diff",
+                    "--name-only",
+                    "--diff-filter=ACDMRTUXB",
+                    f"{commit_lineage[1]}..{commit}",
+                ],
+                f"domain-core {label} commit diff",
+            ).splitlines()
+            if line
+        ]
+        commit_forbidden = sorted(
+            path
+            for path in commit_paths
+            if path not in ACTIVATION_ALLOWED_EXACT_PATHS
+            and not any(path.startswith(prefix) for prefix in ACTIVATION_ALLOWED_PREFIXES)
+        )
+        if commit_forbidden:
+            if commit == activation_commit:
+                raise GateError(
+                    f"domain-core {label} may end only with profile, trusted manifest, append-only authority artifacts, and runbooks: "
+                    + ", ".join(commit_forbidden)
+                )
+            if any(path.startswith(ACTIVATION_ATTESTED_SOURCE_PREFIX) for path in commit_paths):
+                raise GateError(
+                    f"domain-core {incidental_label} protected-main commit {commit} "
+                    "must not change attested Rust source"
+                )
+            if any(path.startswith(prefix) for path in commit_paths for prefix in DEPLOYED_ARTIFACT_PREFIXES):
+                raise GateError(
+                    f"domain-core {incidental_label} protected-main commit {commit} "
+                    "must not change deployed domain-core artifacts"
+                )
+            # A commit is incidental only when it changes no activation-authority
+            # path. A mixed commit would silently drop authority changes from the
+            # activation closure, so fail closed.
+            if len(commit_forbidden) != len(commit_paths):
+                raise GateError(
+                    f"domain-core {incidental_label} protected-main commit {commit} "
+                    "must not change activation authority paths"
+                )
+            incidental_paths.update(commit_paths)
     changed = [
         line
         for line in git_output(
@@ -3717,12 +4030,12 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
                 "--diff-filter=ACDMRTUXB",
                 f"{candidate_commit}..{activation_commit}",
             ],
-            "domain-core activation diff",
+            f"domain-core {label} diff",
         ).splitlines()
-        if line
+        if line and line not in incidental_paths
     ]
     if not changed:
-        raise GateError("domain-core activation commit must change the committed authority profile and receipts")
+        raise GateError(f"domain-core {label} commit must change the committed authority profile and receipts")
     forbidden = sorted(
         path
         for path in changed
@@ -3731,12 +4044,36 @@ def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_
     )
     if forbidden:
         raise GateError(
-            "domain-core activation may change only profile, append-only authority artifacts, and runbooks: "
+            f"domain-core {label} suffix may change only profile, trusted manifest, append-only authority artifacts, and runbooks: "
             + ", ".join(forbidden)
         )
     if BUILD_PROFILE_PATH not in changed or "config/domain-core-legacy-deletion.json" not in changed:
-        raise GateError("domain-core activation must atomically change the public profile and authority ledger")
+        raise GateError(f"domain-core {label} must atomically change the public profile and authority ledger")
     return sorted(changed)
+
+
+def activation_changed_paths(repo_root: Path, candidate_commit: str, activation_commit: str) -> list[str]:
+    return _first_parent_activation_changed_paths(
+        repo_root,
+        candidate_commit,
+        activation_commit,
+        label="activation",
+        incidental_label="activation incidental",
+    )
+
+
+def annullable_activation_changed_paths(
+    repo_root: Path,
+    candidate_commit: str,
+    activation_commit: str,
+) -> list[str]:
+    return _first_parent_activation_changed_paths(
+        repo_root,
+        candidate_commit,
+        activation_commit,
+        label="annullable activation",
+        incidental_label="annullable incidental",
+    )
 
 
 def validate_activation_closure(
@@ -3750,6 +4087,29 @@ def validate_activation_closure(
     if activation_identity != candidate:
         raise GateError("domain-core activation changed the attested core version, ABI, or source fingerprint")
     changed_paths = activation_changed_paths(repo_root, candidate_commit, activation_commit)
+    return {
+        "candidateCommit": candidate_commit,
+        "activationCommit": activation_commit,
+        "coreVersion": candidate["coreVersion"],
+        "abiVersion": candidate["abiVersion"],
+        "sourceSha256": candidate["sourceSha256"],
+        "changedPathsSha256": canonical_json_sha256(changed_paths),
+    }
+
+
+def validate_annullable_activation_closure(
+    repo_root: Path,
+    candidate_commit: str,
+    activation_commit: str,
+) -> dict[str, Any]:
+    candidate = candidate_identity_at_commit(repo_root, candidate_commit)
+    activation = candidate_identity_at_commit(repo_root, activation_commit)
+    activation_identity = {**activation, "candidateCommit": candidate_commit}
+    if activation_identity != candidate:
+        raise GateError(
+            "domain-core annullable activation changed the attested core version, ABI, or source fingerprint"
+        )
+    changed_paths = annullable_activation_changed_paths(repo_root, candidate_commit, activation_commit)
     return {
         "candidateCommit": candidate_commit,
         "activationCommit": activation_commit,
@@ -3978,8 +4338,29 @@ def validate_public_profile_transitions(
             }
             if len(rollback_bindings) != 1:
                 raise GateError(f"public-production {domain}: mapped rows must share one rollback event")
+        annulment_receipts = [rows[row_id].receipts.get("activationAnnulment") for row_id in row_ids]
+        if any(receipt is not None for receipt in annulment_receipts):
+            if any(receipt is None for receipt in annulment_receipts):
+                raise GateError(f"public-production {domain}: mapped rows must be annulled atomically")
+            annulment_bindings = {
+                canonical_json_sha256(
+                    {
+                        "candidate": receipt.payload["candidate"],
+                        "activation": receipt.payload["activation"],
+                        "advancedMainCommit": receipt.payload["advancedMainCommit"],
+                    }
+                )
+                for receipt in annulment_receipts
+                if receipt is not None
+            }
+            if len(annulment_bindings) != 1:
+                raise GateError(f"public-production {domain}: mapped rows must share one annulment event")
         if mode == "rust":
-            unapproved = sorted(row_id for row_id, state in states.items() if state in {"rollout", "rollback_active"})
+            unapproved = sorted(
+                row_id
+                for row_id, state in states.items()
+                if state in {"activation_annulled", "rollout", "rollback_active"}
+            )
             if unapproved:
                 raise GateError(
                     f"public-production {domain}=rust requires promotion approval for every row: "
@@ -3991,7 +4372,11 @@ def validate_public_profile_transitions(
                     f"public-production {domain}=rust requires one shared candidate commit, deterministic bundle, and core version"
                 )
             continue
-        candidates = sorted(row_id for row_id, state in states.items() if state not in {"rollout", "rollback_active"})
+        candidates = sorted(
+            row_id
+            for row_id, state in states.items()
+            if state not in {"activation_annulled", "rollout", "rollback_active"}
+        )
         if candidates:
             raise GateError(
                 f"public-production {domain}=legacy is allowed only before promotion or during explicit rollback: "
@@ -4166,6 +4551,7 @@ def run_gate(
             evidence_verifier,
             row.targets,
             trusted_deletion_reviewers,
+            base_ref,
         )
         for row_id, row in rows.items()
     }

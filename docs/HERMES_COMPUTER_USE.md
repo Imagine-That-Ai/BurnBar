@@ -139,8 +139,9 @@ Computer Use keeps three controller identities distinct:
 The server never trusts `devices/{deviceId}.irohPeerNodeId`. A controller first
 calls `issueIrohControllerRouteChallenge` with all three identities and a fresh
 high-risk nonce. In one transaction, the callable verifies the current signed
-host pairing, its trusted macOS/Linux host device, the pairing's single controller-device
-binding, the trusted mobile escrow device, and the key-derived controller
+host pairing, its trusted macOS/Linux host device, the requesting device's
+membership in the pairing's bounded controller-device allowlist, the trusted
+mobile escrow device, and the key-derived controller
 authority, including the mobile escrow device's current `peerNodeId` binding.
 It returns `canonicalPayloadBase64`, which is the exact byte string both the
 iroh endpoint key and phone-control authority key must sign. Clients decode
@@ -160,13 +161,22 @@ so an outstanding challenge cannot activate a route after explicit revoke.
 Concurrent
 registrations use compare-and-advance generations, so only one wins.
 
-`resolveActiveIrohControllerRoutes` returns at most one route and no public or
-private key material. Resolution fails closed on stale or invalid host pairing
-signatures, a revoked host or controller device, zero or multiple controller
-bindings, controller-key rotation, route expiry, or a revoked generation. The
-route is capped at ten minutes, and the signed host pairing's three-minute
-freshness remains an independent shorter liveness bound. Device-trust
-revocation advances the same route generation and tombstones the route.
+`resolveActiveIrohControllerRoutes` returns at most sixteen independently
+verified routes and no public or private key material. A new controller cannot
+append itself to a pairing merely because it is trusted elsewhere in the same
+account. The pairing's publishing Mac must first issue a short-lived,
+pairing-scoped enrollment grant naming the controller device and derived
+authority peer. `publishPhoneControlAuthority` consumes that grant atomically.
+Same-key authority refreshes remain seamless; key rotation requires another
+visible Mac approval. The Mac's controller-key pin, deny regions, session grants,
+replay checks, kill switches, and local consent remain independent gates.
+Each returned route is bound to its own trusted escrow device, authority key,
+transport key, generation, and expiry. Invalid, stale, expired, or revoked
+per-device routes are omitted; malformed server-owned route records fail the
+resolution closed. The route is capped at ten minutes, and the signed host
+pairing's three-minute freshness remains an independent shorter liveness bound.
+Device-trust revocation removes only that device from the allowlist, advances
+its route generation, and tombstones its route.
 
 ### 2.5 `MediaFrame.Flags.hasCursorMetadata`
 

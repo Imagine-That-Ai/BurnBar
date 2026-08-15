@@ -21,6 +21,7 @@
   "ignoreDependencies": [
     "@openburnbar/domain-core-wasm",
     "@openburnbar/entitlements",
-    "@openburnbar/signal-envelope-contracts"
+    "@openburnbar/signal-envelope-contracts",
+    "openburnbar-brace-expansion-cjs"
   ]
 }

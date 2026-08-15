@@ -8,7 +8,7 @@
       "internalID": "ACT100",
       "localizations": [
         {
-          "description": "Adds 100 prepaid hosted Agent Control actions to the current BurnBar Cloud Pro month.",
+          "description": "Adds 100 prepaid hosted Agent Control actions to the current BurnBar Cloud Pro or Ultra month.",
           "displayName": "Agent Control 100 Actions",
           "locale": "en_US"
         }
@@ -23,7 +23,7 @@
       "internalID": "FLOO50GB",
       "localizations": [
         {
-          "description": "Adds 50 prepaid Floo relay GB to the current BurnBar Cloud Pro month.",
+          "description": "Adds 50 prepaid Floo relay GB to the current BurnBar Cloud Pro or Ultra month.",
           "displayName": "Floo Relay 50 GB",
           "locale": "en_US"
         }

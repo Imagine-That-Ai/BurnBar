@@ -67,7 +67,7 @@ val jacocoClassExcludes =
         "**/BuildConfig.*",
         "**/Manifest*.*",
         "**/*Test*.*",
-        "**/*\$Lambda\$*.*"
+        "**/*\$Lambda\$*.*",
     )
 val debugCoverageClassDirectories =
     files(
@@ -76,7 +76,7 @@ val debugCoverageClassDirectories =
         },
         fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
             exclude(jacocoClassExcludes)
-        }
+        },
     )
 val debugCoverageSourceDirectories = files("src/main/java", "src/main/kotlin")
 
@@ -86,7 +86,7 @@ tasks.register<JacocoReport>("jacocoTestReport") {
         xml.required.set(true)
         html.required.set(true)
         xml.outputLocation.set(
-            layout.buildDirectory.file("reports/jacoco/testDebugUnitTest/jacocoTestReport.xml")
+            layout.buildDirectory.file("reports/jacoco/testDebugUnitTest/jacocoTestReport.xml"),
         )
     }
     classDirectories.setFrom(debugCoverageClassDirectories)

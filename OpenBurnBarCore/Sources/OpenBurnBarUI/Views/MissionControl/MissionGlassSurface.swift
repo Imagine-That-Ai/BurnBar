@@ -1,219 +1,96 @@
 import SwiftUI
 
-// MARK: - Mission Glass Surface
+// MARK: - Mission Control Chrome
 //
-// Core-side mirror of `LiquidGlassFallback` (which lives in OpenBurnBarMobile
-// and is therefore not visible to macOS). Same intent: pick `.glassEffect`
-// when iOS 26 / macOS 26 are present, fall back to `.ultraThinMaterial` +
-// hand-tuned sheen + edge gradient on older OS versions. Honors
-// `accessibilityReduceTransparency` with an opaque fill.
+// Shared chrome primitives for the Mission Control console. The console uses
+// one quiet visual language across every section:
+//   • `MissionSectionHeader` — plain-language section title + optional trailing
+//     status text. No numbered steps, no hairline rules, no mono eyebrows.
+//   • `MissionConsoleCard` — the single grouped-container treatment: surface fill,
+//     12pt continuous corners, hairline border.
+//   • `MissionFieldLabel` — small secondary label above a control.
 //
-// Variants drive sheen + edge tuning so a single modifier covers hero, default,
-// urgent, success, and Hermes surfaces inside the Mission Control Console.
+// Internal to the module; the public views compose these.
 
-public enum MissionGlassVariant {
-    case hero
-    case standard
-    case compact
-    case urgent
-    case success
-    case hermes
+enum MissionChrome {
+    static let cardCorner: CGFloat = 12
+    static let controlCorner: CGFloat = 10
+    static let hairline: CGFloat = 0.5
+
+    static var cardFill: Color { UnifiedDesignSystem.Colors.surface }
+    static var fieldFill: Color { UnifiedDesignSystem.Colors.surfaceElevated.opacity(0.55) }
+    static var hairlineColor: Color { UnifiedDesignSystem.Colors.borderSubtle.opacity(0.85) }
+    static var accent: Color { UnifiedDesignSystem.Colors.ember }
 }
 
-public struct MissionGlassSurface: ViewModifier {
-    public let variant: MissionGlassVariant
-    public let cornerRadius: CGFloat
+// MARK: - Section header
 
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+struct MissionSectionHeader: View {
+    let title: String
+    var trailing: String?
+    var trailingTint: Color?
 
-    public func body(content: Content) -> some View {
-        content
-            .background(backgroundLayer)
-            .overlay(edgeLayer)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var backgroundLayer: some View {
-        if reduceTransparency {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(opaqueFill)
-        } else {
-            ZStack {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(sheenGradient)
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: UnifiedDesignSystem.Spacing.sm) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+            Spacer(minLength: 0)
+            if let trailing {
+                Text(trailing)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(trailingTint ?? UnifiedDesignSystem.Colors.textMuted)
+                    .lineLimit(1)
             }
-            .modifier(LiquidGlassEffectIfAvailable(cornerRadius: cornerRadius))
         }
-    }
-
-    private var edgeLayer: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .stroke(edgeGradient, lineWidth: edgeWidth)
-            .blendMode(.plusLighter)
-    }
-
-    // MARK: Sheens
-
-    private var sheenGradient: LinearGradient {
-        switch variant {
-        case .hero:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.ember.opacity(colorScheme == .dark ? 0.16 : 0.10),
-                    Color.clear,
-                    UnifiedDesignSystem.Colors.amber.opacity(colorScheme == .dark ? 0.06 : 0.04)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .standard, .compact:
-            return LinearGradient(
-                colors: [
-                    Color.white.opacity(colorScheme == .dark ? 0.06 : 0.45),
-                    Color.clear,
-                    UnifiedDesignSystem.Colors.ember.opacity(colorScheme == .dark ? 0.03 : 0.02)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .urgent:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.warning.opacity(0.20),
-                    Color.clear,
-                    UnifiedDesignSystem.Colors.error.opacity(0.10)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .success:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.success.opacity(0.18),
-                    Color.clear,
-                    UnifiedDesignSystem.Colors.success.opacity(0.04)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .hermes:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.hermesMercury.opacity(0.16),
-                    UnifiedDesignSystem.Colors.hermesAureate.opacity(0.12),
-                    UnifiedDesignSystem.Colors.hermesMercury.opacity(0.16)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-
-    // MARK: Edges
-
-    private var edgeGradient: LinearGradient {
-        switch variant {
-        case .hero:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.ember.opacity(0.55),
-                    UnifiedDesignSystem.Colors.amber.opacity(0.35),
-                    UnifiedDesignSystem.Colors.blaze.opacity(0.25)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .standard:
-            return LinearGradient(
-                colors: [
-                    Color.white.opacity(colorScheme == .dark ? 0.18 : 0.55),
-                    UnifiedDesignSystem.Colors.border.opacity(0.45),
-                    UnifiedDesignSystem.Colors.ember.opacity(0.18)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .compact:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.border.opacity(0.45),
-                    UnifiedDesignSystem.Colors.borderSubtle.opacity(0.35)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .urgent:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.warning.opacity(0.85),
-                    UnifiedDesignSystem.Colors.error.opacity(0.65)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .success:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.success.opacity(0.7),
-                    UnifiedDesignSystem.Colors.success.opacity(0.35)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .hermes:
-            return LinearGradient(
-                colors: [
-                    UnifiedDesignSystem.Colors.hermesMercury.opacity(0.85),
-                    UnifiedDesignSystem.Colors.hermesAureate.opacity(0.65),
-                    UnifiedDesignSystem.Colors.hermesMercury.opacity(0.85)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-
-    private var edgeWidth: CGFloat {
-        switch variant {
-        case .hero, .urgent, .success, .hermes: return 1.0
-        case .standard, .compact: return 0.6
-        }
-    }
-
-    private var opaqueFill: Color {
-        switch variant {
-        case .hero, .standard: return UnifiedDesignSystem.Colors.surface
-        case .compact:         return UnifiedDesignSystem.Colors.surfaceElevated
-        case .urgent:          return UnifiedDesignSystem.Colors.warning.opacity(0.12)
-        case .success:         return UnifiedDesignSystem.Colors.success.opacity(0.12)
-        case .hermes:          return UnifiedDesignSystem.Colors.surface
-        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
-/// Placeholder for the OS-26 `.glassEffect` enhancement. The manual material,
-/// sheen, and edge layers above remain the cross-SDK implementation; keeping
-/// this modifier as a no-op prevents older CI SDKs from type-checking a symbol
-/// they do not ship yet.
-private struct LiquidGlassEffectIfAvailable: ViewModifier {
-    let cornerRadius: CGFloat
+// MARK: - Field label
 
-    func body(content: Content) -> some View {
+struct MissionFieldLabel: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+    }
+}
+
+// MARK: - Card container
+
+struct MissionConsoleCard<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
         content
+            .background {
+                RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
+                    .fill(MissionChrome.cardFill)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: MissionChrome.cardCorner, style: .continuous)
+                    .strokeBorder(MissionChrome.hairlineColor, lineWidth: MissionChrome.hairline)
+            }
     }
 }
 
-public extension View {
-    /// Apply Mission Control glass to any view. Defaults to `.standard` at the
-    /// Aurora "standard" corner.
-    func missionGlass(
-        _ variant: MissionGlassVariant = .standard,
-        cornerRadius: CGFloat = UnifiedDesignSystem.Radius.lg
-    ) -> some View {
-        modifier(MissionGlassSurface(variant: variant, cornerRadius: cornerRadius))
+// MARK: - Card row divider
+
+struct MissionRowDivider: View {
+    var indent: CGFloat = 0
+
+    var body: some View {
+        Rectangle()
+            .fill(MissionChrome.hairlineColor)
+            .frame(height: MissionChrome.hairline)
+            .padding(.leading, indent)
     }
 }

@@ -6,7 +6,10 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  materializeCandidateBoundRollback,
+  normalizeProtectedSignerWorkflowPath,
   run,
+  selectCommittedCandidateBundle,
   selectExactSourceRun,
   validateProtectedSignerRun,
 } from "./prepare-domain-core-native-release-gate.mjs";
@@ -94,10 +97,30 @@ test("signer lookup binds exact successful protected workflow attempt on main", 
     status: "completed",
     conclusion: "success",
     head_branch: "main",
-    path: ".github/workflows/domain-core-promotion-proof.yml@refs/heads/main",
+    // Live GitHub Actions run metadata returns the bare workflow path.
+    path: ".github/workflows/domain-core-promotion-proof.yml",
   };
   assert.deepEqual(
+    normalizeProtectedSignerWorkflowPath(run.path),
+    {
+      workflowPath: ".github/workflows/domain-core-promotion-proof.yml",
+      sourceRef: null,
+    },
+  );
+  assert.deepEqual(
     validateProtectedSignerRun(run, coordinates, COMMIT),
+    coordinates,
+  );
+  // Legacy fixture / attestation identity form still accepted on main.
+  assert.deepEqual(
+    validateProtectedSignerRun(
+      {
+        ...run,
+        path: ".github/workflows/domain-core-promotion-proof.yml@refs/heads/main",
+      },
+      coordinates,
+      COMMIT,
+    ),
     coordinates,
   );
   for (const overrides of [
@@ -296,8 +319,10 @@ test("full gate resolves the signed public profile against the exact candidate",
       ],
       {
         command,
-        activationVerifier: () =>
-          JSON.parse(readFileSync(activationPath, "utf8")),
+        activationVerifier: () => ({
+          ...JSON.parse(readFileSync(activationPath, "utf8")),
+          releaseCommit: RELEASE_COMMIT,
+        }),
       },
     );
     assert.equal(result.profileName, "public-production");
@@ -307,6 +332,44 @@ test("full gate resolves the signed public profile against the exact candidate",
       JSON.parse(readFileSync(result.profilePath, "utf8")).candidateIdentity
         .candidateCommit,
       COMMIT,
+    );
+  } finally {
+    rmSync(outputDirectory, { recursive: true, force: true });
+  }
+});
+
+test("expired Actions artifacts hydrate from committed promotion evidence", () => {
+  const REAL_CANDIDATE = "99ba1f66b02d4721077bbce652b84c2304bacf7c";
+  const REAL_SOURCE_RUN = { runId: 30754893279, runAttempt: 1 };
+  const selected = selectCommittedCandidateBundle({
+    repoRoot: process.cwd(),
+    candidateCommit: REAL_CANDIDATE,
+    sourceRun: REAL_SOURCE_RUN,
+  });
+  assert.match(selected.path, /promotion-bundles\//u);
+  assert.equal(selected.bundle.candidate.candidateCommit, REAL_CANDIDATE);
+
+  const outputDirectory = mkdtempSync(join(tmpdir(), "native-gate-expired-"));
+  const sourceDirectory = join(outputDirectory, "source");
+  try {
+    const materialized = materializeCandidateBoundRollback({
+      repoRoot: process.cwd(),
+      candidateCommit: REAL_CANDIDATE,
+      sourceRun: REAL_SOURCE_RUN,
+      sourceDirectory,
+    });
+    assert.equal(materialized.source, "committed");
+    assert.equal(
+      createHash("sha256")
+        .update(readFileSync(materialized.candidatePath))
+        .digest("hex"),
+      createHash("sha256").update(readFileSync(selected.path)).digest("hex"),
+    );
+    assert.equal(
+      createHash("sha256")
+        .update(readFileSync(materialized.rollbackPath))
+        .digest("hex"),
+      selected.bundle.rollback.restoredArtifactSha256,
     );
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });

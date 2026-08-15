@@ -58,6 +58,7 @@ import {
   Fingerprint,
 } from '@openburnbar/libsignal-bridge';
 import { bindingToAAD, type SignalBinding } from '@openburnbar/signal-envelope-contracts';
+import { Buffer } from 'node:buffer';
 import { randomInt } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
@@ -104,6 +105,25 @@ export interface GeneratedPreKeys {
   readonly preKey: PreKeyRecord;
   readonly signedPreKey: SignedPreKeyRecord;
   readonly kyberPreKey: KyberPreKeyRecord;
+}
+
+/** Public PQXDH material exchanged through the authenticated Gateway pairing. */
+export interface PublishedPreKeyBundle {
+  readonly version: 1;
+  readonly bundleId: string;
+  readonly identityKeyId: string;
+  readonly identityKeyB64: string;
+  readonly registrationId: number;
+  readonly deviceId: number;
+  readonly signedPreKeyId: number;
+  readonly signedPreKeyPublicB64: string;
+  readonly signedPreKeySignatureB64: string;
+  readonly oneTimePreKeyId: number;
+  readonly oneTimePreKeyPublicB64: string;
+  readonly kyberPreKeyId: number;
+  readonly kyberPreKeyPublicB64: string;
+  readonly kyberPreKeySignatureB64: string;
+  readonly generatedAt: string;
 }
 
 /** A fully addressed, established session endpoint stored in memory. */
@@ -178,6 +198,19 @@ export class InMemoryIdentityKeyStore extends IdentityKeyStore {
   override async getIdentity(name: ProtocolAddress): Promise<PublicKey | null> {
     return this.trustedIdentities.get(addressKey(name)) ?? null;
   }
+
+  snapshotTrustedIdentities(): Array<{ name: string; deviceId: number; publicKeyB64: string }> {
+    return [...this.trustedIdentities.entries()].map(([key, publicKey]) => {
+      const separator = key.lastIndexOf('::');
+      return { name: key.slice(0, separator), deviceId: Number(key.slice(separator + 2)), publicKeyB64: Buffer.from(publicKey.serialize()).toString('base64') };
+    });
+  }
+
+  restoreTrustedIdentities(entries: Array<{ name: string; deviceId: number; publicKeyB64: string }>): void {
+    for (const entry of entries) {
+      this.trustedIdentities.set(addressKey(ProtocolAddress.new(entry.name, entry.deviceId)), PublicKey.deserialize(Buffer.from(entry.publicKeyB64, 'base64')));
+    }
+  }
 }
 
 export class InMemorySessionStore extends SessionStore {
@@ -207,6 +240,19 @@ export class InMemorySessionStore extends SessionStore {
       return record;
     });
   }
+
+  snapshot(): Array<{ name: string; deviceId: number; recordB64: string }> {
+    return [...this.sessions.entries()].map(([key, record]) => {
+      const separator = key.lastIndexOf('::');
+      return { name: key.slice(0, separator), deviceId: Number(key.slice(separator + 2)), recordB64: Buffer.from(record.serialize()).toString('base64') };
+    });
+  }
+
+  restore(entries: Array<{ name: string; deviceId: number; recordB64: string }>): void {
+    for (const entry of entries) {
+      this.sessions.set(addressKey(ProtocolAddress.new(entry.name, entry.deviceId)), SessionRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    }
+  }
 }
 
 export class InMemoryPreKeyStore extends PreKeyStore {
@@ -227,6 +273,16 @@ export class InMemoryPreKeyStore extends PreKeyStore {
   override async removePreKey(id: number): Promise<void> {
     this.preKeys.delete(id);
   }
+
+  snapshot(): Array<{ id: number; recordB64: string }> {
+    return [...this.preKeys.entries()].map(([id, record]) => ({ id, recordB64: Buffer.from(record.serialize()).toString('base64') }));
+  }
+
+  restore(entries: Array<{ id: number; recordB64: string }>): void {
+    for (const entry of entries) {
+      this.preKeys.set(entry.id, PreKeyRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    }
+  }
 }
 
 export class InMemorySignedPreKeyStore extends SignedPreKeyStore {
@@ -245,6 +301,16 @@ export class InMemorySignedPreKeyStore extends SignedPreKeyStore {
       throw new Error(`no signed prekey for id ${id}`);
     }
     return record;
+  }
+
+  snapshot(): Array<{ id: number; recordB64: string }> {
+    return [...this.signedPreKeys.entries()].map(([id, record]) => ({ id, recordB64: Buffer.from(record.serialize()).toString('base64') }));
+  }
+
+  restore(entries: Array<{ id: number; recordB64: string }>): void {
+    for (const entry of entries) {
+      this.signedPreKeys.set(entry.id, SignedPreKeyRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+    }
   }
 }
 
@@ -281,6 +347,19 @@ export class InMemoryKyberPreKeyStore extends KyberPreKeyStore {
   /** Test/diagnostic helper: was this Kyber prekey marked used? */
   wasUsed(kyberPreKeyId: number): boolean {
     return this.used.has(kyberPreKeyId);
+  }
+
+  snapshot(): Array<{ id: number; recordB64: string; used: boolean }> {
+    return [...this.kyberPreKeys.entries()].map(([id, record]) => ({ id, recordB64: Buffer.from(record.serialize()).toString('base64'), used: this.used.has(id) }));
+  }
+
+  restore(entries: Array<{ id: number; recordB64: string; used?: boolean }>): void {
+    for (const entry of entries) {
+      this.kyberPreKeys.set(entry.id, KyberPreKeyRecord.deserialize(Buffer.from(entry.recordB64, 'base64')));
+      if (entry.used) {
+        this.used.add(entry.id);
+      }
+    }
   }
 }
 
@@ -399,6 +478,58 @@ export function buildPreKeyBundle(
     prekeys.kyberPreKey.id(),
     prekeys.kyberPreKey.publicKey(),
     prekeys.kyberPreKey.signature(),
+  );
+}
+
+/** Convert locally-held private records into public Gateway pairing material. */
+export function publishedPreKeyBundle(
+  identity: GeneratedIdentity,
+  deviceId: number,
+  identityKeyId: string,
+  bundleId: string,
+  prekeys: GeneratedPreKeys,
+  generatedAt: string = new Date().toISOString(),
+): PublishedPreKeyBundle {
+  return {
+    version: 1,
+    bundleId,
+    identityKeyId,
+    identityKeyB64: Buffer.from(identity.identityKeyPair.publicKey.serialize()).toString('base64'),
+    registrationId: identity.registrationId,
+    deviceId,
+    signedPreKeyId: prekeys.signedPreKey.id(),
+    signedPreKeyPublicB64: Buffer.from(prekeys.signedPreKey.publicKey().serialize()).toString('base64'),
+    signedPreKeySignatureB64: Buffer.from(prekeys.signedPreKey.signature()).toString('base64'),
+    oneTimePreKeyId: prekeys.preKey.id(),
+    oneTimePreKeyPublicB64: Buffer.from(prekeys.preKey.publicKey().serialize()).toString('base64'),
+    kyberPreKeyId: prekeys.kyberPreKey.id(),
+    kyberPreKeyPublicB64: Buffer.from(prekeys.kyberPreKey.publicKey().serialize()).toString('base64'),
+    kyberPreKeySignatureB64: Buffer.from(prekeys.kyberPreKey.signature()).toString('base64'),
+    generatedAt,
+  };
+}
+
+/** Build the official native PreKeyBundle from a server-supplied public record. */
+export function preKeyBundleFromPublished(bundle: PublishedPreKeyBundle): PreKeyBundle {
+  const decode = (value: string, field: string): Uint8Array<ArrayBuffer> => {
+    try {
+      return Uint8Array.from(Buffer.from(value, 'base64')) as Uint8Array<ArrayBuffer>;
+    } catch {
+      throw new Error(`invalid base64 in ${field}`);
+    }
+  };
+  return PreKeyBundle.new(
+    bundle.registrationId,
+    bundle.deviceId,
+    bundle.oneTimePreKeyId,
+    PublicKey.deserialize(decode(bundle.oneTimePreKeyPublicB64, 'oneTimePreKeyPublicB64')),
+    bundle.signedPreKeyId,
+    PublicKey.deserialize(decode(bundle.signedPreKeyPublicB64, 'signedPreKeyPublicB64')),
+    decode(bundle.signedPreKeySignatureB64, 'signedPreKeySignatureB64'),
+    PublicKey.deserialize(decode(bundle.identityKeyB64, 'identityKeyB64')),
+    bundle.kyberPreKeyId,
+    KEMPublicKey.deserialize(decode(bundle.kyberPreKeyPublicB64, 'kyberPreKeyPublicB64')),
+    decode(bundle.kyberPreKeySignatureB64, 'kyberPreKeySignatureB64'),
   );
 }
 

@@ -28,6 +28,7 @@ import re
 import secrets
 import subprocess
 import sys
+import threading
 import time
 import unicodedata
 from datetime import datetime, timezone
@@ -1507,17 +1508,13 @@ async def _init_attachment(
         # The top-level byteCount above is the CIPHERTEXT length (≈ plaintext + GCM
         # overhead): it reveals approximate size only, no content, and the server
         # needs it for the upload size gate.
-        body["relayEnvelope"] = relay_envelope
-        body["relayEncryption"] = relay_envelope.get("relayEncryption") or RELAY_ENCRYPTION
-        # MP-10: no top-level relayKeyVersion on a sealed write — the relayEnvelope
-        # carries the authoritative gateway wrap version (server + phone read THAT,
-        # never this body field). The top-level relayEncryption mirrors the envelope
-        # only as a server routing/indexing hint.
-        # MP-2: echo the agent's AAD-bound attachment id so the server adopts it
-        # (adoptedGatewayDocId) byte-for-byte instead of minting a different id —
-        # otherwise the phone rebuilds all three attachment AADs from the server id
-        # and every AEAD open fails.
-        body["attachmentId"] = relay_envelope["attachmentId"]
+        if "signalEnvelope" in relay_envelope:
+            body["signalEnvelope"] = relay_envelope["signalEnvelope"]
+            body["attachmentId"] = relay_envelope["attachmentId"]
+        else:
+            body["relayEnvelope"] = relay_envelope
+            body["relayEncryption"] = relay_envelope.get("relayEncryption") or RELAY_ENCRYPTION
+            body["attachmentId"] = relay_envelope["attachmentId"]
     else:
         body["contentType"] = content_type
         body["fileName"] = file_path.name
@@ -1673,7 +1670,9 @@ async def _post_message(
             action_id=action_id,
             kind=kind,
         )
-        if envelope.get("ratchetEnvelope") is not None:
+        if envelope.get("signalEnvelope") is not None:
+            body["signalEnvelope"] = envelope["signalEnvelope"]
+        elif envelope.get("ratchetEnvelope") is not None:
             body["ratchetEnvelope"] = envelope["ratchetEnvelope"]
         else:
             body["relayEnvelope"] = envelope
@@ -1763,6 +1762,95 @@ class _RelayPlaintextRefused(RuntimeError):
     """Raised when E2E is negotiated but no peer key is available to seal to."""
 
 
+def _load_signal_peer_bundle_from_env() -> Optional[dict[str, Any]]:
+    raw = (os.getenv("BURNBAR_SIGNAL_PEER_BUNDLE_JSON") or "").strip()
+    if not raw:
+        return None
+    try:
+        bundle = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("BURNBAR_SIGNAL_PEER_BUNDLE_JSON is not valid JSON") from exc
+    if not isinstance(bundle, dict) or bundle.get("version") != 1:
+        raise RuntimeError("BURNBAR_SIGNAL_PEER_BUNDLE_JSON is not a v1 public Signal bundle")
+    required = ("identityKeyId", "identityKeyB64", "registrationId", "deviceId", "signedPreKeyId", "signedPreKeyPublicB64", "signedPreKeySignatureB64", "oneTimePreKeyId", "oneTimePreKeyPublicB64", "kyberPreKeyId", "kyberPreKeyPublicB64", "kyberPreKeySignatureB64")
+    if any(key not in bundle for key in required):
+        raise RuntimeError("BURNBAR_SIGNAL_PEER_BUNDLE_JSON is missing public prekey fields")
+    return bundle
+
+
+def _signal_bundle_identity(bundle: Optional[dict[str, Any]]) -> Optional[str]:
+    if not bundle:
+        return None
+    value = str(bundle.get("identityKeyB64") or "").strip()
+    return value or None
+
+
+class _SignalSidecar:
+    """Synchronous JSON-lines client for the official native Signal sidecar."""
+
+    def __init__(self) -> None:
+        runtime_dir = Path(os.getenv("BURNBAR_SIGNAL_RUNTIME_DIR") or Path(__file__).with_name("signal-runtime"))
+        node = os.getenv("BURNBAR_SIGNAL_NODE", "node")
+        state_dir = os.getenv("BURNBAR_SIGNAL_STATE_DIR")
+        env = os.environ.copy()
+        if state_dir:
+            env["BURNBAR_SIGNAL_STATE_DIR"] = state_dir
+        self._process = subprocess.Popen(
+            [node, str(runtime_dir / "sidecar.mjs")],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            env=env,
+        )
+        self._lock = threading.Lock()
+
+    def request(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            if self._process.poll() is not None or self._process.stdin is None or self._process.stdout is None:
+                raise _RelayPlaintextRefused("official Signal sidecar is not running")
+            self._process.stdin.write(json.dumps(payload, separators=(",", ":")) + "\n")
+            self._process.stdin.flush()
+            line = self._process.stdout.readline()
+            if not line:
+                raise _RelayPlaintextRefused("official Signal sidecar exited without a response")
+            response = json.loads(line)
+            if not isinstance(response, dict) or response.get("ok") is not True:
+                raise _RelayPlaintextRefused(str((response or {}).get("error") or "official Signal sidecar rejected the operation"))
+            return response
+
+    def bundle(self) -> dict[str, Any]:
+        return dict(self.request({"op": "bundle"})["bundle"])
+
+    def seal(self, *, peer_uid: str, peer_bundle: dict[str, Any], client_id: str, slot_id: str, plaintext: bytes) -> dict[str, Any]:
+        response = self.request({
+            "op": "seal",
+            "peerUid": peer_uid,
+            "peerBundle": peer_bundle,
+            "clientId": client_id,
+            "slotId": slot_id,
+            "plaintextB64": base64.b64encode(plaintext).decode("ascii"),
+        })
+        return dict(response["envelope"])
+
+    def open(self, *, peer_uid: str, peer_bundle: dict[str, Any], envelope: dict[str, Any]) -> bytes:
+        delivery = envelope.get("keyDelivery") or {}
+        response = self.request({
+            "op": "open",
+            "peerUid": peer_uid,
+            "peerBundle": peer_bundle,
+            "signalMessageType": delivery.get("signalMessageType"),
+            "signalMessageB64": delivery.get("signalMessageB64"),
+        })
+        return base64.b64decode(str(response["plaintextB64"]), validate=True)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._process.poll() is None:
+                self._process.terminate()
+
+
 class _RelaySealer:
     """Seals outgoing gateway payloads / opens inbound events for one link.
 
@@ -1791,7 +1879,7 @@ class _RelaySealer:
         it cannot load, ``can_seal`` is False AND ``must_seal`` stays True, so the
         send path refuses rather than emitting plaintext (fail-closed).
         """
-        return (
+        return self._adapter._signal_capable() or (
             RELAY_CRYPTO_AVAILABLE
             and self._adapter._relay_e2e_enabled
             and self._adapter._relay_e2e_config_error is None
@@ -1815,6 +1903,8 @@ class _RelaySealer:
         can opt back into the plaintext relay path explicitly with
         ``BURNBAR_ALLOW_PLAINTEXT=1``.
         """
+        if self._adapter._signal_required:
+            return True
         if self._adapter._relay_e2e_enabled:
             return True
         return (
@@ -1931,6 +2021,26 @@ class _RelaySealer:
         action_id: str | None = None,
         kind: str | None = None,
     ) -> dict:
+        if self._adapter._signal_capable():
+            message_id = secrets.token_hex(16)
+            private_payload: dict[str, Any] = {"text": text, "destinationId": destination_id, "eventSchemaVersion": 1}
+            if thread_id:
+                private_payload["threadId"] = thread_id
+            if action_id:
+                private_payload["actionId"] = action_id
+            if kind:
+                private_payload["kind"] = kind
+            sidecar = self._adapter._signal_sidecar
+            if sidecar is None:
+                raise _RelayPlaintextRefused("official Signal sidecar disappeared during message seal")
+            envelope = sidecar.seal(
+                peer_uid=self._uid,
+                peer_bundle=self._adapter._signal_peer_for(),
+                client_id=self._client_id,
+                slot_id=kind or "message",
+                plaintext=json.dumps(private_payload, separators=(",", ":")).encode("utf-8"),
+            )
+            return {"signalEnvelope": envelope, "messageId": message_id}
         if self._can_ratchet():
             return self._seal_ratchet_message(
                 destination_id=destination_id,
@@ -2039,6 +2149,36 @@ class _RelaySealer:
     def seal_attachment(
         self, *, destination_id: str, file_path: Path, content_type: str
     ) -> tuple[dict, bytes]:
+        if self._adapter._signal_capable():
+            sidecar = self._adapter._signal_sidecar
+            peer_bundle = self._adapter._signal_peer_bundle
+            if sidecar is None or peer_bundle is None:
+                raise _RelayPlaintextRefused("Signal v4 attachment seal requested without sidecar/peer bundle")
+            crypto = relay_e2ee
+            if crypto is None:
+                raise _RelayPlaintextRefused("Signal v4 attachment body encryption is unavailable")
+            attachment_id = secrets.token_hex(16)
+            data = file_path.read_bytes()
+            body_key = crypto.generate_symmetric_key()
+            sealed_body_b64 = crypto.seal_to_base64(
+                data, body_key, _gateway_attachment_body_aad(self._uid, self._client_id, attachment_id)
+            )
+            manifest = json.dumps({
+                "attachmentId": attachment_id,
+                "fileName": file_path.name,
+                "byteCount": len(data),
+                "contentType": content_type,
+                "destinationId": destination_id,
+                "bodyKeyB64": base64.b64encode(body_key).decode("ascii"),
+            }, separators=(",", ":")).encode("utf-8")
+            envelope = sidecar.seal(
+                peer_uid=self._uid,
+                peer_bundle=peer_bundle,
+                client_id=self._client_id,
+                slot_id=f"attachment-manifest:{attachment_id}",
+                plaintext=manifest,
+            )
+            return {"signalEnvelope": envelope, "attachmentId": attachment_id}, sealed_body_b64.encode("ascii")
         peer = self._peer_key_for(destination_id)
         if not peer:
             raise _RelayPlaintextRefused(self.cannot_seal_reason("exchange files"))
@@ -2080,13 +2220,15 @@ class _RelaySealer:
         return envelope, body_bytes
 
     def open_event(self, raw: dict) -> Optional[dict]:
-        """Open a sealed inbound event in place.
-
-        Returns the opened ``{text, senderDisplayName?, threadId?}`` dict, or
-        ``None`` when the event carries no relay envelope (legacy plaintext).
-        Raises :class:`_RelayPlaintextRefused` when E2E is required but the event
-        is unsealed.
-        """
+        """Open Signal v4 first, then legacy authenticated envelopes."""
+        signal_envelope = raw.get("signalEnvelope")
+        if isinstance(signal_envelope, dict):
+            sidecar = self._adapter._signal_sidecar
+            if sidecar is None or not self._adapter._signal_peer_bundle:
+                raise _RelayPlaintextRefused("Signal v4 event received without the pinned peer/session sidecar")
+            plaintext = sidecar.open(peer_uid=self._uid, peer_bundle=self._adapter._signal_peer_for(), envelope=signal_envelope)
+            decoded = json.loads(plaintext.decode("utf-8"))
+            return decoded if isinstance(decoded, dict) else {"text": str(decoded)}
         ratchet_envelope = raw.get("ratchetEnvelope")
         if isinstance(ratchet_envelope, dict):
             return self._open_ratchet_event(raw, ratchet_envelope)
@@ -2127,14 +2269,9 @@ class _RelaySealer:
         return self._open_envelope(raw, envelope, private_key, _gateway_event_aad, _gateway_event_key_aad)
 
     def open_model_switch(self, raw: dict) -> Optional[dict]:
-        """Open a sealed ``model_switch`` control event.
-
-        On an E2E-paired link a ``model_switch`` MUST be sealed (a relay must not
-        be able to inject a cleartext control event). Returns the opened
-        ``{modelId}`` dict, or ``None`` when E2E is not paired and the event is
-        plaintext (legacy). Raises :class:`_RelayPlaintextRefused` when E2E is
-        required but the control event is unsealed.
-        """
+        """Open a Signal v4 or legacy model-switch control event."""
+        if isinstance(raw.get("signalEnvelope"), dict):
+            return self.open_event(raw)
         ratchet_envelope = raw.get("ratchetEnvelope")
         if isinstance(ratchet_envelope, dict):
             return self._open_ratchet_event(raw, ratchet_envelope)
@@ -2367,6 +2504,14 @@ class BurnBarAdapter(BasePlatformAdapter):
         self._agent_ratchet_prekey_bundle: Optional[dict[str, Any]] = None
         self._agent_ratchet_private_bundle: Optional[dict[str, Any]] = None
         self._ratchet_sessions: Dict[str, Any] = {}
+        # Official libsignal v4 Gateway lane. The peer bundle may be seeded by
+        # authenticated pairing state or runtime refresh, but identity substitution
+        # is rejected once pinned.
+        self._signal_sidecar: Optional[_SignalSidecar] = None
+        self._signal_peer_bundle: Optional[dict[str, Any]] = _load_signal_peer_bundle_from_env()
+        self._signal_required = (os.getenv("BURNBAR_SIGNAL_REQUIRED") or "").strip() == "1"
+        self._signal_enabled = self._signal_required or (os.getenv("BURNBAR_SIGNAL_ENABLE") or "").strip() == "1"
+        self._signal_identity_key_id: Optional[str] = None
         # AAD identity binding. uid/clientId are routing ids the server echoes and
         # every gateway AAD includes. On E2E links they MUST come from the
         # authenticated pairing grant (persisted env). Learning the first value from
@@ -2404,6 +2549,34 @@ class BurnBarAdapter(BasePlatformAdapter):
     # ------------------------------------------------------------------
     # Relay identity / peer key management
     # ------------------------------------------------------------------
+    def _ensure_signal_sidecar(self) -> _SignalSidecar:
+        if self._signal_sidecar is None:
+            os.environ.setdefault("BURNBAR_SIGNAL_UID", self._relay_uid)
+            self._signal_sidecar = _SignalSidecar()
+            local_bundle = self._signal_sidecar.bundle()
+            self._signal_identity_key_id = str(local_bundle.get("identityKeyId") or "").strip() or None
+        return self._signal_sidecar
+
+    def _signal_capable(self) -> bool:
+        if not self._signal_enabled or not self._signal_peer_bundle:
+            return False
+        try:
+            self._ensure_signal_sidecar()
+            return True
+        except Exception:
+            logger.debug("[%s] official Signal sidecar unavailable", self.name, exc_info=True)
+            return False
+
+    def _signal_peer_for(self) -> dict[str, Any]:
+        if not self._signal_peer_bundle:
+            raise _RelayPlaintextRefused("paired Gateway has no pinned Signal peer bundle")
+        return dict(self._signal_peer_bundle)
+
+    def _close_signal_sidecar(self) -> None:
+        if self._signal_sidecar is not None:
+            self._signal_sidecar.close()
+            self._signal_sidecar = None
+
     def _ensure_relay_identity(self):
         """Load (or create+persist) the agent relay private key. Returns it or None.
 
@@ -2903,8 +3076,17 @@ class BurnBarAdapter(BasePlatformAdapter):
         client_id = payload.get("clientId") or payload.get("id")
         if client_id:
             self._absorb_routing_id("clientId", str(client_id))
+        peer_bundle = payload.get("phoneSignalPrekeyBundle") or payload.get("signalPrekeyBundle")
+        if self._signal_enabled and isinstance(peer_bundle, dict) and peer_bundle.get("version") == 1:
+            existing_identity = _signal_bundle_identity(self._signal_peer_bundle)
+            incoming_identity = _signal_bundle_identity(peer_bundle)
+            if existing_identity and incoming_identity != existing_identity:
+                logger.error("[%s] SECURITY: Signal peer identity changed; refusing the new bundle", self.name)
+            else:
+                self._signal_peer_bundle = dict(peer_bundle)
         # Deliberately NOT acting on relayCapable/e2eEnabled here: an untrusted
-        # runtime response must not flip a never-paired agent into E2E.
+        # runtime response must not flip a never-paired agent into E2E. Signal peer
+        # identity is separately pinned above; capability alone never enables it.
 
 
     def _peer_relay_key_version_for(self, destination_id: str) -> int:
@@ -3140,6 +3322,20 @@ class BurnBarAdapter(BasePlatformAdapter):
         if not body:
             self._last_runtime_publish = now
             return
+        # Advertise the official libsignal v4 public bundle whenever the operator
+        # enables/requires that lane. The bundle contains no private material.
+        if self._signal_enabled:
+            try:
+                sidecar = self._ensure_signal_sidecar()
+                body["agentSupportsSignalEnvelope"] = True
+                body["supportsSignalEnvelope"] = True
+                body["agentSignalPrekeyBundle"] = sidecar.bundle()
+                body["agentPlatform"] = "hermes-agent"
+                body["agentAppBuild"] = _agent_version() or "unknown"
+            except Exception:
+                if self._signal_required:
+                    raise
+                logger.debug("[%s] optional Signal bundle publication unavailable", self.name, exc_info=True)
         # Re-advertise the agent relay pubkey alongside status so the server keeps
         # the link relay-capable even if the device-start publish was missed.
         if RELAY_CRYPTO_AVAILABLE and self._relay_e2e_enabled:

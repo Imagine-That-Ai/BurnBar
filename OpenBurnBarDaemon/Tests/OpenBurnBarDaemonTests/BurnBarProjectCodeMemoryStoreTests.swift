@@ -1802,6 +1802,11 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(sqlite3_open_v2(database.path, &db, SQLITE_OPEN_READONLY, nil), SQLITE_OK)
         guard let db else { return [] }
         defer { sqlite3_close(db) }
+        // The store wrote this file through SQLCipher when a codec and a
+        // provisioned key are both present — i.e. on any real dev Mac. Reading it
+        // back without applying the same key fails with SQLITE_NOTADB (26), which
+        // surfaces as a confusing "26 != 0" assertion rather than a key error.
+        try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: db)
 
         var statement: OpaquePointer?
         XCTAssertEqual(sqlite3_prepare_v2(db, sql, -1, &statement, nil), SQLITE_OK)
@@ -1827,6 +1832,9 @@ final class BurnBarProjectCodeMemoryStoreTests: XCTestCase {
         XCTAssertEqual(sqlite3_open_v2(database.path, &db, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
         guard let db else { return }
         defer { sqlite3_close(db) }
+        // Same reason as `sqliteStrings`: the file is SQLCipher-encrypted when a
+        // codec and key are present, so a write helper must key the handle too.
+        try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: db)
 
         var errorMessage: UnsafeMutablePointer<CChar>?
         let result = sqlite3_exec(db, sql, nil, nil, &errorMessage)

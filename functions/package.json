@@ -1,7 +1,7 @@
 {
   "name": "openburnbar-functions",
   "version": "1.0.0",
-  "description": "OpenBurnBar Cloud Functions v2 backend — provider credential vault, quota refresh, and usage rollups.",
+  "description": "OpenBurnBar Cloud Functions v2 backend \u2014 provider credential vault, quota refresh, and usage rollups.",
   "engines": {
     "node": "22"
   },
@@ -35,7 +35,7 @@
     "test:fcm-android": "npm run build && node scripts/test-fcm-android.mjs",
     "generate:bola-seeds": "node scripts/generate-bola-victim-seeds.mjs",
     "test:bola": "bash scripts/test-bola-matrix.sh",
-    "test:security": "node --test scripts/generated-literal-parser.test.mjs scripts/sync-bola-tier2-proofs.test.mjs && vitest run src/__tests__/googlePlayTokenClaims.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/irohPairingFreshness.test.ts src/__tests__/appCheckAttestationBinding.test.ts src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/hermesGatewayAttachmentInit.test.ts src/__tests__/highRiskOwnerActionCallableGuards.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/trustedDeviceActionProof.test.ts src/__tests__/bolaCoverageValidators.test.ts && npm run test:bola",
+    "test:security": "node --test scripts/generated-literal-parser.test.mjs scripts/sync-bola-tier2-proofs.test.mjs && vitest run src/__tests__/googlePlayTokenClaims.test.ts src/__tests__/publicRateLimit.test.ts src/__tests__/irohPairingFreshness.test.ts src/__tests__/appCheckAttestationBinding.test.ts src/__tests__/clientAppCheckApprovalOrdering.test.ts src/__tests__/endpointAuthorizationMatrix.test.ts src/__tests__/hermesGatewayAttachmentInit.test.ts src/__tests__/highRiskOwnerActionCallableGuards.test.ts src/__tests__/highRiskOwnerAction.test.ts src/__tests__/trustedDeviceActionProof.test.ts src/__tests__/bolaCoverageValidators.test.ts && npm run test:bola",
     "test:agent-notifications": "npm run build && node scripts/test-agent-notifications.mjs",
     "test:providers": "npm run build && node scripts/test-providers.mjs && node scripts/test-mimo-probe-fixture.mjs && node scripts/test-provider-account-schema.mjs",
     "test:conversation-query": "npm run build && node scripts/test-conversation-query.mjs",
@@ -72,15 +72,15 @@
   "dependencies": {
     "@apple/app-store-server-library": "^3.0.0",
     "@google-cloud/tasks": "6.2.3",
-    "@openburnbar/entitlements": "file:vendor/openburnbar/entitlements",
     "@openburnbar/domain-core-wasm": "file:vendor/openburnbar/domain-core-wasm",
+    "@openburnbar/entitlements": "file:vendor/openburnbar/entitlements",
     "@openburnbar/signal-envelope-contracts": "file:vendor/openburnbar/signal-envelope-contracts",
-    "@sentry/core": "10.58.0",
-    "@sentry/node": "10.58.0",
+    "@sentry/core": "10.69.0",
+    "@sentry/node": "10.69.0",
     "@simplewebauthn/server": "13.3.0",
     "cockatiel": "3.2.1",
     "express": "5.2.1",
-    "firebase-admin": "13.10.0",
+    "firebase-admin": "14.2.0",
     "firebase-functions": "^7.3.0",
     "googleapis": "173.0.0",
     "stripe": "19.3.0"
@@ -93,7 +93,7 @@
     "@vitest/coverage-v8": "4.1.8",
     "eslint": "9.39.4",
     "eslint-config-prettier": "10.1.8",
-    "firebase": "12.14.0",
+    "firebase": "12.17.1",
     "firebase-tools": "15.23.0",
     "knip": "5.88.1",
     "prettier": "3.8.3",
@@ -108,10 +108,17 @@
     "uuid": "11.1.1",
     "@opentelemetry/core": "2.8.0",
     "@hono/node-server": "2.0.10",
-    "fast-uri": "3.1.4",
-    "hono": "4.12.31",
-    "brace-expansion": "^5.0.8",
-    "minimatch": "^10.0.3"
+    "fast-uri": "3.1.5",
+    "hono": "4.12.34",
+    "brace-expansion@^1.1.7": "file:vendor/openburnbar/brace-expansion-cjs.tgz",
+    "brace-expansion": "^5.0.9",
+    "minimatch": "^10.0.3",
+    "firebase-tools@15.23.0": {
+      "minimatch@^3.0.4": "3.1.5",
+      "minimatch@^6.1.6": "3.1.5"
+    },
+    "ip-address": "10.3.1",
+    "undici@^6.19.0": "6.28.0"
   },
   "private": true,
   "license": "AGPL-3.0-only"

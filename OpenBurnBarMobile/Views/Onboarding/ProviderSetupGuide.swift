@@ -172,24 +172,11 @@ extension ProviderSetupGuide {
             )
 
         case .junie:
-            return ProviderSetupGuide(
-                provider: provider,
-                kinds: [.session],
-                defaultKind: .session,
-                labelSuggestion: "Junie",
-                dashboardURL: URL(string: "https://www.jetbrains.com/junie/"),
-                dashboardCTA: "Open JetBrains Junie",
-                oneLineHint: "Junie chat bridged from your Mac.",
-                instructions: [
-                    GuideStep(1, "Sign in to Junie on your Mac", detail: "Use the JetBrains account you run the junie CLI with."),
-                    GuideStep(2, "Run the Mac bridge where Junie is signed in", detail: "The bridge reads local Junie auth from ~/.junie and streams chat back to this device.", codeSnippet: "~/.junie"),
-                    GuideStep(3, "Start a Junie chat from this device", detail: "OpenBurnBar does not collect Junie auth — sessions run on your Mac and mirror here.")
-                ],
-                credentialPlaceholder: "Managed by your paired Mac",
-                credentialFooterMarkdown: "Junie runs through OpenBurnBar on your Mac. Auth stays in `~/.junie` on the machine running the bridge.",
-                supportsHosted: false,
-                supportsSelfHosted: false
-            )
+            return junieGuide(for: provider)
+        case .primeAgent:
+            return primeAgentGuide(for: provider)
+        case .muse:
+            return museGuide(for: provider)
 
         case .openAI:
             return ProviderSetupGuide(
@@ -591,6 +578,9 @@ extension ProviderSetupGuide {
                 supportsSelfHosted: false
             )
 
+        case .devin:
+            return devinGuide(for: provider)
+
         case .windsurf:
             return ProviderSetupGuide(
                 provider: provider,
@@ -682,6 +672,93 @@ extension ProviderSetupGuide {
         case .cookie:  return "Cookie"
         case .plan:    return "Plan code"
         }
+    }
+
+    private static func junieGuide(for provider: AgentProvider) -> ProviderSetupGuide {
+        ProviderSetupGuide(
+            provider: provider,
+            kinds: [.session],
+            defaultKind: .session,
+            labelSuggestion: "Junie",
+            dashboardURL: URL(string: "https://www.jetbrains.com/junie/"),
+            dashboardCTA: "Open JetBrains Junie",
+            oneLineHint: "Junie chat bridged from your Mac.",
+            instructions: [
+                GuideStep(1, "Sign in to Junie on your Mac", detail: "Use the JetBrains account you run the junie CLI with."),
+                GuideStep(2, "Run the Mac bridge where Junie is signed in", detail: "The bridge reads local Junie auth from ~/.junie and streams chat back to this device.", codeSnippet: "~/.junie"),
+                GuideStep(3, "Start a Junie chat from this device", detail: "OpenBurnBar does not collect Junie auth — sessions run on your Mac and mirror here.")
+            ],
+            credentialPlaceholder: "Managed by your paired Mac",
+            credentialFooterMarkdown: "Junie runs through OpenBurnBar on your Mac. Auth stays in `~/.junie` on the machine running the bridge.",
+            supportsHosted: false,
+            supportsSelfHosted: false
+        )
+    }
+
+    private static func primeAgentGuide(for provider: AgentProvider) -> ProviderSetupGuide {
+        ProviderSetupGuide(
+            provider: provider,
+            kinds: [.session],
+            defaultKind: .session,
+            labelSuggestion: "Prime Agent",
+            dashboardURL: URL(string: "https://www.primeintellect.ai/"),
+            dashboardCTA: "Open Prime Intellect",
+            oneLineHint: "Prime Agent sessions on your Mac — usage from ~/.prime/agent/sessions.",
+            instructions: [
+                GuideStep(1, "Install and sign in to Prime Agent on your Mac", detail: "Use the Prime Intellect account that runs `prime-agent`."),
+                GuideStep(2, "Keep the Mac bridge running", detail: "OpenBurnBar reads session JSONL from ~/.prime/agent/sessions and attributes spend.", codeSnippet: "~/.prime/agent/sessions"),
+                GuideStep(3, "Optional: route through OpenBurnBar", detail: "Run `node scripts/prime-agent-openburnbar-proxy.mjs` so `openburnbar/*` models hit the local gateway.")
+            ],
+            credentialPlaceholder: "Managed by your paired Mac",
+            credentialFooterMarkdown: "Prime Agent auth stays on your Mac. OpenBurnBar only reads local session usage.",
+            supportsHosted: false,
+            supportsSelfHosted: false
+        )
+    }
+
+    /// Devin (Cognition). Kept separate from the legacy Windsurf branch: sharing that
+    /// case labelled the account "Windsurf", pointed at the Codeium dashboard and asked
+    /// for a Codeium session cookie — none of which configure Devin.
+    private static func devinGuide(for provider: AgentProvider) -> ProviderSetupGuide {
+        ProviderSetupGuide(
+            provider: provider,
+            kinds: [.token, .bearer],
+            defaultKind: .token,
+            labelSuggestion: "Devin",
+            dashboardURL: URL(string: "https://devin.ai"),
+            dashboardCTA: "Open Devin",
+            oneLineHint: "Devin API key from your Devin workspace settings.",
+            instructions: [
+                GuideStep(1, "Open your Devin workspace", detail: "Sign in with the account that owns the Devin subscription."),
+                GuideStep(2, "Create an API key", detail: "Workspace Settings → API keys → create a key scoped to this device."),
+                GuideStep(3, "Paste it below", detail: "OpenBurnBar stores it in the Keychain and uses it only to read Devin usage.")
+            ],
+            credentialPlaceholder: "Devin API key",
+            credentialFooterMarkdown: "Devin sessions are not read from disk yet — usage stays estimated until a Devin session parser ships.",
+            supportsHosted: false,
+            supportsSelfHosted: false
+        )
+    }
+
+    private static func museGuide(for provider: AgentProvider) -> ProviderSetupGuide {
+        ProviderSetupGuide(
+            provider: provider,
+            kinds: [.session],
+            defaultKind: .session,
+            labelSuggestion: "Muse",
+            dashboardURL: URL(string: "https://www.meta.com/"),
+            dashboardCTA: "Open Meta Muse",
+            oneLineHint: "Muse sessions under ~/.local/share/muse/sessions.",
+            instructions: [
+                GuideStep(1, "Install Muse on your Mac", detail: "Use the Meta Muse CLI/app that writes envelope JSONL sessions."),
+                GuideStep(2, "Keep the Mac bridge running", detail: "OpenBurnBar parses ~/.local/share/muse/sessions for tokens and cost.", codeSnippet: "~/.local/share/muse/sessions"),
+                GuideStep(3, "Watch usage in the meter", detail: "Sessions appear with model and exact cost when Muse records it.")
+            ],
+            credentialPlaceholder: "Managed by your paired Mac",
+            credentialFooterMarkdown: "Muse auth stays on your Mac. OpenBurnBar only reads local session usage.",
+            supportsHosted: false,
+            supportsSelfHosted: false
+        )
     }
 }
 

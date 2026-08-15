@@ -2,11 +2,11 @@
 
 export const SITE = {
   name: "OpenBurnBar",
-  tagline: "Watch your AI coding agents.",
+  tagline: "Watch your agents. Before the bill.",
   domain: "burnbar.ai",
   url: "https://burnbar.ai",
   description:
-    "A local-first tool that watches AI coding agents — tokens burned, dollars spent, quota left — across Claude Code, Codex, Cursor, Copilot, and more.",
+    "Your agents don't send a receipt. We do. Live in the menu bar, from local logs. No telemetry. No account.",
   twitter: "",
   github: "https://github.com/Imagine-That-Ai/BurnBar",
   releasesUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases",
@@ -108,14 +108,14 @@ export const SITE = {
     ],
     legacyProductIds: ["com.openburnbar.hostedQuotaSync.cloud.monthly"]
   },
-  // Public macOS download. Use GitHub Releases while downloads.burnbar.ai DNS/R2 is offline.
-  // Do not point this at downloads.burnbar.ai unless DNS/R2 and the matching DMG are live.
-  macReleaseLatest: "1.0.26",
-  macReleaseFile: "OpenBurnBar-1.0.26-macOS.dmg",
+  // Public macOS download and update feeds. The first-party host is backed by
+  // the verified openburnbar-downloads R2 bucket.
+  macReleaseLatest: "1.0.29",
+  macReleaseFile: "OpenBurnBar-1.0.29-macOS.dmg",
   macAppcastFile: "appcast.xml",
   macUpdateFeedFile: "latest-macos.json",
-  macDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/v1.0.26",
-  macUpdateBaseUrl: "",
+  macDownloadBaseUrl: "https://downloads.burnbar.ai",
+  macUpdateBaseUrl: "https://downloads.burnbar.ai",
   macMin: "macOS 14 Sonoma",
   // Public Linux download. First release ships aarch64/ARM64 artifacts from the
   // ubuntu-24.04-arm release lane; served from GitHub Releases under the Linux-only
@@ -126,6 +126,10 @@ export const SITE = {
   linuxRpmFile: "OpenBurnBar-0.1.0-1.aarch64.rpm",
   linuxPubKeyFile: "openburnbar-linux-ed25519.pub.pem",
   linuxDownloadBaseUrl: "https://github.com/Imagine-That-Ai/BurnBar/releases/download/linux-v0.1.0",
+  // Signed Linux update feed host. Keep empty while downloads.burnbar.ai DNS/R2
+  // is offline (same policy as macUpdateBaseUrl); set it to the live feed host
+  // to re-enable latest-linux.json verification in CI.
+  linuxUpdateBaseUrl: "",
   linuxArch: "aarch64 (ARM64)",
   // Shown on download cards and jump pills — lead with Available so it doesn't
   // read like a blocked/pending platform next to macOS.

@@ -7,7 +7,6 @@
  * gateway module under the file-length cap.
  */
 
-import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 
 import { db } from "../adminRuntime.js";
@@ -16,6 +15,8 @@ import { stripUndefinedObject } from "../guards.js";
 import {
   clampHermesGatewayLimit,
   effectiveOversightMode,
+  gatewaySignalEnvelopeV4Disabled,
+  gatewaySignalRequiredMode,
   HERMES_GATEWAY_PROTOCOL_VERSION,
   HERMES_GATEWAY_SCHEMA_VERSION,
   isHermesGatewayClientDoc,
@@ -35,7 +36,10 @@ import {
   type HermesGatewayRelayEnvelopeCapabilities,
 } from "../hermesGateway.js";
 import { logError, logInfo, wrapCallableHandler } from "../logging.js";
-import type { HermesGatewayClientDoc } from "../types/generated/hermes-gateway.js";
+import type {
+  HermesGatewayClientDoc,
+} from "../types/generated/hermes-gateway.js";
+import { parseGatewaySignalPrekeyBundle } from "../hermesGatewaySignalPrekeys.js";
 import { assertActiveBurnBarCloudProEntitlement, boundedTrimmedString, nowISO, safeIdentifier } from "./shared.js";
 import { FUNCTIONS_REGION, HOT_PATH_OPTIONS } from "../runtimeOptions.js";
 import {
@@ -73,6 +77,7 @@ import {
   handleHermesGatewayAttachmentDownloadUrl,
   handleListApprovals,
 } from "./hermesGatewayAttachmentRoutes.js";
+import { buildRuntimePersistDoc, resolveRuntimeSignalPrekeyWrite } from "./hermesGatewayRuntimeState.js";
 
 async function handleDestinations(req: HttpRequest, res: HttpResponse): Promise<void> {
   if (req.method !== "GET") throw httpError(405, "method_not_allowed");
@@ -333,61 +338,6 @@ function resolveRuntimeRatchetWrite(
   return undefined;
 }
 
-interface RuntimePersistInput {
-  runtimeModelId: string | undefined;
-  runtimeProviderId: string | undefined;
-  runtimeModelOptions: unknown[];
-  agentVersion: string | undefined;
-  agentRelayKeyWrite: ParsedRelayPublicKey | undefined;
-  agentCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined;
-  negotiatedCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined;
-  agentRatchetWrite: ParsedRatchetPrekeyBundle | undefined;
-  supportsRatchetV1: boolean | undefined;
-  relayCapable: boolean | undefined;
-  settled: boolean;
-  now: string;
-}
-
-/** Assemble the merge payload persisted by /runtime. A pure builder. */
-function buildRuntimePersistDoc(input: RuntimePersistInput): Record<string, unknown> {
-  const { agentRelayKeyWrite, agentCapabilities, negotiatedCapabilities, agentRatchetWrite } = input;
-  return stripUndefinedObject({
-    runtimeModelId: input.runtimeModelId,
-    runtimeProviderId: input.runtimeProviderId,
-    runtimeModelOptions: input.runtimeModelOptions,
-    agentVersion: input.agentVersion,
-    // Pin-only: relay-key fields are written ONLY on first pairing
-    // (agentRelayKeyWrite set). Once pinned they are never overwritten here.
-    agentRelayPublicKey: agentRelayKeyWrite?.publicKey,
-    agentRelayKeyVersion: agentRelayKeyWrite?.keyVersion,
-    agentRelayEncryption: agentRelayKeyWrite?.encryption,
-    agentSupportsRelayEnvelopeVersions: agentCapabilities?.supportsRelayEnvelopeVersions,
-    agentPreferredRelayEnvelopeVersion: agentCapabilities?.preferredRelayEnvelopeVersion,
-    agentSupportsHpkeV3: agentCapabilities?.supportsHpkeV3,
-    agentSupportsSignalEnvelope: agentCapabilities?.supportsSignalEnvelope,
-    agentPlatform: agentCapabilities?.platform,
-    agentAppBuild: agentCapabilities?.appBuild,
-    supportsRelayEnvelopeVersions: negotiatedCapabilities?.supportsRelayEnvelopeVersions,
-    preferredRelayEnvelopeVersion: negotiatedCapabilities?.preferredRelayEnvelopeVersion,
-    supportsHpkeV3: negotiatedCapabilities?.supportsHpkeV3,
-    supportsSignalEnvelope: negotiatedCapabilities?.supportsSignalEnvelope,
-    agentRatchetIdentityPublicKey: agentRatchetWrite?.identityPublicKey,
-    agentRatchetSigningPublicKey: agentRatchetWrite?.signingPublicKey,
-    agentRatchetSignedPreKeyPublicKey: agentRatchetWrite?.signedPreKeyPublicKey,
-    agentRatchetSignedPreKeyId: agentRatchetWrite?.signedPreKeyId,
-    agentRatchetSignedPreKeySignature: agentRatchetWrite?.signedPreKeySignature,
-    agentSupportsRatchetV1: agentRatchetWrite?.supportsRatchetV1,
-    supportsRatchetV1: input.supportsRatchetV1,
-    relayCapable: input.relayCapable,
-    runtimeUpdatedAt: input.now,
-    lastSeenAt: input.now,
-    updatedAt: input.now,
-    pendingModelId: input.settled ? FieldValue.delete() : undefined,
-    pendingModelRequestedAt: input.settled ? FieldValue.delete() : undefined,
-    schemaVersion: HERMES_GATEWAY_SCHEMA_VERSION,
-  });
-}
-
 function negotiatedRuntimeCapabilities(
   agentCapabilities: HermesGatewayRelayEnvelopeCapabilities | undefined,
   client: HermesGatewayClientDoc,
@@ -457,6 +407,25 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
     grant.client,
     grant.uid,
   );
+  const requestedAgentSignalPrekeyBundle = parseGatewaySignalPrekeyBundle(body, "agent", (message) => {
+    throw new HttpsError("invalid-argument", message);
+  });
+  const agentSignalPrekeyBundleWrite = resolveRuntimeSignalPrekeyWrite(
+    requestedAgentSignalPrekeyBundle,
+    grant.client.agentSignalPrekeyBundle,
+    grant.client,
+    grant.uid,
+  );
+  if (
+    agentCapabilities?.supportsSignalEnvelope === true &&
+    !requestedAgentSignalPrekeyBundle &&
+    !grant.client.agentSignalPrekeyBundle
+  ) {
+    throw new HttpsError(
+      "invalid-argument",
+      "missing_agent_signal_prekey_bundle: Signal-capable runtimes require a PQXDH bundle.",
+    );
+  }
   const now = nowISO();
   // Reconcile the optimistic model-switch marker: once the runtime reports it is
   // actually running the requested model, clear pendingModelId so /state stops
@@ -472,6 +441,22 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
   const agentRatchetOnRecord = pinnedAgentRatchetIdentity !== undefined || agentRatchetWrite != null;
   const phoneRatchetOnRecord = grant.client.phoneSupportsRatchetV1 === true;
   const supportsRatchetV1 = agentRatchetOnRecord && phoneRatchetOnRecord ? true : undefined;
+  // Required mode is fail-closed for both endpoints. A runtime update cannot
+  // preserve a one-sided or plaintext-capable pairing after the flag is raised:
+  // the agent and the phone must both advertise Signal v4 and retain their
+  // pinned official-libsignal PQXDH bundles.
+  if (
+    gatewaySignalRequiredMode() &&
+    (agentCapabilities?.supportsSignalEnvelope !== true ||
+      !(grant.client.agentSignalPrekeyBundle || agentSignalPrekeyBundleWrite) ||
+      grant.client.phoneSupportsSignalEnvelope !== true ||
+      !grant.client.phoneSignalPrekeyBundle)
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "signal_runtime_required: the agent runtime must advertise Signal v4 with a pinned PQXDH bundle (and a Signal-capable phone must have one pinned).",
+    );
+  }
   await db.doc(`users/${grant.uid}/hermes_gateway_clients/${grant.client.id}`).set(
     buildRuntimePersistDoc({
       runtimeModelId,
@@ -482,6 +467,7 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
       agentCapabilities,
       negotiatedCapabilities,
       agentRatchetWrite,
+      agentSignalPrekeyBundleWrite,
       supportsRatchetV1,
       relayCapable,
       settled,
@@ -497,6 +483,10 @@ async function handleRuntimeStatus(req: HttpRequest, res: HttpResponse): Promise
     modelOptionCount: runtimeModelOptions.length,
     pendingModelSwitchSettled: settled,
     runtimeUpdatedAt: now,
+    phoneSignalPrekeyBundle: grant.client.phoneSignalPrekeyBundle,
+    supportsSignalEnvelope: negotiatedCapabilities?.supportsSignalEnvelope === true,
+    signalRequired: gatewaySignalRequiredMode(),
+    signalEnvelopeV4Disabled: gatewaySignalEnvelopeV4Disabled(),
   });
 }
 
@@ -562,7 +552,9 @@ function writeGatewayDispatchError(res: HttpResponse, err: unknown): void {
           ? 403
           : err.code === "resource-exhausted"
             ? 429
-            : 500;
+            : err.code === "failed-precondition"
+              ? 412
+              : 500;
     sendJSON(res, status, { error: err.code, detail: err.message });
     return;
   }

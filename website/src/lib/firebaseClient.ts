@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "firebase/app-check";
 import { getAuth, GoogleAuthProvider, OAuthProvider, connectAuthEmulator } from "firebase/auth";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
@@ -20,7 +21,32 @@ const firebaseConfig = {
   appId: import.meta.env.PUBLIC_FIREBASE_APP_ID || "1:246956661961:web:2e267f5d3a84a525480118"
 };
 
+const recaptchaSiteKey =
+  import.meta.env.PUBLIC_RECAPTCHA_ENTERPRISE_KEY || "6Ld3bAktAAAAAABiZujpMLmUcvSMUPiJk6qENbOg";
+
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+let appCheck: AppCheck | undefined;
+
+if (typeof window !== "undefined") {
+  if (import.meta.env.DEV) {
+    const debugToken = import.meta.env.PUBLIC_APPCHECK_DEBUG_TOKEN;
+    (
+      self as unknown as {
+        FIREBASE_APPCHECK_DEBUG_TOKEN?: string | boolean;
+      }
+    ).FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken || true;
+  }
+  try {
+    appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+      isTokenAutoRefreshEnabled: true
+    });
+  } catch {
+    // HMR can re-evaluate the module after App Check has already initialized.
+  }
+}
+
+export { appCheck };
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const appleProvider = new OAuthProvider("apple.com");

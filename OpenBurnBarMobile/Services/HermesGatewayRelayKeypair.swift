@@ -1,6 +1,9 @@
 import CryptoKit
 import Foundation
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
+import OpenBurnBarSignalCore
+import OpenBurnBarSignalSessionTransport
 import Security
 
 /// Keychain-backed persistent P-256 relay keypair for the phone's side of the
@@ -24,7 +27,7 @@ protocol HermesGatewayPrivateKeyStorage: Sendable {
 
 private struct HermesGatewayKeychainPrivateKeyStorage: HermesGatewayPrivateKeyStorage {
     func loadKeyData(tag: Data) throws -> Data? {
-        let query: [String: Any] = [
+        let query: NSDictionary = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecReturnData as String: true,
@@ -45,7 +48,7 @@ private struct HermesGatewayKeychainPrivateKeyStorage: HermesGatewayPrivateKeySt
     }
 
     func saveKeyData(_ data: Data, tag: Data, label: String) throws {
-        let query: [String: Any] = [
+        let query: NSDictionary = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
@@ -468,27 +471,35 @@ enum HermesGatewayRatchetChatLane {
     }
 }
 
+/// Shared builders for the two `kSecClassGenericPassword` query shapes that
+/// every keychain-backed store in this target repeats. Centralizing the raw
+/// `[String: Any]` literals keeps the untyped keychain boundary in one place.
+enum KeychainGenericPasswordQuery {
+    /// `class + service + account` — the shape `SecItemUpdate`, `SecItemDelete`,
+    /// and create-copies start from.
+    static func base(service: String, account: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+    }
+
+    /// `base` plus single-item data return — the `SecItemCopyMatching` shape.
+    static func read(service: String, account: String) -> [String: Any] {
+        var query = base(service: service, account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        return query
+    }
+}
+
 enum HermesGatewayRatchetSessionStore {
     private static let service = "com.openburnbar.mobile.hermes-gateway-ratchet-session"
     private static let indexPrefix = "current-chat-session"
 
     static func load(sessionID: String) throws -> HermesRatchetSessionState? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: sessionID,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess else {
-            throw HermesGatewayRelayKeypairError.keychainError(status: Int(status))
-        }
-        guard let data = item as? Data else {
-            throw HermesGatewayRelayKeypairError.keychainError(status: Int(errSecDecode))
-        }
+        guard let data = try loadData(account: sessionID) else { return nil }
         return try JSONDecoder().decode(HermesRatchetSessionState.self, from: data)
     }
 
@@ -514,13 +525,7 @@ enum HermesGatewayRatchetSessionStore {
     }
 
     private static func loadData(account: String) throws -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        let query = KeychainGenericPasswordQuery.read(service: service, account: account)
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         if status == errSecItemNotFound { return nil }
@@ -534,11 +539,7 @@ enum HermesGatewayRatchetSessionStore {
     }
 
     private static func saveData(_ data: Data, account: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: service, account: account)
         let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if updateStatus == errSecItemNotFound {
             var create = query
@@ -556,11 +557,7 @@ enum HermesGatewayRatchetSessionStore {
     }
 
     static func delete(sessionID: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: sessionID
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: service, account: sessionID)
         SecItemDelete(query as CFDictionary)
     }
 }
@@ -593,13 +590,7 @@ struct HermesGatewayKeychainPinBacking: HermesGatewayPinBacking {
     static let service = "com.openburnbar.mobile.hermes-gateway-agent-pin"
 
     func load(account: String) -> HermesGatewayPinLoad {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        let query = KeychainGenericPasswordQuery.read(service: Self.service, account: account)
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         switch status {
@@ -620,11 +611,7 @@ struct HermesGatewayKeychainPinBacking: HermesGatewayPinBacking {
     @discardableResult
     func save(_ value: String, account: String) -> OSStatus {
         let data = Data(value.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: Self.service, account: account)
         let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if updateStatus == errSecItemNotFound {
             var create = query
@@ -636,11 +623,7 @@ struct HermesGatewayKeychainPinBacking: HermesGatewayPinBacking {
     }
 
     func delete(account: String) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: account
-        ]
+        let query = KeychainGenericPasswordQuery.base(service: Self.service, account: account)
         SecItemDelete(query as CFDictionary)
     }
 }
@@ -839,4 +822,365 @@ struct HermesGatewayAgentKeyPinStore: Sendable {
     private func savePin(_ value: String, uid: String, clientId: String) -> OSStatus {
         backing.save(value, account: account(uid: uid, clientId: clientId))
     }
+}
+
+// MARK: - Official Gateway Signal session runtime
+
+#if canImport(LibSignalClient)
+import LibSignalClient
+
+/// The public identifiers needed to rebuild the phone's libsignal prekey
+/// bundle. Private records remain in `OBBSignalProtocolStore`; this metadata
+/// contains only IDs and is itself kept in the device Keychain so a reinstall
+/// or process restart cannot silently publish a bundle whose private halves are
+/// gone.
+private struct HermesGatewaySignalPrekeyMetadata: Codable {
+    var identityPublicKeyB64: String
+    var registrationId: UInt32
+    var signedPreKeyId: UInt32
+    var oneTimePreKeyId: UInt32
+    var kyberPreKeyId: UInt32
+    var bundleId: String
+    var generatedAt: String
+}
+
+private struct HermesGatewaySignalLocalMaterial {
+    let identity: OpenBurnBarSignalIdentityKeypair
+    let metadata: HermesGatewaySignalPrekeyMetadata
+    let store: OBBSignalProtocolStore
+    let peer: OBBSignalSessionPeer
+    let preKey: PreKeyRecord
+    let signedPreKey: SignedPreKeyRecord
+    let kyberPreKey: KyberPreKeyRecord
+}
+
+/// Keychain-backed official libsignal/PQXDH runtime for the hosted Gateway
+/// lane. This is intentionally separate from the legacy P-256 relay keypair:
+/// the latter is retained for migration/legacy peers, while a v4-capable peer
+/// is always sealed with the native libsignal session below.
+enum HermesGatewaySignalRuntime {
+    private static let metadataService = "com.openburnbar.signal-gateway-prekeys"
+    private static let metadataAccountPrefix = "v1:"
+    private static let context = NullContext()
+
+    static func loadOrCreateBundle(
+        uid: String,
+        deviceId: String
+    ) throws -> FirestoreHermesGatewaySignalPrekeyBundleDoc {
+        let material = try localMaterial(uid: uid, deviceId: deviceId, pinnedIdentityPublicKey: nil)
+        return try bundle(from: material)
+    }
+
+    static func session(
+        uid: String,
+        targetClient: HermesGatewayClientRecord,
+        deviceId: String
+    ) throws -> HermesGatewaySignalSession {
+        guard
+            targetClient.supportsSignalEnvelope,
+            targetClient.agentSupportsSignalEnvelope != false,
+            let claimed = targetClient.agentSignalPrekeyBundle,
+            claimed.version == 1,
+            let pinnedIdentity = Data(base64Encoded: claimed.identityKeyB64),
+            !pinnedIdentity.isEmpty
+        else {
+            throw FunctionsError.gatewaySignalUnavailable
+        }
+
+        let material = try localMaterial(
+            uid: uid,
+            deviceId: deviceId,
+            pinnedIdentityPublicKey: pinnedIdentity
+        )
+        let remoteBundle = OBBSignalClaimedPreKeyBundle(
+            peerUid: uid,
+            identityKeyId: claimed.identityKeyId,
+            deviceId: "agent-\(claimed.deviceId)",
+            keyVersion: claimed.version,
+            identityPublicKeyData: claimed.identityKeyB64,
+            signedPreKey: OBBSignalClaimedSignedPreKey(
+                id: String(claimed.signedPreKeyId),
+                numericId: UInt32(claimed.signedPreKeyId),
+                publicKeyB64: claimed.signedPreKeyPublicB64,
+                signatureB64: claimed.signedPreKeySignatureB64
+            ),
+            kyberPreKey: OBBSignalClaimedKyberPreKey(
+                id: String(claimed.kyberPreKeyId),
+                numericId: UInt32(claimed.kyberPreKeyId),
+                publicKeyB64: claimed.kyberPreKeyPublicB64,
+                signatureB64: claimed.kyberPreKeySignatureB64
+            ),
+            oneTimePreKey: OBBSignalClaimedOneTimePreKey(
+                id: String(claimed.oneTimePreKeyId),
+                numericId: UInt32(claimed.oneTimePreKeyId),
+                publicKeyB64: claimed.oneTimePreKeyPublicB64
+            ),
+            signalDeviceId: UInt32(claimed.deviceId),
+            signalRegistrationId: UInt32(claimed.registrationId)
+        )
+        let transport = OBBSignalSessionCipherTransport(
+            store: material.store,
+            localAddress: try material.peer.protocolAddress()
+        )
+        return HermesGatewaySignalSession(
+            provider: OBBSignalSessionGatewayEnvelopeProvider(
+                transport: transport,
+                peerBundle: remoteBundle,
+                pinnedIdentityPublicKey: pinnedIdentity
+            )
+        )
+    }
+
+    private static func localMaterial(
+        uid: String,
+        deviceId: String,
+        pinnedIdentityPublicKey: Data?
+    ) throws -> HermesGatewaySignalLocalMaterial {
+        guard !uid.isEmpty, !deviceId.isEmpty else {
+            throw FunctionsError.gatewaySignalUnavailable
+        }
+        let identity = try OpenBurnBarSignalIdentityKeyStore().loadOrCreate(
+            uid: uid,
+            deviceId: deviceId
+        )
+        let account = metadataAccount(uid: uid)
+        var metadata = try loadMetadata(account: account)
+        if metadata?.identityPublicKeyB64 != identity.publicKeyBase64 {
+            metadata = nil
+        }
+        if metadata == nil {
+            metadata = HermesGatewaySignalPrekeyMetadata(
+                identityPublicKeyB64: identity.publicKeyBase64,
+                registrationId: registrationId(for: identity.publicKeyData),
+                signedPreKeyId: newPreKeyId(),
+                oneTimePreKeyId: newPreKeyId(),
+                kyberPreKeyId: newPreKeyId(),
+                bundleId: "",
+                generatedAt: timestamp()
+            )
+        }
+        guard var metadata else { throw FunctionsError.gatewaySignalUnavailable }
+
+        let store = try makeStore(
+            uid: uid,
+            identity: identity,
+            registrationId: metadata.registrationId,
+            pinnedIdentityPublicKey: pinnedIdentityPublicKey
+        )
+        var changed = false
+        let preKey: PreKeyRecord
+        do {
+            preKey = try store.loadPreKey(id: metadata.oneTimePreKeyId, context: context)
+        } catch {
+            metadata.oneTimePreKeyId = newPreKeyId()
+            preKey = try PreKeyRecord(id: metadata.oneTimePreKeyId, privateKey: .generate())
+            try store.storePreKey(preKey, id: metadata.oneTimePreKeyId, context: context)
+            changed = true
+        }
+
+        let identityKeypair = try IdentityKeyPair(bytes: identity.privateKeyData)
+        let signedPreKey: SignedPreKeyRecord
+        do {
+            signedPreKey = try store.loadSignedPreKey(id: metadata.signedPreKeyId, context: context)
+        } catch {
+            metadata.signedPreKeyId = newPreKeyId()
+            let privateKey = PrivateKey.generate()
+            let signature = identityKeypair.privateKey.generateSignature(message: privateKey.publicKey.serialize())
+            signedPreKey = try SignedPreKeyRecord(
+                id: metadata.signedPreKeyId,
+                timestamp: UInt64(Date().timeIntervalSince1970 * 1000),
+                privateKey: privateKey,
+                signature: signature
+            )
+            try store.storeSignedPreKey(signedPreKey, id: metadata.signedPreKeyId, context: context)
+            changed = true
+        }
+
+        let kyberPreKey: KyberPreKeyRecord
+        do {
+            kyberPreKey = try store.loadKyberPreKey(id: metadata.kyberPreKeyId, context: context)
+        } catch {
+            metadata.kyberPreKeyId = newPreKeyId()
+            let keyPair = KEMKeyPair.generate()
+            let signature = identityKeypair.privateKey.generateSignature(message: keyPair.publicKey.serialize())
+            kyberPreKey = try KyberPreKeyRecord(
+                id: metadata.kyberPreKeyId,
+                timestamp: UInt64(Date().timeIntervalSince1970 * 1000),
+                keyPair: keyPair,
+                signature: signature
+            )
+            try store.storeKyberPreKey(kyberPreKey, id: metadata.kyberPreKeyId, context: context)
+            changed = true
+        }
+
+        if changed || metadata.bundleId.isEmpty {
+            metadata.generatedAt = timestamp()
+            metadata.bundleId = bundleId(
+                identityPublicKeyB64: identity.publicKeyBase64,
+                signedPreKeyId: metadata.signedPreKeyId,
+                oneTimePreKeyId: metadata.oneTimePreKeyId,
+                kyberPreKeyId: metadata.kyberPreKeyId,
+                generatedAt: metadata.generatedAt
+            )
+        }
+        try saveMetadata(metadata, account: account)
+        return HermesGatewaySignalLocalMaterial(
+            identity: identity,
+            metadata: metadata,
+            store: store,
+            peer: OBBSignalSessionPeer(
+                uid: uid,
+                deviceId: deviceId,
+                identityKeyId: identity.identityKeyId,
+                keyVersion: identity.keyVersion,
+                signalDeviceId: nil,
+                registrationId: metadata.registrationId
+            ),
+            preKey: preKey,
+            signedPreKey: signedPreKey,
+            kyberPreKey: kyberPreKey
+        )
+    }
+
+    private static func makeStore(
+        uid: String,
+        identity: OpenBurnBarSignalIdentityKeypair,
+        registrationId: UInt32,
+        pinnedIdentityPublicKey: Data?
+    ) throws -> OBBSignalProtocolStore {
+        let keychainService = "com.openburnbar.signal.gateway.\(stableHash(uid).prefix(32))"
+        let applicationSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let sessionDir = applicationSupport
+            .appendingPathComponent("OpenBurnBar/SignalGatewaySessions", isDirectory: true)
+            .appendingPathComponent(stableHash(uid), isDirectory: true)
+        let identityKeypair = try IdentityKeyPair(bytes: identity.privateKeyData)
+        let evaluator: OBBSignalProtocolStore.IdentityTrustEvaluator = { _, advertised in
+            guard let pinnedIdentityPublicKey else { return false }
+            return Data(advertised.serialize()) == pinnedIdentityPublicKey
+        }
+        return try OBBSignalProtocolStore(
+            identityKeypair: identityKeypair,
+            registrationId: registrationId,
+            keychainService: keychainService,
+            sessionDir: sessionDir,
+            identityTrustEvaluator: evaluator
+        )
+    }
+
+    private static func bundle(from material: HermesGatewaySignalLocalMaterial) throws -> FirestoreHermesGatewaySignalPrekeyBundleDoc {
+        FirestoreHermesGatewaySignalPrekeyBundleDoc(
+            version: 1,
+            bundleId: material.metadata.bundleId,
+            identityKeyId: material.identity.identityKeyId,
+            identityKeyB64: material.identity.publicKeyBase64,
+            registrationId: Int(material.metadata.registrationId),
+            deviceId: Int(material.peer.signalDeviceId),
+            signedPreKeyId: Int(material.signedPreKey.id),
+            signedPreKeyPublicB64: Data(try material.signedPreKey.publicKey().serialize()).base64EncodedString(),
+            signedPreKeySignatureB64: Data(material.signedPreKey.signature).base64EncodedString(),
+            oneTimePreKeyId: Int(material.preKey.id),
+            oneTimePreKeyPublicB64: Data(try material.preKey.publicKey().serialize()).base64EncodedString(),
+            kyberPreKeyId: Int(material.kyberPreKey.id),
+            kyberPreKeyPublicB64: Data(try material.kyberPreKey.publicKey().serialize()).base64EncodedString(),
+            kyberPreKeySignatureB64: Data(material.kyberPreKey.signature).base64EncodedString(),
+            generatedAt: material.metadata.generatedAt
+        )
+    }
+
+    private static func metadataAccount(uid: String) -> String {
+        metadataAccountPrefix + stableHash(uid)
+    }
+
+    private static func loadMetadata(account: String) throws -> HermesGatewaySignalPrekeyMetadata? {
+        let query = KeychainGenericPasswordQuery.read(service: metadataService, account: account)
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = item as? Data else {
+            throw FunctionsError.gatewaySignalUnavailable
+        }
+        do {
+            return try JSONDecoder().decode(HermesGatewaySignalPrekeyMetadata.self, from: data)
+        } catch {
+            throw FunctionsError.gatewaySignalUnavailable
+        }
+    }
+
+    private static func saveMetadata(
+        _ metadata: HermesGatewaySignalPrekeyMetadata,
+        account: String
+    ) throws {
+        let data = try JSONEncoder().encode(metadata)
+        let query = KeychainGenericPasswordQuery.base(service: metadataService, account: account)
+        SecItemDelete(query as CFDictionary)
+        let record = NSMutableDictionary(dictionary: query)
+        record[kSecValueData as String] = data
+        record[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(record as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw FunctionsError.gatewaySignalUnavailable
+        }
+    }
+
+    private static func registrationId(for publicKeyData: Data) -> UInt32 {
+        let digest = Array(SHA256.hash(data: publicKeyData))
+        let raw = digest.prefix(4).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        return (raw % 16_382) + 1
+    }
+
+    private static func newPreKeyId() -> UInt32 {
+        UInt32.random(in: 1...1_000_000_000)
+    }
+
+    private static func timestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
+
+    private static func stableHash(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func bundleId(
+        identityPublicKeyB64: String,
+        signedPreKeyId: UInt32,
+        oneTimePreKeyId: UInt32,
+        kyberPreKeyId: UInt32,
+        generatedAt: String
+    ) -> String {
+        let material = "\(identityPublicKeyB64)|\(signedPreKeyId)|\(oneTimePreKeyId)|\(kyberPreKeyId)|\(generatedAt)"
+        return "ios-signal-\(stableHash(material).prefix(40))"
+    }
+}
+
+#else
+
+/// The vendored libsignal package is optional for local/source-only builds.
+/// Keep the gateway API available, but fail closed instead of silently
+/// falling back to plaintext when the native Signal runtime is absent.
+enum HermesGatewaySignalRuntime {
+    static func loadOrCreateBundle(
+        uid: String,
+        deviceId: String
+    ) throws -> FirestoreHermesGatewaySignalPrekeyBundleDoc {
+        throw FunctionsError.gatewaySignalUnavailable
+    }
+
+    static func session(
+        uid: String,
+        targetClient: HermesGatewayClientRecord,
+        deviceId: String
+    ) throws -> HermesGatewaySignalSession {
+        throw FunctionsError.gatewaySignalUnavailable
+    }
+}
+
+#endif
+
+struct HermesGatewaySignalSession: Sendable {
+    let provider: OBBSignalSessionGatewayEnvelopeProvider
 }

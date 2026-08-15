@@ -97,7 +97,10 @@ class MediaControlStreamCoordinator(
         object Idle : Phase()
         object Dialing : Phase()
         object Live : Phase()
-        data class Reconnecting(val nextAttemptInMillis: Long) : Phase()
+        data class Reconnecting(
+            val nextAttemptInMillis: Long,
+            val lastFailureReason: String? = null,
+        ) : Phase()
         object Stopped : Phase()
         data class Failed(val reason: String) : Phase()
     }
@@ -108,6 +111,7 @@ class MediaControlStreamCoordinator(
     )
 
     private val mutex = Mutex()
+    private val outboundSendMutex = Mutex()
     private var supervisorJob: Job? = null
     private var currentStream: IrohRelayStream? = null
     private var activeUID: String? = null
@@ -223,12 +227,12 @@ class MediaControlStreamCoordinator(
 
     suspend fun stop() {
         val job: Job?
+        val stream: IrohRelayStream?
         mutex.withLock {
             job = supervisorJob
             supervisorJob = null
-            val stream = currentStream
+            stream = currentStream
             currentStream = null
-            stream?.runCatching { close() }
             val pending = pendingLive.toList()
             pendingLive.clear()
             pending.forEach { it.completeExceptionally(CancellationException("control stream stopped")) }
@@ -240,11 +244,19 @@ class MediaControlStreamCoordinator(
             _activePair.value = null
         }
         job?.cancel()
+        stream?.runCatching { close() }
+        job?.join()
     }
 
     suspend fun send(frame: HermesRealtimeRelayFrame) {
         val stream = awaitLiveStream()
-        stream.send(frame)
+        sendSerialized(stream, frame)
+    }
+
+    internal suspend fun sendSerialized(stream: IrohRelayStream, frame: HermesRealtimeRelayFrame) {
+        outboundSendMutex.withLock {
+            stream.send(frame)
+        }
     }
 
     internal suspend fun inboundRouteIsLive(expectedStream: IrohRelayStream, uid: String, connectionID: String): Boolean = mutex.withLock {
@@ -258,7 +270,7 @@ class MediaControlStreamCoordinator(
         check(inboundRouteIsLive(expectedStream, uid, connectionID)) {
             "The exact Mercury challenge stream is no longer live."
         }
-        expectedStream.send(frame)
+        sendSerialized(expectedStream, frame)
     }
 
     suspend fun ensureResponsive(freshnessIntervalMillis: Long = 2_000L, probeTimeoutMillis: Long = 1_000L): Boolean {
@@ -279,7 +291,7 @@ class MediaControlStreamCoordinator(
         val beforeProbe = _lastPeerHeartbeatAtMillis.value
         return try {
             val sentAtMillis = System.currentTimeMillis()
-            stream.send(makeMercuryPresenceHeartbeat(uid = uid, connectionID = connectionID))
+            sendSerialized(stream, makeMercuryPresenceHeartbeat(uid = uid, connectionID = connectionID))
             pendingHeartbeatSentAtMillis = sentAtMillis
 
             val replied = withTimeoutOrNull(probeTimeoutMillis.coerceAtLeast(1L)) {
@@ -445,9 +457,11 @@ class MediaControlStreamCoordinator(
 
     private suspend fun runSupervisor(uid: String, connectionID: String) {
         var attempt = 0
+        var lastFailureReason: String? = null
         while (scope.isActive && supervisorJob?.isActive == true) {
             try {
-                _phase.value = Phase.Dialing
+                // Retries keep the last failure visible so the UI stays actionable.
+                _phase.value = if (lastFailureReason == null) Phase.Dialing else Phase.Reconnecting(0, lastFailureReason)
                 logInfo("Mercury control dial attempt=${attempt + 1} connectionID=$connectionID")
                 val stream = dialer.dial(uid, connectionID)
                 val classifyFrame = HermesRealtimeRelayFrame(
@@ -456,10 +470,11 @@ class MediaControlStreamCoordinator(
                     connectionId = connectionID,
                     media = HermesRealtimeRelayMediaPayload(streamClass = MediaStreamClass.CONTROL.raw),
                 )
-                stream.send(classifyFrame)
+                sendSerialized(stream, classifyFrame)
                 mutex.withLock { currentStream = stream }
                 _consecutiveDialFailures.value = 0
                 attempt = 0
+                lastFailureReason = null
                 _phase.value = Phase.Live
                 logInfo("Mercury control live connectionID=$connectionID")
                 analytics?.controlStreamConnected()
@@ -483,15 +498,12 @@ class MediaControlStreamCoordinator(
             } catch (_: CancellationException) {
                 return@runSupervisor
             } catch (t: Throwable) {
-                _consecutiveDialFailures.value = _consecutiveDialFailures.value + 1
-                _phase.value = Phase.Failed(t.message ?: t.javaClass.simpleName)
-                logWarning("Mercury control dial failed connectionID=$connectionID error=${t.message}", t)
-                analytics?.controlStreamLost(t.message ?: t.javaClass.simpleName)
+                lastFailureReason = recordDialFailure(connectionID = connectionID, error = t)
             }
 
             val backoff = nextBackoff(attempt)
             attempt += 1
-            _phase.value = Phase.Reconnecting(nextAttemptInMillis = backoff)
+            _phase.value = Phase.Reconnecting(backoff, lastFailureReason)
             logInfo("Mercury control reconnect scheduled connectionID=$connectionID backoffMs=$backoff")
             try {
                 delay(backoff)
@@ -504,6 +516,15 @@ class MediaControlStreamCoordinator(
         activeUID = null
         activeConnectionID = null
         _activePair.value = null
+    }
+
+    private suspend fun recordDialFailure(connectionID: String, error: Throwable): String {
+        val reason = error.message ?: error.javaClass.simpleName
+        _consecutiveDialFailures.value = _consecutiveDialFailures.value + 1
+        _phase.value = Phase.Failed(reason)
+        logWarning("Mercury control dial failed connectionID=$connectionID error=${error.message}", error)
+        analytics?.controlStreamLost(reason)
+        return reason
     }
 
     private fun swiftReferenceDateSecondsNow(): Double = System.currentTimeMillis() / 1_000.0 - SWIFT_REFERENCE_DATE_UNIX_SECONDS
@@ -521,7 +542,7 @@ class MediaControlStreamCoordinator(
         runCatching { Log.i(TAG, message) }
     }
 
-    private fun logWarning(message: String, error: Throwable) {
+    internal fun logWarning(message: String, error: Throwable) {
         runCatching { Log.w(TAG, message, error) }
     }
 
@@ -553,7 +574,6 @@ class MediaControlStreamCoordinator(
     internal val inboundFrameChunkAssembler get() = frameChunkAssembler
     internal val inboundMediaPacketCodec get() = mediaPacketCodec
     internal val inboundMediaFrameV2Codec get() = mediaFrameV2Codec
-    internal fun inboundLogWarning(message: String, error: Throwable) = logWarning(message, error)
 
     private companion object {
         private const val TAG = "BurnBar"

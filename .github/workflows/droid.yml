@@ -1,16 +1,17 @@
 name: Droid Tag
 
+# CI-cost hardening (2026-07-31): this workflow spawned ~120 runs/48h with
+# nearly all skipped — every review, inline comment, and PR body edit created
+# a run just to evaluate the @droid gate. issue_comment already covers
+# conversation comments on both issues and PRs, which is the canonical
+# invocation path; `edited` fired on every title/body touch.
 on:
   issue_comment:
     types: [created]
-  pull_request_review_comment:
-    types: [created]
   issues:
     types: [opened]
-  pull_request_review:
-    types: [submitted]
   pull_request:
-    types: [opened, edited]
+    types: [opened]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
@@ -84,7 +85,7 @@ jobs:
           echo "allowed=${allowed}" >> "${GITHUB_OUTPUT}"
       - name: Run Droid Exec
         if: env.FACTORY_API_KEY_AVAILABLE == 'true' && steps.pr-comment-scope.outputs.allowed == 'true'
-        uses: Factory-AI/droid-action@7c7bfea2aa3bb7ea87579402cc1d89dbcf6b13b3
+        uses: Factory-AI/droid-action@49188f4035f23e609bbeee36ec5b22e72212a8e5
         with:
           github_token: ${{ github.token }}
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}

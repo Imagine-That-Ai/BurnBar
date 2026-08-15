@@ -1,5 +1,15 @@
 name: Workflow Lint
 
+concurrency:
+  group: workflow-lint-${{ github.event_name == 'pull_request' && format('pr-{0}', github.ref) || format('run-{0}', github.run_id) }}
+  # Only pull_request runs share a group and get cancelled. merge_group runs are
+  # the merge-queue's own proof and `push` runs are the per-commit post-merge
+  # record, so both get a unique per-run group that can never collide: a shared
+  # group evicts a *pending* run even with cancel-in-progress false, because
+  # GitHub keeps at most one queued run per group. Same pattern and reasoning as
+  # `.github/workflows/security-pr.yml`.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -28,6 +38,7 @@ on:
       - "scripts/ci/verify-merge-queue-workflows.test.mjs"
       - "scripts/ci/verify-libsignal-toolchain-preflight.mjs"
       - "scripts/ci/verify-libsignal-toolchain-preflight.test.mjs"
+      - "scripts/ci/verify-ci-cache-warm.test.mjs"
       - ".github/actions/ensure-libsignal-toolchain/action.yml"
       - "scripts/ci/verify-curl-bearer-token-boundary.sh"
       - "scripts/ci/verify-curl-bearer-token-boundary.test.sh"
@@ -57,8 +68,17 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-android-firebase-release-config.mjs"
+      - "scripts/ci/verify-android-firebase-release-config.test.mjs"
+      - "scripts/ci/prepare-firebase-tools.sh"
+      - "scripts/ci/verify-firebase-tools-runtime.mjs"
+      - "scripts/ci/verify-firebase-tools-runtime.test.mjs"
+      - "scripts/ci/verify-staging-functions-artifact.mjs"
+      - "scripts/ci/verify-staging-functions-artifact.test.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "scripts/ci/prepare-functions-runtime-package.mjs"
+      - "scripts/ci/prepare-functions-runtime-package.test.mjs"
       - "functions/staging-deploy-targets.json"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
@@ -74,6 +94,8 @@ on:
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.test.mjs"
       - "scripts/ci/verify-dependabot-config.mjs"
       - "scripts/ci/verify-dependabot-config.test.mjs"
       # A new package-lock.json is exactly the change that can reopen the
@@ -88,9 +110,34 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/create-apple-android-release-publication.mjs"
+      - "scripts/ci/create-apple-android-release-publication.test.mjs"
+      - "scripts/ci/publish-apple-android-release.mjs"
+      - "scripts/ci/publish-apple-android-release.test.mjs"
+      - "scripts/ci/promote-github-release.mjs"
+      - "scripts/ci/promote-github-release.test.mjs"
+      - "scripts/ci/macos-r2-publication.mjs"
+      - "scripts/ci/macos-r2-publication.test.mjs"
+      - "scripts/ci/verify-apple-appcheck-release-artifact.sh"
+      - "scripts/ci/verify-apple-appcheck-release-artifact.test.sh"
+      - "scripts/upload-macos-downloads-r2.sh"
+      - "scripts/publish-macos-appcast-rollback-r2.sh"
+      - "scripts/ops/rollback-macos-appcast.sh"
+      - "scripts/ops/rollback-macos-appcast.test.sh"
+      - "project.yml"
+      - "AgentLens/Resources/OpenBurnBar-Info.plist"
+      - "AgentLens/Services/DirectDownloadUpdateService.swift"
+      - "docs/MACOS_APPCAST_ROLLBACK.md"
+      - "docs/RELEASE_MACOS.md"
+      - "scripts/ci/verify-release-promotion-workflow.test.mjs"
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
       - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/google-play-publication.mjs"
+      - "scripts/ci/google-play-publication.test.mjs"
+      - "scripts/ci/google-play-safe-retry.mjs"
+      - "scripts/ci/google-play-safe-retry.test.mjs"
+      - "docs/runbooks/google-play-publishing.md"
       - "scripts/ci/release-dry-run-attestation.mjs"
       - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
@@ -157,8 +204,17 @@ on:
       - "scripts/ci/verify-hosting-deploy-boundary.test.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.mjs"
       - "scripts/ci/verify-staging-functions-deploy-boundary.test.mjs"
+      - "scripts/ci/verify-android-firebase-release-config.mjs"
+      - "scripts/ci/verify-android-firebase-release-config.test.mjs"
+      - "scripts/ci/prepare-firebase-tools.sh"
+      - "scripts/ci/verify-firebase-tools-runtime.mjs"
+      - "scripts/ci/verify-firebase-tools-runtime.test.mjs"
+      - "scripts/ci/verify-staging-functions-artifact.mjs"
+      - "scripts/ci/verify-staging-functions-artifact.test.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.mjs"
       - "scripts/ci/prepare-scoped-functions-deploy.test.mjs"
+      - "scripts/ci/prepare-functions-runtime-package.mjs"
+      - "scripts/ci/prepare-functions-runtime-package.test.mjs"
       - "functions/staging-deploy-targets.json"
       - "scripts/ci/write-firebase-hosting-ci-config.mjs"
       - "scripts/ci/write-firebase-hosting-ci-config.test.mjs"
@@ -174,6 +230,8 @@ on:
       - "scripts/ci/verify-wiki-mem0-workflow-boundary.test.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.mjs"
       - "scripts/ci/check-npm-audit-fail-closed.test.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.mjs"
+      - "scripts/ci/export-active-advisory-allowlist.test.mjs"
       - "scripts/ci/verify-dependabot-config.mjs"
       - "scripts/ci/verify-dependabot-config.test.mjs"
       # A new package-lock.json is exactly the change that can reopen the
@@ -188,9 +246,34 @@ on:
       - "scripts/ci/verify-jscpd-report.test.mjs"
       - "scripts/ci/verify-release-attestations.sh"
       - "scripts/ci/verify-release-attestations.test.sh"
+      - "scripts/ci/create-apple-android-release-publication.mjs"
+      - "scripts/ci/create-apple-android-release-publication.test.mjs"
+      - "scripts/ci/publish-apple-android-release.mjs"
+      - "scripts/ci/publish-apple-android-release.test.mjs"
+      - "scripts/ci/promote-github-release.mjs"
+      - "scripts/ci/promote-github-release.test.mjs"
+      - "scripts/ci/macos-r2-publication.mjs"
+      - "scripts/ci/macos-r2-publication.test.mjs"
+      - "scripts/ci/verify-apple-appcheck-release-artifact.sh"
+      - "scripts/ci/verify-apple-appcheck-release-artifact.test.sh"
+      - "scripts/upload-macos-downloads-r2.sh"
+      - "scripts/publish-macos-appcast-rollback-r2.sh"
+      - "scripts/ops/rollback-macos-appcast.sh"
+      - "scripts/ops/rollback-macos-appcast.test.sh"
+      - "project.yml"
+      - "AgentLens/Resources/OpenBurnBar-Info.plist"
+      - "AgentLens/Services/DirectDownloadUpdateService.swift"
+      - "docs/MACOS_APPCAST_ROLLBACK.md"
+      - "docs/RELEASE_MACOS.md"
+      - "scripts/ci/verify-release-promotion-workflow.test.mjs"
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
       - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/google-play-publication.mjs"
+      - "scripts/ci/google-play-publication.test.mjs"
+      - "scripts/ci/google-play-safe-retry.mjs"
+      - "scripts/ci/google-play-safe-retry.test.mjs"
+      - "docs/runbooks/google-play-publishing.md"
       - "scripts/ci/release-dry-run-attestation.mjs"
       - "scripts/ci/release-dry-run-attestation.test.mjs"
       - "scripts/ops/run-firestore-restore-drill.sh"
@@ -215,7 +298,9 @@ on:
 jobs:
   actionlint:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # PR run 31396653617 spent the full former 10-minute budget in checkout
+    # on 2026-08-10, before actionlint or any workflow self-test could run.
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -246,6 +331,9 @@ jobs:
           node scripts/ci/verify-libsignal-toolchain-preflight.mjs
           node scripts/ci/verify-libsignal-toolchain-preflight.test.mjs
 
+      - name: Verify CI cache warm contract (Signal FFI + SPM on main)
+        run: node --test scripts/ci/verify-ci-cache-warm.test.mjs
+
       - name: Verify GitHub Actions pins
         run: |
           node scripts/ci/verify-github-action-pins.mjs
@@ -274,6 +362,24 @@ jobs:
 
       - name: Self-test release attestation verifier
         run: bash scripts/ci/verify-release-attestations.test.sh
+
+      - name: Self-test protected Google Play publisher
+        run: |
+          node --test \
+            scripts/ci/google-play-publication.test.mjs \
+            scripts/ci/google-play-safe-retry.test.mjs
+
+      - name: Self-test audited GitHub release promotion
+        run: |
+          node --test \
+            scripts/ci/create-apple-android-release-publication.test.mjs \
+            scripts/ci/publish-apple-android-release.test.mjs \
+            scripts/ci/promote-github-release.test.mjs \
+            scripts/ci/macos-r2-publication.test.mjs \
+            scripts/ci/verify-release-promotion-workflow.test.mjs
+
+      - name: Self-test packaged macOS release feed contract
+        run: bash scripts/ci/verify-apple-appcheck-release-artifact.test.sh
 
       - name: Self-test Firestore restore drill env validation
         run: bash scripts/ops/run-firestore-restore-drill.test.sh
@@ -368,8 +474,20 @@ jobs:
       - name: Verify staging Functions deploy boundary
         run: node scripts/ci/verify-staging-functions-deploy-boundary.mjs
 
+      - name: Self-test Android Firebase release config redaction
+        run: node scripts/ci/verify-android-firebase-release-config.test.mjs
+
+      - name: Self-test Firebase CLI runtime compatibility guard
+        run: node --test scripts/ci/verify-firebase-tools-runtime.test.mjs
+
+      - name: Self-test staging Functions artifact verifier
+        run: node scripts/ci/verify-staging-functions-artifact.test.mjs
+
       - name: Self-test scoped staging Functions entrypoint
         run: node scripts/ci/prepare-scoped-functions-deploy.test.mjs
+
+      - name: Self-test production-only Functions runtime package
+        run: node scripts/ci/prepare-functions-runtime-package.test.mjs
 
       - name: Self-test native build workflow secret boundary
         run: node scripts/ci/verify-native-build-workflow-secret-boundary.test.mjs
@@ -412,6 +530,19 @@ jobs:
 
       - name: Self-test npm audit fail-closed gate
         run: node scripts/ci/check-npm-audit-fail-closed.test.mjs
+
+      - name: Self-test active advisory policy export
+        run: node --test scripts/ci/export-active-advisory-allowlist.test.mjs
+
+      # Non-authoritative head-policy validation: resolve the checked-in
+      # advisory policy pair (ADVISORY_ALLOWLIST in
+      # check-npm-audit-fail-closed.mjs + osv-scanner.toml) at the PR head so
+      # a mismatched, malformed, or expiry-drifted policy fails on the PR that
+      # introduces it, instead of merging silently and breaking every later PR
+      # that resolves the broken policy from its trusted base. No security
+      # gate consumes this output; the run only validates and prints.
+      - name: Validate checked-in advisory policy (head, non-authoritative)
+        run: node scripts/ci/export-active-advisory-allowlist.mjs
 
       # Nothing else in CI reads dependabot.yml, so a bad edit there is silent:
       # updates just stop arriving. These two steps make it loud instead.

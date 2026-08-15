@@ -29,7 +29,7 @@ const REQUIRED_ROUTES = [
 ];
 
 test('axe runs every route and both fail-closed capability states', () => {
-  assert.equal(packageJson.devDependencies['axe-core'], '4.12.1');
+  assert.equal(packageJson.devDependencies['axe-core'], '4.13.0');
   assert.match(axeAudit, /for \(const route of ROUTES\)/);
   assert.match(axeAudit, /capability-unavailable/);
   assert.match(axeAudit, /capability-degraded/);
@@ -50,6 +50,9 @@ test('packaged session provisions and exercises the Linux accessibility stack', 
     'capture-atspi-tree.py',
     '--wait-for-meaningful-seconds',
     'Initial AT-SPI tree did not become meaningful',
+    'defunct_initial_atspi_subtree',
+    'atspi-readiness-recovery.json',
+    'boundedRecoveryAttempts: 1',
     'design-tokens entitlements gl-engine',
     'WEBKIT_DISABLE_DMABUF_RENDERER=1',
     'OB_XVFB_PRESTARTED=1',
@@ -149,12 +152,24 @@ test('AT-SPI crawler self-test and session shell syntax pass', () => {
   ], { encoding: 'utf8' });
   assert.equal(python.status, 0, `${python.stdout}\n${python.stderr}`);
   assert.match(python.stdout, /"selfTest": "pass"/);
+  assert.match(python.stdout, /"staleRegistrationRecovery"/);
 
   const shell = spawnSync('bash', [
     '-n',
     path.join(repoRoot, 'scripts/linux-port/linux-desktop-session.sh')
   ], { encoding: 'utf8' });
   assert.equal(shell.status, 0, shell.stderr);
+
+  assert.match(
+    session,
+    /for \(field_index = 1; field_index <= NF; field_index \+= 1\)/u,
+    'the daemon-health receipt counter must use a portable AWK variable name'
+  );
+  assert.doesNotMatch(
+    session,
+    /for \(index = 1; index <= NF; index \+= 1\)/u,
+    'AWK built-in function names cannot be assigned as loop variables'
+  );
 });
 
 test('PR workflow cannot omit the accessibility contract', () => {

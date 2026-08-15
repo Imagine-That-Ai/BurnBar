@@ -1,8 +1,13 @@
 name: CodeQL PR
 
-# Required PR CodeQL for every language configured on main. Keeping the same
-# categories on pull requests prevents GitHub Advanced Security from treating
-# compiled-language configurations as missing on large code changes.
+# Required PR CodeQL for every non-Swift language configured on main. Keeping
+# the same categories on pull requests prevents GitHub Advanced Security from
+# treating compiled-language configurations as missing on large code changes.
+#
+# Swift CodeQL stays on nightly `codeql.yml` only (schedule + workflow_dispatch).
+# That matches codeql.yml's longstanding design note that Swift is NOT on
+# pull_request — Swift analysis takes ~60m on macOS and must not wake the
+# merge queue or block PR velocity. Do not re-add push-to-main on codeql.yml.
 
 on:
   pull_request:
@@ -40,52 +45,9 @@ jobs:
           - language: java-kotlin
             build-mode: manual
             runner: ubuntu-latest
-          - language: swift
-            build-mode: manual
-            runner: macos-26
     steps:
-      - name: Checkout (non-Swift)
-        if: matrix.language != 'swift'
+      - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
-
-      - name: Checkout with Swift submodules
-        if: matrix.language == 'swift'
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
-        with:
-          submodules: recursive
-
-      - name: Prepare Firebase plist for Swift
-        if: matrix.language == 'swift'
-        run: cp AgentLens/Resources/GoogleService-Info.plist.example AgentLens/Resources/GoogleService-Info.plist
-
-      # Must match the other consumers byte for byte so this lane restores the
-      # default-branch superset warmed by ci-cache-warm.yml instead of
-      # rebuilding the Signal FFI xcframework from Rust source on every PR.
-      - name: Resolve Signal FFI cache identity
-        if: matrix.language == 'swift'
-        id: signal-ffi-cache
-        run: echo "sha=$(git -C Vendor/libsignal rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      # Restore-only: this lane builds an x86_64-only artifact on a cache miss,
-      # so letting it save would poison the shared superset key for the arm64
-      # consumers (SwiftPM/App gates). Only ci-cache-warm.yml and full-target
-      # builders may write this key.
-      - name: Restore macOS Signal FFI artifact
-        if: matrix.language == 'swift'
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5 (node24-native)
-        with:
-          path: Vendor/OpenBurnBarSignalFfiMac.xcframework
-          key: ${{ runner.os }}-signal-ffi-macos-${{ steps.signal-ffi-cache.outputs.sha }}-${{ hashFiles('scripts/build-signal-ffi-xcframework.sh', 'scripts/lib/prepare-signal-ffi-xcframework.sh') }}
-
-      - name: Install Rust toolchain for Swift Signal FFI
-        if: matrix.language == 'swift'
-        uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # stable
-        with:
-          toolchain: stable
-
-      - name: Ensure libsignal native toolchain (protoc + cmake)
-        if: matrix.language == 'swift'
-        uses: ./.github/actions/ensure-libsignal-toolchain
 
       - name: Set up JDK 21 for Android
         if: matrix.language == 'java-kotlin'
@@ -108,51 +70,6 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-extended
-
-      - name: Prepare Signal FFI for Swift CodeQL
-        if: matrix.language == 'swift'
-        run: |
-          SIGNAL_FFI_BUILD_TARGETS=x86_64-apple-darwin \
-          SIGNAL_FFI_BUILD_PROFILE=debug \
-          CARGO_BUILD_JOBS=2 \
-            ./scripts/lib/prepare-signal-ffi-xcframework.sh
-
-      - name: Resolve Swift packages
-        if: matrix.language == 'swift'
-        run: |
-          for attempt in 1 2 3; do
-            if swift package resolve --package-path OpenBurnBarDaemon; then
-              exit 0
-            fi
-            if [ "$attempt" = "3" ]; then exit 1; fi
-            sleep $((attempt * 20))
-          done
-
-      - name: Build Swift for CodeQL
-        if: matrix.language == 'swift'
-        run: |
-          # The Linux parity product is the UI-free daemon SwiftPM package.
-          # The full Xcode app remains covered by App build + test; using the
-          # package here avoids Xcode app build scripts that can hang a hosted
-          # CodeQL runner while preserving Swift extraction for daemon/core/CLI.
-          build_path="$PWD/.codeql-swiftpm-build"
-          for attempt in 1 2; do
-            if swift build \
-              --package-path OpenBurnBarDaemon \
-              --build-path "$build_path" \
-              --configuration debug \
-              --product OpenBurnBarDaemon && \
-              swift build \
-                --package-path OpenBurnBarDaemon \
-                --build-path "$build_path" \
-                --configuration debug \
-                --product OpenBurnBarCLI; then
-              exit 0
-            fi
-            if [ "$attempt" = "2" ]; then exit 1; fi
-            echo "xcodebuild failed (attempt ${attempt}); retrying once."
-            sleep 20
-          done
 
       - name: Build Android for CodeQL
         if: matrix.language == 'java-kotlin'

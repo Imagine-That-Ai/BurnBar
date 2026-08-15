@@ -160,6 +160,10 @@ var packageProductsBase: [Product] = [
         targets: ["OpenBurnBarAssistantModels"]
     ),
     .library(
+        name: "OpenBurnBarInboxModels",
+        targets: ["OpenBurnBarInboxModels"]
+    ),
+    .library(
         name: "OpenBurnBarDomainCoreRuntime",
         targets: ["OpenBurnBarDomainCoreRuntime"]
     ),
@@ -478,6 +482,7 @@ let signalCoreFallbackExcludes: [String] = hasLibSignalSwiftPackage ? [] : [
 
 let signalSessionTransportDependencies: [Target.Dependency] = [
     "OpenBurnBarCore",
+    "OpenBurnBarFirestoreModels",
     "OpenBurnBarIrohRelay",
     "OpenBurnBarSignalCore"
 ] + (hasLibSignalSwiftPackage ? [
@@ -812,7 +817,21 @@ let openBurnBarCoreOffAppleTestSources: [String]? = [
     "LLMSafeWrapVectorTests.swift",
     "ParserAutoReleasePoolTests.swift",
     "ParserParseOptionsTests.swift",
-    "ParserResourceGovernorTests.swift"
+    "ParserResourceGovernorTests.swift",
+    "QuotaRefreshPolicyTests.swift",
+    "CodexRolloutScannerTests.swift",
+    "SuperGrokLogScanTests.swift",
+    "ClaudeJSONLResumeTests.swift",
+    "FactoryQuotaSessionSkipTests.swift",
+    "AntigravityJSONLTailTests.swift",
+    "WarpTelemetryTailTests.swift",
+    "GeminiCLIParserCacheTests.swift",
+    "IdleUsageParserCacheTests.swift",
+    "TokenUsageExplainQueryPlanTests.swift",
+    "KiloCodeQuotaCacheTests.swift",
+    "AiderQuotaCacheTests.swift",
+    "FactoryQuotaCacheTests.swift",
+    "ThreadSafeISO8601DateFormatterStaticParseTests.swift"
 ]
 let openBurnBarCorePlaceholderExcludes = ["LinuxEmptyTests.swift"]
 let computerUseCoreOffAppleTestSources: [String]? = [
@@ -827,7 +846,21 @@ let openBurnBarCoreOffAppleTestSources: [String]? = [
     "LLMSafeWrapVectorTests.swift",
     "ParserAutoReleasePoolTests.swift",
     "ParserParseOptionsTests.swift",
-    "ParserResourceGovernorTests.swift"
+    "ParserResourceGovernorTests.swift",
+    "QuotaRefreshPolicyTests.swift",
+    "CodexRolloutScannerTests.swift",
+    "SuperGrokLogScanTests.swift",
+    "ClaudeJSONLResumeTests.swift",
+    "FactoryQuotaSessionSkipTests.swift",
+    "AntigravityJSONLTailTests.swift",
+    "WarpTelemetryTailTests.swift",
+    "GeminiCLIParserCacheTests.swift",
+    "IdleUsageParserCacheTests.swift",
+    "TokenUsageExplainQueryPlanTests.swift",
+    "KiloCodeQuotaCacheTests.swift",
+    "AiderQuotaCacheTests.swift",
+    "FactoryQuotaCacheTests.swift",
+    "ThreadSafeISO8601DateFormatterStaticParseTests.swift"
 ]
 let openBurnBarCorePlaceholderExcludes: [String] = []
 let computerUseCoreOffAppleTestSources: [String]? = ["LinuxComputerUseCoreBehaviorTests.swift"]
@@ -858,6 +891,20 @@ func legacyLinuxTestExcludes(targetPath: String) -> [String] {
             "ParserAutoReleasePoolTests.swift",
             "ParserParseOptionsTests.swift",
             "ParserResourceGovernorTests.swift",
+            "QuotaRefreshPolicyTests.swift",
+            "CodexRolloutScannerTests.swift",
+            "SuperGrokLogScanTests.swift",
+            "ClaudeJSONLResumeTests.swift",
+            "FactoryQuotaSessionSkipTests.swift",
+            "AntigravityJSONLTailTests.swift",
+            "WarpTelemetryTailTests.swift",
+            "GeminiCLIParserCacheTests.swift",
+            "IdleUsageParserCacheTests.swift",
+            "TokenUsageExplainQueryPlanTests.swift",
+            "KiloCodeQuotaCacheTests.swift",
+            "AiderQuotaCacheTests.swift",
+            "FactoryQuotaCacheTests.swift",
+            "ThreadSafeISO8601DateFormatterStaticParseTests.swift",
             "LinuxSecretStorageTests.swift",
             "LinuxRemoteUnlockCapabilitySigningKeyStoreTests.swift"
         ].contains(relativePath)
@@ -1061,6 +1108,14 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarAssistantModels",
             dependencies: ["OpenBurnBarPlatformSupport"]
         ),
+        // AI Inbox wire contracts and the Firestore mirror record form a
+        // Foundation-only leaf, following the assistant-model precedent in
+        // docs/CORE_DECOMPOSITION_PROGRAM.md. Kernel re-exports it so existing
+        // `import OpenBurnBarKernel` consumers keep the same public surface.
+        .target(
+            name: "OpenBurnBarInboxModels",
+            dependencies: ["OpenBurnBarPlatformSupport"]
+        ),
         // Phase-1 K1 kernel (see the OpenBurnBarKernel product comment above).
         // remediation(typespec-strangler): the generated Firestore canon stays
         // linked into the production graph — the `import OpenBurnBarFirestoreModels`
@@ -1072,6 +1127,7 @@ let firstPartyTargetsBase: [Target] = [
             name: "OpenBurnBarKernel",
             dependencies: [
                 "OpenBurnBarAssistantModels",
+                "OpenBurnBarInboxModels",
                 "OpenBurnBarPlatformSupport",
                 "OpenBurnBarDomainCoreRuntime",
                 "OpenBurnBarFirestoreModels",
@@ -1108,14 +1164,14 @@ let firstPartyTargetsBase: [Target] = [
                 "OpenBurnBarKernel",
                 "OpenBurnBarSQLiteReader",
                 // P-13 (integrator-authorized manifest edit, docs/CORE_DECOMPOSITION_PROGRAM.md
-                // AE-IMPORT STOP override): `AiderQuotaAdapter` parses Aider session logs via
-                // `FileHandle.readAllUTF8Lines()` → `BufferedLineSequence`, both defined in
-                // `OpenBurnBarLogParsers` (LogParser/{LogParserProtocol,BufferedLineSequence}.swift).
+                // AE-IMPORT STOP override): `AiderQuotaAdapter` resumes Aider analytics JSONL via
+                // `BufferedLineReader` / `ParserDiskCacheStore` in `OpenBurnBarLogParsers`
+                // (LogParser/{BufferedLineSequence,ParserDiskCache}.swift).
                 // The DRAFT card's "NO LogParsers edge" invariant was FALSE (its grep matched only
                 // the literal `LogParser`, missing the method-name reference). This edge is acyclic:
                 // `OpenBurnBarLogParsers` depends only on [Kernel, SQLiteReader], so Quota→LogParsers
                 // introduces no cycle. The moved `AiderQuotaAdapter.swift` gains `import
-                // OpenBurnBarLogParsers` (AE-IMPORT); no other Quota file references LogParsers.
+                // OpenBurnBarLogParsers` (AE-IMPORT); Kilo and Factory quota caches share this edge.
                 "OpenBurnBarLogParsers",
                 swiftCryptoNonAppleDependency
             // Merge (train ← origin/main): P-13 moved the ProviderQuota adapters (incl.

@@ -5,6 +5,9 @@ using System.IO.Compression;
 
 namespace OpenBurnBar.App.Configuration.Tests;
 
+// Shares a collection with RuntimePathsTests: both mutate the process-global
+// LOCALAPPDATA variable, so they must never run in parallel with each other.
+[Collection(LocalAppDataEnvironmentCollection.Name)]
 public sealed class AppConfigurationTests
 {
     [Fact]

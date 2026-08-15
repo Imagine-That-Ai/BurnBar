@@ -6,9 +6,12 @@ namespace OpenBurnBar.Native.Tests;
 /// <summary>
 /// An xunit <see cref="FactAttribute"/> for loopback tests that require a
 /// natively built Rust cdylib: runs when the hardened locator can find the
-/// library, and SKIPS (never fails) when it cannot — so the same test assembly
-/// is green on hosts with no Rust build (e.g. the pr-windows-full CI legs) and
-/// exercises the real FFI on hosts that have run `cargo build`.
+/// library, and SKIPS when it cannot — so optional developer hosts can run the
+/// portable surface without a Rust build. The full-suite and physical
+/// release-certification harnesses set
+/// <see cref="NativeRequirementTests.RequireNativeShimsEnvironmentVariable"/>;
+/// the normal requirement test then fails clearly unless both cdylibs are
+/// present and loadable, while the loopback tests execute the real FFI.
 /// </summary>
 public sealed class NativeFactAttribute : FactAttribute
 {

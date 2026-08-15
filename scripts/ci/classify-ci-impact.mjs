@@ -4,6 +4,37 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, appendFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+// The workflow-level path filter used to be the Domain Core ownership policy.
+// Keep that exact scope as candidate-controlled data now that every main push
+// runs and this classifier selects the expensive proof lane.
+const DOMAIN_CORE_PATH_POLICY = JSON.parse(
+  readFileSync(
+    new URL("../../config/domain-core-ci-paths.json", import.meta.url),
+    "utf8",
+  ),
+);
+if (
+  DOMAIN_CORE_PATH_POLICY.schemaVersion !== 1 ||
+  !Array.isArray(DOMAIN_CORE_PATH_POLICY.paths) ||
+  DOMAIN_CORE_PATH_POLICY.paths.length === 0 ||
+  new Set(DOMAIN_CORE_PATH_POLICY.paths).size !==
+    DOMAIN_CORE_PATH_POLICY.paths.length ||
+  DOMAIN_CORE_PATH_POLICY.paths.some(
+    (path) =>
+      typeof path !== "string" ||
+      path.length === 0 ||
+      path.startsWith("/") ||
+      path.includes("\\") ||
+      path.startsWith("!"),
+  )
+) {
+  throw new Error("invalid Domain Core CI path policy");
+}
+
+export const DOMAIN_CORE_OWNED_PATH_GLOBS = Object.freeze([
+  ...DOMAIN_CORE_PATH_POLICY.paths,
+]);
+
 export const LANES = [
   "macos",
   "mobile",
@@ -21,11 +52,13 @@ const FULL_PATTERNS = [
   /^(governance\/|security\/|\.github\/CODEOWNERS|\.github\/dependabot\.yml)/,
   /^\.github\/workflows\/(?:burnbar-ci-gate|ci-impact|deploy-|release|security|codeql|dependency|secret|osv)/,
   /^scripts\/ci\/(?:classify-ci-impact|await-burnbar-ci-gate)/,
+  /^config\/domain-core-ci-paths\.json$/,
   /^(firebase\.json|firestore\.|storage\.|apphosting\.|Dockerfile|Makefile|Brewfile)/,
 ];
 
 const SAFE_NO_PRODUCT_PATTERNS = [
   /^(docs\/|droid-wiki\/|plans\/|\.github\/(?:ISSUE_TEMPLATE|PULL_REQUEST_TEMPLATE)|CHANGELOG\.md$|README\.md$|AGENTS\.md$|CLAUDE\.md$)/,
+  /^launch-evidence\//,
   /^\.github\/workflows\//,
   /^(tests\/|scripts\/ci\/).*\.(?:py|mjs|js|sh|json|ya?ml)$/,
   /^windows\/tests\//,
@@ -90,6 +123,34 @@ const DOMAIN_CORE_TRANSITIVE = [
   /^functions\/src\/(?:health|index|pricing|rollupCounters|insightsHostedAnswer)\.ts$/,
 ];
 
+function globToRegExp(glob) {
+  let source = "^";
+  for (let index = 0; index < glob.length; index += 1) {
+    const character = glob[index];
+    if (character === "*") {
+      if (glob[index + 1] === "*") {
+        index += 1;
+        if (glob[index + 1] === "/") {
+          index += 1;
+          source += "(?:.*/)?";
+        } else {
+          source += ".*";
+        }
+      } else {
+        source += "[^/]*";
+      }
+    } else if (character === "?") {
+      source += "[^/]";
+    } else {
+      source += character.replace(/[\\^$.*+?()[\]{}|]/gu, "\\$&");
+    }
+  }
+  return new RegExp(`${source}$`, "u");
+}
+
+const DOMAIN_CORE_OWNED_PATH_PATTERNS =
+  DOMAIN_CORE_OWNED_PATH_GLOBS.map(globToRegExp);
+
 function allLanes(value) {
   return Object.fromEntries(LANES.map((lane) => [lane, value]));
 }
@@ -144,7 +205,10 @@ export function classifyPaths(
       lanes.macos = lanes.mobile = lanes.daemon = true;
       owned = true;
     }
-    if (matchesAny(path, DOMAIN_CORE_TRANSITIVE)) {
+    if (
+      matchesAny(path, DOMAIN_CORE_TRANSITIVE) ||
+      matchesAny(path, DOMAIN_CORE_OWNED_PATH_PATTERNS)
+    ) {
       lanes.rust = true;
       owned = true;
     }
@@ -168,11 +232,11 @@ export function classifyPaths(
   return { full: false, reason: "owned-paths", paths: cleanPaths, ...lanes };
 }
 
-function gitDiff(base, head) {
+export function gitDiff(base, head, cwd = process.cwd()) {
   return execFileSync(
     "git",
-    ["diff", "--name-only", "--diff-filter=ACMR", base, head],
-    { encoding: "utf8" },
+    ["diff", "--name-only", "--no-renames", base, head],
+    { cwd, encoding: "utf8" },
   )
     .split("\n")
     .filter(Boolean);
@@ -186,15 +250,27 @@ export function classifyEvent(event, eventName, diff = gitDiff) {
   const base =
     eventName === "merge_group"
       ? event.merge_group?.base_sha
-      : event.pull_request?.base?.sha;
+      : eventName === "push"
+        ? event.before
+        : event.pull_request?.base?.sha;
   const head =
     eventName === "merge_group"
       ? event.merge_group?.head_sha
-      : event.pull_request?.head?.sha;
-  if (!base || !head) return classifyPaths([], { eventName, labels });
+      : eventName === "push"
+        ? event.after
+        : event.pull_request?.head?.sha;
+  if (!base || !head || /^0{40}$/u.test(base) || /^0{40}$/u.test(head)) {
+    return classifyPaths([], { eventName, labels });
+  }
   try {
     return classifyPaths(diff(base, head), { eventName, labels });
   } catch {
+    // A push run is the authoritative deploy proof for its exact after
+    // commit. When the exact before..after range is unavailable (for
+    // example a multi-commit push beyond the shallow checkout), any
+    // partial fallback like HEAD^..HEAD would under-classify earlier
+    // commits in the push, so pushes fail closed to a full run.
+    if (eventName === "push") return classifyPaths([], { eventName, labels });
     try {
       return classifyPaths(diff("HEAD^1", "HEAD^2"), { eventName, labels });
     } catch {

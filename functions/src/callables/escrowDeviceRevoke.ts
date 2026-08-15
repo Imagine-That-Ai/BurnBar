@@ -23,7 +23,7 @@ import { enforceHighRiskComputerUseCallableWithNonce } from "../appCheckAttestat
 import { db } from "../adminRuntime.js";
 import { recordOrUndefined } from "../guards.js";
 import { logInfo, logWarn, wrapCallableHandler } from "../logging.js";
-import { boundedTrimmedString } from "./shared.js";
+import { boundedTrimmedString } from "./shared/validators.js";
 import { FUNCTIONS_REGION } from "../runtimeOptions.js";
 import { revokeSignalSessionsForDevice } from "../signalDirectoryRuntime.js";
 import { normalizedControllerDeviceAllowlist } from "./computerUseSecurityCodecs.js";

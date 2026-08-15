@@ -4,6 +4,11 @@
 #   device: optional simulator name (default: iPhone 17 Pro Max)
 set -euo pipefail
 
+# Firebase's prebuilt grpc-binary crashes when Firestore connects on supported
+# iOS 27 runtimes. Keep package resolution and the build on the source-built
+# grpc-ios/BoringSSL path documented in docs/FIREBASE_IOS27_GRPC.md.
+export FIREBASE_SOURCE_FIRESTORE="${FIREBASE_SOURCE_FIRESTORE:-1}"
+
 DEVICE="${1:-iPhone 17 Pro Max}"
 SCHEME="OpenBurnBarMobile"
 DERIVED="build/DerivedData"

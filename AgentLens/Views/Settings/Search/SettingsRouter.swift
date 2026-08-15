@@ -5,6 +5,7 @@ enum SettingsDeepLinkRouting {
     static let pendingItemKey = "settings.pendingItemID"
     static let pendingTabKey = "settings.pendingTab"
     static let quotaDisplayItemID = "agents.quotaDisplay"
+    static let aiInboxItemID = "aiInbox.enable"
 
     static func item(matching itemID: String?) -> SettingsItem? {
         guard let normalizedID = itemID?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -144,6 +145,10 @@ final class SettingsRouter {
         case .operatorModel, .appearance, .defaultView, .dataRefresh,
              .indexing, .sessionSummaries:
             return [route]
+
+        // AI Inbox — top-level tab; also reachable as a drill from Indexing.
+        case .aiInboxRoot:
+            return []
 
         // Daemon subpages.
         case .daemonRoot:

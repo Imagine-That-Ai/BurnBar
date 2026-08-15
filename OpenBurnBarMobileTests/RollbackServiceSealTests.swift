@@ -51,7 +51,7 @@ final class RollbackServiceSealTests: XCTestCase {
         encoded["requestedAt"] = ISO8601DateFormatter().string(from: request.requestedAt)
 
         let decoded = try XCTUnwrap(
-            RollbackService.decodeRequest(data: encoded, documentID: request.id, vaultKey: key)
+            RollbackService.decodeRequest(data: encoded as NSDictionary, documentID: request.id, vaultKey: key)
         )
         XCTAssertEqual(decoded.sessionID, "sess-1")
         XCTAssertEqual(decoded.scope, .singleFile(path: "/Users/me/secret.swift"))
@@ -77,7 +77,7 @@ final class RollbackServiceSealTests: XCTestCase {
         encoded["requestedAt"] = ISO8601DateFormatter().string(from: request.requestedAt)
 
         let decoded = try XCTUnwrap(
-            RollbackService.decodeRequest(data: encoded, documentID: request.id, vaultKey: key)
+            RollbackService.decodeRequest(data: encoded as NSDictionary, documentID: request.id, vaultKey: key)
         )
         XCTAssertEqual(decoded.status, .inFlight)
     }
@@ -97,7 +97,7 @@ final class RollbackServiceSealTests: XCTestCase {
             "requestedBy": "mac"
         ]
         let decoded = try XCTUnwrap(
-            RollbackService.decodeRequest(data: legacy, documentID: "req-legacy", vaultKey: nil)
+            RollbackService.decodeRequest(data: legacy as NSDictionary, documentID: "req-legacy", vaultKey: nil)
         )
         XCTAssertEqual(decoded.status, .inFlight)
     }
@@ -134,7 +134,7 @@ final class RollbackServiceSealTests: XCTestCase {
             "requestedBy": "android"
         ]
         let decoded = try XCTUnwrap(
-            RollbackService.decodeRequest(data: doc, documentID: "req-cancelled", vaultKey: nil)
+            RollbackService.decodeRequest(data: doc as NSDictionary, documentID: "req-cancelled", vaultKey: nil)
         )
         XCTAssertEqual(decoded.status, .cancelled)
     }
@@ -153,7 +153,7 @@ final class RollbackServiceSealTests: XCTestCase {
             "requestedBy": "mac"
         ]
         XCTAssertNil(
-            RollbackService.decodeRequest(data: doc, documentID: "req-bogus", vaultKey: nil)
+            RollbackService.decodeRequest(data: doc as NSDictionary, documentID: "req-bogus", vaultKey: nil)
         )
     }
 
@@ -171,7 +171,7 @@ final class RollbackServiceSealTests: XCTestCase {
         ]
         // No key (or a key) — legacy plaintext fallback must still resolve.
         let decoded = try XCTUnwrap(
-            RollbackService.decodeRequest(data: legacy, documentID: "req-legacy", vaultKey: nil)
+            RollbackService.decodeRequest(data: legacy as NSDictionary, documentID: "req-legacy", vaultKey: nil)
         )
         XCTAssertEqual(decoded.scope, .lastN(count: 3))
     }
@@ -192,7 +192,7 @@ final class RollbackServiceSealTests: XCTestCase {
 
         // Without the key, the sealed scope cannot be opened. Because the sealed
         // field is present, the legacy sibling must NOT leak.
-        XCTAssertNil(RollbackService.decodeRequest(data: encoded, documentID: "req-1", vaultKey: nil))
+        XCTAssertNil(RollbackService.decodeRequest(data: encoded as NSDictionary, documentID: "req-1", vaultKey: nil))
     }
 
     // MARK: - rollback_requests — errorMessage (Mac-written, sealed on read)
@@ -215,7 +215,7 @@ final class RollbackServiceSealTests: XCTestCase {
             "requestedBy": "mac"
         ]
         let decoded = try XCTUnwrap(
-            RollbackService.decodeRequest(data: sealedDoc, documentID: "req-1", vaultKey: key)
+            RollbackService.decodeRequest(data: sealedDoc as NSDictionary, documentID: "req-1", vaultKey: key)
         )
         XCTAssertEqual(decoded.errorMessage, "disk full at /Users/me/proj")
 
@@ -229,7 +229,7 @@ final class RollbackServiceSealTests: XCTestCase {
             "requestedBy": "mac"
         ]
         let legacyDecoded = try XCTUnwrap(
-            RollbackService.decodeRequest(data: legacyDoc, documentID: "req-2", vaultKey: key)
+            RollbackService.decodeRequest(data: legacyDoc as NSDictionary, documentID: "req-2", vaultKey: key)
         )
         XCTAssertEqual(legacyDecoded.errorMessage, "legacy failure text")
     }
@@ -249,7 +249,7 @@ final class RollbackServiceSealTests: XCTestCase {
             "sealedMacSnapshotPath": try sealedDictionary("/Users/me/.burnbar/snap/2", key: key)
         ]
         let snapshot = try XCTUnwrap(
-            RollbackService.decodeSnapshot(data: doc, documentID: "snap-2", sessionID: "sess-1", vaultKey: key)
+            RollbackService.decodeSnapshot(data: doc as NSDictionary, documentID: "snap-2", sessionID: "sess-1", vaultKey: key)
         )
         XCTAssertEqual(snapshot.actionLabel, "Edit src/foo.swift")
         XCTAssertEqual(snapshot.touchedFiles, ["src/a.swift", "src/b.swift"])
@@ -266,7 +266,7 @@ final class RollbackServiceSealTests: XCTestCase {
             "macSnapshotPath": "/tmp/snap/0"
         ]
         let snapshot = try XCTUnwrap(
-            RollbackService.decodeSnapshot(data: doc, documentID: "snap-0", sessionID: "sess-1", vaultKey: nil)
+            RollbackService.decodeSnapshot(data: doc as NSDictionary, documentID: "snap-0", sessionID: "sess-1", vaultKey: nil)
         )
         XCTAssertEqual(snapshot.actionLabel, "Run npm test")
         XCTAssertEqual(snapshot.touchedFiles, ["pkg/x.ts"])
@@ -282,7 +282,7 @@ final class RollbackServiceSealTests: XCTestCase {
         ]
         // No key, no legacy plaintext actionLabel => required field missing => nil.
         XCTAssertNil(
-            RollbackService.decodeSnapshot(data: doc, documentID: "snap-1", sessionID: "sess-1", vaultKey: nil)
+            RollbackService.decodeSnapshot(data: doc as NSDictionary, documentID: "snap-1", sessionID: "sess-1", vaultKey: nil)
         )
     }
 

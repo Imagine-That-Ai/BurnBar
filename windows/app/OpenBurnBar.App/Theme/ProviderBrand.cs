@@ -20,7 +20,7 @@ using System.Text;
 
 namespace OpenBurnBar.App.Theme;
 
-/// <summary>Coding-agent providers. Mirrors OpenBurnBarCore.AgentProvider (32 cases).</summary>
+/// <summary>Coding-agent providers. Mirrors OpenBurnBarCore.AgentProvider (36 cases).</summary>
 public enum AgentProviderBrand
 {
     Factory,
@@ -50,10 +50,14 @@ public enum AgentProviderBrand
     Omp,
     Ollama,
     Windsurf,
+    Devin,
     Warp,
     XAI,
     Mimo,
     CursorAgent,
+    Junie,
+    PrimeAgent,
+    Muse,
     OpenBurnBar,
 }
 
@@ -120,10 +124,14 @@ public static class ProviderBrand
         AgentProviderBrand.Omp => "#EC4899",
         AgentProviderBrand.Ollama => "#6B7280",
         AgentProviderBrand.Windsurf => "#06B6D4",
+        AgentProviderBrand.Devin => "#0A84FF",
         AgentProviderBrand.Warp => "#DDE4EA",
         AgentProviderBrand.XAI => "#1A1A1A",
         AgentProviderBrand.Mimo => "#FF6900",
         AgentProviderBrand.CursorAgent => "#00E5FF",
+        AgentProviderBrand.Junie => "#48E054",
+        AgentProviderBrand.PrimeAgent => "#582CFF",
+        AgentProviderBrand.Muse => "#7A5CFF",
         AgentProviderBrand.OpenBurnBar => "#FA5053", // Colors.ember (dark)
         _ => "#8B5CF6",
     };
@@ -158,10 +166,14 @@ public static class ProviderBrand
         AgentProviderBrand.Omp => "#F472B6",
         AgentProviderBrand.Ollama => "#9CA3AF",
         AgentProviderBrand.Windsurf => "#22D3EE",
+        AgentProviderBrand.Devin => "#1E293B",
         AgentProviderBrand.Warp => "#111111",
         AgentProviderBrand.XAI => "#4A4A4A",
         AgentProviderBrand.Mimo => "#FF8533",
         AgentProviderBrand.CursorAgent => "#33ECFF",
+        AgentProviderBrand.Junie => "#6FE87F",
+        AgentProviderBrand.PrimeAgent => "#7C5CFF",
+        AgentProviderBrand.Muse => "#9A85FF",
         AgentProviderBrand.OpenBurnBar => "#FF7578",
         _ => "#FA5053",
     };

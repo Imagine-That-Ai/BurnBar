@@ -53,6 +53,7 @@ def superseded_authority_pointer(
     for transition, relative in (
         ("rollback", f"{previous_root}/rollback.json"),
         ("stable_release", f"{previous_root}/stable_release.json"),
+        ("annulment", f"{previous_root}/annulment.json"),
     ):
         path = GATE.secure_path(repo_root, relative, "previous authority receipt", must_exist=False)
         if path.is_file():
@@ -61,7 +62,9 @@ def superseded_authority_pointer(
                 "path": relative,
                 "sha256": GATE.sha256_path(path),
             }
-    raise GATE.GateError("authority generation after the first must supersede the previous stable or rollback receipt")
+    raise GATE.GateError(
+        "authority generation after the first must supersede the previous annulment, stable, or rollback receipt"
+    )
 
 
 def create_artifacts(

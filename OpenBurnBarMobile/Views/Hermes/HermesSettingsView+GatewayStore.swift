@@ -843,7 +843,7 @@ final class HermesGatewaySettingsStore {
             setNotice("Could not open Hermes replies: \(error.localizedDescription)", style: .error)
             return
         }
-        let messages = (snapshot?.documents.compactMap { document in
+        let decodedMessages = (snapshot?.documents.compactMap { document in
             HermesGatewayMessageRecord(documentID: document.documentID, data: document.data())
         } ?? []).map { record -> HermesGatewayMessageRecord in
             guard let uid = listenedUID, !uid.isEmpty else { return record }
@@ -853,6 +853,24 @@ final class HermesGatewaySettingsStore {
             // genuine reply) — closes the server-injected-plaintext impersonation gap.
             return record.decodedText(using: keypair, uid: uid, targetClient: targetClient, pinStore: agentKeyPinStore)
         }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var messages = decodedMessages
+            if let uid = listenedUID, !uid.isEmpty {
+                for index in messages.indices where messages[index].isSealed {
+                    let targetClient = clients.first { $0.id == messages[index].clientId }
+                    messages[index] = await messages[index].decodedSignalText(
+                        uid: uid,
+                        targetClient: targetClient
+                    )
+                }
+            }
+            self.finishMessagesSnapshot(messages)
+        }
+    }
+
+    private func finishMessagesSnapshot(_ messages: [HermesGatewayMessageRecord]) {
 
         let approvalDetails = HermesGatewayApprovalDetailIndex.keyedByApprovalTarget(from: messages)
         // handleMessagesSnapshot already runs on the MainActor, so write the keyed

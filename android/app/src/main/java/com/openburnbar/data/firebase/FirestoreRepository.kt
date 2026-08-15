@@ -30,6 +30,7 @@ import com.openburnbar.data.models.deduplicatedByProviderAccount
 import java.time.Instant
 import java.time.format.DateTimeParseException
 import java.util.Date
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
@@ -42,12 +43,40 @@ private const val NANOS_PER_MILLIS = 1_000_000
 private const val TOP_PROJECTS_BY_COST_LIMIT = 20
 private const val LIVE_USAGE_DOC_LIMIT = 2_000L
 
+/**
+ * Process-lifetime executor for the incremental live-usage listener.
+ *
+ * Firestore can already have a snapshot delivery queued when
+ * ListenerRegistration.remove() returns. Shutting down a per-collector
+ * executor immediately after remove() lets that queued delivery hit a
+ * terminated executor, which Firestore treats as an internal fatal error.
+ * A single daemon thread for the app process preserves the serial decoding
+ * guarantee without racing listener teardown.
+ */
+internal object LiveUsageListenerExecutor {
+    val executor: ExecutorService =
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "burnbar-live-usage").apply { isDaemon = true }
+        }
+}
+
 data class QuotaSnapshotUpdate(
     val snapshots: List<ProviderQuotaSnapshot>,
     val isFromCache: Boolean,
 )
 
 class FirestoreRepository {
+    companion object {
+        /**
+         * Sanctioned resolution point for the raw Firestore handle (R-GH6 raw
+         * Firestore ratchet). Call sites that must hand the concrete SDK
+         * handle to codec/vault helpers resolve it here instead of calling
+         * `FirebaseFirestore.getInstance()` directly, so handle configuration
+         * stays owned by the repository layer.
+         */
+        fun database(): FirebaseFirestore = Firebase.firestore
+    }
+
     private val db = Firebase.firestore
     private val functions = Firebase.functions
     internal val budget = FirestoreBudgetRepository(db) { currentUserId() }
@@ -223,10 +252,6 @@ class FirestoreRepository {
         // per-doc AES-GCM sealedProjectName open never run as main-thread
         // work while an agent streams usage writes. The single thread also
         // confines all accumulator/cache access — no locking needed.
-        val executor =
-            Executors.newSingleThreadExecutor { runnable ->
-                Thread(runnable, "burnbar-live-usage").apply { isDaemon = true }
-            }
         // O(changes) per delivery instead of O(window): `documentChanges`
         // patches the id-keyed accumulator, and unchanged docs skip the
         // decrypt via the (docId, updatedAt) memo. Matches the iOS
@@ -244,7 +269,7 @@ class FirestoreRepository {
                 // capped listener Firestore also emits REMOVED changes when
                 // rows fall off the limit boundary — handled below.
                 .limit(LIVE_USAGE_DOC_LIMIT)
-                .addSnapshotListener(executor) { snapshot, error ->
+                .addSnapshotListener(LiveUsageListenerExecutor.executor) { snapshot, error ->
                     if (error != null) {
                         close(error)
                         return@addSnapshotListener
@@ -271,7 +296,6 @@ class FirestoreRepository {
                 }
         awaitClose {
             listener.remove()
-            executor.shutdown()
         }
     }
 

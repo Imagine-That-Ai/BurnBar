@@ -4,192 +4,11 @@ permissions:
   contents: read
 
 on:
+  # Protected deployment requires one deterministic source proof for every
+  # exact main commit. GitHub path filters inspect only a bounded changed-file
+  # set, so a filtered push can silently omit the proof on large changes.
   push:
     branches: [main]
-    paths:
-      - "crates/openburnbar-domain-core/**"
-      - "OpenBurnBarCore/Package.swift"
-      - "project.yml"
-      - "AgentLens/Resources/OpenBurnBar-Info.plist"
-      - "OpenBurnBarMobile/Info.plist"
-      - ".github/workflows/release.yml"
-      - ".github/workflows/linux-release.yml"
-      - ".github/workflows/domain-core-ios-release-evidence.yml"
-      - ".github/workflows/domain-core-post-deletion-completion.yml"
-      - ".github/workflows/domain-core-deletion-guard.yml"
-      - ".github/workflows/openburnbar-release-windows.yml"
-      - ".github/workflows/deploy-hosting.yml"
-      - ".github/workflows/domain-core-console-release-evidence.yml"
-      - ".github/workflows/deploy-production.yml"
-      - ".github/workflows/domain-core-functions-release-evidence.yml"
-      - ".github/workflows/fast-feedback.yml"
-      - "OpenBurnBarCore/Sources/OpenBurnBarCore/ProviderQuota/**"
-      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/ModelPricing.swift"
-      - "OpenBurnBarCore/Sources/OpenBurnBarCore/Services/LogParser/DomainCorePricingAdapter.swift"
-      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/Resources/catalog.json"
-      - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/HermesRatchetCrypto.swift"
-      - "AgentLens/Services/ProviderUsageAPI/*UsageAPI.swift"
-      - "AgentLens/Services/UsageAggregatorParsers*.swift"
-      - "AgentLens/Services/CursorConnector/CursorConnectorManager.swift"
-      - "AgentLens/Views/Chat/ChatSessionController+Retrieval.swift"
-      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCore/**"
-      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreRuntime/**"
-      - "OpenBurnBarCore/Sources/OpenBurnBarDomainCoreFFISmoke/**"
-      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesDomainCoreAdapter.swift"
-      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/DomainCoreBuildProfile.swift"
-      - "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/HermesRelayCrypto.swift"
-      - "OpenBurnBarCore/Sources/OpenBurnBarVectorKit/**"
-      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/*DomainCore*Tests.swift"
-      - "AgentLens/Services/ProviderQuota/DomainCoreShadowEvidenceSpool.swift"
-      - "AgentLens/Services/ProviderQuota/ProviderQuotaMacBridge.swift"
-      - "AgentLensTests/Active/DomainCoreShadowEvidenceSpoolTests.swift"
-      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/HermesRatchetCryptoTests.swift"
-      - "OpenBurnBarMobile/Services/HermesGatewayAttachmentRecord.swift"
-      - "OpenBurnBarMobile/Services/HermesGatewayRelayKeypair.swift"
-      - "OpenBurnBarMobileTests/OpenBurnBarMobileTests.swift"
-      - "windows/app/OpenBurnBar.App.Presentation/Quota/**"
-      - "windows/app/OpenBurnBar.App.CloudSync/DomainCoreShadowEvidenceUploader.cs"
-      - "windows/app/OpenBurnBar.App.CloudSync/WinAppCloudSyncHost.cs"
-      - "windows/app/OpenBurnBar.App.CloudSync/Pensieve/**"
-      - "windows/app/OpenBurnBar.App.CloudSync/Legacy/PensieveVectorLegacy.cs"
-      - "windows/tests/quota/**"
-      - "windows/Directory.Build.*"
-      - "windows/app/OpenBurnBar.App.Configuration/DomainCoreBuildProfileResolver.cs"
-      - "windows/tests/configuration/DomainCoreBuildProfileResolverTests.cs"
-      - "OpenBurnBarCore/Sources/OpenBurnBarCore/SharedModels/CloudVaultCrypto.swift"
-      - "OpenBurnBarCore/Tests/OpenBurnBarCoreTests/CloudVault*Tests.swift"
-      - "windows/cloudsync/OpenBurnBar.CloudSync.Crypto/**"
-      - "windows/tests/cloudsync/**"
-      - "windows/tests/cloudsync-app/PensieveVectorCloakTests.cs"
-      - "android/openburnbar-domain-core/**"
-      - "android/app/src/main/java/com/openburnbar/data/cloud/CloudVaultCrypto*.kt"
-      - "android/app/src/test/java/com/openburnbar/data/cloud/CloudVault*Test.kt"
-      - "android/app/src/main/java/com/openburnbar/data/hermes/**"
-      - "android/app/src/main/java/com/openburnbar/data/DomainCoreBuildProfile.kt"
-      - "android/app/src/test/java/com/openburnbar/data/DomainCoreBuildProfileTest.kt"
-      - "android/app/src/test/java/com/openburnbar/data/hermes/**"
-      - "android/app/build.gradle.kts"
-      - "android/settings.gradle.kts"
-      - "apps/console/lib/escrow.ts"
-      - "apps/console/lib/domainCoreCloudVault.ts"
-      - "apps/console/lib/recall.ts"
-      - "apps/console/lib/legacy/pensieveVectorLegacy.ts"
-      - "apps/console/lib/domainCoreBuildProfile.ts"
-      - "apps/console/test/domainCoreBuildProfile.test.ts"
-      - "apps/console/test/escrow.test.ts"
-      - "apps/console/test/domainCoreCloudVault*.test.ts"
-      - "apps/console/vendor/openburnbar-domain-core-wasm/**"
-      - "tools/openburnbar-mcp-remote/src/embed.ts"
-      - "tools/openburnbar-mcp-remote/src/domainCoreCloudVault.ts"
-      - "tools/openburnbar-mcp-remote/src/legacy/pensieveVectorLegacy.ts"
-      - "tools/openburnbar-mcp-remote/vendor/openburnbar-domain-core-wasm/**"
-      - "functions/src/domainCorePricing.ts"
-      - "functions/src/domainCoreBuildProfile.ts"
-      - "functions/src/health.ts"
-      - "functions/src/generated/domainCoreCandidateReceipt.ts"
-      - "functions/src/__tests__/domainCoreBuildProfile.test.ts"
-      - "functions/src/pricing.ts"
-      - "functions/src/rollupCounters.ts"
-      - "functions/src/insightsHostedAnswer.ts"
-      - "functions/src/__tests__/pricing.test.ts"
-      - "functions/src/domainCoreShadowEvidence.ts"
-      - "functions/src/callables/domainCoreShadowEvidence.ts"
-      - "functions/src/__tests__/domainCoreShadowEvidence.test.ts"
-      - "functions/src/index.ts"
-      - "functions/src/security/endpointAuthorizationCatalog.generated.ts"
-      - "functions/scripts/generate-endpoint-catalog.mjs"
-      - "firestore.indexes.json"
-      - "firestore.rules"
-      - "ops/firestore-ttl-policies.json"
-      - "functions/vendor/openburnbar/domain-core-wasm/**"
-      - "functions/package*.json"
-      - "Vendor/openburnbar-domain-core.aar"
-      - "tests/fixtures/domain-core/**"
-      - "tools/openburnbar-mcp/**"
-      - "scripts/build-domain-core-python.sh"
-      - "scripts/test-domain-core-python.sh"
-      - "scripts/build-domain-core-xcframework.sh"
-      - "scripts/domain-core/safe-quota-ffi.swift.inc"
-      - "scripts/build-domain-core-android-aar.sh"
-      - "scripts/ci/canonical-candidate-commit.mjs"
-      - "scripts/build-domain-core-wasm.sh"
-      - "scripts/ci/domain-core-union-gate.py"
-      - "scripts/ci/evaluate-domain-core-promotion.mjs"
-      - "scripts/ci/evaluate-domain-core-promotion.test.mjs"
-      - "scripts/ci/gh-api-with-retry*"
-      - "scripts/ci/*domain-core-proof*"
-      - "scripts/ci/verify-domain-core-protected-attestation*"
-      - "scripts/ci/verify-domain-core-rollback.mjs"
-      - "scripts/lib/domain-core-promotion-evidence.mjs"
-      - "scripts/lib/domain-core-proof-fragments*"
-      - "scripts/lib/domain-core-deterministic-candidate-bundle*"
-      - "scripts/lib/domain-core-evidence-contract.mjs"
-      - "scripts/lib/export-domain-core-promotion-evidence*.mjs"
-      - "scripts/ops/export-domain-core-promotion-evidence.mjs"
-      - "scripts/ci/*domain-core-build-profile*"
-      - "scripts/ci/*domain-core-functions*"
-      - "scripts/ci/*domain-core-release*"
-      - "scripts/ci/publish-domain-core-release-evidence*"
-      - "scripts/ci/post-deploy-health-gate*"
-      - "scripts/ci/create-domain-core-deployment-identity*"
-      - "scripts/ci/create-domain-core-runtime-artifact-manifest*"
-      - "scripts/ci/verify-existing-domain-core-deployment*"
-      - "scripts/ci/verify-domain-core-console-deploy-evidence*"
-      - "scripts/ci/hosting-smoke-domain-core.test.sh"
-      - "scripts/ci/hosting-smoke.sh"
-      - "scripts/lib/domain-core-build-profile.mjs"
-      - "scripts/lib/domain-core-release-evidence*"
-      - "scripts/lib/domain-core-artifact-profile*.mjs"
-      - "scripts/lib/domain-core-candidate-receipt*.mjs"
-      - "scripts/lib/domain-core-shadow-enrollment*.mjs"
-      - "scripts/ops/manage-domain-core-shadow-enrollment.mjs"
-      - "scripts/windows-port/check-csharp-binding-drift.sh"
-      - "config/domain-core-android-ndk-version.txt"
-      - "config/domain-core-promotion-policy.json"
-      - "config/domain-core-legacy-deletion*.json"
-      - "config/domain-core-legacy-deletion-receipts/**"
-      - "config/domain-core-deletion-*.json"
-      - "config/domain-core-deletion-plans/**"
-      - "config/domain-core-promotion-attestation.schema.json"
-      - "config/domain-core-promotion-attestations/**"
-      - "config/domain-core-promotion-bundles/**"
-      - "config/domain-core-promotion-provenance/**"
-      - "config/domain-core-release-provenance/**"
-      - "scripts/ci/verify-domain-core-*deletion*.py"
-      - "scripts/ci/verify-domain-core-legacy-deletion.py"
-      - "scripts/ci/verify-domain-core-legacy-absence.py"
-      - "scripts/ops/create-domain-core-promotion-receipt.py"
-      - "scripts/ops/create-domain-core-stable-receipt.py"
-      - "scripts/ops/create-domain-core-rollback-receipt.py"
-      - "scripts/ops/create-domain-core-deletion-plan.py"
-      - "tests/test_domain_core_legacy_deletion*.py"
-      - "tests/test_domain_core_*deletion*.py"
-      - "docs/runbooks/shared-rust-legacy-deletion.md"
-      - "config/domain-core-build-profiles.json"
-      - "config/domain-core-functions-relevant-targets.json"
-      - "config/domain-core-release-predicate.schema.json"
-      - "config/domain-core-deployment-receipt.schema.json"
-      - "firebase.json"
-      - ".firebaserc"
-      - "docs/SHARED_RUST_DOMAIN_CORE_ROADMAP.md"
-      - "docs/SHARED_RUST_DOMAIN_INVENTORY.md"
-      - "docs/runbooks/shared-rust-promotion-evidence.md"
-      - "docs/runbooks/shared-rust-build-profiles.md"
-      - "docs/runbooks/shared-rust-release-evidence.md"
-      - "docs/contracts/domain-core-shadow-sample-v1.schema.json"
-      - "docs/contracts/domain-core-shadow-sample-v2.schema.json"
-      - "docs/contracts/domain-core-shadow-sample-v3.schema.json"
-      - "tests/test_domain_core_union_gate.py"
-      - "tests/test_domain_core_functions_release_workflow.py"
-      - "tests/test_domain_core_console_release_evidence_workflow.py"
-      - "tests/test_domain_core_lifecycle_receipt_writers.py"
-      - "governance/branch-protection.main.json"
-      - "scripts/lib/branch-protection-drift.mjs"
-      - "scripts/ops/check-branch-protection-drift*.mjs"
-      - "scripts/ci/verify-domain-core-default-branch-controls*.mjs"
-      - "tests/test_domain_core_trusted_deletion_workflow.py"
-      - ".github/workflows/domain-core.yml"
-      - ".github/workflows/domain-core-promotion-proof.yml"
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
@@ -199,9 +18,12 @@ on:
   # Manual runs are diagnostic; protected promotion accepts only successful main pushes.
   workflow_dispatch:
 
+# Push runs are the exact-main deploy proof: key them by commit and never
+# cancel them, so a rapid follow-up main push cannot cancel the previous
+# commit's proof run and leave that commit undeployable.
 concurrency:
-  group: domain-core-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: domain-core-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   classify:
@@ -212,9 +34,11 @@ jobs:
     needs: classify
     if: needs.classify.outputs.rust == 'true'
     runs-on: ubuntu-latest
-    # This job performs two full-history checkouts. Either fetch can take several
-    # minutes during GitHub degradation, before the contract tests even run.
-    timeout-minutes: 15
+    # The deletion-candidate checkout needs complete history and blobs for
+    # ancestry and historical-content proofs, so a degraded GitHub fetch can
+    # consume most of the job budget before the contract tests even run. Leave
+    # enough headroom without weakening the fail-closed contract lane.
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -275,7 +99,7 @@ jobs:
       - name: Check out trusted default-branch evaluator
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           path: .domain-core-trusted-evaluator
           persist-credentials: false
           fetch-depth: 1
@@ -284,7 +108,7 @@ jobs:
 
       - name: Verify deterministic legacy-deletion governance
         env:
-          DOMAIN_CORE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          DOMAIN_CORE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}
           DOMAIN_CORE_EVIDENCE_CACHE: ${{ runner.temp }}/domain-core-evidence-cache
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1169,7 +993,7 @@ jobs:
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
     # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     timeout-minutes: 30
     steps:
       - name: Check out repository
@@ -1239,14 +1063,17 @@ jobs:
     name: swift-consumer-contracts
     needs: classify
     if: needs.classify.outputs.rust == 'true'
-    # Cold macos-26 runners can spend nearly an hour building the domain-core
-    # XCFramework and app-test dependency graph before the focused spool test.
-    timeout-minutes: 90
+    # PR/MQ keep DomainCore Swift contracts (~XCFramework + Core) and skip the
+    # Apple app spool that rebuilds the full OpenBurnBar graph (~47m measured).
+    # Push/dispatch still runs the spool after Core so main keeps focused
+    # coverage; the nightly openburnbar-pr-harness app-xctest also runs the
+    # full OpenBurnBarTests corpus (including DomainCoreShadowEvidenceSpoolTests).
+    timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 25 || 90 }}
     # Routing (cost + security): pull-request and merge-queue candidates may both
     # contain untrusted PR code, so they run only on isolated hosted macOS pools.
     # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
     # billed fast burst.
-    runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
+    runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
@@ -1290,16 +1117,24 @@ jobs:
           set -o pipefail
           ./scripts/test-openburnbar-swift.sh \
             2>&1 | tee "$RUNNER_TEMP/swift-consumer-core.log"
+          # Proof emit always succeeds from the Core log alone on PR/MQ. Push
+          # and workflow_dispatch append the app spool log below.
+          cp "$RUNNER_TEMP/swift-consumer-core.log" \
+            "$RUNNER_TEMP/swift-consumer-contracts.log"
 
       - name: Run Apple shadow evidence spool contracts
+        # Keep the focused app-spool selector off pull_request + merge_group: it
+        # rebuilds the same OpenBurnBar app graph AgentLens already built in the
+        # same MQ batch. Coverage homes: this step on push/dispatch, plus the
+        # nightly Full Harness app-xctest unfiltered OpenBurnBarTests run.
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         run: |
           set -o pipefail
           ./scripts/test-openburnbar-app.sh \
             -only-testing:OpenBurnBarTests/DomainCoreShadowEvidenceSpoolTests \
             2>&1 | tee "$RUNNER_TEMP/swift-consumer-spool.log"
-          cat "$RUNNER_TEMP/swift-consumer-core.log" \
-            "$RUNNER_TEMP/swift-consumer-spool.log" \
-            > "$RUNNER_TEMP/swift-consumer-contracts.log"
+          cat "$RUNNER_TEMP/swift-consumer-spool.log" \
+            >> "$RUNNER_TEMP/swift-consumer-contracts.log"
 
       - name: Restore tracked Swift artifacts after debug validation
         run: |
@@ -1618,7 +1453,7 @@ jobs:
       - python-hermes-contracts
       - rollback-drill
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out exact candidate
         if: github.event_name == 'push'
@@ -1688,7 +1523,12 @@ jobs:
       - rollback-drill
       - candidate-bundle
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The deletion-candidate checkout needs complete history, all refs, and
+    # blobs for ancestry and historical-content proofs. The current repository
+    # pack is 8.68 GiB, so a degraded GitHub fetch can consume an hour before
+    # the gate logic runs. Leave two hours of headroom without weakening the
+    # fail-closed gate.
+    timeout-minutes: 120
     steps:
       - name: Require every meaningful Domain Core job
         if: needs.classify.outputs.rust == 'true'
@@ -1716,14 +1556,21 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # The evaluator checkout only supplies trusted script content at the base
+      # ref; every Git proof runs against the deletion-candidate workspace.
+      # Keep this fetch bounded so it cannot burn the gate's checkout headroom.
       - name: Check out trusted default-branch absence evaluator
         if: needs.classify.outputs.rust == 'true'
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           path: .domain-core-trusted-evaluator
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/ci/verify-domain-core-legacy-absence.py
+            scripts/ci/verify-domain-core-legacy-deletion.py
+          sparse-checkout-cone-mode: false
 
       - name: Download exact-attempt proof fragments
         if: needs.classify.outputs.rust == 'true'
@@ -1763,5 +1610,5 @@ jobs:
             jq -e 'all(.rows[]; .state != "legacy_deleted")' config/domain-core-legacy-deletion.json >/dev/null
             python3 .domain-core-trusted-evaluator/scripts/ci/verify-domain-core-legacy-deletion.py \
               --repo-root "$GITHUB_WORKSPACE" \
-              --base-ref "${{ github.event.pull_request.base.sha || github.event.before }}"
+              --base-ref "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
           fi

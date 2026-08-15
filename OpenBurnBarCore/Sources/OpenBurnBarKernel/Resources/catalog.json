@@ -598,6 +598,10 @@
           "capabilityClassID": "anthropic:sonnet",
           "capabilityClassRank": 50
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -681,10 +685,10 @@
             }
           ],
           "pricing": {
-            "inputPerMToken": 1,
-            "outputPerMToken": 6,
-            "cacheCreationPerMToken": 1.25,
-            "cacheReadPerMToken": 0.1
+            "inputPerMToken": 0.2,
+            "outputPerMToken": 1.2,
+            "cacheCreationPerMToken": 0.25,
+            "cacheReadPerMToken": 0.02
           },
           "capabilityClassID": "openai:gpt-5.6-luna",
           "capabilityClassRank": 80
@@ -1572,6 +1576,9 @@
           "capabilityClassID": "openai:mini",
           "capabilityClassRank": 10
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -2065,6 +2072,10 @@
           "capabilityClassID": "factory-droid-core:minimax-m2.7",
           "capabilityClassRank": 20
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -2231,6 +2242,10 @@
           "capabilityClassID": "openai:codex",
           "capabilityClassRank": 100
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -2559,6 +2574,10 @@
           "capabilityClassID": "hy3-preview",
           "capabilityClassRank": 60
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -2798,6 +2817,9 @@
             "cacheReadPerMToken": 0.03
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -2946,6 +2968,9 @@
             "cacheReadPerMToken": 0.01
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3141,6 +3166,9 @@
             "cacheReadPerMToken": 0.02
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3156,10 +3184,11 @@
       "models": [
         {
           "id": "deepseek-chat",
-          "displayName": "DeepSeek Chat",
+          "displayName": "DeepSeek Chat (V4 Flash)",
           "visibility": "public",
           "aliases": [
-            "deepseek-v4-flash"
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-0731"
           ],
           "matchers": [
             {
@@ -3179,9 +3208,9 @@
             }
           ],
           "pricing": {
-            "inputPerMToken": 0.28,
-            "outputPerMToken": 0.42,
-            "cacheReadPerMToken": 0.028
+            "inputPerMToken": 0.14,
+            "outputPerMToken": 0.28,
+            "cacheReadPerMToken": 0.0028
           }
         },
         {
@@ -3283,6 +3312,9 @@
             "cacheReadPerMToken": 0.028
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3532,6 +3564,9 @@
             "cacheReadPerMToken": 0.02
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3728,7 +3763,58 @@
             "outputPerMToken": 0.18,
             "cacheReadPerMToken": 0.09
           }
+        },
+        {
+          "id": "muse-spark-1-2-standard",
+          "displayName": "Muse Spark 1.2",
+          "visibility": "public",
+          "aliases": [
+            "muse-spark-1.2"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.2"
+              ],
+              "any": [],
+              "none": [
+                "contributor"
+              ]
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 1.25,
+            "outputPerMToken": 4.25,
+            "cacheReadPerMToken": 0.15
+          },
+          "canonicalModelID": "muse-spark-1.2"
+        },
+        {
+          "id": "muse-spark-1-2-contributor",
+          "displayName": "Muse Spark 1.2 (Contributor)",
+          "visibility": "hidden",
+          "aliases": [
+            "muse-spark-1.2-contributor"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "muse-spark-1.2-contributor"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0.1,
+            "outputPerMToken": 0.2,
+            "cacheReadPerMToken": 0.002
+          },
+          "canonicalModelID": "muse-spark-1.2-contributor"
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3859,6 +3945,9 @@
             "cacheReadPerMToken": 0.01875
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -3965,6 +4054,9 @@
             "cacheReadPerMToken": 0.0035
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4313,6 +4405,9 @@
             "cacheReadPerMToken": 0.08
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4444,6 +4539,10 @@
             "cacheReadPerMToken": 0.11
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -4569,6 +4668,10 @@
             "cacheReadPerMToken": 0.03
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -4754,6 +4857,9 @@
             "cacheReadPerMToken": 0.15
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4897,6 +5003,9 @@
             "cacheReadPerMToken": 0.065
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -4941,6 +5050,9 @@
             "cacheReadPerMToken": 0
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli"
       ]
     },
     {
@@ -5230,6 +5342,10 @@
             "cacheReadPerMToken": 0
           }
         }
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
       ]
     },
     {
@@ -5244,7 +5360,51 @@
         "routing",
         "accounting"
       ],
-      "models": []
+      "models": [],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
+      ]
+    },
+    {
+      "id": "devin",
+      "displayName": "Devin",
+      "baseURL": "devin://local",
+      "visibility": "public",
+      "logoKey": "DevinLogo",
+      "capabilities": [
+        "accounting"
+      ],
+      "visualSurfaces": [
+        "cli",
+        "desktop"
+      ],
+      "models": [
+        {
+          "id": "devin-default-family",
+          "displayName": "Devin Default",
+          "visibility": "public",
+          "aliases": [
+            "devin"
+          ],
+          "matchers": [
+            {
+              "all": [
+                "devin"
+              ],
+              "any": [],
+              "none": []
+            }
+          ],
+          "pricing": {
+            "inputPerMToken": 0,
+            "outputPerMToken": 0,
+            "cacheReadPerMToken": 0
+          },
+          "capabilityClassID": "devin:default",
+          "capabilityClassRank": 50
+        }
+      ]
     }
   ]
 }

@@ -139,6 +139,46 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(encoders[1].didStop)
     }
 
+    func testStartScreenShareAlwaysConsultsTheCapabilityGateBeforeCapturing() async throws {
+        // Regression guard: a "surface" branch once returned success before the gate
+        // ran, so a caller was told screen share had started while no pipeline existed,
+        // no sink was registered and no daily minutes were debited. Every start path
+        // must debit the budget, and a denial must leave nothing half-started.
+        let gate = MutableMediaCapabilityGate()
+        await gate.setResult(.denied(reason: .dailyCapReached))
+        var captureFactoryInvocations = 0
+        let coordinator = MediaSessionCoordinator(
+            capabilityGate: gate,
+            admissionRecheckIntervalNanoseconds: UInt64.max,
+            runtimeHealthProvider: {
+                MediaSessionCoordinatorTestFixtures.runtimeHealth
+            },
+            screenCaptureFactory: { _, _ in
+                captureFactoryInvocations += 1
+                return RecordingScreenCaptureSession()
+            },
+            videoEncoderFactory: { _, _ in RecordingVideoEncoder() }
+        )
+
+        do {
+            try await coordinator.startScreenShare(
+                peerDeviceID: "iphone",
+                sink: RecordingMediaSink()
+            )
+            XCTFail("Expected the denial to propagate instead of a silent success")
+        } catch MediaSessionError.denied(reason: .dailyCapReached) {
+            // Expected.
+        }
+
+        let checkCount = await gate.checkCount
+        XCTAssertEqual(checkCount, 1, "the gate must be consulted on every start")
+        XCTAssertEqual(captureFactoryInvocations, 0, "no ScreenCaptureKit pipeline on a denied start")
+        XCTAssertEqual(coordinator.phase, .ended(reason: .error))
+        XCTAssertEqual(coordinator.activeScreenShareViewerCount, 0)
+        let detached = await coordinator.detachScreenShareViewer(viewerID: "iphone")
+        XCTAssertFalse(detached, "a denied start must not leave a registered viewer behind")
+    }
+
     func testActiveScreenShareStopsWhenAdmissionIsRevoked() async throws {
         let gate = MutableMediaCapabilityGate()
         let encoder = RecordingVideoEncoder()
@@ -167,6 +207,37 @@ final class MediaSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.phase, .ended(reason: .budgetHardCap))
         XCTAssertTrue(screenCapture.didStop)
         XCTAssertTrue(encoder.didStop)
+    }
+
+    func testMediaSessionErrorDescribesEveryDenialReasonForThePhone() {
+        let expectations: [(MediaCapabilityDenialReason, String)] = [
+            (.entitlementMissing, "Screen sharing requires an active Cloud Pro or Ultra subscription."),
+            (.entitlementExpired, "The screen-sharing subscription has expired."),
+            (.dailyCapReached, "The daily screen-sharing limit has been reached."),
+            (.sessionCapReached, "This screen-sharing session reached its limit."),
+            (.concurrentSessionCapReached, "Too many screen-sharing sessions are already active."),
+            (.budgetSoftCapReached, "Screen sharing is temporarily limited by the service budget."),
+            (.budgetHardCapReached, "Screen sharing is temporarily unavailable because the service budget was reached."),
+            (.killSwitchActive, "Screen sharing is temporarily disabled.")
+        ]
+        for (reason, expected) in expectations {
+            XCTAssertEqual(
+                MediaSessionError.denied(reason: reason).errorDescription,
+                expected,
+                "Denial reason \(reason) must map to an actionable phone-facing message"
+            )
+        }
+    }
+
+    func testMediaSessionErrorDescribesCaptureAndEncoderFailures() {
+        XCTAssertEqual(
+            MediaSessionError.captureFailed.errorDescription,
+            "The Mac could not start screen capture."
+        )
+        XCTAssertEqual(
+            MediaSessionError.encodeFailed.errorDescription,
+            "The Mac could not start the video encoder."
+        )
     }
 }
 
@@ -242,6 +313,7 @@ private final class RecordingMediaSink: MediaStreamSink, @unchecked Sendable {
 
 private actor MutableMediaCapabilityGate: MediaCapabilityGate {
     private var result: MediaCapabilityCheck = .allowed(envelope: MediaCapabilityEnvelope(feature: .screenShare))
+    private(set) var checkCount = 0
 
     func setResult(_ result: MediaCapabilityCheck) {
         self.result = result
@@ -252,6 +324,7 @@ private actor MutableMediaCapabilityGate: MediaCapabilityGate {
         sessionDurationLimitSeconds: Int?,
         sessionByteBudget: Int64?
     ) async -> MediaCapabilityCheck {
-        result
+        checkCount += 1
+        return result
     }
 }

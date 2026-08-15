@@ -5,6 +5,7 @@ import FirebaseCore
 @preconcurrency import FirebaseFirestore
 @preconcurrency import FirebaseFunctions
 import OpenBurnBarCore
+import OpenBurnBarFirestoreModels
 
 // MARK: - HermesGatewayRepository protocol
 //
@@ -23,7 +24,8 @@ protocol HermesGatewayRepository: AnyObject {
         phoneRelayPublicKey: String?,
         phoneRelayKeyVersion: Int?,
         phoneRelayEncryption: String?,
-        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?
+        phoneRatchetPrekeyBundle: HermesGatewayRatchetPrekeyBundle?,
+        phoneSignalPrekeyBundle: FirestoreHermesGatewaySignalPrekeyBundleDoc?
     ) async throws -> HermesGatewayClientRecord
 
     func listHermesGatewayClients(includeRevoked: Bool) async throws -> [HermesGatewayClientRecord]
@@ -89,7 +91,8 @@ extension HermesGatewayRepository {
             phoneRelayPublicKey: keypair.relayPublicKeyBase64,
             phoneRelayKeyVersion: keypair.keyVersion,
             phoneRelayEncryption: keypair.relayEncryption,
-            phoneRatchetPrekeyBundle: ratchetBundle
+            phoneRatchetPrekeyBundle: ratchetBundle,
+            phoneSignalPrekeyBundle: nil
         )
     }
 

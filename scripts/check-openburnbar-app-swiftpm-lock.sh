@@ -7,6 +7,12 @@ project_path="$repo_root/OpenBurnBar.xcodeproj"
 lockfile_path="$repo_root/OpenBurnBar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 cache_dir="$repo_root/.spm-cache"
 
+# The committed graph deliberately pins source-built Firestore. Firebase's
+# default binary graph uses grpc-binary, which crashes on the supported iOS 27
+# runtime. This verifier must therefore resolve the same safe graph regardless
+# of the caller's inherited environment.
+export FIREBASE_SOURCE_FIRESTORE=1
+
 if [[ ! -f "$lockfile_path" ]]; then
   echo "Missing app SwiftPM lockfile at $lockfile_path" >&2
   exit 1
@@ -14,6 +20,66 @@ fi
 
 mkdir -p "$repo_root/.derived-data"
 mkdir -p "$cache_dir"
+
+# Package.resolved is shared mutable state for every invocation running in this
+# checkout. Without whole-check mutual exclusion, a failing invocation can
+# restore its clean snapshot while a concurrently succeeding invocation is
+# between writing legitimate resolver drift and diffing it, masking real drift
+# as a clean exit. Serialize the entire snapshot/resolve/restore/diff sequence
+# behind a directory lock so concurrent validator reruns queue instead of
+# interleaving.
+lock_dir="$repo_root/.derived-data/openburnbar-lock-check.lock"
+lock_wait_seconds="${OPENBURNBAR_LOCK_CHECK_LOCK_WAIT_SECONDS:-1800}"
+lock_acquired=0
+lockfile_snapshot=""
+
+acquire_lock() {
+  local deadline=$(( SECONDS + lock_wait_seconds ))
+  while ! mkdir "$lock_dir" 2>/dev/null; do
+    local holder_pid=""
+    if [[ -f "$lock_dir/pid" ]]; then
+      holder_pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
+    fi
+    if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
+      # The previous holder died without releasing (e.g. SIGKILL). Reclaim the
+      # lock; if several waiters race here, exactly one wins the next mkdir.
+      rm -rf "$lock_dir"
+      continue
+    fi
+    if (( SECONDS >= deadline )); then
+      echo "Timed out after ${lock_wait_seconds}s waiting for the SwiftPM lockfile check lock at ${lock_dir} (held by pid ${holder_pid:-unknown})." >&2
+      exit 1
+    fi
+    sleep 0.2
+  done
+  printf '%s\n' "$$" >"$lock_dir/pid"
+  lock_acquired=1
+}
+
+release_lock() {
+  if (( lock_acquired )); then
+    rm -rf "$lock_dir"
+    lock_acquired=0
+  fi
+}
+
+cleanup() {
+  if [[ -n "$lockfile_snapshot" ]]; then
+    rm -f "$lockfile_snapshot"
+  fi
+  release_lock
+}
+
+restore_lockfile() {
+  cp "$lockfile_snapshot" "$lockfile_path"
+}
+
+trap cleanup EXIT
+
+acquire_lock
+
+lockfile_snapshot="$(mktemp "$repo_root/.derived-data/openburnbar-lock-check.Package.resolved.XXXXXX")"
+cp "$lockfile_path" "$lockfile_snapshot"
 
 # xcodebuild's IDE project-model layer (IDEFoundation/DVTFoundation) intermittently
 # aborts while loading the OpenBurnBar.xcodeproj group tree during
@@ -53,14 +119,21 @@ while (( attempt <= max_attempts )); do
   # Exit 134 == SIGABRT: the known Xcode IDE model-graph crash. Anything else is a
   # real resolution failure (e.g. an unresolvable dependency) — surface it now.
   if (( resolve_status != 134 )); then
+    restore_lockfile
     echo "xcodebuild -resolvePackageDependencies failed with exit ${resolve_status}" >&2
     exit "$resolve_status"
   fi
+  # Xcode can rewrite Package.resolved before its IDE model graph aborts. Do not
+  # let a partial failed attempt become the input to the retry, or the retry can
+  # successfully complete a different transitive package graph and report false
+  # lockfile drift. Every retry must start from the exact committed lockfile.
+  restore_lockfile
   echo "xcodebuild -resolvePackageDependencies aborted (exit 134, transient Xcode IDE model-graph crash) on attempt ${attempt}/${max_attempts}; retrying with a fresh derived-data directory." >&2
   attempt=$(( attempt + 1 ))
 done
 
 if (( resolve_status != 0 )); then
+  restore_lockfile
   echo "xcodebuild -resolvePackageDependencies aborted (exit 134) on every one of ${max_attempts} attempts. This is the transient Xcode IDE model-graph crash, but it did not clear on retry." >&2
   exit "$resolve_status"
 fi

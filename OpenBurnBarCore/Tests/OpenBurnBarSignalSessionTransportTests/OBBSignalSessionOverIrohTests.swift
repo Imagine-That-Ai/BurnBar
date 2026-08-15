@@ -102,6 +102,76 @@ final class OBBSignalSessionOverIrohTests: XCTestCase {
         await macTransport.shutdown()
     }
 
+    func testGatewayV4EnvelopeRoundTripUsesSignalCiphertext() async throws {
+        let uid = "signal-gateway-user"
+        let alicePeer = OBBSignalSessionPeer(
+            uid: uid, deviceId: "ios-gateway", identityKeyId: "ios-gateway_1",
+            keyVersion: 1, signalDeviceId: 1, registrationId: 0x4101
+        )
+        let bobPeer = OBBSignalSessionPeer(
+            uid: uid, deviceId: "mac-gateway", identityKeyId: "mac-gateway_1",
+            keyVersion: 1, signalDeviceId: 1, registrationId: 0x4102
+        )
+        let aliceAddress = try alicePeer.protocolAddress()
+        let bobAddress = try bobPeer.protocolAddress()
+        let aliceStore = try makeStore(identity: IdentityKeyPair.generate(), registrationId: alicePeer.registrationId)
+        let bobStore = try makeStore(identity: IdentityKeyPair.generate(), registrationId: bobPeer.registrationId)
+        let bobPrekeys = try OBBSignalPreKeyGenerator.generatePreKeys(
+            identityKeypair: bobStore.identityKeypair,
+            preKeyId: 51001, signedPreKeyId: 51, kyberPreKeyId: 51,
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        try OBBSignalPreKeyGenerator.storePreKeys(bobPrekeys, into: bobStore, context: NullContext())
+        let claimedBobBundle = try claimedBundle(uid: uid, peer: bobPeer, store: bobStore, prekeys: bobPrekeys)
+        let alice = OBBSignalSessionCipherTransport(store: aliceStore, localAddress: aliceAddress)
+        let bob = OBBSignalSessionCipherTransport(store: bobStore, localAddress: bobAddress)
+
+        let envelope = try await alice.sealGatewayEnvelope(
+            Data("gateway v4 text".utf8),
+            context: OBBSignalGatewayEnvelopeContext(uid: uid, clientId: "client-1", slotId: "text"),
+            claimSignalPrekeyBundle: { claimedBobBundle }
+        )
+        XCTAssertEqual(envelope.mode, "transport")
+        // The shared TS sanitizer hard-requires relayKeyVersion == 4 on every
+        // transport envelope; a nil stamp makes Functions reject the event.
+        XCTAssertEqual(envelope.relayKeyVersion, HermesRelayCrypto.gatewayRelayKeyVersionSignalV4)
+        XCTAssertEqual(envelope.binding.scope, "gateway")
+        XCTAssertEqual(envelope.binding.clientId, "client-1")
+        XCTAssertEqual(envelope.keyDelivery.scheme, "signal-doubleratchet-pqxdh-v1")
+        XCTAssertEqual(envelope.keyDelivery.signalMessageType, Int(CiphertextMessage.MessageType.preKey.rawValue))
+        XCTAssertNotNil(envelope.keyDelivery.signalMessageB64)
+
+        // The same concrete provider used by a shipping client must be able to
+        // reopen the canonical envelope after it has crossed Firestore. This
+        // also proves the provider's identity pin is enforced on the open path,
+        // not only while establishing the outbound session.
+        let alicePrekeys = try OBBSignalPreKeyGenerator.generatePreKeys(
+            identityKeypair: aliceStore.identityKeypair,
+            preKeyId: 61001,
+            signedPreKeyId: 61,
+            kyberPreKeyId: 61
+        )
+        try OBBSignalPreKeyGenerator.storePreKeys(alicePrekeys, into: aliceStore, context: NullContext())
+        let claimedAliceBundle = try claimedBundle(
+            uid: uid,
+            peer: alicePeer,
+            store: aliceStore,
+            prekeys: alicePrekeys
+        )
+        let provider = OBBSignalSessionGatewayEnvelopeProvider(
+            transport: bob,
+            peerBundle: claimedAliceBundle,
+            pinnedIdentityPublicKey: Data(aliceStore.identityKeypair.publicKey.serialize())
+        )
+        let reopened = try await provider.open(
+            envelopeData: JSONEncoder().encode(envelope),
+            uid: uid,
+            clientId: "client-1",
+            slotId: "text"
+        )
+        XCTAssertEqual(reopened, Data("gateway v4 text".utf8))
+    }
+
     func testPeerMappingIsDeterministic() throws {
         let first = OBBSignalSessionPeer(
             uid: "u",

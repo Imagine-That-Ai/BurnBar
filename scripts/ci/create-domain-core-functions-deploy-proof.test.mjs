@@ -21,6 +21,7 @@ const ACTIVATION = Object.freeze({
   ...CANDIDATE,
   activationCommit: "d".repeat(40),
   changedPathsSha256: "e".repeat(64),
+  releaseCommit: "d".repeat(40),
 });
 const DOMAINS = [
   "quota",

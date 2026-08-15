@@ -35,6 +35,17 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         Task { await sync() }
     }
 
+    /// The raw Firestore handle the Signal payload APIs require, sourced from
+    /// the gateway so this service never resolves the global singleton itself.
+    /// Internal (not private) so the nil-guard is directly unit-testable: the
+    /// Signal-gated call sites only run with a configured FirebaseApp.
+    func signalPayloadFirestore() throws -> Firestore {
+        guard let firestore = context.firestoreGateway.rawSignalPayloadFirestore() else {
+            throw TextExpansionSignalSyncError.signalFirestoreUnavailable
+        }
+        return firestore // cov:ignore -- a real handle exists only with a configured FirebaseApp; the nil-guard throw path is unit-tested (TextExpansionSyncServiceTests).
+    }
+
     func sync() async {
         let gate = await context.syncGate()
         guard !gate.syncSuppressed,
@@ -46,8 +57,27 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         do {
             let vaultKey = try vaultKeyStore.getOrCreateKey(uid: uid)
             try await vaultKeyPublisher.publishCloudVaultKey(uid: uid, vaultKey: vaultKey, context: context)
-            try await uploadPending(uid: uid, vaultKey: vaultKey, deviceId: gate.account.deviceId)
-            try await downloadRemote(uid: uid, vaultKey: vaultKey)
+            let signalResolvedKey: CloudVaultResolvedKey?
+            if MacCloudVaultSignalPayloads.signalSealingIsEnabled(domainID: "conversations_chat") {
+                let resolved = try await MacCloudVaultKeyAccess.keyForWriting(
+                    uid: uid,
+                    deviceId: gate.account.deviceId,
+                    firestore: signalPayloadFirestore() // cov:ignore -- Signal-gated call site; the gate is ON only with a configured FirebaseApp + Remote Config, and the helper's guard is unit-tested.
+                )
+                guard resolved.keyData == vaultKey else {
+                    throw TextExpansionSignalSyncError.vaultKeyMismatch
+                }
+                signalResolvedKey = resolved
+            } else {
+                signalResolvedKey = nil
+            }
+            try await uploadPending(
+                uid: uid,
+                vaultKey: vaultKey,
+                deviceId: gate.account.deviceId,
+                signalResolvedKey: signalResolvedKey
+            )
+            try await downloadRemote(uid: uid, vaultKey: vaultKey, signalResolvedKey: signalResolvedKey)
             state.withLock { $0.lastSyncDate = Date() }
         } catch {
             state.withLock { $0.lastSyncError = error.localizedDescription }
@@ -55,7 +85,12 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         }
     }
 
-    private func uploadPending(uid: String, vaultKey: Data, deviceId: String) async throws {
+    private func uploadPending(
+        uid: String,
+        vaultKey: Data,
+        deviceId: String,
+        signalResolvedKey: CloudVaultResolvedKey?
+    ) async throws {
         let snippets = try await context.dataStore.fetchUnsyncedTextExpansionSnippets(limit: 200)
         guard !snippets.isEmpty else { return }
         let collection = context.firestoreGateway
@@ -65,13 +100,33 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         let batch = context.firestoreGateway.batch()
         for snippet in snippets {
             let document = collection.document(snippet.id)
-            batch.setData(
-                try Self.cloudDocument(
+            var payload = try Self.cloudDocument(
                     snippet: snippet,
                     uid: uid,
                     deviceID: deviceId,
                     vaultKey: vaultKey
-                ),
+                )
+            // NOTE: no `source` producer marker here — the text_snippets Firestore
+            // allowlists (legacy validator and Signal mirror gate) reject it.
+            if let signalResolvedKey {
+                let signalPayload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+                    to: payload as NSDictionary,
+                    domainID: "conversations_chat",
+                    uid: uid,
+                    firestore: try signalPayloadFirestore(), // cov:ignore -- Signal-gated call site; the gate is ON only with a configured FirebaseApp + Remote Config, and the helper's guard is unit-tested.
+                    collection: "text_snippets",
+                    docId: snippet.id,
+                    plaintext: try Self.signalPlaintext(snippet),
+                    resolvedKey: signalResolvedKey,
+                    legacyPrivateFields: [
+                        "sealedTitle", "sealedTrigger", "sealedBody", "sealedScope", "triggerHash", "encryption"
+                    ],
+                    mergeWrite: true
+                )
+                payload = CloudSyncFirestoreLiveGateway.firestoreData(signalPayload)
+            }
+            batch.setData(
+                payload,
                 forDocument: document,
                 merge: true
             )
@@ -80,7 +135,11 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         try await context.dataStore.markTextExpansionSnippetsSynced(ids: snippets.map(\.id))
     }
 
-    private func downloadRemote(uid: String, vaultKey: Data) async throws {
+    private func downloadRemote(
+        uid: String,
+        vaultKey: Data,
+        signalResolvedKey: CloudVaultResolvedKey?
+    ) async throws {
         let local = Dictionary(
             uniqueKeysWithValues: (try await context.dataStore.fetchTextExpansionSnippets(includeDeleted: true)).map { ($0.id, $0) }
         )
@@ -91,9 +150,59 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
             .limit(to: 500)
             .getDocuments()
 
+        let trustedSenders: [String: Data]
+        let senderSetComplete: Bool
+        if let identity = signalResolvedKey?.signalIdentity {
+            do {
+                let recipients = try await MacCloudVaultSignalPayloads.atRestRecipients(
+                    uid: uid,
+                    firestore: signalPayloadFirestore(), // cov:ignore -- Signal-gated call site; the gate is ON only with a configured FirebaseApp + Remote Config, and the helper's guard is unit-tested.
+                    localIdentity: identity
+                )
+                trustedSenders = Dictionary(
+                    uniqueKeysWithValues: recipients.map { ($0.recipientIdentityKeyId, $0.publicKeyData) }
+                )
+                senderSetComplete = true
+            } catch {
+                trustedSenders = [identity.identityKeyId: identity.atRestRecipient().publicKeyData]
+                senderSetComplete = false
+            }
+        } else {
+            trustedSenders = [:]
+            senderSetComplete = false
+        }
+
         for doc in snapshot.documents {
             let data = doc.data()
-            guard let remote = try Self.snippet(from: data, documentID: doc.documentID, vaultKey: vaultKey) else {
+            let remote: TextExpansionSnippet?
+            if data["signalEnvelope"] != nil {
+                do {
+                    let plaintext = try MacCloudVaultSignalPayloads.openSignalPayloadIfPresent(
+                        data,
+                        uid: uid,
+                        collection: "text_snippets",
+                        docId: doc.documentID,
+                        signalIdentity: signalResolvedKey?.signalIdentity,
+                        trustedSenderPublicKeys: trustedSenders
+                    )
+                    remote = plaintext.flatMap(Self.snippetFromSignalPayload)
+                } catch {
+                    let required = MacCloudVaultSignalPayloads.signalSealingIsRequired(
+                        domainID: "conversations_chat"
+                    )
+                    guard !required,
+                          MacCloudVaultSignalPayloads.allowsLegacyAtRestFallback(
+                            for: error,
+                            senderSetComplete: senderSetComplete
+                          ) else {
+                        throw error
+                    }
+                    remote = try Self.snippet(from: data, documentID: doc.documentID, vaultKey: vaultKey)
+                }
+            } else {
+                remote = try Self.snippet(from: data, documentID: doc.documentID, vaultKey: vaultKey)
+            }
+            guard let remote else {
                 continue
             }
             if let localSnippet = local[remote.id], localSnippet.updatedAt > remote.updatedAt {
@@ -147,6 +256,24 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         ]
         data["deletedAt"] = snippet.deletedAt ?? NSNull()
         return data
+    }
+
+    private static func signalPlaintext(_ snippet: TextExpansionSnippet) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(snippet)
+    }
+
+    /// Internal (not private) so decode behavior is directly unit-testable: the
+    /// Signal-envelope download path only runs with a configured FirebaseApp.
+    static func snippetFromSignalPayload(_ payload: Data) -> TextExpansionSnippet? {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return AppLogger.sync.silentlyOptional(
+            "text_expansion_signal_payload_decode",
+            try decoder.decode(TextExpansionSnippet.self, from: payload)
+        )
     }
 
     private static func snippet(from data: [String: Any], documentID: String, vaultKey: Data) throws -> TextExpansionSnippet? {
@@ -238,5 +365,19 @@ final class TextExpansionSyncService: CloudSyncDomain, Sendable {
         if let value = value as? Int64 { return Int(value) }
         if let value = value as? NSNumber { return value.intValue }
         return nil
+    }
+}
+
+enum TextExpansionSignalSyncError: LocalizedError {
+    case vaultKeyMismatch
+    case signalFirestoreUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .vaultKeyMismatch:
+            return "Signal identity and CloudVault resolved different vault keys. Re-verify this device before syncing snippets."
+        case .signalFirestoreUnavailable:
+            return "The Firestore gateway does not expose a raw handle for Signal payload sealing. Snippet sync was skipped."
+        }
     }
 }

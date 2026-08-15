@@ -108,13 +108,17 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
   gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus \
     --method org.a11y.Bus.GetAddress >"$out_dir/atspi-bus-address.txt"
   orca --list-apps >"$out_dir/orca-applications.txt" 2>"$out_dir/orca-list-apps.err"
-  if ! python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
-    --application OpenBurnBar \
-    --wait-for-meaningful-seconds "${OB_ATSPI_READY_TIMEOUT_SECONDS:-45}" \
-    --output "$out_dir/atspi-tree-linux-desktop.json" \
-    --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
-    --expected-name OpenBurnBar; then
-    echo "Initial AT-SPI tree did not become meaningful before the readiness deadline" >&2
+
+  capture_initial_atspi_tree() {
+    python3 "$root/scripts/linux-port/capture-atspi-tree.py" \
+      --application OpenBurnBar \
+      --wait-for-meaningful-seconds "${OB_ATSPI_READY_TIMEOUT_SECONDS:-45}" \
+      --output "$out_dir/atspi-tree-linux-desktop.json" \
+      --tree-text "$out_dir/accessibility-tree-linux-desktop.txt" \
+      --expected-name OpenBurnBar
+  }
+
+  dump_initial_atspi_diagnostics() {
     for diagnostic in \
       "$out_dir/openburnbar-linux-desktop.stdout.log" \
       "$out_dir/openburnbar-linux-desktop.stderr.log" \
@@ -126,7 +130,140 @@ if [[ "${1:-}" == "desktop-inner" ]]; then
         tail -200 "$diagnostic" >&2 || true
       fi
     done
-    exit 1
+  }
+
+  initial_app_pid="$app_pid"
+  initial_window_id="$window_id"
+  initial_app_start_ms="$app_start_ms"
+  if ! capture_initial_atspi_tree; then
+    echo "Initial AT-SPI tree did not become meaningful before the readiness deadline" >&2
+    if ! node - "$out_dir/atspi-tree-linux-desktop.json" <<'NODE'
+const fs = require('fs');
+const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const allowedFailures = new Set([
+  'node_count_below_20',
+  'named_node_count_below_8',
+  'actionable_node_count_below_5'
+]);
+const defunctInitialAtspiSubtree =
+  report?.pass === false &&
+  Array.isArray(report?.failures) &&
+  report.failures.length > 0 &&
+  report.failures.every((failure) => allowedFailures.has(failure)) &&
+  Array.isArray(report?.nodes) &&
+  report.nodes.some((node) => Array.isArray(node?.states) && node.states.includes('defunct'));
+if (!defunctInitialAtspiSubtree) process.exit(1);
+NODE
+    then
+      dump_initial_atspi_diagnostics
+      exit 1
+    fi
+
+    echo "Recovering once from a defunct initial AT-SPI subtree" >&2
+    mv "$out_dir/atspi-tree-linux-desktop.json" \
+      "$out_dir/atspi-tree-linux-desktop-attempt-1.json"
+    mv "$out_dir/accessibility-tree-linux-desktop.txt" \
+      "$out_dir/accessibility-tree-linux-desktop-attempt-1.txt"
+    cp "$out_dir/screenshot-linux-desktop-first-run.png" \
+      "$out_dir/screenshot-linux-desktop-first-run-attempt-1.png"
+    cp "$out_dir/window-initial-xwininfo.txt" \
+      "$out_dir/window-initial-xwininfo-attempt-1.txt"
+    cp "$out_dir/window-initial-xprop.txt" \
+      "$out_dir/window-initial-xprop-attempt-1.txt"
+
+    kill "$app_pid" 2>/dev/null || true
+    for _ in $(seq 1 40); do
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    if kill -0 "$app_pid" 2>/dev/null; then
+      kill -KILL "$app_pid" 2>/dev/null || true
+    fi
+    wait "$app_pid" 2>/dev/null || true
+    for _ in $(seq 1 40); do
+      if ! xdotool search --onlyvisible --name OpenBurnBar >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+
+    recovery_start_ms="$(date +%s%3N)"
+    "$installed_bin" >>"$out_dir/openburnbar-linux-desktop.stdout.log" \
+      2>>"$out_dir/openburnbar-linux-desktop.stderr.log" &
+    app_pid="$!"
+    echo "$app_pid" >"$out_dir/openburnbar-linux-desktop.pid"
+    window_id=""
+    for _ in $(seq 1 120); do
+      window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$window_id" ]]; then
+        break
+      fi
+      if ! kill -0 "$app_pid" 2>/dev/null; then
+        echo "OpenBurnBar exited during the bounded AT-SPI recovery launch" >&2
+        dump_initial_atspi_diagnostics
+        exit 1
+      fi
+      sleep 0.25
+    done
+    if [[ -z "$window_id" ]]; then
+      echo "Bounded AT-SPI recovery launch never produced a visible window" >&2
+      dump_initial_atspi_diagnostics
+      exit 1
+    fi
+
+    recovered_app_start_ms="$(( $(date +%s%3N) - recovery_start_ms ))"
+    app_start_samples[0]="$recovered_app_start_ms"
+    echo "$window_id" >"$out_dir/openburnbar-window-id.txt"
+    xwininfo -id "$window_id" >"$out_dir/window-initial-xwininfo.txt"
+    xprop -id "$window_id" >"$out_dir/window-initial-xprop.txt"
+    scrot "$out_dir/screenshot-linux-desktop-first-run.png"
+
+    if ! capture_initial_atspi_tree; then
+      echo "AT-SPI tree remained non-meaningful after the bounded recovery launch" >&2
+      dump_initial_atspi_diagnostics
+      exit 1
+    fi
+
+    INITIAL_APP_PID="$initial_app_pid" \
+    RECOVERED_APP_PID="$app_pid" \
+    INITIAL_WINDOW_ID="$initial_window_id" \
+    RECOVERED_WINDOW_ID="$window_id" \
+    INITIAL_APP_START_MS="$initial_app_start_ms" \
+    RECOVERED_APP_START_MS="$recovered_app_start_ms" \
+    node - "$out_dir/atspi-readiness-recovery.json" <<'NODE'
+const fs = require('fs');
+const output = process.argv[2];
+const evidence = {
+  schemaVersion: 1,
+  reason: 'defunct_initial_atspi_subtree',
+  boundedRecoveryAttempts: 1,
+  initial: {
+    appPid: Number(process.env.INITIAL_APP_PID),
+    windowId: process.env.INITIAL_WINDOW_ID,
+    appStartMs: Number(process.env.INITIAL_APP_START_MS),
+    atspi: 'atspi-tree-linux-desktop-attempt-1.json',
+    treeText: 'accessibility-tree-linux-desktop-attempt-1.txt',
+    screenshot: 'screenshot-linux-desktop-first-run-attempt-1.png',
+    xwininfo: 'window-initial-xwininfo-attempt-1.txt',
+    xprop: 'window-initial-xprop-attempt-1.txt'
+  },
+  recovered: {
+    appPid: Number(process.env.RECOVERED_APP_PID),
+    windowId: process.env.RECOVERED_WINDOW_ID,
+    appStartMs: Number(process.env.RECOVERED_APP_START_MS),
+    atspi: 'atspi-tree-linux-desktop.json',
+    treeText: 'accessibility-tree-linux-desktop.txt',
+    screenshot: 'screenshot-linux-desktop-first-run.png',
+    xwininfo: 'window-initial-xwininfo.txt',
+    xprop: 'window-initial-xprop.txt'
+  },
+  pass: true
+};
+fs.writeFileSync(output, JSON.stringify(evidence, null, 2) + '\n');
+console.log(JSON.stringify(evidence, null, 2));
+NODE
   fi
 
   route_tsv="$work_dir/packaged-route-session.tsv"
@@ -575,7 +712,7 @@ ZOOM
     --method com.canonical.dbusmenu.GetLayout 0 100 "[]" \
     >"$out_dir/tray-menu-layout.txt"
 
-  node - "$out_dir/tray-menu-layout.txt" "$out_dir/tray-menu-actions.json" "$work_dir/tray-menu.env" <<'NODE'
+  node - "$out_dir/tray-menu-layout.txt" "$out_dir/tray-menu-actions.json" <<'NODE'
 const fs = require('fs');
 const layout = fs.readFileSync(process.argv[2], 'utf8');
 const actions = [];
@@ -584,23 +721,156 @@ let match;
 while ((match = re.exec(layout))) {
   actions.push({ id: Number(match[1]), label: match[2] });
 }
-const byLabel = (needle) => actions.find((action) => action.label.toLowerCase().includes(needle))?.id;
-const env = {
-  OPEN_ID: byLabel('open dashboard'),
-  RECONNECT_ID: byLabel('reconnect daemon'),
-  QUIT_ID: byLabel('quit openburnbar')
-};
-fs.writeFileSync(process.argv[3], JSON.stringify({ actions, selected: env }, null, 2) + '\n');
-for (const [key, value] of Object.entries(env)) {
-  if (typeof value !== 'number') {
-    console.error(`Missing tray menu item ${key}`);
+const required = ['Open dashboard', 'Reconnect daemon', 'Quit OpenBurnBar'];
+for (const label of required) {
+  if (!actions.some((action) => action.label === label)) {
+    console.error(`Missing tray menu item ${label}`);
     process.exit(1);
   }
 }
-fs.writeFileSync(process.argv[4], Object.entries(env).map(([key, value]) => `${key}=${value}`).join('\n') + '\n');
+const revision = Number(layout.match(/^\(uint32\s+(\d+),/)?.[1]);
+if (!Number.isSafeInteger(revision) || revision < 0) {
+  console.error('Invalid tray menu revision');
+  process.exit(1);
+}
+fs.writeFileSync(process.argv[3], JSON.stringify({ revision, actions }, null, 2) + '\n');
 NODE
-  # shellcheck disable=SC1091
-  source "$work_dir/tray-menu.env"
+
+  capture_menu_layout() {
+    local layout_file="$1"
+    gdbus call --session \
+      --dest "$item_service" \
+      --object-path "$menu_path" \
+      --method com.canonical.dbusmenu.GetLayout 0 100 "[]" \
+      >"$layout_file"
+  }
+
+  resolve_menu_action() {
+    local label="$1"
+    local layout_file="$2"
+    capture_menu_layout "$layout_file"
+    node - "$layout_file" "$label" <<'NODE'
+const fs = require('fs');
+const layout = fs.readFileSync(process.argv[2], 'utf8');
+const label = process.argv[3];
+const revision = Number(layout.match(/^\(uint32\s+(\d+),/)?.[1]);
+if (!Number.isSafeInteger(revision) || revision < 0) {
+  console.error('Invalid tray menu revision');
+  process.exit(1);
+}
+const matches = [...layout.matchAll(/<\((\d+), \{[^)]*?'label': <'([^']+)'>/g)];
+const actions = matches.map((match, index) => {
+  const end = matches[index + 1]?.index ?? layout.length;
+  const segment = layout.slice(match.index, end);
+  return {
+    id: Number(match[1]),
+    label: match[2],
+    enabled: !/'enabled': <false>/.test(segment)
+  };
+});
+const action = actions.find((candidate) => candidate.label === label);
+if (!action || !Number.isSafeInteger(action.id) || !action.enabled) {
+  console.error(`Tray menu action is missing or disabled: ${label}`);
+  process.exit(1);
+}
+console.log(`${action.id} ${revision}`);
+NODE
+  }
+
+  read_menu_state() {
+    local layout_file="$1"
+    capture_menu_layout "$layout_file"
+    node - "$layout_file" <<'NODE'
+const fs = require('fs');
+const layout = fs.readFileSync(process.argv[2], 'utf8');
+const revision = Number(layout.match(/^\(uint32\s+(\d+),/)?.[1]);
+if (!Number.isSafeInteger(revision) || revision < 0) {
+  console.error('Invalid tray menu revision');
+  process.exit(1);
+}
+const matches = [...layout.matchAll(/<\((\d+), \{[^)]*?'label': <'([^']+)'>/g)];
+const statusItems = matches
+  .map((match) => ({ id: Number(match[1]), label: match[2] }))
+  .filter((item) => item.label.startsWith('Daemon: '));
+if (
+  statusItems.length !== 1 ||
+  !Number.isSafeInteger(statusItems[0].id) ||
+  statusItems[0].id <= 0
+) {
+  console.error('Expected exactly one valid daemon status menu item');
+  process.exit(1);
+}
+console.log([revision, statusItems[0].id, statusItems[0].label].join('\t'));
+NODE
+  }
+
+  daemon_health_request_occurrences() {
+    local request_id="$1"
+    awk -v token="request_id=$request_id" '
+      /event=rpc_request_received method=daemon\.health / {
+        for (field_index = 1; field_index <= NF; field_index += 1) {
+          if ($field_index == token) count += 1
+        }
+      }
+      END { print count + 0 }
+    ' "$daemon_log"
+  }
+
+  tray_reconnect_handler_ack_count() {
+    local ack_file="$out_dir/tray-reconnect-handler-acks.jsonl"
+    if [[ ! -f "$ack_file" ]]; then
+      printf '0\n'
+      return
+    fi
+    grep -cve '^[[:space:]]*$' "$ack_file" 2>/dev/null || true
+  }
+
+  read_tray_reconnect_handler_ack() {
+    local one_based_index="$1"
+    node - "$out_dir/tray-reconnect-handler-acks.jsonl" "$one_based_index" <<'NODE'
+const fs = require('fs');
+const lines = fs.readFileSync(process.argv[2], 'utf8').split('\n').filter(Boolean);
+const index = Number(process.argv[3]) - 1;
+if (!Number.isSafeInteger(index) || index < 0 || index >= lines.length) process.exit(1);
+const ack = JSON.parse(lines[index]);
+const keys = [
+  'schemaVersion',
+  'action',
+  'handlerEventId',
+  'daemonHealthRequestId',
+  'statusItemLogicalId',
+  'handlerStartedEpochMs',
+  'handlerCompletedEpochMs',
+  'daemonConnected',
+  'statusUpdateSucceeded',
+  'statusLabel'
+];
+if (JSON.stringify(Object.keys(ack).sort()) !== JSON.stringify(keys.sort())) process.exit(1);
+if (
+  ack.schemaVersion !== 1 ||
+  ack.action !== 'reconnect-daemon' ||
+  !/^tray-health-[0-9a-f]{32}$/.test(ack.handlerEventId) ||
+  !/^health-[1-9][0-9]*$/.test(ack.daemonHealthRequestId) ||
+  ack.statusItemLogicalId !== 'status' ||
+  !Number.isSafeInteger(ack.handlerStartedEpochMs) ||
+  !Number.isSafeInteger(ack.handlerCompletedEpochMs) ||
+  ack.handlerStartedEpochMs < 0 ||
+  ack.handlerCompletedEpochMs < ack.handlerStartedEpochMs ||
+  ack.daemonConnected !== true ||
+  ack.statusUpdateSucceeded !== true ||
+  !/^Daemon: connected(?: - .+)?$/.test(ack.statusLabel)
+) process.exit(1);
+console.log([
+  ack.handlerEventId,
+  ack.daemonHealthRequestId,
+  ack.statusItemLogicalId,
+  ack.handlerStartedEpochMs,
+  ack.handlerCompletedEpochMs,
+  ack.statusUpdateSucceeded ? 1 : 0,
+  ack.statusLabel
+].join('\t'));
+NODE
+  }
 
   send_menu_event() {
     local menu_id="$1"
@@ -627,11 +897,17 @@ NODE
       fi
       sleep 0.1
     done
-    tray_open_start_ms="$(date +%s%3N)"
     {
       echo "== sample $sample_index =="
-      send_menu_event "$OPEN_ID"
+      read -r open_menu_id open_menu_revision < <(
+        resolve_menu_action "Open dashboard" "$out_dir/tray-open-menu-layout-${sample_index}.txt"
+      )
+      echo "menu_id=$open_menu_id menu_revision=$open_menu_revision"
     } >>"$out_dir/tray-open-menu-event.txt" 2>&1
+    # Start the tray-open timer only after the live menu ID is resolved so the
+    # budgeted sample measures click-to-window latency, not GetLayout parsing.
+    tray_open_start_ms="$(date +%s%3N)"
+    send_menu_event "$open_menu_id" >>"$out_dir/tray-open-menu-event.txt" 2>&1
     reopened_window_id=""
     for _ in $(seq 1 80); do
       reopened_window_id="$(xdotool search --onlyvisible --name OpenBurnBar 2>/dev/null | head -n 1 || true)"
@@ -655,31 +931,134 @@ NODE
   fi
   ipc_health_roundtrip_samples=()
   : >"$out_dir/tray-reconnect-menu-event.txt"
+  : >"$out_dir/tray-reconnect-receipts.jsonl"
+  rm -f "$out_dir/tray-reconnect-handler-acks.jsonl"
   for sample_index in $(seq 1 10); do
-    before_reconnect_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
-    reconnect_start_ms="$(date +%s%3N)"
+    read -r reconnect_menu_id before_reconnect_revision < <(
+      resolve_menu_action "Reconnect daemon" "$out_dir/tray-reconnect-menu-layout-${sample_index}.txt"
+    )
+    before_handler_ack_count="$(tray_reconnect_handler_ack_count)"
+    click_epoch_ms="$(date +%s%3N)"
+    reconnect_start_ms="$click_epoch_ms"
     {
       echo "== sample $sample_index =="
-      send_menu_event "$RECONNECT_ID"
+      echo "menu_id=$reconnect_menu_id menu_revision=$before_reconnect_revision handler_acks=$before_handler_ack_count click_epoch_ms=$click_epoch_ms"
+      send_menu_event "$reconnect_menu_id"
     } >>"$out_dir/tray-reconnect-menu-event.txt" 2>&1
     reconnect_observed=false
+    after_handler_ack_count="$before_handler_ack_count"
+    after_reconnect_revision="$before_reconnect_revision"
+    handler_event_id=""
+    daemon_health_request_id=""
+    status_item_logical_id=""
+    handler_started_epoch_ms=0
+    handler_completed_epoch_ms=0
+    status_update_succeeded=0
+    ack_status_label=""
+    observed_status_menu_id=0
+    observed_status_label=""
+    request_log_occurrences=0
+    observed_epoch_ms="$click_epoch_ms"
     for _ in $(seq 1 80); do
-      current_lines="$(wc -l <"$daemon_log" 2>/dev/null || echo 0)"
-      if [[ "$current_lines" -gt "$before_reconnect_lines" ]]; then
-        reconnect_observed=true
+      after_handler_ack_count="$(tray_reconnect_handler_ack_count)"
+      if [[ "$after_handler_ack_count" -gt "$((before_handler_ack_count + 1))" ]]; then
+        echo "Tray Reconnect daemon action emitted multiple handler acknowledgements for sample $sample_index" >&2
         break
+      fi
+      if [[ "$after_handler_ack_count" -eq "$((before_handler_ack_count + 1))" ]]; then
+        ack_fields="$(
+          read_tray_reconnect_handler_ack "$after_handler_ack_count" 2>/dev/null || true
+        )"
+        if [[ -n "$ack_fields" ]]; then
+          IFS=$'\t' read -r handler_event_id daemon_health_request_id status_item_logical_id handler_started_epoch_ms handler_completed_epoch_ms status_update_succeeded ack_status_label <<<"$ack_fields"
+          IFS=$'\t' read -r after_reconnect_revision observed_status_menu_id observed_status_label < <(
+            read_menu_state "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt"
+          )
+          request_log_occurrences="$(daemon_health_request_occurrences "$daemon_health_request_id")"
+          candidate_observed_epoch_ms="$(date +%s%3N)"
+          # The DBusMenu GetLayout revision only advances on structural layout
+          # changes; the handler's set_text is a label-only property update
+          # (ItemsPropertiesUpdated), which leaves the revision unchanged. The
+          # revision may therefore only be required to never regress, while the
+          # live-state binding comes from the observed status label matching
+          # the handler acknowledgement exactly.
+          if [[ "$handler_started_epoch_ms" -ge "$click_epoch_ms" ]] \
+            && [[ "$handler_completed_epoch_ms" -ge "$handler_started_epoch_ms" ]] \
+            && [[ "$handler_completed_epoch_ms" -le "$candidate_observed_epoch_ms" ]] \
+            && [[ "$status_item_logical_id" == "status" ]] \
+            && [[ "$status_update_succeeded" == 1 ]] \
+            && [[ "$request_log_occurrences" == 1 ]] \
+            && [[ "$after_reconnect_revision" -ge "$before_reconnect_revision" ]] \
+            && [[ "$observed_status_menu_id" -gt 0 ]] \
+            && [[ "$observed_status_label" == "$ack_status_label" ]]; then
+            observed_epoch_ms="$candidate_observed_epoch_ms"
+            reconnect_observed=true
+            break
+          fi
+        fi
       fi
       sleep 0.1
     done
     if [[ "$reconnect_observed" != true ]]; then
-      echo "Tray Reconnect daemon action produced no daemon activity for sample $sample_index" >&2
+      echo "Tray Reconnect daemon action did not produce an exact healthy round-trip for sample $sample_index" >&2
+      echo "menu_revision_before=$before_reconnect_revision menu_revision_after=$after_reconnect_revision" >&2
+      echo "handler_acks_before=$before_handler_ack_count handler_acks_after=$after_handler_ack_count" >&2
+      echo "click_epoch_ms=$click_epoch_ms handler_started_epoch_ms=$handler_started_epoch_ms handler_completed_epoch_ms=$handler_completed_epoch_ms" >&2
+      echo "handler_event_id=$handler_event_id daemon_health_request_id=$daemon_health_request_id" >&2
+      echo "status_item_logical_id=$status_item_logical_id status_update_succeeded=$status_update_succeeded" >&2
+      echo "observed_status_menu_id=$observed_status_menu_id ack_status_label=$ack_status_label observed_status_label=$observed_status_label" >&2
+      echo "request_log_occurrences=$request_log_occurrences" >&2
+      tail -200 "$daemon_log" >&2 || true
+      tail -200 "$out_dir/openburnbar-linux-desktop.stderr.log" >&2 || true
+      cat "$out_dir/tray-reconnect-menu-layout-after-${sample_index}.txt" >&2 || true
       exit 1
     fi
-    ipc_health_roundtrip_samples+=("$(( $(date +%s%3N) - reconnect_start_ms ))")
+    reconnect_elapsed_ms="$((observed_epoch_ms - reconnect_start_ms))"
+    ipc_health_roundtrip_samples+=("$reconnect_elapsed_ms")
+    SAMPLE_INDEX="$sample_index" \
+    MENU_ID="$reconnect_menu_id" \
+    REVISION_BEFORE="$before_reconnect_revision" \
+    REVISION_AFTER="$after_reconnect_revision" \
+    CLICK_EPOCH_MS="$click_epoch_ms" \
+    HANDLER_EVENT_ID="$handler_event_id" \
+    HANDLER_STARTED_EPOCH_MS="$handler_started_epoch_ms" \
+    HANDLER_COMPLETED_EPOCH_MS="$handler_completed_epoch_ms" \
+    DAEMON_HEALTH_REQUEST_ID="$daemon_health_request_id" \
+    STATUS_ITEM_LOGICAL_ID="$status_item_logical_id" \
+    STATUS_MENU_ID="$observed_status_menu_id" \
+    OBSERVED_STATUS_LABEL="$observed_status_label" \
+    OBSERVED_EPOCH_MS="$observed_epoch_ms" \
+    ELAPSED_MS="$reconnect_elapsed_ms" \
+    node <<'NODE' >>"$out_dir/tray-reconnect-receipts.jsonl"
+console.log(JSON.stringify({
+  sample: Number(process.env.SAMPLE_INDEX),
+  menuId: Number(process.env.MENU_ID),
+  menuRevisionBefore: Number(process.env.REVISION_BEFORE),
+  menuRevisionAfter: Number(process.env.REVISION_AFTER),
+  daemonConnected: true,
+  clickEpochMs: Number(process.env.CLICK_EPOCH_MS),
+  handlerEventId: process.env.HANDLER_EVENT_ID,
+  handlerStartedEpochMs: Number(process.env.HANDLER_STARTED_EPOCH_MS),
+  handlerCompletedEpochMs: Number(process.env.HANDLER_COMPLETED_EPOCH_MS),
+  daemonHealthRequestId: process.env.DAEMON_HEALTH_REQUEST_ID,
+  statusItemLogicalId: process.env.STATUS_ITEM_LOGICAL_ID,
+  statusMenuId: Number(process.env.STATUS_MENU_ID),
+  observedStatusLabel: process.env.OBSERVED_STATUS_LABEL,
+  observedEpochMs: Number(process.env.OBSERVED_EPOCH_MS),
+  elapsedMs: Number(process.env.ELAPSED_MS)
+}));
+NODE
   done
+  install -m 600 "$daemon_log" "$out_dir/tray-reconnect-daemon-health.log"
 
   quit_start_ms="$(date +%s%3N)"
-  send_menu_event "$QUIT_ID" >"$out_dir/tray-quit-menu-event.txt" 2>&1
+  {
+    read -r quit_menu_id quit_menu_revision < <(
+      resolve_menu_action "Quit OpenBurnBar" "$out_dir/tray-quit-menu-layout.txt"
+    )
+    echo "menu_id=$quit_menu_id menu_revision=$quit_menu_revision"
+    send_menu_event "$quit_menu_id"
+  } >"$out_dir/tray-quit-menu-event.txt" 2>&1
   for _ in $(seq 1 80); do
     if ! kill -0 "$app_pid" 2>/dev/null; then
       break
@@ -807,6 +1186,12 @@ const report = {
     runtimePerfSamples: 'runtime-perf-samples.jsonl',
     daemonSocketLog: fs.existsSync(outDir + '/daemon-shell-session.log') ? 'daemon-shell-session.log' : 'daemon-socket-gui-session.log',
     trayMenuLayout: 'tray-menu-layout.txt',
+    atspiReadinessRecovery: fs.existsSync(outDir + '/atspi-readiness-recovery.json')
+      ? 'atspi-readiness-recovery.json'
+      : null,
+    trayReconnectHandlerAcks: 'tray-reconnect-handler-acks.jsonl',
+    trayReconnectDaemonHealthLog: 'tray-reconnect-daemon-health.log',
+    trayReconnectReceipts: 'tray-reconnect-receipts.jsonl',
     accessibilitySnapshot: 'accessibility-tree-linux-desktop.txt',
     atspiTree: 'atspi-tree-linux-desktop.json',
     atspiFocusSequence: 'atspi-keyboard-focus-sequence.json',
@@ -832,12 +1217,15 @@ exec > >(tee "$transcript") 2>&1
 
 rm -f \
   "$out_dir"/accessibility-tree-linux-desktop.txt \
+  "$out_dir"/accessibility-tree-linux-desktop-attempt-1.txt \
   "$out_dir"/atspi-bus-address.txt \
   "$out_dir"/atspi-command-open-*.json \
   "$out_dir"/atspi-command-route-*.json \
   "$out_dir"/atspi-keyboard-focus-sequence.json \
+  "$out_dir"/atspi-readiness-recovery.json \
   "$out_dir"/atspi-route-*.json \
   "$out_dir"/atspi-tree-linux-desktop.json \
+  "$out_dir"/atspi-tree-linux-desktop-attempt-1.json \
   "$out_dir"/atspi-zoom-200-requested.json \
   "$out_dir"/daemon-socket-gui-session.log \
   "$out_dir"/daemon-session-oracle.json \
@@ -871,15 +1259,24 @@ rm -f \
   "$out_dir"/tray-menu-actions.json \
   "$out_dir"/tray-menu-layout.txt \
   "$out_dir"/tray-menu-property.txt \
+  "$out_dir"/tray-open-menu-layout-*.txt \
   "$out_dir"/tray-open-menu-event.txt \
+  "$out_dir"/tray-quit-menu-layout.txt \
   "$out_dir"/tray-quit-menu-event.txt \
+  "$out_dir"/tray-reconnect-menu-layout-*.txt \
+  "$out_dir"/tray-reconnect-menu-layout-after-*.txt \
+  "$out_dir"/tray-reconnect-handler-acks.jsonl \
+  "$out_dir"/tray-reconnect-daemon-health.log \
   "$out_dir"/tray-reconnect-menu-event.txt \
+  "$out_dir"/tray-reconnect-receipts.jsonl \
   "$out_dir"/tray-registered-items.err \
   "$out_dir"/tray-registered-items.txt \
   "$out_dir"/tray-status-notifier-introspection.txt \
   "$out_dir"/window-after-tray-open-xwininfo.txt \
   "$out_dir"/window-initial-xprop.txt \
+  "$out_dir"/window-initial-xprop-attempt-1.txt \
   "$out_dir"/window-initial-xwininfo.txt \
+  "$out_dir"/window-initial-xwininfo-attempt-1.txt \
   "$out_dir"/window-route-*-xwininfo.txt \
   "$out_dir"/x11-display-info.txt \
   "$out_dir"/xfce4-panel.log \

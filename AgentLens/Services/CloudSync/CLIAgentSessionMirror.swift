@@ -124,14 +124,28 @@ final class CLIAgentSessionMirror: Sendable {
                 deviceId: account.4,
                 firestore: firestore
             )
-            let payload = try CLIAgentSessionCodec.encodeSealed(
+            let legacyPayload = try CLIAgentSessionCodec.encodeSealed(
                 record,
                 vaultKey: resolvedKey.keyData,
                 vaultKeyID: resolvedKey.vaultKeyID,
                 uid: uid,
                 documentID: documentID
             )
-            try await docRef.setData(payload, merge: true)
+            // NOTE: no `source` producer marker here — the cli_sessions Firestore
+            // allowlists (legacy validator and Signal mirror gate) reject it.
+            let payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+                to: legacyPayload as NSDictionary,
+                domainID: "conversations_chat",
+                uid: uid,
+                firestore: firestore,
+                collection: "cli_sessions",
+                docId: documentID,
+                plaintext: try CLIAgentSessionCodec.encodePrivatePayload(record),
+                resolvedKey: resolvedKey,
+                legacyPrivateFields: ["sealedPayload", "sealedSchemaVersion", "vaultKeyID", "contentSealed"],
+                mergeWrite: true
+            )
+            try await docRef.setData(CloudSyncFirestoreLiveGateway.firestoreData(payload), merge: true)
             logger.debug("mirrored CLI session \(threadID, privacy: .public) agent=\(record.agent.rawValue, privacy: .public) messages=\(record.messages.count)")
         } catch {
             logger.warning("CLI mirror upload failed for \(threadID, privacy: .public): \(String(describing: error), privacy: .public)")
@@ -176,14 +190,28 @@ final class CLIAgentSessionMirror: Sendable {
                 deviceId: account.4,
                 firestore: firestore
             )
-            let payload = try CLIAgentSessionCodec.encodeSealed(
+            let legacyPayload = try CLIAgentSessionCodec.encodeSealed(
                 record,
                 vaultKey: resolvedKey.keyData,
                 vaultKeyID: resolvedKey.vaultKeyID,
                 uid: uid,
                 documentID: documentID
             )
-            try await docRef.setData(payload, merge: true)
+            // NOTE: no `source` producer marker here — the cli_sessions Firestore
+            // allowlists (legacy validator and Signal mirror gate) reject it.
+            let payload = try await MacCloudVaultSignalPayloads.applyingSignalEnvelope(
+                to: legacyPayload as NSDictionary,
+                domainID: "conversations_chat",
+                uid: uid,
+                firestore: firestore,
+                collection: "cli_sessions",
+                docId: documentID,
+                plaintext: try CLIAgentSessionCodec.encodePrivatePayload(record),
+                resolvedKey: resolvedKey,
+                legacyPrivateFields: ["sealedPayload", "sealedSchemaVersion", "vaultKeyID", "contentSealed"],
+                mergeWrite: true
+            )
+            try await docRef.setData(CloudSyncFirestoreLiveGateway.firestoreData(payload), merge: true)
             logger.debug("mirrored archived CLI log \(record.id, privacy: .public) agent=\(record.agent.rawValue, privacy: .public)")
         } catch {
             logger.warning("Archived CLI mirror upload failed for \(record.id, privacy: .public): \(String(describing: error), privacy: .public)")

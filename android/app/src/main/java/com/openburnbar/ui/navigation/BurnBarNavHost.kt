@@ -20,6 +20,7 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.openburnbar.InboxPendingNavigation
 import com.openburnbar.data.stores.HostedQuotaProductDetails
 import com.openburnbar.data.stores.HostedQuotaSubscriptionStore
 import com.openburnbar.data.stores.UserStore
@@ -43,6 +44,21 @@ sealed class BurnBarTab(
 
     object BURN : BurnBarTab("burn", "Burn", AuroraNavDestination.BURN)
 
+    /**
+     * The AI Inbox earns a top-level tab rather than living inside another
+     * surface. Its whole premise — "what happened while I wasn't watching" — is
+     * the reason a phone gets picked up in the first place, so burying it one
+     * level down would put the app's most time-sensitive content behind the
+     * least time-sensitive gesture. It also carries an unread count, and a badge
+     * nobody can see is not a badge.
+     *
+     * The cost is a seventh item in the tray. At a 360dp handset that is 48dp
+     * per item after the pill's insets — exactly Material's minimum touch
+     * target, not below it — and the tray order is user-customizable through
+     * the visual settings, so anyone who disagrees can reorder or drop it.
+     */
+    object INBOX : BurnBarTab("inbox", "Inbox", AuroraNavDestination.INBOX)
+
     object INSIGHTS : BurnBarTab("insights", "Budget & Insights", AuroraNavDestination.INSIGHTS)
 
     object STREAMS : BurnBarTab("streams", "Streams", AuroraNavDestination.STREAMS)
@@ -55,7 +71,7 @@ sealed class BurnBarTab(
     object YOU : BurnBarTab("you", "Store", AuroraNavDestination.YOU)
 
     companion object {
-        val allCandidates: List<BurnBarTab> = listOf(PULSE, BURN, INSIGHTS, STREAMS, HERMES, YOU)
+        val allCandidates: List<BurnBarTab> = listOf(PULSE, BURN, INBOX, INSIGHTS, STREAMS, HERMES, YOU)
         val all: List<BurnBarTab> get() {
             try {
                 val primary = com.openburnbar.ui.settings.GlobalVisualSettings.primaryTabs.value
@@ -183,6 +199,8 @@ fun BurnBarNavHost(
 
     val navigateTo: (BurnBarTab) -> Unit = { tab -> navigateToTab(navController, tab) }
 
+    InboxWarmDeepLinkNavigator(navController = navController, isSignedIn = currentUser.isSignedIn)
+
     Box(modifier = modifier.fillMaxSize().nestedScroll(easterEggController.nestedScrollConnection)) {
         AuroraBackdrop()
 
@@ -216,6 +234,26 @@ fun BurnBarNavHost(
 
         // TOP layer, over all content. No pointer modifier, so touches pass through.
         EasterEggOverlay(controller = easterEggController)
+    }
+}
+
+/**
+ * Moves the nav host to the Inbox tab when a WARM `burnbar://inbox` deep link
+ * asked for it.
+ *
+ * The navDeepLink machinery only inspects the LAUNCH intent, so a link
+ * delivered via `onNewIntent` never navigates on its own; MainActivity raises
+ * [InboxPendingNavigation] instead, and this claims it (once the signed-in
+ * graph exists) and moves to the Inbox tab exactly as a tab tap would.
+ * `claim()` consumes the request, so recomposition cannot re-navigate.
+ */
+@Composable
+private fun InboxWarmDeepLinkNavigator(navController: NavHostController, isSignedIn: Boolean) {
+    val requested by InboxPendingNavigation.requested.collectAsState()
+    LaunchedEffect(requested, isSignedIn) {
+        if (requested && isSignedIn && InboxPendingNavigation.claim()) {
+            navigateToTab(navController, BurnBarTab.INBOX)
+        }
     }
 }
 

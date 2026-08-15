@@ -46,6 +46,9 @@ const EXPECTED_JOB_NAMES = [
   "candidate-bundle",
   "Domain Core PR Gate",
 ];
+const ALLOWED_OPTIONAL_JOB_NAMES = [
+  "classify / Deterministic changed-path classification",
+];
 
 function digest(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -197,6 +200,39 @@ test("protected verifier independently accepts only an exact successful main pus
     commit: EVALUATOR_COMMIT,
     controlPlaneManifestSha256: CONTROL_PLANE_MANIFEST_SHA256,
   });
+});
+
+test("protected verifier accepts the domain-core ci-impact classify reusable job", () => {
+  const jobs = jobsResponse();
+  jobs.jobs.push({
+    id: 10_001,
+    name: ALLOWED_OPTIONAL_JOB_NAMES[0],
+    run_id: RUN_ID,
+    head_sha: CANDIDATE.candidateCommit,
+    status: "completed",
+    conclusion: "success",
+  });
+  jobs.total_count = jobs.jobs.length;
+  const result = verify(bundle(), githubRun(), jobs);
+  assert.equal(result.sourceRun.runId, RUN_ID);
+  assert.equal(result.promotionAuthorized, false);
+});
+
+test("protected verifier rejects a failed optional classify job", () => {
+  const jobs = jobsResponse();
+  jobs.jobs.push({
+    id: 10_002,
+    name: ALLOWED_OPTIONAL_JOB_NAMES[0],
+    run_id: RUN_ID,
+    head_sha: CANDIDATE.candidateCommit,
+    status: "completed",
+    conclusion: "failure",
+  });
+  jobs.total_count = jobs.jobs.length;
+  assert.throws(
+    () => verify(bundle(), githubRun(), jobs),
+    /did not complete successfully/u,
+  );
 });
 
 test("protected verifier rejects invalid evaluator and control-plane identities", () => {

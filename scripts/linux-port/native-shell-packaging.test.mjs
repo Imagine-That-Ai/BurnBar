@@ -10,12 +10,43 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 test('DEB and RPM bundles install the canonical XDG autostart entry', () => {
   const config = JSON.parse(read('apps/linux-desktop/src-tauri/tauri.conf.json'));
   for (const format of ['deb', 'rpm']) {
-    const files = config.bundle?.linux?.[format]?.files;
+    const bundle = config.bundle?.linux?.[format];
+    const files = bundle?.files;
     assert.ok(files, `${format} bundle file map is required`);
+    assert.equal(
+      bundle.desktopTemplate,
+      '../../../packaging/linux/tauri-installed.desktop',
+      `${format} bundle must pin Tauri's generated launcher to the packaged executable`
+    );
     assert.equal(
       files['/etc/xdg/autostart/openburnbar.desktop'],
       '../../../packaging/linux/autostart/openburnbar.desktop',
       `${format} bundle must install the canonical autostart source`
+    );
+  }
+  const appimage = config.bundle?.linux?.appimage;
+  assert.ok(appimage, 'AppImage bundle config is required');
+  assert.ok(
+    !('desktopTemplate' in appimage),
+    "Tauri's AppImageConfig rejects desktopTemplate; extract-and-run portability is enforced by embed-linux-appimage-payload.mjs"
+  );
+});
+
+test('installed desktop launchers cannot be shadowed through PATH', () => {
+  const generated = read('packaging/linux/tauri-installed.desktop');
+  const standard = read('packaging/linux/openburnbar.desktop');
+  const safeMode = read('packaging/linux/openburnbar-safe-mode.desktop');
+  const arch = read('packaging/linux/aur/openburnbar.desktop');
+  const archSafeMode = read('packaging/linux/aur/openburnbar-safe-mode.desktop');
+
+  assert.match(generated, /^Exec=\/usr\/bin\/\{\{exec\}\}$/mu);
+  for (const desktop of [standard, arch]) {
+    assert.match(desktop, /^Exec=\/usr\/bin\/openburnbar-linux-desktop %U$/mu);
+  }
+  for (const desktop of [safeMode, archSafeMode]) {
+    assert.match(
+      desktop,
+      /^Exec=env .* \/usr\/bin\/openburnbar-linux-desktop %U$/mu
     );
   }
 });
@@ -55,7 +86,7 @@ test('autostart entry launches the shell in tray-first background mode', () => {
   const desktop = read('packaging/linux/autostart/openburnbar.desktop');
   assert.match(desktop, /^\[Desktop Entry\]$/mu);
   assert.match(desktop, /^Type=Application$/mu);
-  assert.match(desktop, /^Exec=openburnbar-linux-desktop --background$/mu);
+  assert.match(desktop, /^Exec=\/usr\/bin\/openburnbar-linux-desktop --background$/mu);
   assert.match(desktop, /^X-GNOME-Autostart-enabled=true$/mu);
   assert.match(desktop, /^X-KDE-autostart-after=panel$/mu);
 });

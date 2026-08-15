@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Devin provider mark. Direct port of the macOS asset
+    `AgentLens/Resources/Assets.xcassets/DevinLogo.imageset/DevinLogo.svg`
+    (hex node + prompt caret, brand #0A84FF), so Android renders the same
+    glyph the Mac app does.
+
+    Paths copied 1:1 from the SVG — the VectorDrawable path grammar (M / L / H / Z)
+    is a strict subset of SVG, so the absolute coordinates work as-is.
+
+    This is BurnBar's own neutral provider avatar, not a reproduction of
+    Cognition's trademark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <path
+        android:strokeColor="#0A84FF"
+        android:strokeWidth="2.2"
+        android:strokeLineJoin="round"
+        android:pathData="M16,3L27,9.5V22.5L16,29L5,22.5V9.5L16,3Z" />
+    <path
+        android:strokeColor="#0A84FF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M11.5,13.5L15,16L11.5,18.5" />
+    <path
+        android:strokeColor="#0A84FF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M17.5,19H21" />
+</vector>

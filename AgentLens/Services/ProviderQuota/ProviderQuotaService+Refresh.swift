@@ -8,11 +8,19 @@ extension ProviderQuotaService {
     }
 
     func refreshIfNeeded(dataStore: DataStore, maxAge: TimeInterval = 5 * 60) async {
-        if let lastFetch, Date().timeIntervalSince(lastFetch) < maxAge {
+        if maxAge <= 0 {
+            await refreshAll(dataStore: dataStore)
+            return
+        }
+        let due = QuotaRefreshPolicy.providersDueForRefresh(
+            refreshProviders,
+            snapshots: snapshotsByProvider
+        )
+        if due.isEmpty {
             await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
             return
         }
-        await refreshAll(dataStore: dataStore)
+        await refreshProviders(due, dataStore: dataStore, clearAllErrors: false)
     }
 
     func startAutomaticRefresh(
@@ -86,26 +94,86 @@ extension ProviderQuotaService {
     }
 
     func refreshAll(dataStore: DataStore) async {
-        guard !isFetching else { return }
+        await refreshProviders(refreshProviders, dataStore: dataStore, clearAllErrors: true)
+    }
+
+    private func refreshProviders(
+        _ providers: [AgentProvider],
+        dataStore: DataStore,
+        clearAllErrors: Bool
+    ) async {
+        var remainingProviders = providers.uniquedPreservingOrder()
+        guard !remainingProviders.isEmpty else { return }
+
+        if clearAllErrors {
+            let providersAlreadyRefreshing = inFlightRefresh?.providers ?? []
+            errors = errors.filter { providersAlreadyRefreshing.contains($0.key) }
+        }
+
+        while !remainingProviders.isEmpty {
+            if let existing = inFlightRefresh {
+                await finishInFlightRefresh(existing)
+                remainingProviders.removeAll { existing.providers.contains($0) }
+                guard !Task.isCancelled else { return }
+                continue
+            }
+
+            guard !Task.isCancelled else { return }
+            let targetProviders = remainingProviders
+            let targetProviderSet = Set(targetProviders)
+            let task = Task { @MainActor [self] in
+                await performRefresh(
+                    targetProviders,
+                    dataStore: dataStore
+                )
+            }
+            let refresh = InFlightRefresh(
+                id: UUID(),
+                providers: targetProviderSet,
+                task: task
+            )
+            inFlightRefresh = refresh
+            await finishInFlightRefresh(refresh)
+            remainingProviders.removeAll { targetProviderSet.contains($0) }
+            guard !Task.isCancelled else { return }
+        }
+
+        if clearAllErrors {
+            await persistDaemonCredentialSlotAccounts(dataStore: dataStore)
+        }
+    }
+
+    private func performRefresh(
+        _ providers: [AgentProvider],
+        dataStore: DataStore
+    ) async {
         isFetching = true
         defer {
             isFetching = false
             activeProviders.removeAll()
         }
-        errors = [:]
+        for provider in providers {
+            errors.removeValue(forKey: provider)
+        }
         refreshClaudeBridgeStatus()
 
-        activeProviders = Set(refreshProviders)
+        activeProviders = Set(providers)
         let switcherProfileFetcher = makeSwitcherProfileFetcher(dataStore: dataStore)
-        let batch = await quotaRefreshActor.fetchAllSnapshots(switcherProfileFetcher: switcherProfileFetcher)
+        let batch = await quotaRefreshActor.fetchAllSnapshots(
+            switcherProfileFetcher: switcherProfileFetcher,
+            providers: providers
+        )
         for (provider, snapshot) in batch.providerSnapshots {
             upsertSnapshot(snapshot, for: provider)
         }
         replaceAccountSnapshots(
             batch.accountSnapshots,
-            pruningManagedAccountSnapshotsFor: Set(refreshProviders)
+            pruningManagedAccountSnapshotsFor: Set(providers)
         )
-        await persistDaemonCredentialSlotAccounts(dataStore: dataStore)
+        await persistDaemonCredentialSlotAccounts(
+            dataStore: dataStore,
+            providers: Set(providers)
+        )
         await refreshRoutingState(dataStore: dataStore, request: currentRoutingRequest())
 
         lastFetch = Date()
@@ -114,12 +182,39 @@ extension ProviderQuotaService {
 
     func refresh(provider: AgentProvider, dataStore: DataStore) async {
         guard Self.supportedProviders.contains(provider) else { return }
+        while let existing = inFlightRefresh {
+            await finishInFlightRefresh(existing)
+            guard !Task.isCancelled else { return }
+        }
+        guard !Task.isCancelled else { return }
+
+        let task = Task { @MainActor [self] in
+            await performProviderRefresh(provider, dataStore: dataStore)
+        }
+        let refresh = InFlightRefresh(
+            id: UUID(),
+            providers: [provider],
+            task: task
+        )
+        inFlightRefresh = refresh
+        await finishInFlightRefresh(refresh)
+    }
+
+    private func finishInFlightRefresh(_ refresh: InFlightRefresh) async {
+        await refresh.task.value
+        if inFlightRefresh?.id == refresh.id {
+            inFlightRefresh = nil
+        }
+    }
+
+    private func performProviderRefresh(_ provider: AgentProvider, dataStore: DataStore) async {
         activeProviders.insert(provider)
         defer { activeProviders.remove(provider) }
         let start = Date()
         Analytics.shared.track(.quotaRefreshStarted, ["provider_name": .string(provider.rawValue)])
 
         do {
+            await quotaRefreshActor.invalidateAPIKeyResolutionCache()
             let context = makeContext()
             let snapshot = try await quotaRefreshActor.fetchSnapshot(for: provider, context: context)
             upsertSnapshot(snapshot, for: provider)
@@ -172,11 +267,29 @@ extension ProviderQuotaService {
     /// write. Deliberately does NOT bump `lastFetch`: a Claude-only refresh
     /// must not gate the next all-provider auto-refresh tick, otherwise a
     /// chatty Claude session could starve Codex/Cursor/etc. of updates.
-    /// Skipped silently while a full `refreshAll` is already in flight to
-    /// avoid stomping its outputs mid-flight.
+    /// It serializes with normal refreshes, but does not cover their routing,
+    /// credential-slot, or cadence side effects.
     func refreshClaudeFromStatuslineHook(dataStore: DataStore) async {
         guard Self.supportedProviders.contains(.claudeCode) else { return }
-        guard !isFetching else { return }
+        while let existing = inFlightRefresh {
+            await finishInFlightRefresh(existing)
+            guard !Task.isCancelled else { return }
+        }
+        guard !Task.isCancelled else { return }
+
+        let task = Task { @MainActor [self] in
+            await performClaudeStatuslineHookRefresh(dataStore: dataStore)
+        }
+        let refresh = InFlightRefresh(
+            id: UUID(),
+            providers: [],
+            task: task
+        )
+        inFlightRefresh = refresh
+        await finishInFlightRefresh(refresh)
+    }
+
+    private func performClaudeStatuslineHookRefresh(dataStore: DataStore) async {
         activeProviders.insert(.claudeCode)
         defer { activeProviders.remove(.claudeCode) }
 
