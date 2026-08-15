@@ -169,8 +169,7 @@ def success_posture(
         return ["PASS: BurnBar source provenance preflight is ready"], []
     if owner_emergency_approval:
         stderr = [
-            "WARNING: This is an owner-attested emergency soft-approval lane, "
-            "not signed external-counsel approval."
+            "WARNING: This is an owner-attested emergency soft-approval lane, not signed external-counsel approval."
         ]
         if owner_emergency_runtime_hold:
             stderr.append(
@@ -245,8 +244,7 @@ def main(argv: list[str] | None = None) -> int:
 
     owner_emergency_approval = (
         not args.source_provenance_only
-        and
-        args.allow_owner_emergency_approval
+        and args.allow_owner_emergency_approval
         and has_owner_emergency_status(legal_evidence, repo_root)
     )
     stdout_lines, stderr_lines = success_posture(
