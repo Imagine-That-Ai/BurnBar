@@ -32,7 +32,8 @@ final class BurnBarFleetTerminalAuthorityTests: XCTestCase {
     private func makeDirective(
         id: String,
         state: BurnBarFleetDirectiveState,
-        deliveryChannel: String? = nil
+        deliveryChannel: String? = nil,
+        deliveryAttemptID: String? = nil
     ) -> BurnBarFleetDirective {
         BurnBarFleetDirective(
             id: id,
@@ -42,7 +43,8 @@ final class BurnBarFleetTerminalAuthorityTests: XCTestCase {
             state: state,
             createdAt: Date(timeIntervalSince1970: 1_752_000_000),
             decidedAt: Date(timeIntervalSince1970: 1_752_000_100),
-            deliveryChannel: deliveryChannel
+            deliveryChannel: deliveryChannel,
+            deliveryAttemptID: deliveryAttemptID
         )
     }
 
@@ -134,5 +136,70 @@ final class BurnBarFleetTerminalAuthorityTests: XCTestCase {
 
         XCTAssertEqual(recorded, retryDelivered)
         XCTAssertEqual(try store.directiveRecords().first?.state, .delivered)
+    }
+
+    func testApprovedDeliveryAttemptMarkerSurvivesRecoveryCandidate() async throws {
+        let store = try makeStore()
+        let control = BurnBarFleetControlStore(store: store)
+        let attempt = makeDirective(
+            id: "dir-attempt-handoff",
+            state: .approved,
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-1"
+        )
+        _ = try await control.recordDirective(attempt)
+
+        // A relaunch sends the daemon an approved reconciliation candidate
+        // without the attempt metadata. The durable handoff must remain the
+        // authority, otherwise a second Hermes call could be started.
+        let recoveryCandidate = makeDirective(id: attempt.id, state: .approved)
+        let reconciled = try await control.recordDirective(recoveryCandidate)
+
+        XCTAssertEqual(reconciled, attempt)
+        XCTAssertEqual(try store.directiveRecord(id: attempt.id), attempt)
+
+        let competingAttempt = makeDirective(
+            id: attempt.id,
+            state: .approved,
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-2"
+        )
+        let competingResult = try await control.recordDirective(competingAttempt)
+        XCTAssertEqual(
+            competingResult,
+            attempt,
+            "a competing approved attempt must not replace the durable fence"
+        )
+    }
+
+    func testFailedRecordRequiresFreshAttemptForApprovedRetry() async throws {
+        let store = try makeStore()
+        let control = BurnBarFleetControlStore(store: store)
+        let failed = makeDirective(
+            id: "dir-failed-attempt",
+            state: .failed(reason: "gateway timeout"),
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-1"
+        )
+        _ = try await control.recordDirective(failed)
+
+        let staleRetry = makeDirective(
+            id: failed.id,
+            state: .approved,
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-1"
+        )
+        let staleResult = try await control.recordDirective(staleRetry)
+        XCTAssertEqual(staleResult, failed, "the old attempt cannot reopen a failed record")
+
+        let freshRetry = makeDirective(
+            id: failed.id,
+            state: .approved,
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-2"
+        )
+        let freshResult = try await control.recordDirective(freshRetry)
+        XCTAssertEqual(freshResult, freshRetry)
+        XCTAssertEqual(try store.directiveRecord(id: failed.id), freshRetry)
     }
 }

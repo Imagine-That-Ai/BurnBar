@@ -346,6 +346,26 @@ final class BurnBarFleetContractsPolicyTests: XCTestCase {
         XCTAssertEqual(decodedPresent, present)
     }
 
+    func test_directiveDeliveryAttemptID_roundTripsAsDurableHandoff() throws {
+        let directive = BurnBarFleetDirective(
+            id: "handoff-1",
+            kind: .askStatus,
+            targetAgent: .hermes,
+            payload: "status?",
+            state: .approved,
+            createdAt: Date(timeIntervalSince1970: 1_752_000_000),
+            decidedAt: Date(timeIntervalSince1970: 1_752_000_100),
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-1"
+        )
+
+        let data = try JSONEncoder().encode(directive)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(json.contains("\"deliveryAttemptID\":\"attempt-1\""))
+        let decoded = try JSONDecoder().decode(BurnBarFleetDirective.self, from: data)
+        XCTAssertEqual(decoded, directive)
+    }
+
     func test_orchestratorDesignation_sessionRefOptionalityMatrix() throws {
         // Absent: no sessionRef key.
         let absent = BurnBarOrchestratorDesignation.agent(id: .hermes, sessionRef: .absent)

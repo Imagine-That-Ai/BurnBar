@@ -216,7 +216,8 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, @unchecked Sen
             "id": directive.id,
             "kind": directive.kind.rawValue,
             "targetAgent": directive.targetAgent?.wireValue ?? NSNull(),
-            "payload": directive.payload
+            "payload": directive.payload,
+            "deliveryAttemptID": directive.deliveryAttemptID ?? NSNull()
         ]
         let body: [String: Any] = [
             "stream": false,

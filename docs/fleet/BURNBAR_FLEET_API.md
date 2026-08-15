@@ -42,9 +42,14 @@ external consumers (any local agent/CLI) and for the BurnBar app itself.
   immutable against **all** later candidates, including stale `delivered` or
   `failed` callbacks. An existing `failed` record remains authoritative for
   ordinary candidates; the explicit `failed → delivered` retry transition is
-  supported, and a repeated `failed` outcome may refresh its failure detail.
-  The authoritative record is returned unchanged whenever a candidate is
-  rejected by this rule.
+  supported, and an explicitly identified approved retry handoff may begin a
+  new external attempt after failure.
+  An approved candidate with `deliveryChannel` and a unique
+  `deliveryAttemptID` is a durable external-delivery handoff. Once present,
+  later approved reconciliation candidates cannot replace or erase that
+  handoff; a new approved attempt is allowed only after an existing failed
+  outcome and must carry its own attempt id. The authoritative record is
+  returned unchanged whenever a candidate is rejected by these rules.
 
 Directive records are read via read-only `sqlite3` inspection of the
 daemon-owned `fleet.sqlite` (`fleet_directives` table) — there is no
@@ -68,6 +73,9 @@ human-approved directives targeting `hermes` through that endpoint.
    via `daemon.fleet.directive.record`. Approval is observable before any
    terminal delivery outcome.
 3. Delivery then runs through the Hermes channel:
+   - before the Hermes request, BurnBar records the approved candidate with
+     `deliveryChannel: "hermes"` and a unique `deliveryAttemptID`; this durable
+     handoff is the retry/idempotency fence;
    - the card shows `delivering` while the request is in flight;
    - a valid acknowledgement transitions the record
      `approved → delivered` with `deliveryChannel: "hermes"`;
@@ -85,8 +93,9 @@ human-approved directives targeting `hermes` through that endpoint.
    preserves the original `decidedAt`.
    If the app is relaunched while the card says `delivering`, it first
    reconciles the directive record with the daemon. A known terminal outcome
-   is adopted without another gateway request; an interrupted but still
-   `approved` record becomes a typed retryable failure. If the daemon is
+   is adopted without another gateway request; an `approved` record carrying
+   a durable `deliveryAttemptID` becomes an uncertain, retry-blocked typed
+   state requiring explicit daemon reconciliation. If the daemon is
    unavailable, the card remains visibly blocked until reconciliation
    succeeds, so a duplicate delivery cannot be started.
 6. **Unsupported agents:** an approved directive targeting an agent with no

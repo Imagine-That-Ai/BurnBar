@@ -814,7 +814,8 @@ public enum BurnBarFleetDirectiveState: Codable, Hashable, Sendable {
 }
 
 /// A human-approved directive proposal. `createdAt`/`decidedAt` are ISO-8601
-/// UTC strings on the wire.
+/// UTC strings on the wire. `deliveryAttemptID` is an optional durable
+/// handoff identity used to fence an external delivery call across crashes.
 public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
     public let id: String
     public let kind: BurnBarFleetDirectiveKind
@@ -824,6 +825,10 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
     public let createdAt: Date
     public let decidedAt: Date?
     public let deliveryChannel: String?
+    /// Durable handoff identity for an external delivery attempt. A daemon
+    /// record carrying this value is an idempotency fence: recovery candidates
+    /// without an attempt id must not erase it before reconciliation.
+    public let deliveryAttemptID: String?
 
     public init(
         id: String,
@@ -833,7 +838,8 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
         state: BurnBarFleetDirectiveState,
         createdAt: Date,
         decidedAt: Date? = nil,
-        deliveryChannel: String? = nil
+        deliveryChannel: String? = nil,
+        deliveryAttemptID: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -843,10 +849,12 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
         self.createdAt = createdAt
         self.decidedAt = decidedAt
         self.deliveryChannel = deliveryChannel
+        self.deliveryAttemptID = deliveryAttemptID
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, targetAgent, payload, state, createdAt, decidedAt, deliveryChannel
+        case id, kind, targetAgent, payload, state, createdAt, decidedAt, deliveryChannel,
+             deliveryAttemptID
     }
 
     public init(from decoder: Decoder) throws {
@@ -859,6 +867,7 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
         createdAt = try container.decodeFleetDate(forKey: .createdAt)
         decidedAt = try container.decodeFleetDateIfPresent(forKey: .decidedAt)
         deliveryChannel = try container.decodeIfPresent(String.self, forKey: .deliveryChannel)
+        deliveryAttemptID = try container.decodeIfPresent(String.self, forKey: .deliveryAttemptID)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -871,6 +880,7 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
         try container.encodeFleetDate(createdAt, forKey: .createdAt)
         try container.encodeFleetDateIfPresent(decidedAt, forKey: .decidedAt)
         try container.encodeIfPresent(deliveryChannel, forKey: .deliveryChannel)
+        try container.encodeIfPresent(deliveryAttemptID, forKey: .deliveryAttemptID)
     }
 }
 

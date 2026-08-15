@@ -145,26 +145,31 @@ def running_agents_from_prompt(prompt):
     Lines look like `- claude-code: running (exactProcess)`. Only the exact
     canonical line shape counts: the id must be one of the DECLARED ten
     roster wire ids and the value must start with the exact status token.
-    Injected snapshot content can never manufacture such a line: newlines in
-    snapshot fields are escaped by the app, including every boundary in
-    `prompt_line_boundaries()`, and an injected standalone
-    `- attacker: running` line is rejected because `attacker` is not a
-    declared wire id (scrutiny round 1, VAL-ORCH-031).
+    Only lines inside the explicit `### Agents` block are roster input. The
+    parser stops before `### Repos`, `### Probe health`, the answer, and the
+    appended `User:` section. Newlines in snapshot fields are still escaped by
+    the app, including every boundary in `prompt_line_boundaries()`, but
+    section scoping is the consumer-side defense against crafted repo names
+    and user content (scrutiny round 4, VAL-ORCH-031).
     """
     declared = {
         "claude-code", "factory-droid", "codex", "hermes", "grok-bot",
         "grok-cli", "pi", "cursor", "kimi", "gemini-cli",
     }
     running = []
-    in_snapshot = False
+    in_agents = False
     for line in split_prompt_lines(prompt):
         stripped = line.strip()
-        if stripped.startswith("## Fleet snapshot"):
-            in_snapshot = True
+        if stripped == "### Agents":
+            in_agents = True
             continue
-        if in_snapshot and stripped.startswith("## "):
+        if in_agents and (
+            stripped.startswith("### ")
+            or stripped.startswith("## ")
+            or stripped == "User:"
+        ):
             break
-        if not in_snapshot:
+        if not in_agents:
             continue
         if not stripped.startswith("- "):
             continue

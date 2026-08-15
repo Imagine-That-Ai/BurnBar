@@ -20,7 +20,7 @@ import XCTest
 final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchestratorTestCase {
 
     /// A stub channel that records deliveries and returns a scripted outcome.
-    private final class StubDeliveryChannel: BurnBarFleetDirectiveChannel, @unchecked Sendable {
+    final class StubDeliveryChannel: BurnBarFleetDirectiveChannel, @unchecked Sendable {
         var outcome: BurnBarFleetDeliveryOutcome
         var deliveredDirectives: [BurnBarFleetDirective] = []
         init(outcome: BurnBarFleetDeliveryOutcome) {
@@ -81,8 +81,12 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         await waitForDeliveryState(controller, .delivered)
         XCTAssertEqual(channel.deliveredDirectives.count, 1, "the channel received exactly one delivery")
         XCTAssertEqual(channel.deliveredDirectives.first?.id, "m4-proposal-001")
-        // The terminal record is written with deliveryChannel "hermes".
-        XCTAssertEqual(directiveRecordCalls, 2, "approved + delivered records")
+        // The durable handoff is recorded before the Hermes call, followed
+        // by the terminal record with deliveryChannel "hermes".
+        XCTAssertEqual(directiveRecordCalls, 3, "approved + attempt handoff + delivered records")
+        XCTAssertEqual(recordedDirectives[1].state, .approved)
+        XCTAssertEqual(recordedDirectives[1].deliveryChannel, "hermes")
+        XCTAssertNotNil(recordedDirectives[1].deliveryAttemptID)
         let terminal = try XCTUnwrap(recordedDirectives.last)
         XCTAssertEqual(terminal.state, .delivered)
         XCTAssertEqual(terminal.deliveryChannel, "hermes")
@@ -184,7 +188,7 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         XCTAssertNil(lastAssistantMessage(controller)?.deliveryState, "no delivery state on a dismissed card")
     }
 
-    func test_relaunchConvertsStrandedDeliveryToRetryableFailurePreservingDecisionTime() async throws {
+    func test_relaunchBlocksStrandedDeliveryUntilDaemonReconciliationPreservingDecisionTime() async throws {
         let snapshot = freshSnapshot()
         let controller = makeController(snapshot: snapshot, cliBridge: makeFakeCLIBridge(mode: "proposal"))
         controller.startNewChatThread()
@@ -217,11 +221,154 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         guard case .failed(let reason) = restored.deliveryState else {
             return XCTFail("a restored delivering state must become a typed failure")
         }
-        XCTAssertTrue(reason.contains("interrupted"), "got: \(reason)")
+        XCTAssertTrue(reason.contains("uncertain"), "got: \(reason)")
         XCTAssertTrue(restored.deliveryState?.isRetryable == true)
         XCTAssertEqual(restored.proposalDecidedAt, decidedAt)
-        XCTAssertFalse(restored.deliveryRecoveryRequired, "successful daemon reconciliation clears the recovery marker")
+        XCTAssertTrue(restored.deliveryRecoveryRequired)
         XCTAssertEqual(directiveRecordCalls, 1, "reconciliation must not deliver or duplicate approval")
+    }
+
+    /// Crash-window regression: the approved daemon decision and local
+    /// recovery marker are durable, but the process exits after journal
+    /// removal and before the `delivering` row is saved. Relaunch must
+    /// reconcile the typed marker rather than strand an approved card.
+    func test_crashAfterJournalRemovalBeforeDeliveringSaveRequiresExplicitReconcile() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot)
+        controller.startNewChatThread()
+        let wire = BurnBarFleetProposalWire(
+            id: "crash-before-delivering",
+            kind: .askStatus,
+            targetAgent: .hermes,
+            payload: "Report current status"
+        )
+        let pending = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            proposalJSON: try XCTUnwrap(wire.encode())
+        )
+        try store.saveChatMessage(pending, threadID: controller.activeThreadID)
+
+        // This is the durable state immediately after daemon approval and
+        // journal removal, before startDelivery can save `.delivering`.
+        let approved = ChatMessageRecord(
+            id: pending.id,
+            role: pending.role,
+            content: pending.content,
+            timestamp: pending.timestamp,
+            cliUsed: pending.cliUsed,
+            transcriptPieces: pending.transcriptPieces,
+            cancelled: pending.cancelled,
+            proposalJSON: pending.proposalJSON,
+            proposalDecision: .approved,
+            proposalDecidedAt: Date(timeIntervalSince1970: 1_752_000_131),
+            deliveryState: nil,
+            deliveryRecoveryRequired: true
+        )
+        try store.saveChatMessage(approved, threadID: controller.activeThreadID)
+
+        let daemonAttempt = BurnBarFleetDirective(
+            id: wire.id,
+            kind: wire.kind,
+            targetAgent: wire.targetAgent,
+            payload: wire.payload,
+            state: .approved,
+            createdAt: pending.timestamp,
+            decidedAt: approved.proposalDecidedAt,
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-before-delivering"
+        )
+        let channel = ChatSessionControllerDeliveryFlowTests.StubDeliveryChannel(outcome: .delivered)
+        let relaunched = makeController(
+            snapshot: snapshot,
+            deliveryChannelProvider: { _ in
+                XCTFail("a recovery marker must block a new Hermes call")
+                return channel
+            },
+            directiveRecordProvider: { _, _ in daemonAttempt }
+        )
+        relaunched.loadPersistedMessages()
+
+        let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
+        XCTAssertEqual(restored.proposalDecision, .approved)
+        XCTAssertTrue(restored.deliveryRecoveryRequired)
+        XCTAssertTrue(restored.deliveryState?.isRetryable == true)
+        XCTAssertTrue(restored.proposalError?.contains("uncertain") == true)
+        XCTAssertEqual(channel.deliveredDirectives.count, 0)
+    }
+
+    /// Crash-window regression: Hermes already acknowledged the side effect,
+    /// then the app exits before terminal `directive.record` begins. The
+    /// durable daemon attempt marker keeps relaunch reconciliation blocked;
+    /// retry cannot call Hermes a second time.
+    func test_hermesSideEffectBeforeTerminalRecordCannotDuplicateOnRelaunch() async throws {
+        let snapshot = freshSnapshot()
+        let controller = makeController(snapshot: snapshot)
+        controller.startNewChatThread()
+        let wire = BurnBarFleetProposalWire(
+            id: "crash-after-hermes",
+            kind: .askStatus,
+            targetAgent: .hermes,
+            payload: "Report current status"
+        )
+        let pending = ChatMessageRecord(
+            role: .assistant,
+            content: "",
+            proposalJSON: try XCTUnwrap(wire.encode())
+        )
+        try store.saveChatMessage(pending, threadID: controller.activeThreadID)
+
+        let approvedAt = Date(timeIntervalSince1970: 1_752_000_132)
+        let approved = ChatMessageRecord(
+            id: pending.id,
+            role: pending.role,
+            content: pending.content,
+            timestamp: pending.timestamp,
+            cliUsed: pending.cliUsed,
+            transcriptPieces: pending.transcriptPieces,
+            cancelled: pending.cancelled,
+            proposalJSON: pending.proposalJSON,
+            proposalDecision: .approved,
+            proposalDecidedAt: approvedAt,
+            deliveryState: .delivering,
+            deliveryRecoveryRequired: true
+        )
+        try store.saveChatMessage(approved, threadID: controller.activeThreadID)
+
+        let channel = ChatSessionControllerDeliveryFlowTests.StubDeliveryChannel(outcome: .delivered)
+        let directive = BurnBarFleetDirective(
+            id: wire.id,
+            kind: wire.kind,
+            targetAgent: wire.targetAgent,
+            payload: wire.payload,
+            state: .approved,
+            createdAt: pending.timestamp,
+            decidedAt: approvedAt,
+            deliveryChannel: "hermes",
+            deliveryAttemptID: "attempt-after-hermes"
+        )
+        // Model the external side effect that completed before the process
+        // crashed. No terminal record callback is made.
+        _ = await channel.deliver(directive)
+        XCTAssertEqual(channel.deliveredDirectives.count, 1)
+
+        let relaunched = makeController(
+            snapshot: snapshot,
+            deliveryChannelProvider: { _ in
+                XCTFail("relaunch must not retry an uncertain Hermes attempt")
+                return channel
+            },
+            directiveRecordProvider: { _, _ in directive }
+        )
+        relaunched.loadPersistedMessages()
+
+        let restored = try XCTUnwrap(relaunched.messages.first { $0.id == pending.id })
+        XCTAssertTrue(restored.deliveryRecoveryRequired)
+        XCTAssertTrue(restored.proposalError?.contains("uncertain") == true)
+        XCTAssertTrue(restored.deliveryState?.isRetryable == true)
+        relaunched.retryDelivery(messageID: pending.id)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(channel.deliveredDirectives.count, 1, "Hermes must be called exactly once")
     }
 
     func test_relaunchKeepsUncertainDeliveryBlockedUntilDaemonReconciles() async throws {
@@ -412,6 +559,9 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
                 self.directiveRecordCalls += 1
                 switch directive.state {
                 case .approved:
+                    if directive.deliveryAttemptID != nil {
+                        return directive
+                    }
                     if !approvalRecorded {
                         approvalRecorded = true
                         return directive
@@ -458,14 +608,14 @@ final class ChatSessionControllerDeliveryFlowTests: ChatSessionControllerOrchest
         controller.retryDelivery(messageID: pending.id)
         try await Task.sleep(nanoseconds: 250_000_000)
         XCTAssertEqual(channel.deliveredDirectives.count, 1, "retry must not call Hermes again")
-        XCTAssertEqual(directiveRecordCalls, 2, "approval + uncertain terminal record")
+        XCTAssertEqual(directiveRecordCalls, 3, "approval + attempt handoff + uncertain terminal record")
 
         controller.reconcileDelivery(messageID: pending.id)
         let reconciled = try XCTUnwrap(lastAssistantMessage(controller))
         XCTAssertEqual(reconciled.deliveryState, .delivered)
         XCTAssertFalse(reconciled.deliveryRecoveryRequired)
         XCTAssertEqual(channel.deliveredDirectives.count, 1)
-        XCTAssertEqual(directiveRecordCalls, 3, "reconciliation reads daemon authority")
+        XCTAssertEqual(directiveRecordCalls, 4, "reconciliation reads daemon authority")
     }
 
     func test_proposalErrorSaveFailureIsJournaledWithVisibleRetryState() throws {

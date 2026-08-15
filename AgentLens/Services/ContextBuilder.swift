@@ -460,9 +460,10 @@ extension ContextBuilder {
     /// detail/lastActivityAt, probe health, persistence health,
     /// thermal/power/disk detail, and orchestrator pendingDirectives.
     /// Truncation omits ONLY the documented verbose categories (per-agent
-    /// signal detail, per-agent task/process detail, machine sensor detail,
-    /// repo grouping) and emits the explicit `fleetContextTruncatedMarker`
-    /// with generatedAt + preserved aggregates.
+    /// signal detail, per-agent task/process/model/note detail, repo grouping).
+    /// Machine health and sensor detail remain preserved in the reduced form,
+    /// together with the explicit `fleetContextTruncatedMarker`, generatedAt,
+    /// and preserved aggregates.
     static func fleetSnapshotSection(_ snapshot: BurnBarFleetSnapshot) -> String {
         var lines: [String] = []
         lines.append("- schemaVersion: \(snapshot.schemaVersion)")
@@ -534,7 +535,9 @@ extension ContextBuilder {
                 + "repo grouping"
         )
         lines.append("")
-        lines.append("### Agents (identity/status/confidence)")
+        // Keep the same structural block heading as the complete rendering;
+        // consumers may safely scope roster parsing to `### Agents` only.
+        lines.append("### Agents")
         for agent in snapshot.agents {
             lines.append(agentSummaryLine(agent))
         }

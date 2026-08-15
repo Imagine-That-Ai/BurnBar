@@ -44,7 +44,8 @@ final class HermesDirectiveChannelTests: XCTestCase {
     private func makeDirective(
         id: String = "m4-proposal-001",
         targetAgent: BurnBarFleetAgentID? = .hermes,
-        state: BurnBarFleetDirectiveState = .approved
+        state: BurnBarFleetDirectiveState = .approved,
+        deliveryAttemptID: String? = nil
     ) -> BurnBarFleetDirective {
         BurnBarFleetDirective(
             id: id,
@@ -53,7 +54,8 @@ final class HermesDirectiveChannelTests: XCTestCase {
             payload: "Report current status",
             state: state,
             createdAt: Date(timeIntervalSince1970: 1_752_000_000),
-            decidedAt: Date(timeIntervalSince1970: 1_752_000_100)
+            decidedAt: Date(timeIntervalSince1970: 1_752_000_100),
+            deliveryAttemptID: deliveryAttemptID
         )
     }
 
@@ -116,7 +118,7 @@ final class HermesDirectiveChannelTests: XCTestCase {
             )!
             return (response, self.ackData(directiveID: "m4-proposal-001"))
         }
-        _ = await makeChannel().deliver(makeDirective())
+        _ = await makeChannel().deliver(makeDirective(deliveryAttemptID: "attempt-hermes-1"))
 
         let request = try XCTUnwrap(capturedRequest)
         XCTAssertEqual(request.url?.path, "/v1/chat/completions")
@@ -130,6 +132,7 @@ final class HermesDirectiveChannelTests: XCTestCase {
         let userContent = try XCTUnwrap(messages.last?["content"] as? String)
         XCTAssertTrue(userContent.contains("burnbar_directive:"))
         XCTAssertTrue(userContent.contains("m4-proposal-001"))
+        XCTAssertTrue(userContent.contains("attempt-hermes-1"))
     }
 
     func test_gatewayEndpointAllowsOnlyLoopbackWithoutRemoteOptIn() {

@@ -783,10 +783,11 @@ extension ChatSessionController {
         selectedContext = nil
     }
 
-    /// Consumes one text chunk: complete lines are scanned for the canonical
-    /// proposal shape; proposal lines are dropped from the display text and
-    /// reported via `onProposal` (VAL-ORCH-031). Partial trailing lines stay
-    /// in the buffer until the next chunk completes them.
+    /// Consumes one text chunk: orchestrator lines are scanned for the
+    /// canonical proposal shape; proposal lines are dropped from the display
+    /// text and reported via `onProposal` (VAL-ORCH-031). Analyst streams have
+    /// no proposal callback, so their text is preserved verbatim. Partial
+    /// trailing lines stay in the buffer until the next chunk completes them.
     ///
     /// A key-bearing malformed proposal line throws `ParseError.malformedJSON`
     /// and is DROPPED here (never rendered as assistant text); a line without
@@ -804,21 +805,23 @@ extension ChatSessionController {
             buffer.removeSubrange(...newlineIndex)
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
-            do {
-                if let proposal = try BurnBarFleetProposalParser.parse(
-                    line: line,
-                    proposalNonce: proposalNonce
-                ) {
-                    onProposal?(proposal)
+            if let onProposal {
+                do {
+                    if let proposal = try BurnBarFleetProposalParser.parse(
+                        line: line,
+                        proposalNonce: proposalNonce
+                    ) {
+                        onProposal(proposal)
+                        continue
+                    }
+                } catch {
+                    // A line that LOOKS like a proposal but violates the
+                    // canonical shape (injection attempt, malformed JSON,
+                    // unknown kind/agent, nonce mismatch) is dropped — never
+                    // rendered as assistant text, never a proposal
+                    // (VAL-ORCH-031).
                     continue
                 }
-            } catch {
-                // A line that LOOKS like a proposal but violates the
-                // canonical shape (injection attempt, malformed JSON,
-                // unknown kind/agent, nonce mismatch) is dropped — never
-                // rendered as assistant text, never a proposal
-                // (VAL-ORCH-031).
-                continue
             }
             appendStreamingText(trimmed, to: &pieces)
         }
@@ -903,7 +906,11 @@ extension ChatSessionController {
                 proposalDecision: decision,
                 proposalDecidedAt: recorded.decidedAt ?? directive.decidedAt,
                 deliveryState: deliveryState ?? old.deliveryState,
-                deliveryRecoveryRequired: old.deliveryRecoveryRequired,
+                // An approved delivery is not retry-safe until the durable
+                // attempt handoff has been written. This marker covers the
+                // crash window after the decision save and journal removal
+                // but before `.delivering` reaches SQLite.
+                deliveryRecoveryRequired: shouldDeliver || old.deliveryRecoveryRequired,
                 proposalError: nil
             )
             messages[idx] = updated
@@ -916,8 +923,12 @@ extension ChatSessionController {
                 // A journal may describe the pre-decision save failure. Only
                 // remove it after this authoritative local decision write has
                 // succeeded, otherwise relaunch would restore the stale card
-                // over the durable database row.
-                clearRecoveryJournal(for: updated.id)
+                // over the durable database row. For an approved directive,
+                // keep a durable recovery marker until the delivery attempt
+                // handoff is persisted.
+                if !shouldDeliver {
+                    clearRecoveryJournal(for: updated.id)
+                }
             } catch {
                 let message = "Decision recorded on the daemon, but saving it locally failed: "
                     + error.localizedDescription
@@ -949,9 +960,6 @@ extension ChatSessionController {
             // (VAL-ORCH-012). A dismissed directive is never delivered
             // (VAL-ORCH-013).
             if shouldDeliver {
-                guard messages[idx].deliveryRecoveryRequired == false else {
-                    return
-                }
                 let approvedDirective = BurnBarFleetDirective(
                     id: recorded.id,
                     kind: recorded.kind,

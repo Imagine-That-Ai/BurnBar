@@ -399,7 +399,8 @@ Modes (env `BURNBAR_FAKE_CLI_MODE`): `proposal` (emits the canonical proposal
 `id=m4-proposal-001`, `kind=askStatus`, `targetAgent=hermes`, payload
 "Report current status", wrapped with the per-send proposal nonce read from
 the injected prompt), `answer` (answers deterministically from the injected
-snapshot section's running set), `slow` (chunked delayed stream for
+snapshot section's `### Agents` block only — repo groups, answer text, and the
+appended user message are never roster input), `slow` (chunked delayed stream for
 cancellation tests), `injection` (approval-looking text WITHOUT the canonical
 shape), `proposal-malformed` (a canonical-key-bearing line that is NOT valid
 JSON), `combo` (cancellation-race regression: a "hang-first" stream ignores
@@ -493,11 +494,15 @@ delivered") never produces a proposal, a record, or a delivery.
 
 If local chat persistence fails after daemon acceptance, the app keeps the
 complete card in a recovery journal and shows a typed persistence error; it
-does not start delivery. A relaunch reconciles any approved `delivering` row against the daemon before
-offering another delivery attempt. A known terminal daemon record is adopted
-without redelivery; an approved record becomes a typed retryable interrupted
-failure; if the daemon is unavailable, the card remains visibly blocked until
-reconciliation succeeds. The original `decidedAt` is preserved in all cases.
+does not start delivery. Before Hermes is called, the app records an approved
+delivery handoff containing `deliveryChannel` and a unique
+`deliveryAttemptID`. A relaunch reconciles any approved row carrying that
+handoff, including the crash window where the journal was removed before the
+local `delivering` state was saved. A known terminal daemon record is adopted
+without redelivery; an approved record with an attempt handoff is an uncertain,
+retry-blocked typed state that requires explicit daemon reconciliation. If the
+daemon is unavailable, the card remains visibly blocked until reconciliation
+succeeds. The original `decidedAt` is preserved in all cases.
 Recovery-journal entries carry the message id and decision timestamp they
 belong to. Journal restoration is monotonic: a durable row with a newer (or
 equal) terminal decision is never overwritten by an older journal, and a

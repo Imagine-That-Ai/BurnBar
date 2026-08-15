@@ -147,9 +147,9 @@ extension ChatSessionController {
     /// Loads a recovered approved directive and asks the daemon for the
     /// authoritative record before allowing another delivery attempt. A
     /// terminal daemon record is adopted locally; a dismissed record becomes
-    /// terminal locally with no delivery state; an approved record becomes a
-    /// retryable interrupted failure; an unavailable daemon keeps the card
-    /// blocked and visibly typed.
+    /// terminal locally with no delivery state; an approved record that
+    /// carries a durable delivery attempt becomes an uncertain, retry-blocked
+    /// state; an unavailable daemon keeps the card blocked and visibly typed.
     func reconcileRecoveredMessages() {
         restoreJournaledMessages()
         let messageIDs = messages.compactMap { message -> String? in
@@ -192,7 +192,8 @@ extension ChatSessionController {
                 for: authoritative,
                 currentMessage: message,
                 refreshHistory: refreshHistory,
-                nonTerminalRequiresReconciliation: false
+                nonTerminalRequiresReconciliation: message.deliveryRecoveryRequired
+                    || message.deliveryState == .delivering
             )
             replaceRecoveredMessage(messageID: messageID, update: update)
         } catch {
@@ -306,6 +307,12 @@ extension ChatSessionController {
             let result = await BurnBarFleetDeliveryRunner.run(
                 directive: directive,
                 channel: channel,
+                prepare: { [weak self] handoff in
+                    guard let self else {
+                        throw BurnBarFleetClientError.daemonUnavailable("controller deallocated")
+                    }
+                    return try self.directiveRecordProvider(handoff, self.fleetService.socketURL)
+                },
                 record: { [weak self] terminal in
                     guard let self else {
                         throw BurnBarFleetClientError.daemonUnavailable("controller deallocated")
@@ -406,7 +413,7 @@ extension ChatSessionController {
             )
         case .approved, .proposed:
             let reason = nonTerminalRequiresReconciliation
-                ? "The daemon returned a non-terminal delivery record; reconcile before retry."
+                ? "The delivery outcome is uncertain because an external channel attempt may have completed; reconcile with the daemon before retry."
                 : "Delivery was interrupted before its outcome was saved; retry when ready."
             return RecoveredMessageUpdate(
                 proposalDecision: .approved,

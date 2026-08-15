@@ -74,9 +74,10 @@ enum ChatDeliveryState: Codable, Equatable, Hashable, Sendable {
 // MARK: - Delivery runner
 
 /// Runs one directive delivery: resolves the channel for the target agent,
-/// delivers, and records the terminal outcome via `directive.record`
-/// (idempotent upsert). The `approved` record is written BEFORE delivery
-/// starts, so approval is observable before any terminal delivery outcome
+/// writes a durable approved attempt handoff, delivers, and records the
+/// terminal outcome via `directive.record` (idempotent upsert). The handoff
+/// is written BEFORE the external call starts, so a crash after the side
+/// effect but before terminal recording remains blocked behind reconciliation
 /// (VAL-ORCH-012).
 ///
 /// Honesty invariants:
@@ -91,6 +92,11 @@ enum ChatDeliveryState: Codable, Equatable, Hashable, Sendable {
 /// - Claude's `/tmp/cc-socks/*.sock` messaging socket is NEVER used
 ///   (VAL-ORCH-016).
 enum BurnBarFleetDeliveryRunner {
+    private enum HandoffResult {
+        case ready(BurnBarFleetDirective)
+        case failed(RunResult)
+    }
+
     /// The outcome of a delivery run, including the record write result.
     struct RunResult: Equatable, Sendable {
         let outcome: BurnBarFleetDeliveryOutcome
@@ -123,20 +129,111 @@ enum BurnBarFleetDeliveryRunner {
     static func run(
         directive: BurnBarFleetDirective,
         channel: BurnBarFleetDirectiveChannel,
+        prepare: ((BurnBarFleetDirective) throws -> BurnBarFleetDirective)? = nil,
         record: (BurnBarFleetDirective) throws -> BurnBarFleetDirective
     ) async -> RunResult {
-        let outcome = await channel.deliver(directive)
+        switch prepareHandoff(for: directive, channel: channel, prepare: prepare) {
+        case .failed(let result):
+            return result
+        case .ready(let prepared):
+            return await deliverPrepared(
+                prepared,
+                channel: channel,
+                record: record
+            )
+        }
+    }
+
+    private static func prepareHandoff(
+        for directive: BurnBarFleetDirective,
+        channel: BurnBarFleetDirectiveChannel,
+        prepare: ((BurnBarFleetDirective) throws -> BurnBarFleetDirective)?
+    ) -> HandoffResult {
+        let attemptID = directive.deliveryAttemptID ?? UUID().uuidString
+        let handoff = BurnBarFleetDirective(
+            id: directive.id,
+            kind: directive.kind,
+            targetAgent: directive.targetAgent,
+            payload: directive.payload,
+            state: .approved,
+            createdAt: directive.createdAt,
+            decidedAt: directive.decidedAt,
+            deliveryChannel: channel.channelName,
+            deliveryAttemptID: attemptID
+        )
+        do {
+            let prepared = try prepare?(handoff) ?? handoff
+            return validateHandoff(prepared, attemptID: attemptID)
+        } catch {
+            return handoffFailure(
+                outcome: .failed(reason: "delivery attempt handoff failed: \(error.localizedDescription)"),
+                recordError: error.localizedDescription,
+                requiresReconciliation: false
+            )
+        }
+    }
+
+    private static func validateHandoff(
+        _ prepared: BurnBarFleetDirective,
+        attemptID: String
+    ) -> HandoffResult {
+        guard prepared.deliveryAttemptID == attemptID else {
+            return handoffFailure(
+                outcome: .failed(reason: "delivery attempt handoff is not authoritative; reconcile before retry"),
+                requiresReconciliation: true
+            )
+        }
+        switch prepared.state {
+        case .approved:
+            return .ready(prepared)
+        case .delivered, .failed, .dismissed:
+            return handoffFailure(
+                outcome: outcome(from: prepared.state),
+                recorded: prepared,
+                requiresReconciliation: false
+            )
+        case .proposed:
+            return handoffFailure(
+                outcome: .failed(reason: "delivery attempt handoff remained proposed"),
+                recorded: prepared,
+                requiresReconciliation: true
+            )
+        }
+    }
+
+    private static func handoffFailure(
+        outcome: BurnBarFleetDeliveryOutcome,
+        recorded: BurnBarFleetDirective? = nil,
+        recordError: String? = nil,
+        requiresReconciliation: Bool
+    ) -> HandoffResult {
+        .failed(
+            RunResult(
+                outcome: outcome,
+                recorded: recorded,
+                recordError: recordError,
+                requiresReconciliation: requiresReconciliation
+            )
+        )
+    }
+
+    private static func deliverPrepared(
+        _ prepared: BurnBarFleetDirective,
+        channel: BurnBarFleetDirectiveChannel,
+        record: (BurnBarFleetDirective) throws -> BurnBarFleetDirective
+    ) async -> RunResult {
+        let outcome = await channel.deliver(prepared)
         switch outcome {
         case .delivered:
             return recordTerminal(
-                directive: directive,
+                directive: prepared,
                 state: .delivered,
                 channelName: channel.channelName,
                 record: record
             )
         case .failed(let reason):
             return recordTerminal(
-                directive: directive,
+                directive: prepared,
                 state: .failed(reason: reason),
                 channelName: channel.channelName,
                 record: record
@@ -167,7 +264,8 @@ enum BurnBarFleetDeliveryRunner {
             state: state,
             createdAt: directive.createdAt,
             decidedAt: directive.decidedAt,
-            deliveryChannel: channelName
+            deliveryChannel: channelName,
+            deliveryAttemptID: directive.deliveryAttemptID
         )
         do {
             let recorded = try record(terminal)

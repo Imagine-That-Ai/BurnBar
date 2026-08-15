@@ -73,9 +73,9 @@ public enum BurnBarFleetControlError: Error, LocalizedError, Equatable, Sendable
 ///   record.
 /// - **Monotonic terminal authority:** `dismissed` and `delivered` records are
 ///   immutable against every later candidate, including stale terminal
-///   callbacks. A `failed` record is terminal for ordinary candidates; the
-///   only retry transition it accepts is an explicit `failed → delivered`
-///   completion (a repeated `failed` outcome may refresh its failure detail).
+///   callbacks. A `failed` record is terminal for ordinary candidates; a new
+///   approved candidate is accepted only when it carries a fresh durable
+///   delivery attempt handoff, followed by the terminal completion.
 /// - **`pendingDirectives` definition (ORCH-038):** the count of directive
 ///   records in the non-terminal states `proposed` or `approved`. Terminal
 ///   records (`dismissed`, `delivered`, `failed(reason)`) never count. The
@@ -194,10 +194,10 @@ public actor BurnBarFleetControlStore {
         // `approved` candidate. The daemon record is authoritative for
         // terminal outcomes: stale callbacks must not overwrite a dismissal
         // or a completed delivery, and an ordinary candidate must not
-        // downgrade a failed delivery. The explicit failed → delivered
-        // retry is the one exception.
+        // downgrade a failed delivery. A new approved candidate carrying a
+        // delivery attempt id is the explicit user retry handoff.
         if let existing = try existingDirective(id: directive.id),
-           Self.shouldPreserveExisting(existing.state, for: directive.state) {
+           Self.shouldPreserveExisting(existing, for: directive) {
             return existing
         }
         if let store {
@@ -294,26 +294,57 @@ public actor BurnBarFleetControlStore {
         }
     }
 
+    private static func hasUsableDeliveryHandoff(_ directive: BurnBarFleetDirective) -> Bool {
+        guard let attemptID = directive.deliveryAttemptID,
+              !attemptID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let channel = directive.deliveryChannel
+        else {
+            return false
+        }
+        return !channel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Returns whether an existing directive record has authority over an
     /// incoming candidate. Dismissed and delivered are immutable terminal
     /// outcomes. Failed remains terminal for all ordinary candidates, while
-    /// an explicit delivered callback is the supported user-retry transition.
+    /// an explicit delivered callback or fresh approved handoff is a
+    /// supported user-retry transition.
     private static func shouldPreserveExisting(
-        _ existing: BurnBarFleetDirectiveState,
-        for candidate: BurnBarFleetDirectiveState
+        _ existing: BurnBarFleetDirective,
+        for candidate: BurnBarFleetDirective
     ) -> Bool {
-        switch existing {
+        switch existing.state {
         case .dismissed, .delivered:
             return true
         case .failed:
-            switch candidate {
+            switch candidate.state {
             case .delivered, .failed:
                 return false
-            case .proposed, .approved, .dismissed:
+            case .approved:
+                // A new, explicitly identified attempt is the documented
+                // user-action retry. An unmarked or stale attempt must
+                // continue to observe the failed authority.
+                guard Self.hasUsableDeliveryHandoff(candidate),
+                      candidate.deliveryAttemptID != existing.deliveryAttemptID
+                else {
+                    return true
+                }
+                return false
+            case .proposed, .dismissed:
                 return true
             }
         case .proposed, .approved:
-            return false
+            guard case .approved = existing.state,
+                  case .approved = candidate.state
+            else {
+                return false
+            }
+            // An approved record with a delivery channel + attempt id is a
+            // durable handoff. Any later approved candidate, whether it has
+            // no usable attempt id or proposes a different one, must not
+            // erase or replace the fence before the app reconciles the
+            // external side effect.
+            return Self.hasUsableDeliveryHandoff(existing)
         }
     }
 
