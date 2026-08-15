@@ -244,8 +244,20 @@ struct FleetView: View {
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
-                    .disabled(viewModel.isSettingDesignation)
+                    .disabled(viewModel.isSettingDesignation || viewModel.orchestratorState == nil)
                     .accessibilityLabel("Orchestrator designation")
+
+                    if viewModel.orchestratorState == nil, viewModel.orchestratorStateError == nil {
+                        HStack(spacing: DesignSystem.Spacing.xs) {
+                            ProgressView()
+                                .controlSize(.mini)
+                            Text("Loading designation…")
+                                .font(DesignSystem.Typography.tiny)
+                                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Loading orchestrator designation")
+                    }
 
                     if let error = viewModel.orchestratorStateError {
                         HStack(spacing: DesignSystem.Spacing.xs) {
