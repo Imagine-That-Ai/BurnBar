@@ -65,7 +65,126 @@ final class MemorySettings {
         didSet { persistence.set(consentShown, forKey: "memoryConsentShown") }
     }
 
-    init(persistence: SettingsPersistenceCoordinator) {
+    // MARK: Usage memory (passive memory from Safari asks + agent session logs)
+
+    /// User consent to usage-memory extraction (default OFF). This is the sibling
+    /// of chat's `consentGranted` for the usage-memory feature: until the user
+    /// affirmatively opts in, no Safari ask or agent session log is read and no
+    /// usage memory is derived — it is ANDed into `UsageMemoryExtractionGate`, so
+    /// the whole usage loop is dormant out of the box. Granting consent implies
+    /// the prompt has been shown.
+    var usageMemoryConsentGranted: Bool = false {
+        didSet {
+            persistence.set(usageMemoryConsentGranted, forKey: "usageMemoryConsentGranted")
+            if usageMemoryConsentGranted { usageMemoryConsentShown = true }
+            propagateUsageGates()
+        }
+    }
+
+    /// Whether the usage-memory consent prompt has been presented (so it is not
+    /// shown again). Set when consent is granted, or when the user declines.
+    var usageMemoryConsentShown: Bool = false {
+        didSet { persistence.set(usageMemoryConsentShown, forKey: "usageMemoryConsentShown") }
+    }
+
+    /// Separate opt-in for CLOUD curation of usage memory (default OFF). Local
+    /// extraction consent does not imply consent to send usage-derived material
+    /// to a cloud model; this is ANDed into `UsageMemoryCloudGate` together with
+    /// a cloud model placement, so cloud curation stays off unless the user both
+    /// consents and points placement at a cloud model.
+    var usageMemoryCloudCurationConsentGranted: Bool = false {
+        didSet {
+            persistence.set(
+                usageMemoryCloudCurationConsentGranted,
+                forKey: "usageMemoryCloudCurationConsentGranted"
+            )
+        }
+    }
+
+    /// Where the usage-memory curation model runs (default `.local`). Only a
+    /// cloud placement (`.cloudText` / `.burnbarCloud`) can satisfy
+    /// `UsageMemoryCloudGate`; the default keeps curation fully on-device.
+    var usageMemoryModelPlacement: UsageMemoryModelPlacement = .local {
+        didSet { persistence.set(usageMemoryModelPlacement, forKey: "usageMemoryModelPlacement") }
+    }
+
+    /// Source toggle: derive usage memory from Safari asks (default ON — inert
+    /// until the consent gate opens).
+    var usageMemorySourceSafariAsksEnabled: Bool = true {
+        didSet {
+            persistence.set(usageMemorySourceSafariAsksEnabled, forKey: "usageMemorySourceSafariAsksEnabled")
+        }
+    }
+
+    /// Source toggle: derive usage memory from agent session logs (default ON —
+    /// inert until the consent gate opens).
+    var usageMemorySourceAgentSessionsEnabled: Bool = true {
+        didSet {
+            persistence.set(usageMemorySourceAgentSessionsEnabled, forKey: "usageMemorySourceAgentSessionsEnabled")
+        }
+    }
+
+    /// Firebase Remote Config `memory_usage_extraction_enabled` (default true).
+    /// Not user-settable and not persisted; the fleet kill switch sets this false
+    /// to halt usage extraction instantly. Same transport posture as the chat
+    /// switch: fetch errors preserve extraction only when the active cached
+    /// config is not already false.
+    ///
+    /// This default is only meaningful once `hasResolvedUsageRemoteConfig` is
+    /// true — until then the usage lanes are held CLOSED regardless, so the
+    /// optimistic `true` can never open a lane ahead of the cached fleet value.
+    var remoteConfigUsageExtractionEnabled: Bool = true {
+        didSet { propagateUsageGates() }
+    }
+
+    /// Firebase Remote Config `memory_usage_authority_writes_enabled` (default
+    /// true). Not user-settable and not persisted; a fleet flip to false halts
+    /// durable authority writes from the usage pipeline while leaving extraction
+    /// gating untouched. Same "inert until resolved" caveat as above.
+    var remoteConfigUsageAuthorityWritesEnabled: Bool = true {
+        didSet { propagateUsageGates() }
+    }
+
+    /// Whether a Remote Config value — the **active cached** config at init, or a
+    /// freshly fetched one — has been applied to the two usage fleet switches.
+    ///
+    /// WHY THIS EXISTS (U1 review, thread `PRRT_kwDORtgQYs6ZgTEJ`): the two RC
+    /// fields above are session-scoped and default to the optimistic `true`. A
+    /// returning user whose `usageMemoryConsentGranted` is already `true` would
+    /// therefore propagate an OPEN extraction lane at init and hold it open until
+    /// the asynchronous `fetchAndActivate` landed — ignoring a fleet kill that was
+    /// already sitting in Firebase's cache on disk. Rather than trusting that no
+    /// worker registers inside that window, the gates are structurally held CLOSED
+    /// until an RC value has actually been applied: this flag is ANDed into both
+    /// `UsageMemoryExtractionGate` and `UsageMemoryAuthorityWriteGate`.
+    ///
+    /// Not persisted: every launch re-resolves, so a relaunch always starts closed.
+    private(set) var hasResolvedUsageRemoteConfig: Bool = false {
+        didSet { propagateUsageGates() }
+    }
+
+    /// Apply a resolved Remote Config snapshot to both usage fleet switches and
+    /// mark the lanes resolved. This is the ONLY path that opens the usage lanes:
+    /// the individual `remoteConfig…` setters deliberately do not resolve, so a
+    /// partial write can never promote a defaulted `true` into an open lane.
+    ///
+    /// Called with the active **cached** config before the network fetch, and
+    /// again with the fetched values after it activates.
+    func applyUsageRemoteConfig(extractionEnabled: Bool, authorityWritesEnabled: Bool) {
+        remoteConfigUsageExtractionEnabled = extractionEnabled
+        remoteConfigUsageAuthorityWritesEnabled = authorityWritesEnabled
+        hasResolvedUsageRemoteConfig = true
+    }
+
+    /// - Parameter usageRemoteConfigSeed: the **active cached** usage Remote Config
+    ///   values, read synchronously (no network). Returning `nil` means "no fleet
+    ///   channel resolved yet" and leaves both usage lanes CLOSED until
+    ///   `applyUsageRemoteConfig` lands. `SettingsManager` supplies Firebase's
+    ///   activated cache here so a cached kill is honored before any gate opens.
+    init(
+        persistence: SettingsPersistenceCoordinator,
+        usageRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = { nil }
+    ) {
         self.persistence = persistence
         if persistence.objectExists(forKey: "memoryAutomaticExtraction") {
             self.automaticExtraction = persistence.bool(forKey: "memoryAutomaticExtraction")
@@ -84,7 +203,73 @@ final class MemorySettings {
         if persistence.objectExists(forKey: "memoryConsentGranted") {
             self.consentGranted = persistence.bool(forKey: "memoryConsentGranted")
         }
+        // Usage memory. Load `usageMemoryConsentShown` before
+        // `usageMemoryConsentGranted` for the same shown/granted ordering reason
+        // as chat consent above.
+        if persistence.objectExists(forKey: "usageMemoryConsentShown") {
+            self.usageMemoryConsentShown = persistence.bool(forKey: "usageMemoryConsentShown")
+        }
+        if persistence.objectExists(forKey: "usageMemoryConsentGranted") {
+            self.usageMemoryConsentGranted = persistence.bool(forKey: "usageMemoryConsentGranted")
+        }
+        if persistence.objectExists(forKey: "usageMemoryCloudCurationConsentGranted") {
+            self.usageMemoryCloudCurationConsentGranted = persistence.bool(
+                forKey: "usageMemoryCloudCurationConsentGranted"
+            )
+        }
+        self.usageMemoryModelPlacement = persistence.rawRepresentable(
+            forKey: "usageMemoryModelPlacement",
+            defaultValue: .local
+        )
+        if persistence.objectExists(forKey: "usageMemorySourceSafariAsksEnabled") {
+            self.usageMemorySourceSafariAsksEnabled = persistence.bool(forKey: "usageMemorySourceSafariAsksEnabled")
+        }
+        if persistence.objectExists(forKey: "usageMemorySourceAgentSessionsEnabled") {
+            self.usageMemorySourceAgentSessionsEnabled = persistence.bool(
+                forKey: "usageMemorySourceAgentSessionsEnabled"
+            )
+        }
+        // Repair granted-implies-shown for BOTH consent pairs before anything
+        // reads them (see `normalizeConsentShownInvariants`).
+        normalizeConsentShownInvariants()
+        // Honor the active cached fleet values before any usage lane can open.
+        // With no seed the lanes stay CLOSED until `applyUsageRemoteConfig`.
+        if let seed = usageRemoteConfigSeed() {
+            applyUsageRemoteConfig(
+                extractionEnabled: seed.extractionEnabled,
+                authorityWritesEnabled: seed.authorityWritesEnabled
+            )
+        }
         propagateExtractionGate()
+        propagateUsageGates()
+    }
+
+    /// Restore the "granting consent implies the prompt was shown" invariant that
+    /// both consent pairs document: a torn persisted state (`granted == true` with
+    /// `shown` false or missing — a crash between the coordinator's separate
+    /// debounced writes, or a downgrade that wrote only one key) must not
+    /// re-prompt a member who already consented.
+    ///
+    /// WHY THIS EXISTS (U1 review, thread `PRRT_kwDORtgQYs6ZgTEL`): the review read
+    /// this as a live defect, on the standard Swift rule that property observers do
+    /// not run for assignments made from inside an initializer — which would mean
+    /// loading a persisted `granted == true` never executes the `didSet` that sets
+    /// `shown`. That rule is real for a plain class, but it does NOT hold here:
+    /// `@Observable` rewrites each stored property into a computed property backed
+    /// by `_property`, so an `init`-body assignment to a property that already has
+    /// a default value goes through the SETTER, and the observer does run. The
+    /// invariant therefore already held (verified by isolated probe: the same
+    /// class with and without `@Observable` gives opposite results).
+    ///
+    /// It held **by accident of macro expansion**, though — silently dropping the
+    /// `@Observable` annotation, or a change in how the macro treats observers,
+    /// would break a consent invariant with no test to catch it. This method makes
+    /// the guarantee explicit and independent of that expansion; the repair still
+    /// persists because in a method (unlike a plain `init`) observers always run.
+    /// Pinned by `UsageMemoryGateTests.testTornConsentStateIsRepairedOnLoad`.
+    private func normalizeConsentShownInvariants() {
+        if consentGranted, !consentShown { consentShown = true }
+        if usageMemoryConsentGranted, !usageMemoryConsentShown { usageMemoryConsentShown = true }
     }
 
     private func propagateExtractionGate() {
@@ -93,6 +278,22 @@ final class MemorySettings {
                 consentGranted: consentGranted,
                 automaticExtraction: automaticExtraction,
                 remoteConfigEnabled: remoteConfigExtractionEnabled
+            )
+        )
+    }
+
+    private func propagateUsageGates() {
+        UsageMemoryKillSwitchRegistry.setExtraction(
+            UsageMemoryExtractionGate.isEnabled(
+                usageConsentGranted: usageMemoryConsentGranted,
+                remoteConfigEnabled: remoteConfigUsageExtractionEnabled,
+                remoteConfigResolved: hasResolvedUsageRemoteConfig
+            )
+        )
+        UsageMemoryKillSwitchRegistry.setAuthorityWrites(
+            UsageMemoryAuthorityWriteGate.isEnabled(
+                remoteConfigEnabled: remoteConfigUsageAuthorityWritesEnabled,
+                remoteConfigResolved: hasResolvedUsageRemoteConfig
             )
         )
     }
@@ -112,6 +313,90 @@ enum MemoryExtractionGate {
         remoteConfigEnabled: Bool
     ) -> Bool {
         consentGranted && automaticExtraction && remoteConfigEnabled
+    }
+}
+
+// MARK: - Usage memory model placement
+
+/// Where the usage-memory curation model runs. Only the cloud placements can
+/// ever satisfy `UsageMemoryCloudGate`; `.local` (the default) keeps the whole
+/// pipeline on-device.
+enum UsageMemoryModelPlacement: String, CaseIterable, Sendable {
+    /// On-device model. Default: nothing usage-derived leaves the machine.
+    case local
+    /// A user-configured cloud text model.
+    case cloudText
+    /// The BurnBar-hosted cloud curation service.
+    case burnbarCloud
+
+    /// True for any placement that sends usage-derived material off-device.
+    var isCloud: Bool { self != .local }
+}
+
+// MARK: - Usage memory Remote Config snapshot
+
+/// The two usage-memory fleet switches as read from Firebase Remote Config's
+/// **active** (cached or freshly activated) config. Carried as one value so both
+/// lanes resolve together — a half-applied snapshot can never leave one lane on
+/// its optimistic default while the other honors the fleet.
+struct UsageMemoryRemoteConfigSnapshot: Equatable, Sendable {
+    /// `memory_usage_extraction_enabled`.
+    var extractionEnabled: Bool
+    /// `memory_usage_authority_writes_enabled`.
+    var authorityWritesEnabled: Bool
+}
+
+// MARK: - Usage memory gates (pure)
+
+/// Pure gate: usage-memory extraction is enabled only when the user has
+/// CONSENTED **and** the fleet Remote Config kill switch has not disabled it
+/// **and** that fleet value has actually been resolved. Any lever off ->
+/// extraction halted (fail-closed). Consent defaults OFF and resolution starts
+/// false, so the usage loop is dormant out of the box AND during the startup
+/// window before Remote Config is read. Kept pure so the gate logic is testable
+/// without Firebase or a SettingsManager.
+///
+/// `remoteConfigResolved` is what keeps a **cached** fleet kill authoritative:
+/// the RC field defaults to the optimistic `true`, so without this lever a
+/// consenting user's lane would open at init and stay open until the async fetch
+/// landed, ignoring a `false` already cached on disk.
+enum UsageMemoryExtractionGate {
+    static func isEnabled(
+        usageConsentGranted: Bool,
+        remoteConfigEnabled: Bool,
+        remoteConfigResolved: Bool
+    ) -> Bool {
+        usageConsentGranted && remoteConfigEnabled && remoteConfigResolved
+    }
+}
+
+/// Pure gate: durable authority writes from the usage pipeline require the
+/// `memory_usage_authority_writes_enabled` fleet switch to allow **and** that
+/// value to have been resolved. Independent of consent and of the extraction
+/// gate by design — the fleet can quarantine usage WRITES without touching
+/// read-side behavior — but subject to the same "closed until resolved" rule, so
+/// the write lane cannot ride its optimistic default through startup either.
+enum UsageMemoryAuthorityWriteGate {
+    static func isEnabled(
+        remoteConfigEnabled: Bool,
+        remoteConfigResolved: Bool
+    ) -> Bool {
+        remoteConfigEnabled && remoteConfigResolved
+    }
+}
+
+/// Pure gate: cloud curation of usage memory requires the extraction gate to be
+/// open **and** the separate cloud-curation consent **and** a cloud model
+/// placement. Any lever off -> zero cloud egress (fail-closed). Both consents
+/// default OFF and placement defaults `.local`, so this gate is triply dormant
+/// out of the box.
+enum UsageMemoryCloudGate {
+    static func isEnabled(
+        extractionEnabled: Bool,
+        cloudConsentGranted: Bool,
+        placementIsCloud: Bool
+    ) -> Bool {
+        extractionEnabled && cloudConsentGranted && placementIsCloud
     }
 }
 

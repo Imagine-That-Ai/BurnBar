@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - App PR Gate and Headless leave the PR / merge-queue path
+- **AgentLens macos-26 App PR Gate and Headless App Build no longer run on
+  `pull_request`.** Fast Feedback plus the ten required security/quality
+  contexts remain the merge door. Merge-queue ALLGREEN no longer waits 53–69
+  minutes (App) or 21–30 minutes (Headless) on hosted macos-26.
+- **The builds stay real.** App PR Gate runs on push to `main`, nightly at
+  09:17 UTC, and `workflow_dispatch`. Headless runs on path-filtered push to
+  `main`, nightly at 10:47 UTC, and `workflow_dispatch`. A broken AgentLens
+  graph is visible after merge, not silent.
+- **`merge_group` on App PR Gate emits skipped receipts only** so a stale
+  base-SHA BurnBar CI Gate inventory cannot hang the queue. macos-26 jobs do
+  not run on that path. Headless has no `merge_group` trigger.
+- **BurnBar CI Gate's merge-queue inventory no longer lists**
+  `App build + test (AgentLens)` or `Mobile build + unit test`. The ten
+  required branch-protection contexts are unchanged. `CI_POOL` /
+  `MACOS_GATE_POOL` are unchanged.
+- **Domain Core control-plane trusted bytes refreshed** for the two files
+  that inventory change actually edited (`burnbar-ci-gate.yml` and
+  `governance/burnbar-ci-gate.json`). Promotion-contracts still fail closed
+  on helper drift, omitted workflow executables, loaded-identity forgery,
+  Firebase CLI shim swaps, and symlink escapes.
+- **Post-merge App/Headless push proofs are keyed by SHA and never
+  cancelled.** A later docs-only (or any) `main` push cannot evict an
+  in-flight AgentLens/mobile or headless graph proof; the replacement
+  classifier would otherwise skip macos/mobile until nightly.
+
+### Added - Metered usage-memory curation gateway (U4)
+- **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
+  token-metered gateway for cloud usage-memory curation inference
+  (text lane = any active Pro on deepseek-v4-flash; multimodal lane =
+  Pro Max/Ultra on minimax-m3). Reserve-before-spend / settle-to-actual
+  Firestore ledger with monthly + daily lane meters, Remote Config-tunable
+  limits, and a `usage_curation_enabled` kill flag. Every request pins
+  OpenRouter routing to CoreWeave (US) with fallbacks disabled, provider
+  data collection denied, and ZDR required; candidate text rides inside an
+  untrusted-data fence with fence-marker neutralization. See
+  `docs/USAGE_CURATION_METERING.md`.
+
 ### Changed - Approved first-run + homepage copy
 - Homepage hero now uses Alberto-approved copy: **Watch your agents. Before the
   bill.** plus the locked receipt subhead, the real `/brand/logo-*.png` mark, and

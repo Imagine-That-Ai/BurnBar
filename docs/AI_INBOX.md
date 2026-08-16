@@ -535,7 +535,7 @@ deploy to. A non-zero exit means the deployed rules are behind.
 **Pre-deploy gates, all runnable locally:**
 
 ```bash
-node scripts/ci/check-firestore-rules-size.mjs      # 60.6% of the source limit
+node scripts/ci/check-firestore-rules-size.mjs      # enforce staging-derived warning/failure ratchets
 node packages/data-domains/driftcheck.mjs           # every subcollection registered
 cd firestore-rules-tests && npm test                # emulator suite
 ```
