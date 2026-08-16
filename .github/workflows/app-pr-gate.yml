@@ -32,9 +32,15 @@ on:
     branches: [main]
     types: [checks_requested]
 
+# Push runs are the exact-main product proof: key them by commit and never
+# cancel them. A later docs-only (or any) main push must not share
+# `app-pr-gate-push-refs/heads/main` and evict a 53–69 minute AgentLens run;
+# the replacement would classify only its own before..after diff and skip
+# macos/mobile. GitHub also evicts a *pending* run when two jobs share a
+# group, even with cancel-in-progress false, so push groups include the SHA.
 concurrency:
-  group: app-pr-gate-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
+  group: app-pr-gate-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   classify:

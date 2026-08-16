@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `governance/burnbar-ci-gate.json`). Promotion-contracts still fail closed
   on helper drift, omitted workflow executables, loaded-identity forgery,
   Firebase CLI shim swaps, and symlink escapes.
+- **Post-merge App/Headless push proofs are keyed by SHA and never
+  cancelled.** A later docs-only (or any) `main` push cannot evict an
+  in-flight AgentLens/mobile or headless graph proof; the replacement
+  classifier would otherwise skip macos/mobile until nightly.
 
 ### Added - Metered usage-memory curation gateway (U4)
 - **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,

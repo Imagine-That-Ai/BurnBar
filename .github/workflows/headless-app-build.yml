@@ -47,9 +47,14 @@ on:
     - cron: "47 10 * * *"
   workflow_dispatch:
 
+# Push runs are the exact-main headless proof: key them by commit and never
+# cancel them. A later main push must not evict an in-flight graph build;
+# path filters do not protect a product SHA whose proof is still running.
+# GitHub also evicts a *pending* run when two jobs share a group, even with
+# cancel-in-progress false, so push groups include the SHA.
 concurrency:
-  group: headless-app-build-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: headless-app-build-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   headless-app-build:

@@ -784,6 +784,23 @@ check("App and Headless AgentLens builds are post-merge/nightly, not PR walls", 
   assert.match(jobField(classify, "if"), /github\.event_name != 'merge_group'/u);
   assert.match(jobField(appBuild, "if"), /github\.event_name != 'merge_group'/u);
   assert.match(jobField(mobile, "if"), /github\.event_name != 'merge_group'/u);
+
+  assert.match(
+    appWorkflow,
+    /group: app-pr-gate-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'push' && github\.sha \|\| github\.ref \}\}/u,
+  );
+  assert.match(
+    appWorkflow,
+    /cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/u,
+  );
+  assert.match(
+    headlessSource,
+    /group: headless-app-build-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'push' && github\.sha \|\| github\.ref \}\}/u,
+  );
+  assert.match(
+    headlessSource,
+    /cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/u,
+  );
 });
 
 check("macOS gates never run pull-request or merge-group code on persistent self-hosted runners", () => {
