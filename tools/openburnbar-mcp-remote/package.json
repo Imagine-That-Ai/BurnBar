@@ -1,7 +1,14 @@
 {
-  "name": "openburnbar-mcp-remote",
+  "name": "openburnbar",
   "version": "0.1.0",
-  "private": true,
+  "description": "OpenBurnBar Node CLI — MCP stdio shim to the hosted BurnBar MCP, session resume (obbresume), and the Pensieve memory hook.",
+  "keywords": [
+    "openburnbar",
+    "mcp",
+    "burnbar",
+    "cli",
+    "agents"
+  ],
   "type": "module",
   "bin": {
     "openburnbar-mcp-remote": "lib/index.js",
@@ -26,6 +33,17 @@
     "typescript-eslint": "8.60.1"
   },
   "license": "AGPL-3.0-only",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Imagine-That-Ai/BurnBar.git",
+    "directory": "tools/openburnbar-mcp-remote"
+  },
+  "homepage": "https://github.com/Imagine-That-Ai/BurnBar/tree/main/tools/openburnbar-mcp-remote",
+  "bugs": "https://github.com/Imagine-That-Ai/BurnBar/issues",
   "overrides": {
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3"
