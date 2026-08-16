@@ -1728,6 +1728,13 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
     /// `BurnBarBillingProvenance.effectiveKind(of:)`). Additive and
     /// decode-optional like `parentRequestID`.
     public let billingKind: BurnBarBillingKind?
+    /// Which provider account served this request, so multi-seat installs can
+    /// attribute daemon-routed burn to a specific account rather than to the
+    /// provider as a whole. The router already knows this as the credential
+    /// slot; these carry it through the ledger to `token_usage`. Additive and
+    /// decode-optional, so existing ledger entries decode unchanged.
+    public let providerAccountID: String?
+    public let providerAccountLabel: String?
 
     private enum CodingKeys: String, CodingKey {
         case runID
@@ -1749,6 +1756,8 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         case confidence
         case parentRequestID
         case billingKind
+        case providerAccountID
+        case providerAccountLabel
     }
 
     public init(
@@ -1770,7 +1779,9 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         executionSourceConfidence: BurnBarUsageConfidence? = nil,
         confidence: BurnBarUsageConfidence = .exact,
         parentRequestID: String? = nil,
-        billingKind: BurnBarBillingKind? = nil
+        billingKind: BurnBarBillingKind? = nil,
+        providerAccountID: String? = nil,
+        providerAccountLabel: String? = nil
     ) {
         self.runID = runID
         self.providerID = providerID
@@ -1791,6 +1802,8 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         self.confidence = confidence
         self.parentRequestID = parentRequestID
         self.billingKind = billingKind
+        self.providerAccountID = providerAccountID
+        self.providerAccountLabel = providerAccountLabel
     }
 
     public init(from decoder: Decoder) throws {
@@ -1814,6 +1827,8 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         confidence = try container.decodeIfPresent(BurnBarUsageConfidence.self, forKey: .confidence) ?? .exact
         parentRequestID = try container.decodeIfPresent(String.self, forKey: .parentRequestID)
         billingKind = try container.decodeIfPresent(BurnBarBillingKind.self, forKey: .billingKind)
+        providerAccountID = try container.decodeIfPresent(String.self, forKey: .providerAccountID)
+        providerAccountLabel = try container.decodeIfPresent(String.self, forKey: .providerAccountLabel)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -1837,6 +1852,8 @@ public struct BurnBarUsageEvent: Codable, Hashable, Sendable {
         try container.encode(confidence, forKey: .confidence)
         try container.encodeIfPresent(parentRequestID, forKey: .parentRequestID)
         try container.encodeIfPresent(billingKind, forKey: .billingKind)
+        try container.encodeIfPresent(providerAccountID, forKey: .providerAccountID)
+        try container.encodeIfPresent(providerAccountLabel, forKey: .providerAccountLabel)
     }
 }
 

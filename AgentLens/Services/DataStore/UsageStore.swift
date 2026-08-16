@@ -44,6 +44,7 @@ final class UsageStore: Sendable {
             }
             try self.deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
             try self.deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
+            try self.deleteUnattributedPredecessorRows(replacedBy: usage, in: db)
             try self.upsertUsage(usage, in: db)
             return db.totalChangesCount - before
         }
@@ -62,6 +63,7 @@ final class UsageStore: Sendable {
                 }
                 try self.deleteFactoryRoutedMirrorRows(replacedBy: usage, in: db)
                 try self.deleteStaleLowerConfidenceModelRows(replacedBy: usage, in: db)
+                try self.deleteUnattributedPredecessorRows(replacedBy: usage, in: db)
                 try self.upsertUsage(usage, in: db)
             }
             return db.totalChangesCount - before
