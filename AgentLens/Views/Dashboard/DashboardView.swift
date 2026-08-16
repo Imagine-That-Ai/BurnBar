@@ -1087,7 +1087,11 @@ struct DashboardView: View {
             return
         }
         do {
-            pendingMemoryReviewCount = try await store.pendingChatMemoryReviewCount(scope: memoryReviewScope)
+            // The inbox serves chat + usage memories (U7), so the badge counts
+            // both — otherwise it would disagree with the inbox's own pill.
+            let chatCount = try await store.pendingChatMemoryReviewCount(scope: memoryReviewScope)
+            let usageCount = try await store.pendingUsageMemoryReviewCount(scope: memoryReviewScope)
+            pendingMemoryReviewCount = chatCount + usageCount
         } catch {
             pendingMemoryReviewCount = nil
         }
