@@ -1,6 +1,8 @@
 import Foundation
 import OpenBurnBarCore
 
+// cov:ignore-start -- never-referenced-leaf executable; package tests do not execute `swift run OpenBurnBarUsageMemoryStage0Harness`, so this file has no coverage-bearing lane
+
 // OpenBurnBarUsageMemoryStage0Harness — offline drop-rate proof for the
 // usage-memory Stage-0 candidate gate.
 //
@@ -250,3 +252,4 @@ if options.jsonOutput {
         print(String(format: "  %-18@ %8d  (%.1f%%)", reason.rawValue as NSString, count, share))
     }
 }
+// cov:ignore-end
