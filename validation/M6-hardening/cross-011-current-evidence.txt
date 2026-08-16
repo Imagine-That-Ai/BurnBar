@@ -1,7 +1,7 @@
 CROSS-011/CROSS-016 current fallback evidence
 validated_at=2026-08-16T18:40:36.075Z
 branch=feat/live-agent-fleet
-head=aee1fddf817f51ad27d264220344bc4c12ddb8e7
+head=471792d47c06ba8f6bd77b6888b345e290e8bf94
 desktop_control_attempt=cua-driver status
 desktop_control_result=BLOCKED: cua-driver is not installed or not on PATH
 desktop_control_capture=not attempted
