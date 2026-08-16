@@ -39,11 +39,14 @@ directory, and therefore changes the default socket, `fleet.sqlite`, and
 somewhere else without moving the fleet files.
 
 The examples below use this shell convention. It is intentional: a harness
-may substitute only `BURNBAR_DAEMON_SOCKET_PATH`, without editing the example.
-Do not put `~` inside quotes and expect the shell to expand it.
+may substitute `BURNBAR_DAEMON_SOCKET_PATH`, or redirect
+`BURNBAR_DAEMON_SUPPORT_DIR` and let the default socket follow that directory,
+without editing the example. Do not put `~` inside quotes and expect the shell
+to expand it.
 
 ```sh
-SOCK="${BURNBAR_DAEMON_SOCKET_PATH:-${HOME}/Library/Application Support/BurnBar/burnbar-daemon.sock}"
+SUPPORT="${BURNBAR_DAEMON_SUPPORT_DIR:-${HOME}/Library/Application Support/BurnBar}"
+SOCK="${BURNBAR_DAEMON_SOCKET_PATH:-${SUPPORT}/burnbar-daemon.sock}"
 ```
 
 The daemon creates a local Unix socket, not a TCP listener. The transport is
@@ -143,7 +146,8 @@ The supported transport error matrix is:
 | Bytes are not valid JSON | `-32700` (`parseError`) | Return a typed error; use `id: "no-id"` when an id cannot be recovered. |
 | Valid JSON but not a request object, or missing/wrong-typed `id`/`method` | `-32600` (`invalidRequest`) | Return the expected-envelope details; use `"no-id"` when needed. JSON fragments (`null`, number, string, boolean) are in this row. |
 | Unknown method | `-32601` (`methodNotFound`) | Return `details: "method=<wire method>"`. |
-| `params` has the wrong type for a method | `-32602` (`invalidParams`) | Return expected/received type details; do not partially apply a mutation. |
+| `params` has the wrong type for a method that declares object parameters | `-32602` (`invalidParams`) | Return expected/received type details; do not partially apply a mutation. |
+| `daemon.fleet.snapshot` has a `params` value | Success or the normal snapshot result | Snapshot uses the plain envelope and ignores an omitted, object, or other JSON `params` value; consumers should omit it. |
 | Daemon-side failure, including snapshot before its first tick | `-32603` (`internalError`) | Return a typed reason. Pre-first-tick snapshot reads use `state=not_ready; retry_after=first_tick`. |
 | Declared `protocolVersion` is not supported | `-32001` (`protocolVersionMismatch`) | Return `declared_version=<n>; supported_versions=[1]`; never silently downgrade. |
 | Request payload is larger than 65,536 raw UTF-8 bytes | `-32002` (`frameTooLarge`) | Count bytes excluding the newline and return the received byte count. |
@@ -156,17 +160,19 @@ sentinel, not a client id.
 ## Runnable examples
 
 These examples are intentionally self-contained. Set
-`BURNBAR_DAEMON_SOCKET_PATH` to use an overridden socket, or leave it unset
-for the default. A hermetic daemon can instead be started with
-`--socket-path "$TMPD/test.sock"` and the same environment variable exported
-to the examples. The daemon's first fleet tick starts immediately, but the
-examples retry the typed pre-first-tick response so they are safe at cold
-start.
+`BURNBAR_DAEMON_SOCKET_PATH` to use an overridden socket, or set
+`BURNBAR_DAEMON_SUPPORT_DIR` and leave the socket override unset to use
+`<support-directory>/burnbar-daemon.sock`. A hermetic daemon can instead be
+started with `--socket-path "$TMPD/test.sock"` and
+`BURNBAR_DAEMON_SOCKET_PATH="$TMPD/test.sock"` exported to the examples. The
+daemon's first fleet tick starts immediately, but the examples retry the typed
+pre-first-tick response so they are safe at cold start.
 
 ### `nc -U` snapshot read
 
 ```sh
-SOCK="${BURNBAR_DAEMON_SOCKET_PATH:-${HOME}/Library/Application Support/BurnBar/burnbar-daemon.sock}"
+SUPPORT="${BURNBAR_DAEMON_SUPPORT_DIR:-${HOME}/Library/Application Support/BurnBar}"
+SOCK="${BURNBAR_DAEMON_SOCKET_PATH:-${SUPPORT}/burnbar-daemon.sock}"
 response=
 for _ in $(seq 1 40); do
   response="$(printf '%s\n' '{"id":"fleet-doc-nc","method":"daemon.fleet.snapshot"}' | nc -U "$SOCK" 2>/dev/null || true)"
@@ -192,16 +198,17 @@ import os
 import socket
 import time
 
-SOCK = os.environ.get(
-    "BURNBAR_DAEMON_SOCKET_PATH",
+support = os.environ.get(
+    "BURNBAR_DAEMON_SUPPORT_DIR",
     os.path.join(
         os.path.expanduser("~"),
         "Library",
         "Application Support",
         "BurnBar",
-        "burnbar-daemon.sock",
     ),
 )
+socket_override = os.environ.get("BURNBAR_DAEMON_SOCKET_PATH")
+SOCK = socket_override or os.path.join(support, "burnbar-daemon.sock")
 REQUEST = b'{"id":"fleet-doc-python","method":"daemon.fleet.snapshot"}\n'
 
 def read_once():
@@ -249,8 +256,11 @@ SNAPSHOT="${BURNBAR_FLEET_SNAPSHOT_PATH:-${BURNBAR_DAEMON_SUPPORT_DIR:-${HOME}/L
 jq '{schemaVersion, generatedAt, cadenceSeconds, runningCount, persistenceHealth}' "$SNAPSHOT"
 ```
 
-After the first successful tick this command prints valid JSON. Before that
-tick, the documented state is absence, not an empty placeholder.
+After the first successful tick this command prints valid JSON. On a fresh
+support directory, before that tick, the documented state is absence, not an
+empty placeholder. If the daemon is restarted with an existing support
+directory, the prior last-good file remains in place and this command can read
+that stale generation until the new daemon completes its first tick.
 
 ## Well-known file
 
@@ -295,8 +305,9 @@ defined below.
 - The default cadence is 15 seconds. `BURNBAR_FLEET_CADENCE_SECONDS` accepts
   an integer of at least 1; invalid or smaller values use 15. The value is
   both the ticker interval and the snapshot's `cadenceSeconds`.
-- The first build starts immediately after daemon startup. No file is
-  created before the first successful snapshot build.
+- The first build starts immediately after daemon startup. On a **fresh**
+  support directory, no file is created before the first successful snapshot
+  build.
 - Each completed build writes `fleet-snapshot.json.tmp` and then atomically
   renames it to `fleet-snapshot.json`. The temporary file is removed on
   failure and does not remain after a completed write.
@@ -319,15 +330,27 @@ defined below.
 ### Daemon down and pre-first-tick behavior
 
 Stopping the daemon does not delete the file. The last snapshot remains
-readable and valid, but its mtime and contents stop changing. A consumer must
-treat `generatedAt` older than its expected freshness window as stale; it
-must not claim that the daemon is still probing.
+readable and valid, but its mtime and contents stop changing. On restart, the
+daemon also preserves that last-good file while the new service is in its
+pre-first-tick `notReady` window. A file that exists during that window is
+therefore a stale previous generation, not proof that the restarted daemon has
+completed a tick. Consumers must evaluate `generatedAt` against their
+freshness policy and must not claim that the daemon is still probing from the
+file alone.
 
-Before the first successful build, `fleet-snapshot.json` is absent. The
-snapshot RPC in the same window returns a typed `-32603` `internalError` with
+For this API's consumer policy, a snapshot is `fresh` while
+`now - generatedAt <= 2 * cadenceSeconds` and `stale` only when the strict
+`>` comparison is true. This uses the snapshot's own reported cadence, not a
+hardcoded 15-second default. The embedded consumer below reports this
+classification in its `result.freshness` annotation; callers using only the
+raw file or daemon RPC must apply the same comparison themselves.
+
+Before the first successful build, `fleet-snapshot.json` is absent **only for
+a fresh support directory**. The snapshot RPC in the same window returns a
+typed `-32603` `internalError` with
 `details: "state=not_ready; retry_after=first_tick"`. It never returns a
-fabricated all-idle snapshot. A client should retry the RPC or wait for the
-file to appear.
+fabricated all-idle snapshot. A client should retry the RPC or, for a fresh
+support directory, wait for the file to appear.
 
 ## Snapshot schema
 
@@ -513,7 +536,8 @@ integers. In the current fixed one-row-per-agent model, every row has a key
 and its value is `1` exactly when that row is running, otherwise `0`;
 therefore the sum of values equals `runningCount`. A forward-compatible
 consumer should tolerate an omitted key for a non-running future row as
-equivalent to zero, but must reject a mismatch for a present key.
+equivalent to zero, but must reject an omitted key for a running row and must
+reject a mismatch for a present key. The current daemon emits all keys.
 
 ### Orchestrator state
 
@@ -823,9 +847,14 @@ proposed/approved candidates cannot erase it before reconciliation.
 human-approved directive targeting Hermes, BurnBar sends
 `POST /v1/chat/completions` to the Hermes `api_server` on loopback
 (`http://127.0.0.1:8642` by default) with `Authorization: Bearer
-API_SERVER_KEY`. `BURNBAR_HERMES_GATEWAY_URL` may override the endpoint only
-to `127.0.0.1`, `localhost`, or `::1`, unless an explicit remote opt-in is
-present. Credentials are never logged or copied into snapshots/fixtures.
+<resolved-api-key>`. The key resolution order is
+`BURNBAR_HERMES_API_KEY` first, then the `API_SERVER_KEY=` line in
+`~/.hermes/.env`. `BURNBAR_HERMES_GATEWAY_URL` may override the endpoint only
+to `127.0.0.1`, `localhost`, or `::1` by default. A non-loopback URL is
+rejected unless `BURNBAR_HERMES_ALLOW_REMOTE=1` (the implementation also
+accepts `true` or `yes`) is explicitly set. Credentials are never logged or
+copied into snapshots/fixtures, and the default loopback-only rule prevents a
+real key from being sent to an arbitrary endpoint.
 
 The delivery sequence is:
 
@@ -856,16 +885,20 @@ The following is a complete standard-library-only consumer. It deliberately
 does not import BurnBar source or assume Swift types. It locates the board
 from `BURNBAR_FLEET_SNAPSHOT_PATH`, then the daemon support directory, then
 the default support path. If the file is absent, or if
-`BURNBAR_FLEET_USE_RPC=1` / `BURNBAR_DAEMON_SOCKET_PATH` is set, it reads the
-RPC socket instead. It validates every required top-level and nested field,
-all enum values, date forms, aggregates, sensor variants, health reasons,
-the status/confidence rule, and ordinary optionality. Unknown additive keys
-are ignored. A successful run prints a standard response-shaped JSON object,
-so it can be used as a doc-driven smoke test as well as a standalone
-consumer.
+`BURNBAR_FLEET_USE_RPC=1` / a non-empty `BURNBAR_DAEMON_SOCKET_PATH` is set,
+it reads the RPC socket instead. The socket fallback derives from
+`BURNBAR_DAEMON_SUPPORT_DIR` when no explicit socket override is set. It
+validates every required top-level and nested field, all enum values, date
+forms, aggregates, sensor variants, health reasons, the status/confidence
+rule, and ordinary optionality. Unknown additive keys are ignored. A
+successful run prints a response-shaped JSON object with the validated
+snapshot and a `result.freshness` annotation using the strict
+`generatedAt`/`2 * cadenceSeconds` policy, so it can be used as a doc-driven
+smoke test as well as a standalone consumer.
 
 For a file fixture, set `BURNBAR_FLEET_SNAPSHOT_PATH=/path/to/fixture.json`.
 For an overridden daemon socket, set `BURNBAR_DAEMON_SOCKET_PATH=/path/to/test.sock`.
+For a redirected default socket, set `BURNBAR_DAEMON_SUPPORT_DIR=/path/to/support`.
 
 ```sh
 python3 - <<'PY'
@@ -874,7 +907,7 @@ import math
 import os
 import socket
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 KNOWN_IDS = {
     "claude-code", "factory-droid", "codex", "hermes", "grok-bot",
@@ -885,16 +918,17 @@ CONFIDENCES = {
     "exactProcess", "activeSessionFile", "logHeartbeat", "estimated",
     "unsupported",
 }
-SOCK = os.environ.get(
-    "BURNBAR_DAEMON_SOCKET_PATH",
+support = os.environ.get(
+    "BURNBAR_DAEMON_SUPPORT_DIR",
     os.path.join(
         os.path.expanduser("~"),
         "Library",
         "Application Support",
         "BurnBar",
-        "burnbar-daemon.sock",
     ),
 )
+socket_override = os.environ.get("BURNBAR_DAEMON_SOCKET_PATH")
+SOCK = socket_override or os.path.join(support, "burnbar-daemon.sock")
 
 
 def require(condition, message):
@@ -920,6 +954,7 @@ def iso_date(value, field):
     except ValueError as error:
         raise SystemExit("fleet consumer validation failed: " + field + " is not ISO-8601") from error
     require(parsed.tzinfo is not None, field + " must carry a timezone")
+    return parsed
 
 
 def wire_id(value, field):
@@ -1045,7 +1080,12 @@ def validate_snapshot(snapshot):
     counts = snapshot["countsByAgent"]
     require(type(counts) is dict, "countsByAgent must be an object")
     for aid in agents_by_id:
-        require(aid in counts, "countsByAgent is missing " + aid)
+        if aid not in counts:
+            require(
+                agents_by_id[aid]["status"] != "running",
+                "countsByAgent is missing running agent " + aid,
+            )
+            continue
         integer(counts[aid], "countsByAgent[" + aid + "]", 0)
         expected = int(agents_by_id[aid]["status"] == "running")
         require(counts[aid] == expected, "countsByAgent disagrees for " + aid)
@@ -1158,10 +1198,7 @@ def load_snapshot():
             os.path.join(os.path.expanduser("~"), "Library", "Application Support", "BurnBar"),
         )
         file_path = os.path.join(support, "fleet-snapshot.json")
-    force_rpc = (
-        os.environ.get("BURNBAR_FLEET_USE_RPC") == "1"
-        or "BURNBAR_DAEMON_SOCKET_PATH" in os.environ
-    )
+    force_rpc = os.environ.get("BURNBAR_FLEET_USE_RPC") == "1" or bool(socket_override)
     if not force_rpc and os.path.isfile(file_path):
         with open(file_path, "r", encoding="utf-8") as stream:
             return json.load(stream)
@@ -1169,10 +1206,23 @@ def load_snapshot():
 
 
 snapshot = validate_snapshot(load_snapshot())
+generated_at = iso_date(snapshot["generatedAt"], "generatedAt")
+age_seconds = max(
+    0.0,
+    (datetime.now(timezone.utc) - generated_at).total_seconds(),
+)
+threshold_seconds = 2 * snapshot["cadenceSeconds"]
 print(json.dumps({
     "id": "fleet-doc-consumer",
     "protocolVersion": 1,
-    "result": {"snapshot": snapshot},
+    "result": {
+        "snapshot": snapshot,
+        "freshness": {
+            "state": "stale" if age_seconds > threshold_seconds else "fresh",
+            "ageSeconds": age_seconds,
+            "thresholdSeconds": threshold_seconds,
+        },
+    },
 }, sort_keys=True, separators=(",", ":")))
 PY
 ```

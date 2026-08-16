@@ -14,9 +14,10 @@ import Foundation
 /// write.
 public enum BurnBarFleetServiceFactory {
     public static func makeDefault(
-        configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration()
+        configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
+        environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> BurnBarFleetService {
-        let fleetConfiguration = BurnBarFleetConfiguration()
+        let fleetConfiguration = BurnBarFleetConfiguration(environment: environment)
         let builder = BurnBarFleetSnapshotBuilder(
             cadenceSeconds: fleetConfiguration.cadenceSeconds,
             probes: BurnBarFleetProbeFactory.makeDefaultProbes(
