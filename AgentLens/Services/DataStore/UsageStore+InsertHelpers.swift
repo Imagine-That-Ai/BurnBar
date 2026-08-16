@@ -3,6 +3,41 @@ import GRDB
 import OpenBurnBarCore
 
 extension UsageStore {
+    /// Retires the unattributed predecessor of a now-attributed row.
+    ///
+    /// The unique index (and the `ON CONFLICT` target) includes
+    /// `COALESCE(providerAccountID, '')`, so once account attribution starts
+    /// filling that column an incoming row no longer collides with the same
+    /// session's previously unattributed row — it would insert alongside it and
+    /// double the session's tokens and cost. A session belongs to exactly one
+    /// signed-in account, so a NULL-account row with the same
+    /// provider/session/model/device identity is the same usage before it was
+    /// attributable: delete it and let the attributed row take its place.
+    ///
+    /// Only rows that are still unattributed are claimed; a row already
+    /// attributed to a *different* account is left alone, so this can never
+    /// merge two real accounts' usage together.
+    func deleteUnattributedPredecessorRows(replacedBy usage: TokenUsage, in db: Database) throws {
+        guard Self.usagePartitionToken(from: usage.providerAccountID) != nil else { return }
+
+        try db.execute(
+            sql: """
+                DELETE FROM token_usage
+                WHERE provider = ?
+                  AND sessionId = ?
+                  AND model = ?
+                  AND COALESCE(sourceDeviceId, '') = COALESCE(?, '')
+                  AND COALESCE(providerAccountID, '') = ''
+                """,
+            arguments: [
+                usage.provider.rawValue,
+                usage.sessionId,
+                usage.model,
+                usage.sourceDeviceId
+            ]
+        )
+    }
+
     func deleteKimiRequestIDModelRows(replacedBy usage: TokenUsage, in db: Database) throws { // pure-move: was private
         guard usage.provider == .kimi,
               !Self.isKimiRequestIDModel(usage.model) else { return }

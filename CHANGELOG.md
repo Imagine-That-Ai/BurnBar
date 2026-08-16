@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Per-account burn attribution
+
+- Usage rows now record *which* provider account produced them, so an install
+  with several seats of the same provider (three Cursor seats, three OpenAI
+  accounts) can see burn split per account instead of one merged provider
+  total. The `token_usage` account columns have existed since `v35`; nothing
+  filled them for locally parsed usage until now, so no migration is involved.
+- Local identity resolvers read each tool's own signed-in identity — Cursor
+  (`cursorAuth/cachedEmail`), Codex (`auth.json` account id + `id_token` email
+  claim), Claude Code (`.claude.json` `oauthAccount`) — and a device-local
+  identity timeline attributes each parsed session to the account signed in
+  during that session's window. Attribution is deliberately conservative:
+  sessions spanning an account switch, and history recorded before attribution
+  first ran, stay unattributed rather than being guessed onto a seat. Identity
+  values are stored as the existing anonymized `acct_sha256_…` partition token.
+- Daemon-routed traffic carries the router's credential slot through
+  `BurnBarUsageEvent` into `token_usage`, so gateway burn is attributed too.
+- Attributed rows retire their unattributed predecessor on upsert, so turning
+  attribution on re-keys existing history instead of double-counting it.
+- Surfaced in the dashboard Credential Ranking lane and a new per-provider
+  **Spend by Account** panel. See [`docs/PROVIDER_ACCOUNTS.md`](docs/PROVIDER_ACCOUNTS.md).
+
 ### Added - OpenBurnBar Safari extension
 
 - Added OpenBurnBar as a Safari Web Extension surface with MV3 page context,

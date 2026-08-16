@@ -1373,7 +1373,9 @@ public actor BurnBarHTTPGatewayServer {
             executionSourceName: executionSource.id == "unknown" ? nil : executionSource.name,
             executionSourceKind: executionSource.kind == .unknown ? nil : executionSource.kind,
             executionSourceConfidence: executionSource.id == "unknown" ? nil : .exact,
-            confidence: usage.confidence
+            confidence: usage.confidence,
+            providerAccountID: route.credentialSlotID,
+            providerAccountLabel: route.credentialSlotLabel
         )
         do {
             _ = try await usageRecorder.record(event, idempotencyKey: idempotencyKey)

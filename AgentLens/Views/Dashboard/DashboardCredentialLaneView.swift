@@ -70,7 +70,7 @@ struct DashboardCredentialLaneView: View {
                 .font(UnifiedDesignSystem.Typography.body)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
 
-            Text("Once usage rows arrive with a provider account ID — from Anthropic/OpenAI/OpenRouter billing pulls or daemon-routed traffic — they'll appear here ranked by spend.")
+            Text("Once usage rows arrive with a provider account ID — from the account signed in to Cursor, Codex, or Claude Code, from billing pulls, or from daemon-routed traffic — they'll appear here ranked by spend.")
                 .font(UnifiedDesignSystem.Typography.caption)
                 .foregroundStyle(UnifiedDesignSystem.Colors.textMuted)
         }

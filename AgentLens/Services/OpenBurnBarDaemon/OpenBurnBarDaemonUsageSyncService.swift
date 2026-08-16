@@ -315,6 +315,11 @@ final class OpenBurnBarDaemonUsageSyncService {
             executionSourceName: event.executionSourceName,
             executionSourceKind: event.executionSourceKind,
             executionSourceConfidence: event.executionSourceConfidence.map(provenanceConfidence(from:)),
+            // The credential slot the router picked, so daemon-routed burn is
+            // attributed to a specific account instead of the provider total.
+            providerAccountID: event.providerAccountID,
+            providerAccountLabel: event.providerAccountLabel,
+            providerAccountSource: event.providerAccountID == nil ? nil : .deviceKeychain,
             provenanceMethod: provenanceMethod(for: provider, confidence: event.confidence),
             provenanceConfidence: provenanceConfidence(from: event.confidence),
             // The Elder Wand fusion linkage. It rides the daemon event directly,
@@ -358,6 +363,9 @@ final class OpenBurnBarDaemonUsageSyncService {
             executionSourceName: record.event.executionSourceName,
             executionSourceKind: record.event.executionSourceKind,
             executionSourceConfidence: record.event.executionSourceConfidence.map(provenanceConfidence(from:)),
+            providerAccountID: record.event.providerAccountID,
+            providerAccountLabel: record.event.providerAccountLabel,
+            providerAccountSource: record.event.providerAccountID == nil ? nil : .deviceKeychain,
             provenanceMethod: provenanceMethod(for: provider, confidence: record.event.confidence),
             provenanceConfidence: provenanceConfidence(from: record.event.confidence),
             // Prefer the event's own parentRequestID; fall back to parsing it
