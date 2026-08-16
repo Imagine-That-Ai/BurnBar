@@ -12,7 +12,8 @@
  *   - workflow_dispatch is running from main;
  *   - no GitHub Release exists for the tag;
  *   - no production GitHub Deployment exists for the exact tag + SHA pair; and
- *   - this plane's release-attestation status context is absent.
+ *   - this plane's release-attestation status context is absent, or is the
+ *     single legacy bot-authored success record whose target URL was null.
  *
  * It performs read-only API calls. Publishing the status remains the final
  * step of the normal dry-run workflow after all build/verifier work succeeds.
@@ -184,16 +185,40 @@ async function verifyNoDeployment(tag, sha) {
   }
 }
 
-async function verifyStatusAbsent(tag, sha, plane) {
+function isLegacyUnboundStatus(status, context, sha) {
+  return (
+    status?.context === context &&
+    status.state === "success" &&
+    status.target_url === null &&
+    status.description === `dry-run passed at ${sha.slice(0, 12)}` &&
+    status.creator?.login === "github-actions[bot]" &&
+    status.creator?.type === "Bot"
+  );
+}
+
+async function verifyStatusReplaceable(tag, sha, plane) {
   const statuses = await getAllPages(
     `/commits/${sha}/statuses?${new URLSearchParams({ per_page: "100" })}`,
   );
   const context = `release-attestation/${plane}/${tag}`;
-  if (statuses.some((status) => status?.context === context)) {
-    fail(
-      `Commit status context ${context} already exists on ${sha}; recovery is one-shot per plane and will not overwrite prior evidence.`,
+  const exactStatuses = statuses.filter(
+    (status) => status?.context === context,
+  );
+  if (exactStatuses.length === 0) return;
+
+  if (
+    exactStatuses.length === 1 &&
+    isLegacyUnboundStatus(exactStatuses[0], context, sha)
+  ) {
+    console.log(
+      `::notice::Allowing one-time migration of legacy unbound status ${context} on ${sha}.`,
     );
+    return;
   }
+
+  fail(
+    `Commit status context ${context} already has ${exactStatuses.length} record(s) on ${sha}; recovery permits only an absent context or one exact legacy github-actions[bot] success with target_url null.`,
+  );
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -201,7 +226,7 @@ requireRuntimeBoundary();
 await verifyNoRelease(args.tag);
 if (args.mode === "dry-run") {
   await verifyNoDeployment(args.tag, args.sha);
-  await verifyStatusAbsent(args.tag, args.sha, args.plane);
+  await verifyStatusReplaceable(args.tag, args.sha, args.plane);
 }
 
 console.log(

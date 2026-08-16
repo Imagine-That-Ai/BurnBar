@@ -24,6 +24,8 @@ const WORKFLOW_BY_PLANE = {
   "deploy-production": ".github/workflows/deploy-production.yml",
   "deploy-cloud-run": ".github/workflows/deploy-cloud-run.yml",
 };
+const TAG_PATTERN =
+  /^v[0-9]{1,3}\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 
 function fail(message, exitCode = 1) {
   console.error(`::error::${message}`);
@@ -59,12 +61,9 @@ function parseArgs(argv) {
       2,
     );
   }
-  if (
-    !args.tag ||
-    !/^v[0-9]{1,3}\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z.-]+)?$/.test(args.tag)
-  ) {
+  if (!args.tag || !TAG_PATTERN.test(args.tag)) {
     fail(
-      `--tag must be a stable SemVer v* tag, got: ${args.tag ?? "(missing)"}`,
+      `--tag must be a SemVer v* release tag, got: ${args.tag ?? "(missing)"}`,
       2,
     );
   }

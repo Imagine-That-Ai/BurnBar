@@ -26,6 +26,19 @@ function assert(label, condition) {
   }
 }
 
+function legacyStatus(overrides = {}) {
+  return {
+    id: 101,
+    context: `release-attestation/${PLANE}/${TAG}`,
+    state: "success",
+    description: `dry-run passed at ${SHA.slice(0, 12)}`,
+    target_url: null,
+    created_at: "2026-08-15T15:00:00Z",
+    creator: { login: "github-actions[bot]", type: "Bot" },
+    ...overrides,
+  };
+}
+
 async function startApi({
   releaseStatus = 404,
   deployments = [],
@@ -220,6 +233,81 @@ console.log("Self-test: existing stable-tag dry-run recovery gate\n");
   const result = await runGate(api.apiBase);
   assert(
     "any existing exact attestation context blocks overwrite",
+    result.exitCode !== 0,
+  );
+  await api.close();
+}
+
+{
+  const api = await startApi({
+    statuses: [
+      legacyStatus({
+        description: `dry-run ${SHA.slice(0, 12)} control ${"b".repeat(12)}`,
+        target_url: "https://github.com/test/repo/actions/runs/202",
+      }),
+    ],
+  });
+  const result = await runGate(api.apiBase);
+  assert(
+    "current run-bound status remains one-shot and blocks overwrite",
+    result.exitCode !== 0,
+  );
+  await api.close();
+}
+
+{
+  const api = await startApi({ statuses: [legacyStatus()] });
+  const result = await runGate(api.apiBase);
+  assert(
+    "one exact legacy null-target bot status is eligible for migration",
+    result.exitCode === 0,
+  );
+  assert(
+    "legacy migration gate remains read-only",
+    api.requests.every(({ method }) => method === "GET"),
+  );
+  await api.close();
+}
+
+{
+  const api = await startApi({
+    statuses: [
+      legacyStatus({
+        creator: { login: "release-admin", type: "User" },
+      }),
+    ],
+  });
+  const result = await runGate(api.apiBase);
+  assert(
+    "legacy-shaped status from a non-Actions creator fails closed",
+    result.exitCode !== 0,
+  );
+  await api.close();
+}
+
+{
+  const api = await startApi({
+    statuses: [legacyStatus(), legacyStatus({ id: 102 })],
+  });
+  const result = await runGate(api.apiBase);
+  assert(
+    "multiple legacy statuses fail closed instead of reopening migration",
+    result.exitCode !== 0,
+  );
+  await api.close();
+}
+
+{
+  const api = await startApi({
+    statuses: [
+      legacyStatus({
+        description: "dry-run passed at the wrong candidate",
+      }),
+    ],
+  });
+  const result = await runGate(api.apiBase);
+  assert(
+    "legacy null-target status with the wrong candidate receipt fails closed",
     result.exitCode !== 0,
   );
   await api.close();

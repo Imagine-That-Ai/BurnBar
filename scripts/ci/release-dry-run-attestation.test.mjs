@@ -13,6 +13,7 @@ const GATE = join(SCRIPT_DIR, "release-dry-run-attestation.mjs");
 const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
 const TAG = "v1.2.3";
+const PRERELEASE_TAG = "v1.3.0-rc.1+build.7";
 const PROD = "deploy-production";
 const CLOUD = "deploy-cloud-run";
 const RUN_PROD = 101;
@@ -529,6 +530,65 @@ console.log("Functional self-test: release-dry-run-attestation.mjs\n");
 }
 
 {
+  const runs = new Map([
+    [
+      RUN_PROD,
+      runFor(PROD, RUN_PROD, {
+        displayTitle: `release-control/${PROD}/dry-run/${PRERELEASE_TAG}/${SHA_A}/${SHA_B}`,
+      }),
+    ],
+    [
+      RUN_CLOUD,
+      runFor(CLOUD, RUN_CLOUD, {
+        displayTitle: `release-control/${CLOUD}/dry-run/${PRERELEASE_TAG}/${SHA_A}/${SHA_B}`,
+      }),
+    ],
+  ]);
+  const api = await startApi({ runs });
+  const env = { GITHUB_API_URL: api.baseUrl };
+  const production = await runAttestation(
+    "publish",
+    [`--sha=${SHA_A}`, `--tag=${PRERELEASE_TAG}`, `--plane=${PROD}`],
+    {
+      ...env,
+      GITHUB_RUN_ID: String(RUN_PROD),
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_REF_NAME: "main",
+      GITHUB_SHA: SHA_B,
+    },
+  );
+  const cloud = await runAttestation(
+    "publish",
+    [`--sha=${SHA_A}`, `--tag=${PRERELEASE_TAG}`, `--plane=${CLOUD}`],
+    {
+      ...env,
+      GITHUB_RUN_ID: String(RUN_CLOUD),
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_REF_NAME: "main",
+      GITHUB_SHA: SHA_B,
+    },
+  );
+  const verify = await runAttestation(
+    "verify",
+    [
+      `--sha=${SHA_A}`,
+      `--tag=${PRERELEASE_TAG}`,
+      `--control-sha=${SHA_B}`,
+    ],
+    env,
+  );
+  assert(
+    "prerelease round-trip publishes both attestations",
+    production.exitCode === 0 && cloud.exitCode === 0,
+  );
+  assert(
+    "prerelease round-trip verifies both exact Actions runs",
+    verify.exitCode === 0,
+  );
+  await closeApi(api);
+}
+
+{
   const result = await runAttestation(
     "publish",
     [`--sha=abc123`, `--tag=${TAG}`, `--plane=${PROD}`],
@@ -559,7 +619,7 @@ console.log("Functional self-test: release-dry-run-attestation.mjs\n");
 {
   const result = await runAttestation(
     "publish",
-    [`--sha=${SHA_A}`, "--tag=v1.2.3-rc.1", `--plane=${PROD}`],
+    [`--sha=${SHA_A}`, "--tag=v1.2.3-", `--plane=${PROD}`],
     {
       GITHUB_RUN_ID: String(RUN_PROD),
       GITHUB_REF: "refs/heads/main",
@@ -567,7 +627,7 @@ console.log("Functional self-test: release-dry-run-attestation.mjs\n");
       GITHUB_SHA: SHA_B,
     },
   );
-  assert("publish rejects a prerelease tag", result.exitCode !== 0);
+  assert("publish rejects an empty prerelease suffix", result.exitCode !== 0);
 }
 
 {
