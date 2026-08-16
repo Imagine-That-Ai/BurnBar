@@ -31,9 +31,10 @@ blocker=cua-driver unavailable
 fallback=FleetService/FleetViewModel behavior evidence; both app FleetViews and three-tick visual parity were not observed
 
 [cross-017]
-result=pass_with_controller_fallback
+result=blocked_with_scoped_fallback
 archive=validation/M6-hardening/cross-017-current-journey.log
 steps=fresh support/fixtures; Fleet snapshot; designation; orchestrator context fallback; deterministic proposal; approval before delivery; loopback fake Hermes ack/receipt; delivered SQLite row; external reader parity; teardown
+blocker=Fleet/chat UI steps explicitly blocked because cua-driver is unavailable
 safety=no live model; no real agents; no secrets
 
 [package-gates]

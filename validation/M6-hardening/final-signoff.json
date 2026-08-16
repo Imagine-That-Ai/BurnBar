@@ -18,7 +18,13 @@
     "CROSS-017": {
       "evidence": "cross-017-current-journey.log",
       "fixture": "fresh hermetic deterministic; fake loopback Hermes; no live model/real agents",
-      "status": "pass_with_controller_fallback"
+      "reason": "cua-driver unavailable; controller/daemon journey completed, but Fleet/chat UI steps were not observed",
+      "status": "blocked_with_scoped_fallback"
+    },
+    "CROSS-018": {
+      "evidence": "degradation-matrix.json",
+      "reason": "cua-driver unavailable; offline daemon/network/static checks pass but Fleet UI capture is unavailable",
+      "status": "blocked_with_scoped_fallback"
     }
   },
   "branch": "feat/live-agent-fleet",
@@ -96,7 +102,7 @@
   },
   "status": "blocked",
   "unresolvedBlockers": [
-    "cua-driver unavailable, so CROSS-011/CROSS-016/CROSS-018 full desktop evidence is blocked"
+    "cua-driver unavailable, so CROSS-011/CROSS-016/CROSS-017/CROSS-018 full desktop evidence is blocked"
   ],
   "validatedAt": "2026-08-16T18:40:36.075Z"
 }
