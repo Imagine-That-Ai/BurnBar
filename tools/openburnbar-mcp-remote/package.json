@@ -17,7 +17,7 @@
     "OBB": "lib/index.js"
   },
   "engines": {
-    "node": "22"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc",
