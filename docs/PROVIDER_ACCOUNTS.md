@@ -173,6 +173,63 @@ Mac quota command center mirrors Token Plan region / tier / billing cycle into
 `QuotaSettings` so `MimoQuotaAdapter` can fall back to tier caps when the vendor
 remains endpoint returns no buckets.
 
+## OpenCode Go
+
+OpenCode is catalog provider `opencode` (`AgentProvider.openCode`, aliases
+`opencode-go`, `open-code`, `open code go`). **Multiple OpenCode Go
+subscriptions can be connected side by side**, the same as Ollama, Codex, and
+Anthropic.
+
+### Connect one account per subscription
+
+1. Open **Settings → Connections → OpenCode** and choose **OpenCode auth.json**.
+2. Either import the currently signed-in `~/.local/share/opencode/auth.json`, or
+   paste another subscription's `opencode-go` entry, its full `auth.json`, or the
+   bare route key.
+3. Give the account a label (`Work`, `Personal`, `Client`) and save. Repeat per
+   subscription.
+
+Each connection becomes its own daemon credential slot, and therefore its own
+`ProviderAccountDoc` with independent routing, failover, cooldown, and enable or
+disable state. `OpenBurnBarProviderCredentialNormalizer` extracts the route key
+from whichever of the three paste shapes was used.
+
+Credentials are stored **per slot**
+(`provider.opencode.slot.<slotID>.apiKey`). OpenCode previously also mirrored
+each credential into the shared `opencode_auth_json` app-keychain account; that
+account is a singleton, so connecting a second subscription overwrote the
+first one's secret and pinned the provider-level lane to whichever account was
+saved last. The mirror is no longer written. Installs that already have a
+mirrored value keep working — `opencode_auth_json` is still read as a legacy
+fallback, it is just never written again.
+
+### Quota is device-wide, spend is per account
+
+OpenCode Go exposes no hosted per-account quota API. `OpenCodeQuotaAdapter`
+derives plan pressure from this machine's `opencode.db` spend plus
+`opencode stats` CLI history, and both cover every subscription signed in on the
+device. Three subscriptions therefore share **one** device-wide estimate, which
+OpenBurnBar reports once at provider level (labelled *This Mac · all
+subscriptions*) instead of rendering three identical account cards and
+triple-counting one machine in the cumulative merge. This is the same hold-out
+that keeps organization-scoped OpenAI provider-level; the shared list is
+`QuotaCapableProviderMap.providerLevelOnlyQuotaProviders`.
+
+Per-subscription **spend** is attributed wherever BurnBar sees the credential:
+traffic routed through the OpenBurnBar gateway carries its credential slot, so
+each subscription's burn lands on its own account (see
+[Usage Attribution](#usage-attribution-which-account-is-burning)).
+
+OpenCode CLI traffic that bypasses the gateway is the one gap, and it is a
+deliberate one. Unlike Cursor, Codex, and Claude Code — whose local state files
+expose an email or account id — OpenCode's `auth.json` carries only the
+`opencode-go` route key for the signed-in subscription. Identifying which
+subscription produced a locally parsed session would mean fingerprinting that
+key against each daemon slot's stored secret, which would put credential reads
+into the log-parser path. OpenBurnBar does not do that: locally parsed OpenCode
+sessions stay unattributed at provider level. Route OpenCode through the
+BurnBar gateway when you need per-subscription spend.
+
 ## Usage Attribution (which account is burning)
 
 Provider accounts answer "which seat is authorized"; usage attribution answers

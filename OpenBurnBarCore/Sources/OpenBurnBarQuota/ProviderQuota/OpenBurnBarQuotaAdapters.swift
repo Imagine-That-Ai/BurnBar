@@ -293,7 +293,7 @@ public struct OpenCodeQuotaAdapter: ProviderQuotaAdapter {
             managementURL: "https://opencode.ai/docs/go/",
             statusMessage: buckets.isEmpty
                 ? "OpenCode auth was detected, but the local CLI did not expose usable cost totals. A self-hosted runner can publish the same local estimate from your own environment."
-                : "OpenCode uses exact local SQLite spend for the 5-hour bucket and CLI history for 7-day/monthly plan pressure. OpenCode does not expose hosted account quota refresh yet.",
+                : "OpenCode uses exact local SQLite spend for the 5-hour bucket and CLI history for 7-day/monthly plan pressure. OpenCode exposes no hosted per-account quota API, so this estimate covers every OpenCode Go subscription signed in on this Mac rather than one account. Per-subscription spend is still attributed separately wherever BurnBar routes the traffic.",
             buckets: buckets
         )
     }

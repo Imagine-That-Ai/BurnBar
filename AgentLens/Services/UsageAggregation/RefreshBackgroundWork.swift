@@ -65,7 +65,7 @@ private enum ConversationIndexCheckpointToken {
 /// One instance, so the identity-observation throttle and the on-disk identity
 /// timeline are not duplicated between the full refresh and the
 /// single-provider refresh.
-let sharedAccountAttributor = ProviderAccountUsageAttributor.live(
+private let sharedAccountAttributor = ProviderAccountUsageAttributor.live(
     timelineFileURL: OpenBurnBarCore.OpenBurnBarAppPaths.live().providerAccountIdentityTimelineURL
 )
 

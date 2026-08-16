@@ -29,7 +29,7 @@
 | **Grok Build CLI** | `GrokParser.swift` | `.exact` | `~/.grok/sessions/<encoded-cwd>/<uuid>/` (`summary.json`, `signals.json`, `chat_history.jsonl`) | Local session tokens; gateway wiring via `~/.grok/config.toml` `[model.openburnbar]` |
 | **Aider** | `AiderQuotaAdapter.swift` | `.exact` | `~/.aider/analytics.jsonl` | Local interaction token stats (no vendor quota) |
 | **Forge** | `ForgeQuotaAdapter.swift` | `.estimated` | `~/forge/.forge.db` local SQLite | Session counts via OpenBurnBar local gateway |
-| **OpenCode** | `OpenCodeQuotaAdapter` | `.exact` | `~/.local/share/opencode/opencode.db` | Local SQLite session metrics and model details |
+| **OpenCode** | `OpenCodeQuotaAdapter` | `.exact` | `~/.local/share/opencode/opencode.db` | Local SQLite session metrics and model details. Multiple OpenCode Go subscriptions connect as separate accounts; the quota estimate is device-wide and reported once at provider level (see [PROVIDER_ACCOUNTS.md](PROVIDER_ACCOUNTS.md#opencode-go)) |
 | **Gemini CLI** | _none_ / Local scans | `.unavailable` | Local session files only | Session tokens only (no programmatic quota API) |
 | **Cline** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |
 | **Roo Code** | _none_ / Local scans | `.unavailable` | Install detection | Visual environment detection only |

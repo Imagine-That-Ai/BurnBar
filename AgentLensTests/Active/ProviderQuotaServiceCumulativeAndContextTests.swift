@@ -344,6 +344,65 @@ extension ProviderQuotaServiceTests {
         XCTAssertTrue(QuotaCapableProviderMap.supportsPerAccountQuota(.xAI))
     }
 
+    /// OpenCode Go exposes no hosted quota API: `OpenCodeQuotaAdapter` derives
+    /// plan pressure from this machine's `opencode.db` spend and `opencode
+    /// stats` history, which cover every subscription signed in on the device.
+    /// A user with three OpenCode Go subscriptions therefore has one device-wide
+    /// estimate, not three. Fetching it per account would render three identical
+    /// cards and triple one machine's spend in the cumulative merge — the same
+    /// failure organization-scoped OpenAI is held out for.
+    func test_quotaCapableProviderMap_marksOpenCodeDeviceScoped() {
+        XCTAssertFalse(QuotaCapableProviderMap.supportsPerAccountQuota(.openCode))
+    }
+
+    /// Suppressing the per-account quota *fetch* must not suppress the accounts
+    /// themselves — connecting three OpenCode Go subscriptions is the whole
+    /// point. Account identity comes from the daemon-slot projection, which is
+    /// keyed on the alias map and is deliberately independent of whether a
+    /// provider supports per-account quota.
+    func test_openCodeSlotsStillProjectDistinctAccountsDespiteSharedQuota() {
+        XCTAssertEqual(QuotaCapableProviderMap.provider(forDaemonProviderID: "opencode"), .openCode)
+        XCTAssertEqual(QuotaCapableProviderMap.provider(forDaemonProviderID: "open-code"), .openCode)
+
+        let work = DaemonCredentialSlotAccountProjection.accountID(
+            providerID: .openCode,
+            slotID: "work"
+        )
+        let personal = DaemonCredentialSlotAccountProjection.accountID(
+            providerID: .openCode,
+            slotID: "personal"
+        )
+        let client = DaemonCredentialSlotAccountProjection.accountID(
+            providerID: .openCode,
+            slotID: "client"
+        )
+        XCTAssertEqual(Set([work, personal, client]).count, 3)
+    }
+
+    /// A device-wide rollup must not be labelled as an organization. OpenCode
+    /// users have no org; saying "Organization · all keys" would invent a
+    /// billing entity that does not exist.
+    func test_openCodeRollupLabelSaysDeviceNotOrganization() {
+        let rollup = ProviderQuotaSnapshot(
+            provider: .openCode,
+            fetchedAt: now,
+            source: .localSession,
+            confidence: .estimated,
+            managementURL: nil,
+            statusMessage: "ok",
+            buckets: []
+        )
+        XCTAssertTrue(ProviderQuotaAccountDisplay.isRollup(rollup))
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: rollup, provider: .openCode),
+            "This Mac · all subscriptions"
+        )
+        XCTAssertEqual(
+            ProviderQuotaAccountDisplay.label(for: rollup, provider: .openAI),
+            "Organization · all keys"
+        )
+    }
+
     /// Recognising an alias is only half the job. Accepting `x-ai` while
     /// letting the raw alias ride along on the account identity produced a
     /// configuration that quota-fetched fine and was still invisible: the two

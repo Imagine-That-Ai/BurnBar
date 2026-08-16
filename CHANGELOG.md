@@ -29,6 +29,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Surfaced in the dashboard Credential Ranking lane and a new per-provider
   **Spend by Account** panel. See [`docs/PROVIDER_ACCOUNTS.md`](docs/PROVIDER_ACCOUNTS.md).
 
+### Fixed - Multiple OpenCode Go subscriptions
+
+- Connecting a second OpenCode Go subscription no longer overwrites the first.
+  OpenCode mirrored every credential into the shared `opencode_auth_json`
+  app-keychain account — a singleton — so the provider-level lane silently
+  pinned itself to whichever account was saved last. OpenCode now stores
+  per credential slot, matching Ollama and Anthropic. Existing installs keep
+  working: the legacy mirror is still read, just never written again.
+- OpenCode quota no longer renders one identical card per subscription.
+  OpenCode Go exposes no hosted per-account quota API, so `OpenCodeQuotaAdapter`
+  measures this machine (`opencode.db` spend + `opencode stats` history), which
+  covers every subscription signed in on the device. That estimate is now
+  reported once at provider level — labelled *This Mac · all subscriptions* —
+  instead of being fetched per account and triple-counting one machine in the
+  cumulative merge. Subscriptions remain separate accounts for routing,
+  failover, and per-account burn attribution.
+
 ### Fixed - iPhone mission-approval Deny now persists
 - Tapping **Deny** on an Approvals-waiting card now leaves `waiting_for_approval`
   immediately (`respondMissionApproval` writes `status: canceled` plus
