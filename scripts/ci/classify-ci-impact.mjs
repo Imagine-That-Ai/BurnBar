@@ -101,7 +101,7 @@ const LANE_PATTERNS = {
     /^firestore-rules-tests\//,
     /^scripts\/(?:test-functions|verify-functions)/,
   ],
-  web: [/^(website|web|extensions\/openburnbar)\//],
+  web: [/^(website|web|extensions\/openburnbar|plugins\/openburnbar)\//],
   console: [/^(apps\/console|console)\//],
 };
 

@@ -21,7 +21,7 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
 
 <BaseLayout
   title="Download"
-  description="Download OpenBurnBar. macOS by direct download, iPhone & iPad on the App Store, Linux ARM64 builds, Cursor/VS Code extension source-only."
+  description="Download OpenBurnBar. macOS by direct download, iPhone & iPad on the App Store, Linux ARM64 builds, Cursor Marketplace plugin, and the Cursor/VS Code extension source-only."
   ambientEffects={false}
 >
   <section class="pagehead">
@@ -66,6 +66,13 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
           <span class="platcard__status">Build locally</span>
           <span class="platcard__cta">Setup guide →</span>
         </a>
+        <a class="platcard platcard--pending" href="#cursor-plugin">
+          <DownloadPlatformIcon platform="cursor-plugin" />
+          <span class="sr-only">Cursor Marketplace plugin</span>
+          <span class="platcard__ver mono">Cursor</span>
+          <span class="platcard__status">Marketplace pending</span>
+          <span class="platcard__cta">Plugin setup →</span>
+        </a>
         <a class="platcard platcard--pending" href="#android">
           <DownloadPlatformIcon platform="android" />
           <span class="sr-only">Android</span>
@@ -92,6 +99,13 @@ const linuxPubKeyHref = `${linuxDownloadBaseUrl}/${SITE.linuxPubKeyFile}`;
         </a>
         <a href="#editor" aria-label="Jump to Cursor and VS Code" title="Cursor and VS Code">
           <DownloadPlatformIcon platform="editor" compact />
+        </a>
+        <a
+          href="#cursor-plugin"
+          aria-label="Jump to the Cursor Marketplace plugin"
+          title="Cursor Marketplace plugin"
+        >
+          <DownloadPlatformIcon platform="cursor-plugin" compact />
         </a>
         <a href="#android" aria-label="Jump to Android" title="Android">
           <DownloadPlatformIcon platform="android" compact />
@@ -396,6 +410,75 @@ npm run build</code></pre>
     </div>
   </section>
 
+  <!-- Cursor Marketplace plugin -->
+  <section id="cursor-plugin" class="dlsec dlsec--quiet">
+    <div class="container dlsec__shell">
+      <div class="dlsec__head">
+        <div class="dlsec__intro">
+          <span class="tag tag--exact tag--plain mono">Cursor Marketplace · plugin</span>
+          <h2>Cursor Marketplace plugin</h2>
+          <p class="lead">
+            A separate, installable Cursor Plugin (packaged under{" "}
+            <code>plugins/openburnbar/</code>) that connects Cursor agents — including Cloud Agents
+            — to hosted Remote MCP over HTTP. This is
+            <strong>not</strong> the editor extension: the plugin talks to{" "}
+            <code>https://mcp.burnbar.ai/mcp</code> with a bearer variable and needs no local binary,
+            while the extension above stays a source-only, load-unpacked daemon sidebar with no marketplace
+            listing.
+          </p>
+        </div>
+      </div>
+
+      <ol class="steps" data-animate-onview>
+        <li class="step">
+          <span class="step__num mono">1</span>
+          <div class="step__card">
+            <h3>Install the plugin</h3>
+            <p>
+              Once published, install from the Cursor Marketplace (<code
+                >Imagine-That-Ai/openburnbar-cursor-plugin</code
+              > is the marketplace git URL). Until then, symlink the package locally:
+            </p>
+            <pre><code class="mono">ln -sfn /Users/dewclaw/BurnBar-cursor-plugin/plugins/openburnbar \
+  ~/.cursor/plugins/local/openburnbar</code></pre>
+            <p>
+              Then run <strong>Developer: Reload Window</strong> and open{" "}
+              <strong>Settings → Customize → Plugins</strong>. There is no package-install step: the
+              plugin tree is plain markdown, JSON, and a small validator script.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step__num mono">2</span>
+          <div class="step__card">
+            <h3>Set the access-token variable</h3>
+            <p>
+              Set the required <code>OPENBURNBAR_MCP_ACCESS_TOKEN</code>{" "}
+              variable in the plugin's settings with a{" "}
+              <strong>short-lived (~15 min) access token</strong> minted from BurnBar Settings / <code
+                >openburnbar mcp login</code
+              > / Remote MCP. It is a session credential, not a durable secret; re-mint it when it expires.
+              The plugin sends it as{" "}
+              <code>Authorization: Bearer $&#123;OPENBURNBAR_MCP_ACCESS_TOKEN&#125;</code>{" "}
+              to <code>https://mcp.burnbar.ai/mcp</code>.
+            </p>
+          </div>
+        </li>
+        <li class="step">
+          <span class="step__num mono">3</span>
+          <div class="step__card">
+            <h3>Query spend, sessions, knowledge, resume</h3>
+            <p>
+              The plugin ships skills, commands, rules, and agents for hosted search, usage, resume,
+              and knowledge. On the HTTP path, titles and bodies may stay sealed ciphertext until
+              the optional local decrypt shim runs. Cloud Agents use the same HTTP + bearer path.
+            </p>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
   <!-- Android -->
   <section id="android" class="dlsec dlsec--quiet">
     <div class="container dlsec__shell">
@@ -457,6 +540,18 @@ npm run build</code></pre>
             <li>Cursor or VS Code ^1.95.0</li>
             <li>Node + npm to build</li>
             <li>Loads unpacked — marketplace listing is roadmap</li>
+          </ul>
+        </article>
+        <article class="reqcard">
+          <h4>Cursor Marketplace plugin</h4>
+          <ul>
+            <li>Cursor (desktop Customize or Cloud Agents)</li>
+            <li>BurnBar Cloud Pro/Ultra for hosted Remote MCP</li>
+            <li>
+              Requires <code>OPENBURNBAR_MCP_ACCESS_TOKEN</code> — short-lived access token, not a durable
+              secret
+            </li>
+            <li>No package manifest, no install step — validator only</li>
           </ul>
         </article>
       </div>
@@ -617,8 +712,8 @@ npm run build</code></pre>
       max-width: 68rem;
     }
     .platgrid {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      max-width: 64rem;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      max-width: 68rem;
     }
   }
 

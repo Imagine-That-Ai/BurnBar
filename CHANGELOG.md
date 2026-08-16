@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - OpenBurnBar Cursor Marketplace plugin
+- **OpenBurnBar Cursor Marketplace plugin** (`plugins/openburnbar/`): an
+  installable Cursor Plugin that connects desktop Customize and Cloud Agents
+  to hosted Remote MCP at `https://mcp.burnbar.ai/mcp` over Streamable HTTP
+  (protocol `2025-11-25`) with a GitHub-style bearer plugin variable
+  (`OPENBURNBAR_MCP_ACCESS_TOKEN`, short-lived, never committed). Ships
+  skills, commands, rules, agents, and a fail-closed `validate.mjs`; the
+  plugin tree has no `package.json`, and the CI classifier routes
+  `plugins/openburnbar/**` to the cheap web lane with a dedicated
+  `plugin-fast` job. The editor extension remains source-only / load-unpacked
+  (no VS Marketplace / Open VSX listing). Install + auth + sealed-field
+  honesty: `docs/OPENBURNBAR_CURSOR_PLUGIN.md`.
+
 ### Added - Metered usage-memory curation gateway (U4)
 - **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
   token-metered gateway for cloud usage-memory curation inference

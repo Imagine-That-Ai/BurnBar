@@ -58,6 +58,24 @@ const channels = [
       "Adds openburnbar resume for print/copy/open handoff flows",
       "openburnbar mcp doctor proves the whole chain in one command"
     ]
+  },
+  {
+    sigil: "04",
+    band: "Cursor Marketplace · plugin",
+    name: "Cursor Marketplace plugin",
+    runtime: "Cursor plugin · hosted HTTP · 2025-11-25 spec",
+    audience: "Cursor desktop Customize + Cloud Agents",
+    transport: "Streamable HTTP (plugin mcp.json)",
+    auth: "Plugin variable OPENBURNBAR_MCP_ACCESS_TOKEN (short-lived bearer)",
+    dataPath: "https://mcp.burnbar.ai/mcp",
+    tools: 8,
+    accent: "mercury",
+    bullet: [
+      "Installable Cursor Plugin — skills, commands, rules, and agents included",
+      "Cloud-Agent compatible: hosted HTTP + bearer, no local binary required",
+      "Same sealed-field honesty — titles/bodies stay ciphertext until the local shim decrypts",
+      "Distinct from the source-only editor extension (load-unpacked, no marketplace listing)"
+    ]
   }
 ];
 
@@ -473,10 +491,11 @@ const slo = [
       </h1>
 
       <p class="lead mcp-hero__lead">
-        Thirty-four MCP tools across three channels point any agent that speaks the protocol —
-        Codex, Claude Code, Cursor, Droid, Kimi, Forge, Hermes — at your full OpenBurnBar record.
-        Free locally over SQLite. Encrypted in the cloud on BurnBar Cloud plans. Never plaintext on
-        the server.
+        Thirty-four MCP tools across four channels point any agent that speaks the protocol — Codex,
+        Claude Code, Cursor, Droid, Kimi, Forge, Hermes — at your full OpenBurnBar record. Free
+        locally over SQLite. Encrypted in the cloud on BurnBar Cloud plans. Never plaintext on the
+        server. The Cursor Marketplace plugin is the newest channel: hosted HTTP + bearer,
+        installable from Cursor.
       </p>
 
       {/* signal-flow diagram — three sources converge into ANY CLIENT */}
@@ -652,17 +671,19 @@ const slo = [
     </div>
   </section>
 
-  {/* ────────────────────────── 2 · THREE CHANNELS ────────────────────────── */}
+  {/* ────────────────────────── 2 · FOUR CHANNELS ────────────────────────── */}
   <section class="channels" aria-labelledby="channels-h">
     <div class="container container--wide">
       <header class="sec-head">
-        <span class="eyebrow eyebrow--ember">Three channels</span>
-        <h2 id="channels-h">Same tools. Three install paths. Pick the one your client speaks.</h2>
+        <span class="eyebrow eyebrow--ember">Four channels</span>
+        <h2 id="channels-h">Same tools. Four install paths. Pick the one your client speaks.</h2>
         <p class="lead">
           The local stdio server is free and reads your SQLite directly. The hosted Remote MCP is a
           BurnBar Cloud feature with encrypted, multi-device session memory. The stdio shim closes
           the gap for clients that don't yet speak Streamable HTTP — and is the only path that
-          decrypts hosted bodies on-device.
+          decrypts hosted bodies on-device. The Cursor Marketplace plugin is the fourth channel: an
+          installable Cursor Plugin that talks to the hosted endpoint over HTTP with a bearer
+          variable — Cloud-Agent compatible, no local binary.
         </p>
       </header>
 
@@ -731,7 +752,7 @@ const slo = [
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Tool dossier</span>
         <h2 id="dossier-h">
-          Thirty-four tools across three channels. Read-by-default. Writes stay gated by the daemon.
+          Thirty-four tools across four channels. Read-by-default. Writes stay gated by the daemon.
         </h2>
         <p class="lead">
           Every tool is declared with a scope, a cost class, a rate-limit bucket, and an input
@@ -1478,7 +1499,7 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
   }
 
   /* ============================================================
-     2 · THREE CHANNELS
+     2 · FOUR CHANNELS
   ============================================================ */
   .channels {
     padding-block: var(--s-9);
@@ -1487,7 +1508,7 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
   .channels__grid {
     display: grid;
     gap: var(--s-5);
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   @media (max-width: 960px) {
     .channels__grid {
@@ -2338,6 +2359,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     }
     .channels__grid .channel:nth-child(3) {
       animation-delay: 0.16s;
+    }
+    .channels__grid .channel:nth-child(4) {
+      animation-delay: 0.24s;
     }
     .dossier__grid .tooltile:nth-child(n) {
       animation-delay: calc(var(--i, 0) * 0.04s);

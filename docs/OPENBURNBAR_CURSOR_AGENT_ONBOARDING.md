@@ -1,5 +1,25 @@
 # OpenBurnBar + Cursor Agent Onboarding
 
+## Plugin vs extension (read this first)
+
+OpenBurnBar ships **three distinct Cursor surfaces** — the editor extension,
+the personal/operator MCP tooling, and the marketplace Cursor Plugin. The
+**marketplace Cursor Plugin** (`plugins/openburnbar/`, installable from the
+Cursor Marketplace once published, or symlinked locally) is the new one: it
+connects Cursor agents — including **Cloud Agents** — to hosted Remote MCP at
+`https://mcp.burnbar.ai/mcp` over HTTP with the
+`OPENBURNBAR_MCP_ACCESS_TOKEN` bearer variable, so agents can query spend,
+past sessions, knowledge, and resume hints as grounded evidence. The **VS Code
+/ Cursor editor extension** (`extensions/openburnbar/`) is a separate,
+older surface: a daemon-backed activity-bar sidebar that is
+**source-only / load-unpacked** (no VS Marketplace / Open VSX listing) — the
+plugin is hosted HTTP + bearer and does not bundle or replace it. The
+**personal / operator MCP** (the `openburnbar-mcp-remote` stdio shim or the
+local SQLite MCP under `tools/openburnbar-mcp`) is adjacent operator tooling,
+not the marketplace package. See
+[`OPENBURNBAR_CURSOR_PLUGIN.md`](OPENBURNBAR_CURSOR_PLUGIN.md) for plugin
+install and auth, and the extension section below for the sidebar.
+
 ## Current Scope
 
 OpenBurnBar ships a local-first Cursor extension shell backed by the OpenBurnBar daemon.

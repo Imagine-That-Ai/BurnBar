@@ -212,6 +212,13 @@ export const FAQ: FAQItem[] = [
       "The extension is an activity-bar panel that talks to OpenBurnBar's local daemon over the same UNIX socket the menu bar app uses. It shows the burn for your active workspace, the quota state for your active agent, and exposes the routed-provider gateway when you have it on.\n\nIt's source-only today — no public marketplace listing, no signed VSIX. Build from extensions/openburnbar and load unpacked. Marketplace publication is on the roadmap."
   },
   {
+    id: "cursor-plugin",
+    category: "features",
+    question: "What is the Cursor Marketplace plugin, and how is it different from the extension?",
+    answer:
+      "The Cursor Marketplace plugin is a separate, installable Cursor Plugin (packaged under plugins/openburnbar/). It connects Cursor agents — desktop Customize and Cloud Agents — to the hosted OpenBurnBar MCP at https://mcp.burnbar.ai/mcp over Streamable HTTP, using the OPENBURNBAR_MCP_ACCESS_TOKEN bearer variable (a short-lived access token, not a durable secret). It ships skills, commands, rules, and agents for spend, sessions, knowledge, and resume.\n\nIt is not the editor extension. The extension is a source-only, load-unpacked daemon sidebar with no VS Marketplace / Open VSX listing; the plugin is the new hosted-MCP listing and does not replace the extension. On the HTTP path, search titles, bodies, resume plans, and knowledge may stay sealed ciphertext until the optional local decrypt shim runs."
+  },
+  {
     id: "floo",
     category: "features",
     question: "What is Floo?",
