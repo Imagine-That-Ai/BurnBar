@@ -16,6 +16,35 @@ import AppKit
 // ViewInspector tests + Settings deep-links remain intact.
 
 struct NestHubSettingsCard: View {
+    enum Copy {
+        static let livePreview = "Live preview"
+        static let layout = "Layout"
+        static let palette = "Palette"
+        static let theme = "Theme"
+        static let backgroundMode = "Background mode"
+        static let refreshCadence = "Refresh cadence"
+        static let brightness = "Brightness"
+        static let providersToShow = "Providers to show"
+        static let audibleChime = "Audible chime on refresh"
+        static let identifyOnRefresh = "Identify on refresh"
+        static let voiceRoutineDeepLink = "Voice routine deep-link"
+    }
+
+    static let enabledControlLabels = [
+        Copy.livePreview,
+        SmartHubDisplayOperationKind.repair.displayName,
+        Copy.layout,
+        Copy.palette,
+        Copy.theme,
+        Copy.backgroundMode,
+        Copy.refreshCadence,
+        Copy.brightness,
+        Copy.providersToShow,
+        Copy.audibleChime,
+        Copy.identifyOnRefresh,
+        Copy.voiceRoutineDeepLink
+    ]
+
     @Bindable var settingsManager: SettingsManager
     @State private var model: SmartHubDisplaySettingsModel
     @State private var copyToastTask: Task<Void, Never>?
@@ -133,7 +162,7 @@ struct NestHubSettingsCard: View {
 
     private var previewSection: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            Text("Live preview")
+            Text(Copy.livePreview)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
             HStack {
@@ -289,11 +318,11 @@ struct NestHubSettingsCard: View {
     private var layoutAndBackgroundRow: some View {
         HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Layout")
+                Text(Copy.layout)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                 Picker(
-                    "Layout",
+                    Copy.layout,
                     selection: Binding(
                         get: { model.config.layout },
                         set: { model.updateLayout($0) }
@@ -308,11 +337,11 @@ struct NestHubSettingsCard: View {
             }
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Background mode")
+                Text(Copy.backgroundMode)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                 Picker(
-                    "Background mode",
+                    Copy.backgroundMode,
                     selection: Binding(
                         get: { model.config.background },
                         set: { model.updateBackground($0) }
@@ -333,11 +362,11 @@ struct NestHubSettingsCard: View {
     private var paletteAndThemeRow: some View {
         HStack(alignment: .top, spacing: DesignSystem.Spacing.md) {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Palette")
+                Text(Copy.palette)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                 Picker(
-                    "Palette",
+                    Copy.palette,
                     selection: Binding(
                         get: { model.config.palette },
                         set: { model.updatePalette($0) }
@@ -356,11 +385,11 @@ struct NestHubSettingsCard: View {
             }
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Theme")
+                Text(Copy.theme)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                 Picker(
-                    "Theme",
+                    Copy.theme,
                     selection: Binding(
                         get: { model.config.theme },
                         set: { model.updateTheme($0) }
@@ -397,11 +426,11 @@ struct NestHubSettingsCard: View {
             }
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Refresh cadence")
+                Text(Copy.refreshCadence)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                 Picker(
-                    "Refresh cadence",
+                    Copy.refreshCadence,
                     selection: Binding(
                         get: { model.config.clampedRefreshCadence },
                         set: { model.updateRefreshCadence($0) }
@@ -424,7 +453,7 @@ struct NestHubSettingsCard: View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("Brightness")
+                    Text(Copy.brightness)
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                     Spacer()
@@ -439,7 +468,7 @@ struct NestHubSettingsCard: View {
                     ),
                     in: 0.2...1.0
                 ) {
-                    Text("Brightness")
+                    Text(Copy.brightness)
                 } minimumValueLabel: {
                     Image(systemName: "sun.min.fill")
                         .foregroundStyle(DesignSystem.Colors.textMuted)
@@ -447,7 +476,7 @@ struct NestHubSettingsCard: View {
                     Image(systemName: "sun.max.fill")
                         .foregroundStyle(DesignSystem.Colors.amber)
                 }
-                .accessibilityLabel("Brightness")
+                .accessibilityLabel(Copy.brightness)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -492,7 +521,7 @@ struct NestHubSettingsCard: View {
                 )
             ) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Audible chime on refresh")
+                    Text(Copy.audibleChime)
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                     Text("Plays a soft tone on the Hub each time fresh data arrives.")
@@ -507,7 +536,7 @@ struct NestHubSettingsCard: View {
                 )
             ) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Identify on refresh")
+                    Text(Copy.identifyOnRefresh)
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
                     Text("Pings the voice routine endpoint so the Hub page can speak the latest totals.")
@@ -523,7 +552,7 @@ struct NestHubSettingsCard: View {
     private var providerFilterRow: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
             HStack {
-                Text("Providers to show")
+                Text(Copy.providersToShow)
                     .font(DesignSystem.Typography.caption)
                     .foregroundStyle(DesignSystem.Colors.textMuted)
                 Spacer()
@@ -546,7 +575,7 @@ struct NestHubSettingsCard: View {
 
     private var voiceRoutineHelper: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-            Text("Voice routine deep-link")
+            Text(Copy.voiceRoutineDeepLink)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textMuted)
             HStack(spacing: DesignSystem.Spacing.sm) {

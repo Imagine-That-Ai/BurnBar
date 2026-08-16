@@ -169,6 +169,9 @@ def test_release_workflow_uses_bounded_release_critical_app_gate():
         'OPENBURNBAR_APP_TEST_FILTERS="${OPENBURNBAR_APP_TEST_FILTERS:-$(openburnbar_release_app_test_filters_env)}"'
         in smoke
     )
+    assert 'support_dir="$(mktemp -d "/tmp/openburnbar-release-smoke-support-$uid.XXXXXX")"' in smoke
+    assert '"OPENBURNBAR_DAEMON_SUPPORT_DIR": "${support_dir}"' in smoke
+    assert '"WorkingDirectory": "${support_dir}"' in smoke
 
     for required_filter in (
         "OpenBurnBarTests/DirectDownloadReleaseMetadataTests",

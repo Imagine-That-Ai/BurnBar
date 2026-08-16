@@ -5,6 +5,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import {
   access,
+  chmod,
   mkdir,
   mkdtemp,
   readFile,
@@ -470,6 +471,13 @@ export async function launchFreshProcess(
     );
   }
 
+  // `CFFIXED_USER_HOME` must point at a path Core Foundation has not already
+  // initialized. Pointing it at mkdtemp's existing directory makes macOS 27
+  // reuse the real preference domain and prevents the WebKit data store from
+  // mounting in the isolated launch. Keep the control directory private until
+  // this point, then make it traversable and let the app create `home` itself.
+  await chmod(workDirectory, 0o755);
+  const isolatedHomeDirectory = path.join(workDirectory, "home");
   const logPath = path.join(workDirectory, "app-process.log");
   const logHandle = openSync(logPath, "a", 0o600);
   let logHandleClosed = false;
@@ -484,8 +492,8 @@ export async function launchFreshProcess(
       cwd: repositoryRoot,
       env: {
         ...process.env,
-        CFFIXED_USER_HOME: workDirectory,
-        HOME: workDirectory,
+        CFFIXED_USER_HOME: isolatedHomeDirectory,
+        HOME: isolatedHomeDirectory,
         OPENBURNBAR_UITEST: "1",
         // Random per-run SQLCipher key so the encrypted store opens without a
         // Keychain prompt, without relying on any predictable constant.

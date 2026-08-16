@@ -1,5 +1,10 @@
 import OpenBurnBarEngine
 import Foundation
+#if canImport(CryptoKit)
+import CryptoKit
+#elseif canImport(Crypto)
+import Crypto
+#endif
 
 public struct BurnBarUsageRecord: Codable, Hashable, Sendable {
     public let idempotencyKey: String
@@ -46,9 +51,20 @@ enum BurnBarUsageLedgerError: Error, Equatable, LocalizedError {
     }
 }
 
+public struct BurnBarUsageLedgerSignature: Equatable, Sendable {
+    public let recordCount: Int
+    public let latestRecordedAt: Date?
+
+    public init(recordCount: Int, latestRecordedAt: Date?) {
+        self.recordCount = recordCount
+        self.latestRecordedAt = latestRecordedAt
+    }
+}
+
 public actor BurnBarUsageRecorder {
     static let maximumIdentifierBytes = 256
     static let maximumProjectNameBytes = 256
+    static let maximumReturnedRecords = 10_000
     static let maximumFutureSkew: TimeInterval = 15
     static let earliestRecordedAt = Date(timeIntervalSince1970: 946_684_800)
 
@@ -59,15 +75,57 @@ public actor BurnBarUsageRecorder {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
-    private var cachedRecords: [BurnBarUsageRecord]?
-    private var recordsByKey: [String: BurnBarUsageRecord]?
+    private struct RecordLocation: Equatable, Sendable {
+        let byteOffset: UInt64
+        let byteCount: Int
+    }
+
+    private struct LedgerIndex: Sendable {
+        var locationsByKey: [String: RecordLocation]
+        var recordCount: Int
+        var latestRecordedAt: Date?
+
+        static let empty = LedgerIndex(
+            locationsByKey: [:],
+            recordCount: 0,
+            latestRecordedAt: nil
+        )
+    }
+
+    private struct ProjectionBucketKey: Hashable, Comparable {
+        let dayUTC: String
+        let providerID: String
+        let modelID: String
+
+        static func < (lhs: ProjectionBucketKey, rhs: ProjectionBucketKey) -> Bool {
+            (lhs.dayUTC, lhs.providerID, lhs.modelID)
+                < (rhs.dayUTC, rhs.providerID, rhs.modelID)
+        }
+    }
+
+    private struct MutableProjectionBucket {
+        var totals = MutableTotals()
+        var exactEventCount = 0
+        var estimatedEventCount = 0
+        var unknownEventCount = 0
+        var firstRecordedAt: Date
+        var lastRecordedAt: Date
+    }
+
+    private struct ProjectionSource {
+        let fingerprint: String
+        let totals: MutableTotals
+        let buckets: [ProjectionBucketKey: MutableProjectionBucket]
+    }
+
+    private var ledgerIndex: LedgerIndex?
     private var cachedProjection: BurnBarUsageProjection?
 
     public init(
         fileURL: URL = BurnBarDaemonPaths.defaultUsageLedgerURL,
         projectionFileURL: URL? = nil,
         logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "usage-recorder"),
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.fileURL = fileURL
         self.projectionFileURL = projectionFileURL
@@ -83,11 +141,12 @@ public actor BurnBarUsageRecorder {
         let normalizedKey = try Self.validatedIdentifier(idempotencyKey, field: "idempotencyKey")
         try validate(event)
 
-        var state = try loadStateIfNeeded()
+        var index = try loadIndexIfNeeded()
         let record = BurnBarUsageRecord(idempotencyKey: normalizedKey, event: event)
 
-        if let existing = state.recordsByKey[normalizedKey] {
-            guard existing.event == event else {
+        if let location = index.locationsByKey[normalizedKey] {
+            let existing = try readRecord(at: location)
+            guard existing == record else {
                 throw BurnBarUsageLedgerError.conflictingIdempotencyKey(normalizedKey)
             }
             logger.debug(
@@ -97,11 +156,11 @@ public actor BurnBarUsageRecorder {
             return BurnBarUsageRecordResult(record: existing, inserted: false)
         }
 
-        try append(record)
-        state.recordsByKey[normalizedKey] = record
-        state.records.append(record)
-        recordsByKey = state.recordsByKey
-        cachedRecords = state.records
+        let location = try append(record)
+        index.locationsByKey[normalizedKey] = location
+        index.recordCount += 1
+        index.latestRecordedAt = max(index.latestRecordedAt ?? event.recordedAt, event.recordedAt)
+        ledgerIndex = index
         // The projection is a derived cache. Invalidate it in O(1) and rebuild
         // only when a projection consumer asks; recounting the whole ledger on
         // every imported row would make a batch import quadratic.
@@ -120,16 +179,141 @@ public actor BurnBarUsageRecorder {
     }
 
     public func records() throws -> [BurnBarUsageRecord] {
-        try loadStateIfNeeded().records
+        let index = try loadIndexIfNeeded()
+        var records: [BurnBarUsageRecord] = []
+        records.reserveCapacity(index.recordCount)
+        try forEachLedgerRecord { record, location in
+            guard index.locationsByKey[record.idempotencyKey] == location else { return }
+            records.append(record)
+        }
+        return records
     }
 
     public func recentUsage(limit: Int) throws -> [BurnBarUsageEvent] {
-        Array(
-            try records()
-                .map(\.event)
-                .sorted { $0.recordedAt > $1.recordedAt }
-                .prefix(max(0, limit))
+        try newestRecords(limit: limit) { _ in true }.map(\.event)
+    }
+
+    /// Returns the newest matching records in chronological order. Working
+    /// memory is bounded by `limit`, independent of total ledger size.
+    public func records(in interval: DateInterval, limit: Int) throws -> [BurnBarUsageRecord] {
+        Array(try newestRecords(limit: limit) { interval.contains($0.recordedAt) }.reversed())
+    }
+
+    /// Enriches a complete, bounded Activity snapshot without materializing the
+    /// ledger. The caller establishes history completeness first, so an
+    /// oversized conversation database never opens or scans the usage file.
+    func enrichingActivityHistory(
+        _ sessions: [BurnBarActivityHistorySession]
+    ) throws -> [BurnBarActivityHistorySession] {
+        guard !sessions.isEmpty else { return sessions }
+
+        struct ActivityUsageTotals {
+            var tokens = 0
+            var costUsd = 0.0
+            var model: String?
+        }
+
+        var sessionIndexesByID: [String: [Int]] = [:]
+        var sourceIndexesByID: [String: [Int]] = [:]
+        for (index, session) in sessions.enumerated() {
+            sessionIndexesByID[session.providerSessionID, default: []].append(index)
+            sourceIndexesByID[session.sourceID, default: []].append(index)
+        }
+
+        let index = try loadIndexIfNeeded()
+        var totals = Array(repeating: ActivityUsageTotals(), count: sessions.count)
+        try forEachLedgerRecord { record, location in
+            guard index.locationsByKey[record.idempotencyKey] == location else { return }
+            let event = record.event
+            let sessionMatches = event.sessionID.flatMap { sessionIndexesByID[$0] }
+            let sourceMatches = event.runID.flatMap { sourceIndexesByID[$0.rawValue] }
+            guard sessionMatches != nil || sourceMatches != nil else { return }
+
+            var matchingIndexes = Set<Int>()
+            if let sessionMatches {
+                matchingIndexes.formUnion(sessionMatches)
+            }
+            if let sourceMatches {
+                matchingIndexes.formUnion(sourceMatches)
+            }
+
+            var eventTokens = 0
+            for value in [event.inputTokens, event.outputTokens, event.reasoningTokens] {
+                let addition = eventTokens.addingReportingOverflow(max(0, value))
+                eventTokens = addition.overflow ? Int.max : addition.partialValue
+            }
+
+            for matchingIndex in matchingIndexes {
+                let tokenAddition = totals[matchingIndex].tokens
+                    .addingReportingOverflow(eventTokens)
+                totals[matchingIndex].tokens = tokenAddition.overflow
+                    ? Int.max
+                    : tokenAddition.partialValue
+                if event.cost.isFinite {
+                    totals[matchingIndex].costUsd += max(0, event.cost)
+                }
+                if totals[matchingIndex].model == nil {
+                    totals[matchingIndex].model = event.modelID
+                }
+            }
+        }
+
+        return sessions.enumerated().map { index, session in
+            let usage = totals[index]
+            return BurnBarActivityHistorySession(
+                id: session.id,
+                provider: session.provider,
+                model: session.model == "unknown"
+                    ? usage.model ?? session.model
+                    : session.model,
+                startedAt: session.startedAt,
+                tokens: usage.tokens,
+                costUsd: usage.costUsd,
+                title: session.title,
+                sourceID: session.sourceID,
+                providerSessionID: session.providerSessionID,
+                runID: session.runID,
+                projectName: session.projectName,
+                bodyMD: session.bodyMD
+            )
+        }
+    }
+
+    /// Streams the canonical ledger and sums matching spend without retaining
+    /// the underlying records.
+    public func sumCost(
+        since start: Date,
+        matching predicate: @Sendable (BurnBarUsageEvent) -> Bool
+    ) throws -> Double {
+        let index = try loadIndexIfNeeded()
+        var total = 0.0
+        try forEachLedgerRecord { record, location in
+            guard index.locationsByKey[record.idempotencyKey] == location,
+                  record.event.recordedAt >= start,
+                  predicate(record.event) else {
+                return
+            }
+            let next = total + record.event.cost
+            guard next.isFinite else {
+                throw BurnBarUsageLedgerError.aggregateOverflow("cost")
+            }
+            total = next
+        }
+        return total
+    }
+
+    /// Cheap change-gate metadata maintained by the compact ledger index.
+    public func signature() throws -> BurnBarUsageLedgerSignature {
+        let index = try loadIndexIfNeeded()
+        return BurnBarUsageLedgerSignature(
+            recordCount: index.recordCount,
+            latestRecordedAt: index.latestRecordedAt
         )
+    }
+
+    /// Exposes the bounded retained-state invariant to focused tests.
+    var retainedRecordCount: Int {
+        0
     }
 
     /// Returns the daemon-owned, durable projection of the canonical ledger.
@@ -138,19 +322,17 @@ public actor BurnBarUsageRecorder {
         if let cachedProjection {
             return cachedProjection
         }
-        let records = try loadStateIfNeeded().records
-        let fingerprint = try ledgerFingerprint(records)
+        let source = try projectionSource()
 
         let persisted = try? loadPersistedProjection()
         if let persisted,
-           try projectionMatchesLedger(persisted, records: records, fingerprint: fingerprint) {
+           try projectionMatchesLedger(persisted, source: source) {
             cachedProjection = persisted
             return persisted
         }
 
         return try rebuildProjection(
-            records: records,
-            fingerprint: fingerprint,
+            source: source,
             previousGeneration: persisted?.generation
         )
     }
@@ -159,151 +341,64 @@ public actor BurnBarUsageRecorder {
     /// events remain untouched, and generation advances even when inputs did
     /// not change so callers can prove a recount actually ran.
     public func recountProjection() throws -> BurnBarUsageProjection {
-        let records = try loadStateIfNeeded().records
-        let fingerprint = try ledgerFingerprint(records)
+        let source = try projectionSource()
         let persisted = cachedProjection ?? (try? loadPersistedProjection())
         return try rebuildProjection(
-            records: records,
-            fingerprint: fingerprint,
+            source: source,
             previousGeneration: persisted?.generation
         )
     }
 
-    private func loadStateIfNeeded() throws -> (
-        records: [BurnBarUsageRecord],
-        recordsByKey: [String: BurnBarUsageRecord]
-    ) {
-        if let cachedRecords, let recordsByKey {
-            return (cachedRecords, recordsByKey)
-        }
-
+    private func loadIndexIfNeeded() throws -> LedgerIndex {
+        if let ledgerIndex { return ledgerIndex }
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            let state: ([BurnBarUsageRecord], [String: BurnBarUsageRecord]) = ([], [:])
-            cachedRecords = state.0
-            recordsByKey = state.1
-            return state
+            ledgerIndex = .empty
+            return .empty
         }
 
-        let fileContents = try String(contentsOf: fileURL, encoding: .utf8)
-        let lines = fileContents.split(whereSeparator: \.isNewline)
-        var records: [BurnBarUsageRecord] = []
-        var indexed: [String: BurnBarUsageRecord] = [:]
-        for line in lines {
-            let record = try decoder.decode(BurnBarUsageRecord.self, from: Data(line.utf8))
-            let key = try Self.validatedIdentifier(record.idempotencyKey, field: "idempotencyKey")
-            try validate(record.event)
-            if let existing = indexed[key] {
+        var index = LedgerIndex.empty
+        try forEachLedgerRecord { record, location in
+            let key = record.idempotencyKey
+            if let existingLocation = index.locationsByKey[key] {
+                let existing = try readRecord(at: existingLocation)
                 guard existing == record else {
                     throw BurnBarUsageLedgerError.conflictingIdempotencyKey(key)
                 }
-                continue
+                return
             }
-            indexed[key] = record
-            records.append(record)
+            index.locationsByKey[key] = location
+            index.recordCount += 1
+            index.latestRecordedAt = max(
+                index.latestRecordedAt ?? record.event.recordedAt,
+                record.event.recordedAt
+            )
         }
 
-        cachedRecords = records
-        recordsByKey = indexed
-
-        return (records, indexed)
+        ledgerIndex = index
+        return index
     }
 
-    private func ledgerFingerprint(_ records: [BurnBarUsageRecord]) throws -> String {
+    private func projectionSource() throws -> ProjectionSource {
+        let index = try loadIndexIfNeeded()
         let canonicalEncoder = JSONEncoder()
         canonicalEncoder.outputFormatting = [.sortedKeys]
-        var data = Data()
-        for record in records {
-            data.append(try canonicalEncoder.encode(record))
-            data.append(0x0A)
-        }
-        return PlatformCrypto.sha256Hex(data)
-    }
-
-    private func loadPersistedProjection() throws -> BurnBarUsageProjection {
-        try decoder.decode(BurnBarUsageProjection.self, from: Data(contentsOf: projectionFileURL))
-    }
-
-    private func projectionMatchesLedger(
-        _ projection: BurnBarUsageProjection,
-        records: [BurnBarUsageRecord],
-        fingerprint: String
-    ) throws -> Bool {
-        guard projection.schemaVersion == 1,
-              projection.generation > 0,
-              projection.ledgerSHA256 == fingerprint else {
-            return false
-        }
-        let expected = try makeProjection(
-            records: records,
-            fingerprint: fingerprint,
-            generation: projection.generation,
-            generatedAt: projection.generatedAt
-        )
-        return expected == projection
-    }
-
-    private func rebuildProjection(
-        records: [BurnBarUsageRecord],
-        fingerprint: String,
-        previousGeneration: Int?
-    ) throws -> BurnBarUsageProjection {
-        let nextGeneration: Int
-        if let previousGeneration {
-            let incremented = previousGeneration.addingReportingOverflow(1)
-            guard !incremented.overflow else {
-                throw BurnBarUsageLedgerError.aggregateOverflow("generation")
-            }
-            nextGeneration = incremented.partialValue
-        } else {
-            nextGeneration = 1
-        }
-        let projection = try makeProjection(
-            records: records,
-            fingerprint: fingerprint,
-            generation: nextGeneration,
-            generatedAt: now()
-        )
-        try persistProjection(projection)
-        cachedProjection = projection
-        return projection
-    }
-
-    private func makeProjection(
-        records: [BurnBarUsageRecord],
-        fingerprint: String,
-        generation: Int,
-        generatedAt: Date
-    ) throws -> BurnBarUsageProjection {
-        struct BucketKey: Hashable, Comparable {
-            let dayUTC: String
-            let providerID: String
-            let modelID: String
-
-            static func < (lhs: BucketKey, rhs: BucketKey) -> Bool {
-                (lhs.dayUTC, lhs.providerID, lhs.modelID)
-                    < (rhs.dayUTC, rhs.providerID, rhs.modelID)
-            }
-        }
-        struct MutableBucket {
-            var totals = MutableTotals()
-            var exactEventCount = 0
-            var estimatedEventCount = 0
-            var unknownEventCount = 0
-            var firstRecordedAt: Date
-            var lastRecordedAt: Date
-        }
-
+        var hasher = SHA256()
         var totals = MutableTotals()
-        var buckets: [BucketKey: MutableBucket] = [:]
-        for record in records {
+        var buckets: [ProjectionBucketKey: MutableProjectionBucket] = [:]
+        try forEachLedgerRecord { record, location in
+            guard index.locationsByKey[record.idempotencyKey] == location else { return }
+            let canonical = try canonicalEncoder.encode(record)
+            hasher.update(data: canonical)
+            hasher.update(data: Data([0x0A]))
+
             let event = record.event
             try totals.add(event)
-            let key = BucketKey(
+            let key = ProjectionBucketKey(
                 dayUTC: Self.utcDay(event.recordedAt),
                 providerID: event.providerID,
                 modelID: event.modelID
             )
-            var bucket = buckets[key] ?? MutableBucket(
+            var bucket = buckets[key] ?? MutableProjectionBucket(
                 firstRecordedAt: event.recordedAt,
                 lastRecordedAt: event.recordedAt
             )
@@ -320,9 +415,62 @@ public actor BurnBarUsageRecorder {
             bucket.lastRecordedAt = max(bucket.lastRecordedAt, event.recordedAt)
             buckets[key] = bucket
         }
+        let fingerprint = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return ProjectionSource(fingerprint: fingerprint, totals: totals, buckets: buckets)
+    }
 
-        let projectedBuckets = try buckets.keys.sorted().map { key in
-            guard let bucket = buckets[key] else {
+    private func loadPersistedProjection() throws -> BurnBarUsageProjection {
+        try decoder.decode(BurnBarUsageProjection.self, from: Data(contentsOf: projectionFileURL))
+    }
+
+    private func projectionMatchesLedger(
+        _ projection: BurnBarUsageProjection,
+        source: ProjectionSource
+    ) throws -> Bool {
+        guard projection.schemaVersion == 1,
+              projection.generation > 0,
+              projection.ledgerSHA256 == source.fingerprint else {
+            return false
+        }
+        let expected = try makeProjection(
+            source: source,
+            generation: projection.generation,
+            generatedAt: projection.generatedAt
+        )
+        return expected == projection
+    }
+
+    private func rebuildProjection(
+        source: ProjectionSource,
+        previousGeneration: Int?
+    ) throws -> BurnBarUsageProjection {
+        let nextGeneration: Int
+        if let previousGeneration {
+            let incremented = previousGeneration.addingReportingOverflow(1)
+            guard !incremented.overflow else {
+                throw BurnBarUsageLedgerError.aggregateOverflow("generation")
+            }
+            nextGeneration = incremented.partialValue
+        } else {
+            nextGeneration = 1
+        }
+        let projection = try makeProjection(
+            source: source,
+            generation: nextGeneration,
+            generatedAt: now()
+        )
+        try persistProjection(projection)
+        cachedProjection = projection
+        return projection
+    }
+
+    private func makeProjection(
+        source: ProjectionSource,
+        generation: Int,
+        generatedAt: Date
+    ) throws -> BurnBarUsageProjection {
+        let projectedBuckets = try source.buckets.keys.sorted().map { key in
+            guard let bucket = source.buckets[key] else {
                 throw BurnBarUsageLedgerError.aggregateOverflow("bucket lookup")
             }
             return BurnBarUsageProjectionBucket(
@@ -340,8 +488,8 @@ public actor BurnBarUsageRecorder {
         return BurnBarUsageProjection(
             generation: generation,
             generatedAt: generatedAt,
-            ledgerSHA256: fingerprint,
-            totals: totals.value,
+            ledgerSHA256: source.fingerprint,
+            totals: source.totals.value,
             buckets: projectedBuckets
         )
     }
@@ -382,7 +530,84 @@ public actor BurnBarUsageRecorder {
         value = incremented.partialValue
     }
 
-    private func append(_ record: BurnBarUsageRecord) throws {
+    private func newestRecords(
+        limit: Int,
+        matching predicate: (BurnBarUsageEvent) -> Bool
+    ) throws -> [BurnBarUsageRecord] {
+        let boundedLimit = min(max(0, limit), Self.maximumReturnedRecords)
+        guard boundedLimit > 0 else { return [] }
+        let index = try loadIndexIfNeeded()
+        var newest: [BurnBarUsageRecord] = []
+        newest.reserveCapacity(min(boundedLimit * 2, index.recordCount))
+
+        try forEachLedgerRecord { record, location in
+            guard index.locationsByKey[record.idempotencyKey] == location,
+                  predicate(record.event) else {
+                return
+            }
+            newest.append(record)
+            if newest.count >= boundedLimit * 2 {
+                newest.sort { $0.event.recordedAt > $1.event.recordedAt }
+                newest.removeSubrange(boundedLimit..<newest.count)
+            }
+        }
+
+        newest.sort { $0.event.recordedAt > $1.event.recordedAt }
+        if newest.count > boundedLimit {
+            newest.removeSubrange(boundedLimit..<newest.count)
+        }
+        return newest
+    }
+
+    private func forEachLedgerRecord(
+        _ body: (BurnBarUsageRecord, RecordLocation) throws -> Void
+    ) throws {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+        let reader = BufferedLineReader(fileHandle: handle)
+        var previousEndOffset: UInt64 = 0
+        var lineCount = 0
+
+        while let line = reader.nextLine() {
+            lineCount += 1
+            if lineCount % 1_024 == 0 {
+                try Task.checkCancellation()
+            }
+            let endOffset = UInt64(clamping: line.endOffset)
+            let distance = endOffset.subtractingReportingOverflow(previousEndOffset)
+            guard !distance.overflow, distance.partialValue <= UInt64(Int.max) else {
+                throw BurnBarUsageLedgerError.aggregateOverflow("ledger byte offset")
+            }
+            let location = RecordLocation(
+                byteOffset: previousEndOffset,
+                byteCount: Int(distance.partialValue)
+            )
+            previousEndOffset = endOffset
+
+            let record = try decoder.decode(BurnBarUsageRecord.self, from: Data(line.text.utf8))
+            let key = try Self.validatedIdentifier(record.idempotencyKey, field: "idempotencyKey")
+            try validate(record.event)
+            guard key == record.idempotencyKey else {
+                throw BurnBarUsageValidationError.invalidField(
+                    "idempotencyKey",
+                    "must remain canonical"
+                )
+            }
+            try body(record, location)
+        }
+        try Task.checkCancellation()
+    }
+
+    private func readRecord(at location: RecordLocation) throws -> BurnBarUsageRecord {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: location.byteOffset)
+        let data = try handle.read(upToCount: location.byteCount) ?? Data()
+        return try decoder.decode(BurnBarUsageRecord.self, from: data)
+    }
+
+    private func append(_ record: BurnBarUsageRecord) throws -> RecordLocation {
         let directoryURL = fileURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(
             at: directoryURL,
@@ -391,17 +616,21 @@ public actor BurnBarUsageRecorder {
         )
 
         let encodedRecord = try encoder.encode(record) + Data([0x0A])
+        let location: RecordLocation
         if FileManager.default.fileExists(atPath: fileURL.path) {
             let handle = try FileHandle(forWritingTo: fileURL)
             defer {
                 try? handle.close()
             }
-            try handle.seekToEnd()
+            let offset = try handle.seekToEnd()
+            location = RecordLocation(byteOffset: offset, byteCount: encodedRecord.count)
             try handle.write(contentsOf: encodedRecord)
         } else {
+            location = RecordLocation(byteOffset: 0, byteCount: encodedRecord.count)
             try encodedRecord.write(to: fileURL, options: .atomic)
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        return location
     }
 
     private func validate(_ event: BurnBarUsageEvent) throws {

@@ -1565,3 +1565,168 @@ Validation:
   (on-disk pool EQP + pool tuning)
 - `AgentLensTests/Active/MacIdleUsageParserCacheTests`
   (Mac JSON-only `part`)
+
+## 32. Real-dataset bounded-work repair (August 16, 2026)
+
+This round was driven by the installed macOS app and daemon on the real
+multi-gigabyte OpenBurnBar dataset, rather than a synthetic fixture. The
+protected baseline was captured at `2026-08-16T02:50:22Z` (August 15 local
+time in Chicago) from source candidate
+`27cfd061df1c6f8aaa5171aee1c12d799fbc4772`.
+
+The local, ignored evidence roots are:
+
+- `.derived-data/performance/openburnbar-mission-20260816-baseline.b08BQv/`
+- `.derived-data/performance/openburnbar-mission-20260816-snapshot.m1AFEj/`
+- `~/Library/Application Support/OpenBurnBar/backups/openburnbar-rollback-20260815-220554.bundle`
+
+The protected database was approximately 5.49 GB (`1,340,658` pages at
+4,096 bytes), with 44,581 usage rows, 9,059 conversations, 556,973 search
+chunks, and 556,973 embeddings. The OMP corpus contained 1,477 JSONL files
+and approximately 1.577 GiB of source logs. Aggregate sizes and cardinalities
+live in `protected-db-storage-summary.txt` and
+`protected-db-cardinality-plans.txt`; private row contents remain local.
+
+### Observed causes
+
+Profiles and controlled isolation tied the material costs to five bounded-work
+violations:
+
+1. Mac and Core Pi/OMP parsing eagerly materialized whole JSONL bodies.
+   Foundation objects accumulated across the 1.577 GiB scan, driving the app
+   from roughly 2.0 GB toward 2.4 GB of physical footprint while consuming
+   roughly 55–63% CPU.
+2. The daemon usage recorder retained and repeatedly decoded the full usage
+   ledger, then sorted, filtered, fingerprinted, and projected it for bounded
+   reads.
+3. Mission Control loaded its approximately 163 MB controller journal into
+   one array. Replay, fallback ordering, and tombstone lookup multiplied that
+   retention and rescanned old history.
+4. Smart Hub requested overlapping period totals independently, producing as
+   many as three aggregate SQL scans on each five-second pump.
+5. Gateway projection changes reused the provider-discovery path, so health,
+   quota, or selection updates could repeat expensive provider discovery on
+   the former 45-second cadence.
+
+### Repair contracts
+
+Pi and OMP parsers now stream JSONL through `BufferedLineReader` with
+per-line autorelease pools. The first pass extracts explicit usage and cheap
+metadata only. A second streamed transcript pass runs only when explicit
+usage is absent and a heuristic estimate is required. Conversation indexing
+still receives complete bodies when requested. Cancellation and resource
+governor checkpoints run during long files, and parser caches persist every
+16 changed files so interrupted corpus scans retain bounded progress.
+
+The usage recorder now stores a key-to-byte-offset index and streams records
+for cost, signature, projection, and fingerprint work. Newest-window queries
+use a bounded 10,000-record cap. This preserves append-only ledger semantics
+without retaining every decoded record in daemon memory.
+
+Mission Control now streams ordered replay. Out-of-order input takes a
+deterministic sorted fallback, malformed lines are skipped, deletion
+tombstones are persisted, and the live projection retains only the newest
+100 controller events.
+
+Smart Hub caches run-cost totals by the usage-table write marker and a
+30-second time bucket. Identical requested periods are deduplicated before
+query execution, while a write-marker advance immediately invalidates the
+cached totals.
+
+Gateway provider discovery and catalog projection now have separate
+lifecycles. macOS discovery uses a non-sliding 10-minute TTL keyed by the
+explicit configuration and credential revision. A configuration or credential
+revision invalidates discovery immediately. Health, quota, and selection
+changes reproject the cached catalog without rediscovery. Linux retains its
+45-second discovery default.
+
+### Release budgets
+
+The real-dataset Release candidate must satisfy all of these gates on the same
+protected workload:
+
+- settled within 30 seconds after a warm launch with unchanged input;
+- app-plus-daemon closed or occluded idle CPU median at or below 2% and p95
+  at or below 5% over five minutes;
+- combined steady physical footprint at or below 500 MB;
+- combined 30-minute physical-footprint growth at or below 25 MB;
+- combined active-work peak physical footprint below 1 GB;
+- post-workload footprint within 10% of its pre-workload value after five
+  refresh/search/navigation cycles;
+- occluded app CPU at or below the existing 5% ceiling and the
+  occluded-to-visible ratio at or below 0.35;
+- bounded descriptors, tasks, database size, WAL growth, and settled writes.
+
+Three consecutive installed Release measurements provide the completion
+verdict. The built app hash, installed app hash, embedded daemon hash, launched
+daemon hash, source HEAD, database snapshot, and measurement run belong in the
+same evidence manifest.
+
+### Focused regression coverage
+
+These focused gates exercise the repaired contracts:
+
+```bash
+OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS=1 \
+OPENBURNBAR_CORE_SWIFT_FILTER=AdditionalLocalUsageParsersTests \
+./scripts/test-openburnbar-swift.sh
+
+OPENBURNBAR_APP_TEST_ATTEMPTS=1 \
+./scripts/test-openburnbar-app.sh \
+-only-testing:OpenBurnBarTests/MacIdleUsageParserCacheTests
+```
+
+The Core parser suite passes 14 tests and the Mac parser cache suite passes
+11 tests. Additional focused suites cover Smart Hub serialization (28 tests),
+the usage recorder (17 tests), Mission Control (4 tests), and gateway
+discovery/projection (10 tests). Full repository, Release smoke, real-process
+occlusion, installed-candidate, and soak evidence remains candidate-bound
+rather than inferred from these unit totals.
+
+The local Release smoke launches its temporary daemon with a private
+`OPENBURNBAR_DAEMON_SUPPORT_DIR`. This keeps the executable health probe away
+from the installed app's production database, configuration, ledgers, and
+controller journals.
+
+The implementation consulted Context7 library IDs
+`/groue/grdb.swift/v7.11.1` and `/sqlcipher/sqlcipher`.
+
+### Integrity evidence
+
+`PRAGMA integrity_check` on the protected snapshot returned `ok`.
+`PRAGMA cipher_integrity_check` under SQLCipher 4.16.0 reported HMAC failures
+beginning at page 1,048,577 and continuing through the end of the 1,340,658
+page database. That boundary is exactly 4 GiB at the database's 4,096-byte
+page size and was traced to an integer-overflow defect in the 4.16.0
+diagnostic verifier:
+
+```c
+i64 offset = (page - 1) * ctx->page_sz;
+```
+
+The multiplication occurred before assignment to the 64-bit destination.
+SQLCipher 4.17.0 performs the page-size conversion before multiplication:
+
+```c
+i64 offset = (page - 1) * (i64) ctx->page_sz;
+```
+
+An official SQLCipher 4.17.0 CLI built from source revision
+`810db22f575ee7cf94ea96a3e91622b5fcece3dc` with CommonCrypto then checked
+all 1,340,658 pages of the same protected bundle and returned zero
+`cipher_integrity_check` error rows. The CLI SHA-256 was
+`f6ec9f1e0dd74b58dcca3ffa70c723de4112aea506f7b2e7e7a05cd107576ee9`;
+the resulting evidence file SHA-256 was
+`423ea3e76af6dd872ac81419c700e31f917bccf2612d5d71f14e5464645370ba`.
+
+The protected database therefore has clean logical and cipher-integrity
+evidence. The 4.16.0 result is retained as diagnostic evidence of the
+verifier defect, not database corruption. The app does not invoke
+`cipher_integrity_check`, so this investigation does not by itself justify a
+runtime dependency upgrade.
+
+Preserve the raw artifacts:
+`protected-db-logical-integrity.txt` and
+`protected-db-cipher-integrity.txt`, plus the clean 4.17.0 result in
+`protected-db-cipher-integrity-sqlcipher-4.17.0.txt`. Keep the rollback bundle
+and protected snapshot intact.

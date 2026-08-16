@@ -4,6 +4,12 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Optional concurrency-safe SwiftPM build isolation. When set, Core and daemon
+# use distinct package-named scratch directories below this root instead of
+# sharing each checkout's `.build` cache with other local agents or CI jobs.
+# Example: OPENBURNBAR_SWIFT_SCRATCH_ROOT=/tmp/openburnbar-swift ./scripts/test-openburnbar-swift.sh
+swift_scratch_root="${OPENBURNBAR_SWIFT_SCRATCH_ROOT:-}"
+
 # When the focused domain-core consumer job requires the native Rust domain-core
 # artifact but does NOT need libsignal, skip building libsignal-ffi entirely and
 # gate the local LibSignalClient Swift package out of the package graph. This
@@ -64,6 +70,13 @@ run_swift_tests() {
   local package_path="$1"
   local filter="${2:-}"
   local args=(--package-path "$package_path")
+  local package_scratch_path="${package_path}/.build"
+
+  if [[ -n "$swift_scratch_root" ]]; then
+    package_scratch_path="${swift_scratch_root}/$(basename "$package_path")"
+    mkdir -p "$package_scratch_path"
+    args+=(--scratch-path "$package_scratch_path")
+  fi
 
   if ((${#coverage_flags[@]})); then
     args+=("${coverage_flags[@]}")
@@ -74,6 +87,9 @@ run_swift_tests() {
 
   if [[ "$package_path" == "$repo_root/OpenBurnBarDaemon" ]]; then
     local build_args=(--package-path "$package_path" --build-tests)
+    if [[ -n "$swift_scratch_root" ]]; then
+      build_args+=(--scratch-path "$package_scratch_path")
+    fi
     if ((${#coverage_flags[@]})); then
       build_args+=("${coverage_flags[@]}")
     fi
@@ -81,9 +97,13 @@ run_swift_tests() {
     swift build "${build_args[@]}"
 
     local bin_path
-    bin_path="$(swift build --package-path "$package_path" --show-bin-path)"
+    local show_bin_path_args=(--package-path "$package_path" --show-bin-path)
+    if [[ -n "$swift_scratch_root" ]]; then
+      show_bin_path_args+=(--scratch-path "$package_scratch_path")
+    fi
+    bin_path="$(swift build "${show_bin_path_args[@]}")"
 
-    local sqlcipher_framework_src="${package_path}/.build/artifacts/sqlcipher.swift/SQLCipher/SQLCipher.xcframework/macos-arm64_x86_64/SQLCipher.framework"
+    local sqlcipher_framework_src="${package_scratch_path}/artifacts/sqlcipher.swift/SQLCipher/SQLCipher.xcframework/macos-arm64_x86_64/SQLCipher.framework"
     local sqlcipher_framework_dst="${bin_path}/PackageFrameworks/SQLCipher.framework"
     if [[ ! -d "$sqlcipher_framework_src" ]]; then
       echo "Missing SQLCipher.framework at ${sqlcipher_framework_src}; SwiftPM did not resolve the SQLCipher binary artifact." >&2

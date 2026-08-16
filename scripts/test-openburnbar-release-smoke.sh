@@ -29,6 +29,15 @@ launch_plist="/tmp/openburnbar-release-smoke-$uid.plist"
 launch_label="com.openburnbar.daemon.release-smoke"
 log_path="/tmp/openburnbar-release-smoke-$uid.log"
 socket_auth_token="$(uuidgen | tr -d '-' | tr '[:upper:]' '[:lower:]')"
+support_dir="$(mktemp -d "/tmp/openburnbar-release-smoke-support-$uid.XXXXXX")"
+chmod 700 "$support_dir"
+
+cleanup() {
+  launchctl bootout "gui/$uid" "$launch_plist" >/dev/null 2>&1 || true
+  rm -f "$launch_plist" "$socket_path" "$log_path"
+  rm -rf "$support_dir"
+}
+trap cleanup EXIT
 
 make -C "$repo_root" build
 
@@ -60,11 +69,12 @@ plist = {
     "Label": "${launch_label}",
     "ProgramArguments": ["${daemon_bin}", "--socket-path", "${socket_path}", "--version", "release-smoke"],
     "EnvironmentVariables": {
-        "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "${socket_auth_token}"
+        "OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "${socket_auth_token}",
+        "OPENBURNBAR_DAEMON_SUPPORT_DIR": "${support_dir}"
     },
     "RunAtLoad": True,
     "KeepAlive": True,
-    "WorkingDirectory": "/tmp",
+    "WorkingDirectory": "${support_dir}",
     "StandardOutPath": "${log_path}",
     "StandardErrorPath": "${log_path}",
 }
@@ -73,12 +83,6 @@ with Path("${launch_plist}").open("wb") as fh:
     plistlib.dump(plist, fh)
 PY
 chmod 600 "$launch_plist"
-
-cleanup() {
-  launchctl bootout "gui/$uid" "$launch_plist" >/dev/null 2>&1 || true
-  rm -f "$launch_plist" "$socket_path" "$log_path"
-}
-trap cleanup EXIT
 
 launchctl bootout "gui/$uid" "$launch_plist" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$uid" "$launch_plist"

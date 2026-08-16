@@ -129,6 +129,7 @@ public actor BurnBarConfigStore {
     private let encoder = JSONEncoder()
 
     private var cachedSnapshot: BurnBarProviderConfigurationSnapshot?
+    private var modelCatalogRevision: UInt64 = 0
 
     public init(
         fileURL: URL = BurnBarDaemonPaths.defaultConfigStoreURL,
@@ -174,11 +175,16 @@ public actor BurnBarConfigStore {
         return normalizedSnapshot
     }
 
+    public func modelCatalogConfigurationRevision() -> UInt64 {
+        modelCatalogRevision
+    }
+
     @discardableResult
     public func replaceSnapshot(_ snapshot: BurnBarProviderConfigurationSnapshot) throws -> BurnBarProviderConfigurationSnapshot {
         let normalized = try normalize(snapshot, defaults: makeDefaultSnapshot())
         try persist(normalized)
         cachedSnapshot = normalized
+        modelCatalogRevision &+= 1
 
         logger.notice(
             "config_replaced",
@@ -213,6 +219,7 @@ public actor BurnBarConfigStore {
         snapshot = try normalize(snapshot, defaults: defaultSnapshot)
         try persist(snapshot)
         cachedSnapshot = snapshot
+        modelCatalogRevision &+= 1
 
         logger.notice(
             "provider_config_updated",
@@ -231,6 +238,7 @@ public actor BurnBarConfigStore {
         }
 
         try await secretStore.setSecret(secret, for: providerID)
+        modelCatalogRevision &+= 1
         logger.notice(
             "provider_secret_updated",
             metadata: [
@@ -723,6 +731,7 @@ public actor BurnBarConfigStore {
         let normalizedSnapshot = try normalize(currentSnapshot, defaults: makeDefaultSnapshot())
         try persist(normalizedSnapshot)
         cachedSnapshot = normalizedSnapshot
+        modelCatalogRevision &+= 1
         logger.notice(
             "router_mode_updated",
             metadata: ["router_mode": mode.rawValue]
@@ -734,7 +743,10 @@ public actor BurnBarConfigStore {
         slotID: String
     ) throws {
         let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+        _ = try mutateProviderSettings(
+            providerID: normalizedProviderID,
+            invalidatesModelCatalog: false
+        ) { settings in
             var mutable = settings
             guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
                 return mutable
@@ -758,7 +770,10 @@ public actor BurnBarConfigStore {
         message: String?
     ) throws {
         let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+        _ = try mutateProviderSettings(
+            providerID: normalizedProviderID,
+            invalidatesModelCatalog: false
+        ) { settings in
             var mutable = settings
             guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
                 return mutable
@@ -781,7 +796,10 @@ public actor BurnBarConfigStore {
         message: String?
     ) throws {
         let normalizedProviderID = providerID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        _ = try mutateProviderSettings(providerID: normalizedProviderID) { settings in
+        _ = try mutateProviderSettings(
+            providerID: normalizedProviderID,
+            invalidatesModelCatalog: false
+        ) { settings in
             var mutable = settings
             guard let index = mutable.credentialSlots.firstIndex(where: { $0.slotID == slotID }) else {
                 return mutable
@@ -992,6 +1010,7 @@ public actor BurnBarConfigStore {
 
     private func mutateProviderSettings(
         providerID: String,
+        invalidatesModelCatalog: Bool = true,
         mutate: (BurnBarProviderSettings) -> BurnBarProviderSettings
     ) throws -> BurnBarProviderSettings {
         guard catalogSupport.isSupported(providerID: providerID) else {
@@ -1009,6 +1028,9 @@ public actor BurnBarConfigStore {
         let normalizedSnapshot = try normalize(currentSnapshot, defaults: makeDefaultSnapshot())
         try persist(normalizedSnapshot)
         cachedSnapshot = normalizedSnapshot
+        if invalidatesModelCatalog {
+            modelCatalogRevision &+= 1
+        }
         return normalizedSettings
     }
 

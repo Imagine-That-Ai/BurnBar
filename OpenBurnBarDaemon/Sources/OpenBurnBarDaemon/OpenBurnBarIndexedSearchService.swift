@@ -74,14 +74,18 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
                 userInfo: [NSLocalizedDescriptionKey: "Failed to open SQLite database: \(message)"]
             )
         }
-        // RR-1: key the shared SQLite with the same app Keychain key WHEN a
-        // SQLCipher codec is linked. On a stock-SQLite build this is a deliberate
-        // no-op (the file stays disclosed-plaintext) so we never brick the open.
-        do {
-            try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: handle)
-        } catch {
-            sqlite3_close(handle)
-            throw error
+        // RR-1: key the shared SQLite with the same app Keychain key only when
+        // the file header proves this is an encrypted SQLCipher database.
+        // Plaintext fixtures and legacy databases must stay readable even when
+        // this process can resolve Alberto's production key; applying that key
+        // to plaintext surfaces misleading SQLITE_NOMEM / SQLITE_NOTADB errors.
+        if BurnBarDaemonDatabaseCipher.isEncryptedDatabaseFile(at: databasePath) {
+            do {
+                try BurnBarDaemonDatabaseCipher.applyKeyIfAvailable(to: handle)
+            } catch {
+                sqlite3_close(handle)
+                throw error
+            }
         }
         self.db = handle
         // Shared file with the AgentLens app and the daemon's switcher store.

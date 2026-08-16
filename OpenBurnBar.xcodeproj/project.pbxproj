@@ -892,7 +892,7 @@
 		55E35B867AC6A1D044D97AA4 /* AIInboxDetectorsBreadthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 049DBB9EF6E721C8DBBA7F5A /* AIInboxDetectorsBreadthTests.swift */; };
 		5613F8822E66FC920DB86F64 /* OnboardingTourView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C336EFFAFC8AE269811FC4 /* OnboardingTourView.swift */; };
 		561BE41400DA34442F61EDA2 /* MacAccessibilityInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EFA1CF10B22D7DA372385B0 /* MacAccessibilityInspector.swift */; };
-		5625EA1295BFCE3CA6C6E6C6 /* openburnbar-db-compat-v60.sqlcipher in Resources */ = {isa = PBXBuildFile; fileRef = 82408EA5AC52BE194E108A89 /* openburnbar-db-compat-v60.sqlcipher */; };
+		5625EA1295BFCE3CA6C6E6C6 /* openburnbar-db-compat-v61.sqlcipher in Resources */ = {isa = PBXBuildFile; fileRef = 82408EA5AC52BE194E108A89 /* openburnbar-db-compat-v61.sqlcipher */; };
 		5627FEEAA4A4786290401BC0 /* LiveUsageAccumulatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAD976AB0CF4BB6D9A6E834B /* LiveUsageAccumulatorTests.swift */; };
 		563362DDF27AAAF1012DCFB1 /* DataStoreCoordinator+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 717F83A38FC11EC24D6C0880 /* DataStoreCoordinator+Presentation.swift */; };
 		5636438F228E3EDE82966E74 /* CLIAgentMissionRequestListener+WandRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10C94648DE436254F968480 /* CLIAgentMissionRequestListener+WandRouting.swift */; };
@@ -3997,7 +3997,7 @@
 		82112F84ECBB3C911766C424 /* ProxyProviderLogoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyProviderLogoView.swift; sourceTree = "<group>"; };
 		822B5EE1B95A13589DD3A361 /* FeatureUnlockSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureUnlockSheet.swift; sourceTree = "<group>"; };
 		82304C93A889A56CDDD719C1 /* QuotaPopoverCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaPopoverCopyTests.swift; sourceTree = "<group>"; };
-		82408EA5AC52BE194E108A89 /* openburnbar-db-compat-v60.sqlcipher */ = {isa = PBXFileReference; path = "openburnbar-db-compat-v60.sqlcipher"; sourceTree = "<group>"; };
+		82408EA5AC52BE194E108A89 /* openburnbar-db-compat-v61.sqlcipher */ = {isa = PBXFileReference; path = "openburnbar-db-compat-v61.sqlcipher"; sourceTree = "<group>"; };
 		82519185B1064ADE53BD21CE /* MissionGroupObserverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionGroupObserverTests.swift; sourceTree = "<group>"; };
 		8267B0DD5B8FD5D24D93E716 /* IrohRelayRequestHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IrohRelayRequestHandler.swift; sourceTree = "<group>"; };
 		829B818D9E89E2B78A6B0B16 /* HermesPopoverStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesPopoverStrip.swift; sourceTree = "<group>"; };
@@ -9314,7 +9314,7 @@
 			children = (
 				29D5C834B101B6A7A614DC6D /* openburnbar-db-compat-params-observed.json */,
 				07154EE46C0DACB0AD138B21 /* openburnbar-db-compat-README.md */,
-				82408EA5AC52BE194E108A89 /* openburnbar-db-compat-v60.sqlcipher */,
+				82408EA5AC52BE194E108A89 /* openburnbar-db-compat-v61.sqlcipher */,
 				85ADDDA786AD960CFDCE491C /* openburnbar-db-compat-vector.json */,
 			);
 			path = DBByteCompat;
@@ -10220,7 +10220,7 @@
 				14713D790F6B38E5B679D5FE /* llm-safe-wrap-vectors.json in Resources */,
 				57BC326D06F7374C7B75F293 /* openburnbar-db-compat-README.md in Resources */,
 				D943676FEDF65B46270974C4 /* openburnbar-db-compat-params-observed.json in Resources */,
-				5625EA1295BFCE3CA6C6E6C6 /* openburnbar-db-compat-v60.sqlcipher in Resources */,
+				5625EA1295BFCE3CA6C6E6C6 /* openburnbar-db-compat-v61.sqlcipher in Resources */,
 				B99ECDE7D5CB9466956346F3 /* openburnbar-db-compat-vector.json in Resources */,
 				AC5C572CCE624E499B525ED3 /* parser-output-golden.json in Resources */,
 				12C804644522BCE042C46D09 /* pc-claude-basic-session.jsonl in Resources */,

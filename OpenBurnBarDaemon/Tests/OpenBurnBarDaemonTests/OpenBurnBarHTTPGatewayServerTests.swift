@@ -689,8 +689,20 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
                 stderr: ""
             )
         )
+        let catalogRunner = RecordingFactoryDroidRunner(
+            result: FactoryDroidProcessResult(
+                exitCode: 0,
+                stdout: """
+                Available Models:
+                  gpt-5.5                                                   GPT-5.5
+                  glm-5.1                                                   Droid Core (GLM-5.1)
+                """,
+                stderr: ""
+            )
+        )
         let harness = try GatewayHarness(
-            factoryExecutor: FactoryDroidProviderExecutor(runner: runner, timeout: 1)
+            factoryExecutor: FactoryDroidProviderExecutor(runner: runner, timeout: 1),
+            modelCatalogDroidProcessRunner: catalogRunner
         )
         try await harness.configureFactoryProviderForGateway()
         try await harness.start()

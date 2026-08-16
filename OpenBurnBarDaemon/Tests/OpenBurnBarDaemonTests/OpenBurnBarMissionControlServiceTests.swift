@@ -706,6 +706,187 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(summary.summary.counts.projectCount, 1)
     }
 
+    func testLargeOrderedJournalReplayStreamsToLatestProjection() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-mission-control-large-replay-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: rootURL) }
+
+        let eventsFileURL = rootURL.appendingPathComponent("controller-events.jsonl")
+        let projectionFileURL = rootURL.appendingPathComponent("controller-projection.json")
+        let baseline = Date(timeIntervalSince1970: 1_710_621_000)
+        let eventCount = 2_000
+        var events: [BurnBarControllerEvent] = []
+        events.reserveCapacity(eventCount)
+        for index in 0..<eventCount {
+            let snapshot = project(slug: "large-replay", revision: index)
+            events.append(
+                try projectUpsertEvent(
+                    id: "large-replay-event-\(index)",
+                    sequence: index + 1,
+                    recordedAt: baseline.addingTimeInterval(Double(index)),
+                    project: snapshot
+                )
+            )
+        }
+        try writeControllerEvents(events, to: eventsFileURL)
+
+        let store = BurnBarMissionControlStore(
+            eventsFileURL: eventsFileURL,
+            projectionFileURL: projectionFileURL,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
+        )
+
+        let latestProject = try await store.project(slug: "large-replay")
+        XCTAssertEqual(latestProject?.displayName, "Large-Replay revision \(eventCount - 1)")
+        XCTAssertEqual(
+            latestProject?.summary,
+            "Native OpenBurnBar mission-control test project revision \(eventCount - 1)."
+        )
+
+        let persistedProjection = try JSONDecoder().decode(
+            BurnBarMissionControlProjectionFile.self,
+            from: Data(contentsOf: projectionFileURL)
+        )
+        XCTAssertEqual(persistedProjection.lastSequence, eventCount)
+        XCTAssertEqual(persistedProjection.projects.count, 1)
+        XCTAssertEqual(
+            persistedProjection.projects["large-replay"]?.displayName,
+            latestProject?.displayName
+        )
+    }
+
+    func testJournalReplaySkipsMalformedLinesWithoutDroppingValidEvents() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-mission-control-malformed-replay-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: rootURL) }
+
+        let eventsFileURL = rootURL.appendingPathComponent("controller-events.jsonl")
+        let projectionFileURL = rootURL.appendingPathComponent("controller-projection.json")
+        let baseline = Date(timeIntervalSince1970: 1_710_623_500)
+        let before = try projectUpsertEvent(
+            id: "malformed-replay-before",
+            sequence: 1,
+            recordedAt: baseline,
+            project: project(slug: "malformed-replay", revision: 1)
+        )
+        let after = try projectUpsertEvent(
+            id: "malformed-replay-after",
+            sequence: 2,
+            recordedAt: baseline.addingTimeInterval(1),
+            project: project(slug: "malformed-replay", revision: 2)
+        )
+        let encoder = JSONEncoder()
+        var journalData = try encoder.encode(before) + Data([0x0A])
+        journalData.append(Data(#"{"sequence": "definitely-not-an-event"}"#.utf8))
+        journalData.append(0x0A)
+        journalData.append(try encoder.encode(after))
+        journalData.append(0x0A)
+        try journalData.write(to: eventsFileURL, options: .atomic)
+
+        let store = BurnBarMissionControlStore(
+            eventsFileURL: eventsFileURL,
+            projectionFileURL: projectionFileURL,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
+        )
+
+        let projectAfterReplay = try await store.project(slug: "malformed-replay")
+        XCTAssertEqual(projectAfterReplay?.displayName, "Malformed-Replay revision 2")
+
+        let persistedProjection = try JSONDecoder().decode(
+            BurnBarMissionControlProjectionFile.self,
+            from: Data(contentsOf: projectionFileURL)
+        )
+        XCTAssertEqual(persistedProjection.lastSequence, 2)
+        XCTAssertEqual(persistedProjection.projects.count, 1)
+    }
+
+    func testLegacyProjectionWithoutDeletionTombstonesRebuildsAndPersistsThem() async throws {
+        let harness = try makeHarnessWithStore(name: "legacy-deletion-tombstone-migration")
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        _ = try await harness.service.controllerProjectDelete(
+            BurnBarControllerProjectDeleteRequest(projectSlug: "apollo")
+        )
+
+        let eventsFileURL = harness.rootURL.appendingPathComponent("controller-events.jsonl")
+        let projectionFileURL = harness.rootURL.appendingPathComponent("controller-projection.json")
+        var legacyProjection = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: projectionFileURL)
+            ) as? [String: Any]
+        )
+        XCTAssertNotNil(legacyProjection.removeValue(forKey: "projectDeletionTombstones"))
+        try JSONSerialization.data(withJSONObject: legacyProjection, options: [.sortedKeys])
+            .write(to: projectionFileURL, options: .atomic)
+
+        let restartedStore = BurnBarMissionControlStore(
+            eventsFileURL: eventsFileURL,
+            projectionFileURL: projectionFileURL,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
+        )
+        let deletedProject = try await restartedStore.project(slug: "apollo")
+        XCTAssertNil(deletedProject)
+
+        let migratedProjection = try JSONDecoder().decode(
+            BurnBarMissionControlProjectionFile.self,
+            from: Data(contentsOf: projectionFileURL)
+        )
+        XCTAssertEqual(migratedProjection.projectDeletionTombstones?["apollo"], "apollo")
+        XCTAssertEqual(migratedProjection.projectDeletionTombstones?["project-apollo"], "apollo")
+    }
+
+    func testRecentEventCacheRetainsAtMostOneHundredEvents() async throws {
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openburnbar-mission-control-recent-cache-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: rootURL) }
+
+        let eventsFileURL = rootURL.appendingPathComponent("controller-events.jsonl")
+        let projectionFileURL = rootURL.appendingPathComponent("controller-projection.json")
+        let baseline = Date(timeIntervalSince1970: 1_710_625_000)
+        var events: [BurnBarControllerEvent] = []
+        events.reserveCapacity(150)
+        for index in 0..<150 {
+            events.append(
+                try projectUpsertEvent(
+                    id: "recent-cache-event-\(index)",
+                    sequence: index + 1,
+                    recordedAt: baseline.addingTimeInterval(Double(index)),
+                    project: project(slug: "recent-cache", revision: index)
+                )
+            )
+        }
+        try writeControllerEvents(events, to: eventsFileURL)
+
+        let store = BurnBarMissionControlStore(
+            eventsFileURL: eventsFileURL,
+            projectionFileURL: projectionFileURL,
+            logger: BurnBarDaemonLogger(category: "mission-control-tests"),
+            notificationSecretStore: BurnBarInMemoryNotificationSecretStore()
+        )
+        _ = try await store.controllerSummary(
+            BurnBarControllerSummaryRequest(
+                projectSlug: "recent-cache",
+                includeRecentEvents: true,
+                includeProjectionStatus: false
+            )
+        )
+        let loadedRetainedCount = await store.retainedRecentEventCount
+        XCTAssertEqual(loadedRetainedCount, 100)
+
+        for revision in 150..<175 {
+            _ = try await store.upsertProject(project(slug: "recent-cache", revision: revision))
+        }
+        let appendedRetainedCount = await store.retainedRecentEventCount
+        XCTAssertEqual(appendedRetainedCount, 100)
+    }
+
     func testMissionClosureQuestionInvariantNormalizesPersistedProjectionOnLoad() async throws {
         let rootURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("openburnbar-mission-control-persisted-closure-invariant-\(UUID().uuidString)", isDirectory: true)

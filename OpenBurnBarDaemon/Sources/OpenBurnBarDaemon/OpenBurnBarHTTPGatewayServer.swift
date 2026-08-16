@@ -10,9 +10,10 @@ public actor BurnBarHTTPGatewayServer {
 
     static let maxBodyBytes = 64 * 1024 * 1024
 
-    /// Short TTL for production live-model catalog snapshots; collapses repeated
-    /// provider fan-out while keeping `/v1/models` fresh.
-    public static let defaultModelCatalogCacheTTL: TimeInterval = 45
+    /// Provider discovery is expensive and changes infrequently. Cache only
+    /// that discovery layer for ten minutes; quota, health, enablement, and
+    /// route eligibility are reprojected from current config on every read.
+    public static let defaultModelCatalogCacheTTL: TimeInterval = 10 * 60
 
     let configuration: BurnBarGatewayConfiguration
 

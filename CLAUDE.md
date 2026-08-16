@@ -49,3 +49,8 @@ mem0 is an advisory retrieval cache, not policy and not source of truth. Verify 
 ---
 
 For repository-specific expectations (tests, docs, scope), see [`AGENTS.md`](AGENTS.md).
+
+## Cheap + fast + quality (Alberto 2026-08-15)
+
+Standing rule: `~/.agent/runs/mailbox/CHEAP_FAST.md`. Mac app build is nightly, not a merge ticket. Fast checks stay on the door. Fewer fatter PRs (one theme, not ten slices). Apply now. Do not open new slice PRs. Do not ask Alberto to land the cheap door. CubeLove: long city/unit/quality jobs are not a merge ticket; no ready-spam.
+

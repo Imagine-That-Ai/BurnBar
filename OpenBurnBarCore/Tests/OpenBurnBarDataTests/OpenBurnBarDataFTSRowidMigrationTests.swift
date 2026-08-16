@@ -8,7 +8,7 @@ import XCTest
 /// `SearchIndexFTSRowidTests` exercises the identical migration through the
 /// app `DataStore`; these tests exercise the Core `OpenBurnBarDatabase`
 /// migrator directly so the SwiftPM diff-coverage gate sees the changed Core
-/// lines. They cover: (1) the migrator registers v58 as the last migration,
+/// lines. They cover: (1) the migrator registers the current schema head,
 /// (2) the backfill records ftsRowid for pre-existing chunks, (3) the orphan
 /// sweep deletes stale/duplicate FTS rows, (4) the content-gated documents
 /// FTS update trigger skips metadata-only updates, and (5) the content-gated
@@ -17,10 +17,10 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
 
     // MARK: - Migrator wiring
 
-    func test_migrator_latestIdentifier_isV60BillingKind() {
+    func test_migrator_latestIdentifier_isV61UsageMemory() {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
-            "v60_billing_kind"
+            "v61_usage_memory"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v56_parser_checkpoint_file_manifest"),
@@ -41,6 +41,10 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v60_billing_kind"),
             "registerBillingKindMigration must be wired into the migrator"
+        )
+        XCTAssertTrue(
+            OpenBurnBarDatabase.migrator.migrations.contains("v61_usage_memory"),
+            "registerUsageMemoryMigration must be wired into the migrator"
         )
     }
 

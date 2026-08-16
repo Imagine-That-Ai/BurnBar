@@ -1057,11 +1057,14 @@ final class OpenCodeParser: OpenBurnBarCore.LogParser, Sendable {
 /// search alongside every other agent.
 final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider = .piAgent
+    private static let cacheCheckpointFileInterval = 16
+    private static let cancellationCheckpointLineInterval = 1_024
     private let fileManager: FileManager
     private let sessionsDirectoryOverride: URL?
     private let cacheStore: OpenBurnBarCore.ParserDiskCacheStore<OpenBurnBarCore.CachedUsageBundleEntry<OpenBurnBarCore.FileSignature>>
     private let sessionScanCount = OpenBurnBarCore.Locked(0)
     private let sessionCacheHitCount = OpenBurnBarCore.Locked(0)
+    private let contentExtractionLineCount = OpenBurnBarCore.Locked(0)
 
     init(
         fileManager: FileManager = .default,
@@ -1087,10 +1090,12 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
 
     var lastSessionScanCount: Int { sessionScanCount.read() }
     var lastSessionCacheHitCount: Int { sessionCacheHitCount.read() }
+    var lastContentExtractionLineCount: Int { contentExtractionLineCount.read() }
 
     func parse(options: OpenBurnBarCore.LogParseOptions) async throws -> OpenBurnBarCore.ParseResult {
         sessionScanCount.write(0)
         sessionCacheHitCount.write(0)
+        contentExtractionLineCount.write(0)
         let fm = fileManager
         let gate = OpenBurnBarCore.ParserFileReadGate(options: options, fileManager: fm)
         let sessionsPath = sessionsDirectoryOverride?.path
@@ -1111,9 +1116,9 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
         var conversations: [OpenBurnBarCore.ConversationRecord] = []
         var parseCache = cacheStore.load()
         var activePaths = Set<String>()
-        var cacheMutated = false
+        var pendingCacheMutations = 0
         defer {
-            if cacheMutated {
+            if pendingCacheMutations > 0 {
                 cacheStore.persist(parseCache)
             }
         }
@@ -1133,17 +1138,27 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
             }
             sessionScanCount.withLock { $0 += 1 }
             let sessionId = file.deletingPathExtension().lastPathComponent
-            if let pair = parseSession(file: file, sessionId: sessionId) {
+            if let pair = try parseSession(
+                file: file,
+                sessionId: sessionId,
+                includeConversationBodies: options.includeConversationBodies,
+                resourceGovernor: options.resourceGovernor
+            ) {
+                contentExtractionLineCount.withLock { $0 += pair.contentExtractionLineCount }
                 if let usage = pair.usage { usages.append(usage) }
                 if options.includeConversationBodies, let conversation = pair.conversation {
                     conversations.append(conversation)
                 }
-                if let signature, let usage = pair.usage {
+                if let signature {
                     parseCache.fileEntries[cacheKey] = OpenBurnBarCore.CachedUsageBundleEntry(
                         signature: signature,
-                        usages: [usage]
+                        usages: pair.usage.map { [$0] } ?? []
                     )
-                    cacheMutated = true
+                    pendingCacheMutations += 1
+                    if pendingCacheMutations >= Self.cacheCheckpointFileInterval {
+                        cacheStore.persist(parseCache)
+                        pendingCacheMutations = 0
+                    }
                 }
             }
         }
@@ -1153,13 +1168,22 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
             for stalePath in stalePaths {
                 parseCache.fileEntries.removeValue(forKey: stalePath)
             }
-            cacheMutated = true
+            pendingCacheMutations += stalePaths.count
         }
 
         return OpenBurnBarCore.ParseResult(usages: usages, conversations: conversations)
     }
 
-    private func parseSession(file: URL, sessionId: String) -> (usage: TokenUsage?, conversation: OpenBurnBarCore.ConversationRecord?)? {
+    private func parseSession(
+        file: URL,
+        sessionId: String,
+        includeConversationBodies: Bool,
+        resourceGovernor: OpenBurnBarCore.ParserResourceGovernor?
+    ) throws -> (
+        usage: TokenUsage?,
+        conversation: OpenBurnBarCore.ConversationRecord?,
+        contentExtractionLineCount: Int
+    )? {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil } // try?-ok(log open, skip if absent)
         defer { try? handle.close() } // try?-ok(handle teardown)
 
@@ -1178,64 +1202,102 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
         var userWords = 0
         var assistantWords = 0
         var messageCount = 0
-        var fullText = ""
+        var transcriptParts: [String] = []
         var firstUser: String?
         var lastAssistant = ""
+        var lineCount = 0
+        var contentExtractionLineCount = 0
 
         for line in handle.readAllUTF8Lines() {
-            guard let data = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { // try?-ok(per-line decode, skip)
-                continue
+            lineCount += 1
+            if lineCount % Self.cancellationCheckpointLineInterval == 0 {
+                try Task.checkCancellation()
+                try resourceGovernor?.checkpoint()
             }
 
-            if let ts = json["timestamp"] as? String ?? json["time"] as? String,
-               let date = ThreadSafeISO8601DateFormatter.parse(ts) {
-                if startTime == nil { startTime = date }
-                endTime = date
-            }
-            if let m = (json["model"] as? String ?? (json["message"] as? [String: Any])?["model"] as? String)?.nonEmpty {
-                model = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
-            }
-            if let cwd = (json["cwd"] as? String ?? json["workingDirectory"] as? String ?? json["directory"] as? String)?.nonEmpty {
-                workingDirectory = cwd
-            }
+            OpenBurnBarCore.parserAutoReleasePool {
+                guard let json = try? JSONSerialization.jsonObject(
+                    with: Data(line.utf8)
+                ) as? [String: Any] else { // try?-ok(per-line decode, skip)
+                    return
+                }
 
-            if let usage = json["usage"] as? [String: Any]
-                ?? (json["message"] as? [String: Any])?["usage"] as? [String: Any] {
-                let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(usage)
-                inputTokens += extracted.input
-                outputTokens += extracted.output
-                cacheCreationTokens += extracted.cacheCreation
-                cacheReadTokens += extracted.cacheRead
-            }
+                if let ts = json["timestamp"] as? String ?? json["time"] as? String,
+                   let date = ThreadSafeISO8601DateFormatter.parse(ts) {
+                    if startTime == nil { startTime = date }
+                    endTime = date
+                }
+                if let m = (json["model"] as? String ?? (json["message"] as? [String: Any])?["model"] as? String)?.nonEmpty {
+                    model = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
+                }
+                if let cwd = (json["cwd"] as? String ?? json["workingDirectory"] as? String ?? json["directory"] as? String)?.nonEmpty {
+                    workingDirectory = cwd
+                }
 
-            let message = json["message"] as? [String: Any]
-            let role = (json["role"] as? String ?? message?["role"] as? String ?? json["type"] as? String ?? "").lowercased()
-            let content = Self.contentText(json["content"] ?? message?["content"] ?? json["text"])
+                if let usage = json["usage"] as? [String: Any]
+                    ?? (json["message"] as? [String: Any])?["usage"] as? [String: Any] {
+                    let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(usage)
+                    inputTokens += extracted.input
+                    outputTokens += extracted.output
+                    cacheCreationTokens += extracted.cacheCreation
+                    cacheReadTokens += extracted.cacheRead
+                }
 
-            guard !content.isEmpty else { continue }
+                guard includeConversationBodies else { return }
+                contentExtractionLineCount += 1
 
-            if role == "user" || role == "human" || role == "user_message" {
-                userChars += content.count
-                userWords += content.split { $0.isWhitespace || $0.isNewline }.count
-                if firstUser == nil { firstUser = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120)) }
-                if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += OpenBurnBarCore.SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: false, body: content)
-                messageCount += 1
-            } else if role == "assistant" || role == "ai" || role == "assistant_message" {
-                assistantChars += content.count
-                assistantWords += content.split { $0.isWhitespace || $0.isNewline }.count
-                lastAssistant = content
-                if !fullText.isEmpty { fullText += "\n\n" }
-                fullText += OpenBurnBarCore.SessionLogMarkdownFormatter.transcriptTurnMarkdown(isAssistant: true, body: content)
-                messageCount += 1
+                let message = json["message"] as? [String: Any]
+                let role = (json["role"] as? String ?? message?["role"] as? String ?? json["type"] as? String ?? "").lowercased()
+                let content = Self.contentText(json["content"] ?? message?["content"] ?? json["text"])
+
+                guard !content.isEmpty else { return }
+
+                if role == "user" || role == "human" || role == "user_message" {
+                    userChars += content.count
+                    messageCount += 1
+                    userWords += content.split { $0.isWhitespace || $0.isNewline }.count
+                    if firstUser == nil {
+                        firstUser = String(content.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
+                    }
+                    transcriptParts.append(
+                        OpenBurnBarCore.SessionLogMarkdownFormatter.transcriptTurnMarkdown(
+                            isAssistant: false,
+                            body: content
+                        )
+                    )
+                } else if role == "assistant" || role == "ai" || role == "assistant_message" {
+                    assistantChars += content.count
+                    messageCount += 1
+                    assistantWords += content.split { $0.isWhitespace || $0.isNewline }.count
+                    lastAssistant = String(content.prefix(500))
+                    transcriptParts.append(
+                        OpenBurnBarCore.SessionLogMarkdownFormatter.transcriptTurnMarkdown(
+                            isAssistant: true,
+                            body: content
+                        )
+                    )
+                }
             }
         }
+        try Task.checkCancellation()
+        try resourceGovernor?.checkpoint()
 
         let hasUsage = inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0
         var usedFallback = false
         if !hasUsage {
-            guard userChars + assistantChars > 0 else { return nil }
+            if !includeConversationBodies {
+                let fallback = try Self.fallbackContentMetrics(
+                    file: file,
+                    resourceGovernor: resourceGovernor
+                )
+                userChars = fallback.userChars
+                assistantChars = fallback.assistantChars
+                messageCount = fallback.messageCount
+                contentExtractionLineCount += fallback.lineCount
+            }
+            guard userChars + assistantChars > 0 else {
+                return (nil, nil, contentExtractionLineCount)
+            }
             let estimated = OpenBurnBarCore.TokenExtractionUtility.estimateFallbackTokens(
                 userVisibleChars: userChars,
                 assistantVisibleChars: assistantChars,
@@ -1248,14 +1310,18 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
             usedFallback = true
         }
 
-        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else { return nil }
+        guard inputTokens > 0 || outputTokens > 0 || cacheCreationTokens > 0 || cacheReadTokens > 0 else {
+            return (nil, nil, contentExtractionLineCount)
+        }
 
         guard let cost = AppLogger.shared.silentlyOptional("domain_core_pricing_cost", try OpenBurnBarCore.ModelPricing.lookup(model: model).cost(
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreationTokens,
             cacheReadTokens: cacheReadTokens
-        )) else { return nil }
+        )) else {
+            return (nil, nil, contentExtractionLineCount)
+        }
         let projectName = workingDirectory.map { ($0 as NSString).lastPathComponent.nonEmpty ?? $0 } ?? sessionId
 
         let usage = TokenUsage(
@@ -1275,7 +1341,8 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
             estimatorVersion: usedFallback ? OpenBurnBarCore.TokenExtractionUtility.currentEstimatorVersion : ""
         )
 
-        let conversation = OpenBurnBarCore.ConversationRecord(
+        let conversation = includeConversationBodies
+            ? OpenBurnBarCore.ConversationRecord(
             id: OpenBurnBarCore.ConversationRecord.stableId(provider: .piAgent, sessionId: sessionId),
             provider: .piAgent,
             sessionId: sessionId,
@@ -1289,15 +1356,66 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
             keyCommands: [],
             keyTools: [],
             inferredTaskTitle: firstUser ?? sessionId,
-            lastAssistantMessage: String(lastAssistant.prefix(500)),
-            fullText: fullText,
+            lastAssistantMessage: lastAssistant,
+            fullText: transcriptParts.joined(separator: "\n\n"),
             indexedAt: Date(),
             workingDirectory: workingDirectory,
             fileModifiedAt: mtime,
             summary: nil
         )
+            : nil
 
-        return (usage, conversation)
+        return (usage, conversation, contentExtractionLineCount)
+    }
+
+    private static func fallbackContentMetrics(
+        file: URL,
+        resourceGovernor: OpenBurnBarCore.ParserResourceGovernor?
+    ) throws -> (userChars: Int, assistantChars: Int, messageCount: Int, lineCount: Int) {
+        guard let handle = try? FileHandle(forReadingFrom: file) else {
+            return (0, 0, 0, 0)
+        }
+        defer { try? handle.close() }
+
+        var userChars = 0
+        var assistantChars = 0
+        var messageCount = 0
+        var lineCount = 0
+        for line in handle.readAllUTF8Lines() {
+            lineCount += 1
+            if lineCount % cancellationCheckpointLineInterval == 0 {
+                try Task.checkCancellation()
+                try resourceGovernor?.checkpoint()
+            }
+            OpenBurnBarCore.parserAutoReleasePool {
+                guard let json = try? JSONSerialization.jsonObject(
+                    with: Data(line.utf8)
+                ) as? [String: Any] else {
+                    return
+                }
+                let message = json["message"] as? [String: Any]
+                let role = (
+                    json["role"] as? String
+                        ?? message?["role"] as? String
+                        ?? json["type"] as? String
+                        ?? ""
+                ).lowercased()
+                let content = contentText(
+                    json["content"] ?? message?["content"] ?? json["text"]
+                )
+                guard !content.isEmpty else { return }
+                if role == "user" || role == "human" || role == "user_message" {
+                    userChars += content.count
+                    messageCount += 1
+                } else if role == "assistant" || role == "ai" || role == "assistant_message" {
+                    assistantChars += content.count
+                    messageCount += 1
+                }
+            }
+        }
+        try Task.checkCancellation()
+        try resourceGovernor?.checkpoint()
+        return (userChars, assistantChars, messageCount, lineCount)
     }
 
     /// Flattens Pi content that may be a plain string or an array of `{type, text}` blocks.
