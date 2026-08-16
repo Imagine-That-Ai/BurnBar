@@ -51,8 +51,10 @@ export const LANES = [
 // catch-all npm FULL_PATTERNS below would otherwise treat its package.json /
 // lockfile as a repo-wide graph change and wake every product lane, including
 // a ~90 minute macos-26 libsignal FFI rebuild (BurnBar #2247, 2026-08-15).
+// Only those two npm manifests take the exception. Source, tests, fixtures,
+// and any other file under the package stay fail-closed.
 const NODE_SIGNAL_ENVELOPE_CONTRACTS = Object.freeze([
-  /^packages\/signal-envelope-contracts\//,
+  /^packages\/signal-envelope-contracts\/(?:package\.json|package-lock\.json)$/,
 ]);
 
 const FULL_PATTERNS = [

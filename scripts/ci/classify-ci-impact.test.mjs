@@ -115,6 +115,20 @@ test("signal-envelope-contracts npm lockfile selects functions, not macos", () =
   assert.equal(result.console, false);
 });
 
+test("signal-envelope-contracts non-manifest files stay fail-closed", () => {
+  for (const path of [
+    "packages/signal-envelope-contracts/src/index.ts",
+    "packages/signal-envelope-contracts/src/index.test.ts",
+    "packages/signal-envelope-contracts/eslint.config.mjs",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, true, path);
+    assert.notEqual(result.reason, "owned-paths", path);
+    for (const lane of LANES)
+      assert.equal(result[lane], true, `${path}:${lane}`);
+  }
+});
+
 test("signal-envelope-contracts mixed with AgentLens still wakes macos", () => {
   const result = classifyPaths([
     "packages/signal-envelope-contracts/package-lock.json",
@@ -124,6 +138,13 @@ test("signal-envelope-contracts mixed with AgentLens still wakes macos", () => {
   assert.equal(result.functions, true);
   assert.equal(result.macos, true);
   assert.equal(result.mobile, false);
+});
+
+test("this classifier edit still classifies as full", () => {
+  const result = classifyPaths(["scripts/ci/classify-ci-impact.mjs"]);
+  assert.equal(result.full, true);
+  assert.equal(result.reason, "shared-or-sensitive-path");
+  for (const lane of LANES) assert.equal(result[lane], true, lane);
 });
 
 test("unknown and empty classifications fail closed", () => {
