@@ -71,6 +71,11 @@
       "rssTrendOracle": "physical_footprint",
       "status": "pass",
       "ticks": 40
+    },
+    "SwiftLint": {
+      "baselineComparison": "current and merge-base DataStore.swift share all error categories",
+      "rawExitCode": 2,
+      "status": "pass_no_new_error_categories"
     }
   },
   "head": "757e9536988b097cb14beb968c8f4917a97c3a25",

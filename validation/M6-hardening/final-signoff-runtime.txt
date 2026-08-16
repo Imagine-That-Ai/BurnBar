@@ -59,6 +59,7 @@ persistence=pass (corruption/schema, restart deletion, live deletion, read-only 
 soak=pass (40 ticks, bounded logs, fixture isolation, dead-pid downgrade, RSS/physical-footprint oracle)
 rss_oracle=raw RSS bound and archive; physical_footprint trend oracle per mission contract; raw RSS nondecreasing is permitted when physical footprint passes
 rpc_ledger=startup attempts/failures archived separately; steady-state attempts=389; failures_after_first_tick=0
+swiftlint=raw exit 2 on pre-existing DataStore categories; merge-base comparison matches all error categories; no new error categories
 
 [boundaries]
 protected_paths=not modified by this worker; .cursor/, tools/__pycache__/, validation/harness/__pycache__/ left untouched
