@@ -117,6 +117,7 @@ struct HermesSquareLeftColumn: View {
                         if !missionHost.snapshot.approvalAsks.isEmpty {
                             ApprovalInboxStrip(
                                 asks: missionHost.snapshot.approvalAsks,
+                                errorMessage: missionHost.approvalResponseError,
                                 onApprove: { ask in
                                     Task { await missionHost.respond(to: ask, approve: true) }
                                 },

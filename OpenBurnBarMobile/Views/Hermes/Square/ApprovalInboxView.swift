@@ -8,6 +8,7 @@ import OpenBurnBarCore
 
 struct ApprovalInboxStrip: View {
     let asks: [MissionConsoleApprovalAsk]
+    var errorMessage: String? = nil
     let onApprove: (MissionConsoleApprovalAsk) -> Void
     let onDeny: (MissionConsoleApprovalAsk) -> Void
     let onApproveAlways: (MissionConsoleApprovalAsk) -> Void
@@ -28,6 +29,13 @@ struct ApprovalInboxStrip: View {
                     Text("\(asks.count)")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(DesignSystemColors.textMuted)
+                }
+                if let errorMessage, !errorMessage.isEmpty {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(DesignSystemColors.error)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("mission.approval.error")
                 }
                 ForEach(asks) { ask in
                     row(for: ask)

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - iPhone mission-approval Deny now persists
+- Tapping **Deny** on an Approvals-waiting card now leaves `waiting_for_approval`
+  immediately (`respondMissionApproval` writes `status: canceled` plus
+  `approvalStatus: rejected`). Approve still stays parked so the Mac listener
+  can claim it.
+- `MobileMissionConsoleHost` keeps a successful Deny/Approve hidden when the
+  Firestore list listener re-emits the still-waiting document, and a failed
+  callable now stays visible on the Hermes Square inbox instead of being
+  cleared by the next snapshot (the previous silent no-op).
+
 ### Fixed - CI impact: Node Signal contracts lockfile no longer wakes macOS
 - `packages/signal-envelope-contracts` `package.json` / lockfile changes used
   to match the catch-all npm `FULL_PATTERNS` and force every product lane,

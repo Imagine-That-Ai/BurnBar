@@ -17,6 +17,15 @@ import OpenBurnBarCore
 // surfaces work the user dispatched previously (or in flight from another
 // device).
 
+/// Production path is `CLIAgentMissionDispatcher`; tests inject a stub so
+/// Deny/Approve persistence can be exercised without Firebase.
+@MainActor
+protocol MobileMissionApprovalResponding: AnyObject {
+    func respondToApproval(requestID: String, approve: Bool) async throws
+}
+
+extension CLIAgentMissionDispatcher: MobileMissionApprovalResponding {}
+
 @MainActor
 @Observable
 final class MobileMissionConsoleHost: MissionConsoleHost {
@@ -24,8 +33,12 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     private(set) var lastDispatchedMissionID: String?
     private(set) var isDispatching: Bool = false
     private(set) var inlineError: String?
+    /// Sticky Deny/Approve failure. The list listener must not clear this, or
+    /// a failed callable looks like a silent no-op on Hermes Square.
+    private(set) var approvalResponseError: String?
 
     private let firestoreProvider: () -> Firestore
+    private let approvalResponder: MobileMissionApprovalResponding
     private var authHandle: AuthStateDidChangeListenerHandle?
     private var listRegistration: ListenerRegistration?
     private var listSetupTask: Task<Void, Never>?
@@ -34,8 +47,17 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     private var observedMissions: [String: CLIAgentMissionSnapshot] = [:]
     private var observedOrder: [String] = []   // most-recent first
     private var dismissedTerminalIDs: Set<String> = []
+    /// Successful responds stay hidden even if the listener re-emits the
+    /// still-waiting document (the previous "I tapped Deny and it came back"
+    /// failure). A later `approvalRequestId` on the same mission is a new ask.
+    private var localApprovalResolutions: [String: LocalApprovalResolution] = [:]
     private let hermesService: HermesService
     private let projectsStore = ProjectsStore()
+
+    private struct LocalApprovalResolution: Equatable {
+        let approve: Bool
+        let approvalRequestId: String?
+    }
 
     init(
         firestoreProvider: @escaping () -> Firestore = { Firestore.firestore() },
@@ -43,10 +65,12 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         // coalesces with every other surface instead of fanning out its
         // own 6-op refresh per host instance (RootTabView, the CLI agent
         // conversation list, and the mission sheet each own a host).
-        hermesService: HermesService = HermesService(runtimeStore: .shared)
+        hermesService: HermesService = HermesService(runtimeStore: .shared),
+        approvalResponder: MobileMissionApprovalResponding? = nil
     ) {
         self.firestoreProvider = firestoreProvider
         self.hermesService = hermesService
+        self.approvalResponder = approvalResponder ?? CLIAgentMissionDispatcher.shared
         seedRuntimes()
     }
 
@@ -117,24 +141,23 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
     }
 
     func respond(to ask: MissionConsoleApprovalAsk, approve: Bool) async {
-        do {
-            try await CLIAgentMissionDispatcher.shared.respondToApproval(
-                requestID: ask.missionID,
-                approve: approve
-            )
-        } catch {
-            inlineError = error.localizedDescription
-        }
+        await respond(to: ask.missionID, approve: approve)
     }
 
     func respond(to missionID: String, approve: Bool) async {
         do {
-            try await CLIAgentMissionDispatcher.shared.respondToApproval(
+            try await approvalResponder.respondToApproval(
                 requestID: missionID,
                 approve: approve
             )
+            recordLocalApprovalResolution(missionID: missionID, approve: approve)
+            approvalResponseError = nil
+            inlineError = nil
+            rebuildSnapshot()
         } catch {
-            inlineError = error.localizedDescription
+            let message = error.localizedDescription
+            approvalResponseError = message
+            inlineError = message
         }
     }
 
@@ -167,7 +190,10 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         skillRunMissions.first { !$0.isTerminal } ?? skillRunMissions.first
     }
 
-    func clearInlineError() { inlineError = nil }
+    func clearInlineError() {
+        inlineError = nil
+        approvalResponseError = nil
+    }
 
     func refresh() async {
         await refreshAuxiliaryState()
@@ -195,6 +221,7 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         observations.removeAll()
         observedMissions.removeAll()
         observedOrder.removeAll()
+        localApprovalResolutions.removeAll()
 
         guard let uid else {
             rebuildSnapshot()
@@ -276,7 +303,9 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
                 ? "This device can't open encrypted mission history yet. Approve it from a trusted device, then retry."
                 : "\(unreadableCount) mission\(unreadableCount == 1 ? "" : "s") couldn't be opened."
         } else {
-            inlineError = nil
+            // Keep a failed Deny/Approve visible. Clearing here is the silent
+            // no-op: tap Deny, callable fails, next snapshot wipes the error.
+            inlineError = approvalResponseError
         }
         absorb(missions)
     }
@@ -335,6 +364,16 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         let macOnline = isHermesUsable || orderedMissions.contains { $0.hasBeenClaimedByMac }
         for mission in orderedMissions {
             guard !dismissedTerminalIDs.contains(mission.id) else { continue }
+            if let resolution = matchingLocalResolution(for: mission) {
+                if resolution.approve == false {
+                    continue
+                }
+                if mission.isWaitingForApproval {
+                    guard shouldShowActiveTile(for: mission, macOnline: macOnline) else { continue }
+                    tiles.append(tile(from: mission, approvalPending: false))
+                    continue
+                }
+            }
             guard shouldShowActiveTile(for: mission, macOnline: macOnline) else { continue }
             tiles.append(tile(from: mission))
             if mission.isWaitingForApproval {
@@ -393,7 +432,10 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
         return true
     }
 
-    private func tile(from mission: CLIAgentMissionSnapshot) -> MissionConsoleActiveTile {
+    private func tile(
+        from mission: CLIAgentMissionSnapshot,
+        approvalPending: Bool? = nil
+    ) -> MissionConsoleActiveTile {
         let phase = phase(for: mission)
         let runtimeID = runtimeIDGuess(rawRuntime: mission.selectedRuntime ?? mission.requestedRuntime)
         return MissionConsoleActiveTile(
@@ -408,8 +450,26 @@ final class MobileMissionConsoleHost: MissionConsoleHost {
             startedAt: mission.createdAt,
             burnSoFarUSD: 0,
             progressFraction: progressFraction(for: phase),
-            approvalPending: mission.isWaitingForApproval
+            approvalPending: approvalPending ?? mission.isWaitingForApproval
         )
+    }
+
+    private func recordLocalApprovalResolution(missionID: String, approve: Bool) {
+        localApprovalResolutions[missionID] = LocalApprovalResolution(
+            approve: approve,
+            approvalRequestId: observedMissions[missionID]?.approvalRequestId
+        )
+    }
+
+    private func matchingLocalResolution(for mission: CLIAgentMissionSnapshot) -> LocalApprovalResolution? {
+        guard let resolution = localApprovalResolutions[mission.id] else { return nil }
+        if let resolvedID = resolution.approvalRequestId,
+           let currentID = mission.approvalRequestId,
+           resolvedID != currentID {
+            localApprovalResolutions.removeValue(forKey: mission.id)
+            return nil
+        }
+        return resolution
     }
 
     private func phase(for mission: CLIAgentMissionSnapshot) -> MissionConsoleActiveTile.Phase {

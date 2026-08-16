@@ -166,7 +166,8 @@ extension CLIAgentMissionDispatcher {
         // App-Check-enforced callable. The bare Firestore status flip is no
         // longer accepted by firestore.rules (it must carry approvedByDeviceId
         // resolving to a trusted escrow device), so a stolen owner token cannot
-        // self-approve a high-risk mission.
+        // self-approve a high-risk mission. Deny also leaves
+        // `waiting_for_approval` server-side so the inbox cannot re-hydrate.
         let deviceId = await MainActor.run { MobileDeviceIdentity.loadOrCreateDeviceId() }
         try await ComputerUseSecurityCallableClient.respondMissionApproval(
             requestId: requestID,
