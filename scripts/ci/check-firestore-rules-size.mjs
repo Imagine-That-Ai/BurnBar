@@ -20,40 +20,91 @@ import { fileURLToPath } from "node:url";
 
 import { compactFirebaseRulesSource } from "./firebase-rules-source.mjs";
 
-const HARD_LIMIT_BYTES = 256 * 1024; // Published UTF-8 source ceiling.
-const COMPILED_HARD_LIMIT_BYTES = 250 * 1024; // Published activated-rules ceiling.
-// The 2026-07-03 production ruleset was 156,570 compacted bytes. Keep new
-// source below 160 KiB and warn at 156 KiB; structural compiler expansion still
-// requires a real dry-run + deploy proof, but this ratchet catches source growth
-// long before another opaque release-time 400.
-const FAIL_THRESHOLD_BYTES = 160 * 1024;
-const WARN_THRESHOLD_BYTES = 156 * 1024;
+export const HARD_LIMIT_BYTES = 256 * 1024; // Published UTF-8 source ceiling.
+export const COMPILED_HARD_LIMIT_BYTES = 250 * 1024; // Published activated-rules ceiling.
+// On 2026-08-10, staging accepted the existing 155,997-byte generation but
+// rejected a valid 161,581-byte candidate during release activation. Keep new
+// source below 150 KiB and warn at 146 KiB. This leaves real headroom below the
+// last activated source while emulator tests protect behavior. A successful
+// trusted staging deployment is still required because source size is only a
+// conservative proxy for Google's hidden compiled representation.
+export const FAIL_THRESHOLD_BYTES = 150 * 1024;
+export const WARN_THRESHOLD_BYTES = 146 * 1024;
+// Storage was not involved in the Firestore release-activation incident. Keep
+// its existing ratchet independent so future tuning follows Storage evidence.
+export const STORAGE_FAIL_THRESHOLD_BYTES = 160 * 1024;
+export const STORAGE_WARN_THRESHOLD_BYTES = 156 * 1024;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const files = [
-  { name: "firestore.rules", compact: true },
-  { name: "storage.rules", compact: false },
+  {
+    name: "firestore.rules",
+    compact: true,
+    failThreshold: FAIL_THRESHOLD_BYTES,
+    warnThreshold: WARN_THRESHOLD_BYTES,
+  },
+  {
+    name: "storage.rules",
+    compact: false,
+    failThreshold: STORAGE_FAIL_THRESHOLD_BYTES,
+    warnThreshold: STORAGE_WARN_THRESHOLD_BYTES,
+  },
 ];
 
-let failed = false;
-for (const { name, compact } of files) {
-  const raw = readFileSync(resolve(repoRoot, name), "utf8");
-  const shipped = compact ? compactFirebaseRulesSource(raw) : raw;
-  const bytes = Buffer.byteLength(shipped, "utf8");
-  const pct = ((bytes / HARD_LIMIT_BYTES) * 100).toFixed(1);
-  const detail = `${name}: shipped=${bytes}B (${pct}% of ${HARD_LIMIT_BYTES}B source limit, compiled limit=${COMPILED_HARD_LIMIT_BYTES}B, raw=${Buffer.byteLength(raw)}B)`;
-  if (bytes >= FAIL_THRESHOLD_BYTES) {
-    console.error(
-      `::error::${detail} — exceeds the ${FAIL_THRESHOLD_BYTES}B safety threshold. Consolidate repeated match expressions or reduce the ruleset before it breaks production deploys.`,
-    );
-    failed = true;
-  } else if (bytes >= WARN_THRESHOLD_BYTES) {
-    console.warn(`::warning::${detail} — approaching the size limit.`);
-  } else {
-    console.log(`ok ${detail}`);
-  }
+export function classifyRulesSize(
+  bytes,
+  {
+    failThreshold = FAIL_THRESHOLD_BYTES,
+    warnThreshold = WARN_THRESHOLD_BYTES,
+  } = {},
+) {
+  if (bytes >= failThreshold) return "fail";
+  if (bytes >= warnThreshold) return "warn";
+  return "ok";
 }
 
-if (failed) process.exit(1);
-console.log("firestore/storage rules size within safe bounds");
+export function evaluateRulesSources(sources, logger = console) {
+  let failed = false;
+  for (const {
+    name,
+    raw,
+    compact,
+    failThreshold = FAIL_THRESHOLD_BYTES,
+    warnThreshold = WARN_THRESHOLD_BYTES,
+  } of sources) {
+    const shipped = compact ? compactFirebaseRulesSource(raw) : raw;
+    const bytes = Buffer.byteLength(shipped, "utf8");
+    const pct = ((bytes / HARD_LIMIT_BYTES) * 100).toFixed(1);
+    const detail = `${name}: shipped=${bytes}B (${pct}% of ${HARD_LIMIT_BYTES}B source limit, compiled limit=${COMPILED_HARD_LIMIT_BYTES}B, raw=${Buffer.byteLength(raw)}B)`;
+    const level = classifyRulesSize(bytes, { failThreshold, warnThreshold });
+    if (level === "fail") {
+      logger.error(
+        `::error::${detail} — exceeds the ${failThreshold}B safety threshold. Consolidate repeated match expressions or reduce the ruleset before it breaks production deploys.`,
+      );
+      failed = true;
+    } else if (level === "warn") {
+      logger.warn(`::warning::${detail} — approaching the size limit.`);
+    } else {
+      logger.log(`ok ${detail}`);
+    }
+  }
+  if (failed) return 1;
+  logger.log("firestore/storage rules size within safe bounds");
+  return 0;
+}
+
+export function runRulesSizeCheck(root = repoRoot, logger = console) {
+  return evaluateRulesSources(
+    files.map((file) => ({
+      ...file,
+      raw: readFileSync(resolve(root, file.name), "utf8"),
+    })),
+    logger,
+  );
+}
+
+const isMain =
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) process.exitCode = runRulesSizeCheck();

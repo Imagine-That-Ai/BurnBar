@@ -308,7 +308,7 @@ public sealed class SqlCipherSwitcherProfileStoreTests
             using (var connection = SqlCipherConnection.Open(working, SqlCipherParameters.FixturePassphrase))
             {
                 Assert.Equal(
-                    "dc8363e8112ad9840f912ebb6633f777c475d7f11267b2d8caff380fa38b1a78",
+                    "15cedbf8e2d5785df963ff09ae6b5d64a4bba10d86187bad9a4cf6c0c380d698",
                     SqlCipherConnection.ComputeSchemaHash(connection));
             }
         }
@@ -372,7 +372,7 @@ public sealed class SqlCipherSwitcherProfileStoreTests
             string candidate = Path.Combine(dir.FullName, "AgentLensTests", "Fixtures", "DBByteCompat");
             if (File.Exists(Path.Combine(candidate, "openburnbar-db-compat-vector.json")))
             {
-            var pinned = Path.Combine(candidate, "openburnbar-db-compat-v60.sqlcipher");
+            var pinned = Path.Combine(candidate, "openburnbar-db-compat-v61.sqlcipher");
                 if (File.Exists(pinned))
                 {
                     return pinned;

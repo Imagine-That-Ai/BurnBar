@@ -33,6 +33,10 @@ from typing import Any
 root = Path(sys.argv[1])
 token_keys = {"FirebaseAppCheckDebugToken", "FIRAAppCheckDebugToken"}
 flag_key = "OpenBurnBarUseDebugAppCheck"
+direct_feed_key = "OpenBurnBarDirectUpdateFeedURL"
+sparkle_feed_key = "SUFeedURL"
+expected_direct_feed = "https://downloads.burnbar.ai/latest-macos.json"
+expected_sparkle_feed = "https://downloads.burnbar.ai/appcast.xml"
 failed = False
 
 
@@ -86,6 +90,23 @@ def inspect(value: Any, path: Path) -> None:
         for child in value:
             inspect(child, path)
 
+def inspect_release_feeds(value: Any, path: Path) -> None:
+    global failed
+    if not isinstance(value, dict) or value.get("CFBundleIdentifier") != "com.openburnbar.app":
+        return
+    expected = {
+        direct_feed_key: expected_direct_feed,
+        sparkle_feed_key: expected_sparkle_feed,
+    }
+    for key, expected_value in expected.items():
+        if value.get(key) != expected_value:
+            failed = True
+            print(
+                f"::error file={display_path(path)}::Release app {key} must equal "
+                f"{expected_value}.",
+                file=sys.stderr,
+            )
+
 
 for candidate in plist_candidates(root):
     try:
@@ -93,6 +114,7 @@ for candidate in plist_candidates(root):
     except Exception:
         continue
     inspect(payload, candidate)
+    inspect_release_feeds(payload, candidate)
 
 if failed:
     sys.exit(1)
