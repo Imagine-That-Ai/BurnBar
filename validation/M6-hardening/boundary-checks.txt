@@ -66,7 +66,7 @@ a7ac2e41b217 | mission-authored | empty
 b1617c374eb2 | mission-authored | empty
 8f92cb09b723 | mission-authored | empty
 dd23cf9f5d66 | mission-authored | empty
-f06f3af09f74 | mission-authored | empty
+post-dd23 sign-off commits (913a10cd08, 36b88a150e, and evidence-only follow-up) | mission-authored | empty
 
 protected file SHA-256 (working tree vs user checkpoint commit)
 AgentLens/Views/Dashboard/Alternate3Dashboard.swift | checkpoint=730c76f940d9b7f7a94f4576a8f6671baff394047652bc47e9a4cb4c3062ee36 | working_tree=730c76f940d9b7f7a94f4576a8f6671baff394047652bc47e9a4cb4c3062ee36 | match=True
