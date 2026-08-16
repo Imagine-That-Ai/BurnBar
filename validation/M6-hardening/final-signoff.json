@@ -65,6 +65,8 @@
       "status": "pass"
     },
     "SoakHygiene": {
+      "rawRSS": "bounded_and_archived",
+      "rssTrendOracle": "physical_footprint",
       "status": "pass",
       "ticks": 40
     }

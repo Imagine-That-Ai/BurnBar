@@ -36,6 +36,7 @@ TREND_WARMUP_TICKS = 20
 TREND_WINDOW_TICKS = 5
 MIN_TREND_INCREASES = 2
 MIN_TREND_NET_INCREASE_BYTES = 128 * 1024
+RSS_TREND_ORACLE = "physical_footprint"
 LATE_TOLERANCE = max(0.5, 2.0 * CADENCE_SECONDS / 15.0)
 SECRET = "M6_HYGIENE_PLANTED_SECRET_7f5c"
 UNDECLARED_SENTINEL = "M6_UNDECLARED_SENTINEL_4b21"
@@ -805,6 +806,9 @@ def run() -> dict[str, Any]:
                 f"decreases={footprint_window_decrease_count}, "
                 f"window_medians_bytes={footprint_windows}"
             )
+        # macOS RSS includes shared/file-backed and page-quantized residency.
+        # Keep its bound and raw series for auditability, but use the
+        # fail-closed physical-footprint window gate above for trend detection.
         if rss_ratio > 1.20:
             raise RuntimeError(f"RSS exceeded the documented 20% bound: ratio={rss_ratio:.3f}")
         if max(abs(value - fd_baseline) for value in metrics["fd_count"]) != 0:
@@ -852,6 +856,7 @@ def run() -> dict[str, Any]:
                 "late_tolerance_seconds": LATE_TOLERANCE,
                 "warmup_samples": 5,
                 "rss_bound_warmup_ticks": 5,
+                "rss_trend_oracle": RSS_TREND_ORACLE,
                 "physical_footprint_trend_warmup_ticks": TREND_WARMUP_TICKS,
                 "physical_footprint_trend_window_ticks": TREND_WINDOW_TICKS,
                 "physical_footprint_minimum_trend_increases": MIN_TREND_INCREASES,
@@ -888,6 +893,7 @@ def run() -> dict[str, Any]:
                 "rss_nondecreasing_growth": rss_nondecreasing,
                 "rss_strictly_increasing_growth": rss_strictly_increasing,
                 "rss_raw_non_monotonic_observation": rss_non_monotonic,
+                "rss_trend_oracle": RSS_TREND_ORACLE,
                 "physical_footprint_baseline_bytes": footprint_baseline,
                 "physical_footprint_end_bytes": footprint_end,
                 "physical_footprint_end_to_warmup_ratio": footprint_ratio,

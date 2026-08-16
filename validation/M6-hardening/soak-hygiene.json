@@ -6,6 +6,7 @@
     "late_tolerance_seconds": 0.5,
     "warmup_samples": 5,
     "rss_bound_warmup_ticks": 5,
+    "rss_trend_oracle": "physical_footprint",
     "physical_footprint_trend_warmup_ticks": 20,
     "physical_footprint_trend_window_ticks": 5,
     "physical_footprint_minimum_trend_increases": 2,
@@ -22,10 +23,10 @@
     "samples": [
       {
         "tick": 1,
-        "generatedAt": "2026-08-16T18:36:22.649Z",
-        "observedAt": "2026-08-16T18:36:22.737576+00:00",
-        "rss_kb": 19360,
-        "physical_footprint_bytes": 6603376,
+        "generatedAt": "2026-08-16T18:51:56.756Z",
+        "observedAt": "2026-08-16T18:51:56.962143+00:00",
+        "rss_kb": 19280,
+        "physical_footprint_bytes": 6603400,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -37,7 +38,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -46,7 +47,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -59,7 +60,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -68,7 +69,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -77,7 +78,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -87,10 +88,10 @@
       },
       {
         "tick": 2,
-        "generatedAt": "2026-08-16T18:36:23.651Z",
-        "observedAt": "2026-08-16T18:36:23.732866+00:00",
-        "rss_kb": 19424,
-        "physical_footprint_bytes": 6668912,
+        "generatedAt": "2026-08-16T18:51:57.755Z",
+        "observedAt": "2026-08-16T18:51:57.947842+00:00",
+        "rss_kb": 19440,
+        "physical_footprint_bytes": 6701704,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -102,7 +103,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -111,7 +112,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -124,7 +125,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -133,7 +134,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -142,7 +143,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -152,10 +153,10 @@
       },
       {
         "tick": 3,
-        "generatedAt": "2026-08-16T18:36:24.651Z",
-        "observedAt": "2026-08-16T18:36:24.672223+00:00",
-        "rss_kb": 19552,
-        "physical_footprint_bytes": 6783600,
+        "generatedAt": "2026-08-16T18:51:58.778Z",
+        "observedAt": "2026-08-16T18:51:58.965355+00:00",
+        "rss_kb": 19536,
+        "physical_footprint_bytes": 6783624,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -167,7 +168,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -176,7 +177,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -189,7 +190,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -198,7 +199,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -207,7 +208,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -217,10 +218,10 @@
       },
       {
         "tick": 4,
-        "generatedAt": "2026-08-16T18:36:25.650Z",
-        "observedAt": "2026-08-16T18:36:25.693877+00:00",
-        "rss_kb": 19584,
-        "physical_footprint_bytes": 6816368,
+        "generatedAt": "2026-08-16T18:51:59.756Z",
+        "observedAt": "2026-08-16T18:51:59.981121+00:00",
+        "rss_kb": 19600,
+        "physical_footprint_bytes": 6849160,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -232,7 +233,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -241,7 +242,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -254,7 +255,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -263,7 +264,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -272,7 +273,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -282,12 +283,12 @@
       },
       {
         "tick": 5,
-        "generatedAt": "2026-08-16T18:36:26.650Z",
-        "observedAt": "2026-08-16T18:36:26.679625+00:00",
-        "rss_kb": 19600,
-        "physical_footprint_bytes": 6816368,
+        "generatedAt": "2026-08-16T18:52:00.755Z",
+        "observedAt": "2026-08-16T18:52:00.964777+00:00",
+        "rss_kb": 19632,
+        "physical_footprint_bytes": 6816392,
         "fd_count": 12,
-        "thread_count": 5,
+        "thread_count": 6,
         "child_count": 0,
         "tmp_files": [],
         "metric_commands": [
@@ -297,7 +298,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -306,7 +307,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -319,7 +320,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -328,7 +329,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -337,7 +338,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -347,12 +348,12 @@
       },
       {
         "tick": 6,
-        "generatedAt": "2026-08-16T18:36:27.651Z",
-        "observedAt": "2026-08-16T18:36:27.735115+00:00",
-        "rss_kb": 19600,
-        "physical_footprint_bytes": 6816368,
+        "generatedAt": "2026-08-16T18:52:01.755Z",
+        "observedAt": "2026-08-16T18:52:01.963294+00:00",
+        "rss_kb": 19632,
+        "physical_footprint_bytes": 6816392,
         "fd_count": 12,
-        "thread_count": 5,
+        "thread_count": 6,
         "child_count": 0,
         "tmp_files": [],
         "metric_commands": [
@@ -362,7 +363,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -371,7 +372,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -384,7 +385,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -393,7 +394,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -402,7 +403,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -412,12 +413,12 @@
       },
       {
         "tick": 7,
-        "generatedAt": "2026-08-16T18:36:28.652Z",
-        "observedAt": "2026-08-16T18:36:28.737562+00:00",
-        "rss_kb": 19616,
-        "physical_footprint_bytes": 6816368,
+        "generatedAt": "2026-08-16T18:52:02.753Z",
+        "observedAt": "2026-08-16T18:52:02.781755+00:00",
+        "rss_kb": 19664,
+        "physical_footprint_bytes": 6832776,
         "fd_count": 12,
-        "thread_count": 5,
+        "thread_count": 6,
         "child_count": 0,
         "tmp_files": [],
         "metric_commands": [
@@ -427,7 +428,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -436,7 +437,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -449,7 +450,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -458,7 +459,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -467,7 +468,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -477,12 +478,12 @@
       },
       {
         "tick": 8,
-        "generatedAt": "2026-08-16T18:36:29.648Z",
-        "observedAt": "2026-08-16T18:36:29.735809+00:00",
-        "rss_kb": 19648,
-        "physical_footprint_bytes": 6849136,
+        "generatedAt": "2026-08-16T18:52:03.752Z",
+        "observedAt": "2026-08-16T18:52:03.963473+00:00",
+        "rss_kb": 19712,
+        "physical_footprint_bytes": 6832776,
         "fd_count": 12,
-        "thread_count": 5,
+        "thread_count": 6,
         "child_count": 0,
         "tmp_files": [],
         "metric_commands": [
@@ -492,7 +493,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -501,7 +502,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -514,7 +515,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -523,7 +524,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -532,7 +533,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -542,12 +543,12 @@
       },
       {
         "tick": 9,
-        "generatedAt": "2026-08-16T18:36:30.652Z",
-        "observedAt": "2026-08-16T18:36:30.735949+00:00",
-        "rss_kb": 19664,
-        "physical_footprint_bytes": 6849136,
+        "generatedAt": "2026-08-16T18:52:04.756Z",
+        "observedAt": "2026-08-16T18:52:04.961713+00:00",
+        "rss_kb": 19728,
+        "physical_footprint_bytes": 6832776,
         "fd_count": 12,
-        "thread_count": 5,
+        "thread_count": 6,
         "child_count": 0,
         "tmp_files": [],
         "metric_commands": [
@@ -557,7 +558,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -566,7 +567,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -579,7 +580,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -588,7 +589,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -597,7 +598,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -607,12 +608,12 @@
       },
       {
         "tick": 10,
-        "generatedAt": "2026-08-16T18:36:31.650Z",
-        "observedAt": "2026-08-16T18:36:31.696950+00:00",
-        "rss_kb": 19680,
-        "physical_footprint_bytes": 6849136,
+        "generatedAt": "2026-08-16T18:52:05.758Z",
+        "observedAt": "2026-08-16T18:52:05.965403+00:00",
+        "rss_kb": 19744,
+        "physical_footprint_bytes": 6832776,
         "fd_count": 12,
-        "thread_count": 5,
+        "thread_count": 6,
         "child_count": 0,
         "tmp_files": [],
         "metric_commands": [
@@ -622,7 +623,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -631,7 +632,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -644,7 +645,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -653,7 +654,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -662,7 +663,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -672,12 +673,12 @@
       },
       {
         "tick": 11,
-        "generatedAt": "2026-08-16T18:36:32.651Z",
-        "observedAt": "2026-08-16T18:36:32.676369+00:00",
-        "rss_kb": 19696,
-        "physical_footprint_bytes": 6865520,
+        "generatedAt": "2026-08-16T18:52:06.752Z",
+        "observedAt": "2026-08-16T18:52:06.963955+00:00",
+        "rss_kb": 19760,
+        "physical_footprint_bytes": 6816392,
         "fd_count": 12,
-        "thread_count": 5,
+        "thread_count": 6,
         "child_count": 0,
         "tmp_files": [],
         "metric_commands": [
@@ -687,7 +688,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -696,7 +697,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -709,7 +710,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -718,7 +719,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -727,7 +728,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -737,12 +738,12 @@
       },
       {
         "tick": 12,
-        "generatedAt": "2026-08-16T18:36:33.648Z",
-        "observedAt": "2026-08-16T18:36:33.677097+00:00",
-        "rss_kb": 19712,
-        "physical_footprint_bytes": 6865520,
+        "generatedAt": "2026-08-16T18:52:07.758Z",
+        "observedAt": "2026-08-16T18:52:07.964907+00:00",
+        "rss_kb": 19776,
+        "physical_footprint_bytes": 6783624,
         "fd_count": 12,
-        "thread_count": 5,
+        "thread_count": 6,
         "child_count": 0,
         "tmp_files": [],
         "metric_commands": [
@@ -752,7 +753,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -761,7 +762,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -774,7 +775,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -783,7 +784,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -792,7 +793,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -802,10 +803,10 @@
       },
       {
         "tick": 13,
-        "generatedAt": "2026-08-16T18:36:34.652Z",
-        "observedAt": "2026-08-16T18:36:34.734974+00:00",
-        "rss_kb": 19728,
-        "physical_footprint_bytes": 6849136,
+        "generatedAt": "2026-08-16T18:52:08.753Z",
+        "observedAt": "2026-08-16T18:52:08.780032+00:00",
+        "rss_kb": 19792,
+        "physical_footprint_bytes": 6800008,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -817,7 +818,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -826,7 +827,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -839,7 +840,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -848,7 +849,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -857,7 +858,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -867,10 +868,10 @@
       },
       {
         "tick": 14,
-        "generatedAt": "2026-08-16T18:36:35.653Z",
-        "observedAt": "2026-08-16T18:36:35.735316+00:00",
-        "rss_kb": 19760,
-        "physical_footprint_bytes": 6865520,
+        "generatedAt": "2026-08-16T18:52:09.758Z",
+        "observedAt": "2026-08-16T18:52:09.964566+00:00",
+        "rss_kb": 19808,
+        "physical_footprint_bytes": 6800008,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -882,7 +883,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -891,7 +892,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -904,7 +905,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -913,7 +914,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -922,7 +923,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -932,10 +933,10 @@
       },
       {
         "tick": 15,
-        "generatedAt": "2026-08-16T18:36:36.652Z",
-        "observedAt": "2026-08-16T18:36:36.758622+00:00",
-        "rss_kb": 19776,
-        "physical_footprint_bytes": 6881904,
+        "generatedAt": "2026-08-16T18:52:10.758Z",
+        "observedAt": "2026-08-16T18:52:10.967543+00:00",
+        "rss_kb": 19824,
+        "physical_footprint_bytes": 6816392,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -947,7 +948,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -956,7 +957,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -969,7 +970,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -978,7 +979,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -987,7 +988,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -997,10 +998,10 @@
       },
       {
         "tick": 16,
-        "generatedAt": "2026-08-16T18:36:37.650Z",
-        "observedAt": "2026-08-16T18:36:37.696231+00:00",
-        "rss_kb": 19792,
-        "physical_footprint_bytes": 6881904,
+        "generatedAt": "2026-08-16T18:52:11.755Z",
+        "observedAt": "2026-08-16T18:52:11.961118+00:00",
+        "rss_kb": 19840,
+        "physical_footprint_bytes": 6816392,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1012,7 +1013,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1021,7 +1022,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1034,7 +1035,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1043,7 +1044,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1052,7 +1053,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1062,10 +1063,10 @@
       },
       {
         "tick": 17,
-        "generatedAt": "2026-08-16T18:36:38.650Z",
-        "observedAt": "2026-08-16T18:36:38.734531+00:00",
-        "rss_kb": 19792,
-        "physical_footprint_bytes": 6881904,
+        "generatedAt": "2026-08-16T18:52:12.813Z",
+        "observedAt": "2026-08-16T18:52:12.963124+00:00",
+        "rss_kb": 19840,
+        "physical_footprint_bytes": 6816392,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1077,7 +1078,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1086,7 +1087,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1099,7 +1100,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1108,7 +1109,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1117,7 +1118,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1127,10 +1128,10 @@
       },
       {
         "tick": 18,
-        "generatedAt": "2026-08-16T18:36:39.649Z",
-        "observedAt": "2026-08-16T18:36:39.741044+00:00",
-        "rss_kb": 19808,
-        "physical_footprint_bytes": 6832752,
+        "generatedAt": "2026-08-16T18:52:13.753Z",
+        "observedAt": "2026-08-16T18:52:13.962594+00:00",
+        "rss_kb": 19856,
+        "physical_footprint_bytes": 6816392,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1142,7 +1143,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1151,7 +1152,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1164,7 +1165,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1173,7 +1174,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1182,7 +1183,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1192,10 +1193,10 @@
       },
       {
         "tick": 19,
-        "generatedAt": "2026-08-16T18:36:40.653Z",
-        "observedAt": "2026-08-16T18:36:40.741403+00:00",
-        "rss_kb": 19808,
-        "physical_footprint_bytes": 6832752,
+        "generatedAt": "2026-08-16T18:52:14.758Z",
+        "observedAt": "2026-08-16T18:52:14.785186+00:00",
+        "rss_kb": 19856,
+        "physical_footprint_bytes": 6816392,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1207,7 +1208,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1216,7 +1217,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1229,7 +1230,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1238,7 +1239,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1247,7 +1248,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1257,10 +1258,10 @@
       },
       {
         "tick": 20,
-        "generatedAt": "2026-08-16T18:36:41.649Z",
-        "observedAt": "2026-08-16T18:36:41.735325+00:00",
-        "rss_kb": 19840,
-        "physical_footprint_bytes": 6816368,
+        "generatedAt": "2026-08-16T18:52:15.758Z",
+        "observedAt": "2026-08-16T18:52:15.962825+00:00",
+        "rss_kb": 19888,
+        "physical_footprint_bytes": 6832776,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1272,7 +1273,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1281,7 +1282,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1294,7 +1295,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1303,7 +1304,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1312,7 +1313,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1322,10 +1323,10 @@
       },
       {
         "tick": 21,
-        "generatedAt": "2026-08-16T18:36:42.649Z",
-        "observedAt": "2026-08-16T18:36:42.778395+00:00",
-        "rss_kb": 19840,
-        "physical_footprint_bytes": 6816368,
+        "generatedAt": "2026-08-16T18:52:16.753Z",
+        "observedAt": "2026-08-16T18:52:16.965136+00:00",
+        "rss_kb": 19888,
+        "physical_footprint_bytes": 6832776,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1337,7 +1338,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1346,7 +1347,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1359,7 +1360,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1368,7 +1369,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1377,7 +1378,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1387,10 +1388,10 @@
       },
       {
         "tick": 22,
-        "generatedAt": "2026-08-16T18:36:43.653Z",
-        "observedAt": "2026-08-16T18:36:43.736310+00:00",
-        "rss_kb": 19856,
-        "physical_footprint_bytes": 6816368,
+        "generatedAt": "2026-08-16T18:52:17.759Z",
+        "observedAt": "2026-08-16T18:52:17.966370+00:00",
+        "rss_kb": 19904,
+        "physical_footprint_bytes": 6832776,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1402,7 +1403,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1411,7 +1412,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1424,7 +1425,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1433,7 +1434,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1442,7 +1443,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1452,10 +1453,10 @@
       },
       {
         "tick": 23,
-        "generatedAt": "2026-08-16T18:36:44.655Z",
-        "observedAt": "2026-08-16T18:36:44.733561+00:00",
-        "rss_kb": 19872,
-        "physical_footprint_bytes": 6832752,
+        "generatedAt": "2026-08-16T18:52:18.757Z",
+        "observedAt": "2026-08-16T18:52:18.965643+00:00",
+        "rss_kb": 19936,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1467,7 +1468,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1476,7 +1477,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1489,7 +1490,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1498,7 +1499,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1507,7 +1508,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1517,10 +1518,10 @@
       },
       {
         "tick": 24,
-        "generatedAt": "2026-08-16T18:36:45.654Z",
-        "observedAt": "2026-08-16T18:36:45.734309+00:00",
-        "rss_kb": 19888,
-        "physical_footprint_bytes": 6832752,
+        "generatedAt": "2026-08-16T18:52:19.778Z",
+        "observedAt": "2026-08-16T18:52:19.962140+00:00",
+        "rss_kb": 19952,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1532,7 +1533,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1541,7 +1542,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1554,7 +1555,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1563,7 +1564,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1572,7 +1573,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1582,10 +1583,10 @@
       },
       {
         "tick": 25,
-        "generatedAt": "2026-08-16T18:36:46.650Z",
-        "observedAt": "2026-08-16T18:36:46.740288+00:00",
-        "rss_kb": 19904,
-        "physical_footprint_bytes": 6832752,
+        "generatedAt": "2026-08-16T18:52:20.753Z",
+        "observedAt": "2026-08-16T18:52:20.966367+00:00",
+        "rss_kb": 19968,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1597,7 +1598,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1606,7 +1607,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1619,7 +1620,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1628,7 +1629,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1637,7 +1638,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1647,10 +1648,10 @@
       },
       {
         "tick": 26,
-        "generatedAt": "2026-08-16T18:36:47.649Z",
-        "observedAt": "2026-08-16T18:36:47.739432+00:00",
-        "rss_kb": 19904,
-        "physical_footprint_bytes": 6832752,
+        "generatedAt": "2026-08-16T18:52:21.759Z",
+        "observedAt": "2026-08-16T18:52:21.965503+00:00",
+        "rss_kb": 19968,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1662,7 +1663,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1671,7 +1672,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1684,7 +1685,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1693,7 +1694,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1702,7 +1703,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1712,10 +1713,10 @@
       },
       {
         "tick": 27,
-        "generatedAt": "2026-08-16T18:36:48.653Z",
-        "observedAt": "2026-08-16T18:36:48.741719+00:00",
-        "rss_kb": 19920,
-        "physical_footprint_bytes": 6832752,
+        "generatedAt": "2026-08-16T18:52:22.758Z",
+        "observedAt": "2026-08-16T18:52:22.965594+00:00",
+        "rss_kb": 19984,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1727,7 +1728,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1736,7 +1737,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1749,7 +1750,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1758,7 +1759,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1767,7 +1768,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1777,10 +1778,10 @@
       },
       {
         "tick": 28,
-        "generatedAt": "2026-08-16T18:36:49.652Z",
-        "observedAt": "2026-08-16T18:36:49.742320+00:00",
-        "rss_kb": 19920,
-        "physical_footprint_bytes": 6832752,
+        "generatedAt": "2026-08-16T18:52:23.755Z",
+        "observedAt": "2026-08-16T18:52:23.965708+00:00",
+        "rss_kb": 19984,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1792,7 +1793,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1801,7 +1802,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1814,7 +1815,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1823,7 +1824,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1832,7 +1833,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1842,10 +1843,10 @@
       },
       {
         "tick": 29,
-        "generatedAt": "2026-08-16T18:36:50.651Z",
-        "observedAt": "2026-08-16T18:36:50.742196+00:00",
-        "rss_kb": 19936,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:24.756Z",
+        "observedAt": "2026-08-16T18:52:24.964263+00:00",
+        "rss_kb": 20000,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1857,7 +1858,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1866,7 +1867,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1879,7 +1880,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1888,7 +1889,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1897,7 +1898,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1907,10 +1908,10 @@
       },
       {
         "tick": 30,
-        "generatedAt": "2026-08-16T18:36:51.649Z",
-        "observedAt": "2026-08-16T18:36:51.737427+00:00",
-        "rss_kb": 19936,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:25.756Z",
+        "observedAt": "2026-08-16T18:52:25.965030+00:00",
+        "rss_kb": 20000,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1922,7 +1923,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1931,7 +1932,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -1944,7 +1945,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1953,7 +1954,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1962,7 +1963,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -1972,10 +1973,10 @@
       },
       {
         "tick": 31,
-        "generatedAt": "2026-08-16T18:36:52.654Z",
-        "observedAt": "2026-08-16T18:36:52.742905+00:00",
-        "rss_kb": 19952,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:26.759Z",
+        "observedAt": "2026-08-16T18:52:26.965444+00:00",
+        "rss_kb": 20016,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -1987,7 +1988,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -1996,7 +1997,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2009,7 +2010,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2018,7 +2019,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2027,7 +2028,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2037,10 +2038,10 @@
       },
       {
         "tick": 32,
-        "generatedAt": "2026-08-16T18:36:53.648Z",
-        "observedAt": "2026-08-16T18:36:53.740804+00:00",
-        "rss_kb": 19952,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:27.756Z",
+        "observedAt": "2026-08-16T18:52:27.982980+00:00",
+        "rss_kb": 20016,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2052,7 +2053,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2061,7 +2062,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2074,7 +2075,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2083,7 +2084,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2092,7 +2093,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2102,10 +2103,10 @@
       },
       {
         "tick": 33,
-        "generatedAt": "2026-08-16T18:36:54.650Z",
-        "observedAt": "2026-08-16T18:36:54.741371+00:00",
-        "rss_kb": 19968,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:28.755Z",
+        "observedAt": "2026-08-16T18:52:28.962530+00:00",
+        "rss_kb": 20032,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2117,7 +2118,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2126,7 +2127,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2139,7 +2140,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2148,7 +2149,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2157,7 +2158,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2167,10 +2168,10 @@
       },
       {
         "tick": 34,
-        "generatedAt": "2026-08-16T18:36:55.655Z",
-        "observedAt": "2026-08-16T18:36:55.742027+00:00",
-        "rss_kb": 19968,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:29.753Z",
+        "observedAt": "2026-08-16T18:52:29.966695+00:00",
+        "rss_kb": 20032,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2182,7 +2183,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2191,7 +2192,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2204,7 +2205,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2213,7 +2214,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2222,7 +2223,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2232,10 +2233,10 @@
       },
       {
         "tick": 35,
-        "generatedAt": "2026-08-16T18:36:56.653Z",
-        "observedAt": "2026-08-16T18:36:56.741995+00:00",
-        "rss_kb": 19984,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:30.754Z",
+        "observedAt": "2026-08-16T18:52:30.967748+00:00",
+        "rss_kb": 20048,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2247,7 +2248,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2256,7 +2257,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2269,7 +2270,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2278,7 +2279,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2287,7 +2288,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2297,10 +2298,10 @@
       },
       {
         "tick": 36,
-        "generatedAt": "2026-08-16T18:36:57.653Z",
-        "observedAt": "2026-08-16T18:36:57.739919+00:00",
-        "rss_kb": 19984,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:31.759Z",
+        "observedAt": "2026-08-16T18:52:31.985179+00:00",
+        "rss_kb": 20048,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2312,7 +2313,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2321,7 +2322,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2334,7 +2335,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2343,7 +2344,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2352,7 +2353,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2362,10 +2363,10 @@
       },
       {
         "tick": 37,
-        "generatedAt": "2026-08-16T18:36:58.654Z",
-        "observedAt": "2026-08-16T18:36:58.742209+00:00",
-        "rss_kb": 20000,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:32.755Z",
+        "observedAt": "2026-08-16T18:52:32.963013+00:00",
+        "rss_kb": 20064,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2377,7 +2378,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2386,7 +2387,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2399,7 +2400,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2408,7 +2409,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2417,7 +2418,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2427,10 +2428,10 @@
       },
       {
         "tick": 38,
-        "generatedAt": "2026-08-16T18:36:59.650Z",
-        "observedAt": "2026-08-16T18:36:59.733520+00:00",
-        "rss_kb": 20000,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:33.753Z",
+        "observedAt": "2026-08-16T18:52:33.963355+00:00",
+        "rss_kb": 20064,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2442,7 +2443,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2451,7 +2452,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2464,7 +2465,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2473,7 +2474,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2482,7 +2483,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2492,10 +2493,10 @@
       },
       {
         "tick": 39,
-        "generatedAt": "2026-08-16T18:37:00.652Z",
-        "observedAt": "2026-08-16T18:37:00.742400+00:00",
-        "rss_kb": 20016,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:34.753Z",
+        "observedAt": "2026-08-16T18:52:34.965681+00:00",
+        "rss_kb": 20080,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2507,7 +2508,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2516,7 +2517,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2529,7 +2530,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2538,7 +2539,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2547,7 +2548,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2557,10 +2558,10 @@
       },
       {
         "tick": 40,
-        "generatedAt": "2026-08-16T18:37:01.648Z",
-        "observedAt": "2026-08-16T18:37:01.742410+00:00",
-        "rss_kb": 20032,
-        "physical_footprint_bytes": 6799984,
+        "generatedAt": "2026-08-16T18:52:35.754Z",
+        "observedAt": "2026-08-16T18:52:35.962936+00:00",
+        "rss_kb": 20096,
+        "physical_footprint_bytes": 6865544,
         "fd_count": 12,
         "thread_count": 6,
         "child_count": 0,
@@ -2572,7 +2573,7 @@
               "-o",
               "rss=",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2581,7 +2582,7 @@
             "command": [
               "footprint",
               "--pid",
-              "22885",
+              "28834",
               "--noCategories",
               "--format",
               "bytes"
@@ -2594,7 +2595,7 @@
               "ps",
               "-M",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2603,7 +2604,7 @@
             "command": [
               "lsof",
               "-p",
-              "22885"
+              "28834"
             ],
             "returncode": 0,
             "stderr": ""
@@ -2612,7 +2613,7 @@
             "command": [
               "pgrep",
               "-P",
-              "22885"
+              "28834"
             ],
             "returncode": 1,
             "stderr": ""
@@ -2622,85 +2623,77 @@
       }
     ],
     "intervals_seconds": [
-      1.042993250011932,
-      0.9952735410188325,
-      0.9393706250120886,
-      1.0216504999552853,
-      0.9857452920405194,
-      1.055484999960754,
-      1.002441374992486,
-      0.9982471250114031,
-      1.0001397500163876,
-      0.9609967080177739,
-      0.9794170419918373,
-      1.0007246249588206,
-      1.0578762080403976,
-      1.0003362089628354,
-      1.023301083012484,
-      0.9376094170147553,
-      1.0382963750162162,
-      1.0065081659704447,
-      1.0003604170051403,
-      0.9939168749842793,
-      1.043062875047326,
-      0.9579145829775371,
-      0.9972501670126803,
-      1.0007358329603449,
-      1.0059837920125574,
-      0.999139457999263,
-      1.0022847920190543,
-      1.000570708012674,
-      0.9999035419896245,
-      0.9952243749867193,
-      1.0054740420309827,
-      0.997901999973692,
-      1.0005629999795929,
-      1.0006487080245279,
-      0.9999689579708502,
-      0.997920666995924,
-      1.0022868750384077,
-      0.9913064999855123,
-      1.0088784580002539,
-      1.0000042920000851
+      1.0014380830107257,
+      0.9856997499591671,
+      1.0175113329896703,
+      1.0157530000433326,
+      0.9836570419720374,
+      0.9985193749889731,
+      0.8184698750264943,
+      1.181704582995735,
+      0.9981913749943487,
+      1.003733541991096,
+      0.9985475420253351,
+      1.0009481660090387,
+      0.8151341250049882,
+      1.1845292919897474,
+      1.0029665000038221,
+      0.9935797500074841,
+      1.0019978329655714,
+      0.9994608340202831,
+      0.8226025410112925,
+      1.177625624986831,
+      1.002309458970558,
+      1.0012303330004215,
+      0.9992710420046933,
+      0.9965037500369363,
+      1.0042135829571635,
+      0.9991339580155909,
+      1.000085334002506,
+      1.000108166015707,
+      0.9985554589657113,
+      1.0007639160030521,
+      1.000413459027186,
+      1.0175339999841526,
+      0.9795433330000378,
+      1.004164625017438,
+      1.0010515419999138,
+      1.0174241249915212,
+      0.9778337079915218,
+      1.0003383749863133,
+      1.0023226250195876,
+      0.9972522080061026
     ],
     "on_time_ticks": 40,
     "late_ticks": 0,
-    "rss_baseline_kb": 19616,
-    "rss_end_kb": 20032,
-    "rss_end_to_warmup_ratio": 1.0212071778140293,
+    "rss_baseline_kb": 19664,
+    "rss_end_kb": 20096,
+    "rss_end_to_warmup_ratio": 1.0219690805532953,
     "rss_bound_ratio": 1.2,
     "rss_series_kb": [
-      19360,
-      19424,
-      19552,
-      19584,
+      19280,
+      19440,
+      19536,
       19600,
-      19600,
-      19616,
-      19648,
+      19632,
+      19632,
       19664,
-      19680,
-      19696,
       19712,
       19728,
+      19744,
       19760,
       19776,
       19792,
-      19792,
       19808,
-      19808,
+      19824,
       19840,
       19840,
       19856,
-      19872,
+      19856,
+      19888,
       19888,
       19904,
-      19904,
-      19920,
-      19920,
       19936,
-      19936,
-      19952,
       19952,
       19968,
       19968,
@@ -2709,75 +2702,84 @@
       20000,
       20000,
       20016,
-      20032
+      20016,
+      20032,
+      20032,
+      20048,
+      20048,
+      20064,
+      20064,
+      20080,
+      20096
     ],
     "rss_increase_count": 28,
     "rss_decrease_count": 0,
     "rss_nondecreasing_growth": true,
     "rss_strictly_increasing_growth": false,
     "rss_raw_non_monotonic_observation": false,
-    "physical_footprint_baseline_bytes": 6816368,
-    "physical_footprint_end_bytes": 6799984,
-    "physical_footprint_end_to_warmup_ratio": 0.9975963739046952,
+    "rss_trend_oracle": "physical_footprint",
+    "physical_footprint_baseline_bytes": 6832776,
+    "physical_footprint_end_bytes": 6865544,
+    "physical_footprint_end_to_warmup_ratio": 1.0047957082158117,
     "physical_footprint_bound_ratio": 1.2,
     "physical_footprint_series_bytes": [
-      6603376,
-      6668912,
-      6783600,
-      6816368,
-      6816368,
-      6816368,
-      6816368,
-      6849136,
-      6849136,
-      6849136,
-      6865520,
-      6865520,
-      6849136,
-      6865520,
-      6881904,
-      6881904,
-      6881904,
-      6832752,
-      6832752,
-      6816368,
-      6816368,
-      6816368,
-      6832752,
-      6832752,
-      6832752,
-      6832752,
-      6832752,
-      6832752,
-      6799984,
-      6799984,
-      6799984,
-      6799984,
-      6799984,
-      6799984,
-      6799984,
-      6799984,
-      6799984,
-      6799984,
-      6799984,
-      6799984
+      6603400,
+      6701704,
+      6783624,
+      6849160,
+      6816392,
+      6816392,
+      6832776,
+      6832776,
+      6832776,
+      6832776,
+      6816392,
+      6783624,
+      6800008,
+      6800008,
+      6816392,
+      6816392,
+      6816392,
+      6816392,
+      6816392,
+      6832776,
+      6832776,
+      6832776,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544,
+      6865544
     ],
     "physical_footprint_trend_window_ticks": 5,
     "physical_footprint_window_medians_bytes": [
-      6832752,
-      6832752,
-      6799984,
-      6799984
+      6865544,
+      6865544,
+      6865544,
+      6865544
     ],
     "physical_footprint_window_increase_count": 0,
-    "physical_footprint_window_decrease_count": 1,
-    "physical_footprint_window_net_increase_bytes": -32768,
-    "physical_footprint_window_nondecreasing_growth": false,
+    "physical_footprint_window_decrease_count": 0,
+    "physical_footprint_window_net_increase_bytes": 0,
+    "physical_footprint_window_nondecreasing_growth": true,
     "physical_footprint_growth_trend_gate": true,
     "fd_baseline": 12,
     "fd_max_delta_from_warmup": 0,
     "fd_strictly_monotonic_growth": false,
-    "thread_baseline": 5.0,
+    "thread_baseline": 6.0,
     "thread_max_delta_from_warmup": 1.0,
     "thread_warmup_band": [
       5,
@@ -3309,11 +3311,11 @@
     "declared_manifest_before": [
       {
         "agent": "claude-code",
-        "path": "sessions/22872.json",
+        "path": "sessions/28821.json",
         "state": "file",
         "size": 95,
-        "mtime_ns": 1786905381323419345,
-        "sha256": "3b5e74154effe9d0281afb95e1d0b35a74964c39a31fbc28e4fa30c7fc232570"
+        "mtime_ns": 1786906315348824573,
+        "sha256": "7ebe98afd31403e62e54043122b446dbedda44b1754ad4785d5bdc9d16884311"
       },
       {
         "agent": "codex",
@@ -3330,7 +3332,7 @@
         "path": "thread-writer-locks/m6.lock",
         "state": "file",
         "size": 0,
-        "mtime_ns": 1786905381325253100,
+        "mtime_ns": 1786906315350542411,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -3338,7 +3340,7 @@
         "path": "agent-cli-state.json",
         "state": "file",
         "size": 52,
-        "mtime_ns": 1786905381325583351,
+        "mtime_ns": 1786906315350810579,
         "sha256": "b76922c1d6bf2f3afe6691809517235a8aaaaeac294d4d9bd3d41ab25bbef60b"
       },
       {
@@ -3346,7 +3348,7 @@
         "path": "ai-tracking/tracking.db",
         "state": "file",
         "size": 18,
-        "mtime_ns": 1786905381325688101,
+        "mtime_ns": 1786906315350910704,
         "sha256": "99e86c5b00793b73e98a3c33317d7274135fe223976116bb2be6b4eb0b8a5e08"
       },
       {
@@ -3354,8 +3356,8 @@
         "path": "background-processes.json",
         "state": "file",
         "size": 79,
-        "mtime_ns": 1786905381324731723,
-        "sha256": "fd148a1678814cc76a072a900ebc8e41f7292cd8d28deb9813b9074b33b2bbea"
+        "mtime_ns": 1786906315350048618,
+        "sha256": "f211e09836450dca714306869fe56231f7dcdfe5bb56d6435594250be41c8781"
       },
       {
         "agent": "factory-droid",
@@ -3372,7 +3374,7 @@
         "path": "task-invocations.json",
         "state": "file",
         "size": 18,
-        "mtime_ns": 1786905381324649848,
+        "mtime_ns": 1786906315349972451,
         "sha256": "b02b51713509f6e7334a5c854eeb44035a15af34038a53f022dae3a99b9ab8e1"
       },
       {
@@ -3380,8 +3382,8 @@
         "path": "local-exec-daemon.json",
         "state": "file",
         "size": 31,
-        "mtime_ns": 1786905381323964388,
-        "sha256": "5c60817295400e56eb0366d5b41a93605cc4608c15f06bf2ca1e5fd02f4ec9a6"
+        "mtime_ns": 1786906315349358450,
+        "sha256": "90d460c28d6db54a4c2d864e06386a1433d79d207dc288a9b5f7a6b8a5c964e8"
       },
       {
         "agent": "grok-bot",
@@ -3393,7 +3395,7 @@
         "path": "local-exec-supervisor.json",
         "state": "file",
         "size": 41,
-        "mtime_ns": 1786905381324160097,
+        "mtime_ns": 1786906315349533283,
         "sha256": "1b08281185d15627fef486a8ad6d3cdd05d4664508e229109efa2bd3644df019"
       },
       {
@@ -3401,8 +3403,8 @@
         "path": "active_sessions.json",
         "state": "file",
         "size": 104,
-        "mtime_ns": 1786905381323826387,
-        "sha256": "b2dd7ffa11ee360039e9cf2d04e6e4ac504bff87abd68d89a9514b456f6240cf"
+        "mtime_ns": 1786906315349220824,
+        "sha256": "2a763ad04a28d6aba6b799cb9a8442f9db2b23e654915ffc10f155bc21ed7769"
       },
       {
         "agent": "grok-cli",
@@ -3414,23 +3416,23 @@
         "path": "gateway.pid",
         "state": "file",
         "size": 13,
-        "mtime_ns": 1786905381324262097,
-        "sha256": "6001d59e914b7c80ac48dcf9a13c0c9e0751049f017ec7af784c17969d15876b"
+        "mtime_ns": 1786906315349631784,
+        "sha256": "cf81e68b070d7b43c27a275f28b66acecb80fa0f0ef58733398d55dc6cd3a62f"
       },
       {
         "agent": "hermes",
         "path": "gateway_state.json",
         "state": "file",
         "size": 57,
-        "mtime_ns": 1786905381324484556,
-        "sha256": "044c00568990c7c59ef730093003b1f68f2b4f764601fffd9844b11919da0f52"
+        "mtime_ns": 1786906315349825368,
+        "sha256": "342f0e59b4917fbbcd2588d8ebf1870bdc6ece6c2e10396b3746c8bb0d621171"
       },
       {
         "agent": "hermes",
         "path": "processes.json",
         "state": "file",
         "size": 2,
-        "mtime_ns": 1786905381324558806,
+        "mtime_ns": 1786906315349900159,
         "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
@@ -3438,26 +3440,26 @@
         "path": "state/gateway.heartbeat",
         "state": "file",
         "size": 53,
-        "mtime_ns": 1786905381324396139,
-        "sha256": "66ea17410bcfe6d7751ec1a5acaa6da00cbe1c3a82275595a6ae3764cdab76e5"
+        "mtime_ns": 1786906315349749909,
+        "sha256": "487732e63f4cda88e3d73c77cd15327e6c808f79101c6cf310c7ca9cd5dfa85c"
       },
       {
         "agent": "pi",
         "path": "agent/sessions/--fixture--AgentLens/m6.jsonl",
         "state": "file",
         "size": 94,
-        "mtime_ns": 1786905381325495351,
+        "mtime_ns": 1786906315350736537,
         "sha256": "67095379538c4e9c6e36fdfa834596d856b6245c80a5ccf86ed27c0e7bb7d710"
       }
     ],
     "declared_manifest_after": [
       {
         "agent": "claude-code",
-        "path": "sessions/22872.json",
+        "path": "sessions/28821.json",
         "state": "file",
         "size": 95,
-        "mtime_ns": 1786905381323419345,
-        "sha256": "3b5e74154effe9d0281afb95e1d0b35a74964c39a31fbc28e4fa30c7fc232570"
+        "mtime_ns": 1786906315348824573,
+        "sha256": "7ebe98afd31403e62e54043122b446dbedda44b1754ad4785d5bdc9d16884311"
       },
       {
         "agent": "codex",
@@ -3474,7 +3476,7 @@
         "path": "thread-writer-locks/m6.lock",
         "state": "file",
         "size": 0,
-        "mtime_ns": 1786905381325253100,
+        "mtime_ns": 1786906315350542411,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -3482,7 +3484,7 @@
         "path": "agent-cli-state.json",
         "state": "file",
         "size": 52,
-        "mtime_ns": 1786905381325583351,
+        "mtime_ns": 1786906315350810579,
         "sha256": "b76922c1d6bf2f3afe6691809517235a8aaaaeac294d4d9bd3d41ab25bbef60b"
       },
       {
@@ -3490,7 +3492,7 @@
         "path": "ai-tracking/tracking.db",
         "state": "file",
         "size": 18,
-        "mtime_ns": 1786905381325688101,
+        "mtime_ns": 1786906315350910704,
         "sha256": "99e86c5b00793b73e98a3c33317d7274135fe223976116bb2be6b4eb0b8a5e08"
       },
       {
@@ -3498,8 +3500,8 @@
         "path": "background-processes.json",
         "state": "file",
         "size": 79,
-        "mtime_ns": 1786905381324731723,
-        "sha256": "fd148a1678814cc76a072a900ebc8e41f7292cd8d28deb9813b9074b33b2bbea"
+        "mtime_ns": 1786906315350048618,
+        "sha256": "f211e09836450dca714306869fe56231f7dcdfe5bb56d6435594250be41c8781"
       },
       {
         "agent": "factory-droid",
@@ -3516,7 +3518,7 @@
         "path": "task-invocations.json",
         "state": "file",
         "size": 18,
-        "mtime_ns": 1786905381324649848,
+        "mtime_ns": 1786906315349972451,
         "sha256": "b02b51713509f6e7334a5c854eeb44035a15af34038a53f022dae3a99b9ab8e1"
       },
       {
@@ -3524,8 +3526,8 @@
         "path": "local-exec-daemon.json",
         "state": "file",
         "size": 31,
-        "mtime_ns": 1786905381323964388,
-        "sha256": "5c60817295400e56eb0366d5b41a93605cc4608c15f06bf2ca1e5fd02f4ec9a6"
+        "mtime_ns": 1786906315349358450,
+        "sha256": "90d460c28d6db54a4c2d864e06386a1433d79d207dc288a9b5f7a6b8a5c964e8"
       },
       {
         "agent": "grok-bot",
@@ -3537,7 +3539,7 @@
         "path": "local-exec-supervisor.json",
         "state": "file",
         "size": 41,
-        "mtime_ns": 1786905381324160097,
+        "mtime_ns": 1786906315349533283,
         "sha256": "1b08281185d15627fef486a8ad6d3cdd05d4664508e229109efa2bd3644df019"
       },
       {
@@ -3545,8 +3547,8 @@
         "path": "active_sessions.json",
         "state": "file",
         "size": 104,
-        "mtime_ns": 1786905381323826387,
-        "sha256": "b2dd7ffa11ee360039e9cf2d04e6e4ac504bff87abd68d89a9514b456f6240cf"
+        "mtime_ns": 1786906315349220824,
+        "sha256": "2a763ad04a28d6aba6b799cb9a8442f9db2b23e654915ffc10f155bc21ed7769"
       },
       {
         "agent": "grok-cli",
@@ -3558,23 +3560,23 @@
         "path": "gateway.pid",
         "state": "file",
         "size": 13,
-        "mtime_ns": 1786905381324262097,
-        "sha256": "6001d59e914b7c80ac48dcf9a13c0c9e0751049f017ec7af784c17969d15876b"
+        "mtime_ns": 1786906315349631784,
+        "sha256": "cf81e68b070d7b43c27a275f28b66acecb80fa0f0ef58733398d55dc6cd3a62f"
       },
       {
         "agent": "hermes",
         "path": "gateway_state.json",
         "state": "file",
         "size": 57,
-        "mtime_ns": 1786905381324484556,
-        "sha256": "044c00568990c7c59ef730093003b1f68f2b4f764601fffd9844b11919da0f52"
+        "mtime_ns": 1786906315349825368,
+        "sha256": "342f0e59b4917fbbcd2588d8ebf1870bdc6ece6c2e10396b3746c8bb0d621171"
       },
       {
         "agent": "hermes",
         "path": "processes.json",
         "state": "file",
         "size": 2,
-        "mtime_ns": 1786905381324558806,
+        "mtime_ns": 1786906315349900159,
         "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
@@ -3582,15 +3584,15 @@
         "path": "state/gateway.heartbeat",
         "state": "file",
         "size": 53,
-        "mtime_ns": 1786905381324396139,
-        "sha256": "66ea17410bcfe6d7751ec1a5acaa6da00cbe1c3a82275595a6ae3764cdab76e5"
+        "mtime_ns": 1786906315349749909,
+        "sha256": "487732e63f4cda88e3d73c77cd15327e6c808f79101c6cf310c7ca9cd5dfa85c"
       },
       {
         "agent": "pi",
         "path": "agent/sessions/--fixture--AgentLens/m6.jsonl",
         "state": "file",
         "size": 94,
-        "mtime_ns": 1786905381325495351,
+        "mtime_ns": 1786906315350736537,
         "sha256": "67095379538c4e9c6e36fdfa834596d856b6245c80a5ccf86ed27c0e7bb7d710"
       }
     ],
@@ -3612,11 +3614,11 @@
     "factory_row_not_driven_by_undeclared_content": true
   },
   "liveness": {
-    "canary_pid": 22872,
+    "canary_pid": 28821,
     "canary_nonzero_signal_log": [],
     "canary_received_no_nonzero_signal": true,
     "canary_alive_at_final_tick": true,
-    "dead_pid_fixture": 22873,
+    "dead_pid_fixture": 28822,
     "dead_pid_downgrade": {
       "agent": "grok-cli",
       "status": "stale",
@@ -3625,7 +3627,7 @@
     "pid_reuse_fixture": {
       "agent": "factory-droid",
       "recorded_start_time": "one hour before canary start",
-      "canary_pid": 22872
+      "canary_pid": 28821
     },
     "static_scan": {
       "scanned_root": "BurnBarDaemon/Sources/BurnBarDaemon/Fleet/Probes",
