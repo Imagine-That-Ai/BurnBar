@@ -58,6 +58,7 @@ degradation=7/7 hard cases pass; CROSS-018 blocked only for unavailable desktop-
 persistence=pass (corruption/schema, restart deletion, live deletion, read-only support, SIGKILL/torn writes)
 soak=pass (40 ticks, bounded logs, fixture isolation, dead-pid downgrade, RSS/physical-footprint oracle)
 rss_oracle=raw RSS bound and archive; physical_footprint trend oracle per mission contract; raw RSS nondecreasing is permitted when physical footprint passes
+rpc_ledger=startup attempts/failures archived separately; steady-state attempts=389; failures_after_first_tick=0
 
 [boundaries]
 protected_paths=not modified by this worker; .cursor/, tools/__pycache__/, validation/harness/__pycache__/ left untouched

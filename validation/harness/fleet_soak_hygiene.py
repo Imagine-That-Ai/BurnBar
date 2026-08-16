@@ -268,16 +268,34 @@ def rpc(socket_path: pathlib.Path, request_id: str) -> dict[str, Any]:
         client.close()
 
 
-def snapshot(socket_path: pathlib.Path) -> dict[str, Any] | None:
-    response = rpc(socket_path, "m6-soak")
+def snapshot(
+    socket_path: pathlib.Path,
+    rpc_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if rpc_metrics is not None:
+        rpc_metrics["attempts"] += 1
+    try:
+        response = rpc(socket_path, "m6-soak")
+    except (OSError, ValueError, KeyError):
+        if rpc_metrics is not None:
+            rpc_metrics["failures"] += 1
+        raise
+    if "error" in response or "result" not in response:
+        if rpc_metrics is not None:
+            rpc_metrics["failures"] += 1
+        return None
     return response.get("result", {}).get("snapshot")
 
 
-def wait_for_snapshot(socket_path: pathlib.Path, timeout: float = 10) -> dict[str, Any]:
+def wait_for_snapshot(
+    socket_path: pathlib.Path,
+    timeout: float = 10,
+    rpc_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            value = snapshot(socket_path)
+            value = snapshot(socket_path, rpc_metrics)
             if value is not None:
                 return value
         except (OSError, ValueError, KeyError):
@@ -621,8 +639,10 @@ def run() -> dict[str, Any]:
                 stderr=subprocess.STDOUT,
             )
 
-        first = wait_for_snapshot(socket_path)
+        startup_rpc_metrics: dict[str, Any] = {"attempts": 0, "failures": 0}
+        first = wait_for_snapshot(socket_path, rpc_metrics=startup_rpc_metrics)
         first_observed = time.monotonic()
+        rpc_metrics: dict[str, Any] = {"attempts": 0, "failures": 0}
         samples: list[dict[str, Any]] = []
         intervals: list[float] = []
         previous_generation = first["generatedAt"]
@@ -632,7 +652,7 @@ def run() -> dict[str, Any]:
             deadline = time.monotonic() + CADENCE_SECONDS + LATE_TOLERANCE + 2
             current: dict[str, Any] | None = None
             while time.monotonic() < deadline:
-                candidate = snapshot(socket_path)
+                candidate = snapshot(socket_path, rpc_metrics)
                 if candidate is not None and candidate["generatedAt"] != previous_generation:
                     current = candidate
                     break
@@ -661,7 +681,7 @@ def run() -> dict[str, Any]:
         socket_stat = socket_path.stat()
         mode = stat.S_IMODE(socket_stat.st_mode)
         stable_first = stable_snapshot(first)
-        stable_last = stable_snapshot(snapshot(socket_path) or first)
+        stable_last = stable_snapshot(snapshot(socket_path, rpc_metrics) or first)
         metrics = {
             "rss_kb": [sample["rss_kb"] for sample in samples],
             "physical_footprint_bytes": [
@@ -789,6 +809,11 @@ def run() -> dict[str, Any]:
             for value in intervals
         ) < SOAK_TICKS - 1:
             raise RuntimeError("more than one cadence interval was late")
+        if rpc_metrics["failures"] != 0:
+            raise RuntimeError(
+                "RPC failures occurred after the first completed tick: "
+                f"{rpc_metrics}"
+            )
         if footprint_ratio > 1.20:
             raise RuntimeError(
                 "physical footprint exceeded the documented 20% bound: "
@@ -870,6 +895,13 @@ def run() -> dict[str, Any]:
                 "invoking_uid": os.getuid(),
                 "owner_only": socket_stat.st_uid == os.getuid() and (mode & 0o077) == 0,
                 "same_user_rpc": True,
+            },
+            "rpc": {
+                "startup_attempts": startup_rpc_metrics["attempts"],
+                "startup_failures": startup_rpc_metrics["failures"],
+                "attempts_after_first_tick": rpc_metrics["attempts"],
+                "failures_after_first_tick": rpc_metrics["failures"],
+                "failure_free": rpc_metrics["failures"] == 0,
             },
             "soak": {
                 "samples": samples,

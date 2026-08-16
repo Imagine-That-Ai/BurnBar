@@ -66,6 +66,8 @@
     },
     "SoakHygiene": {
       "rawRSS": "bounded_and_archived",
+      "rpcAttemptsAfterFirstTick": 389,
+      "rpcFailuresAfterFirstTick": 0,
       "rssTrendOracle": "physical_footprint",
       "status": "pass",
       "ticks": 40
