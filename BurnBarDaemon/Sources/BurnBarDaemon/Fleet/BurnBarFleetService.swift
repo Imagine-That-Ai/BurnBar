@@ -43,10 +43,13 @@ public actor BurnBarFleetService {
     public var cadenceSeconds: Int { builder.cadenceSeconds }
 
     private let logger: BurnBarDaemonLogger
+    private let startInitializationHook: (@Sendable () async -> Void)?
     private var latestSnapshot: BurnBarFleetSnapshot?
     private var currentTickDegradation: String?
     private var tickTask: Task<Void, Never>?
-    private var stoppingTickTask: Task<Void, Never>?
+    private var startingTask: Task<Void, Never>?
+    private var stoppingTask: Task<Void, Never>?
+    private var lifecycleGeneration: UInt64 = 0
     private var isRunning = false
     private var completedTickCount = 0
 
@@ -60,43 +63,97 @@ public actor BurnBarFleetService {
         self.persister = persister
         self.controlStore = controlStore
         self.logger = logger
+        self.startInitializationHook = nil
+    }
+
+    /// Internal initialization seam used to hold startup at the same
+    /// suspension point as a store load in lifecycle regression tests.
+    init(
+        builder: BurnBarFleetSnapshotBuilder,
+        persister: BurnBarFleetPersister? = nil,
+        controlStore: BurnBarFleetControlStore? = nil,
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "fleet"),
+        startInitializationHook: (@Sendable () async -> Void)?
+    ) {
+        self.builder = builder
+        self.persister = persister
+        self.controlStore = controlStore
+        self.logger = logger
+        self.startInitializationHook = startInitializationHook
     }
 
     /// Starts the cadence ticker. The first tick runs immediately; subsequent
     /// ticks wait `cadenceSeconds` between builds. Idempotent.
     public func start() async {
-        if let stoppingTickTask {
-            await stoppingTickTask.value
-            self.stoppingTickTask = nil
+        if let stoppingTask {
+            await stoppingTask.value
         }
-        guard !isRunning else { return }
-        isRunning = true
-        // Seed the transition baseline from the store so events after a
-        // daemon restart compare against the last persisted snapshot.
-        persister?.loadLastPersistedSnapshot()
-        // Load the persisted designation/directive history so a restarted
-        // daemon serves the prior designation from the first read.
-        await controlStore?.loadPersistedState()
-        tickTask = Task { [weak self] in
-            await self?.runTicker()
+
+        if isRunning {
+            return
+        }
+        if let startingTask {
+            await startingTask.value
+            return
+        }
+
+        lifecycleGeneration &+= 1
+        let generation = lifecycleGeneration
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.initializeStart(generation: generation)
+        }
+        startingTask = task
+        await task.value
+        if lifecycleGeneration == generation {
+            startingTask = nil
         }
     }
 
     /// Stops the ticker. The latest completed snapshot is retained so reads
     /// after stop still serve the last probed truth.
     public func stop() async {
-        if let stoppingTickTask {
-            await stoppingTickTask.value
+        if let stoppingTask {
+            await stoppingTask.value
             return
         }
+
+        lifecycleGeneration &+= 1
         isRunning = false
+        let startingTask = self.startingTask
+        self.startingTask = nil
+        startingTask?.cancel()
         let task = tickTask
         tickTask = nil
-        guard let task else { return }
-        task.cancel()
-        stoppingTickTask = task
-        await task.value
-        stoppingTickTask = nil
+        task?.cancel()
+
+        let stopTask = Task {
+            await startingTask?.value
+            await task?.value
+        }
+        stoppingTask = stopTask
+        await stopTask.value
+        stoppingTask = nil
+    }
+
+    private func initializeStart(generation: UInt64) async {
+        // Seed the transition baseline from the store so events after a
+        // daemon restart compare against the last persisted snapshot.
+        persister?.loadLastPersistedSnapshot()
+        await startInitializationHook?()
+        // Load the persisted designation/directive history so a restarted
+        // daemon serves the prior designation from the first read.
+        await controlStore?.loadPersistedState()
+
+        // `stop()` can re-enter this actor while either load is suspended.
+        // Never publish a ticker for an invalidated generation.
+        guard lifecycleGeneration == generation, !Task.isCancelled, !isRunning else {
+            return
+        }
+        isRunning = true
+        tickTask = Task { [weak self] in
+            await self?.runTicker()
+        }
     }
 
     /// The latest completed snapshot, or the typed not-ready state before the

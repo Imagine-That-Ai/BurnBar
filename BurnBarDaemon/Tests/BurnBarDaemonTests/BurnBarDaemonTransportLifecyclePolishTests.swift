@@ -152,6 +152,148 @@ final class BurnBarDaemonTransportLifecyclePolishTests: BurnBarFleetRPCTestCase 
         )
     }
 
+    func testStartStopOverlap_duringInitialization_doesNotPublishTicker() async throws {
+        let state = LifecycleProbeState()
+        let initialization = LifecycleInitializationState()
+        let probes = BurnBarFleetAgentID.declaredRoster.reduce(
+            into: [BurnBarFleetAgentID: any BurnBarFleetProbe]()
+        ) { probes, agentID in
+            probes[agentID] = LifecycleProbe(agentID: agentID, state: state)
+        }
+        let service = BurnBarFleetService(
+            builder: BurnBarFleetSnapshotBuilder(cadenceSeconds: 60, probes: probes),
+            startInitializationHook: {
+                await initialization.waitUntilReleased()
+            }
+        )
+
+        let startTask = Task { await service.start() }
+        try await waitUntil(timeout: 2) {
+            await initialization.entered
+        }
+
+        let stopTask = Task { await service.stop() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let releasedBeforeUnblock = await initialization.released
+        XCTAssertFalse(releasedBeforeUnblock)
+
+        await initialization.release()
+        await startTask.value
+        await stopTask.value
+
+        let callsAfterStop = await state.callCount
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let callsAfterSettling = await state.callCount
+        XCTAssertEqual(
+            callsAfterSettling,
+            callsAfterStop,
+            "stop must invalidate suspended initialization before it can publish a ticker"
+        )
+    }
+
+    func testConcurrentStarts_shareOneInitializationAndTicker() async throws {
+        let state = LifecycleProbeState()
+        let initialization = LifecycleInitializationState()
+        let probes = BurnBarFleetAgentID.declaredRoster.reduce(
+            into: [BurnBarFleetAgentID: any BurnBarFleetProbe]()
+        ) { probes, agentID in
+            probes[agentID] = LifecycleProbe(agentID: agentID, state: state)
+        }
+        let service = BurnBarFleetService(
+            builder: BurnBarFleetSnapshotBuilder(cadenceSeconds: 60, probes: probes),
+            startInitializationHook: {
+                await initialization.waitUntilReleased()
+            }
+        )
+
+        let firstStart = Task { await service.start() }
+        try await waitUntil(timeout: 2) {
+            await initialization.entered
+        }
+        let secondStart = Task { await service.start() }
+        await initialization.release()
+        await firstStart.value
+        await secondStart.value
+
+        await state.releaseFirstProbe()
+        try await waitUntil(timeout: 2) {
+            await state.callCount >= BurnBarFleetAgentID.declaredRoster.count
+        }
+        await service.stop()
+        let maxConcurrent = await state.maxConcurrent
+        XCTAssertEqual(maxConcurrent, 1)
+    }
+
+    func testServerStartStopOverlap_doesNotPublishDeadAcceptLoop() async throws {
+        let configuration = makeConfiguration(name: "start-stop-overlap")
+        let initialization = LifecycleInitializationState()
+        let service = BurnBarFleetService(
+            builder: BurnBarFleetSnapshotBuilder(
+                cadenceSeconds: 60,
+                probes: makeProbes()
+            ),
+            startInitializationHook: {
+                await initialization.waitUntilReleased()
+            }
+        )
+        let server = BurnBarDaemonServer(configuration: configuration, fleetService: service)
+
+        let startTask = Task { try await server.start() }
+        try await waitUntil(timeout: 2) {
+            await initialization.entered
+        }
+        let stopTask = Task { await server.stop() }
+        await initialization.release()
+        try await startTask.value
+        await stopTask.value
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: configuration.socketPath))
+        try await server.start()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: configuration.socketPath))
+        await server.stop()
+    }
+
+    func testStop_cancelsBlockedHandlerAndBoundsBlockedResponseWrite() async throws {
+        let configuration = makeConfiguration(name: "blocked-write")
+        let handlerState = LifecycleHandlerState()
+        let service = makeFleetService()
+        _ = try await service.buildOnce()
+        let server = BurnBarDaemonServer(
+            configuration: configuration,
+            fleetService: service,
+            responseDataOverride: { _ in
+                await handlerState.markEntered()
+                do {
+                    try await Task.sleep(nanoseconds: 60_000_000_000)
+                } catch {
+                    await handlerState.markCancelled()
+                    throw error
+                }
+                return Data(repeating: 0x78, count: 16 * 1024 * 1024)
+            }
+        )
+        try await server.start()
+
+        let client = try connectSocket(socketPath: configuration.socketPath)
+        defer { close(client) }
+        try writeAll(
+            Data(#"{"id":"blocked","method":"daemon.health"}"#.utf8) + Data([0x0A]),
+            to: client
+        )
+        try await waitUntil(timeout: 2) {
+            await handlerState.entered
+        }
+
+        let startedAt = Date()
+        await server.stop()
+        let elapsed = Date().timeIntervalSince(startedAt)
+        XCTAssertLessThan(elapsed, 2, "shutdown must not await an active handler or blocked write indefinitely")
+        let handlerCancelled = await handlerState.cancelled
+        XCTAssertTrue(handlerCancelled, "shutdown must cancel the active handler task")
+        let trackedConnections = await server.trackedClientConnectionCount
+        XCTAssertEqual(trackedConnections, 0)
+    }
+
     private func waitUntil(
         timeout: TimeInterval,
         condition: @escaping @Sendable () async -> Bool
@@ -164,6 +306,45 @@ final class BurnBarDaemonTransportLifecyclePolishTests: BurnBarFleetRPCTestCase 
             try await Task.sleep(nanoseconds: 20_000_000)
         }
         XCTFail("condition did not become true within \(timeout)s")
+    }
+}
+
+private actor LifecycleInitializationState {
+    private(set) var entered = false
+    private(set) var released = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func waitUntilReleased() async {
+        entered = true
+        if released {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            if released {
+                continuation.resume()
+            } else {
+                self.continuation = continuation
+            }
+        }
+    }
+
+    func release() {
+        released = true
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+private actor LifecycleHandlerState {
+    private(set) var entered = false
+    private(set) var cancelled = false
+
+    func markEntered() {
+        entered = true
+    }
+
+    func markCancelled() {
+        cancelled = true
     }
 }
 

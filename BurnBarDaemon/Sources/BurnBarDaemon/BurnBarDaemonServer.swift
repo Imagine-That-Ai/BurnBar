@@ -43,6 +43,8 @@ public enum BurnBarDaemonError: Error, LocalizedError {
 public actor BurnBarDaemonServer {
     private static let maxRequestBytes = 64 * 1024
     private static let clientReadTimeoutSeconds: TimeInterval = 1
+    private static let clientWriteTimeoutSeconds: TimeInterval = 1
+    private static let clientShutdownTimeoutSeconds: TimeInterval = 1
 
     /// Documented id used in error envelopes when the request id is absent or
     /// not syntactically recoverable (VAL-RPC-011/016). The daemon never
@@ -69,6 +71,10 @@ public actor BurnBarDaemonServer {
     let fleetService: BurnBarFleetService
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
+    private var startTask: Task<Void, Error>?
+    private var stopTask: Task<Void, Never>?
+    private var lifecycleGeneration: UInt64 = 0
+    private let responseDataOverride: (@Sendable (Data) async throws -> Data)?
 
     private struct ClientConnection: Sendable {
         let fileDescriptor: Int32
@@ -94,7 +100,8 @@ public actor BurnBarDaemonServer {
         usageRecorder: BurnBarUsageRecorder? = nil,
         clientRegistry: BurnBarClientRegistry? = nil,
         runService: BurnBarRunService? = nil,
-        fleetService: BurnBarFleetService? = nil
+        fleetService: BurnBarFleetService? = nil,
+        responseDataOverride: (@Sendable (Data) async throws -> Data)? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -140,9 +147,19 @@ public actor BurnBarDaemonServer {
         } else {
             self.fleetService = BurnBarFleetServiceFactory.makeDefault(configuration: configuration)
         }
+        self.responseDataOverride = responseDataOverride
     }
 
     public func start() async throws {
+        if let stopTask {
+            await stopTask.value
+        }
+
+        if let startTask {
+            try await startTask.value
+            return
+        }
+
         guard listenerFileDescriptor == nil else {
             logger.debug(
                 "bootstrap_start_skipped",
@@ -151,6 +168,27 @@ public actor BurnBarDaemonServer {
             return
         }
 
+        lifecycleGeneration &+= 1
+        let generation = lifecycleGeneration
+        let startTask = Task { [weak self] () throws in
+            guard let self else { return }
+            try await self.initializeStart(generation: generation)
+        }
+        self.startTask = startTask
+        do {
+            try await startTask.value
+        } catch {
+            if lifecycleGeneration == generation {
+                self.startTask = nil
+            }
+            throw error
+        }
+        if lifecycleGeneration == generation {
+            self.startTask = nil
+        }
+    }
+
+    private func initializeStart(generation: UInt64) async throws {
         logger.info(
             "bootstrap_starting",
             metadata: [
@@ -174,11 +212,6 @@ public actor BurnBarDaemonServer {
         let fileDescriptor = try BurnBarUnixDomainSocket.makeListeningSocket(at: configuration.socketPath)
         listenerFileDescriptor = fileDescriptor
 
-        // Open the fleet persistence layer (fleet.sqlite + well-known file).
-        // Corruption is recovered typed (delete + recreate) — the daemon
-        // never crashes over a corrupt fleet store. A non-corrupt open
-        // failure degrades persistenceHealth (typed storeUnavailable) and is
-        // logged; the daemon keeps serving with the degraded health surface.
         if let persister = await fleetService.persister {
             do {
                 try persister.open()
@@ -192,6 +225,11 @@ public actor BurnBarDaemonServer {
 
         await fleetService.start()
 
+        guard lifecycleGeneration == generation,
+              listenerFileDescriptor == fileDescriptor,
+              !Task.isCancelled else {
+            return
+        }
         acceptLoopTask = Task.detached(priority: .background) { [logger] in
             await Self.runAcceptLoop(
                 server: self,
@@ -207,11 +245,37 @@ public actor BurnBarDaemonServer {
     }
 
     public func stop() async {
-        guard let listenerFileDescriptor else {
+        if let stopTask {
+            await stopTask.value
+            return
+        }
+
+        lifecycleGeneration &+= 1
+        let startTask = self.startTask
+        self.startTask = nil
+        startTask?.cancel()
+
+        let listenerFileDescriptor = self.listenerFileDescriptor
+        self.listenerFileDescriptor = nil
+        let acceptLoopTask = self.acceptLoopTask
+        self.acceptLoopTask = nil
+        acceptLoopTask?.cancel()
+
+        let clientConnections = Array(clientConnectionTasks.values)
+        for connection in clientConnections {
+            connection.task.cancel()
+            shutdown(connection.fileDescriptor, SHUT_RDWR)
+        }
+
+        guard listenerFileDescriptor != nil
+            || startTask != nil
+            || acceptLoopTask != nil
+            || !clientConnections.isEmpty else {
             logger.debug(
                 "shutdown_skipped",
                 metadata: ["socket_path": configuration.socketPath]
             )
+            await fleetService.stop()
             return
         }
 
@@ -220,31 +284,56 @@ public actor BurnBarDaemonServer {
             metadata: ["socket_path": configuration.socketPath]
         )
 
-        self.listenerFileDescriptor = nil
-        let acceptLoopTask = self.acceptLoopTask
-        self.acceptLoopTask = nil
-        acceptLoopTask?.cancel()
-
-        shutdown(listenerFileDescriptor, SHUT_RDWR)
-        close(listenerFileDescriptor)
-        await acceptLoopTask?.value
-
-        let clientConnections = Array(clientConnectionTasks.values)
-        for connection in clientConnections {
-            shutdown(connection.fileDescriptor, SHUT_RDWR)
-        }
-        for connection in clientConnections {
-            await connection.task.value
+        if let listenerFileDescriptor {
+            shutdown(listenerFileDescriptor, SHUT_RDWR)
+            close(listenerFileDescriptor)
         }
 
-        await fleetService.stop()
+        // Invalidate the fleet generation immediately, rather than waiting
+        // for the suspended server start task to return. This prevents a
+        // fleet ticker from being published in the same start/stop window.
+        let fleetStopTask = Task {
+            await fleetService.stop()
+        }
+        let shutdownTask = Task {
+            _ = try? await startTask?.value
+            await acceptLoopTask?.value
+            await waitForClientConnectionsToFinish()
+            await fleetStopTask.value
+            _ = try? BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath)
+            logger.notice(
+                "shutdown_complete",
+                metadata: ["socket_path": configuration.socketPath]
+            )
+        }
+        stopTask = shutdownTask
+        await shutdownTask.value
+        stopTask = nil
+    }
 
-        _ = try? BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath)
+    private func waitForClientConnectionsToFinish() async {
+        let deadline = Date().addingTimeInterval(Self.clientShutdownTimeoutSeconds)
+        while Date() < deadline {
+            if clientConnectionTasks.isEmpty {
+                return
+            }
+            do {
+                try await Task.sleep(nanoseconds: 10_000_000)
+            } catch {
+                return
+            }
+        }
 
-        logger.notice(
-            "shutdown_complete",
-            metadata: ["socket_path": configuration.socketPath]
-        )
+        let unfinishedCount = clientConnectionTasks.count
+        if unfinishedCount > 0 {
+            logger.error(
+                "client_shutdown_deadline_exceeded",
+                metadata: [
+                    "unfinished_connections": "\(unfinishedCount)",
+                    "deadline_seconds": "\(Self.clientShutdownTimeoutSeconds)"
+                ]
+            )
+        }
     }
 
     public func healthResponse() -> BurnBarHealthResponse {
@@ -261,6 +350,13 @@ public actor BurnBarDaemonServer {
 
 extension BurnBarDaemonServer {
     private func responseData(for requestData: Data) async -> Data {
+        if let responseDataOverride {
+            return await responseDataUsingOverride(
+                requestData,
+                responseDataOverride: responseDataOverride
+            )
+        }
+
         var enteredDispatch = false
         do {
             let decoder = JSONDecoder()
@@ -369,6 +465,25 @@ extension BurnBarDaemonServer {
         }
     }
 
+    private func responseDataUsingOverride(
+        _ requestData: Data,
+        responseDataOverride: @Sendable (Data) async throws -> Data
+    ) async -> Data {
+        do {
+            return try await responseDataOverride(requestData)
+        } catch {
+            if Task.isCancelled {
+                return Data()
+            }
+            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
+                id: BurnBarRPCErrorEnvelope.recoverRequestID(from: requestData),
+                code: BurnBarRPCErrorCode.internalError,
+                message: "BurnBar daemon response handler failed.",
+                details: "error=\(error)"
+            )
+        }
+    }
+
     /// Describes the top-level JSON type of a request frame's `params` value
     /// for error `details` (e.g. a string `params` vs an object). Never
     /// includes payload content — only the type name.
@@ -419,6 +534,11 @@ extension BurnBarDaemonServer {
         fileDescriptor: Int32,
         logger: BurnBarDaemonLogger
     ) {
+        guard listenerFileDescriptor != nil else {
+            shutdown(fileDescriptor, SHUT_RDWR)
+            close(fileDescriptor)
+            return
+        }
         let connectionID = UUID()
         let task = Task.detached(priority: .utility) { [logger] in
             await Self.handleClientConnection(
@@ -505,7 +625,13 @@ extension BurnBarDaemonServer {
                 maxBytes: maxRequestBytes,
                 readTimeoutSeconds: Self.clientReadTimeoutSeconds
             )
+            try Task.checkCancellation()
+            try BurnBarUnixDomainSocket.configureWriteTimeout(
+                for: clientFileDescriptor,
+                timeoutSeconds: Self.clientWriteTimeoutSeconds
+            )
             let responseData = await server.responseData(for: requestData) + Data([0x0A])
+            try Task.checkCancellation()
             try BurnBarUnixDomainSocket.writeAll(responseData, to: clientFileDescriptor)
             logger.debug(
                 "rpc_response_sent",
@@ -748,6 +874,27 @@ private enum BurnBarUnixDomainSocket {
         }
     }
 
+    static func configureWriteTimeout(
+        for fileDescriptor: Int32,
+        timeoutSeconds: TimeInterval
+    ) throws {
+        let microseconds = max(1, UInt64(max(0, timeoutSeconds) * 1_000_000))
+        var timeout = timeval(
+            tv_sec: Int(microseconds / 1_000_000),
+            tv_usec: Int32(microseconds % 1_000_000)
+        )
+        let result = setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_SNDTIMEO,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        )
+        guard result == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+    }
+
     static func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
         try data.withUnsafeBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress else {
@@ -766,6 +913,9 @@ private enum BurnBarUnixDomainSocket {
                         continue
                     }
                     throw POSIXError(.init(rawValue: code) ?? .EIO)
+                }
+                guard bytesWritten > 0 else {
+                    throw POSIXError(.EPIPE)
                 }
 
                 bytesRemaining -= bytesWritten

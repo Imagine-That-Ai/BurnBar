@@ -358,6 +358,15 @@ line and the server then closes cleanly; a second request requires a second
 connection. A client that connects and sends nothing never delays another
 client's request (each connection is handled independently).
 
+**Lifecycle and shutdown bounds.** Daemon start/stop is serialized by a
+generation barrier: a start suspended while fleet persistence or control state
+initializes cannot publish a ticker or accept loop after a concurrent stop, and
+concurrent starts share one initialization. Stop is idempotent. Active
+one-shot connection tasks are cancelled before shutdown waits for them;
+response handlers must observe cancellation, and response writes have a
+one-second send deadline. A client that does not read, or a cancelled provider
+operation, therefore cannot keep daemon stop/restart waiting indefinitely.
+
 **Frame cap.** The request frame is capped at **65536 raw UTF-8 payload
 bytes, excluding the trailing newline delimiter** (VAL-RPC-004). A payload
 of exactly 65536 bytes plus its newline is at-cap and accepted; a payload of
