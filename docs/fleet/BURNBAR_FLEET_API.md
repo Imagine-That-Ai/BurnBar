@@ -305,6 +305,12 @@ defined below.
 - The default cadence is 15 seconds. `BURNBAR_FLEET_CADENCE_SECONDS` accepts
   an integer of at least 1; invalid or smaller values use 15. The value is
   both the ticker interval and the snapshot's `cadenceSeconds`.
+- The ticker anchors deadlines to a monotonic clock, so build time does not
+  accumulate drift. For an override `C` seconds, validators use
+  `tolerance(C) = max(0.5 seconds, 2 seconds × C / 15 seconds)`;
+  each interval is expected in `[C - tolerance(C), C + tolerance(C)]`, and
+  end-to-end drift over the run is bounded by the same tolerance. Thus the
+  default 15-second cadence is bounded to 13–17 seconds over 20 ticks.
 - The first build starts immediately after daemon startup. On a **fresh**
   support directory, no file is created before the first successful snapshot
   build.

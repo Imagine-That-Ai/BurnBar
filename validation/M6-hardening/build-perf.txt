@@ -1,0 +1,12 @@
+metric=direct-builder
+fixture=10 declared roots; synthetic JSON registries, one lock, one transcript, one Cursor tracking file; factory/artifacts sentinel explicitly excluded
+runs=40
+min_ms=0.879
+median_ms=1.023
+p95_ms=1.654
+max_ms=1.833
+budget=median<100ms,max<=200ms
+fleet.sqlite_history_rows=not-seeded
+
+raw_distribution_ms=min,median,p95,max only; see XCTest hook samples for the full run
+samples_ms=0.879,0.881,0.887,0.893,0.896,0.897,0.912,0.924,0.927,0.929,0.938,0.939,0.947,0.948,0.950,0.970,0.975,0.985,1.017,1.023,1.031,1.040,1.069,1.083,1.092,1.092,1.106,1.152,1.166,1.196,1.201,1.288,1.414,1.446,1.522,1.560,1.592,1.654,1.743,1.833

@@ -1,6 +1,7 @@
 import BurnBarCore
 @testable import BurnBarDaemon
 import Foundation
+import XCTest
 
 extension BurnBarFleetRPCTestCase {
     /// Builds the persisted service used by the file/RPC parity tests.
@@ -39,6 +40,26 @@ extension BurnBarFleetRPCTestCase {
             throw BurnBarRPCTestError.invalidFileJSON
         }
         return object
+    }
+
+    func waitForNewerSnapshot(
+        after previous: BurnBarFleetSnapshot,
+        socketPath: String,
+        timeout: TimeInterval = 10
+    ) async throws -> BurnBarFleetSnapshot {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let response = try? rawRequest(
+                #"{"id":"wait-after","method":"daemon.fleet.snapshot"}"#,
+                socketPath: socketPath
+            ),
+               let snapshot = try? Self.decodeSnapshot(from: response),
+               snapshot.generatedAt > previous.generatedAt {
+                return snapshot
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        throw XCTSkip("snapshot did not become ready after \(previous.generatedAt)")
     }
 }
 

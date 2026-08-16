@@ -31,6 +31,55 @@ Snapshot cadence: **15 seconds** by default (`BURNBAR_FLEET_CADENCE_SECONDS` ove
 
 ---
 
+## M6 hardening measurements
+
+### Direct snapshot-build timing hook
+
+`BurnBarFleetSnapshotBuilder` has an internal, test-only
+`buildTimingHook` initializer seam. The hook receives a
+`BurnBarFleetBuildTiming` sample after each direct `build()` attempt and
+measures only builder start → builder end. It is not installed by the daemon
+or used by RPC clients. The primary gate runs the fixed fixture with **N ≥
+30** consecutive direct builds and records min, median, p95, and max. The
+budget is median **<100 ms** and max **≤200 ms**. The fixture description,
+raw distribution, and `fleet.sqlite` history row counts are archived with the
+gate output.
+
+Daemon-socket request latency is a separate secondary measurement. It is
+reported as `rpc-serving` and is never substituted for the
+`direct-builder` metric, because a cached RPC read does not execute
+`BurnBarFleetSnapshotBuilder.build()`.
+
+### Cadence tolerance and drift
+
+The ticker schedules deadlines from a monotonic clock and skips missed
+deadlines rather than sleeping for `cadence + build duration`. This keeps
+one build in flight and prevents cumulative drift. For a configured cadence
+`C` seconds, the documented absolute tolerance is:
+
+```text
+tolerance(C) = max(0.5 seconds, 2 seconds × C / 15 seconds)
+interval ∈ [C - tolerance(C), C + tolerance(C)]
+absolute end-to-end drift over the run ≤ tolerance(C)
+```
+
+Therefore the default `C = 15` cadence is bounded to **13–17 seconds**,
+including degraded probe roots, with no cumulative drift over 20 ticks.
+Overrides must record this formula and the resolved interval bounds in their
+evidence before measurement.
+
+### Read-storm coalescing
+
+`daemon.fleet.snapshot` is a read of the latest completed snapshot. It never
+calls `build()`; the cadence ticker is the sole builder caller. A storm of at
+least 50 concurrent readers therefore observes one complete generation while
+a tick is in flight. The M6 storm gate instruments direct build callbacks,
+probe starts, and in-flight probes: it requires at most one build per tick,
+one in-flight call per declared probe, parity-identical responses, and no
+cadence interval outside the formula above.
+
+---
+
 ## Daemon seams (M1, implemented)
 
 The daemon's fleet snapshot core exposes the following environment seams. Validators and hermetic tests depend on them; do not rename or remove them without updating this document and the validation contract.

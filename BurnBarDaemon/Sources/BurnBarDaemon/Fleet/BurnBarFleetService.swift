@@ -137,6 +137,11 @@ public actor BurnBarFleetService {
     }
 
     private func runTicker() async {
+        var cadenceSchedule = BurnBarFleetCadenceSchedule(
+            startingAt: DispatchTime.now().uptimeNanoseconds,
+            cadenceSeconds: builder.cadenceSeconds
+        )
+
         while !Task.isCancelled {
             do {
                 _ = try await buildOnce()
@@ -145,10 +150,17 @@ public actor BurnBarFleetService {
                 // completed snapshot (if any) keeps serving.
             }
 
-            do {
-                try await Task.sleep(nanoseconds: UInt64(builder.cadenceSeconds) * 1_000_000_000)
-            } catch {
-                return
+            // Anchor the next tick to the monotonic schedule. Sleeping for a
+            // full cadence after a build would add build duration to every
+            // interval and accumulate drift over long runs.
+            let now = DispatchTime.now().uptimeNanoseconds
+            let nextDeadline = cadenceSchedule.deadline(afterBuildAt: now)
+            if nextDeadline > now {
+                do {
+                    try await Task.sleep(nanoseconds: nextDeadline - now)
+                } catch {
+                    return
+                }
             }
         }
     }

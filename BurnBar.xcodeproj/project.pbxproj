@@ -14,6 +14,7 @@
 		04EFC1813CA35E9D5EB22751 /* ZaiMiniMaxUsageProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F873D5A329426688F413581 /* ZaiMiniMaxUsageProbe.swift */; };
 		0555D46AB5BB93DE9B436494 /* BurnBarFleetGrokBotProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C69FDF05AEDF02722AE7B16B /* BurnBarFleetGrokBotProbeTests.swift */; };
 		05A6E3A1E5E7A10FD483BC7B /* ProviderLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CBD27204008085BDEAC3BF0 /* ProviderLogoView.swift */; };
+		05C73BF4B2FF54C50B92537B /* BurnBarFleetAPICadenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29B4C2DC45A2F71C5E8737B /* BurnBarFleetAPICadenceTests.swift */; };
 		07038E3A9148757570FA69E7 /* SessionLedgerSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07FEC415B07A3FC8DC85D429 /* SessionLedgerSection.swift */; };
 		0A23D849F157E1BDA0CAA9D6 /* AugmentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07EC912B8FE41B204E41EA03 /* AugmentParser.swift */; };
 		0B81470A3FAFC854A11B8D48 /* SearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84E08215997E4EC968826D45 /* SearchService.swift */; };
@@ -65,6 +66,7 @@
 		3D6B4FD7CA92481C4F948C12 /* BurnBarContextSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A32B15D2EBFFCAC88F633101 /* BurnBarContextSelector.swift */; };
 		3E8D4A575AB9E29537153CE3 /* BurnBarProviderRouterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00797E78E3EB2460BC73F717 /* BurnBarProviderRouterTests.swift */; };
 		416A01A17B8084A11BE4CD21 /* MenuBarPopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB62777DDFCCE7756CE2583E /* MenuBarPopoverView.swift */; };
+		4185CBC5FE7F01FE2767FA50 /* BurnBarFleetBuildTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC5725A9D9EE3157EFAFDD3 /* BurnBarFleetBuildTiming.swift */; };
 		425DC79787460782306CA0BB /* UsageAggregatorRefreshAllTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E323BA50963AF1AEC3113EDC /* UsageAggregatorRefreshAllTests.swift */; };
 		42953BEAE38B676C6EBD6384 /* AccountManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 919C163E3845CED5CB2A8D6A /* AccountManager.swift */; };
 		434FA8ECC9541C17158F8047 /* PiParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA99E287B4A0688C19EBE06B /* PiParserTests.swift */; };
@@ -74,6 +76,7 @@
 		46EBF0E6E66AEA6A35B956BA /* BurnBarFleetProbeHardeningCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DCC5EA109CE503C0F65FB6D /* BurnBarFleetProbeHardeningCTests.swift */; };
 		47C30E233EE178F95B76722A /* BurnBarFleetRPCErrorMatrixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E08D80EB783DB0A4D056ABFE /* BurnBarFleetRPCErrorMatrixTests.swift */; };
 		482F97BD144981E6F6923520 /* GrokCLIParserStrictnessRound4Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4B774C88384312D9F2CA59 /* GrokCLIParserStrictnessRound4Tests.swift */; };
+		4864F37528F481C19EE159F5 /* BurnBarFleetReadStormHardeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 741A46B37C32C40674E9FFD8 /* BurnBarFleetReadStormHardeningTests.swift */; };
 		4B7A04331CE08B83EF78E9E8 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 75A41CA28F5F94306C9AEBD3 /* FirebaseFirestore */; };
 		4C169BE060466EBFA824FE12 /* MiniSparkline.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA53CDBBD782834EC9FA51B8 /* MiniSparkline.swift */; };
 		4C1DEE0A243A0D0F82A5F94B /* ContextBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0C003B0BC42F2B9629E344 /* ContextBuilder.swift */; };
@@ -111,6 +114,7 @@
 		6E5311B0793D31FD980AD56F /* BurnBarFleetTerminalAuthorityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B85D9EC8C05D41B6F3E091AD /* BurnBarFleetTerminalAuthorityTests.swift */; };
 		6E7324835087667843154F8C /* ProviderQuotaServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C7B9095083BF1AF6D2EDAC7 /* ProviderQuotaServiceTests.swift */; };
 		6EA6639C091DB34D5D77EEC4 /* BurnBarProviderRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD47FEE60B1D5715C8E94F1 /* BurnBarProviderRouter.swift */; };
+		70BBA106A81E3BDB7DEFB37C /* BurnBarFleetAPITestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E46AC0DC30DF982BC498D4 /* BurnBarFleetAPITestSupport.swift */; };
 		720603691FA7249468178568 /* BurnBarProviderCatalogSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = E43E6640557CB14B9782F17F /* BurnBarProviderCatalogSupport.swift */; };
 		76065972945E97BB1063C2A0 /* ProviderUsageAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232E2624301EF9DBC44485B3 /* ProviderUsageAPIService.swift */; };
 		77DB561CDAC21883591329EE /* BurnBarRunJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC3214CAC813B7058703E86 /* BurnBarRunJournal.swift */; };
@@ -120,6 +124,7 @@
 		7A70951F155AC491EBDA90B7 /* BurnBarSearchIntegrationHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0350E75CD849BD279A595941 /* BurnBarSearchIntegrationHarness.swift */; };
 		7BFCF541FE7B96D321B314FC /* BurnBarFleetProbeJSONStrictnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79F8585BBD285F1D8C07EA87 /* BurnBarFleetProbeJSONStrictnessTests.swift */; };
 		7D62BA6F6FCE298E4AD710F9 /* CloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD006CD9B9241D1364DE204 /* CloudSyncService.swift */; };
+		7DFEEE4609F299844C65E28D /* BurnBarFleetCadencePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70B72D73393E424FF7C05566 /* BurnBarFleetCadencePolicy.swift */; };
 		8276A2A7AC5F85DC28E39E74 /* ChatSessionController+Delivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31DAC76510F93E83783938B9 /* ChatSessionController+Delivery.swift */; };
 		82E2FC121C9EFB002C429418 /* retrieval-ann-vs-exact-baseline.json in Resources */ = {isa = PBXBuildFile; fileRef = 221DF20D6ADD21DA23F2F7EF /* retrieval-ann-vs-exact-baseline.json */; };
 		83A0A2F8B36F3741889DA93B /* BurnBarFleetOrchestratorDirectiveRPCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EB5B4D45E5A1FC9C46B4DC4 /* BurnBarFleetOrchestratorDirectiveRPCTests.swift */; };
@@ -164,7 +169,9 @@
 		A5DDAF93CA320ED6D4AF538F /* BurnBarUsageRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11E1C39E4D9A409079BF406 /* BurnBarUsageRecorder.swift */; };
 		A7CB871C6EB420F84040040C /* GrokCLIParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99168763AABF2B17C9E518FD /* GrokCLIParser.swift */; };
 		A82CFD8764AE5F3AA414FCA6 /* BurnBarFleetControlStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 487C455AC2C9B85E8AFFFF82 /* BurnBarFleetControlStore.swift */; };
+		A864B2328C73BF46D000C740 /* BurnBarFleetCadenceHardeningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF751F2B584787B5FEBAF0D /* BurnBarFleetCadenceHardeningTests.swift */; };
 		A89458ED3F44A60CAFC0379D /* BurnBarDaemonServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E38E58D2F026F93D17F205 /* BurnBarDaemonServerTests.swift */; };
+		A9257E83F3F12FBFAB9F94EC /* BurnBarFleetAPIPerityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A25087FD6501FC47CDF645D /* BurnBarFleetAPIPerityTests.swift */; };
 		A9B05FFB93001CF32AC82F48 /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979643508E77719C5C1D947C /* Formatting.swift */; };
 		AA00E5EDDC1A3B0F4C90AD7E /* BurnBarFleetGrokCLIProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A52F038F4C66D68F428DA386 /* BurnBarFleetGrokCLIProbeTests.swift */; };
 		AAF91CB4D31BF1A344E7BA87 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAD45369DB6FF2FB2D144762 /* SessionDetailView.swift */; };
@@ -175,13 +182,16 @@
 		AF9DAE2D43DF83D026355FAC /* BurnBarFleetCursorProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DDD1BD275B448BA8A47F522 /* BurnBarFleetCursorProbe.swift */; };
 		AFDC42BB6E34FED6FF5824F7 /* BurnBarFleetProbeTimeoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08D089F90883DF87C3674A00 /* BurnBarFleetProbeTimeoutTests.swift */; };
 		B3116FAB2855A24E5842665C /* BurnBarFleetPersistenceRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270FE6CC31D7558131598420 /* BurnBarFleetPersistenceRecoveryTests.swift */; };
+		B45257FDB7DBF460CAFCD5B9 /* BurnBarFleetHardeningTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733C8A623B4F774A940A5477 /* BurnBarFleetHardeningTestSupport.swift */; };
 		B64F983BD4AFEE0CF0353DB7 /* ModelProviderLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5117B944730A212EB03A155D /* ModelProviderLogoView.swift */; };
 		B801CB334DBD194CD3CCC5C9 /* GoogleService-Info.plist.example in Resources */ = {isa = PBXBuildFile; fileRef = 516803FEE424627EFA549B4B /* GoogleService-Info.plist.example */; };
 		B91B070620D33D42BA264E36 /* FleetViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37BC202439283E3E8406B4E /* FleetViewModelTests.swift */; };
+		B94A57B3486C2B44DB2A84C7 /* BurnBarFleetBuildPerfTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5E9C9A63F00074417A13610 /* BurnBarFleetBuildPerfTests.swift */; };
 		B9D6A4B6C79CAF77769C3214 /* CrossEncoderReranker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AB0C2B1159EF1508DED5FCF /* CrossEncoderReranker.swift */; };
 		BC3A293B622202B95F37F726 /* ModelDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 446591207B48BD3395B876D2 /* ModelDashboardView.swift */; };
 		BCDD0C641B4257A5ED0A71C2 /* BurnBarFleetDirectiveChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C9B7FA6B5B2CB7F8C286397 /* BurnBarFleetDirectiveChannel.swift */; };
 		BD88BFC5BFFF32DFFBE9374F /* CrossEncoderRerankerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7804F13D717D2F98E7183BC3 /* CrossEncoderRerankerTests.swift */; };
+		BF3821756E260C7CD095AA95 /* BurnBarFleetAPIDocTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8667D859C981BC1453DC03 /* BurnBarFleetAPIDocTests.swift */; };
 		C0C391E1AE3B91F98AA817F9 /* ModelPricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DF7BE299DBC731B8FECEBB /* ModelPricing.swift */; };
 		C14AC078B7A8EF49D3EEF5A1 /* BurnBarFleetProbeHardeningCTests2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583ABF21B9DFFBCE3CB4BDCE /* BurnBarFleetProbeHardeningCTests2.swift */; };
 		C18D86F4AF1D0EA7E44F7839 /* PiParserStrictnessRound4Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4EEE6FEA79533D768C4A138 /* PiParserStrictnessRound4Tests.swift */; };
@@ -390,14 +400,18 @@
 		6DA6D83FE35E5470F6F595E6 /* PiParserStrictnessRound2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiParserStrictnessRound2Tests.swift; sourceTree = "<group>"; };
 		6EB5B4D45E5A1FC9C46B4DC4 /* BurnBarFleetOrchestratorDirectiveRPCTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetOrchestratorDirectiveRPCTests.swift; sourceTree = "<group>"; };
 		6F184F68A50C9B47BADF2CDE /* BurnBarFleetUnsupportedProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetUnsupportedProbeTests.swift; sourceTree = "<group>"; };
+		70B72D73393E424FF7C05566 /* BurnBarFleetCadencePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetCadencePolicy.swift; sourceTree = "<group>"; };
 		72FB611C7CD42A40B8527536 /* retrieval-lexical-win.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "retrieval-lexical-win.json"; sourceTree = "<group>"; };
+		733C8A623B4F774A940A5477 /* BurnBarFleetHardeningTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetHardeningTestSupport.swift; sourceTree = "<group>"; };
 		7356C2B877EAD026DC34C39C /* CursorConnectorModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorConnectorModels.swift; sourceTree = "<group>"; };
+		741A46B37C32C40674E9FFD8 /* BurnBarFleetReadStormHardeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetReadStormHardeningTests.swift; sourceTree = "<group>"; };
 		744780AD18D485DDFFF46DA4 /* BurnBarDaemonExecutable */ = {isa = PBXFileReference; includeInIndex = 0; path = BurnBarDaemonExecutable; sourceTree = BUILT_PRODUCTS_DIR; };
 		77EA62BBCFB2B2FF063D600A /* GrokBotParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokBotParser.swift; sourceTree = "<group>"; };
 		7804F13D717D2F98E7183BC3 /* CrossEncoderRerankerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrossEncoderRerankerTests.swift; sourceTree = "<group>"; };
 		787CA705F565BE6C5765A7F7 /* InsightCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightCardView.swift; sourceTree = "<group>"; };
 		796FA1BE8E5B299F6ACC23EB /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		79F8585BBD285F1D8C07EA87 /* BurnBarFleetProbeJSONStrictnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetProbeJSONStrictnessTests.swift; sourceTree = "<group>"; };
+		7A25087FD6501FC47CDF645D /* BurnBarFleetAPIPerityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetAPIPerityTests.swift; sourceTree = "<group>"; };
 		7A372A1F348E51FCAF134A24 /* BurnBarPolicyEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarPolicyEngine.swift; sourceTree = "<group>"; };
 		7A75541FE7442B29F4894BCC /* BurnBarIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarIdentity.swift; sourceTree = "<group>"; };
 		7E413B6A35CCA3CF5D85D2A0 /* BurnBarFleetLifecycleMatrixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetLifecycleMatrixTests.swift; sourceTree = "<group>"; };
@@ -456,8 +470,11 @@
 		BAC3214CAC813B7058703E86 /* BurnBarRunJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarRunJournal.swift; sourceTree = "<group>"; };
 		BD8EEF117D24EF855E0ADBF6 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		BDCFAD9B2EFB1A0D1643EBB4 /* BurnBarSearchIntegrationHarnessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarSearchIntegrationHarnessTests.swift; sourceTree = "<group>"; };
+		BDF751F2B584787B5FEBAF0D /* BurnBarFleetCadenceHardeningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetCadenceHardeningTests.swift; sourceTree = "<group>"; };
+		BE8667D859C981BC1453DC03 /* BurnBarFleetAPIDocTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetAPIDocTests.swift; sourceTree = "<group>"; };
 		C09ABDFBBAF6B198BDD825AC /* ProjectionPipelineService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectionPipelineService.swift; sourceTree = "<group>"; };
 		C290E33A14E5BA65747111E4 /* ClineFormatParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClineFormatParser.swift; sourceTree = "<group>"; };
+		C29B4C2DC45A2F71C5E8737B /* BurnBarFleetAPICadenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetAPICadenceTests.swift; sourceTree = "<group>"; };
 		C31684E498ACB132FA113A52 /* BurnBarFleetPersister.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetPersister.swift; sourceTree = "<group>"; };
 		C60DE5DEB45DC0690AF73840 /* ChatMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMode.swift; sourceTree = "<group>"; };
 		C69FDF05AEDF02722AE7B16B /* BurnBarFleetGrokBotProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetGrokBotProbeTests.swift; sourceTree = "<group>"; };
@@ -467,6 +484,7 @@
 		CFE45C9E06D80CF72CD049B8 /* BurnBarFleetClaudeCodeProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetClaudeCodeProbe.swift; sourceTree = "<group>"; };
 		D11E1C39E4D9A409079BF406 /* BurnBarUsageRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarUsageRecorder.swift; sourceTree = "<group>"; };
 		D37EA7C0F40838BD1C7E59F8 /* BurnBarFleetGrokBotProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetGrokBotProbe.swift; sourceTree = "<group>"; };
+		D3E46AC0DC30DF982BC498D4 /* BurnBarFleetAPITestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetAPITestSupport.swift; sourceTree = "<group>"; };
 		D63B47F64B28DA98631E36F3 /* BurnBarFleetClaudeCodeProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetClaudeCodeProbeTests.swift; sourceTree = "<group>"; };
 		D7B104DE9475A787BEB3214E /* retrieval-semantic-rescue.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "retrieval-semantic-rescue.json"; sourceTree = "<group>"; };
 		D7EB9931E680E925C69C44C5 /* 66e1b25cc9185ef537421b18_Factory.ai.webp */ = {isa = PBXFileReference; path = 66e1b25cc9185ef537421b18_Factory.ai.webp; sourceTree = "<group>"; };
@@ -511,6 +529,7 @@
 		F4FDA5107B5C32DF13BF1B1C /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		F535B954FAAB30120B89D85B /* BurnBarFleetHermesProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetHermesProbe.swift; sourceTree = "<group>"; };
 		F5A5E909F3C9B43DB4DA5A55 /* BurnBarFleetGrokCLIProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetGrokCLIProbe.swift; sourceTree = "<group>"; };
+		F5E9C9A63F00074417A13610 /* BurnBarFleetBuildPerfTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetBuildPerfTests.swift; sourceTree = "<group>"; };
 		F663373EF66E467DEF4A6561 /* GeminiCLIParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeminiCLIParser.swift; sourceTree = "<group>"; };
 		F729FDFE6D34B6F03B5DDCA9 /* CLIBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIBridge.swift; sourceTree = "<group>"; };
 		F78AAB24FFCF6E834BEF9F57 /* ConversationIndexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationIndexer.swift; sourceTree = "<group>"; };
@@ -521,6 +540,7 @@
 		FB2B6C595EE40639297CBC2A /* BurnBarMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarMigrationTests.swift; sourceTree = "<group>"; };
 		FC1FEB09843037917ABF13A2 /* BurnBarFleetRPCTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetRPCTestSupport.swift; sourceTree = "<group>"; };
 		FD6F26FB866B92E10DC33128 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		FEC5725A9D9EE3157EFAFDD3 /* BurnBarFleetBuildTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetBuildTiming.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -626,12 +646,19 @@
 				46D2BCD6B006500521B68AA8 /* BurnBarAgentStackTests.swift */,
 				362C0D92E7C496843E0AF8C6 /* BurnBarConfigStoreTests.swift */,
 				99E38E58D2F026F93D17F205 /* BurnBarDaemonServerTests.swift */,
+				C29B4C2DC45A2F71C5E8737B /* BurnBarFleetAPICadenceTests.swift */,
+				BE8667D859C981BC1453DC03 /* BurnBarFleetAPIDocTests.swift */,
+				7A25087FD6501FC47CDF645D /* BurnBarFleetAPIPerityTests.swift */,
+				D3E46AC0DC30DF982BC498D4 /* BurnBarFleetAPITestSupport.swift */,
+				F5E9C9A63F00074417A13610 /* BurnBarFleetBuildPerfTests.swift */,
+				BDF751F2B584787B5FEBAF0D /* BurnBarFleetCadenceHardeningTests.swift */,
 				D63B47F64B28DA98631E36F3 /* BurnBarFleetClaudeCodeProbeTests.swift */,
 				ED9EDCFC91BF9FF60686BBC2 /* BurnBarFleetCodexProbeTests.swift */,
 				AFE8D075D82A69067BA13AC6 /* BurnBarFleetCursorProbeTests.swift */,
 				02FE429B37CB7D83DFE11F37 /* BurnBarFleetFactoryDroidProbeTests.swift */,
 				C69FDF05AEDF02722AE7B16B /* BurnBarFleetGrokBotProbeTests.swift */,
 				A52F038F4C66D68F428DA386 /* BurnBarFleetGrokCLIProbeTests.swift */,
+				733C8A623B4F774A940A5477 /* BurnBarFleetHardeningTestSupport.swift */,
 				A3F0B3D123A07FE08F00051B /* BurnBarFleetHermesProbeTests.swift */,
 				B44ECD17DA2683ABA3716693 /* BurnBarFleetLifecycleFixtures.swift */,
 				7E413B6A35CCA3CF5D85D2A0 /* BurnBarFleetLifecycleMatrixTests.swift */,
@@ -654,6 +681,7 @@
 				79F8585BBD285F1D8C07EA87 /* BurnBarFleetProbeJSONStrictnessTests.swift */,
 				4478C3CD77D6A640178C4DB8 /* BurnBarFleetProbeTestSupport.swift */,
 				08D089F90883DF87C3674A00 /* BurnBarFleetProbeTimeoutTests.swift */,
+				741A46B37C32C40674E9FFD8 /* BurnBarFleetReadStormHardeningTests.swift */,
 				B75364BC1B42354893290773 /* BurnBarFleetRPCErrorDetailsTests.swift */,
 				E08D80EB783DB0A4D056ABFE /* BurnBarFleetRPCErrorMatrixTests.swift */,
 				FC1FEB09843037917ABF13A2 /* BurnBarFleetRPCTestSupport.swift */,
@@ -732,6 +760,8 @@
 			isa = PBXGroup;
 			children = (
 				02C6CC80AEAD4C52A9B52CD8 /* Probes */,
+				FEC5725A9D9EE3157EFAFDD3 /* BurnBarFleetBuildTiming.swift */,
+				70B72D73393E424FF7C05566 /* BurnBarFleetCadencePolicy.swift */,
 				EFEB4529EC777D03CB606D2F /* BurnBarFleetConfiguration.swift */,
 				487C455AC2C9B85E8AFFFF82 /* BurnBarFleetControlStore.swift */,
 				CAD34FCBC84A52FBE92473EF /* BurnBarFleetFileWriter.swift */,
@@ -1385,6 +1415,8 @@
 				E0AF93D560D7D5C985E42467 /* BurnBarDaemonLogger.swift in Sources */,
 				681C8EB96F818E12CE715BAE /* BurnBarDaemonServer+FleetControl.swift in Sources */,
 				995479B39BB2DB0BBB7C851A /* BurnBarDaemonServer.swift in Sources */,
+				4185CBC5FE7F01FE2767FA50 /* BurnBarFleetBuildTiming.swift in Sources */,
+				7DFEEE4609F299844C65E28D /* BurnBarFleetCadencePolicy.swift in Sources */,
 				91ED5CB77ABAD2C4CD0B78C5 /* BurnBarFleetClaudeCodeProbe.swift in Sources */,
 				1CA504F4B40D1E6A5F5AEB11 /* BurnBarFleetCodexProbe.swift in Sources */,
 				0E7DE21FCD54E59DFC55499A /* BurnBarFleetConfiguration.swift in Sources */,
@@ -1483,12 +1515,19 @@
 				5BA8D7D5E51F397BE669059A /* BurnBarAgentStackTests.swift in Sources */,
 				E0A8312686E5453E69374B2E /* BurnBarConfigStoreTests.swift in Sources */,
 				A89458ED3F44A60CAFC0379D /* BurnBarDaemonServerTests.swift in Sources */,
+				05C73BF4B2FF54C50B92537B /* BurnBarFleetAPICadenceTests.swift in Sources */,
+				BF3821756E260C7CD095AA95 /* BurnBarFleetAPIDocTests.swift in Sources */,
+				A9257E83F3F12FBFAB9F94EC /* BurnBarFleetAPIPerityTests.swift in Sources */,
+				70BBA106A81E3BDB7DEFB37C /* BurnBarFleetAPITestSupport.swift in Sources */,
+				B94A57B3486C2B44DB2A84C7 /* BurnBarFleetBuildPerfTests.swift in Sources */,
+				A864B2328C73BF46D000C740 /* BurnBarFleetCadenceHardeningTests.swift in Sources */,
 				F5F754DD256D9F5F9FDF6458 /* BurnBarFleetClaudeCodeProbeTests.swift in Sources */,
 				3474422E53C7898ED2BB60F0 /* BurnBarFleetCodexProbeTests.swift in Sources */,
 				037CE41AC5722964D87DB351 /* BurnBarFleetCursorProbeTests.swift in Sources */,
 				F2575198438FF67608219BF7 /* BurnBarFleetFactoryDroidProbeTests.swift in Sources */,
 				0555D46AB5BB93DE9B436494 /* BurnBarFleetGrokBotProbeTests.swift in Sources */,
 				AA00E5EDDC1A3B0F4C90AD7E /* BurnBarFleetGrokCLIProbeTests.swift in Sources */,
+				B45257FDB7DBF460CAFCD5B9 /* BurnBarFleetHardeningTestSupport.swift in Sources */,
 				8AABAB8DB1BC8F94072CF83F /* BurnBarFleetHermesProbeTests.swift in Sources */,
 				EA48D853CA4861B362249EFF /* BurnBarFleetLifecycleFixtures.swift in Sources */,
 				2968A7F5736D027475A53A0C /* BurnBarFleetLifecycleMatrixTests.swift in Sources */,
@@ -1515,6 +1554,7 @@
 				47C30E233EE178F95B76722A /* BurnBarFleetRPCErrorMatrixTests.swift in Sources */,
 				8DA7D0CAC74A67E5990FD226 /* BurnBarFleetRPCTestSupport.swift in Sources */,
 				FDF2BB87C96B2EE1145337F5 /* BurnBarFleetRPCTransportBehaviorTests.swift in Sources */,
+				4864F37528F481C19EE159F5 /* BurnBarFleetReadStormHardeningTests.swift in Sources */,
 				DE2C571750F03FFE66D97412 /* BurnBarFleetServerRPCTests.swift in Sources */,
 				ADDF38F6B9615436B93750DD /* BurnBarFleetSnapshotBuilderTests.swift in Sources */,
 				6E5311B0793D31FD980AD56F /* BurnBarFleetTerminalAuthorityTests.swift in Sources */,

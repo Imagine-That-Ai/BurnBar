@@ -1,0 +1,9 @@
+metric=cadence
+cadence_seconds=1
+tolerance_formula=max(0.5,2*1/15)=0.5
+interval_bounds=0.5...1.5
+tick_count=20
+interval_min_s=0.9978940486907959
+interval_max_s=1.0021129846572876
+interval_mean_s=1.000040054321289
+cumulative_drift_s=0.0007610321044921875

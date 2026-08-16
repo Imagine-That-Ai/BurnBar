@@ -14,6 +14,7 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
     public let cadenceSeconds: Int
     public let probes: [BurnBarFleetAgentID: any BurnBarFleetProbe]
     public let machineStatusProbe: BurnBarFleetMachineStatusProbe
+    private let buildTimingHook: BurnBarFleetBuildTimingHook?
 
     public init(
         cadenceSeconds: Int,
@@ -23,6 +24,22 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
         self.cadenceSeconds = cadenceSeconds
         self.probes = probes
         self.machineStatusProbe = machineStatusProbe
+        self.buildTimingHook = nil
+    }
+
+    /// Internal test seam for direct build measurements. Keeping this
+    /// initializer internal prevents runtime clients from installing a
+    /// callback or confusing RPC serving latency with builder latency.
+    init(
+        cadenceSeconds: Int,
+        probes: [BurnBarFleetAgentID: any BurnBarFleetProbe],
+        machineStatusProbe: BurnBarFleetMachineStatusProbe = BurnBarFleetMachineStatusProbe(),
+        buildTimingHook: BurnBarFleetBuildTimingHook?
+    ) {
+        self.cadenceSeconds = cadenceSeconds
+        self.probes = probes
+        self.machineStatusProbe = machineStatusProbe
+        self.buildTimingHook = buildTimingHook
     }
 
     /// Builds a snapshot at `now`. Every declared roster id yields exactly one
@@ -34,6 +51,27 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
         now: Date = Date(),
         orchestrator: BurnBarOrchestratorState = BurnBarOrchestratorState(designation: .none),
         persistenceHealth: BurnBarFleetPersistenceHealth = .ok
+    ) async throws -> BurnBarFleetSnapshot {
+        let startedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
+        defer {
+            buildTimingHook?(
+                BurnBarFleetBuildTiming(
+                    startedAtNanoseconds: startedAtNanoseconds,
+                    endedAtNanoseconds: DispatchTime.now().uptimeNanoseconds
+                )
+            )
+        }
+        return try await buildSnapshot(
+            now: now,
+            orchestrator: orchestrator,
+            persistenceHealth: persistenceHealth
+        )
+    }
+
+    private func buildSnapshot(
+        now: Date,
+        orchestrator: BurnBarOrchestratorState,
+        persistenceHealth: BurnBarFleetPersistenceHealth
     ) async throws -> BurnBarFleetSnapshot {
         var agents: [BurnBarFleetAgent] = []
         var probeHealth: [BurnBarFleetProbeHealth] = []

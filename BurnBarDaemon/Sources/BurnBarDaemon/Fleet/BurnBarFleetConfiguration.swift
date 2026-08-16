@@ -10,7 +10,7 @@ import Foundation
 /// - `BURNBAR_FLEET_ROOTS_DIR` / per-probe overrides — probe-root override
 ///   seam (see `BurnBarFleetRootResolver`).
 public struct BurnBarFleetConfiguration: Sendable {
-    public static let defaultCadenceSeconds = 15
+    public static let defaultCadenceSeconds = BurnBarFleetCadencePolicy.defaultCadenceSeconds
     public static let minimumCadenceSeconds = 1
 
     public let cadenceSeconds: Int
