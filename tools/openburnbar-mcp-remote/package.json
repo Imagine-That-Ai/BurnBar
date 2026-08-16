@@ -23,7 +23,7 @@
     "build": "tsc",
     "lint": "eslint src --max-warnings=0 && tsc --noEmit",
     "test": "npm run build && node --test lib/*.test.js",
-    "prepack": "npm run build && npm test && rm -f lib/*.test.js lib/*.test.d.ts"
+    "prepack": "npm run build && npm test && rm -f lib/*.test.js lib/*.test.d.ts && chmod +x lib/index.js"
   },
   "files": [
     "lib/",
