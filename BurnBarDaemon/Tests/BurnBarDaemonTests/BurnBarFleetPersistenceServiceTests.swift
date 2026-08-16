@@ -248,7 +248,6 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
         let (probes, _) = makeProbes(claudeStatus: .running, claudeConfidence: .exactProcess)
         let builder = BurnBarFleetSnapshotBuilder(cadenceSeconds: 1, probes: probes)
         let service = BurnBarFleetService(builder: builder, persister: try makePersister())
-        _ = try await service.buildOnce()
 
         let server = BurnBarDaemonServer(
             configuration: BurnBarDaemonConfiguration(socketPath: socketPath),
@@ -257,15 +256,10 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
         try await server.start()
         defer { Task { await server.stop() } }
 
-        let response: BurnBarRPCResponseEnvelope<BurnBarFleetSnapshotResponse> = try sendEnvelope(
-            BurnBarRPCRequestEnvelopeWithParams(
-                id: "persist-1",
-                method: .fleetSnapshot,
-                params: BurnBarFleetSnapshotRequest()
-            ),
-            socketPath: socketPath
-        )
-        let snapshot = try XCTUnwrap(response.result?.snapshot)
+        // Wait for the server's first completed tick so the RPC and
+        // well-known file observe the same persisted generation. This also
+        // keeps the CPU delta sample from racing the initial direct build.
+        let snapshot = try await waitForSnapshot(socketPath: socketPath, timeout: 10)
         XCTAssertEqual(snapshot.persistenceHealth, .ok)
         XCTAssertEqual(snapshot.cadenceSeconds, 1)
 
