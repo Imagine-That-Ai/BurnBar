@@ -15,6 +15,7 @@ public enum BurnBarDaemonError: Error, LocalizedError {
     /// for the typed oversize error response).
     case requestTooLarge(Int, Data)
 
+    case clientReadTimedOut
     public var errorDescription: String? {
         switch self {
         case .socketPathTooLong(let path):
@@ -33,12 +34,15 @@ public enum BurnBarDaemonError: Error, LocalizedError {
             return "Failed to create BurnBar daemon socket directory: \(path)"
         case .requestTooLarge(let maxBytes, _):
             return "BurnBar daemon request exceeded the maximum size of \(maxBytes) bytes."
+        case .clientReadTimedOut:
+            return "BurnBar daemon client did not send a request before the read deadline."
         }
     }
 }
 
 public actor BurnBarDaemonServer {
     private static let maxRequestBytes = 64 * 1024
+    private static let clientReadTimeoutSeconds: TimeInterval = 1
 
     /// Documented id used in error envelopes when the request id is absent or
     /// not syntactically recoverable (VAL-RPC-011/016). The daemon never
@@ -56,15 +60,32 @@ public actor BurnBarDaemonServer {
 
     public let configuration: BurnBarDaemonConfiguration
 
-    private let logger: BurnBarDaemonLogger
-    private let configStore: BurnBarConfigStore
-    private let usageRecorder: BurnBarUsageRecorder
-    private let clientRegistry: BurnBarClientRegistry
-    private let runService: BurnBarRunService
-    private let indexedSearch: BurnBarIndexedSearchService?
+    let logger: BurnBarDaemonLogger
+    let configStore: BurnBarConfigStore
+    let usageRecorder: BurnBarUsageRecorder
+    let clientRegistry: BurnBarClientRegistry
+    let runService: BurnBarRunService
+    let indexedSearch: BurnBarIndexedSearchService?
     let fleetService: BurnBarFleetService
     private var listenerFileDescriptor: Int32?
     private var acceptLoopTask: Task<Void, Never>?
+
+    private struct ClientConnection: Sendable {
+        let fileDescriptor: Int32
+        let task: Task<Void, Never>
+    }
+
+    private var clientConnectionTasks: [UUID: ClientConnection] = [:]
+
+    /// Test-visible transport health counters. The descriptor keys and task
+    /// values are retained together until the one-shot connection finishes.
+    var trackedClientConnectionCount: Int {
+        clientConnectionTasks.values.count
+    }
+
+    var trackedClientTaskCount: Int {
+        clientConnectionTasks.values.count
+    }
 
     public init(
         configuration: BurnBarDaemonConfiguration = BurnBarDaemonConfiguration(),
@@ -200,13 +221,24 @@ public actor BurnBarDaemonServer {
         )
 
         self.listenerFileDescriptor = nil
+        let acceptLoopTask = self.acceptLoopTask
+        self.acceptLoopTask = nil
         acceptLoopTask?.cancel()
-        acceptLoopTask = nil
-
-        await fleetService.stop()
 
         shutdown(listenerFileDescriptor, SHUT_RDWR)
         close(listenerFileDescriptor)
+        await acceptLoopTask?.value
+
+        let clientConnections = Array(clientConnectionTasks.values)
+        for connection in clientConnections {
+            shutdown(connection.fileDescriptor, SHUT_RDWR)
+        }
+        for connection in clientConnections {
+            await connection.task.value
+        }
+
+        await fleetService.stop()
+
         _ = try? BurnBarUnixDomainSocket.removeStaleItemIfPresent(at: configuration.socketPath)
 
         logger.notice(
@@ -361,271 +393,6 @@ extension BurnBarDaemonServer {
         }
     }
 
-    /// Dispatches one decoded request to its method handler. Kept separate
-    /// from `responseData(for:)` so the envelope/error handling stays small
-    /// and the method switch stays readable.
-    private func dispatch(
-        method: BurnBarRPCMethod,
-        request: BurnBarRPCRequestEnvelope,
-        requestData: Data,
-        decoder: JSONDecoder
-    ) async throws -> Data {
-        switch method {
-        case .health:
-            _ = BurnBarHealthRequest()
-            logger.debug(
-                "rpc_request_received",
-                metadata: [
-                    "request_id": request.id,
-                    "method": method.rawValue
-                ]
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: request.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: healthResponse()
-            )
-            return encode(response)
-        case .catalog:
-            _ = BurnBarCatalogRequest()
-            logger.debug(
-                "rpc_request_received",
-                metadata: [
-                    "request_id": request.id,
-                    "method": method.rawValue
-                ]
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: request.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: BurnBarCatalogResponse(catalog: configuration.catalog)
-            )
-            return encode(response)
-        case .configGet:
-            let typedRequest = try decodeRequest(BurnBarRPCRequestEnvelope.self, from: requestData, decoder: decoder)
-            _ = BurnBarConfigGetRequest()
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: BurnBarConfigResponse(snapshot: try await configStore.snapshot())
-            )
-            return encode(response)
-        case .configUpdate:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarConfigUpdateRequest>.self,
-                from: requestData
-            )
-            let snapshot = try await configStore.replaceSnapshot(typedRequest.params.snapshot)
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: BurnBarConfigResponse(snapshot: snapshot)
-            )
-            return encode(response)
-        case .usageRecent:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarRecentUsageRequest>.self,
-                from: requestData
-            )
-            let usage = try await usageRecorder.recentUsage(limit: typedRequest.params.limit)
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: BurnBarRecentUsageResponse(usage: usage)
-            )
-            return encode(response)
-        case .clientAttach:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarClientAttachRequest>.self,
-                from: requestData
-            )
-            let (attachResponse, arbitration) = await clientRegistry.attach(typedRequest.params)
-            logger.notice(
-                "client_arbitration_updated",
-                metadata: [
-                    "active_client_id": arbitration.activeClientID?.rawValue ?? "none",
-                    "reason": arbitration.reason ?? "none"
-                ]
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: attachResponse
-            )
-            return encode(response)
-        case .clientDetach:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarClientDetachRequest>.self,
-                from: requestData
-            )
-            let arbitration = try await clientRegistry.detach(typedRequest.params)
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: arbitration
-            )
-            return encode(response)
-        case .clientClaimControl:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarClientClaimControlRequest>.self,
-                from: requestData
-            )
-            let arbitration = try await clientRegistry.claimControl(typedRequest.params)
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: arbitration
-            )
-            return encode(response)
-        case .runCreate:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarRunCreateRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.createRun(typedRequest.params)
-            )
-            return encode(response)
-        case .runList:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarRunListRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.listRuns(typedRequest.params)
-            )
-            return encode(response)
-        case .runGet:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarRunGetRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.getRun(typedRequest.params)
-            )
-            return encode(response)
-        case .runPoll:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarRunPollRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.pollRuns(typedRequest.params)
-            )
-            return encode(response)
-        case .runCancel:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarRunCancelRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.cancelRun(typedRequest.params)
-            )
-            return encode(response)
-        case .runRetry:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarRunRetryRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.retryRun(typedRequest.params)
-            )
-            return encode(response)
-        case .workspaceExecuteTool:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarToolExecutionRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.executeTool(typedRequest.params)
-            )
-            return encode(response)
-        case .workspaceToolResult:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarToolResultSubmissionRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.submitToolResult(typedRequest.params)
-            )
-            return encode(response)
-        case .approvalRespond:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarApprovalRespondRequest>.self,
-                from: requestData
-            )
-            let response = BurnBarRPCResponseEnvelope(
-                id: typedRequest.id,
-                protocolVersion: BurnBarProtocolVersion.current,
-                result: try await runService.respondToApproval(typedRequest.params)
-            )
-            return encode(response)
-        case .searchQuery:
-            let typedRequest = try decodeRequest(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarSearchQueryRequest>.self,
-                from: requestData
-            )
-            guard let indexedSearch else {
-                return BurnBarRPCErrorEnvelope.encodeErrorResponse(
-                    id: typedRequest.id,
-                    code: BurnBarRPCErrorCode.internalError,
-                    message:
-                        "BurnBar indexed search is not available. Ensure BURNBAR_INDEX_DATABASE_PATH points to your BurnBar database and restart the daemon.",
-                    details: "index_database_path=\(configuration.indexDatabasePath ?? "unset")"
-                )
-            }
-            do {
-                let result = try indexedSearch.search(query: typedRequest.params)
-                let response = BurnBarRPCResponseEnvelope(
-                    id: typedRequest.id,
-                    protocolVersion: BurnBarProtocolVersion.current,
-                    result: result
-                )
-                return encode(response)
-            } catch {
-                return BurnBarRPCErrorEnvelope.encodeErrorResponse(
-                    id: typedRequest.id,
-                    code: BurnBarRPCErrorCode.internalError,
-                    message: error.localizedDescription,
-                    details: "error=\(error)"
-                )
-            }
-        case .fleetSnapshot:
-            return try await handleFleetSnapshot(requestData: requestData, decoder: decoder)
-        case .fleetOrchestratorGet:
-            // M4 handlers live in BurnBarDaemonServer+FleetControl.swift.
-            return try await handleFleetOrchestratorGet(requestData: requestData, decoder: decoder)
-        case .fleetOrchestratorSet:
-            return try await handleFleetOrchestratorSet(
-                requestData: requestData,
-                decoder: decoder,
-                method: method.rawValue
-            )
-        case .fleetDirectiveRecord:
-            return try await handleFleetDirectiveRecord(
-                requestData: requestData,
-                decoder: decoder,
-                method: method.rawValue
-            )
-        }
-    }
-
     func encode<Result: Codable & Sendable>(_ envelope: BurnBarRPCResponseEnvelope<Result>) -> Data {
         do {
             let encoder = JSONEncoder()
@@ -648,6 +415,26 @@ extension BurnBarDaemonServer {
 // MARK: - Connection handling
 
 extension BurnBarDaemonServer {
+    private func trackClientConnection(
+        fileDescriptor: Int32,
+        logger: BurnBarDaemonLogger
+    ) {
+        let connectionID = UUID()
+        let task = Task.detached(priority: .utility) { [logger] in
+            await Self.handleClientConnection(
+                server: self,
+                clientFileDescriptor: fileDescriptor,
+                logger: logger
+            )
+            await self.finishClientConnection(id: connectionID)
+        }
+        clientConnectionTasks[connectionID] = ClientConnection(fileDescriptor: fileDescriptor, task: task)
+    }
+
+    private func finishClientConnection(id: UUID) {
+        clientConnectionTasks.removeValue(forKey: id)
+    }
+
     private static func runAcceptLoop(
         server: BurnBarDaemonServer,
         listenerFileDescriptor: Int32,
@@ -665,6 +452,15 @@ extension BurnBarDaemonServer {
                     break
                 }
 
+                if code == EAGAIN || code == EWOULDBLOCK {
+                    do {
+                        try await Task.sleep(nanoseconds: 10_000_000)
+                    } catch {
+                        break
+                    }
+                    continue
+                }
+
                 logger.error(
                     "accept_failed",
                     metadata: ["errno": "\(code)"]
@@ -672,13 +468,21 @@ extension BurnBarDaemonServer {
                 continue
             }
 
-            Task.detached(priority: .utility) { [logger] in
-                await Self.handleClientConnection(
-                    server: server,
-                    clientFileDescriptor: clientFileDescriptor,
-                    logger: logger
+            let clientFlags = fcntl(clientFileDescriptor, F_GETFL)
+            guard clientFlags != -1,
+                  fcntl(clientFileDescriptor, F_SETFL, clientFlags & ~O_NONBLOCK) == 0 else {
+                logger.error(
+                    "client_socket_configuration_failed",
+                    metadata: ["errno": "\(errno)"]
                 )
+                close(clientFileDescriptor)
+                continue
             }
+
+            await server.trackClientConnection(
+                fileDescriptor: clientFileDescriptor,
+                logger: logger
+            )
         }
 
         logger.debug("accept_loop_stopped")
@@ -698,7 +502,8 @@ extension BurnBarDaemonServer {
         do {
             let requestData = try BurnBarUnixDomainSocket.readRequest(
                 from: clientFileDescriptor,
-                maxBytes: maxRequestBytes
+                maxBytes: maxRequestBytes,
+                readTimeoutSeconds: Self.clientReadTimeoutSeconds
             )
             let responseData = await server.responseData(for: requestData) + Data([0x0A])
             try BurnBarUnixDomainSocket.writeAll(responseData, to: clientFileDescriptor)
@@ -707,6 +512,13 @@ extension BurnBarDaemonServer {
                 metadata: ["bytes": "\(responseData.count)"]
             )
         } catch let error as BurnBarDaemonError {
+            if case .clientReadTimedOut = error {
+                logger.debug(
+                    "client_read_timed_out",
+                    metadata: ["read_timeout_seconds": "\(Self.clientReadTimeoutSeconds)"]
+                )
+                return
+            }
             // Oversized frames get a typed error response (VAL-RPC-004/016)
             // instead of a silent close: the daemon stays healthy and the
             // next request on a fresh connection succeeds.
@@ -836,6 +648,17 @@ private enum BurnBarUnixDomainSocket {
                 )
             }
 
+            let currentFlags = fcntl(fileDescriptor, F_GETFL)
+            guard currentFlags != -1,
+                  fcntl(fileDescriptor, F_SETFL, currentFlags | O_NONBLOCK) == 0 else {
+                let code = errno
+                throw BurnBarDaemonError.failedToListen(
+                    path: socketPath,
+                    code: code,
+                    detail: String(cString: strerror(code))
+                )
+            }
+
             return fileDescriptor
         } catch {
             close(fileDescriptor)
@@ -843,13 +666,29 @@ private enum BurnBarUnixDomainSocket {
         }
     }
 
-    static func readRequest(from fileDescriptor: Int32, maxBytes: Int) throws -> Data {
+    static func readRequest(
+        from fileDescriptor: Int32,
+        maxBytes: Int,
+        readTimeoutSeconds: TimeInterval
+    ) throws -> Data {
         var buffer = Data()
         buffer.reserveCapacity(1024)
 
         var chunk = [UInt8](repeating: 0, count: 1024)
+        let timeoutNanoseconds = UInt64(max(0, readTimeoutSeconds) * 1_000_000_000)
+        let deadline = DispatchTime.now().uptimeNanoseconds &+ timeoutNanoseconds
 
         while true {
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now < deadline else {
+                throw BurnBarDaemonError.clientReadTimedOut
+            }
+            let remainingNanoseconds = deadline - now
+            try configureReadTimeout(
+                for: fileDescriptor,
+                timeoutNanoseconds: remainingNanoseconds
+            )
+
             let bytesRead = read(fileDescriptor, &chunk, chunk.count)
             if bytesRead == 0 {
                 break
@@ -859,6 +698,9 @@ private enum BurnBarUnixDomainSocket {
                 let code = errno
                 if code == EINTR {
                     continue
+                }
+                if code == EAGAIN || code == EWOULDBLOCK {
+                    throw BurnBarDaemonError.clientReadTimedOut
                 }
                 throw POSIXError(.init(rawValue: code) ?? .EIO)
             }
@@ -883,6 +725,27 @@ private enum BurnBarUnixDomainSocket {
         }
 
         return buffer
+    }
+
+    private static func configureReadTimeout(
+        for fileDescriptor: Int32,
+        timeoutNanoseconds: UInt64
+    ) throws {
+        let microseconds = max(1, timeoutNanoseconds / 1_000)
+        var timeout = timeval(
+            tv_sec: Int(microseconds / 1_000_000),
+            tv_usec: Int32(microseconds % 1_000_000)
+        )
+        let result = setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            SO_RCVTIMEO,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        )
+        guard result == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
     }
 
     static func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
@@ -954,7 +817,7 @@ extension BurnBarDaemonServer {
     /// the plain envelope is decoded so both `{"id":...,"method":"daemon.fleet.snapshot"}`
     /// and a params-bearing form are accepted. Pre-first-tick reads return
     /// the typed not-ready error — never a fabricated snapshot.
-    private func handleFleetSnapshot(requestData: Data, decoder: JSONDecoder) async throws -> Data {
+    func handleFleetSnapshot(requestData: Data, decoder: JSONDecoder) async throws -> Data {
         let typedRequest = try decodeRequest(BurnBarRPCRequestEnvelope.self, from: requestData, decoder: decoder)
         let readState = await fleetService.readLatestSnapshot()
         switch readState {

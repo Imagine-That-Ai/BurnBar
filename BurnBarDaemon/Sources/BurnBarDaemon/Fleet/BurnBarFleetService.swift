@@ -46,6 +46,7 @@ public actor BurnBarFleetService {
     private var latestSnapshot: BurnBarFleetSnapshot?
     private var currentTickDegradation: String?
     private var tickTask: Task<Void, Never>?
+    private var stoppingTickTask: Task<Void, Never>?
     private var isRunning = false
     private var completedTickCount = 0
 
@@ -64,6 +65,10 @@ public actor BurnBarFleetService {
     /// Starts the cadence ticker. The first tick runs immediately; subsequent
     /// ticks wait `cadenceSeconds` between builds. Idempotent.
     public func start() async {
+        if let stoppingTickTask {
+            await stoppingTickTask.value
+            self.stoppingTickTask = nil
+        }
         guard !isRunning else { return }
         isRunning = true
         // Seed the transition baseline from the store so events after a
@@ -79,10 +84,19 @@ public actor BurnBarFleetService {
 
     /// Stops the ticker. The latest completed snapshot is retained so reads
     /// after stop still serve the last probed truth.
-    public func stop() {
+    public func stop() async {
+        if let stoppingTickTask {
+            await stoppingTickTask.value
+            return
+        }
         isRunning = false
-        tickTask?.cancel()
+        let task = tickTask
         tickTask = nil
+        guard let task else { return }
+        task.cancel()
+        stoppingTickTask = task
+        await task.value
+        stoppingTickTask = nil
     }
 
     /// The latest completed snapshot, or the typed not-ready state before the
@@ -144,19 +158,12 @@ public actor BurnBarFleetService {
             orchestrator: orchestratorState,
             persistenceHealth: persister?.persistenceHealth() ?? .ok
         )
-        if let persister {
-            let persisted = persister.persist(snapshot: snapshot)
-            completedTickCount += 1
-            logProbeDegradations(in: persisted)
-            latestSnapshot = persisted
-            currentTickDegradation = nil
-            return persisted
-        }
+        let completedSnapshot = persister?.persist(snapshot: snapshot) ?? snapshot
         completedTickCount += 1
-        logProbeDegradations(in: snapshot)
-        latestSnapshot = snapshot
+        logProbeDegradations(in: completedSnapshot)
+        latestSnapshot = completedSnapshot
         currentTickDegradation = nil
-        return snapshot
+        return completedSnapshot
     }
 
     /// Emits one bounded, structured record per affected agent for each
