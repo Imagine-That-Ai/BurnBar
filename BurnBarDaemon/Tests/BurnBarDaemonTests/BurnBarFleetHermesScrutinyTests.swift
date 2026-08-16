@@ -98,6 +98,40 @@ final class BurnBarFleetHermesScrutinyTests: XCTestCase {
         }
     }
 
+    func testHeartbeatWithoutPidAndStartTime_usesGatewayPidIdentity() async throws {
+        let live = try LiveSleepProcess()
+        liveProcess = live
+        let now = Date()
+        let startTime = BurnBarFleetProcessLiveness.processStartTime(pid: Int(live.pid)) ?? 1_750_000_000
+        let stateDirectory = fixtureRoot.appendingPathComponent("state", isDirectory: true)
+        try FileManager.default.createDirectory(at: stateDirectory, withIntermediateDirectories: true)
+        try writeJSONFixture(
+            ["pid": Int(live.pid), "start_time": Int(startTime)],
+            to: fixtureRoot.appendingPathComponent("gateway.pid").path
+        )
+        // The documented heartbeat shape permits pid and start_time to be
+        // absent. The gateway.pid record supplies both process association
+        // and the fallback pid-reuse identity.
+        try writeJSONFixture(
+            [
+                "updated_at": ISO8601DateFormatter().string(from: now)
+            ],
+            to: stateDirectory.appendingPathComponent("gateway.heartbeat").path
+        )
+        try writeJSONFixture(
+            ["active_agents": 1],
+            to: fixtureRoot.appendingPathComponent("gateway_state.json").path
+        )
+        try writeJSONFixture([], to: fixtureRoot.appendingPathComponent("processes.json").path)
+
+        let result = await BurnBarFleetHermesProbe(rootPath: fixtureRoot.path).probe(now: now)
+
+        XCTAssertEqual(result.agent.status, .running)
+        XCTAssertEqual(result.agent.confidence, .exactProcess)
+        XCTAssertEqual(result.agent.process?.pid, Int(live.pid))
+        XCTAssertEqual(result.health.state, .ok)
+    }
+
     func testReadJSONBounded_slowDrainUsesSingleMonotonicDeadline() throws {
         let fifoURL = fixtureRoot.appendingPathComponent("slow.json")
         XCTAssertEqual(mkfifo(fifoURL.path, 0o600), 0, "mkfifo failed with errno \(errno)")

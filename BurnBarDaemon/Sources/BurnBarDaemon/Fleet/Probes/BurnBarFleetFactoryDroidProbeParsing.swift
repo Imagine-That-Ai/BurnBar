@@ -7,6 +7,13 @@ import Foundation
 // (precedent: BurnBarFleetLifecycleFixtures.swift).
 
 extension BurnBarFleetFactoryDroidProbe {
+    private static let nonTerminalStatuses: Set<String> = [
+        "running", "queued", "pending", "in_progress", "active", "working"
+    ]
+    private static let terminalStatuses: Set<String> = [
+        "completed", "failed", "cancelled"
+    ]
+
     // MARK: - Task ledger
 
     struct Ledger {
@@ -30,7 +37,7 @@ extension BurnBarFleetFactoryDroidProbe {
         /// never counts as non-terminal.
         var isNonTerminal: Bool {
             guard let status else { return false }
-            return ["running", "queued", "pending", "in_progress", "active", "working"].contains(status)
+            return BurnBarFleetFactoryDroidProbe.nonTerminalStatuses.contains(status)
         }
 
         func isLive(now: Date, freshnessSeconds: TimeInterval) -> Bool {
@@ -116,8 +123,7 @@ extension BurnBarFleetFactoryDroidProbe {
     /// `running | queued | pending | in_progress | active | working` and
     /// terminal `completed | failed | cancelled`.
     static func isKnownStatus(_ status: String) -> Bool {
-        ["running", "queued", "pending", "in_progress", "active", "working",
-         "completed", "failed", "cancelled"].contains(status)
+        nonTerminalStatuses.contains(status) || terminalStatuses.contains(status)
     }
 
     // MARK: - Background processes
