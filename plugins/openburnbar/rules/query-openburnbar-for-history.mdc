@@ -1,0 +1,9 @@
+---
+description: When the user asks about past agent work, spend, or "what did we do", query the OpenBurnBar MCP instead of guessing.
+alwaysApply: false
+---
+
+Query OpenBurnBar MCP for session history and spend evidence instead of
+guessing. Run `burnbar_resolve_capabilities` first, then search conversations
+and read usage metadata. Quote evidence from tool results and say when a
+field is still sealed ciphertext.

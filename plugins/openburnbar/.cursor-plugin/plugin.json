@@ -1,0 +1,45 @@
+{
+  "name": "openburnbar",
+  "displayName": "OpenBurnBar",
+  "version": "1.0.0",
+  "description": "OpenBurnBar hosted MCP for spend, sessions, knowledge, and resume. Query past agent work and usage through hosted MCP at https://mcp.burnbar.ai/mcp.",
+  "author": {
+    "name": "OpenBurnBar / Imagine That AI"
+  },
+  "homepage": "https://burnbar.ai",
+  "repository": "https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin",
+  "license": "AGPL-3.0-only",
+  "logo": "assets/logo.svg",
+  "keywords": [
+    "openburnbar",
+    "burnbar",
+    "mcp",
+    "spend",
+    "sessions",
+    "memory",
+    "resume"
+  ],
+  "category": "integrations",
+  "tags": [
+    "openburnbar",
+    "burnbar",
+    "mcp",
+    "spend"
+  ],
+  "variables": {
+    "type": "object",
+    "properties": {
+      "OPENBURNBAR_MCP_ACCESS_TOKEN": {
+        "type": "string",
+        "title": "OpenBurnBar MCP access token",
+        "description": "Short-lived (~15 min) access token for the hosted OpenBurnBar MCP at https://mcp.burnbar.ai/mcp. Mint it from BurnBar Settings or with `openburnbar mcp login`, then paste the token here and configure Remote MCP in Cursor. This is a session credential, not a durable secret: re-mint it when it expires."
+      }
+    },
+    "required": ["OPENBURNBAR_MCP_ACCESS_TOKEN"]
+  },
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "rules": "./rules/",
+  "agents": "./agents/",
+  "mcpServers": "./mcp.json"
+}
