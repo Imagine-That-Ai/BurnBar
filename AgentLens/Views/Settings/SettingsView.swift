@@ -171,6 +171,38 @@ private struct GeneralSettingsView: View {
                     }
                 }
 
+                GlassCard {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Dashboard Layout")
+                                    .font(DesignSystem.Typography.body)
+                                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                Text("Pick the surface the main window opens to. Reopen the dashboard to apply.")
+                                    .font(DesignSystem.Typography.caption)
+                                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                            Picker("", selection: $settingsManager.dashboardLayout) {
+                                ForEach(DashboardLayout.allCases) { layout in
+                                    Label(layout.displayName, systemImage: layout.symbol).tag(layout)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(width: 220)
+                        }
+
+                        Label(settingsManager.dashboardLayout.detail, systemImage: settingsManager.dashboardLayout.symbol)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                            .labelStyle(.titleAndIcon)
+                            .animation(DesignSystem.Animation.gentle, value: settingsManager.dashboardLayout)
+                    }
+                    .padding(DesignSystem.Spacing.lg)
+                }
+
                 sectionHeader("Data Refresh")
 
                 GlassCard {

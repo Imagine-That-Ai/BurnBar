@@ -423,9 +423,11 @@ public struct BurnBarSearchPlan: Sendable, Hashable {
         }
 
         let lower = trimmed.lowercased()
+        let explicitStrongLanguage =
+            lower.range(of: #"\b(fuck|shit|damn|bitch|crap|hell|asshole)\b"#, options: .regularExpression) != nil
         let profanityStatsQuestion =
             ((lower.contains("how many") || lower.contains("how often") || lower.contains("number of times"))
-                && (lower.contains("curse") || lower.contains("cuss") || lower.contains("swear") || lower.contains("profan")))
+                && (lower.contains("curse") || lower.contains("cuss") || lower.contains("swear") || lower.contains("profan") || explicitStrongLanguage))
             || lower.range(of: #"\b(times have i|times did i)\s+.*\b(curse|cuss|swear|profan)"#, options: .regularExpression) != nil
             || lower.range(of: #"\b(did i|have i)\s+(ever\s+)?(curse|cuss|swear)"#, options: .regularExpression) != nil
         let aggregateIntent =
@@ -463,16 +465,47 @@ public struct BurnBarSearchPlan: Sendable, Hashable {
         )
     }
 
-    /// Pull quoted phrases; else infer a few tokens for vague profanity / emphasis questions.
+    /// Pull quoted phrases; explicit words after say/said; profanity tokens in the question; else defaults for vague “cursing” asks.
     private static func extractAggregatePatterns(from text: String) -> [String] {
         var patterns: [String] = []
         let quoted = Self.quotedPhrases(in: text)
         patterns.append(contentsOf: quoted)
 
         let lower = text.lowercased()
+        let ns = text as NSString
+        let fullRange = NSRange(location: 0, length: ns.length)
+
+        var hadSpecificExtraction = quoted.isEmpty == false
+
+        if let re = try? NSRegularExpression(
+            pattern: #"\b(?:say|said)\s+['"]?([\p{L}\p{N}]{2,})['"]?"#,
+            options: [.caseInsensitive]
+        ) {
+            for match in re.matches(in: text, options: [], range: fullRange) where match.numberOfRanges >= 2 {
+                let w = ns.substring(with: match.range(at: 1)).lowercased()
+                if w.count >= 2, BurnBarFTSQueryBuilder.englishStopwords.contains(w) == false {
+                    patterns.append(w)
+                    hadSpecificExtraction = true
+                }
+            }
+        }
+
+        if let re = try? NSRegularExpression(
+            pattern: #"\b(fuck|shit|damn|bitch|crap|hell|asshole)\b"#,
+            options: [.caseInsensitive]
+        ) {
+            for match in re.matches(in: text, options: [], range: fullRange) where match.numberOfRanges >= 2 {
+                let w = ns.substring(with: match.range(at: 1)).lowercased()
+                if w.count >= 2 {
+                    patterns.append(w)
+                    hadSpecificExtraction = true
+                }
+            }
+        }
+
         if lower.contains("curse") || lower.contains("cuss") || lower.contains("profan") || lower.contains("swear") {
-            for w in Self.defaultStrongLanguageSamples {
-                if patterns.contains(w) == false {
+            if hadSpecificExtraction == false {
+                for w in Self.defaultStrongLanguageSamples where patterns.contains(w) == false {
                     patterns.append(w)
                 }
             }
@@ -480,11 +513,15 @@ public struct BurnBarSearchPlan: Sendable, Hashable {
 
         if patterns.isEmpty {
             let tokens = text.split { $0.isWhitespace || $0.isNewline }.map(String.init)
+            let calendarNoise: Set<String> = [
+                "month", "months", "week", "weeks", "year", "years", "day", "days",
+                "today", "yesterday", "time", "times"
+            ]
             let meaningful = tokens
-                .map { $0.trimmingCharacters(in: .punctuationCharacters) }
-                .filter { $0.count >= 4 }
+                .map { $0.trimmingCharacters(in: .punctuationCharacters).lowercased() }
+                .filter { $0.count >= 3 && calendarNoise.contains($0) == false }
             let filtered = meaningful.filter { token in
-                !BurnBarFTSQueryBuilder.englishStopwords.contains(token.lowercased())
+                BurnBarFTSQueryBuilder.englishStopwords.contains(token) == false
             }
             patterns.append(contentsOf: filtered.suffix(3))
         }
@@ -563,6 +600,23 @@ public enum BurnBarSearchTimeWindow: Sendable {
             let comps = c.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)
             guard let weekStart = c.date(from: comps) else { return nil }
             return weekStart...now
+        }
+        if lower.range(of: #"\b(this month|during this month|in this month)\b"#, options: .regularExpression) != nil {
+            let comps = calendar.dateComponents([.year, .month], from: now)
+            guard let y = comps.year, let mo = comps.month,
+                  let start = calendar.date(from: DateComponents(year: y, month: mo, day: 1)) else { return nil }
+            return start...now
+        }
+        if lower.range(
+            of: #"\b(last month|in the last month|past month|in the past month|previous month)\b"#,
+            options: .regularExpression
+        ) != nil {
+            let comps = calendar.dateComponents([.year, .month], from: now)
+            guard let y = comps.year, let mo = comps.month,
+                  let thisMonthStart = calendar.date(from: DateComponents(year: y, month: mo, day: 1)),
+                  let prevStart = calendar.date(byAdding: .month, value: -1, to: thisMonthStart),
+                  let endLast = calendar.date(byAdding: .second, value: -1, to: thisMonthStart) else { return nil }
+            return prevStart...min(endLast, now)
         }
         return nil
     }

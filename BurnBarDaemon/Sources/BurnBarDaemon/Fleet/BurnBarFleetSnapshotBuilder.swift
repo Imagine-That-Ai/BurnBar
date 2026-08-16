@@ -1,6 +1,26 @@
 import BurnBarCore
 import Foundation
 
+/// Validation failures raised when a probe violates the fixed ten-ID roster.
+/// The ticker records these failures as a typed current-tick degradation
+/// instead of silently serving an older generation.
+public enum BurnBarFleetSnapshotBuilderError: Error, Equatable, LocalizedError, Sendable {
+    case probeRegisteredOutsideRoster(BurnBarFleetAgentID)
+    case probeReturnedUnexpectedAgent(expected: BurnBarFleetAgentID, actual: BurnBarFleetAgentID)
+    case probeReturnedUnexpectedHealth(expected: BurnBarFleetAgentID, actual: BurnBarFleetAgentID)
+
+    public var errorDescription: String? {
+        switch self {
+        case .probeRegisteredOutsideRoster(let agent):
+            return "Probe registered outside the fixed fleet roster: \(agent.wireValue)."
+        case .probeReturnedUnexpectedAgent(let expected, let actual):
+            return "Probe for \(expected.wireValue) returned agent identity \(actual.wireValue)."
+        case .probeReturnedUnexpectedHealth(let expected, let actual):
+            return "Probe for \(expected.wireValue) returned health identity \(actual.wireValue)."
+        }
+    }
+}
+
 /// Builds a complete `BurnBarFleetSnapshot` from per-agent probe results.
 ///
 /// The roster is fixed: exactly the ten declared `BurnBarFleetAgentID`s. Every
@@ -73,6 +93,10 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
         orchestrator: BurnBarOrchestratorState,
         persistenceHealth: BurnBarFleetPersistenceHealth
     ) async throws -> BurnBarFleetSnapshot {
+        if let extraProbe = probes.keys.first(where: { !BurnBarFleetAgentID.declaredRoster.contains($0) }) {
+            throw BurnBarFleetSnapshotBuilderError.probeRegisteredOutsideRoster(extraProbe)
+        }
+
         var agents: [BurnBarFleetAgent] = []
         var probeHealth: [BurnBarFleetProbeHealth] = []
 
@@ -99,6 +123,18 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
             }
 
             let result = await probe.probe(now: now)
+            guard result.agent.id == agentID else {
+                throw BurnBarFleetSnapshotBuilderError.probeReturnedUnexpectedAgent(
+                    expected: agentID,
+                    actual: result.agent.id
+                )
+            }
+            guard result.health.agent == agentID else {
+                throw BurnBarFleetSnapshotBuilderError.probeReturnedUnexpectedHealth(
+                    expected: agentID,
+                    actual: result.health.agent
+                )
+            }
             agents.append(result.agent)
             probeHealth.append(result.health)
         }

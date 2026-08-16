@@ -8,7 +8,7 @@ import XCTest
 /// stays under the lint type-body budget.
 enum BurnBarFleetLifecycleFixtures {
     /// Expected status/confidence per (agent, phase). `nil` means the phase
-    /// is not applicable for that agent (recorded as typed non-running).
+    /// is not applicable for that agent and is skipped by the matrix.
     struct Expectation {
         let status: BurnBarFleetAgentStatus
         let confidence: BurnBarFleetConfidence
@@ -149,8 +149,10 @@ enum BurnBarFleetLifecycleFixtures {
         case "exited", "stale":
             return Expectation(status: .stale, confidence: .logHeartbeat)
         case "malformed":
-            // mtime-based probe: transcript bodies are never read; the row
-            // stays driven by the fresh mtime (running).
+            // This fixture deliberately demonstrates the probe boundary:
+            // transcript bodies are never read, so malformed JSONL content
+            // cannot be classified by the daemon probe. Fresh mtime still
+            // drives running; content validation belongs to PiParser.
             return Expectation(status: .running, confidence: .logHeartbeat)
         default:
             return nil
@@ -436,9 +438,9 @@ enum BurnBarFleetLifecycleFixtures {
             try setFileMtime(now.addingTimeInterval(-3600), at: path)
         case "malformed":
             // Transcripts are mtime-only signals; a malformed transcript body
-            // is not read. The phase is recorded as the documented
-            // non-applicable state: the probe still reports a typed row and
-            // never running.
+            // is not read. This phase is a documented non-applicable content
+            // check, so a fresh mtime still reports running. PiParser owns
+            // JSONL content validation.
             let project = sessions.appendingPathComponent("--Users--test--RepoA", isDirectory: true)
             try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
             let path = project.appendingPathComponent("2026-08-12T00-58-36-546Z_abc.jsonl").path

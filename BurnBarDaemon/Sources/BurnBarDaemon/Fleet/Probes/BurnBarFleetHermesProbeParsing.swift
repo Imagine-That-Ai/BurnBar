@@ -1,6 +1,10 @@
 import BurnBarCore
 import Foundation
 
+private enum BurnBarFleetHermesDateParsing {
+    static let iso8601 = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+}
+
 // MARK: - Hermes probe: signal-file parsing
 //
 // Parsing types and helpers for `BurnBarFleetHermesProbe`, kept in a
@@ -8,6 +12,39 @@ import Foundation
 // (precedent: BurnBarFleetFactoryDroidProbeParsing.swift).
 
 extension BurnBarFleetHermesProbe {
+    struct RawSignals {
+        let gatewayPid: GatewayPidSignal?
+        let heartbeat: HeartbeatSignal?
+        let gatewayState: GatewayStateSignal?
+        let processes: ProcessesSignal?
+    }
+
+    static func readSignals(rootURL: URL, timeoutSeconds: TimeInterval) -> RawSignals {
+        let probeDeadline = BurnBarFleetProbeJSON.monotonicDeadline(after: timeoutSeconds)
+        return RawSignals(
+            gatewayPid: readGatewayPid(
+                at: rootURL.appendingPathComponent("gateway.pid").path,
+                timeoutSeconds: timeoutSeconds,
+                deadlineUptimeNanoseconds: probeDeadline
+            ),
+            heartbeat: readHeartbeat(
+                at: rootURL.appendingPathComponent("state/gateway.heartbeat").path,
+                timeoutSeconds: timeoutSeconds,
+                deadlineUptimeNanoseconds: probeDeadline
+            ),
+            gatewayState: readGatewayState(
+                at: rootURL.appendingPathComponent("gateway_state.json").path,
+                timeoutSeconds: timeoutSeconds,
+                deadlineUptimeNanoseconds: probeDeadline
+            ),
+            processes: readProcesses(
+                at: rootURL.appendingPathComponent("processes.json").path,
+                timeoutSeconds: timeoutSeconds,
+                deadlineUptimeNanoseconds: probeDeadline
+            )
+        )
+    }
+
     /// Bundles the parsed signal files plus the derived evidence trail and
     /// health state for one probe run.
     struct Signals {
@@ -35,7 +72,7 @@ extension BurnBarFleetHermesProbe {
 
         func isFresh(now: Date, freshnessSeconds: TimeInterval) -> Bool {
             guard let updatedAt else { return false }
-            return now.timeIntervalSince(updatedAt) <= freshnessSeconds
+            return now.timeIntervalSince(updatedAt) < freshnessSeconds
         }
     }
 
@@ -57,12 +94,20 @@ extension BurnBarFleetHermesProbe {
 
     // MARK: - Readers
 
-    static func readGatewayPid(at path: String, timeoutSeconds: TimeInterval) -> GatewayPidSignal? {
+    static func readGatewayPid(
+        at path: String,
+        timeoutSeconds: TimeInterval,
+        deadlineUptimeNanoseconds: UInt64? = nil
+    ) -> GatewayPidSignal? {
         guard FileManager.default.fileExists(atPath: path) else { return nil }
 
         let object: [String: Any]
         do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
+            let raw = try BurnBarFleetProbeJSON.readJSONBounded(
+                at: path,
+                timeoutSeconds: timeoutSeconds,
+                deadlineUptimeNanoseconds: deadlineUptimeNanoseconds
+            )
             guard let dictionary = raw as? [String: Any] else {
                 return GatewayPidSignal(
                     path: path,
@@ -110,12 +155,20 @@ extension BurnBarFleetHermesProbe {
         )
     }
 
-    static func readHeartbeat(at path: String, timeoutSeconds: TimeInterval) -> HeartbeatSignal? {
+    static func readHeartbeat(
+        at path: String,
+        timeoutSeconds: TimeInterval,
+        deadlineUptimeNanoseconds: UInt64? = nil
+    ) -> HeartbeatSignal? {
         guard FileManager.default.fileExists(atPath: path) else { return nil }
 
         let object: [String: Any]
         do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
+            let raw = try BurnBarFleetProbeJSON.readJSONBounded(
+                at: path,
+                timeoutSeconds: timeoutSeconds,
+                deadlineUptimeNanoseconds: deadlineUptimeNanoseconds
+            )
             guard let dictionary = raw as? [String: Any] else {
                 return HeartbeatSignal(
                     path: path,
@@ -136,16 +189,25 @@ extension BurnBarFleetHermesProbe {
             )
         }
 
-        guard let pid = BurnBarFleetProbeJSON.pidValue(object["pid"]) else {
-            let reason = BurnBarFleetProbeJSON.pidRejectionReason(object["pid"])
-                ?? "gateway.heartbeat is missing a numeric pid."
-            return HeartbeatSignal(
-                path: path,
-                pid: nil,
-                updatedAt: nil,
-                startTime: nil,
-                malformedReason: reason
-            )
+        let pid: Int?
+        if let rawPid = object["pid"], !(rawPid is NSNull) {
+            guard let parsedPid = BurnBarFleetProbeJSON.pidValue(rawPid) else {
+                let reason = BurnBarFleetProbeJSON.pidRejectionReason(rawPid)
+                    ?? "gateway.heartbeat pid is malformed."
+                return HeartbeatSignal(
+                    path: path,
+                    pid: nil,
+                    updatedAt: nil,
+                    startTime: nil,
+                    malformedReason: reason
+                )
+            }
+            pid = parsedPid
+        } else {
+            // The heartbeat pid is optional. When absent, the gateway.pid
+            // record supplies association while the heartbeat start_time
+            // remains authoritative for pid-reuse guarding when present.
+            pid = nil
         }
 
         let updatedAt = Self.parseHeartbeatUpdatedAt(object["updated_at"])
@@ -184,12 +246,20 @@ extension BurnBarFleetHermesProbe {
         )
     }
 
-    static func readGatewayState(at path: String, timeoutSeconds: TimeInterval) -> GatewayStateSignal? {
+    static func readGatewayState(
+        at path: String,
+        timeoutSeconds: TimeInterval,
+        deadlineUptimeNanoseconds: UInt64? = nil
+    ) -> GatewayStateSignal? {
         guard FileManager.default.fileExists(atPath: path) else { return nil }
 
         let object: [String: Any]
         do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
+            let raw = try BurnBarFleetProbeJSON.readJSONBounded(
+                at: path,
+                timeoutSeconds: timeoutSeconds,
+                deadlineUptimeNanoseconds: deadlineUptimeNanoseconds
+            )
             guard let dictionary = raw as? [String: Any] else {
                 return GatewayStateSignal(
                     path: path,
@@ -216,12 +286,20 @@ extension BurnBarFleetHermesProbe {
         return GatewayStateSignal(path: path, activeAgents: activeAgents, malformedReason: nil)
     }
 
-    static func readProcesses(at path: String, timeoutSeconds: TimeInterval) -> ProcessesSignal? {
+    static func readProcesses(
+        at path: String,
+        timeoutSeconds: TimeInterval,
+        deadlineUptimeNanoseconds: UInt64? = nil
+    ) -> ProcessesSignal? {
         guard FileManager.default.fileExists(atPath: path) else { return nil }
 
         let object: [Any]
         do {
-            let raw = try BurnBarFleetProbeJSON.readJSONBounded(at: path, timeoutSeconds: timeoutSeconds)
+            let raw = try BurnBarFleetProbeJSON.readJSONBounded(
+                at: path,
+                timeoutSeconds: timeoutSeconds,
+                deadlineUptimeNanoseconds: deadlineUptimeNanoseconds
+            )
             guard let array = raw as? [Any] else {
                 return ProcessesSignal(
                     path: path,
@@ -239,12 +317,19 @@ extension BurnBarFleetHermesProbe {
         }
 
         var entries: [ProcessEntry] = []
-        for item in object {
+        var malformedReasons: [String] = []
+        for (index, item) in object.enumerated() {
             if let dictionary = item as? [String: Any] {
                 entries.append(ProcessEntry(cwd: BurnBarFleetProbeJSON.stringValue(dictionary["cwd"])))
+            } else {
+                malformedReasons.append("processes.json entry \(index) is not an object.")
             }
         }
-        return ProcessesSignal(path: path, entries: entries, malformedReason: nil)
+        return ProcessesSignal(
+            path: path,
+            entries: entries,
+            malformedReason: malformedReasons.isEmpty ? nil : malformedReasons.joined(separator: " ")
+        )
     }
 
     /// `updated_at` is an ISO-8601 string (the real heartbeat writes
@@ -253,12 +338,7 @@ extension BurnBarFleetHermesProbe {
     /// tried first, then the plain form, then the strict epoch-ms helper.
     private static func parseHeartbeatUpdatedAt(_ value: Any?) -> Date? {
         if let raw = value as? String {
-            let fractional = ISO8601DateFormatter()
-            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = fractional.date(from: raw) {
-                return date
-            }
-            return ISO8601DateFormatter().date(from: raw)
+            return try? BurnBarFleetHermesDateParsing.iso8601.parse(raw)
         }
         return BurnBarFleetProbeJSON.dateFromEpochMilliseconds(value)
     }

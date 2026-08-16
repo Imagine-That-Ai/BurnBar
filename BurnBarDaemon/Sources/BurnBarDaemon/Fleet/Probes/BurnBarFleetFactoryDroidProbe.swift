@@ -30,9 +30,10 @@ import Foundation
 /// - **Artifacts exclusion:** the probe touches only the declared signal
 ///   files and the `sessions/`/`missions/` subdirectories. It NEVER reads,
 ///   lists, or traverses `<root>/artifacts/` (system-reserved).
-/// - **Repo attribution:** invocation `cwd`, else background-entry `cwd`,
-///   else session-dir slug decode (`-Users-albertonunez-…` →
-///   `/Users/albertonunez/…`).
+/// - **Repo attribution:** for overlapping live evidence, invocation `cwd`
+///   wins over background-entry `cwd`, which wins over session/mission slug
+///   decode (`-Users-albertonunez-…` → `/Users/albertonunez/…`). Timestamps
+///   break ties within one source only.
 public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
     public let agentID: BurnBarFleetAgentID
     public let rootPath: String
@@ -223,6 +224,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             if invocation.isLive(now: now, freshnessSeconds: freshnessSeconds) {
                 liveEvidence.append(
                     Evidence(
+                        source: .invocation,
                         projectName: invocation.cwd,
                         lastActivityAt: invocation.updatedAt,
                         detail: "non-terminal invocation"
@@ -231,6 +233,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             } else if invocation.malformedReason == nil, let updatedAt = invocation.updatedAt {
                 staleEvidence.append(
                     Evidence(
+                        source: .invocation,
                         projectName: invocation.cwd,
                         lastActivityAt: updatedAt,
                         detail: "invocation"
@@ -251,6 +254,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             if entry.isLive {
                 liveEvidence.append(
                     Evidence(
+                        source: .background,
                         projectName: entry.cwd,
                         lastActivityAt: entry.startTime,
                         detail: "live background process"
@@ -259,6 +263,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             } else if entry.malformedReason == nil, let startTime = entry.startTime {
                 staleEvidence.append(
                     Evidence(
+                        source: .background,
                         projectName: entry.cwd,
                         lastActivityAt: startTime,
                         detail: "background process"
@@ -293,6 +298,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             if directory.isFresh(now: now, freshnessSeconds: freshnessSeconds) {
                 liveEvidence.append(
                     Evidence(
+                        source: kind == "session-directory" ? .session : .mission,
                         projectName: projectName,
                         lastActivityAt: directory.mtime,
                         detail: "fresh \(kind)"
@@ -301,6 +307,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             } else {
                 staleEvidence.append(
                     Evidence(
+                        source: kind == "session-directory" ? .session : .mission,
                         projectName: projectName,
                         lastActivityAt: directory.mtime,
                         detail: kind
@@ -321,9 +328,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
         evidence: EvidenceSet
     ) -> BurnBarFleetProbeResult {
         // One live signal drives the row.
-        if let strongest = evidence.liveEvidence.max(by: {
-            ($0.lastActivityAt ?? .distantPast) < ($1.lastActivityAt ?? .distantPast)
-        }) {
+        if let strongest = evidence.preferredLiveEvidence {
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -422,9 +427,42 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
         let liveEvidence: [Evidence]
         let staleEvidence: [Evidence]
         let hasAnySignalFile: Bool
+
+        var preferredLiveEvidence: Evidence? {
+            let attributed = liveEvidence
+                .filter { $0.projectName?.isEmpty == false }
+                .min { lhs, rhs in
+                    if lhs.source.priority != rhs.source.priority {
+                        return lhs.source.priority < rhs.source.priority
+                    }
+                    return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
+                }
+            return attributed ?? liveEvidence.max {
+                ($0.lastActivityAt ?? .distantPast) < ($1.lastActivityAt ?? .distantPast)
+            }
+        }
+    }
+
+    private enum EvidenceSource {
+        case invocation
+        case background
+        case session
+        case mission
+
+        var priority: Int {
+            switch self {
+            case .invocation:
+                return 0
+            case .background:
+                return 1
+            case .session, .mission:
+                return 2
+            }
+        }
     }
 
     private struct Evidence {
+        let source: EvidenceSource
         let projectName: String?
         let lastActivityAt: Date?
         let detail: String

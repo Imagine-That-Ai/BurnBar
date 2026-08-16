@@ -206,6 +206,34 @@ final class BurnBarFleetRPCErrorDetailsTests: BurnBarFleetRPCTestCase {
         )
     }
 
+    func testHandlerSideDecodingError_mapsToInternalErrorNotInvalidParams() async throws {
+        let configuration = makeConfiguration(name: "handler-decode")
+        let socketPath = configuration.socketPath
+        let configURL = tempRoots.appendingPathComponent("malformed-config.json")
+        try Data("{ malformed".utf8).write(to: configURL)
+        let configStore = BurnBarConfigStore(fileURL: configURL)
+        let fleetService = makeFleetService()
+        _ = try await fleetService.buildOnce()
+        let server = BurnBarDaemonServer(
+            configuration: configuration,
+            configStore: configStore,
+            fleetService: fleetService
+        )
+        try await server.start()
+        defer { Task { await server.stop() } }
+
+        let response = try rawRequest(
+            "{\"id\":\"handler-decode\",\"method\":\"daemon.config.get\"}",
+            socketPath: socketPath
+        )
+        let envelope = try decodeErrorEnvelope(response)
+        XCTAssertEqual(envelope.error?.code, -32603)
+        XCTAssertTrue(
+            envelope.error?.details.contains("error=") == true,
+            "handler-side decode details must identify a daemon error"
+        )
+    }
+
     /// Builds `{"id":"<id>","method":"daemon.health","pad":"<spaces>"}` padded
     /// with spaces inside the pad string so the payload is exactly
     /// `payloadBytes` raw UTF-8 bytes.

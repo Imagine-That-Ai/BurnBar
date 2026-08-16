@@ -66,7 +66,7 @@ final class WindowManager: ObservableObject {
             return
         }
 
-        let contentView = DashboardView(
+        let contentView = DashboardRootView(
             dataStore: dataStore,
             aggregator: aggregator,
             accountManager: accountManager,

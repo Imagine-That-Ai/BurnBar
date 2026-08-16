@@ -29,6 +29,9 @@ public enum BurnBarFleetProbeConstants {
     /// probe typed (`degraded(reason: ... timed out ...)`) and the tick
     /// continues on cadence — a hung signal path never stalls the snapshot.
     public static let perProbeTimeoutSeconds: TimeInterval = 2.0
+    /// Hermes applies the same two-second budget to its complete sequence of
+    /// signal reads, rather than granting two seconds to each file.
+    public static let hermesProbeBudgetSeconds: TimeInterval = 2.0
 }
 
 /// Read-only process liveness checks. The mission never signals, kills, or
@@ -61,8 +64,8 @@ public enum BurnBarFleetProcessLiveness: Sendable {
     }
 
     /// Pid-reuse guard (documented in BURNBAR_FLEET_SIGNALS.md): the pid is
-    /// alive AND, when the signal file records a process start time, the
-    /// current process started at or before the recorded start. A process
+    /// alive AND, when the signal file records a start time, the current
+    /// process started at or before the recorded start. A process
     /// that started after the file's record is a reused pid and is treated
     /// as dead. A missing or unqueryable record skips the guard (kill -0
     /// decides). The small tolerance absorbs clock granularity between the
@@ -78,54 +81,6 @@ public enum BurnBarFleetProcessLiveness: Sendable {
 /// Small JSON helpers for probe signal parsing. Probes parse only declared
 /// signal files; malformed shapes degrade typed (never fabricated liveness).
 public enum BurnBarFleetProbeJSON {
-    /// Reads and parses a JSON document at `path`. Throws when the file is
-    /// unreadable or the content is not valid JSON.
-    public static func readJSON(at path: String) throws -> Any {
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        return try JSONSerialization.jsonObject(with: data)
-    }
-
-    /// Bounded JSON read (per-probe timeout seam, VAL-FLEET-019): opens the
-    /// file non-blocking and polls for readability up to `timeoutSeconds`,
-    /// then reads and parses. A blocking path (FIFO) or a read that exceeds
-    /// the bound throws `BurnBarFleetProbeReadError.timedOut` so the probe
-    /// degrades typed without stalling the tick.
-    public static func readJSONBounded(
-        at path: String,
-        timeoutSeconds: TimeInterval = BurnBarFleetProbeConstants.perProbeTimeoutSeconds
-    ) throws -> Any {
-        let fileDescriptor = open(path, O_RDONLY | O_NONBLOCK)
-        guard fileDescriptor >= 0 else {
-            throw BurnBarFleetProbeReadError.unreadable(errno)
-        }
-        defer { close(fileDescriptor) }
-
-        var pollDescriptor = pollfd(fd: fileDescriptor, events: Int16(POLLIN), revents: 0)
-        let timeoutMilliseconds = Int32(max(1, Int(timeoutSeconds * 1000)))
-        let pollResult = poll(&pollDescriptor, 1, timeoutMilliseconds)
-        guard pollResult > 0 else {
-            throw BurnBarFleetProbeReadError.timedOut
-        }
-
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 16 * 1024)
-        while true {
-            let bytesRead = read(fileDescriptor, &buffer, buffer.count)
-            if bytesRead == 0 {
-                break
-            }
-            if bytesRead < 0 {
-                if errno == EINTR {
-                    continue
-                }
-                throw BurnBarFleetProbeReadError.unreadable(errno)
-            }
-            data.append(contentsOf: buffer.prefix(bytesRead))
-        }
-
-        return try JSONSerialization.jsonObject(with: data)
-    }
-
     /// Maps a bounded-read failure to a probe-health reason string. The
     /// timeout case is the documented VAL-FLEET-019 degradation; other
     /// failures are reported as unreadable.

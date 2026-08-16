@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """
-BurnBar local MCP: read-only access to the BurnBar macOS SQLite database (conversations, usage).
+BurnBar local MCP: read-only SQLite (conversations, usage) plus Live Agent Fleet
+board (snapshot / can_launch / sidecar presence). Does not edit the daemon.
 
 Install: ./setup.sh  (creates .venv and installs deps)
 
-Configure Cursor / Claude Desktop to run:
+Configure Cursor / Claude Desktop / Codex / Grok / Pi to run:
   command: <repo>/tools/burnbar-mcp/.venv/bin/python
   args: [ "<repo>/tools/burnbar-mcp/server.py" ]
 
 Optional env:
-  BURNBAR_DB_PATH — override path to burnbar.sqlite (default: ~/Library/Application Support/BurnBar/burnbar.sqlite)
+  BURNBAR_DB_PATH — override path to burnbar.sqlite
+  BURNBAR_DAEMON_SUPPORT_DIR — Application Support dir (default BurnBar)
+  BURNBAR_FLEET_SNAPSHOT_PATH / BURNBAR_FLEET_PRESENCE_PATH / BURNBAR_DAEMON_SOCKET
+  BURNBAR_FLEET_PEER_DIR — extra snapshot JSON files (local overlay until CloudSync)
 """
 
 from __future__ import annotations
@@ -22,6 +26,8 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+
+import fleet
 
 mcp = FastMCP("burnbar-local")
 
@@ -231,6 +237,45 @@ def burnbar_chat_messages(limit: int = 80) -> str:
         )
         rows = [_row_to_dict(r) for r in cur.fetchall()]
     return json.dumps({"messages": list(reversed(rows))}, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_fleet_snapshot() -> str:
+    """Live Agent Fleet board: who is running, on which repo, machine CPU/mem/disk. Reads fleet-snapshot.json (fallback daemon.fleet.snapshot). Does not write the daemon."""
+    summary = fleet.summarize_snapshot(fleet.load_snapshot())
+    return json.dumps(summary, indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_fleet_can_launch(job: str) -> str:
+    """Advice only: go / wait / no for a proposed job (xcodebuild, app-ui, npm-test-full, vitest, daemon-socket, swift-package-test). Uses fleet snapshot + sidecar presence. Never kills processes."""
+    return json.dumps(fleet.can_launch(job), indent=2, default=str)
+
+
+@mcp.tool()
+def burnbar_fleet_presence_record(
+    agent_id: str,
+    task: str,
+    cwd: str = "",
+    intended_tests: str = "",
+    host_id: str = "",
+    ttl_seconds: int = 300,
+    session_ref: str = "",
+) -> str:
+    """Post a short intent row (sidecar fleet-presence.json). Not daemon.fleet.presence.record — that RPC waits until after Droid M5. TTL default 300s."""
+    try:
+        entry = fleet.record_presence(
+            agent_id=agent_id,
+            host_id=host_id,
+            cwd=cwd,
+            task=task,
+            intended_tests=intended_tests,
+            ttl_seconds=ttl_seconds,
+            session_ref=session_ref,
+        )
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)}, indent=2)
+    return json.dumps({"recorded": entry, "path": str(fleet.presence_path())}, indent=2)
 
 
 def main() -> None:

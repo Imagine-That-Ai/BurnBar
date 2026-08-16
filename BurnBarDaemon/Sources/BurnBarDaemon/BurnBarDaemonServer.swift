@@ -229,6 +229,7 @@ public actor BurnBarDaemonServer {
 
 extension BurnBarDaemonServer {
     private func responseData(for requestData: Data) async -> Data {
+        var enteredDispatch = false
         do {
             let decoder = JSONDecoder()
             let incomingRequest = try decoder.decode(IncomingRequestEnvelope.self, from: requestData)
@@ -272,6 +273,7 @@ extension BurnBarDaemonServer {
             }
 
             let request = BurnBarRPCRequestEnvelope(id: incomingRequest.id, method: method)
+            enteredDispatch = true
             return try await dispatch(
                 method: method,
                 request: request,
@@ -294,7 +296,7 @@ extension BurnBarDaemonServer {
             let recoveredID = BurnBarRPCErrorEnvelope.recoverRequestID(from: requestData)
             let code: Int
             let details: String
-            if error is DecodingError {
+            if error is BurnBarRPCRequestShapeDecodingError {
                 if (try? JSONDecoder().decode(IncomingRequestEnvelope.self, from: requestData)) != nil {
                     // Well-formed envelope whose params fail to decode.
                     code = BurnBarRPCErrorCode.invalidParams
@@ -305,6 +307,20 @@ extension BurnBarDaemonServer {
                     details = "expected_envelope={\"id\":string,\"method\":string,\"protocolVersion\"?:int}"
                 } else {
                     // Not valid JSON at all.
+                    code = BurnBarRPCErrorCode.parseError
+                    details = "expected=json_object; received=non_json_bytes"
+                }
+            } else if enteredDispatch {
+                // A handler-side DecodingError (for example, malformed
+                // persisted config) is a daemon failure, not client params.
+                code = BurnBarRPCErrorCode.internalError
+                details = "error=\(error)"
+            } else if error is DecodingError {
+                // This is the initial envelope decode, before dispatch.
+                if BurnBarRPCErrorEnvelope.isValidJSONObject(requestData) {
+                    code = BurnBarRPCErrorCode.invalidRequest
+                    details = "expected_envelope={\"id\":string,\"method\":string,\"protocolVersion\"?:int}"
+                } else {
                     code = BurnBarRPCErrorCode.parseError
                     details = "expected=json_object; received=non_json_bytes"
                 }
@@ -386,7 +402,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .configGet:
-            let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+            let typedRequest = try decodeRequest(BurnBarRPCRequestEnvelope.self, from: requestData, decoder: decoder)
             _ = BurnBarConfigGetRequest()
             let response = BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,
@@ -395,7 +411,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .configUpdate:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarConfigUpdateRequest>.self,
                 from: requestData
             )
@@ -407,7 +423,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .usageRecent:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRecentUsageRequest>.self,
                 from: requestData
             )
@@ -419,7 +435,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .clientAttach:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarClientAttachRequest>.self,
                 from: requestData
             )
@@ -438,7 +454,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .clientDetach:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarClientDetachRequest>.self,
                 from: requestData
             )
@@ -450,7 +466,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .clientClaimControl:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarClientClaimControlRequest>.self,
                 from: requestData
             )
@@ -462,7 +478,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .runCreate:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunCreateRequest>.self,
                 from: requestData
             )
@@ -473,7 +489,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .runList:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunListRequest>.self,
                 from: requestData
             )
@@ -484,7 +500,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .runGet:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunGetRequest>.self,
                 from: requestData
             )
@@ -495,7 +511,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .runPoll:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunPollRequest>.self,
                 from: requestData
             )
@@ -506,7 +522,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .runCancel:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunCancelRequest>.self,
                 from: requestData
             )
@@ -517,7 +533,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .runRetry:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarRunRetryRequest>.self,
                 from: requestData
             )
@@ -528,7 +544,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .workspaceExecuteTool:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarToolExecutionRequest>.self,
                 from: requestData
             )
@@ -539,7 +555,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .workspaceToolResult:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarToolResultSubmissionRequest>.self,
                 from: requestData
             )
@@ -550,7 +566,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .approvalRespond:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarApprovalRespondRequest>.self,
                 from: requestData
             )
@@ -561,7 +577,7 @@ extension BurnBarDaemonServer {
             )
             return encode(response)
         case .searchQuery:
-            let typedRequest = try decoder.decode(
+            let typedRequest = try decodeRequest(
                 BurnBarRPCRequestEnvelopeWithParams<BurnBarSearchQueryRequest>.self,
                 from: requestData
             )
@@ -939,7 +955,7 @@ extension BurnBarDaemonServer {
     /// and a params-bearing form are accepted. Pre-first-tick reads return
     /// the typed not-ready error — never a fabricated snapshot.
     private func handleFleetSnapshot(requestData: Data, decoder: JSONDecoder) async throws -> Data {
-        let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
+        let typedRequest = try decodeRequest(BurnBarRPCRequestEnvelope.self, from: requestData, decoder: decoder)
         let readState = await fleetService.readLatestSnapshot()
         switch readState {
         case .notReady:
@@ -949,6 +965,13 @@ extension BurnBarDaemonServer {
                 message:
                     "BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly.",
                 details: "state=not_ready; retry_after=first_tick"
+            )
+        case .degraded(let reason, _):
+            return BurnBarRPCErrorEnvelope.encodeErrorResponse(
+                id: typedRequest.id,
+                code: BurnBarRPCErrorCode.internalError,
+                message: "BurnBar fleet snapshot tick degraded: \(reason)",
+                details: "state=current_tick_degraded; reason=\(reason)"
             )
         case .ready(let snapshot):
             let response = BurnBarRPCResponseEnvelope(

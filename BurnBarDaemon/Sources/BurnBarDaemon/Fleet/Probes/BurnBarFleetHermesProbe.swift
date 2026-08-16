@@ -38,14 +38,15 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
     public let rootPath: String
     /// Heartbeat freshness window (defaults to the pinned 120 s constant).
     public let heartbeatFreshnessSeconds: TimeInterval
-    /// Per-probe timeout for signal-file reads (VAL-FLEET-019 seam).
+    /// Whole-probe budget for the serial signal-file reads (VAL-FLEET-019
+    /// seam). The same monotonic deadline is passed through every reader.
     public let readTimeoutSeconds: TimeInterval
 
     public init(
         agentID: BurnBarFleetAgentID = .hermes,
         rootPath: String,
         heartbeatFreshnessSeconds: TimeInterval = BurnBarFleetProbeConstants.hermesHeartbeatFreshnessSeconds,
-        readTimeoutSeconds: TimeInterval = BurnBarFleetProbeConstants.perProbeTimeoutSeconds
+        readTimeoutSeconds: TimeInterval = BurnBarFleetProbeConstants.hermesProbeBudgetSeconds
     ) {
         self.agentID = agentID
         self.rootPath = rootPath
@@ -64,15 +65,14 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
             return rootIssue
         }
 
-        let gatewayPidPath = rootURL.appendingPathComponent("gateway.pid").path
-        let heartbeatPath = rootURL.appendingPathComponent("state/gateway.heartbeat").path
-        let gatewayStatePath = rootURL.appendingPathComponent("gateway_state.json").path
-        let processesPath = rootURL.appendingPathComponent("processes.json").path
-
-        let gatewayPid = Self.readGatewayPid(at: gatewayPidPath, timeoutSeconds: readTimeoutSeconds)
-        let heartbeat = Self.readHeartbeat(at: heartbeatPath, timeoutSeconds: readTimeoutSeconds)
-        let gatewayState = Self.readGatewayState(at: gatewayStatePath, timeoutSeconds: readTimeoutSeconds)
-        let processes = Self.readProcesses(at: processesPath, timeoutSeconds: readTimeoutSeconds)
+        let rawSignals = Self.readSignals(
+            rootURL: rootURL,
+            timeoutSeconds: readTimeoutSeconds
+        )
+        let gatewayPid = rawSignals.gatewayPid
+        let heartbeat = rawSignals.heartbeat
+        let gatewayState = rawSignals.gatewayState
+        let processes = rawSignals.processes
 
         var sources: [BurnBarFleetSignalSource] = []
         var healthReasons: [String] = []

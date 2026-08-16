@@ -15,6 +15,10 @@ public actor BurnBarFleetService {
     public enum ReadState: Sendable {
         case notReady
         case ready(BurnBarFleetSnapshot)
+        /// The most recent tick failed validation. The previous snapshot is
+        /// retained for diagnostics only and is not silently served as fresh
+        /// truth by the RPC layer.
+        case degraded(reason: String, previousSnapshot: BurnBarFleetSnapshot?)
     }
 
     /// The tick interval and the snapshot's reported `cadenceSeconds` both come
@@ -40,6 +44,7 @@ public actor BurnBarFleetService {
 
     private let logger: BurnBarDaemonLogger
     private var latestSnapshot: BurnBarFleetSnapshot?
+    private var currentTickDegradation: String?
     private var tickTask: Task<Void, Never>?
     private var isRunning = false
     private var completedTickCount = 0
@@ -83,6 +88,9 @@ public actor BurnBarFleetService {
     /// The latest completed snapshot, or the typed not-ready state before the
     /// first tick completes.
     public func readLatestSnapshot() -> ReadState {
+        if let currentTickDegradation {
+            return .degraded(reason: currentTickDegradation, previousSnapshot: latestSnapshot)
+        }
         if let latestSnapshot {
             return .ready(latestSnapshot)
         }
@@ -141,11 +149,13 @@ public actor BurnBarFleetService {
             completedTickCount += 1
             logProbeDegradations(in: persisted)
             latestSnapshot = persisted
+            currentTickDegradation = nil
             return persisted
         }
         completedTickCount += 1
         logProbeDegradations(in: snapshot)
         latestSnapshot = snapshot
+        currentTickDegradation = nil
         return snapshot
     }
 
@@ -191,8 +201,14 @@ public actor BurnBarFleetService {
             do {
                 _ = try await buildOnce()
             } catch {
-                // A failed build never fabricates a snapshot: the previous
-                // completed snapshot (if any) keeps serving.
+                currentTickDegradation = Self.tickDegradationReason(for: error)
+                logger.error(
+                    "fleet_tick_failed",
+                    metadata: [
+                        "error_type": String(describing: type(of: error)),
+                        "daemon_pid": "\(ProcessInfo.processInfo.processIdentifier)"
+                    ]
+                )
             }
 
             // Anchor the next tick to the monotonic schedule. Sleeping for a
@@ -208,5 +224,13 @@ public actor BurnBarFleetService {
                 }
             }
         }
+    }
+
+    private static func tickDegradationReason(for error: Error) -> String {
+        if let builderError = error as? BurnBarFleetSnapshotBuilderError,
+           let description = builderError.errorDescription {
+            return description
+        }
+        return "Fleet snapshot tick failed due to a daemon-side validation error."
     }
 }

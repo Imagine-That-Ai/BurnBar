@@ -21,6 +21,37 @@ private enum BurnBarPerformanceTimer {
     }
 }
 
+// #region agent log
+private enum AgentDebugLog86435e {
+    static let path = "/Users/albertonunez/Developer/AgentLens/.cursor/debug-86435e.log"
+    static let sessionId = "86435e"
+
+    static func append(hypothesisId: String, location: String, message: String, data: [String: Any]) {
+        let payload: [String: Any] = [
+            "sessionId": sessionId,
+            "hypothesisId": hypothesisId,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": Int(Date().timeIntervalSince1970 * 1000)
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let json = try? JSONSerialization.data(withJSONObject: payload),
+              let line = String(data: json, encoding: .utf8) else { return }
+        let url = URL(fileURLWithPath: path)
+        let out = Data((line + "\n").utf8)
+        if FileManager.default.fileExists(atPath: path),
+           let h = try? FileHandle(forWritingTo: url) {
+            defer { try? h.close() }
+            try? h.seekToEnd()
+            try? h.write(contentsOf: out)
+        } else {
+            try? out.write(to: url)
+        }
+    }
+}
+// #endregion
+
 // MARK: - Search Result
 
 struct SearchResult: Identifiable {
@@ -1848,15 +1879,44 @@ final class SearchService {
         }
 
         var aggregateCount: Int?
+        var aggregateCountError: String?
         if plan.mode == .mixed || plan.mode == .aggregate, !plan.aggregatePatterns.isEmpty {
-            aggregateCount = (try? dataStore.countOccurrencesInConversationFullText(
-                patterns: plan.aggregatePatterns,
-                provider: filters.provider,
-                projectName: filters.projectName,
-                dateRange: filters.dateRange,
-                conversationSources: filters.conversationSources
-            )) ?? 0
+            do {
+                aggregateCount = try dataStore.countOccurrencesInConversationFullText(
+                    patterns: plan.aggregatePatterns,
+                    provider: filters.provider,
+                    projectName: filters.projectName,
+                    dateRange: filters.dateRange,
+                    conversationSources: filters.conversationSources
+                )
+            } catch {
+                aggregateCountError = String(describing: error)
+                aggregateCount = 0
+            }
         }
+        // #region agent log
+        let dr = filters.dateRange
+        let drDesc: String = {
+            guard let dr else { return "nil" }
+            let f = ISO8601DateFormatter()
+            return "\(f.string(from: dr.lowerBound))–\(f.string(from: dr.upperBound))"
+        }()
+        AgentDebugLog86435e.append(
+            hypothesisId: "H1-H5",
+            location: "SearchService.runBurnBarQuery",
+            message: "aggregate_snapshot",
+            data: [
+                "queryCharCount": query.text.count,
+                "planMode": String(describing: plan.mode),
+                "planNote": plan.note ?? "",
+                "aggregatePatterns": plan.aggregatePatterns,
+                "dateRange": drDesc,
+                "inferredWindowSet": aggregateWindowDescription != nil,
+                "aggregateCount": aggregateCount ?? -1,
+                "aggregateError": aggregateCountError ?? ""
+            ]
+        )
+        // #endregion
         let lexicalTrimmed = plan.lexicalFTSQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         let subQuery = RetrievalQuery(
             text: plan.semanticText,

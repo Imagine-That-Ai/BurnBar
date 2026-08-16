@@ -18,8 +18,8 @@ extension BurnBarDaemonServer {
         // "daemon.fleet.orchestrator.get"}` and a params-bearing form are
         // accepted; a present-but-wrong-typed params payload is rejected
         // typed (-32602) rather than silently accepted.
-        let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
-        try Self.validateOptionalParams(
+        let typedRequest = try decodeRequest(BurnBarRPCRequestEnvelope.self, from: requestData, decoder: decoder)
+        try validateOptionalParams(
             requestData: requestData,
             decoder: decoder,
             paramsType: BurnBarFleetOrchestratorGetRequest.self
@@ -41,9 +41,10 @@ extension BurnBarDaemonServer {
         // (-32602). Invalid designations (unknown kind, agent id outside the
         // declared roster) are rejected typed and the stored state stays
         // unchanged (VAL-RPC-009).
-        let typedRequest = try decoder.decode(
+        let typedRequest = try decodeRequest(
             BurnBarRPCRequestEnvelopeWithParams<BurnBarFleetOrchestratorSetParams>.self,
-            from: requestData
+            from: requestData,
+            decoder: decoder
         )
         do {
             let updated = try await fleetService.setOrchestratorState(
@@ -64,9 +65,10 @@ extension BurnBarDaemonServer {
         // Validates the directive payload typed (the canonical validation
         // home is the control store — ORCH-029) and upserts the record keyed
         // by directive_id (retries never duplicate).
-        let typedRequest = try decoder.decode(
+        let typedRequest = try decodeRequest(
             BurnBarRPCRequestEnvelopeWithParams<BurnBarFleetDirectiveRecordRequest>.self,
-            from: requestData
+            from: requestData,
+            decoder: decoder
         )
         do {
             let recorded = try await fleetService.recordDirective(typedRequest.params.directive)
@@ -100,7 +102,7 @@ extension BurnBarDaemonServer {
     /// present but fails to decode as the method's typed params throws, which
     /// the caller maps to the typed invalid-params error (-32602, VAL-RPC-011)
     /// — a wrong-typed params payload is never silently accepted.
-    private static func validateOptionalParams<Params: Codable & Sendable>(
+    private func validateOptionalParams<Params: Codable & Sendable>(
         requestData: Data,
         decoder: JSONDecoder,
         paramsType: Params.Type
@@ -109,9 +111,10 @@ extension BurnBarDaemonServer {
               object["params"] != nil else {
             return
         }
-        _ = try decoder.decode(
+        _ = try decodeRequest(
             BurnBarRPCRequestEnvelopeWithParams<Params>.self,
-            from: requestData
+            from: requestData,
+            decoder: decoder
         )
     }
 }

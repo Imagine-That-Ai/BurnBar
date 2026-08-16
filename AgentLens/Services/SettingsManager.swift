@@ -14,6 +14,40 @@ enum IndexEmbeddingProviderID: String, CaseIterable, Codable {
     case openai
 }
 
+/// Selectable dashboard presentation. `classic` is the shipping `NavigationSplitView` surface;
+/// alternates are full-window redesigns the user can opt into from Settings. New alternates append
+/// a case here and a branch in `DashboardRootView`; everything else (the picker, persistence) adapts.
+enum DashboardLayout: String, CaseIterable, Identifiable {
+    case classic
+    case alternate3
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .classic: return "Classic"
+        case .alternate3: return "Alternate 3 · Liquid Glass"
+        }
+    }
+
+    /// One-line description shown beneath the picker.
+    var detail: String {
+        switch self {
+        case .classic:
+            return "The original sidebar dashboard with provider and model routes."
+        case .alternate3:
+            return "A single-canvas Liquid Glass surface — ember warmth layered over glass."
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .classic: return "sidebar.squares.left"
+        case .alternate3: return "circle.hexagongrid.fill"
+        }
+    }
+}
+
 @Observable
 @MainActor
 final class SettingsManager {
@@ -129,6 +163,11 @@ final class SettingsManager {
 
     /// Show spend in USD or total token volume (scaled to M/B).
     var usageDisplayMode: UsageDisplayMode {
+        didSet { save() }
+    }
+
+    /// Which dashboard surface the main window renders. Defaults to `.classic`.
+    var dashboardLayout: DashboardLayout {
         didSet { save() }
     }
 
@@ -385,6 +424,13 @@ final class SettingsManager {
             self.usageDisplayMode = .currency
         }
 
+        if let layoutRaw = defaults.string(forKey: "dashboardLayout"),
+           let layout = DashboardLayout(rawValue: layoutRaw) {
+            self.dashboardLayout = layout
+        } else {
+            self.dashboardLayout = .classic
+        }
+
         if defaults.object(forKey: "autoSessionSummariesEnabled") != nil {
             self.autoSessionSummariesEnabled = defaults.bool(forKey: "autoSessionSummariesEnabled")
         } else {
@@ -520,6 +566,7 @@ final class SettingsManager {
         defaults.set(cliAssistantAllowed, forKey: "cliAssistantAllowed")
         defaults.set(cliAssistantConsentShown, forKey: "cliAssistantConsentShown")
         defaults.set(usageDisplayMode.rawValue, forKey: "usageDisplayMode")
+        defaults.set(dashboardLayout.rawValue, forKey: "dashboardLayout")
 
         defaults.set(autoSessionSummariesEnabled, forKey: "autoSessionSummariesEnabled")
         defaults.set(summaryProviderOrderCSV, forKey: "summaryProviderOrderCSV")

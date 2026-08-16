@@ -9,7 +9,7 @@ final class BurnBarConfigStoreTests: XCTestCase {
         let snapshot = try await harness.configStore.snapshot()
 
         XCTAssertEqual(snapshot.providers.map(\.providerID), ["zai", "minimax"])
-        XCTAssertEqual(snapshot.providerSettings(id: "zai")?.preferredModelIDs, ["glm-5-turbo", "glm-5"])
+        XCTAssertEqual(snapshot.providerSettings(id: "zai")?.preferredModelIDs, ["glm-5-turbo", "glm-5-code", "glm-5"])
         XCTAssertEqual(snapshot.providerSettings(id: "minimax")?.preferredModelIDs, ["minimax-m2.7-highspeed"])
     }
 

@@ -48,6 +48,31 @@ final class BurnBarSearchPlannerTests: XCTestCase {
         XCTAssertLessThanOrEqual(r!.lowerBound, now)
         XCTAssertGreaterThanOrEqual(r!.upperBound, r!.lowerBound)
     }
+
+    func test_inferredDateRangeThisMonth() throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = try XCTUnwrap(cal.date(from: DateComponents(year: 2024, month: 3, day: 15, hour: 12)))
+        let r = BurnBarSearchTimeWindow.inferredDateRange(
+            from: "how many times this month",
+            now: now,
+            calendar: cal
+        )
+        XCTAssertNotNil(r)
+        let comps = cal.dateComponents([.year, .month, .day], from: r!.lowerBound)
+        XCTAssertEqual(comps.year, 2024)
+        XCTAssertEqual(comps.month, 3)
+        XCTAssertEqual(comps.day, 1)
+        XCTAssertLessThanOrEqual(r!.lowerBound, now)
+    }
+
+    func test_planSaidProfanityUsesTargetWordNotCalendarTokens() {
+        let plan = BurnBarSearchPlan.plan(userText: "how many times have i said fuck this month")
+        XCTAssertEqual(plan.mode, .mixed)
+        XCTAssertTrue(plan.aggregatePatterns.contains("fuck"))
+        XCTAssertFalse(plan.aggregatePatterns.contains("month"), "calendar token should not be a count pattern")
+        XCTAssertFalse(plan.aggregatePatterns.contains("said"), "helper verb should not be a count pattern")
+    }
 }
 
 // MARK: - Field Boosting Tests
