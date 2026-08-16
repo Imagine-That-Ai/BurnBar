@@ -512,7 +512,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
         errorCode === "unauthenticated" || errorCode.includes("unauthenticated");
 
       let friendlyMessage: string;
-      if (errorCode === "not-found" || (isFailedPrecondition && /expired/i.test(errorText))) {
+      if (errorCode === "not-found" || (isFailedPrecondition && /This link code has expired/i.test(errorText))) {
         friendlyMessage =
           "Link session not found or code expired. Please ensure you entered the exact code from your terminal.";
       } else if (isPermissionDenied && /Pro is required/.test(errorText)) {

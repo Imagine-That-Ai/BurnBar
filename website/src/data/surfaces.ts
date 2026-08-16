@@ -175,7 +175,7 @@ export const SURFACES: Surface[] = [
     status: "shipping",
     statusLabel: "Shipping",
     description:
-      "Three Model Context Protocol surfaces let Codex, Claude Code, Cursor, Droid, Kimi, Forge, and Hermes query your OpenBurnBar history as grounded evidence — local SQLite for free, encrypted hosted memory for Pro.",
+      "The three non-plugin Model Context Protocol surfaces let Codex, Claude Code, Cursor, Droid, Kimi, Forge, and Hermes query your OpenBurnBar history as grounded evidence — local SQLite for free, encrypted hosted memory for Pro. (The Cursor Marketplace plugin is a separate surface.)",
     bullets: [
       "Local Python MCP — 26 tools over your OpenBurnBar SQLite, read-mostly by default",
       "Hosted Remote MCP — live at https://mcp.burnbar.ai/mcp, 10 tools, BurnBar Cloud entitlement",

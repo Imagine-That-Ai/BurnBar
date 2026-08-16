@@ -94,16 +94,30 @@ assert.doesNotMatch(
   "link.astro must not duplicate functions/ prefix stripping"
 );
 
-// --- Relative order of the attestation sequence (whitespace tolerant): bind -> getIdToken(true) -> issueHighRiskActionNonce -> completeCliLink ---
-// The bind / refresh / nonce steps live in the attested helper; the target
-// callable invocation lives in link.astro, so the order is asserted across
-// both files concatenated.
-const sequence =
-  /bindAppCheckAttestation[\s\S]*?getIdToken\(\s*true\s*\)[\s\S]*?issueHighRiskActionNonce[\s\S]*?completeCliLink/;
+// --- Relative order of the attestation sequence, anchored on the helper code ---
+// The helper's file docstring also spells out the Mac order, so a whole-file
+// regex could pass on comments alone. Anchor the order checks on the
+// attestedCallable body (slice from `export async function attestedCallable`)
+// and on the bind body, where the real calls live:
+//   bind -> getIdToken(true) -> issueHighRiskActionNonce -> completeCliLink
+// with the target callable invocation asserted in link.astro above. A reordered
+// call sequence must fail.
+const attestedBody = helper.slice(helper.indexOf("export async function attestedCallable"));
 assert.match(
-  `${helper}\n${link}`,
-  sequence,
-  "the flow must show bind -> getIdToken(true) -> issueHighRiskActionNonce -> completeCliLink in order"
+  attestedBody,
+  /bindAppCheckAttestation\(\)[\s\S]*?issueHighRiskActionNonce\(\)/,
+  "attestedCallable must bind App Check before minting the high-risk nonce"
+);
+assert.doesNotMatch(
+  attestedBody,
+  /issueHighRiskActionNonce[\s\S]*?bindAppCheckAttestation/,
+  "issueHighRiskActionNonce must not precede bindAppCheckAttestation in attestedCallable"
+);
+const bindBody = helper.slice(helper.indexOf("async function bindAppCheckAttestation"));
+assert.match(
+  bindBody,
+  /httpsCallable\(functions,\s*"bindAppCheckAttestation"\)[\s\S]*?getIdToken\(\s*true\s*\)/,
+  "the bind step must force-refresh the ID token after binding the attestation"
 );
 
 // --- Incomplete codes never reach the callable ---
@@ -141,7 +155,7 @@ assert.match(
 // --- Distinct operator copy: expired-code failed-precondition (curated, not raw server text) ---
 assert.match(
   link,
-  /errorCode === "not-found"\s*\|\|\s*\(isFailedPrecondition\s*&&\s*\/expired\/i\.test\(errorText\)\)/,
+  /errorCode === "not-found"\s*\|\|\s*\(isFailedPrecondition\s*&&\s*\/This link code has expired\/i\.test\(errorText\)\)/,
   "expired-code failed-precondition must join the curated not-found/expired branch"
 );
 assert.match(
