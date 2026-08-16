@@ -2,9 +2,11 @@
 
 ## Default: free
 
-The nine required macOS gates (`app-pr-gate`, `daemon-pr-gate`, `domain-core`,
-`headless-app-build`, `pr-native-fast`) run on the in-house Apple Silicon fleet by
-default. Those runners cost nothing per job.
+The macOS product lanes (`app-pr-gate` and `headless-app-build` post-merge/nightly;
+`daemon-pr-gate`, `domain-core`, and `pr-native-fast` on the PR/merge path) still
+honor `MACOS_GATE_POOL`. Do not change that variable or `CI_POOL` in a workflow
+edit; the expressions below stay the policy. Those runners cost nothing per job
+on the free default.
 
 ```yaml
 runs-on: ${{ vars.MACOS_GATE_POOL == 'paid'
