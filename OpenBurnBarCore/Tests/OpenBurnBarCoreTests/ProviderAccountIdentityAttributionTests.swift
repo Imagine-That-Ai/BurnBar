@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import OpenBurnBarLogParsers
+@testable import OpenBurnBarAccountIdentity
 import OpenBurnBarKernel
 import OpenBurnBarSQLiteReader
 

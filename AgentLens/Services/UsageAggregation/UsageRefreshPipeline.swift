@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarAccountIdentity
 import OpenBurnBarCore
 
 // MARK: - Conversation Indexing Seam
@@ -39,7 +40,7 @@ struct UsageRefreshPipeline: Sendable {
     /// multi-seat installs can see which account burned the tokens. Applied in
     /// `parse`, before persistence, because attribution is part of a row's
     /// identity (it feeds the deterministic id and the upsert conflict target).
-    var accountAttributor: OpenBurnBarCore.ProviderAccountUsageAttributor?
+    var accountAttributor: ProviderAccountUsageAttributor?
 
     struct DiscoverResult: Sendable {
         var parserEntries: [(AgentProvider, any OpenBurnBarCore.LogParser)] = []

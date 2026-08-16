@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarAccountIdentity
 import OpenBurnBarCore
 
 // MARK: - Refresh Result Types
@@ -64,7 +65,7 @@ private enum ConversationIndexCheckpointToken {
 /// One instance, so the identity-observation throttle and the on-disk identity
 /// timeline are not duplicated between the full refresh and the
 /// single-provider refresh.
-let sharedAccountAttributor = OpenBurnBarCore.ProviderAccountUsageAttributor.live(
+let sharedAccountAttributor = ProviderAccountUsageAttributor.live(
     timelineFileURL: OpenBurnBarCore.OpenBurnBarAppPaths.live().providerAccountIdentityTimelineURL
 )
 
