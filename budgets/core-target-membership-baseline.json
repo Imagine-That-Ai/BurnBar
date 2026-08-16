@@ -49,7 +49,7 @@
     },
     "OpenBurnBarKernel": {
       "maxFiles": 185,
-      "maxLines": 52250,
+      "maxLines": 53200,
       "planned": true
     },
     "OpenBurnBarParserSupport": {
@@ -63,8 +63,8 @@
       "planned": true
     },
     "OpenBurnBarLogParsers": {
-      "maxFiles": 35,
-      "maxLines": 16700,
+      "maxFiles": 45,
+      "maxLines": 17200,
       "planned": true
     },
     "OpenBurnBarQuota": {

@@ -632,6 +632,14 @@ across 160 files, so the planned Kernel ceiling moves narrowly from 47,250 to 52
 force for any further Kernel growth; future bridge expansion requires decomposition or a
 separate reviewed ceiling change.
 
+**Safari + usage-memory + account-attribution rebase ceiling (2026-08-16):** rebasing
+the Safari candidate onto current main (usage-memory Kernel/LogParsers growth) and
+folding provider-account burn attribution (#2293) measures 52,940 Kernel LOC
+(164 files) and 16,977 LogParsers LOC (41 files). Kernel planned ceiling moves
+52,250 → 53,200 LOC (file ceiling stays 185). LogParsers planned ceilings move
+35 → 45 files and 16,700 → 17,200 LOC so the AccountIdentity resolvers/timeline
+can live next to the existing parsers. The deny-gate is otherwise unmodified.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated
