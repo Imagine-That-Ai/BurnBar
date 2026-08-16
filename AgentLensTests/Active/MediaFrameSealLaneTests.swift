@@ -133,7 +133,7 @@ final class MediaFrameSealLaneTests: XCTestCase {
             uid: "uid-seal",
             connectionID: "conn-seal",
             streamClass: .screenVideo,
-            heartbeatInterval: 3_600,
+            heartbeatInterval: 0,
             extraHeartbeatCapabilities: [],
             frameSealKey: frameSealKey
         )

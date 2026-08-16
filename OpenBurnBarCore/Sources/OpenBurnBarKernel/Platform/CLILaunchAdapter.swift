@@ -33,8 +33,6 @@ public enum CLILaunchAdapter {
     private struct ExecutableResolutionCacheKey: Hashable, Sendable {
         let cliType: SwitcherCLIProfileType
         let homeDirectory: String
-        let path: String
-        let shell: String
     }
 
     private static let executableResolutionCache = Locked<[ExecutableResolutionCacheKey: String]>([:])
@@ -141,13 +139,10 @@ public enum CLILaunchAdapter {
         }
 
         let fileManager = FileManager.default
-        let environment = environmentProvider()
         let homeDirectory = homeDirectoryProvider()
         let cacheKey = ExecutableResolutionCacheKey(
             cliType: cliType,
-            homeDirectory: homeDirectory,
-            path: environment["PATH"] ?? "",
-            shell: environment["SHELL"] ?? ""
+            homeDirectory: homeDirectory
         )
 
         if let cachedPath = executableResolutionCache.read()[cacheKey],
@@ -165,21 +160,6 @@ public enum CLILaunchAdapter {
         ) {
             executableResolutionCache.withLock { $0[cacheKey] = path }
             return URL(fileURLWithPath: path)
-        }
-
-        if let shellPath = resolveExecutableFromLoginShell(
-            named: cliType.executableName,
-            environment: environment,
-            fileManager: fileManager
-        ), isTrustedResolvedExecutable(
-            shellPath,
-            for: cliType,
-            environment: environment,
-            homeDirectory: homeDirectory,
-            fileManager: fileManager
-        ) {
-            executableResolutionCache.withLock { $0[cacheKey] = shellPath }
-            return URL(fileURLWithPath: shellPath)
         }
 
         if let path = firstExecutable(
@@ -283,29 +263,6 @@ public enum CLILaunchAdapter {
             return homeDir + "/" + String(path.dropFirst("${HOME}/".count))
         }
         return path
-    }
-
-    static func trustedExecutableSearchDirectories(
-        for cliType: SwitcherCLIProfileType,
-        environment: [String: String],
-        homeDirectory: String,
-        fileManager: FileManager = .default
-    ) -> [String] {
-        let explicitDirectories = cliType.trustedExecutablePaths.map {
-            URL(fileURLWithPath: expandPath($0, homeDirectory: homeDirectory))
-                .deletingLastPathComponent()
-                .path
-        }
-
-        return deduplicatedDirectories(
-            explicitDirectories
-            + standardExecutableSearchDirectories(homeDirectory: homeDirectory)
-            + ambientFallbackExecutableSearchDirectories(
-                for: cliType,
-                homeDirectory: homeDirectory,
-                fileManager: fileManager
-            )
-        )
     }
 
     private static func standardExecutableSearchDirectories(homeDirectory: String) -> [String] {
@@ -412,81 +369,6 @@ public enum CLILaunchAdapter {
         return directories
     }
 
-    private static func isTrustedResolvedExecutable(
-        _ path: String,
-        for cliType: SwitcherCLIProfileType,
-        environment: [String: String],
-        homeDirectory: String,
-        fileManager: FileManager = .default
-    ) -> Bool {
-        guard fileManager.isExecutableFile(atPath: path) else {
-            return false
-        }
-
-        let standardizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
-        let trustedPaths = cliType.trustedExecutablePaths.map {
-            URL(fileURLWithPath: expandPath($0, homeDirectory: homeDirectory)).standardizedFileURL.path
-        }
-        if trustedPaths.contains(standardizedPath) {
-            return true
-        }
-
-        let parentDirectory = URL(fileURLWithPath: standardizedPath)
-            .deletingLastPathComponent()
-            .standardizedFileURL
-            .path
-
-        return trustedExecutableSearchDirectories(
-            for: cliType,
-            environment: environment,
-            homeDirectory: homeDirectory,
-            fileManager: fileManager
-        ).contains(parentDirectory)
-    }
-
-    private static func resolveExecutableFromLoginShell(
-        named name: String,
-        environment: [String: String],
-        fileManager: FileManager = .default
-    ) -> String? {
-        let shellPath = environment["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
-        guard fileManager.isExecutableFile(atPath: shellPath) else {
-            return nil
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: shellPath)
-        process.arguments = ["-lic", "command -v -- \(shellQuoted(name)) 2>/dev/null"]
-        process.environment = environment
-        process.standardInput = FileHandle.nullDevice
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
-        }
-
-        guard process.terminationStatus == 0 else {
-            return nil
-        }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-
-        return output
-            .split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .reversed()
-            .first(where: { $0.hasPrefix("/") })
-    }
-
     private static func contentsOfDirectory(
         atPath path: String,
         appending suffix: String,
@@ -517,10 +399,6 @@ public enum CLILaunchAdapter {
 
             return standardized
         }
-    }
-
-    private static func shellQuoted(_ string: String) -> String {
-        "'" + string.replacingOccurrences(of: "'", with: "'\"'\"'") + "'"
     }
 
     /// Checks if a CLI executable is installed and available for launching.

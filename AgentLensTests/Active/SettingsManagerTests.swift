@@ -1926,13 +1926,15 @@ final class SettingsManagerTests: XCTestCase {
     }
 
     func test_timeRange_dateRange_today() {
-        let range = TimeRange.today.dateRange()
+        let calendar = Calendar.current
+        let now = calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: 16, hour: 14, minute: 30)
+        )!
+        let range = TimeRange.today.dateRange(now: now)
         XCTAssertNotNil(range)
 
-        let calendar = Calendar.current
-        XCTAssertTrue(calendar.isDateInToday(range!.lowerBound))
-        // Upper bound is exclusive — `startOfDay + 1 day == startOfTomorrow`.
-        XCTAssertTrue(calendar.isDateInTomorrow(range!.upperBound))
+        XCTAssertEqual(range!.lowerBound, calendar.startOfDay(for: now))
+        XCTAssertEqual(range!.upperBound, now)
     }
 
     func test_timeRange_dateRange_last7Days() {

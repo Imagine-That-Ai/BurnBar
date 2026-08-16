@@ -202,14 +202,33 @@ final class MercuryRouterTests: XCTestCase {
         matching predicate: (HermesRealtimeRelayFrame) -> Bool,
         timeout: TimeInterval = 10.0
     ) async throws -> HermesRealtimeRelayFrame {
+        let frames = try await waitForSentFrames(
+            on: stream,
+            minimumCount: 1,
+            timeout: timeout,
+            matching: predicate
+        )
+        return frames[0]
+    }
+
+    private func waitForSentFrames(
+        on stream: RecordingIrohStream,
+        minimumCount: Int,
+        timeout: TimeInterval = 10.0,
+        matching predicate: (HermesRealtimeRelayFrame) -> Bool
+    ) async throws -> [HermesRealtimeRelayFrame] {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if let frame = await stream.sentFrames.first(where: predicate) {
-                return frame
+            let frames = await stream.sentFrames.filter(predicate)
+            if frames.count >= minimumCount {
+                return frames
             }
             try await Task.sleep(nanoseconds: 20_000_000)
         }
-        XCTFail("Timed out waiting for matching Mercury frame")
+        let expected = minimumCount == 1
+            ? "matching Mercury frame"
+            : "\(minimumCount) matching Mercury frames"
+        XCTFail("Timed out waiting for \(expected)")
         throw NSError(domain: "MercuryRouterTests", code: 1)
     }
 
@@ -578,7 +597,8 @@ final class MercuryRouterTests: XCTestCase {
             stream: stream,
             uid: "u",
             connectionID: "c",
-            streamClass: .screenVideo
+            streamClass: .screenVideo,
+            heartbeatInterval: 0
         )
         let frameV2 = MediaFrameV2(
             kind: .videoNAL,
@@ -1025,12 +1045,17 @@ final class MercuryRouterTests: XCTestCase {
 
     func testControlStreamMirrorSinkEmitsHealthHeartbeatsWithoutVideoFrames() async throws {
         let stream = RecordingIrohStream()
+        let capabilityProbeCount = Locked(0)
         let sink = MercuryControlStreamMediaSink(
             stream: stream,
             uid: "u",
             connectionID: "c",
             streamClass: .screenVideo,
-            heartbeatInterval: 0.02
+            heartbeatInterval: 0.02,
+            streamingCapabilityProvider: {
+                capabilityProbeCount.withLock { $0 += 1 }
+                return MercuryRouterTestFixtures.localStreamingCapabilities
+            }
         )
         defer { Task { await sink.close() } }
 
@@ -1042,6 +1067,15 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(heartbeat.connectionId, "c")
         XCTAssertEqual(heartbeat.media?.presence?.capabilities.contains(MercuryPeer.Feature.mirrorHost.rawValue), true)
         XCTAssertEqual(heartbeat.media?.presence?.capabilities.contains(MediaStreamClass.screenVideo.rawValue), true)
+
+        _ = try await waitForSentFrames(on: stream, minimumCount: 2) { frame in
+            frame.type == .mediaPresenceHeartbeat
+        }
+        XCTAssertEqual(
+            capabilityProbeCount.read(),
+            1,
+            "stable local VideoToolbox capabilities must be captured once, not re-probed on every heartbeat"
+        )
     }
 
     func testCallInviteEntersCallRingingPhase() async {
@@ -2288,7 +2322,8 @@ final class MercuryRouterTests: XCTestCase {
             stream: stream,
             uid: "uid-1",
             connectionID: "conn-1",
-            streamClass: .screenVideo
+            streamClass: .screenVideo,
+            heartbeatInterval: 0
         )
         let payload = Data(repeating: 0x7A, count: 700_000)
         let source = MediaFrameV2(

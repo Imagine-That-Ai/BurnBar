@@ -1730,3 +1730,42 @@ Preserve the raw artifacts:
 `protected-db-cipher-integrity.txt`, plus the clean 4.17.0 result in
 `protected-db-cipher-integrity-sqlcipher-4.17.0.txt`. Keep the rollback bundle
 and protected snapshot intact.
+
+## 33. Mercury heartbeat capability caching and host-safe UI tests
+
+The August 16 app-suite profile exposed a process-lifetime cost outside the
+search benchmark itself. Each `MercuryControlStreamMediaSink` heartbeat
+re-ran the local VideoToolbox encoder capability probe every 2.5 seconds.
+Sinks retained by earlier tests therefore continued creating encoder probe
+sessions while the projection throughput guardrail ran. The contaminated test
+host reached approximately 87% CPU and 1.8 GB RSS, and the projection workload
+missed its 15-second ceiling by 589 ms.
+
+Local VideoToolbox streaming support is stable for the lifetime of the app
+process. `MercuryControlStreamMediaSink` now reads one process-cached
+`MercuryStreamingCapabilitySnapshot`, converts it to the wire representation
+once when the heartbeat task starts, and reuses that immutable value for later
+heartbeats. `close()` and `deinit` both cancel the heartbeat task. Tests that
+exercise only frame encoding, chunking, or sealing construct sinks with
+heartbeats disabled; the heartbeat-specific test injects a deterministic
+capability provider and proves that multiple beats perform exactly one probe.
+
+The same full-suite run found an Xcode 26 arm64e test-host crash while
+ViewInspector recursively traversed the Pixel Clock card's
+`ViewThatFits`/`DisclosureGroup` tree. The card now exposes a small semantic
+contract whose labels share the exact copy constants used by the rendered
+controls. The regression test asserts that contract and uses SwiftUI's native
+`ImageRenderer` for a fixed-size layout pass. This preserves coverage of the
+enabled setup path without relying on ViewInspector's private reflection for
+that crash-prone tree.
+
+Focused validation:
+
+```bash
+OPENBURNBAR_APP_TEST_ATTEMPTS=1 \
+./scripts/test-openburnbar-app.sh \
+  -only-testing:OpenBurnBarTests/MediaFrameSealLaneTests \
+  -only-testing:OpenBurnBarTests/MercuryRouterTests \
+  -only-testing:OpenBurnBarTests/OpenBurnBarSearchIntegrationHarnessTests/test_projectionPerf_queueLatencyAndThroughput_guardrails \
+  -only-testing:OpenBurnBarTests/PixelClockSettingsCardTests
+```

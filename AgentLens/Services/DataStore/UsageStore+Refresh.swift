@@ -82,9 +82,11 @@ extension UsageStore {
         }
     }
 
-    func fetchDashboardUsageSnapshot(loadedUsageLimit: Int) async throws -> DashboardUsageSnapshot {
+    func fetchDashboardUsageSnapshot(
+        loadedUsageLimit: Int,
+        now: Date = Date()
+    ) async throws -> DashboardUsageSnapshot {
         let calendar = Calendar.current
-        let now = Date()
         let todayStart = calendar.startOfDay(for: now)
 
         return try await dbQueue.read { db in
