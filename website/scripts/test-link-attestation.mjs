@@ -108,10 +108,15 @@ assert.match(
   /bindAppCheckAttestation\(\)[\s\S]*?issueHighRiskActionNonce\(\)/,
   "attestedCallable must bind App Check before minting the high-risk nonce"
 );
+// The reversed-order gate anchors on the call sites themselves (trailing
+// `()`): a future comment spelling the sequence in prose ("mint the nonce
+// before binding the attestation") must not spuriously fail. Only a real
+// reversed call `issueHighRiskActionNonce() ... bindAppCheckAttestation()`
+// trips it.
 assert.doesNotMatch(
   attestedBody,
-  /issueHighRiskActionNonce[\s\S]*?bindAppCheckAttestation/,
-  "issueHighRiskActionNonce must not precede bindAppCheckAttestation in attestedCallable"
+  /issueHighRiskActionNonce\(\)[\s\S]*?bindAppCheckAttestation\(\)/,
+  "an issueHighRiskActionNonce() call must not precede a bindAppCheckAttestation() call in attestedCallable"
 );
 const bindBody = helper.slice(helper.indexOf("async function bindAppCheckAttestation"));
 assert.match(
