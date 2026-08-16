@@ -358,7 +358,7 @@ enum ProviderSidebarLabel {
         guard let provider, !hasUsageData else { return primaryMetric }
         switch provider.supportLevel {
         case .unsupported:
-            return "Not tracked"
+            return "\(provider.supportLevel.label) / \(provider.dataConfidence.label)"
         case .partial:
             return "\(provider.dataConfidence.label) / no sessions yet"
         case .supported:

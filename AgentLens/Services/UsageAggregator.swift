@@ -171,7 +171,11 @@ final class UsageAggregator {
             do {
                 let result = try await parser.parse()
                 let usages = result.usages
-                var providerHealth: ParserHealth = usages.isEmpty ? .empty : .healthy(sessionCount: usages.count)
+                var providerHealth = makeParserHealth(
+                    provider: provider,
+                    usages: usages,
+                    transcriptParseHealth: result.transcriptParseHealth
+                )
                 allUsages.append(contentsOf: usages)
                 if settingsManager.conversationIndexingEnabled {
                     do {
@@ -256,7 +260,11 @@ final class UsageAggregator {
 
         do {
             let result = try await parser.parse()
-            var providerHealth: ParserHealth = result.usages.isEmpty ? .empty : .healthy(sessionCount: result.usages.count)
+            var providerHealth = makeParserHealth(
+                provider: provider,
+                usages: result.usages,
+                transcriptParseHealth: result.transcriptParseHealth
+            )
             try dataStore.insert(result.usages)
             if settingsManager.conversationIndexingEnabled {
                 do {
@@ -297,6 +305,22 @@ final class UsageAggregator {
                 parserImportError = "Failed to persist parser/import health: \(error.localizedDescription)"
             }
         }
+    }
+}
+
+private extension UsageAggregator {
+    func makeParserHealth(
+        provider: AgentProvider,
+        usages: [TokenUsage],
+        transcriptParseHealth: TranscriptParseHealth?
+    ) -> ParserHealth {
+        guard let transcriptParseHealth, transcriptParseHealth.isDegraded else {
+            return usages.isEmpty ? .empty : .healthy(sessionCount: usages.count)
+        }
+        return .degraded(
+            sessionCount: usages.count,
+            error: "\(provider.displayName) transcript parse health degraded: \(transcriptParseHealth.summary)"
+        )
     }
 }
 
@@ -1944,7 +1968,7 @@ final class ModelFilterParser: LogParser, @unchecked Sendable {
 
     func parse() async throws -> ParseResult {
         let sessionsPath = ParserRootResolver.resolvedLogDirectory(
-            for: .factory,
+            for: provider,
             environment: environment
         )
         let sessionsURL = URL(fileURLWithPath: sessionsPath)

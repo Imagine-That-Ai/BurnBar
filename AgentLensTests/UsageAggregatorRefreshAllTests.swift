@@ -28,11 +28,12 @@ import XCTest
 @MainActor
 final class UsageAggregatorRefreshAllTests: XCTestCase {
 
+    private static var cachedRealSupportManifest: [String: RecursiveFileManifestEntry]?
     private var tempRoot: URL!
     private var rootsDir: URL!
     private var appSupportRoot: URL!
     private var homeDir: URL!
-    private var realSupportSnapshot: [String: Date] = [:]
+    private var realSupportSnapshot: [String: RecursiveFileManifestEntry] = [:]
 
     private var originalConversationIndexingEnabled: Bool?
     private var originalAutoSessionSummariesEnabled: Bool?
@@ -49,7 +50,13 @@ final class UsageAggregatorRefreshAllTests: XCTestCase {
         try FileManager.default.createDirectory(at: homeDir, withIntermediateDirectories: true)
         try makeFixtureTree()
 
-        realSupportSnapshot = snapshotSupportDir(BurnBarAppPaths.live().supportDirectory)
+        if let cached = Self.cachedRealSupportManifest {
+            realSupportSnapshot = cached
+        } else {
+            let manifest = RecursiveSupportManifest.make(for: BurnBarAppPaths.live().supportDirectory)
+            Self.cachedRealSupportManifest = manifest
+            realSupportSnapshot = manifest
+        }
 
         // Gate the summary sweep and artifact discovery (real defaults enable
         // both; the sweep would hit Ollama/cloud endpoints). Restored in tearDown.
@@ -108,6 +115,27 @@ final class UsageAggregatorRefreshAllTests: XCTestCase {
                        "Total row count must match the fixture baseline (19 providers × 1 session)")
     }
 
+    // MARK: M2 scrutiny — parser-specific health reaches the aggregator
+
+    func test_refreshAllPropagatesTranscriptHealthToParserHealth() async throws {
+        let store = try makeInMemoryStore()
+        let aggregator = makeAggregator(dataStore: store)
+
+        await aggregator.refreshAll()
+
+        guard case let .degraded(piCount, piError) = aggregator.parserHealth[.pi] else {
+            return XCTFail("Pi malformed-line health must surface as aggregator degradation")
+        }
+        XCTAssertEqual(piCount, 1)
+        XCTAssertTrue(piError.contains("malformedLines="), "Pi error should retain transcript health summary")
+
+        guard case let .degraded(grokCount, grokError) = aggregator.parserHealth[.grokCLI] else {
+            return XCTFail("Grok CLI malformed-line health must surface as aggregator degradation")
+        }
+        XCTAssertEqual(grokCount, 1)
+        XCTAssertTrue(grokError.contains("malformedLines="), "Grok error should retain transcript health summary")
+    }
+
     // MARK: VAL-PROV-018 — second refresh is idempotent
 
     func test_secondRefresh_isIdempotent_noDuplicateSessionIds() async throws {
@@ -150,10 +178,12 @@ final class UsageAggregatorRefreshAllTests: XCTestCase {
 
         await aggregator.refreshAll()
 
-        // The real app-support dir must be byte-for-byte untouched (same files,
-        // same modification dates).
+        // The real app-support dir must be recursively untouched. The manifest
+        // includes nested paths, entry types, sizes, timestamps, and content
+        // hashes so content-only writes cannot hide behind stable top-level
+        // names or metadata.
         let realSupport = BurnBarAppPaths.live().supportDirectory
-        XCTAssertEqual(snapshotSupportDir(realSupport), realSupportSnapshot,
+        XCTAssertEqual(RecursiveSupportManifest.make(for: realSupport), realSupportSnapshot,
                        "The real app-support dir must not be written by a hermetic refreshAll")
 
         // The injected temp app-support dir contains exactly the expected
@@ -224,20 +254,6 @@ final class UsageAggregatorRefreshAllTests: XCTestCase {
 
     private func perProviderCounts(_ usages: [TokenUsage]) -> [AgentProvider: Int] {
         Dictionary(grouping: usages, by: \.provider).mapValues(\.count)
-    }
-
-    private func snapshotSupportDir(_ url: URL) -> [String: Date] {
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: url.path) else {
-            return [:]
-        }
-        var result: [String: Date] = [:]
-        for file in files {
-            let attrs = try? FileManager.default.attributesOfItem(
-                atPath: url.appendingPathComponent(file).path
-            )
-            result[file] = attrs?[.modificationDate] as? Date
-        }
-        return result
     }
 
     // MARK: fixture tree (1 session per provider, synthetic content only)
@@ -416,10 +432,11 @@ final class UsageAggregatorRefreshAllTests: XCTestCase {
                 ]
             ]
         ], to: "grok/sessions/proj/grok-sess-1/updates.jsonl")
+        try write("{\"type\":\"bogus\"}", to: "grok/sessions/proj/grok-sess-1/events.jsonl")
     }
 
     private func writePiFixture() throws {
-        try writeJSONL([
+        try writeJSONLWithMalformedLine([
             [
                 "type": "session",
                 "version": 3,
@@ -468,6 +485,14 @@ final class UsageAggregatorRefreshAllTests: XCTestCase {
             return String(data: data, encoding: .utf8) ?? ""
         }
         try write(strings.joined(separator: "\n"), to: relativePath)
+    }
+
+    private func writeJSONLWithMalformedLine(_ lines: [[String: Any]], to relativePath: String) throws {
+        let strings = try lines.map { line -> String in
+            let data = try JSONSerialization.data(withJSONObject: line)
+            return String(data: data, encoding: .utf8) ?? ""
+        }
+        try write(strings.joined(separator: "\n") + "\n{\"type\":\"malformed\"", to: relativePath)
     }
 
     private func writeJSON(_ object: [String: Any], to relativePath: String) throws {

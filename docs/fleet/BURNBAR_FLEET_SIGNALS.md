@@ -1123,7 +1123,10 @@ generic injection seam (all defaults preserve the real-root behavior):
   `codex`, `kimi`, `cline`, `kilocode`, `roocode`, `forge`, `augment`,
   `hermes`, `grokbot`, `grok`, `pi`, `gemini`, `goose`; `zai`/`minimax` share
   the `factory` root), and per-provider `BURNBAR_FLEET_ROOT_<PROVIDER>` wins
-  over the base. `~`-relative paths expand under the override root; a path
+  over the base. This includes `BURNBAR_FLEET_ROOT_ZAI` and
+  `BURNBAR_FLEET_ROOT_MINIMAX`; without those keys the two model-filter
+  parsers intentionally share the Factory root. `~`-relative paths expand
+  under the override root; a path
   that merely shares a prefix with the root (e.g. `~/.forge.db`) is not
   stripped. The live process environment is consulted via `getenv` at
   resolution time; an explicitly passed `environment` dictionary wins.
@@ -1183,7 +1186,11 @@ generic injection seam (all defaults preserve the real-root behavior):
 - **Parse health:** each parser exposes `lastParseHealth`
   (`itemsScanned/itemsParsed/itemsSkipped/malformedLines`); malformed lines
   degrade the parse without dropping valid rows. Empty and zero-byte files
-  are silent no-ops.
+  are silent no-ops. Pi and Grok CLI include that transcript health in their
+  `ParseResult`; `UsageAggregator.parserHealth[provider]` maps a non-zero
+  `malformedLines` count to `degraded(sessionCount:error:)`, so the
+  registered-provider surface cannot report a non-empty but degraded parse as
+  healthy.
 
 ### Grok CLI sessions (`~/.grok/sessions/<url-encoded-project>/`)
 
@@ -1253,7 +1260,10 @@ generic injection seam (all defaults preserve the real-root behavior):
   keeps the last successfully decoded form).
 - **Timestamps:** ISO-8601 with optional fractional seconds; sessions with no
   parseable timestamps are skipped honestly (never epoch-zero).
-- **Parse health:** same `lastParseHealth` surface as PiParser.
+- **Parse health:** same `lastParseHealth` surface as PiParser. The
+  `ParseResult` carries this health through `UsageAggregator`, where any
+  non-zero `malformedLines` count is exposed as provider-level degraded
+  health even when valid usage rows were recovered.
 
 ### Fixture etiquette (binding for parser fixtures)
 

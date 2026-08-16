@@ -103,7 +103,11 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
         defer { lastParseHealth = health }
 
         guard fileManager.fileExists(atPath: sessionsRoot) else {
-            return ParseResult(usages: [], conversations: [])
+            return ParseResult(
+                usages: [],
+                conversations: [],
+                transcriptParseHealth: health
+            )
         }
 
         let rootURL = URL(fileURLWithPath: sessionsRoot, isDirectory: true)
@@ -164,7 +168,11 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
             }
         }
 
-        return ParseResult(usages: usages, conversations: conversations)
+        return ParseResult(
+            usages: usages,
+            conversations: conversations,
+            transcriptParseHealth: health
+        )
     }
 
     /// A session directory carries at least one of the session files
@@ -398,8 +406,8 @@ final class GrokCLIParser: LogParser, @unchecked Sendable {
                     found = true
                 }
             } else if Self.knownNonUsageEventTypes.contains(type) {
-                // Known benign event kind. The allowlist is name-only
-                // without shape validation: an allowlisted NAME with a
+                // Known benign event kind. The allowlist is strict
+                // NAME-AND-SHAPE validation: an allowlisted name with a
                 // malformed payload (missing required fields, wrong
                 // primitive types) is still wrong-shaped input and
                 // degrades the typed parse health (round-3 scrutiny,

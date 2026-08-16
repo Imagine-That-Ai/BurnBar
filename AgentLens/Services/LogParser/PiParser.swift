@@ -99,7 +99,11 @@ final class PiParser: LogParser, @unchecked Sendable {
         defer { lastParseHealth = health }
 
         guard fileManager.fileExists(atPath: sessionsRoot) else {
-            return ParseResult(usages: [], conversations: [])
+            return ParseResult(
+                usages: [],
+                conversations: [],
+                transcriptParseHealth: health
+            )
         }
 
         let rootURL = URL(fileURLWithPath: sessionsRoot, isDirectory: true)
@@ -136,7 +140,11 @@ final class PiParser: LogParser, @unchecked Sendable {
             }
         }
 
-        return ParseResult(usages: usages, conversations: conversations)
+        return ParseResult(
+            usages: usages,
+            conversations: conversations,
+            transcriptParseHealth: health
+        )
     }
 
     // MARK: - Transcript Parsing

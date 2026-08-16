@@ -5,6 +5,21 @@ import Foundation
 struct ParseResult: Sendable {
     let usages: [TokenUsage]
     let conversations: [ConversationRecord]
+    /// Parser-specific health captured during this parse. Parsers that expose
+    /// richer diagnostics (currently Pi and Grok CLI) populate it so the
+    /// registered UsageAggregator surface cannot turn a degraded transcript
+    /// into a misleading healthy provider state.
+    let transcriptParseHealth: TranscriptParseHealth?
+
+    init(
+        usages: [TokenUsage],
+        conversations: [ConversationRecord],
+        transcriptParseHealth: TranscriptParseHealth? = nil
+    ) {
+        self.usages = usages
+        self.conversations = conversations
+        self.transcriptParseHealth = transcriptParseHealth
+    }
 }
 
 // MARK: - Log Parser Protocol

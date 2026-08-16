@@ -80,6 +80,64 @@ enum ProviderDetailMetrics {
     }
 }
 
+/// Composes all provider-detail fallback copy and section visibility decisions
+/// in one route-level value. Keeping this at the detail-route boundary prevents
+/// the header, analytics gate, and empty-session section from drifting apart
+/// for zero-data providers.
+struct ProviderDetailRoutePresentation: Equatable {
+    let headerSubtitle: String
+    let headerMetrics: [ProviderDetailMetric]
+    let emptyMessage: String
+    let emptyIconName: String
+    let showsAnalytics: Bool
+
+    static func make(
+        provider: AgentProvider,
+        usages: [TokenUsage],
+        displayMode: UsageDisplayMode,
+        topModelName: String,
+        totalTokens: String
+    ) -> ProviderDetailRoutePresentation {
+        let emptyMessage: String
+        switch provider.supportLevel {
+        case .unsupported:
+            emptyMessage = [
+                "\(provider.supportLevel.label) • \(provider.dataConfidence.label):",
+                "\(provider.displayName) does not expose token usage data yet."
+            ].joined(separator: " ")
+        case .partial:
+            emptyMessage = [
+                "\(provider.supportLevel.label) • \(provider.dataConfidence.label):",
+                "No \(provider.displayName) sessions found at \(provider.logDirectory).",
+                "Data will be estimated when available."
+            ].joined(separator: " ")
+        case .supported:
+            emptyMessage = [
+                "\(provider.supportLevel.label):",
+                "No \(provider.displayName) sessions found.",
+                "Check that \(provider.logDirectory) exists and contains session files."
+            ].joined(separator: " ")
+        }
+
+        return ProviderDetailRoutePresentation(
+            headerSubtitle: ProviderDetailMetrics.headerSubtitle(
+                provider: provider,
+                usages: usages,
+                totalTokens: totalTokens
+            ),
+            headerMetrics: ProviderDetailMetrics.headerMetrics(
+                provider: provider,
+                usages: usages,
+                displayMode: displayMode,
+                topModelName: topModelName
+            ),
+            emptyMessage: emptyMessage,
+            emptyIconName: provider.supportLevel == .unsupported ? "eye.slash" : "clock",
+            showsAnalytics: !usages.isEmpty
+        )
+    }
+}
+
 // MARK: - Provider Card
 
 struct ProviderCard: View {
@@ -255,7 +313,7 @@ struct ProviderDashboardView: View {
                     dataStore: dataStore
                 )
 
-                if !usages.isEmpty {
+                if routePresentation.showsAnalytics {
                     analyticsDeck
                 }
 
@@ -311,12 +369,12 @@ struct ProviderDashboardView: View {
                             .font(DesignSystem.Typography.display)
                             .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                        Text(headerSubtitle)
+                        Text(routePresentation.headerSubtitle)
                             .font(DesignSystem.Typography.body)
                             .foregroundStyle(DesignSystem.Colors.textSecondary)
 
                         HStack(spacing: DesignSystem.Spacing.md) {
-                            ForEach(headerMetrics, id: \.label) { metric in
+                            ForEach(routePresentation.headerMetrics, id: \.label) { metric in
                                 providerMetric(label: metric.label, value: metric.value)
                             }
                         }
@@ -426,24 +484,13 @@ struct ProviderDashboardView: View {
         }
     }
 
-    private var emptyMessage: String {
-        switch provider.supportLevel {
-        case .unsupported:
-            return "\(provider.displayName) does not expose token usage data yet."
-        case .partial:
-            return "No \(provider.displayName) sessions found at \(provider.logDirectory). Data will be estimated when available."
-        case .supported:
-            return "No \(provider.displayName) sessions found. Check that \(provider.logDirectory) exists and contains session files."
-        }
-    }
-
     private var emptySessionsView: some View {
         VStack(spacing: DesignSystem.Spacing.md) {
-            Image(systemName: provider.supportLevel == .unsupported ? "eye.slash" : "clock")
+            Image(systemName: routePresentation.emptyIconName)
                 .font(.system(size: 32))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
 
-            Text(emptyMessage)
+            Text(routePresentation.emptyMessage)
                 .font(DesignSystem.Typography.body)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -469,20 +516,13 @@ struct ProviderDashboardView: View {
     /// from the canonical support/confidence labels (VAL-PROV-010, round-2
     /// scrutiny). Partial providers with no rows in the window get an honest
     /// "no sessions yet" note instead of a bare zero claim.
-    private var headerSubtitle: String {
-        ProviderDetailMetrics.headerSubtitle(
-            provider: provider,
-            usages: usages,
-            totalTokens: totalTokens
-        )
-    }
-
-    private var headerMetrics: [ProviderDetailMetric] {
-        ProviderDetailMetrics.headerMetrics(
+    var routePresentation: ProviderDetailRoutePresentation {
+        ProviderDetailRoutePresentation.make(
             provider: provider,
             usages: usages,
             displayMode: settingsManager.usageDisplayMode,
-            topModelName: topModelName
+            topModelName: topModelName,
+            totalTokens: totalTokens
         )
     }
 

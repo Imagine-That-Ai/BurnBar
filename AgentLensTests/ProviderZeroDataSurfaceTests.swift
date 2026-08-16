@@ -336,15 +336,20 @@ final class ProviderZeroDataSurfaceTests: XCTestCase {
         }
     }
 
-    func test_emptyUnsupportedProviderSidebarLabelIsNotTracked() {
+    func test_emptyUnsupportedProviderSidebarLabelUsesCanonicalLabels() {
         let label = ProviderSidebarLabel.metricLabel(
             provider: .grokBot,
             hasUsageData: false,
             primaryMetric: "$0.00"
         )
-        XCTAssertEqual(label, "Not tracked")
+        XCTAssertEqual(
+            label,
+            "\(ProviderSupportLevel.unsupported.label) / \(DataConfidence.unavailable.label)"
+        )
         XCTAssertFalse(label.contains("$0.00"))
         XCTAssertFalse(label.contains("0"))
+        XCTAssertTrue(label.contains(ProviderSupportLevel.unsupported.label))
+        XCTAssertTrue(label.contains(DataConfidence.unavailable.label))
     }
 
     func test_dataBearingProviderSidebarLabelKeepsPrimaryMetric() {
