@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `App build + test (AgentLens)` or `Mobile build + unit test`. The ten
   required branch-protection contexts are unchanged. `CI_POOL` /
   `MACOS_GATE_POOL` are unchanged.
+- **Domain Core control-plane trusted bytes refreshed** for the two files
+  that inventory change actually edited (`burnbar-ci-gate.yml` and
+  `governance/burnbar-ci-gate.json`). Promotion-contracts still fail closed
+  on helper drift, omitted workflow executables, loaded-identity forgery,
+  Firebase CLI shim swaps, and symlink escapes.
 
 ### Added - Metered usage-memory curation gateway (U4)
 - **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
