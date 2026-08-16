@@ -968,8 +968,18 @@ final class DataStore {
     convenience init() {
         let appDir = try! BurnBarMigration.prepareSupportDirectory()
         let dbPath = appDir.appendingPathComponent(BurnBarIdentity.databaseFileName).path
-        let queue = try! DatabaseQueue(path: dbPath)
+        let queue = try! Self.makeDatabaseQueue(path: dbPath)
         try! self.init(databaseQueue: queue)
+    }
+
+    /// Opens the app's primary database with a bounded SQLite busy timeout.
+    /// Multiple BurnBar instances may start together and race migrations; a
+    /// short wait lets the second instance observe the completed schema
+    /// instead of aborting on `SQLITE_BUSY`.
+    static func makeDatabaseQueue(path: String) throws -> DatabaseQueue {
+        var configuration = Configuration()
+        configuration.busyMode = .timeout(10)
+        return try DatabaseQueue(path: path, configuration: configuration)
     }
 
     init(

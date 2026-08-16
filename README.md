@@ -160,8 +160,11 @@ treated as unset by the daemon and documented readers. The daemon also
 accepts `--socket-path PATH`, which wins over the environment override.
 `BURNBAR_FLEET_ROOTS_DIR` points probes at hermetic fixture roots, and
 `BURNBAR_FLEET_CADENCE_SECONDS` changes both the ticker and the reported
-`cadenceSeconds` (the default is 15 seconds). Probe roots are read-only and
-`~/.factory/artifacts/` is never traversed.
+`cadenceSeconds` (the default is 15 seconds). Per-agent
+`BURNBAR_FLEET_ROOT_<AGENT>` values override the base root when a fixture
+needs a single-provider seam. `BURNBAR_FLEET_EVENT_RETENTION_SECONDS`
+overrides the default 24-hour event history only for accelerated validation.
+Probe roots are read-only and `~/.factory/artifacts/` is never traversed.
 
 The versioned fleet methods are:
 

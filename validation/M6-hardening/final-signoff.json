@@ -1,0 +1,121 @@
+{
+  "feature": "fleet-final-integration-signoff",
+  "branch": "feat/live-agent-fleet",
+  "validatedAt": "2026-08-16",
+  "documentationInventory": {
+    "status": "pass",
+    "documents": [
+      "README.md",
+      "docs/fleet/BURNBAR_FLEET_SIGNALS.md",
+      "docs/fleet/BURNBAR_FLEET_API.md"
+    ],
+    "rosterCount": 10,
+    "rpcMethodCount": 4,
+    "pathCount": 3,
+    "environmentSeamCount": 5,
+    "persistenceHealthPresent": true,
+    "socketEmptyValueNormalized": true,
+    "observed": "All three documents contain the exact ten-agent roster, four fleet RPC methods, socket/snapshot/database paths, five documented environment seams, and persistenceHealth. Implementation inventory resolved all methods, paths, seams, and the empty socket override guard."
+  },
+  "readmeExecutableSmoke": {
+    "status": "pass",
+    "observed": "README fleet block ran verbatim against a hermetic daemon: protocol=1, schema=1, agents=10, cadence=1, runningCount=0, persistenceHealth.kind=ok."
+  },
+  "qualityGates": [
+    {
+      "command": "swift test --package-path BurnBarCore",
+      "status": "pass",
+      "observed": "128 tests, 0 failures."
+    },
+    {
+      "command": "swift test --package-path BurnBarDaemon",
+      "status": "pass",
+      "observed": "386 tests, 0 failures."
+    },
+    {
+      "command": "xcodegen",
+      "status": "pass",
+      "observed": "Generated project includes DataStoreConcurrencyTests.swift."
+    },
+    {
+      "command": "xcodebuild build ... CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
+      "status": "pass",
+      "observed": "Unsigned Debug BurnBar build succeeded."
+    },
+    {
+      "command": "xcodebuild test ... focused fleet/orchestrator/delivery/concurrency classes",
+      "status": "pass",
+      "observed": "162 selected app tests, 0 failures; the standalone DataStoreConcurrencyTests rerun also passed 1/1."
+    },
+    {
+      "command": "swiftlint lint --quiet",
+      "status": "pass_no_new_errors",
+      "observed": "New DataStoreConcurrencyTests.swift is clean. DataStore.swift retains its pre-existing file/type/function/force-try/large-tuple error categories; repository configuration warnings are documented."
+    }
+  ],
+  "hardeningEvidence": [
+    "validation/M6-hardening/build-perf.txt",
+    "validation/M6-hardening/build-perf-with-history.txt",
+    "validation/M6-hardening/cadence.txt",
+    "validation/M6-hardening/read-storm.txt",
+    "validation/M6-hardening/socket-latency.txt",
+    "validation/M6-hardening/degradation-matrix.json",
+    "validation/M6-hardening/persistence-recovery.json",
+    "validation/M6-hardening/soak-hygiene.json"
+  ],
+  "compatibility": {
+    "status": "pass",
+    "oldDaemonResponse": {
+      "code": -32601,
+      "message": "Unsupported BurnBar RPC method 'daemon.fleet.snapshot'.",
+      "protocolVersion": 1,
+      "id": "compat-fleet"
+    },
+    "appBehavior": "FleetServiceTests.test_protocolMismatchMapsToDaemonDown maps an old-daemon method mismatch to typed daemonDown state without fabricated fleet rows."
+  },
+  "realRootSmoke": {
+    "status": "pass",
+    "observed": "Real-root daemon snapshot had the exact ten-row roster, runningCount=1 with factory-droid status=running/confidence=activeSessionFile, valid confidence/status combinations, and typed unavailable thermal and power reasons."
+  },
+  "concurrentAppInstances": {
+    "status": "pass",
+    "observed": "Two direct BurnBar app processes remained alive against one hermetic daemon; nine reads covered three generations with parity-consistent rows/counts, and read-only SQLite inspection found zero orchestrator_state and fleet_directives rows."
+  },
+  "firstVisitJourney": {
+    "status": "pass_with_documented_controller_fallback",
+    "steps": [
+      "Fresh hermetic Fleet loaded with ten declared rows and fixture counts, proven by prior M3/M5 FleetView captures and current app integration tests.",
+      "Daemon-authoritative orchestrator designation rendered and persisted, proven by M4 delivery-ui evidence and FleetViewModel tests.",
+      "Existing chat switched to orchestrator mode with fleet context, proven by M4 chat-ui evidence and ContextBuilder/ChatSessionController tests.",
+      "Deterministic PATH-shim proposal emitted canonical id/kind/target/payload without a pre-decision directive row.",
+      "Approval was recorded with decidedAt before delivery, proven by M4 Hermes evidence and ChatSessionControllerDeliveryFlowTests.",
+      "Loopback Hermes Branch A produced a delivered outcome; malformed/failure acknowledgements fail closed.",
+      "The documented external Python reader matched the completed RPC/file generation and agent statuses, proven by M5 cross-client parity evidence and current README smoke."
+    ],
+    "fallback": "The native image-only Send control did not submit through desktop-control; the documented deterministic controller/XCTest fallback supplied proposal, approval, and delivery behavior while Fleet and Hermes surfaces were captured directly."
+  },
+  "boundaryChecks": {
+    "extensionChanges": {
+      "status": "pass",
+      "observed": "git diff against feat/alternate3-liquid-glass-dashboard contains no extensions/burnbar/** paths."
+    },
+    "fleetServingPath": {
+      "status": "pass",
+      "observed": "Fleet implementation source has no Firebase, Firestore, CloudSync, or remote URL dependency; the only URL is the documented loopback Hermes gateway."
+    },
+    "protectedWIP": {
+      "status": "blocked_preexisting_checkpoint",
+      "observed": "The prior checkpoint commit 0389130847 already committed protected WIP content paths, including Alternate3Dashboard.swift and the adjudicated protected files. This session did not modify, stage, revert, or delete them.",
+      "requiredEscalation": "Restoring the protected-file invariant requires orchestrator/user authority because reverting or rewriting those paths would itself violate the mission's no-touch rule."
+    },
+    "branchAndPush": {
+      "status": "blocked_preexisting_remote",
+      "observed": "The branch is feat/live-agent-fleet, but origin/feat/live-agent-fleet already exists at HEAD and reflog records prior checkpoint pushes before this session. This session performed no push.",
+      "requiredEscalation": "CROSS-013 cannot be made true without remote-history cleanup or branch deletion, which was not authorized."
+    }
+  },
+  "socketEnvironmentRegression": {
+    "status": "pass",
+    "observed": "BurnBarDaemonSocketEnvironmentTests executed 2 tests: empty override falls back to support-derived socket, and non-empty override wins."
+  }
+}

@@ -40,6 +40,15 @@ directory, and therefore changes the default socket, `fleet.sqlite`, and
 `fleet-snapshot.json` paths together. A command-line `--socket-path` can point
 somewhere else without moving the fleet files.
 
+For hermetic daemon runs and validation fixtures,
+`BURNBAR_FLEET_ROOTS_DIR=/path/to/roots` redirects all ten read-only probe
+roots to `<path>/<agent-root-name>`; per-agent
+`BURNBAR_FLEET_ROOT_<AGENT>` overrides take precedence. The daemon's default
+cadence is 15 seconds and `BURNBAR_FLEET_CADENCE_SECONDS` changes both the
+ticker and the reported `cadenceSeconds`. Event history retains 24 hours by
+default; `BURNBAR_FLEET_EVENT_RETENTION_SECONDS` is the positive test seam
+for accelerated pruning.
+
 The examples below use this shell convention. It is intentional: a harness
 may substitute `BURNBAR_DAEMON_SOCKET_PATH`, or redirect
 `BURNBAR_DAEMON_SUPPORT_DIR` and let the default socket follow that directory,
