@@ -12,11 +12,12 @@
 # as validate.mjs), so the script also works from a /tmp copy of the plugin tree.
 #
 # Fail-closed reuse: when SIBLING_DIR already contains .git, the script requires the
-# clone's origin URL to identify the same repository as THIN_REPO (https, git@, or
-# any equivalent form of the same owner/repo path) and requires a fully clean working
-# tree (no staged, unstaged, or untracked files). Wrong-origin or dirty clones exit 1
-# before anything is copied. fetch / checkout / branch-resolution failures are never
-# swallowed (no `|| true`, no stderr suppression on those steps): they abort the run.
+# clone's origin URL (and any configured remote.origin.pushurl) to identify the same
+# repository as THIN_REPO (https, git@, or any equivalent form of the same owner/repo
+# path) and requires a fully clean working tree (no staged, unstaged, or untracked
+# files). Wrong-origin, wrong-pushurl, or dirty clones exit 1 before anything is
+# copied. fetch / checkout / branch-resolution failures are never swallowed
+# (no `|| true`, no stderr suppression on those steps): they abort the run.
 #
 # Before copying, every root entry except .git is removed — including untracked
 # leftovers that `git rm` would miss — so nothing outside the plugin tree can be
@@ -109,6 +110,21 @@ else
     if [ "${ORIGIN_MATCHES}" -ne 1 ]; then
       echo "publish-mirror: error: ${SIBLING_DIR} has no origin remote matching ${THIN_REPO}; refusing to reuse" >&2
     fi
+    exit 1
+  fi
+
+  # Gate 1b — a configured remote.origin.pushurl must identify the same
+  # repository as THIN_REPO. pushurl overrides url for pushes, so a sibling
+  # clone whose pushurl points anywhere else would silently push the mirror
+  # to the wrong repo. An unset pushurl is fine: url is used for pushes.
+  PUSHURL_MISMATCHES=0
+  while IFS= read -r pushurl; do
+    if [ "$(normalize_repo_id "${pushurl}")" != "${THIN_REPO_ID}" ]; then
+      echo "publish-mirror: error: ${SIBLING_DIR} remote.origin.pushurl '${pushurl}' does not match THIN_REPO '${THIN_REPO}'" >&2
+      PUSHURL_MISMATCHES=1
+    fi
+  done < <(git -C "${SIBLING_DIR}" config --get-all remote.origin.pushurl 2>/dev/null || true)
+  if [ "${PUSHURL_MISMATCHES}" -ne 0 ]; then
     exit 1
   fi
 
