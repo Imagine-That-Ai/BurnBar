@@ -39,13 +39,22 @@ const PROBE_PLACEHOLDER = 'not-a-real-openburnbar-token'; // documented probe-on
 const CLONE_PATH_TOKENS = ['/Users/', '/home/', '~/', 'BurnBar-cursor-plugin', 'tools/openburnbar-mcp', '.git'];
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SECRET_SHAPES = [
-  { re: /\bsk-[A-Za-z0-9]{8,}/, name: 'sk- secret shape' },
+  { re: /\bsk-[A-Za-z0-9-]{8,}/, name: 'sk- secret shape' },
   { re: /\bghp_[A-Za-z0-9]{20,}/, name: 'ghp_ token shape' },
   { re: /\bnpm_[A-Za-z0-9]{20,}/, name: 'npm_ token shape' },
   { re: /\bAKIA[0-9A-Z]{16}\b/, name: 'AWS access key shape' },
   { re: /\beyJ[A-Za-z0-9_-]{20,}\./, name: 'JWT shape' },
   { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, name: 'private key block' },
 ];
+// Trailing prose/markdown punctuation allowed after the placeholder value
+// (sentence `.` `,` `;`, code-span backtick, quotes, closing bracket).
+// Note `}` is deliberately NOT stripped: the placeholder itself ends with
+// `}` and must keep matching.
+const STRIP_BEARER_PUNCT_RE = /[`"'.,;\]]+$/;
+// Bare `Bearer <value>` phrase anywhere in a file (not just after
+// `Authorization:`). WWW-Authenticate params carry `=`/`://` and are not
+// credentials; the scan's caller filters those.
+const BARE_BEARER_RE = /\bBearer\s+(\S+)/g;
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -81,9 +90,18 @@ function parseFrontmatter(text) {
   return fm;
 }
 
-/** Recursively list files under root (includes dot-directories). */
+/** Recursively list files under root (includes dot-directories).
+ *
+ * Symlinks are resolved with realpath and classified by their target, so a
+ * symlinked node_modules (or any symlinked forbidden tree) is never skipped
+ * as an opaque symlink entry: the entry is recorded with its resolved target
+ * and the tree scan checks both the virtual path and the real target. A
+ * visited set of real directories keeps symlink cycles from recursing.
+ */
+const visitedRealDirs = new Set();
 function walk(dir, relPrefix) {
   const out = [];
+  visitedRealDirs.add(path.resolve(dir));
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -94,12 +112,34 @@ function walk(dir, relPrefix) {
   for (const entry of entries) {
     const rel = path.posix.join(relPrefix, entry.name);
     const abs = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
+    if (entry.isSymbolicLink()) {
+      let real;
+      try {
+        real = fs.realpathSync(abs);
+      } catch (e) {
+        fail(`broken symlink in plugin tree: ${rel} (${e.message})`);
+        continue;
+      }
+      let st;
+      try {
+        st = fs.statSync(real);
+      } catch (e) {
+        fail(`cannot stat symlink target in plugin tree: ${rel} -> ${real} (${e.message})`);
+        continue;
+      }
+      if (st.isDirectory()) {
+        out.push({ rel, abs, isDir: true, symlinkTarget: real });
+        if (!visitedRealDirs.has(real)) out.push(...walk(real, rel));
+      } else {
+        out.push({ rel, abs, isDir: false, symlinkTarget: real });
+      }
+    } else if (entry.isDirectory()) {
       out.push({ rel, abs, isDir: true });
       out.push(...walk(abs, rel));
     } else if (entry.isFile()) {
       out.push({ rel, abs, isDir: false });
     }
+    // other entry types (sockets, fifos, devices) are ignored: not files
   }
   return out;
 }
@@ -137,7 +177,7 @@ if (plugin) {
   const desc = plugin.description || '';
   if (
     !desc ||
-    !/mcp/i.test(desc) ||
+    !/hosted\s+mcp/i.test(desc) ||
     !['spend', 'sessions', 'knowledge', 'resume'].every((w) => desc.toLowerCase().includes(w))
   ) {
     fail('plugin.json description must be non-empty and mention hosted MCP plus spend, sessions, knowledge, resume');
@@ -220,6 +260,13 @@ if (plugin) {
       if (Object.prototype.hasOwnProperty.call(prop, 'default')) {
         fail(`${TOKEN_VAR} variable must not ship a default value (no default secret)`);
       }
+      // No variable property may carry a default: a defaulted property would
+      // persist a value the plugin never asked the user to provide.
+      for (const propName of Object.keys(variables.properties)) {
+        if (Object.prototype.hasOwnProperty.call(variables.properties[propName], 'default')) {
+          fail(`plugin.json variable property ${JSON.stringify(propName)} must not declare a default value`);
+        }
+      }
     }
   }
 }
@@ -253,10 +300,27 @@ if (mcpRaw === null) {
     if (server.url !== HOSTED_MCP_URL) {
       fail(`mcp.json openburnbar.url must be ${HOSTED_MCP_URL}, got ${JSON.stringify(server.url)}`);
     }
-    if (!server.headers || server.headers.Authorization !== BEARER_PLACEHOLDER) {
-      fail(
-        `mcp.json Authorization must be exactly ${BEARER_PLACEHOLDER} (no literal credentials), got ${JSON.stringify(server.headers && server.headers.Authorization)}`,
-      );
+    // Every header value is scanned, not just Authorization: any header may
+    // smuggle a literal credential (e.g. X-Api-Key: sk-...).
+    const headerEntries = server.headers ? Object.entries(server.headers) : [];
+    if (headerEntries.length === 0) {
+      fail('mcp.json openburnbar.headers must declare the Authorization bearer placeholder');
+    }
+    for (const [name, value] of headerEntries) {
+      if (typeof value !== 'string' || value.trim() === '') {
+        fail(`mcp.json header ${JSON.stringify(name)} must be a non-empty string, got ${JSON.stringify(value)}`);
+        continue;
+      }
+      if (name === 'Authorization' && value !== BEARER_PLACEHOLDER) {
+        fail(
+          `mcp.json Authorization must be exactly ${BEARER_PLACEHOLDER} (no literal credentials), got ${JSON.stringify(value)}`,
+        );
+      }
+      const shape = hasTokenShape(value);
+      if (shape) fail(`mcp.json header ${JSON.stringify(name)} contains a secret-looking literal (${shape})`);
+      if (value !== BEARER_PLACEHOLDER && /^Bearer\s+\S+$/i.test(value.trim())) {
+        fail(`mcp.json header ${JSON.stringify(name)} is a bare bearer value; only the ${BEARER_PLACEHOLDER} placeholder is allowed`);
+      }
     }
     if (Object.prototype.hasOwnProperty.call(server, 'command') || Object.prototype.hasOwnProperty.call(server, 'args')) {
       fail('mcp.json must not declare a stdio command or args (HTTP only)');
@@ -306,13 +370,13 @@ function checkComponent(rel, requireName, requireDesc) {
   const abs = path.join(root, rel);
   if (!fs.existsSync(abs)) {
     fail(`missing component ${rel}`);
-    return;
+    return null;
   }
   const text = fs.readFileSync(abs, 'utf8');
   const fm = parseFrontmatter(text);
   if (!fm) {
     fail(`${rel} must start with YAML frontmatter`);
-    return;
+    return null;
   }
   if (requireName) {
     const name = fm.name;
@@ -338,7 +402,8 @@ if (JSON.stringify(actualSkillNames) !== JSON.stringify([...SKILL_DIRS].sort()))
 } else {
   for (const dir of SKILL_DIRS) {
     const rel = `skills/${dir}/SKILL.md`;
-    const { fm } = checkComponent(rel, true, true);
+    const checked = checkComponent(rel, true, true);
+    const fm = checked ? checked.fm : null;
     if (fm && fm.name !== dir) fail(`${rel} frontmatter name must match the directory (${dir}), got ${JSON.stringify(fm.name)}`);
   }
 }
@@ -357,7 +422,9 @@ if (JSON.stringify(actualCommandNames) !== JSON.stringify(expectedCommandNames))
 } else {
   for (const [file, slug] of COMMAND_FILES) {
     const rel = `commands/${file}`;
-    const { fm, text } = checkComponent(rel, true, true);
+    const checked = checkComponent(rel, true, true);
+    if (!checked) continue; // checkComponent already failed the missing/broken component
+    const { fm, text } = checked;
     if (fm && fm.name !== file.replace(/\.md$/, '')) {
       fail(`${rel} frontmatter name must equal the filename stem, got ${JSON.stringify(fm.name)}`);
     }
@@ -380,7 +447,8 @@ if (JSON.stringify(ruleFiles.sort()) !== JSON.stringify([...RULE_FILES].sort()))
 } else {
   for (const file of RULE_FILES) {
     const rel = `rules/${file}`;
-    const { fm } = checkComponent(rel, false, true);
+    const checked = checkComponent(rel, false, true);
+    const fm = checked ? checked.fm : null;
     if (fm && fm.alwaysApply !== false) {
       fail(`${rel} frontmatter alwaysApply must be boolean false, got ${JSON.stringify(fm.alwaysApply)}`);
     }
@@ -399,7 +467,8 @@ if (JSON.stringify(agentFiles.sort()) !== JSON.stringify([...AGENT_FILES].sort()
 } else {
   for (const file of AGENT_FILES) {
     const rel = `agents/${file}`;
-    const { fm } = checkComponent(rel, true, true);
+    const checked = checkComponent(rel, true, true);
+    const fm = checked ? checked.fm : null;
     if (fm && fm.name !== file.replace(/\.md$/, '')) {
       fail(`${rel} frontmatter name must equal the filename stem, got ${JSON.stringify(fm.name)}`);
     }
@@ -476,6 +545,19 @@ if (treeOk) {
       if (f.rel.includes('/node_modules/') || f.rel.split('/').includes('.venv') || f.rel.split('/').includes('venv')) {
         fail(`forbidden dependency tree present: ${f.rel}`);
       }
+      // Symlink targets are scanned like real directories: a symlinked
+      // node_modules (or .venv) must be rejected even though readdir sees
+      // it as a single symlink entry, not a directory.
+      if (f.symlinkTarget) {
+        const targetSegs = f.symlinkTarget.split(path.sep);
+        if (
+          targetSegs.includes('node_modules') ||
+          targetSegs.includes('.venv') ||
+          targetSegs.includes('venv')
+        ) {
+          fail(`forbidden tree reachable through symlink: ${f.rel} -> ${f.symlinkTarget}`);
+        }
+      }
       continue;
     }
     const base = f.rel.split('/').pop();
@@ -506,12 +588,27 @@ if (treeOk) {
     if (shape) fail(`secret-looking literal (${shape}) in ${f.rel}`);
     const authz = text.match(/Authorization:\s*Bearer\s+(\S+)/i);
     if (authz) {
-      // Allow trailing markdown/quoting punctuation around the placeholder
-      // (e.g. a code-span backtick) but never a literal credential.
-      const value = authz[1].replace(/[`"'\]]+$/, '');
+      // Allow trailing prose/markdown punctuation around the placeholder
+      // (`.`, `,`, `;`, code-span backticks, quotes) — e.g.
+      // `Authorization: Bearer ${OPENBURNBAR_MCP_ACCESS_TOKEN}.` at the end
+      // of a sentence — but never a literal credential.
+      const value = authz[1].replace(STRIP_BEARER_PUNCT_RE, '');
       if (value !== '${' + TOKEN_VAR + '}' && !value.includes(PROBE_PLACEHOLDER)) {
         fail(`non-placeholder Authorization: Bearer value in ${f.rel}`);
       }
+    }
+    // Bare-bearer scan: catch `Bearer <token>` phrases anywhere in the
+    // file, not only after an `Authorization:` prefix. WWW-Authenticate
+    // scheme parameters (e.g. `Bearer resource_metadata="https://..."` from
+    // probe transcripts) contain `=` and URLs contain `://`; those are not
+    // credentials. The placeholder and the documented probe placeholder are
+    // allowed with trailing prose punctuation stripped.
+    for (const m of text.matchAll(BARE_BEARER_RE)) {
+      const value = m[1].replace(STRIP_BEARER_PUNCT_RE, '');
+      if (value === '${' + TOKEN_VAR + '}') continue;
+      if (value.includes(PROBE_PLACEHOLDER)) continue;
+      if (value.includes('=') || value.includes('://')) continue;
+      fail(`bare Bearer credential-looking value in ${f.rel}: ${JSON.stringify(value.slice(0, 24))}...`);
     }
     if (VSCODE_REWRITE_RE.test(text)) {
       fail(`VS Code extension rewrite markers in ${f.rel}`);
