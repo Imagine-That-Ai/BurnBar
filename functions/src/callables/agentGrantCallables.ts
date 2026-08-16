@@ -582,8 +582,6 @@ export function missionApprovalResolutionWrite(args: {
   return write;
 }
 
-export const __testing__ = { missionApprovalResolutionWrite };
-
 /**
  * Bind a CLI-agent mission approval to the responding device.
  *

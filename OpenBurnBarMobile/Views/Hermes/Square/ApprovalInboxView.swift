@@ -8,7 +8,7 @@ import OpenBurnBarCore
 
 struct ApprovalInboxStrip: View {
     let asks: [MissionConsoleApprovalAsk]
-    var errorMessage: String? = nil
+    var errorMessage: String?
     let onApprove: (MissionConsoleApprovalAsk) -> Void
     let onDeny: (MissionConsoleApprovalAsk) -> Void
     let onApproveAlways: (MissionConsoleApprovalAsk) -> Void
