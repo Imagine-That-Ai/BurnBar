@@ -63,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-flight AgentLens/mobile or headless graph proof; the replacement
   classifier would otherwise skip macos/mobile until nightly.
 
-### Added - `openburnbar` published to npm
+### Added
 - The Node MCP / resume / memory CLI (in `tools/openburnbar-mcp-remote/`) is now
   published to **npm** as **`openburnbar` 0.1.0** (AGPL-3.0-only, zero runtime
   dependencies). Install with `npm i -g openburnbar` or run ad-hoc with
