@@ -58,8 +58,8 @@ assert.match(
 // --- link.astro uses the helper for completeCliLink ---
 assert.match(
   link,
-  /import \{ attestedCallable \} from "\.\.\/lib\/attestedCallable";/,
-  "link.astro must use the attested callable helper"
+  /import \{\s*attestedCallable,\s*callableErrorCode,\s*isAppCheckBindingConflictError\s*\} from "\.\.\/lib\/attestedCallable";/,
+  "link.astro must use the attested callable helper and its exported error helpers"
 );
 assert.match(
   link,
@@ -75,6 +75,35 @@ assert.match(
   link,
   /const stripped = displayCode\.replace\(\/-\/g, ""\);/,
   "the hyphen must be stripped only for the length gate, never for the payload"
+);
+
+// --- Error normalization reuses the helper export (no duplicated functions/ prefix stripping) ---
+assert.match(
+  link,
+  /callableErrorCode\(\s*err\s*\)/,
+  "link.astro must normalize error codes through the exported callableErrorCode"
+);
+assert.match(
+  link,
+  /isAppCheckBindingConflictError\(\s*err\s*\)/,
+  "link.astro must reuse the exported binding-conflict recognizer"
+);
+assert.doesNotMatch(
+  link.slice(link.indexOf("catch (err: unknown)")),
+  /replace\(\/\^functions\//,
+  "link.astro must not duplicate functions/ prefix stripping"
+);
+
+// --- Relative order of the attestation sequence (whitespace tolerant): bind -> getIdToken(true) -> issueHighRiskActionNonce -> completeCliLink ---
+// The bind / refresh / nonce steps live in the attested helper; the target
+// callable invocation lives in link.astro, so the order is asserted across
+// both files concatenated.
+const sequence =
+  /bindAppCheckAttestation[\s\S]*?getIdToken\(\s*true\s*\)[\s\S]*?issueHighRiskActionNonce[\s\S]*?completeCliLink/;
+assert.match(
+  `${helper}\n${link}`,
+  sequence,
+  "the flow must show bind -> getIdToken(true) -> issueHighRiskActionNonce -> completeCliLink in order"
 );
 
 // --- Incomplete codes never reach the callable ---
@@ -109,6 +138,18 @@ assert.match(
   "not-found/expired must show the re-enter-code copy"
 );
 
+// --- Distinct operator copy: expired-code failed-precondition (curated, not raw server text) ---
+assert.match(
+  link,
+  /errorCode === "not-found"\s*\|\|\s*\(isFailedPrecondition\s*&&\s*\/expired\/i\.test\(errorText\)\)/,
+  "expired-code failed-precondition must join the curated not-found/expired branch"
+);
+assert.match(
+  link,
+  /Link session not found or code expired\. Please ensure you entered the exact code from your terminal\./,
+  "expired-code failed-precondition must show the curated expired copy, not the raw server string"
+);
+
 // --- Distinct operator copy: Pro entitlement (discriminator, not any failed-precondition) ---
 assert.match(
   link,
@@ -131,6 +172,18 @@ assert.match(
   link,
   /Your device attestation could not be verified for this action\. Sign in again and retry/,
   "bind/nonce copy must be attestation/retry copy, distinct from the Pro string"
+);
+
+// --- Distinct operator copy: App Check binding-mismatch permission-denied (attestation retry, not the Pro string) ---
+assert.match(
+  link,
+  /isAppCheckBindingConflictError\(\s*err\s*\)/,
+  "binding-mismatch permission-denied must be recognized via the exported binding-conflict helper"
+);
+assert.match(
+  link,
+  /Your device attestation could not be verified for this action\. Sign in again and retry/,
+  "binding mismatch must reuse the attestation retry copy, never the Pro string"
 );
 
 // --- Distinct operator copy: platform Unauthenticated (not the Pro string) ---

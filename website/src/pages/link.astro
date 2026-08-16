@@ -362,7 +362,11 @@ import BaseLayout from "@layouts/BaseLayout.astro";
   import { auth, googleProvider, appleProvider } from "../lib/firebaseClient";
   import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
   import type { User } from "firebase/auth";
-  import { attestedCallable } from "../lib/attestedCallable";
+  import {
+    attestedCallable,
+    callableErrorCode,
+    isAppCheckBindingConflictError
+  } from "../lib/attestedCallable";
 
   // Elements
   const states = {
@@ -499,8 +503,8 @@ import BaseLayout from "@layouts/BaseLayout.astro";
     } catch (err: unknown) {
       console.error("Linking error", err);
       // Firebase FunctionsError codes arrive prefixed ("functions/not-found");
-      // normalize so one set of branches covers both shapes.
-      const errorCode = String((err as { code?: unknown })?.code || "").replace(/^functions\//, "");
+      // callableErrorCode normalizes them so one set of branches covers both shapes.
+      const errorCode = callableErrorCode(err);
       const errorText = String((err as { message?: unknown })?.message || "");
       const isPermissionDenied = errorCode === "permission-denied";
       const isFailedPrecondition = errorCode === "failed-precondition";
@@ -508,12 +512,15 @@ import BaseLayout from "@layouts/BaseLayout.astro";
         errorCode === "unauthenticated" || errorCode.includes("unauthenticated");
 
       let friendlyMessage: string;
-      if (errorCode === "not-found") {
+      if (errorCode === "not-found" || (isFailedPrecondition && /expired/i.test(errorText))) {
         friendlyMessage =
           "Link session not found or code expired. Please ensure you entered the exact code from your terminal.";
       } else if (isPermissionDenied && /Pro is required/.test(errorText)) {
         friendlyMessage =
           "BurnBar Pro is required for Remote MCP access. Please subscribe to continue.";
+      } else if (isAppCheckBindingConflictError(err)) {
+        friendlyMessage =
+          "Your device attestation could not be verified for this action. Sign in again and retry.";
       } else if (
         isFailedPrecondition &&
         /nonce|bindAppCheckAttestation|App Check|attestation/i.test(errorText)
