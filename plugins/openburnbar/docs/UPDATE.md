@@ -4,9 +4,12 @@ Written post-seal (misc-m8, 2026-08-16) so any future agent can take a
 requested change to the OpenBurnBar Cursor Marketplace plugin from idea to
 published package without re-deriving the mission's locked decisions. This
 file lives inside the plugin package at `plugins/openburnbar/docs/UPDATE.md`;
-the same content is mirrored on BurnBar `main` at
-`docs/runbooks/openburnbar-cursor-plugin-update.md` and in the thin public
-plugin repo.
+the thin public plugin repo already carries this same content. The BurnBar
+`main` copy at `docs/runbooks/openburnbar-cursor-plugin-update.md` is
+**pending PR 2291** (https://github.com/Imagine-That-Ai/BurnBar/pull/2291,
+OPEN, REVIEW_REQUIRED, auto-merge armed): it lands on `main` only after a
+non-author write user APPROVES. While 2291 is OPEN, this file does not
+claim the `main` copy exists.
 
 ## Goal
 
@@ -63,11 +66,13 @@ putting secrets in git.
 
 ## Current PR state — verify before you start
 
-Verify the two PRs before touching anything; the push lane depends on them:
+Verify the three PRs before touching anything; the push lane and the
+`main`-copy status depend on them:
 
 ```bash
 gh pr view 2286 -R Imagine-That-Ai/BurnBar --json state,headRefOid,mergeable
 gh pr view 2290 -R Imagine-That-Ai/BurnBar --json state,headRefOid,mergeable
+gh pr view 2291 -R Imagine-That-Ai/BurnBar --json state,headRefOid,mergeable,autoMergeRequest
 ```
 
 State as of 2026-08-16:
@@ -76,10 +81,16 @@ State as of 2026-08-16:
   is OPEN from `feat/cursor-marketplace-plugin` at `f90e71ef1`, website-only,
   MERGEABLE. Deploying it is what unblocks a production `/link` grant confirm.
 - PR 2290 (`feat(cursor): OpenBurnBar marketplace plugin`) is OPEN from
-  `feat/cursor-plugin-unit` at `b61ee2e3c`, CONFLICTING with `main`
+  `feat/cursor-plugin-unit` at `c8c6a7363`, CONFLICTING with `main`
   (CHANGELOG.md and website MCP copy at minimum). It is the plugin-unit PR;
   update commits ride it. It is **not** merged here — conflict resolution is
   a merge-time concern, not an update-time one.
+- PR 2291 (`docs: OpenBurnBar Cursor plugin update runbook`) is OPEN from
+  `docs/openburnbar-plugin-update-runbook` at `e191a1c92`, MERGEABLE but
+  REVIEW_REQUIRED, auto-merge armed. It is the vehicle for the `main` copy
+  at `docs/runbooks/openburnbar-cursor-plugin-update.md`; that file is on
+  `main` only after a non-author write user APPROVES and the queue merges.
+  While 2291 is OPEN, nothing here claims the `main` copy already exists.
 
 If 2286 has merged since this was written, the push-lane constraint below
 lifts: PR 2290 may then use `feat/cursor-marketplace-plugin`, and this
@@ -215,7 +226,8 @@ These steps are human-gated; record the slot, do not perform it:
 
 ## Keeping this runbook honest
 
-When a locked value changes (PR 2286 merges, the version bundle is bumped,
-the push lane moves), update this file in the same commit that makes the
-change, then re-mirror. The runbook is only useful while it matches the
-repo's real state.
+When a locked value changes (PR 2286 merges, PR 2291 merges and the `main`
+copy at `docs/runbooks/openburnbar-cursor-plugin-update.md` actually
+exists, the version bundle is bumped, the push lane moves), update this
+file in the same commit that makes the change, then re-mirror. The runbook
+is only useful while it matches the repo's real state.
