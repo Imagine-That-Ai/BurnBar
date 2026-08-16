@@ -471,8 +471,8 @@ expect(
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        "          && needs.prepare-functions-deploy.outputs.dry_run != 'true' }}",
-        "          && true }}",
+        "          && needs.prepare-functions-deploy.result == 'success'\n          && needs.prepare-functions-deploy.outputs.dry_run != 'true'\n          && (needs.prepare-functions-deploy.outputs.domain_core_profile",
+        "          && needs.prepare-functions-deploy.result == 'success'\n          && true\n          && (needs.prepare-functions-deploy.outputs.domain_core_profile",
       ),
     ),
   1,
@@ -591,12 +591,48 @@ expect(
 );
 
 expect(
-  "production: rollback environment before retry authority fails",
+  "production: rollback authorization without trusted preparation fails",
   (root) =>
     mutate(root, PROD, (text) =>
       text.replace(
-        "          && !inputs.existing_tag_retry }}\n",
-        "          }}\n",
+        "    needs: prepare-functions-deploy\n",
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "production: existing-tag retry cannot dispatch evidence before release",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        "          && needs.deploy-functions.outputs.existing_tag_retry != 'true'\n",
+        "",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "production: existing-tag retry requires a durable evidence handoff",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        /\n  retain-domain-core-functions-evidence-handoff:[\s\S]*$/u,
+        "\n",
+      ),
+    ),
+  1,
+);
+
+expect(
+  "production: workflow_dispatch boolean must use typed inputs context",
+  (root) =>
+    mutate(root, PROD, (text) =>
+      text.replace(
+        "    if: ${{ always() && !inputs.dry_run }}\n",
+        "    if: ${{ always() && github.event.inputs.dry_run != 'true' }}\n",
       ),
     ),
   1,

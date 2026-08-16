@@ -42,32 +42,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  authorize-domain-core-rollback:
-    if: >-
-      ${{ github.event_name == 'workflow_dispatch'
-          && inputs.domain_core_profile == 'public-production-rollback'
-          && !inputs.existing_tag_retry }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: domain-core-promotion
-    permissions:
-      contents: read
-    steps:
-      - name: Record explicit protected rollback authorization
-        run: |
-          set -euo pipefail
-          [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
-          [[ "${{ inputs.domain_core_profile }}" == "public-production-rollback" ]]
-          echo "Protected reviewers authorized the candidate-bound Functions rollback profile."
-
   prepare-functions-deploy:
-    needs: authorize-domain-core-rollback
-    if: >-
-      ${{ always()
-          && !cancelled()
-          && (github.event_name == 'push'
-              || inputs.domain_core_profile == 'public-production'
-              || needs.authorize-domain-core-rollback.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -720,11 +695,36 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: node "$RUNNER_TEMP/release-dry-run-attestation.mjs" publish --sha "$ATTEST_SHA" --tag "$ATTEST_TAG" --plane deploy-production
 
-  deploy-functions:
+  authorize-domain-core-rollback:
     needs: prepare-functions-deploy
     if: >-
-      ${{ needs.prepare-functions-deploy.result == 'success'
-          && needs.prepare-functions-deploy.outputs.dry_run != 'true' }}
+      ${{ always()
+          && !cancelled()
+          && needs.prepare-functions-deploy.result == 'success'
+          && needs.prepare-functions-deploy.outputs.dry_run != 'true'
+          && needs.prepare-functions-deploy.outputs.domain_core_profile == 'public-production-rollback' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: domain-core-promotion
+    permissions:
+      contents: read
+    steps:
+      - name: Record explicit protected rollback authorization
+        run: |
+          set -euo pipefail
+          [[ "${{ needs.prepare-functions-deploy.outputs.dry_run }}" != "true" ]]
+          [[ "${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}" == "public-production-rollback" ]]
+          echo "Protected reviewers authorized the candidate-bound Functions rollback profile after trusted release control verification."
+
+  deploy-functions:
+    needs: [prepare-functions-deploy, authorize-domain-core-rollback]
+    if: >-
+      ${{ always()
+          && !cancelled()
+          && needs.prepare-functions-deploy.result == 'success'
+          && needs.prepare-functions-deploy.outputs.dry_run != 'true'
+          && (needs.prepare-functions-deploy.outputs.domain_core_profile != 'public-production-rollback'
+              || needs.authorize-domain-core-rollback.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -738,6 +738,7 @@ jobs:
       commit: ${{ needs.prepare-functions-deploy.outputs.commit }}
       candidate_commit: ${{ needs.prepare-functions-deploy.outputs.candidate_commit }}
       dry_run: ${{ needs.prepare-functions-deploy.outputs.dry_run }}
+      existing_tag_retry: ${{ needs.prepare-functions-deploy.outputs.existing_tag_retry }}
       stable_release: ${{ needs.prepare-functions-deploy.outputs.stable_release }}
       domain_core_profile: ${{ needs.prepare-functions-deploy.outputs.domain_core_profile }}
       core_version: ${{ needs.prepare-functions-deploy.outputs.core_version }}
@@ -1117,7 +1118,7 @@ jobs:
 
   functions-result:
     needs: [prepare-functions-deploy, deploy-functions, functions-health-gate]
-    if: ${{ always() && github.event.inputs.dry_run != 'true' }}
+    if: ${{ always() && !inputs.dry_run }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1176,6 +1177,7 @@ jobs:
           && needs.functions-health-gate.result == 'success'
           && needs.deploy-functions.outputs.dry_run != 'true'
           && needs.deploy-functions.outputs.stable_release == 'true'
+          && needs.deploy-functions.outputs.existing_tag_retry != 'true'
           && needs.deploy-functions.outputs.reused_existing_evidence != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1196,3 +1198,75 @@ jobs:
             --field deploy_run_id="$GITHUB_RUN_ID" \
             --field deploy_run_attempt="$GITHUB_RUN_ATTEMPT" \
             --field domain_core_profile="$DOMAIN_CORE_PROFILE"
+
+  retain-domain-core-functions-evidence-handoff:
+    needs: [deploy-functions, functions-health-gate]
+    if: >-
+      ${{ needs.deploy-functions.result == 'success'
+          && needs.functions-health-gate.result == 'success'
+          && needs.deploy-functions.outputs.dry_run != 'true'
+          && needs.deploy-functions.outputs.stable_release == 'true'
+          && needs.deploy-functions.outputs.existing_tag_retry == 'true'
+          && needs.deploy-functions.outputs.reused_existing_evidence != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Record post-release Functions evidence handoff
+        env:
+          RELEASE_TAG: ${{ needs.deploy-functions.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.deploy-functions.outputs.commit }}
+          DOMAIN_CORE_PROFILE: ${{ needs.deploy-functions.outputs.domain_core_profile }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          handoff="$RUNNER_TEMP/domain-core-functions-release-evidence-handoff.json"
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg tag "$RELEASE_TAG" \
+            --arg commit "$RELEASE_COMMIT" \
+            --arg profile "$DOMAIN_CORE_PROFILE" \
+            --arg workflow ".github/workflows/domain-core-functions-release-evidence.yml" \
+            --argjson deployRunId "$GITHUB_RUN_ID" \
+            --argjson deployRunAttempt "$GITHUB_RUN_ATTEMPT" \
+            '{
+              schemaVersion: 1,
+              repository: $repository,
+              tag: $tag,
+              commit: $commit,
+              domainCoreProfile: $profile,
+              sourceDeployRun: {
+                runId: $deployRunId,
+                runAttempt: $deployRunAttempt
+              },
+              releaseEvidence: {
+                workflow: $workflow,
+                ref: ("refs/tags/" + $tag),
+                requiresPublishedGitHubRelease: true
+              }
+            }' > "$handoff"
+          {
+            echo "## Post-release Functions evidence handoff"
+            echo
+            echo "The existing-tag retry completed before the GitHub Release existed, so release evidence was not dispatched early."
+            echo "After the exact GitHub Release and retained rollback assets are published, dispatch:"
+            echo
+            echo '```bash'
+            echo "gh workflow run domain-core-functions-release-evidence.yml \\"
+            echo "  --repo \"$GITHUB_REPOSITORY\" \\"
+            echo "  --ref \"$RELEASE_TAG\" \\"
+            echo "  --field deploy_run_id=\"$GITHUB_RUN_ID\" \\"
+            echo "  --field deploy_run_attempt=\"$GITHUB_RUN_ATTEMPT\" \\"
+            echo "  --field domain_core_profile=\"$DOMAIN_CORE_PROFILE\""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload post-release Functions evidence handoff
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0 (node24-native)
+        with:
+          name: domain-core-functions-release-evidence-handoff-${{ needs.deploy-functions.outputs.tag }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/domain-core-functions-release-evidence-handoff.json
+          if-no-files-found: error
+          retention-days: 90

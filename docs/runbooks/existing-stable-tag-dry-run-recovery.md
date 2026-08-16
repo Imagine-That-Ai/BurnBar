@@ -19,9 +19,15 @@ of these statements are true at dispatch time:
 4. GitHub has no Release for the tag.
 5. GitHub has no deployment for the exact tag, SHA, and `production`
    environment.
-6. The current plane's exact status context is absent:
+6. The current plane's exact status context is either absent or has exactly one
+   legacy migration record:
    - `release-attestation/deploy-production/<tag>`
    - `release-attestation/deploy-cloud-run/<tag>`
+   The one-time legacy exception must be a `success` created by
+   `github-actions[bot]`, have a null `target_url`, and have the exact
+   description `dry-run passed at <first 12 characters of candidate_sha>`.
+   Multiple records, another creator, another description, a non-success state,
+   or any non-null target URL are not replaceable.
 
 The GitHub-state verifier is read-only. The dry-run resolver/build jobs do not
 reference the `production` environment, production secrets, Google OIDC, or
@@ -31,9 +37,9 @@ after that plane's complete dry-run succeeds.
 An unrelated proof or approval deployment at the same SHA does not disqualify
 the candidate unless it is bound to the release tag and `production`
 environment. A GitHub Release, matching production deployment, lightweight or
-moved tag, prerelease tag, existing plane status in any state, ambiguous API
-response, or non-main dispatch is a hard stop. Do not delete evidence to make
-the lane pass.
+moved tag, prerelease tag, non-replaceable plane status, ambiguous API response,
+or non-main dispatch is a hard stop. Do not delete evidence to make the lane
+pass.
 
 ## Operator sequence
 
@@ -59,9 +65,11 @@ dry_run=true
 candidate_sha=<full commit SHA peeled from the immutable existing tag>
 ```
 
-Run only a plane whose exact status context is absent. A failed run that never
-published its status may be dispatched again after the failure is understood.
-Once a plane status exists, the recovery gate will not overwrite it.
+Run only a plane whose exact status context is absent or is the single exact
+legacy migration record described above. A failed run that never published its
+status may be dispatched again after the failure is understood. After a
+successful migration publishes the provenance-bound status, the legacy and new
+records coexist, so the recovery gate will refuse every later overwrite.
 
 Each published status targets the exact same-repository GitHub Actions run that
 created it. Before any credentialed job, verification reads every raw status
@@ -93,6 +101,34 @@ receipts were produced by successful same-path runs at that same trusted control
 SHA. Only then does it check out or execute the immutable tag payload. The
 resolver has no production environment, secrets, or OIDC permission.
 
+For a Functions retry using `public-production-rollback`, protected
+`domain-core-promotion` approval occurs only after the uncredentialed resolver
+has verified current main, the immutable tag, both dry-run attestations, and the
+candidate-bound release materials. The approval then gates the credentialed
+`production` deploy; a rollback dry-run does not enter either protected
+environment.
+
+An existing-tag Functions retry cannot publish release evidence immediately:
+eligibility requires that the GitHub Release does not exist, while
+`domain-core-functions-release-evidence.yml` consumes that published Release
+and its retained rollback assets. A successful retry therefore retains
+`domain-core-functions-release-evidence-handoff-<tag>-<run>-<attempt>` with the
+exact deploy coordinates. After the exact GitHub Release and retained rollback
+assets are published, read those coordinates from the handoff artifact and
+dispatch the evidence workflow from the immutable tag:
+
+```bash
+gh workflow run domain-core-functions-release-evidence.yml \
+  --repo Imagine-That-Ai/BurnBar \
+  --ref vX.Y.Z \
+  --field deploy_run_id=<source deploy run ID> \
+  --field deploy_run_attempt=<source deploy run attempt> \
+  --field domain_core_profile=<public-production or public-production-rollback>
+```
+
+Do not dispatch this evidence workflow before the Release exists, and do not
+substitute another deploy run, attempt, profile, tag, or commit.
+
 For `v1.0.34`, never select the tag as the dispatch ref and never rerun the
 original failed tag-triggered jobs. Those runs are permanently bound to the
 older workflow/helper frozen in `v1.0.34`.
@@ -105,7 +141,8 @@ Stop and investigate instead of changing history when any of these is true:
   current `origin/main`;
 - the tag is lightweight, moved, deleted, recreated, or a prerelease;
 - a GitHub Release or matching production deployment exists;
-- either exact attestation context already exists with a non-success state;
+- either exact attestation context has any record other than the single exact
+  replaceable legacy success, or has multiple records;
 - current `main` moved after the dry-runs, so their trusted control SHA no
   longer matches the retry workflow SHA;
 - GitHub cannot prove the release, deployment, or status absence;

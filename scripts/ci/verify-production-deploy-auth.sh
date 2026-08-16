@@ -451,17 +451,16 @@ def validate_production_functions(text: str) -> None:
         return
 
     for marker in (
-        "inputs.domain_core_profile == 'public-production-rollback'",
+        "needs: prepare-functions-deploy",
+        "needs.prepare-functions-deploy.result == 'success'",
+        "needs.prepare-functions-deploy.outputs.dry_run != 'true'",
+        "needs.prepare-functions-deploy.outputs.domain_core_profile == 'public-production-rollback'",
         "environment: domain-core-promotion",
     ):
         if marker not in authorization_job:
             fail(f"{path} rollback authorization job is missing {marker!r}")
-    for marker in (
-        "needs: authorize-domain-core-rollback",
-        "needs.authorize-domain-core-rollback.result == 'success'",
-    ):
-        if marker not in prepare_job:
-            fail(f"{path} prepare-functions-deploy is missing rollback routing marker {marker!r}")
+    if "needs: authorize-domain-core-rollback" in prepare_job:
+        fail(f"{path} prepare-functions-deploy must run before protected rollback authorization")
     for marker in (
         "default: public-production",
         "- public-production",
@@ -502,7 +501,8 @@ def validate_production_functions(text: str) -> None:
             fail(f"{path} prepare-functions-deploy must not contain {forbidden!r}")
 
     for marker in (
-        "needs: prepare-functions-deploy",
+        "needs: [prepare-functions-deploy, authorize-domain-core-rollback]",
+        "needs.authorize-domain-core-rollback.result == 'success'",
         "environment: production",
         "id-token: write",
         "actions/download-artifact@",

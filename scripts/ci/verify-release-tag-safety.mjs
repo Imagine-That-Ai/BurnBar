@@ -596,6 +596,15 @@ const productionRollbackAuthorizationJob = jobBlock(
   "authorize-domain-core-rollback",
 );
 const productionDeployJob = jobBlock(productionSource, "deploy-functions");
+const productionResultJob = jobBlock(productionSource, "functions-result");
+const productionEvidenceDispatchJob = jobBlock(
+  productionSource,
+  "dispatch-domain-core-functions-evidence",
+);
+const productionEvidenceHandoffJob = jobBlock(
+  productionSource,
+  "retain-domain-core-functions-evidence-handoff",
+);
 requireIncludes(
   productionPrepareJob,
   'if [[ -n "${GITHUB_SHA:-}" && "$commit" != "$GITHUB_SHA" ]]; then',
@@ -608,8 +617,34 @@ requireNoPattern(
 );
 requireIncludes(
   productionRollbackAuthorizationJob,
-  "!inputs.existing_tag_retry",
-  "[deploy-production] existing-tag retry must not enter a protected environment before trusted control verification",
+  "needs: prepare-functions-deploy",
+  "[deploy-production] rollback authorization must follow trusted release preparation",
+);
+requireIncludes(
+  productionRollbackAuthorizationJob,
+  "needs.prepare-functions-deploy.result == 'success'",
+  "[deploy-production] rollback authorization must require successful trusted release preparation",
+);
+requireIncludes(
+  productionRollbackAuthorizationJob,
+  "needs.prepare-functions-deploy.outputs.dry_run != 'true'",
+  "[deploy-production] rollback dry-runs must not enter the protected environment",
+);
+requireIncludes(
+  productionRollbackAuthorizationJob,
+  "needs.prepare-functions-deploy.outputs.domain_core_profile == 'public-production-rollback'",
+  "[deploy-production] rollback authorization must consume the resolved profile",
+);
+requireNoPattern(
+  productionPrepareJob,
+  /needs:\s*authorize-domain-core-rollback/u,
+  "[deploy-production] trusted release preparation must precede rollback authorization",
+);
+requireOrder(
+  productionSource,
+  "prepare-functions-deploy:",
+  "authorize-domain-core-rollback:",
+  "[deploy-production] rollback authorization must be declared after trusted release preparation",
 );
 requireNoPattern(
   cloudResolveJob,
@@ -638,13 +673,18 @@ requireIncludes(
 );
 requireIncludes(
   productionDeployJob,
-  "needs: prepare-functions-deploy",
-  "[deploy-production] deploy-functions must consume prepare-functions-deploy",
+  "needs: [prepare-functions-deploy, authorize-domain-core-rollback]",
+  "[deploy-production] deploy-functions must consume preparation and protected rollback authorization",
 );
 requireIncludes(
   productionDeployJob,
   "needs.prepare-functions-deploy.outputs.dry_run != 'true'",
   "[deploy-production] deploy-functions must be skipped during dry-run",
+);
+requireIncludes(
+  productionDeployJob,
+  "needs.authorize-domain-core-rollback.result == 'success'",
+  "[deploy-production] rollback deploy must require protected authorization",
 );
 requireIncludes(
   productionDeployJob,
@@ -656,6 +696,36 @@ requireNoPattern(
   /actions\/checkout@/u,
   "[deploy-production] credentialed deploy-functions must not check out repository code",
 );
+requireIncludes(
+  productionResultJob,
+  "if: ${{ always() && !inputs.dry_run }}",
+  "[deploy-production] workflow_dispatch booleans must use the typed inputs context",
+);
+requireNoPattern(
+  productionResultJob,
+  /github\.event\.inputs\.dry_run/u,
+  "[deploy-production] workflow_dispatch booleans must not use stringly github.event.inputs",
+);
+requireIncludes(
+  productionEvidenceDispatchJob,
+  "needs.deploy-functions.outputs.existing_tag_retry != 'true'",
+  "[deploy-production] existing-tag retries must not dispatch release evidence before the Release exists",
+);
+for (const marker of [
+  "needs.deploy-functions.outputs.existing_tag_retry == 'true'",
+  "domain-core-functions-release-evidence-handoff.json",
+  "requiresPublishedGitHubRelease: true",
+  "--field deploy_run_id=",
+  "--field deploy_run_attempt=",
+  "--field domain_core_profile=",
+  "actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
+]) {
+  requireIncludes(
+    productionEvidenceHandoffJob,
+    marker,
+    `[deploy-production] existing-tag retry evidence handoff is missing ${marker}`,
+  );
+}
 
 /* ── Attestation invariants ────────────────────────────────────────────── */
 
