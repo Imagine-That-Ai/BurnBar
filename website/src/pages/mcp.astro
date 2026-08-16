@@ -1032,9 +1032,12 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
         <h2 id="ccmirror-h">Connect, list, revoke — from inside the app.</h2>
         <p>
           The macOS app and the iPhone/iPad app both ship a Remote MCP card. It pulls the live
-          <code>remote_mcp_clients</code> Firestore collection scoped to your user, shows the
-          <code>openburnbar</code> stdio shim (install: <code>npm i -g openburnbar</code>) and
-          doctor commands, and lets you revoke any connected agent with one confirmation.
+          <code>remote_mcp_clients</code> Firestore collection scoped to your user, shows the stdio shim
+          and doctor commands, and lets you revoke any connected agent with one confirmation. The card's
+          shim command today prints the legacy
+          <code>openburnbar-mcp-remote mcp serve</code> bin name — the published npm package ships that
+          alias alongside <code>openburnbar</code>, so the copy-paste works either way after
+          <code>npm i -g openburnbar</code>.
         </p>
         <p>
           Revocation hits the <code>revokeRemoteMcpClient</code> callable; the next bearer-token refresh
@@ -1078,10 +1081,13 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
         </p>
         <dl class="ccmirror__rows mono">
           <div><dt>Endpoint</dt><dd>https://mcp.burnbar.ai/mcp</dd></div>
-          <div><dt>Install</dt><dd>npm i -g openburnbar</dd></div>
-          <div><dt>Stdio shim</dt><dd>openburnbar mcp serve</dd></div>
+          <div><dt>Stdio shim</dt><dd>openburnbar-mcp-remote mcp serve</dd></div>
           <div><dt>Doctor</dt><dd>openburnbar mcp doctor</dd></div>
         </dl>
+        <p class="muted mono">
+          Mirror of the app's card copy today. The npm package ships openburnbar-mcp-remote as a bin
+          alias, so this resolves after npm i -g openburnbar.
+        </p>
 
         <div class="ccmirror__connected">
           <header class="ccmirror__conhead mono">
