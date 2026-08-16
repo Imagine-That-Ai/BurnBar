@@ -52,6 +52,13 @@ daemon sidebar, and is **not** listed on VS Marketplace or Open VSX. The
 plugin and the extension are separate surfaces; the plugin talks to the
 hosted MCP over HTTP and does not bundle the extension.
 
+## Updating the plugin
+
+Maintainers and future agents: read the update runbook at
+[`docs/UPDATE.md`](docs/UPDATE.md) before changing this package. It locks the
+source of truth, the cheap gate, the push lane while PR 2286 is open, the
+thin-repo mirror step, and the `1.0.0` version rule.
+
 ## License
 
 AGPL-3.0-only. See [`LICENSE`](LICENSE).

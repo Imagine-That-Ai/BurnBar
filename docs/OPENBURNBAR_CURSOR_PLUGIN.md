@@ -113,6 +113,15 @@ CI runs it in the dedicated `plugin-fast` job of
 the web lane. The classifier routes `plugins/openburnbar/**` to that cheap web
 lane; teaching the classifier stays a full-CI change by policy.
 
+## Update runbook
+
+Future agents and maintainers who change this plugin must follow the
+in-package update runbook
+[`plugins/openburnbar/docs/UPDATE.md`](../plugins/openburnbar/docs/UPDATE.md):
+it locks the source of truth, the cheap gate, the push lane while PR 2286 is
+open, the thin-repo mirror step, the marketplace git URL, and the `1.0.0`
+version rule.
+
 ## License
 
 AGPL-3.0-only. See [`plugins/openburnbar/LICENSE`](../plugins/openburnbar/LICENSE).
