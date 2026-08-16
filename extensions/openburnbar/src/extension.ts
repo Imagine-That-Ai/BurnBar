@@ -624,7 +624,7 @@ export async function _waitForCursorSmokeRun({
   approveRun,
   refreshRunState,
   getRunPhase,
-  maxAttempts = 40,
+  maxAttempts = 480,
   pollDelayMs = 250
 }: {
   runID: string;

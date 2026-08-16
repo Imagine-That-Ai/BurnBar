@@ -225,6 +225,26 @@ describe('isCursorSmokeWorkspaceEditAutoConfirmAllowed', () => {
     ).toBe(true);
   });
 
+  it('accepts the launcher temp root when the Cursor extension host reports a different temp root', () => {
+    const launcherTempRoot = '/alternate-system-temp';
+    const alternateOutputPath = `${launcherTempRoot}/openburnbar-cursor-smoke-def456/smoke-output.json`;
+    const alternateTargetPath = `${launcherTempRoot}/openburnbar-cursor-smoke-def456/workspace/src/example.ts`;
+
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: alternateTargetPath, text: 'export const value = 43;\n' }],
+        [alternateTargetPath],
+        {},
+        {
+          autoConfirm: true,
+          outputPath: alternateOutputPath,
+          filePath: alternateTargetPath
+        },
+        ['/different-extension-host-temp', launcherTempRoot]
+      )
+    ).toBe(true);
+  });
+
   it('keeps confirmation enabled for mismatched or non-isolated edit targets', () => {
     expect(
       isCursorSmokeWorkspaceEditAutoConfirmAllowed(
