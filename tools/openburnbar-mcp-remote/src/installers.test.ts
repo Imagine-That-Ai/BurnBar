@@ -16,14 +16,14 @@ test("installers cover every required client", () => {
 test("codex installer emits hosted + local + http TOML blocks", () => {
   const out = installer("codex");
   assert.match(out, /\[mcp_servers\.openburnbar\]/);
-  assert.match(out, /command = "openburnbar-mcp-remote"/);
+  assert.match(out, /command = "openburnbar"/);
   assert.match(out, /args = \["mcp", "serve"\]/);
   assert.match(out, /# \[mcp_servers\.openburnbar-http\]/);
   assert.match(out, /# url = "https:\/\/mcp\.burnbar\.ai\/mcp"/);
   assert.match(out, /# bearer_token_env_var = "OPENBURNBAR_MCP_ACCESS_TOKEN"/);
   assert.match(out, /\[mcp_servers\.openburnbar-local\]/);
   assert.match(out, /server\.py/);
-  assert.match(out, /codex mcp add openburnbar -- openburnbar-mcp-remote mcp serve/);
+  assert.match(out, /codex mcp add openburnbar -- openburnbar mcp serve/);
 });
 
 test("codex installer keeps openburnbar-http commented out by default", () => {
@@ -48,12 +48,22 @@ test("codex installer balances [section] count with body lines", () => {
 });
 
 test("non-codex installers stay byte-identical", () => {
-  assert.equal(installer("claude"), "claude mcp add openburnbar -- openburnbar-mcp-remote mcp serve");
+  assert.equal(installer("claude"), "claude mcp add openburnbar -- openburnbar mcp serve");
   for (const kind of ["cursor", "droid", "kimi", "forge", "generic"] as const) {
     const parsed = JSON.parse(installer(kind)) as { mcpServers: { openburnbar: { command: string; args: string[]; env: Record<string, string> } } };
-    assert.equal(parsed.mcpServers.openburnbar.command, "openburnbar-mcp-remote");
+    assert.equal(parsed.mcpServers.openburnbar.command, "openburnbar");
     assert.deepEqual(parsed.mcpServers.openburnbar.args, ["mcp", "serve"]);
     assert.equal(parsed.mcpServers.openburnbar.env.OPENBURNBAR_MCP_ENDPOINT, "https://mcp.burnbar.ai/mcp");
+  }
+});
+
+test("all seven client kinds invoke openburnbar and never the legacy name", () => {
+  // Built from parts so the legacy command name never appears as a literal in this file.
+  const legacyName = `openburnbar-${"mcp-remote"}`;
+  for (const kind of ["codex", "claude", "cursor", "droid", "kimi", "forge", "generic"] as const) {
+    const out = installer(kind);
+    assert.match(out, /openburnbar/);
+    assert.ok(!out.includes(legacyName), `${kind} config must not reference the legacy command name`);
   }
 });
 
