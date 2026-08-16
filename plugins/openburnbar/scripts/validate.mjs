@@ -302,10 +302,11 @@ if (mcpRaw === null) {
     }
     // Authorization invariant (exact case): the headers object must carry an
     // exact-case `Authorization` header equal to the bearer placeholder. A
-    // missing Authorization header — or a lowercase `authorization:` header
-    // carrying Basic or any other value — fails closed even when other
-    // headers exist. Property lookup is case-sensitive, so a lowercase
-    // `authorization` key cannot satisfy this check.
+    // missing Authorization header — or a non-exact-case `authorization`-spelled
+    // header key (e.g. lowercase `authorization: Basic ...`) carrying any value
+    // — fails closed even when other headers exist. Property lookup is
+    // case-sensitive, so a lowercase `authorization` key cannot satisfy the
+    // exact-case check; the per-header loop below rejects such twins outright.
     if (!server.headers || server.headers.Authorization !== BEARER_PLACEHOLDER) {
       fail(
         `mcp.json Authorization must be exactly ${BEARER_PLACEHOLDER} (no literal credentials), got ${JSON.stringify(server.headers && server.headers.Authorization)}`,
@@ -321,6 +322,15 @@ if (mcpRaw === null) {
       if (typeof value !== 'string' || value.trim() === '') {
         fail(`mcp.json header ${JSON.stringify(name)} must be a non-empty string, got ${JSON.stringify(value)}`);
         continue;
+      }
+      // Header keys are case-sensitive: a non-exact-case `authorization` twin
+      // (lowercase `authorization: Basic ...`, `AUTHORIZATION`, ...) is rejected
+      // even when an exact-case Authorization header is present, so a dual-header
+      // tree cannot smuggle a second auth credential past the exact-case invariant.
+      if (name.toLowerCase() === 'authorization' && name !== 'Authorization') {
+        fail(
+          `mcp.json header key must be exactly "Authorization" (case-sensitive); found ${JSON.stringify(name)} — non-exact-case authorization keys are rejected`,
+        );
       }
       if (name === 'Authorization' && value !== BEARER_PLACEHOLDER) {
         fail(
