@@ -46,8 +46,6 @@ struct RootTabView: View {
     @State private var studioPresenter = ChartStudioPresenter()
     @State private var missionActivityCenter = MobileMissionActivityCenter()
     @State private var missionConsoleHost = MobileMissionConsoleHost()
-    @State private var missionConsoleFABOffset: CGSize = .zero
-    @State private var isMissionConsolePresented = false
     @State private var isHermesKeyboardVisible = false
     @State private var isCloudStoreChromeHidden = false
     /// Shared OpenBurnBar Cloud / Hosted Quota Sync store, hoisted here so a
@@ -113,17 +111,6 @@ struct RootTabView: View {
             // tabs.
             if !isCloudStoreChromeHidden {
                 ChartStudioFloatingButton(presenter: studioPresenter)
-            }
-
-            // Floating Mission Console launcher — sibling to Chart Studio's
-            // FAB. Anchored bottom-LEFT by default so the two FABs don't
-            // collide. Hidden when Chart Studio is fullscreen.
-            MobileMissionFAB(
-                host: missionConsoleHost,
-                isVisible: studioPresenter.mode != .fullscreen && !isCloudStoreChromeHidden,
-                anchorOffset: $missionConsoleFABOffset
-            ) {
-                isMissionConsolePresented = true
             }
 
             // Full-screen Studio overlay. We host it here (not as a
@@ -193,11 +180,6 @@ struct RootTabView: View {
                 authUID: authStore.currentIdentity?.uid,
                 hermesService: hermesService
             )
-        }
-        .sheet(isPresented: $isMissionConsolePresented) {
-            MobileMissionConsoleSheet(host: missionConsoleHost) {
-                isMissionConsolePresented = false
-            }
         }
         .onAppear {
             applyScreenshotRouteIfNeeded()
@@ -273,7 +255,7 @@ struct RootTabView: View {
     }
 
     private var rootBackgroundVisibility: MobileBackgroundVisibility {
-        if isCloudStoreChromeHidden || isMissionConsolePresented || studioPresenter.mode == .fullscreen {
+        if isCloudStoreChromeHidden || studioPresenter.mode == .fullscreen {
             return .obscured
         }
         switch liveStagePresenter.mode {
@@ -295,7 +277,6 @@ struct RootTabView: View {
         !isHermesKeyboardVisible
             && !isCloudStoreChromeHidden
             && studioPresenter.mode != .fullscreen
-            && !isMissionConsolePresented
             && liveStagePresenter.mode != .split
             && liveStagePresenter.mode != .maximize
             && scrubPreview == nil

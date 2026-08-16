@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed - iPhone Mission Console floating orb
+- The circular floating Mission Console control (hand icon / "Approve") is gone
+  from iPhone Pulse, Settings, Agents, and every other tab. It no longer
+  auto-restores when Firestore mission approvals are pending.
+- Settings → Experimental no longer has the "Mission Console orb" toggle or
+  its auto-restore footer. The Experimental section is gone with it.
+- `MobileMissionConsoleHost` and Skill Run live stage are unchanged. The
+  console sheet stays in the tree for Hermes / Skill Run; this PR does not
+  add a replacement launcher.
+
 ### Fixed - CI impact: Node Signal contracts lockfile no longer wakes macOS
 - `packages/signal-envelope-contracts` `package.json` / lockfile changes used
   to match the catch-all npm `FULL_PATTERNS` and force every product lane,
