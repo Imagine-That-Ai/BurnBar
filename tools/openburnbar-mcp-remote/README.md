@@ -85,7 +85,7 @@ AGPL-3.0-only. The full text ships in [LICENSE](LICENSE) and in the npm tarball.
 
 ## Releasing (maintainers)
 
-The publish lane is `.github/workflows/npm-publish-openburnbar.yml` in the BurnBar repo. It runs `npm ci` → lint → test → pack, then publishes with OIDC trusted publishing — no tokens in the workflow.
+The publish lane is `.github/workflows/npm-publish-openburnbar.yml` in the BurnBar repo. It runs `npm ci` → lint → test → pack, then publishes with OIDC trusted publishing — no tokens in the workflow. For the full update/publish/rollback procedure, see [`docs/NPM_PUBLISH_RUNBOOK.md`](../../docs/NPM_PUBLISH_RUNBOOK.md).
 
 1. Bump `version` in `tools/openburnbar-mcp-remote/package.json` (and `package-lock.json` in lockstep).
 2. Commit, then tag: `git tag openburnbar-npm-v<x.y.z>`.
