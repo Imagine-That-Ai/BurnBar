@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // MARK: - Factory Droid probe: signal-file parsing
@@ -238,20 +239,58 @@ extension BurnBarFleetFactoryDroidProbe {
         }
     }
 
-    static func readDirectoryFreshness(at path: String) -> [DirectoryFreshness] {
-        guard FileManager.default.fileExists(atPath: path) else { return [] }
+    struct DirectoryReadResult {
+        let directories: [DirectoryFreshness]
+        let rejectionReasons: [String]
+    }
+
+    static func readDirectoryFreshness(at path: String) -> DirectoryReadResult {
+        // `contentsOfDirectory` follows a symlink. Reject the declared
+        // directory itself before opening it so `sessions -> ../artifacts`
+        // cannot turn a known path into an escape hatch.
+        var directoryStatus = stat()
+        guard lstat(path, &directoryStatus) == 0 else {
+            // Missing declared directories are ordinary absent signals.
+            return DirectoryReadResult(directories: [], rejectionReasons: [])
+        }
+        let directoryType = directoryStatus.st_mode & S_IFMT
+        guard directoryType == S_IFDIR else {
+            if directoryType == S_IFLNK {
+                return DirectoryReadResult(
+                    directories: [],
+                    rejectionReasons: ["Rejected symlink declared directory \(path)."]
+                )
+            }
+            return DirectoryReadResult(directories: [], rejectionReasons: [])
+        }
 
         let contents: [String]
         do {
             contents = try FileManager.default.contentsOfDirectory(atPath: path)
         } catch {
-            return []
+            return DirectoryReadResult(
+                directories: [],
+                rejectionReasons: ["Unable to read declared directory \(path)."]
+            )
         }
 
         var result: [DirectoryFreshness] = []
+        var rejectionReasons: [String] = []
         for name in contents {
             let itemPath = URL(fileURLWithPath: path, isDirectory: true)
                 .appendingPathComponent(name).path
+            var itemStatus = stat()
+            guard lstat(itemPath, &itemStatus) == 0 else {
+                rejectionReasons.append("Unable to inspect declared descendant \(itemPath).")
+                continue
+            }
+            guard (itemStatus.st_mode & S_IFMT) != S_IFLNK else {
+                // Do not resolve or stat the link target. A descendant can
+                // point into ~/.factory/artifacts (or any other outside
+                // root), so rejecting it is the hermetic boundary.
+                rejectionReasons.append("Rejected symlink descendant \(itemPath).")
+                continue
+            }
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: itemPath, isDirectory: &isDirectory),
                   isDirectory.boolValue else {
@@ -260,6 +299,6 @@ extension BurnBarFleetFactoryDroidProbe {
             let mtime = (try? FileManager.default.attributesOfItem(atPath: itemPath))?[.modificationDate] as? Date
             result.append(DirectoryFreshness(path: itemPath, name: name, mtime: mtime))
         }
-        return result
+        return DirectoryReadResult(directories: result, rejectionReasons: rejectionReasons)
     }
 }

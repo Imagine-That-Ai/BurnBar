@@ -145,6 +145,40 @@ final class BurnBarFleetFactoryDroidProbeTests: XCTestCase {
         XCTAssertFalse(result.agent.signals.contains { $0.path.contains("artifacts") })
     }
 
+    func testSymlinkedSessionDescendantIntoArtifacts_isRejectedAndNeverTraversed() async throws {
+        let now = Date()
+        let artifactsDirectory = fixtureRoot
+            .appendingPathComponent("artifacts", isDirectory: true)
+            .appendingPathComponent("escaped-session", isDirectory: true)
+        try FileManager.default.createDirectory(at: artifactsDirectory, withIntermediateDirectories: true)
+        try writeJSONFixture(
+            ["invocations": [[
+                "status": "running",
+                "updatedAt": Int(now.timeIntervalSince1970 * 1000),
+                "cwd": "/Users/secret/artifacts"
+            ]]],
+            to: artifactsDirectory.appendingPathComponent("task-invocations.json").path
+        )
+
+        let sessionsDirectory = fixtureRoot.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            atPath: sessionsDirectory.appendingPathComponent("escaped-artifact-session").path,
+            withDestinationPath: "../artifacts/escaped-session"
+        )
+
+        let result = await makeProbe().probe(now: now)
+
+        XCTAssertNotEqual(result.agent.status, .running)
+        XCTAssertEqual(result.agent.status, .idle)
+        XCTAssertFalse(result.agent.signals.contains { $0.path.contains("artifacts") })
+        if case .degraded(let reason) = result.health.state {
+            XCTAssertTrue(reason.contains("symlink"), "unexpected reason: \(reason)")
+        } else {
+            XCTFail("symlink descendant must produce typed degraded health, got \(result.health.state)")
+        }
+    }
+
     // MARK: - VAL-FLEET-022: alternate signals
 
     func testBackgroundProcessLiveEntry_running() async throws {

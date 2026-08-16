@@ -79,10 +79,10 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
 
         // 3. Session + mission directory mtimes. Only the declared
         // subdirectories are listed; artifacts/ is never touched.
-        let sessionDirs = Self.readDirectoryFreshness(
+        let sessionDirectoryResult = Self.readDirectoryFreshness(
             at: rootURL.appendingPathComponent("sessions", isDirectory: true).path
         )
-        let missionDirs = Self.readDirectoryFreshness(
+        let missionDirectoryResult = Self.readDirectoryFreshness(
             at: rootURL.appendingPathComponent("missions", isDirectory: true).path
         )
 
@@ -90,8 +90,10 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             rootPath: rootPath,
             ledger: ledger,
             background: background,
-            sessionDirs: sessionDirs,
-            missionDirs: missionDirs,
+            sessionDirs: sessionDirectoryResult.directories,
+            missionDirs: missionDirectoryResult.directories,
+            directoryRejectionReasons: sessionDirectoryResult.rejectionReasons
+                + missionDirectoryResult.rejectionReasons,
             now: now,
             freshnessSeconds: freshnessSeconds
         )
@@ -116,11 +118,12 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
         background: BackgroundRegistry?,
         sessionDirs: [DirectoryFreshness],
         missionDirs: [DirectoryFreshness],
+        directoryRejectionReasons: [String],
         now: Date,
         freshnessSeconds: TimeInterval
     ) -> EvidenceSet {
         var signals: [BurnBarFleetSignalSource] = []
-        var healthReasons: [String] = []
+        var healthReasons = directoryRejectionReasons
         var liveEvidence: [Evidence] = []
         var staleEvidence: [Evidence] = []
         var hasAnySignalFile = false

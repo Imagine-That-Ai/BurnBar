@@ -9,6 +9,7 @@ fresh-looking signal, then explicitly excluded from every manifest/traversal.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -139,6 +140,13 @@ def make_roots(base: pathlib.Path, canary_pid: int, dead_pid: int) -> pathlib.Pa
         roots / "grokbot/local-exec-supervisor.json",
         {"pid": canary_pid, "at": now_ms},
     )
+    # Keep the valid Grok CLI dead-pid registry intact so its
+    # activeSessionFile confidence downgrade is exercised. The corrupt,
+    # secret-bearing fixture is a separate Grok Bot signal file.
+    (roots / "grokbot/local-exec-supervisor.json").write_text(
+        '{"pid": "' + SECRET + '",',
+        encoding="utf-8",
+    )
 
     # Hermes is active with fresh heartbeat and no process-list attribution.
     write_json(roots / "hermes/gateway.pid", {"pid": canary_pid})
@@ -196,12 +204,14 @@ def make_roots(base: pathlib.Path, canary_pid: int, dead_pid: int) -> pathlib.Pa
             ]
         },
     )
-
-    # Corrupt Grok JSON carries a planted secret. The parser must report only a
-    # typed generic degradation; it must never log or echo file contents.
-    (roots / "grok/active_sessions.json").write_text(
-        '{"active_sessions": ["' + SECRET + '",',
-        encoding="utf-8",
+    artifacts_session = roots / "factory/artifacts/escaped-session"
+    artifacts_session.mkdir(parents=True, exist_ok=True)
+    set_file = artifacts_session / "sentinel.txt"
+    set_file.write_text(ARTIFACT_SENTINEL, encoding="utf-8")
+    (roots / "factory/sessions").mkdir(parents=True, exist_ok=True)
+    os.symlink(
+        "../artifacts/escaped-session",
+        roots / "factory/sessions/escaped-artifact-session",
     )
 
     lock = roots / "codex/thread-writer-locks/m6.lock"
@@ -271,30 +281,62 @@ def wait_for_snapshot(socket_path: pathlib.Path, timeout: float = 10) -> dict[st
     raise RuntimeError("daemon did not publish a fleet snapshot")
 
 
-def metric_output(command: list[str]) -> str:
+def metric_output(
+    command: list[str],
+    *,
+    allow_no_matches: bool = False,
+) -> tuple[str, dict[str, Any]]:
     completed = subprocess.run(
         command,
         capture_output=True,
         text=True,
         check=False,
     )
-    return completed.stdout
+    allowed_codes = {0, 1} if allow_no_matches else {0}
+    if completed.returncode not in allowed_codes:
+        raise RuntimeError(
+            f"metric command failed ({completed.returncode}): "
+            f"{' '.join(command)}; stderr={completed.stderr.strip()!r}"
+        )
+    if not completed.stdout.strip() and not allow_no_matches:
+        raise RuntimeError(
+            f"metric command returned no sample: {' '.join(command)}; "
+            f"stderr={completed.stderr.strip()!r}"
+        )
+    return completed.stdout, {
+        "command": command,
+        "returncode": completed.returncode,
+        "stderr": completed.stderr,
+    }
 
 
 def process_metrics(pid: int, support: pathlib.Path) -> dict[str, Any]:
-    rss_text = metric_output(["ps", "-o", "rss=", "-p", str(pid)]).strip()
-    rss_kb = int(rss_text) if rss_text else None
+    rss_output, rss_command = metric_output(["ps", "-o", "rss=", "-p", str(pid)])
+    rss_values = [line.strip() for line in rss_output.splitlines() if line.strip()]
+    if len(rss_values) != 1 or not rss_values[0].isdigit() or int(rss_values[0]) <= 0:
+        raise RuntimeError(f"RSS sample was invalid: {rss_values!r}")
+    rss_kb = int(rss_values[0])
 
+    thread_output, thread_command = metric_output(["ps", "-M", "-p", str(pid)])
     thread_lines = [
-        line for line in metric_output(["ps", "-M", "-p", str(pid)]).splitlines()
+        line for line in thread_output.splitlines()
         if line.strip() and not line.lstrip().startswith("USER")
     ]
+    if not thread_lines:
+        raise RuntimeError("thread metric returned no thread rows")
+    fd_output, fd_command = metric_output(["lsof", "-p", str(pid)])
     fd_lines = [
-        line for line in metric_output(["lsof", "-p", str(pid)]).splitlines()
+        line for line in fd_output.splitlines()
         if line.strip()
     ]
+    if not fd_lines:
+        raise RuntimeError("fd metric returned no file rows")
+    child_output, child_command = metric_output(
+        ["pgrep", "-P", str(pid)],
+        allow_no_matches=True,
+    )
     children = [
-        line for line in metric_output(["pgrep", "-P", str(pid)]).splitlines()
+        line for line in child_output.splitlines()
         if line.strip()
     ]
     tmp_files = sorted(
@@ -308,23 +350,44 @@ def process_metrics(pid: int, support: pathlib.Path) -> dict[str, Any]:
         "thread_count": len(thread_lines),
         "child_count": len(children),
         "tmp_files": tmp_files,
+        "metric_commands": [rss_command, thread_command, fd_command, child_command],
     }
 
 
 def declared_manifest(roots: pathlib.Path) -> list[dict[str, Any]]:
-    """Hash only declared paths; factory/artifacts is pruned by construction."""
+    """Hash only declared paths, rejecting symlinks without resolving them."""
     entries: list[dict[str, Any]] = []
     for agent_id, relative_paths in DECLARED_PATHS.items():
         agent_root = roots / ROOT_NAMES[agent_id]
         for relative in relative_paths:
             target = agent_root / relative
+            if target.is_symlink():
+                entries.append(
+                    {
+                        "agent": agent_id,
+                        "path": relative,
+                        "state": "symlink-rejected",
+                    }
+                )
+                continue
             if not target.exists():
                 entries.append({"agent": agent_id, "path": relative, "state": "missing"})
                 continue
-            candidates = [target]
-            if target.is_dir():
-                candidates = sorted(path for path in target.rglob("*") if path.is_file())
-            for path in candidates:
+            pending = [target]
+            while pending:
+                path = pending.pop()
+                if path.is_symlink():
+                    entries.append(
+                        {
+                            "agent": agent_id,
+                            "path": str(path.relative_to(agent_root)),
+                            "state": "symlink-rejected",
+                        }
+                    )
+                    continue
+                if path.is_dir():
+                    pending.extend(sorted(path.iterdir(), reverse=True))
+                    continue
                 data = path.read_bytes()
                 metadata = path.stat()
                 entries.append(
@@ -341,41 +404,31 @@ def declared_manifest(roots: pathlib.Path) -> list[dict[str, Any]]:
 
 
 def stable_snapshot(value: dict[str, Any]) -> dict[str, Any]:
-    """Compare truth, not expected per-tick timestamps or machine telemetry."""
-    return {
-        "cadenceSeconds": value["cadenceSeconds"],
-        "agents": [
-            {
-                "id": row["id"],
-                "status": row["status"],
-                "confidence": row["confidence"],
-                "currentTask": row.get("currentTask"),
-                "projectName": row.get("projectName"),
-                "model": row.get("model"),
-                "process": row.get("process"),
-                "lastActivityAt": row.get("lastActivityAt"),
-                "note": row.get("note"),
-                "signals": [
-                    {"kind": signal["kind"], "path": signal["path"]}
-                    for signal in row.get("signals", [])
-                ],
-            }
-            for row in value["agents"]
-        ],
-        "repos": value["repos"],
-        "runningCount": value["runningCount"],
-        "countsByAgent": value["countsByAgent"],
-        "orchestrator": value["orchestrator"],
-        "probeHealth": [
-            {
-                "agent": health["agent"],
-                "state": health["state"],
-                "rootPath": health["rootPath"],
-            }
-            for health in value["probeHealth"]
-        ],
-        "persistenceHealth": value["persistenceHealth"],
-    }
+    """Preserve the complete payload while marking only volatile values."""
+    result = copy.deepcopy(value)
+    result["generatedAt"] = "<time-varying generation>"
+    machine = result["machine"]
+    for key in ("cpuPercent", "memoryUsedBytes", "loadAverage", "diskFreeBytes"):
+        if key in machine:
+            machine[key] = "<time-varying machine metric>"
+    for row in result["agents"]:
+        if row.get("lastActivityAt") is not None:
+            row["lastActivityAt"] = "<time-varying activity>"
+        if row.get("process"):
+            for key in ("cpuPercent", "memoryBytes", "startedAt"):
+                if key in row["process"] and row["process"][key] is not None:
+                    row["process"][key] = "<time-varying process metric>"
+    for health in result["probeHealth"]:
+        health["checkedAt"] = "<time-varying health check>"
+    return result
+
+
+def is_nondecreasing(values: list[int]) -> bool:
+    return all(later >= earlier for earlier, later in zip(values, values[1:]))
+
+
+def is_strictly_increasing(values: list[int]) -> bool:
+    return all(later > earlier for earlier, later in zip(values, values[1:]))
 
 
 def static_liveness_scan() -> dict[str, Any]:
@@ -491,6 +544,11 @@ def run() -> dict[str, Any]:
         socket_path = base / "daemon.sock"
         daemon_log = base / "daemon.stdout.log"
         environment = os.environ.copy()
+        inherited_root_overrides = sorted(
+            key for key in environment if key.startswith("BURNBAR_FLEET_ROOT_")
+        )
+        for key in inherited_root_overrides:
+            del environment[key]
         environment.update(
             {
                 "BURNBAR_DAEMON_SUPPORT_DIR": str(support),
@@ -537,6 +595,9 @@ def run() -> dict[str, Any]:
                     **process_metrics(daemon.pid, support),
                 }
             )
+            if canary.poll() is not None:
+                raise RuntimeError(f"canary exited before final tick: {canary.returncode}")
+            samples[-1]["canary_alive"] = True
             if index == 4:
                 stable_reference = stable_snapshot(current)
 
@@ -555,11 +616,36 @@ def run() -> dict[str, Any]:
         warmup_rss = [value for value in metrics["rss_kb"][4:9] if value is not None]
         warmup_fd = metrics["fd_count"][4:9]
         warmup_threads = metrics["thread_count"][4:9]
-        rss_baseline = median(warmup_rss) if warmup_rss else 0
+        if len(warmup_rss) != 5:
+            raise RuntimeError("RSS warm-up window is missing samples")
+        rss_baseline = median(warmup_rss)
         fd_baseline = median(warmup_fd)
         thread_baseline = median(warmup_threads)
-        rss_end = metrics["rss_kb"][-1] or 0
-        rss_ratio = (rss_end / rss_baseline) if rss_baseline else 1.0
+        rss_end = metrics["rss_kb"][-1]
+        rss_ratio = rss_end / rss_baseline
+        rss_decrease_count = sum(
+            later < earlier
+            for earlier, later in zip(metrics["rss_kb"], metrics["rss_kb"][1:])
+        )
+        rss_increase_count = sum(
+            later > earlier
+            for earlier, later in zip(metrics["rss_kb"], metrics["rss_kb"][1:])
+        )
+        rss_non_monotonic = rss_decrease_count > 0
+        rss_nondecreasing = is_nondecreasing(metrics["rss_kb"])
+        rss_strictly_increasing = is_strictly_increasing(metrics["rss_kb"])
+
+        dead_grok_row = next(
+            row for row in first["agents"] if row["id"] == "grok-cli"
+        )
+        if (
+            dead_grok_row["status"] != "stale"
+            or dead_grok_row["confidence"] != "activeSessionFile"
+        ):
+            raise RuntimeError(
+                "dead-pid Grok fixture did not downgrade to stale/activeSessionFile: "
+                f"{dead_grok_row}"
+            )
 
         raw_log = stop_log_capture(log_process)
         log_process = None
@@ -582,19 +668,26 @@ def run() -> dict[str, Any]:
             )
             raw_log = fallback.stdout
             events = parse_degradation_events(raw_log, daemon.pid)
+        daemon_stdout = daemon_log.read_text(encoding="utf-8", errors="replace")
+        scanned_logs = raw_log + "\n" + daemon_stdout
 
         canary_signals = (
             canary_log.read_text(encoding="utf-8").splitlines()
             if canary_log.exists()
             else []
         )
+        canary_alive_at_final_tick = canary.poll() is None
+        if not canary_alive_at_final_tick:
+            raise RuntimeError(
+                f"canary exited before final assertion: {canary.returncode}"
+            )
         static_scan = static_liveness_scan()
         event_counts: dict[str, int] = {}
         event_keys: list[tuple[str, int | None]] = []
         for event in events:
             event_counts[event["agent"]] = event_counts.get(event["agent"], 0) + 1
             event_keys.append((event["agent"], event["tick"]))
-        affected_agents = ["grok-cli"]
+        affected_agents = ["grok-bot"]
         max_events = len(affected_agents) * (SOAK_TICKS + 1)
         at_most_one_per_agent_per_tick = len(event_keys) == len(set(event_keys))
         log_bytes_cap = max_events * 512
@@ -614,7 +707,13 @@ def run() -> dict[str, Any]:
             for value in intervals
         ) < SOAK_TICKS - 1:
             raise RuntimeError("more than one cadence interval was late")
-        if not warmup_rss or rss_ratio > 1.20:
+        if not rss_non_monotonic:
+            raise RuntimeError(
+                "RSS series was monotonic nondecreasing; "
+                f"increases={rss_increase_count}, decreases={rss_decrease_count}, "
+                f"series_kb={metrics['rss_kb']}"
+            )
+        if rss_ratio > 1.20:
             raise RuntimeError(f"RSS exceeded the documented 20% bound: ratio={rss_ratio:.3f}")
         if any(
             value != 0
@@ -632,6 +731,8 @@ def run() -> dict[str, Any]:
             raise RuntimeError("stable snapshot projection changed after warm-up")
         if not at_most_one_per_agent_per_tick:
             raise RuntimeError("more than one degradation record appeared for an agent/tick")
+        if not events:
+            raise RuntimeError("malformed Grok Bot fixture produced no degradation event")
         if len(events) > max_events:
             raise RuntimeError(f"degradation log exceeded the {max_events}-record cap")
         if log_bytes > log_bytes_cap:
@@ -672,11 +773,12 @@ def run() -> dict[str, Any]:
                 "rss_end_kb": rss_end,
                 "rss_end_to_warmup_ratio": rss_ratio,
                 "rss_bound_ratio": 1.20,
-                "rss_strictly_monotonic_growth": all(
-                    later > earlier
-                    for earlier, later in zip(metrics["rss_kb"], metrics["rss_kb"][1:])
-                    if earlier is not None and later is not None
-                ),
+                "rss_series_kb": metrics["rss_kb"],
+                "rss_increase_count": rss_increase_count,
+                "rss_decrease_count": rss_decrease_count,
+                "rss_nondecreasing_growth": rss_nondecreasing,
+                "rss_strictly_increasing_growth": rss_strictly_increasing,
+                "rss_non_monotonic_gate": rss_non_monotonic,
                 "fd_baseline": fd_baseline,
                 "fd_max_delta_from_warmup": max(
                     abs(value - fd_baseline) for value in metrics["fd_count"]
@@ -709,12 +811,13 @@ def run() -> dict[str, Any]:
                 "log_bytes_bounded": log_bytes <= log_bytes_cap,
                 "no_stack_trace_markers": not re.search(
                     r"Traceback|stack trace|backtrace|fatal error",
-                    raw_log,
+                    scanned_logs,
                     re.IGNORECASE,
                 ),
-                "secret_absent": SECRET not in raw_log,
-                "sentinels_absent": UNDECLARED_SENTINEL not in raw_log
-                and ARTIFACT_SENTINEL not in raw_log,
+                "secret_absent": SECRET not in scanned_logs,
+                "sentinels_absent": UNDECLARED_SENTINEL not in scanned_logs
+                and ARTIFACT_SENTINEL not in scanned_logs,
+                "scanned_streams": ["oslog", "daemon.stdout.log"],
             },
             "fixture_isolation": {
                 "declared_manifest_before": before_manifest,
@@ -725,9 +828,14 @@ def run() -> dict[str, Any]:
                     "factory/undeclared-sibling/**",
                 ],
                 "traversal_rule": (
-                    "Manifest enumerates only DECLARED_PATHS; factory/artifacts/** "
-                    "is pruned before traversal and its content is never read."
+                    "Manifest enumerates only DECLARED_PATHS and rejects symlink "
+                    "descendants before stat/read; factory/artifacts/** is never read."
                 ),
+                "symlink_rejections": [
+                    entry for entry in before_manifest
+                    if entry.get("state") == "symlink-rejected"
+                ],
+                "per_agent_root_overrides_cleared": inherited_root_overrides == [],
                 "snapshot_sentinels_absent": UNDECLARED_SENTINEL
                 not in json.dumps([stable_first, stable_last])
                 and ARTIFACT_SENTINEL not in json.dumps([stable_first, stable_last])
@@ -740,7 +848,13 @@ def run() -> dict[str, Any]:
                 "canary_pid": canary.pid,
                 "canary_nonzero_signal_log": canary_signals,
                 "canary_received_no_nonzero_signal": not canary_signals,
+                "canary_alive_at_final_tick": canary_alive_at_final_tick,
                 "dead_pid_fixture": dead_pid,
+                "dead_pid_downgrade": {
+                    "agent": "grok-cli",
+                    "status": dead_grok_row["status"],
+                    "confidence": dead_grok_row["confidence"],
+                },
                 "pid_reuse_fixture": {
                     "agent": "factory-droid",
                     "recorded_start_time": "one hour before canary start",

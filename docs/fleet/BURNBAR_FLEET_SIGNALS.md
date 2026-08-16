@@ -48,6 +48,9 @@ reaching logs.
 Hardening manifests enumerate only the declared signal paths in the
 per-agent inventory. They explicitly prune `~/.factory/artifacts/**` before
 any traversal and never read, hash, stat, or copy that protected subtree.
+Declared directory traversal rejects the declared directory itself and every
+descendant symlink before listing, statting, or reading it; a symlink cannot
+escape into `~/.factory/artifacts/**` or any other outside root.
 Hermetic evidence uses a temporary `factory/artifacts/**` sentinel to prove
 that the excluded subtree cannot influence a snapshot; the sentinel content
 is not included in the evidence.
@@ -818,6 +821,9 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
   - `~/.factory/missions/<id>/` — mission dirs (mtime = live mission)
   - `~/.factory/sessions-index.json` — index (300 KB+, fresh)
   - **NEVER enter `~/.factory/artifacts/`** (system-reserved; see [Out of scope](#out-of-scope))
+- Declared `sessions/` and `missions/` traversal rejects symlink roots and
+  descendant symlinks; only real directories contained by the declared
+  Factory root can contribute evidence.
 - **Signal file shape** (`~/.factory/task-invocations.json`):
 
 ```json
