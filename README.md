@@ -175,7 +175,7 @@ daemon.fleet.orchestrator.set    write an approved designation
 daemon.fleet.directive.record    record an approved/dismissed/delivery outcome
 ```
 
-The three write methods are control-plane operations, not general agent
+The two write methods are control-plane operations, not general agent
 permissions. They validate payloads, preserve typed outcomes, and serialize
 daemon-owned state.
 

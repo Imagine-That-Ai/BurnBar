@@ -1,0 +1,29 @@
+SwiftLint changed-file category comparison
+base=c3add7133c0e351ace402b401746dbff6ef168be
+git_changed_swift_files=174
+mission_lint_swift_files=165
+protected_wip_excluded=10 (user-owned checkpoint; no mission commit touched these paths)
+new_file=AgentLens/Views/Chat/ChatSessionController+ThreadLifecycle.swift (no diagnostics)
+policy=no new error categories compared with base
+new_error_categories=none
+final_changed_file_check=ChatSessionController+ThreadLifecycle.swift clean; ChatPanel.swift and ChatSessionController.swift retain only baseline error categories; ChatSessionController file_length remains warning-only at 999 lines
+swiftlint_exit=2 on both base/current selections because the repository warning threshold and baseline error findings remain; policy gate is the category comparison
+files_with_current_error_categories=18
+AgentLens/Models/AgentProvider.swift: warning_threshold
+AgentLens/Services/CLIBridge.swift: type_body_length,warning_threshold
+AgentLens/Services/ContextBuilder.swift: function_body_length,line_length,warning_threshold
+AgentLens/Services/DataStore.swift: file_length,force_try,function_body_length,function_parameter_count,large_tuple,type_body_length,warning_threshold
+AgentLens/Services/LogParser/ClineFormatParser.swift: function_body_length
+AgentLens/Services/LogParser/FactoryDroidParser.swift: function_body_length,large_tuple
+AgentLens/Services/LogParser/ForgeDevParser.swift: warning_threshold
+AgentLens/Services/LogParser/GooseParser.swift: function_body_length
+AgentLens/Services/LogParser/HermesParser.swift: function_parameter_count,type_body_length,warning_threshold
+AgentLens/Services/LogParser/KimiParser.swift: function_body_length
+AgentLens/Services/UsageAggregator.swift: file_length,function_body_length,warning_threshold
+AgentLens/Theme/DesignSystem.swift: warning_threshold
+AgentLens/Views/Chat/ChatPanel.swift: type_body_length,warning_threshold
+AgentLens/Views/Chat/ChatSessionController.swift: function_body_length,warning_threshold
+AgentLens/Views/Dashboard/DashboardView.swift: file_length,large_tuple,type_body_length,warning_threshold
+AgentLens/Views/Dashboard/ProviderDashboardView.swift: warning_threshold
+BurnBarCore/Sources/BurnBarCore/BurnBarContracts.swift: file_length
+BurnBarDaemon/Tests/BurnBarDaemonTests/BurnBarDaemonServerTests.swift: function_body_length

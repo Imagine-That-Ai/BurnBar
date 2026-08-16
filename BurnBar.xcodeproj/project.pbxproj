@@ -96,6 +96,7 @@
 		538B4122D661C21C5C78795F /* ChatFAB.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A6FC3BE7A6E6EA1AFE3E41E /* ChatFAB.swift */; };
 		56A87437FBFF7D3BD7131711 /* FactoryDroidParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B31C24B995A2CBBB18265152 /* FactoryDroidParser.swift */; };
 		5703D50704F1368132684B70 /* BurnBarFleetPersister.swift in Sources */ = {isa = PBXBuildFile; fileRef = C31684E498ACB132FA113A52 /* BurnBarFleetPersister.swift */; };
+		5723DD66121C3AE00268B2E1 /* ChatSessionController+ThreadLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86335A43A7990709D2250909 /* ChatSessionController+ThreadLifecycle.swift */; };
 		578C2A41C12B2C0C7D3464E2 /* BurnBarFleetSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10C8199C27F568ECFD94DDC /* BurnBarFleetSocketClient.swift */; };
 		5B89E6E8C154DC8B8AD9D88D /* Alternate3Dashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F7561D8D709E094A10B7EA9 /* Alternate3Dashboard.swift */; };
 		5BA8D7D5E51F397BE669059A /* BurnBarAgentStackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46D2BCD6B006500521B68AA8 /* BurnBarAgentStackTests.swift */; };
@@ -445,6 +446,7 @@
 		84ABE76E09AF7A0DD4BF765E /* UsageAggregatorParserRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAggregatorParserRegistrationTests.swift; sourceTree = "<group>"; };
 		84E08215997E4EC968826D45 /* SearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchService.swift; sourceTree = "<group>"; };
 		85E33F9067CC8630AB3D9D19 /* BurnBarIndexedSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarIndexedSearchService.swift; sourceTree = "<group>"; };
+		86335A43A7990709D2250909 /* ChatSessionController+ThreadLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChatSessionController+ThreadLifecycle.swift"; sourceTree = "<group>"; };
 		867E6FE02CD5590CE674A076 /* BurnBarFleetOrchestratorCoherenceRepairTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BurnBarFleetOrchestratorCoherenceRepairTests.swift; sourceTree = "<group>"; };
 		87DA6CB067222B5E99456B3F /* retrieval-filter-correctness.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "retrieval-filter-correctness.json"; sourceTree = "<group>"; };
 		884C00CD139AB73C24F8EB96 /* AnthropicUsageAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnthropicUsageAPI.swift; sourceTree = "<group>"; };
@@ -795,6 +797,7 @@
 				2DB93DCF073DBA419A279F7B /* ChatPanel.swift */,
 				E868B210AF80295AB84F5900 /* ChatSessionController.swift */,
 				31DAC76510F93E83783938B9 /* ChatSessionController+Delivery.swift */,
+				86335A43A7990709D2250909 /* ChatSessionController+ThreadLifecycle.swift */,
 				95ABBBF9B8FF86B6A0C98A69 /* CLIAssistantConsentSheet.swift */,
 				846CF10DE54AA8C66CDD7699 /* InsightBriefCard.swift */,
 			);
@@ -1379,6 +1382,7 @@
 				DF4F2627B68B590FB5DE6572 /* ChatMode.swift in Sources */,
 				279D475C721B1D66032D1A40 /* ChatPanel.swift in Sources */,
 				8276A2A7AC5F85DC28E39E74 /* ChatSessionController+Delivery.swift in Sources */,
+				5723DD66121C3AE00268B2E1 /* ChatSessionController+ThreadLifecycle.swift in Sources */,
 				28E2E74FB32DF78342143C1A /* ChatSessionController.swift in Sources */,
 				8D77F5D4F3A5E3DC6A2BF45C /* ClaudeCodeParser.swift in Sources */,
 				D1465342E1C49F1C5B32D9BF /* ClaudeConversationExtractor.swift in Sources */,

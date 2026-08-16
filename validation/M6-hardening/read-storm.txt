@@ -7,4 +7,4 @@ completed_build_samples=2
 max_in_flight_probe_calls=1
 cadence_seconds=1
 interval_tolerance=0.5...1.5
-interval_observed_s=1.000999927520752
+interval_observed_s=1.0

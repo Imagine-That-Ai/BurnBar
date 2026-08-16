@@ -34,7 +34,7 @@ final class ChatSessionController {
     private static let udPanelH = "chatPanelHeight"
     private static let udOffsetX = "chatPanelFloatOffsetX"
     private static let udOffsetY = "chatPanelFloatOffsetY"
-    private static let udActiveThreadID = "chatPanelActiveThreadID"
+    static let udActiveThreadID = "chatPanelActiveThreadID"
     /// Typed daemon-down refusal shared by the orchestrator-state and
     /// snapshot reads (VAL-ORCH-025): stale numbers are never presented as
     /// current.
@@ -80,7 +80,7 @@ final class ChatSessionController {
     private let cliAssistantAllowedProvider: () -> Bool
 
     private var streamTask: Task<Void, Never>?
-    private var sharedFeaturesAvailable = true
+    private(set) var sharedFeaturesAvailable = true
 
     init(
         dataStore: DataStore,
@@ -131,7 +131,6 @@ final class ChatSessionController {
 
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
-
     func reconfigureSearchService() {
         searchService = SearchService.makeConversationSearchService(
             dataStore: dataStore,
@@ -139,7 +138,6 @@ final class ChatSessionController {
         )
         refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
     }
-
     func clampedPanelOffset(_ proposed: CGSize, container: CGSize, padding: CGFloat) -> CGSize {
         guard container.width > 1, container.height > 1 else { return proposed }
         let minX = -(container.width - panelWidth - padding * 2)
@@ -149,23 +147,33 @@ final class ChatSessionController {
             height: min(0, max(minY, proposed.height))
         )
     }
-
     func applyClampedPanelDrag(start: CGSize, translation: CGSize, container: CGSize, padding: CGFloat) {
         let proposed = CGSize(width: start.width + translation.width, height: start.height + translation.height)
         panelFloatOffset = clampedPanelOffset(proposed, container: container, padding: padding)
     }
-
     func reclampPanelOffset(container: CGSize, padding: CGFloat) {
         panelFloatOffset = clampedPanelOffset(panelFloatOffset, container: container, padding: padding)
     }
-
     func persistPanelGeometry() {
         UserDefaults.standard.set(Double(panelWidth), forKey: Self.udPanelW)
         UserDefaults.standard.set(Double(panelHeight), forKey: Self.udPanelH)
         UserDefaults.standard.set(Double(panelFloatOffset.width), forKey: Self.udOffsetX)
         UserDefaults.standard.set(Double(panelFloatOffset.height), forKey: Self.udOffsetY)
     }
-
+    func activateThread(_ threadID: String) {
+        activeThreadID = threadID
+    }
+    func setActiveChatMode(_ newMode: ChatMode) {
+        mode = newMode
+    }
+    func cancelActiveStream() {
+        streamTask?.cancel()
+        cliBridge.cancel()
+        streamTask = nil
+        isStreaming = false
+        activeStreamMessageId = nil
+        generation = nil
+    }
     // MARK: - Mode (M4)
 
     /// Switches the ACTIVE thread's mode and persists it per thread
@@ -193,116 +201,6 @@ final class ChatSessionController {
         fleetService.fetchOnce()
     }
 
-    // MARK: - Thread lifecycle
-
-    func loadPersistedMessages() {
-        let savedThreadID = UserDefaults.standard.string(forKey: Self.udActiveThreadID)
-        let chosenThreadID: String
-        var threadSelectionError: String?
-        do {
-            if let savedThreadID, try dataStore.chatThreadExists(id: savedThreadID) {
-                chosenThreadID = savedThreadID
-            } else if let mostRecent = try dataStore.fetchMostRecentChatThreadID() {
-                chosenThreadID = mostRecent
-            } else {
-                chosenThreadID = try dataStore.createChatThread()
-            }
-        } catch {
-            chosenThreadID = savedThreadID ?? DataStore.legacyChatThreadID
-            threadSelectionError = "Chat thread state could not be loaded locally: \(error.localizedDescription)"
-            persistenceError = threadSelectionError
-        }
-
-        activeThreadID = chosenThreadID
-        UserDefaults.standard.set(chosenThreadID, forKey: Self.udActiveThreadID)
-        mode = ChatMode.persistedMode(threadID: chosenThreadID)
-        do {
-            messages = try dataStore.fetchChatMessages(threadID: chosenThreadID)
-            if threadSelectionError == nil {
-                persistenceError = nil
-            }
-        } catch {
-            messages = []
-            persistenceError = "Chat history could not be loaded locally: \(error.localizedDescription)"
-        }
-        reconcileRecoveredMessages()
-        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
-        refreshHistory()
-        refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
-        if mode == .orchestrator {
-            refreshOrchestratorState()
-        }
-    }
-
-    func clearChat() {
-        streamTask?.cancel()
-        cliBridge.cancel()
-        streamTask = nil
-        isStreaming = false
-        activeStreamMessageId = nil
-        generation = nil
-        messages = []
-        inputText = ""
-        streamError = nil
-        persistenceError = nil
-        selectedContext = nil
-        firstAssistantBadgeShown = false
-        lastRetrievalHadNoEvidence = false
-        startNewChatThread()
-    }
-
-    func startNewChatThread() {
-        let newID = UUID().uuidString
-        do {
-            activeThreadID = try dataStore.createChatThread(id: newID)
-        } catch {
-            activeThreadID = DataStore.legacyChatThreadID
-            persistenceError = "New chat thread could not be saved locally: \(error.localizedDescription)"
-        }
-        UserDefaults.standard.set(activeThreadID, forKey: Self.udActiveThreadID)
-        mode = ChatMode.persistedMode(threadID: activeThreadID)
-        messages = []
-        refreshHistory()
-    }
-
-    func refreshHistory() {
-        do {
-            historyThreads = try dataStore.fetchChatThreadSummaries(searchQuery: historyQuery)
-        } catch {
-            historyThreads = []
-            persistenceError = "Chat history could not be refreshed locally: \(error.localizedDescription)"
-        }
-    }
-
-    func openHistoryThread(_ threadID: String) {
-        guard threadID != activeThreadID else { return }
-
-        streamTask?.cancel()
-        cliBridge.cancel()
-        streamTask = nil
-        isStreaming = false
-        activeStreamMessageId = nil
-        generation = nil
-        streamError = nil
-        selectedContext = nil
-
-        activeThreadID = threadID
-        UserDefaults.standard.set(threadID, forKey: Self.udActiveThreadID)
-        mode = ChatMode.persistedMode(threadID: threadID)
-        do {
-            messages = try dataStore.fetchChatMessages(threadID: threadID)
-            persistenceError = nil
-        } catch {
-            messages = []
-            persistenceError = "Chat history could not be loaded locally: \(error.localizedDescription)"
-        }
-        reconcileRecoveredMessages()
-        firstAssistantBadgeShown = messages.contains { $0.role == .assistant && $0.cliUsed != nil }
-        if mode == .orchestrator {
-            refreshOrchestratorState()
-        }
-    }
-
     func performSearch() {
         let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else {
@@ -328,7 +226,6 @@ final class ChatSessionController {
             sharedFeaturesAvailable: sharedFeaturesAvailable
         )
     }
-
     func selectSearchResult(_ result: SearchResult) {
         selectedContext = result.conversation
         searchQuery = ""
@@ -482,7 +379,6 @@ final class ChatSessionController {
         )
     }
 }
-
 // MARK: - Orchestrator mode (M4)
 
 extension ChatSessionController {
@@ -770,11 +666,13 @@ extension ChatSessionController {
         if activeStreamMessageId == assistantId {
             isStreaming = false
             activeStreamMessageId = nil
+            streamTask = nil
             generation = nil
         } else if generation?.assistantId == assistantId, activeStreamMessageId == nil {
             // The stream was cancelled (its active id was already cleared by
             // cancelGeneration) and no newer stream replaced this
             // generation: release the stale context.
+            streamTask = nil
             generation = nil
         }
         if let streamError {
@@ -950,6 +848,8 @@ extension ChatSessionController {
                 messages[idx] = failed
                 persistenceError = message
                 persistRecoveryJournal(failed)
+                refreshHistory()
+                return
             }
             refreshHistory()
 
@@ -1042,14 +942,10 @@ extension ChatSessionController {
     /// consistent (VAL-ORCH-023). No directive record or side effect is
     /// created by cancellation.
     func cancelGeneration() {
-        streamTask?.cancel()
-        cliBridge.cancel()
+        cancelActiveStream()
         // Invalidate the token before the cancelled CLI can deliver any late
         // output. Its guarded proposal callback and finalize path must not
         // attach a phantom card to the cancelled message.
-        generation = nil
-        isStreaming = false
-        activeStreamMessageId = nil
     }
 
     /// Appends a typed assistant message (refusal / unavailable / degraded

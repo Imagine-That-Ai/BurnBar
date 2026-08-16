@@ -481,10 +481,12 @@ extension ChatSessionControllerDeliveryFlowTests {
         var failSaves = true
         var controllerThreadID = DataStore.legacyChatThreadID
         let channel = StubDeliveryChannel(outcome: .delivered)
+        var channelResolutionCalls = 0
         let controller = makeController(
             snapshot: snapshot,
             cliBridge: makeFakeCLIBridge(mode: "proposal"),
             deliveryChannelProvider: { target in
+                channelResolutionCalls += 1
                 guard target == .hermes else { return nil }
                 return channel
             },
@@ -515,6 +517,11 @@ extension ChatSessionControllerDeliveryFlowTests {
         XCTAssertTrue(
             channel.deliveredDirectives.isEmpty,
             "delivery must not start until approved state is locally durable"
+        )
+        XCTAssertEqual(
+            channelResolutionCalls,
+            0,
+            "the delivery channel must not even be resolved after local approval persistence fails"
         )
         failSaves = false
     }

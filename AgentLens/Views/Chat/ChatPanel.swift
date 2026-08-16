@@ -131,8 +131,6 @@ struct ChatPanel: View {
         .onAppear {
             brief = controller.buildInsightBriefSnapshot()
             controller.loadPersistedMessages()
-            controller.refreshHistory()
-            controller.refreshRetrievalHealth(sharedFeaturesAvailable: sharedFeaturesAvailable)
         }
         .onChange(of: dataStore.lastRefresh) { _, _ in
             Task { @MainActor in

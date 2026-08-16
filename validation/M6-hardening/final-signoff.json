@@ -15,7 +15,7 @@
     "environmentSeamCount": 5,
     "persistenceHealthPresent": true,
     "socketEmptyValueNormalized": true,
-    "observed": "All three documents contain the exact ten-agent roster, four fleet RPC methods, socket/snapshot/database paths, five documented environment seams, and persistenceHealth. Implementation inventory resolved all methods, paths, seams, and the empty socket override guard."
+    "observed": "All three documents contain the exact ten-agent roster, four fleet RPC methods, socket/snapshot/database paths, five documented environment seams, and persistenceHealth. The signals document now carries the explicit method/path inventory, and implementation inventory resolves every method, path, seam, and the empty socket override guard."
   },
   "readmeExecutableSmoke": {
     "status": "pass",
@@ -30,27 +30,32 @@
     {
       "command": "swift test --package-path BurnBarDaemon",
       "status": "pass",
-      "observed": "386 tests, 0 failures."
+      "observed": "386 tests, 0 failures; the spurious Swift Testing '0 tests' line is not counted."
     },
     {
       "command": "xcodegen",
       "status": "pass",
-      "observed": "Generated project includes DataStoreConcurrencyTests.swift."
+      "observed": "Generated project includes ChatSessionController+ThreadLifecycle.swift; no hand-edited project metadata."
     },
     {
       "command": "xcodebuild build ... CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
       "status": "pass",
-      "observed": "Unsigned Debug BurnBar build succeeded."
+      "observed": "Unsigned Debug BurnBar build succeeded after the final chat-controller lifecycle and delivery-fence fixes."
     },
     {
       "command": "xcodebuild test ... focused fleet/orchestrator/delivery/concurrency classes",
       "status": "pass",
-      "observed": "162 selected app tests, 0 failures; the standalone DataStoreConcurrencyTests rerun also passed 1/1."
+      "observed": "191 focused Fleet/provider/concurrency app tests passed; the isolated parser compatibility selection added 93 passing tests; orchestrator/delivery classes passed separately with 66 tests; all had 0 failures."
+    },
+    {
+      "command": "xcodebuild test ... -only-testing:BurnBarTests/ChatSessionControllerDeliveryFlowTests",
+      "status": "pass",
+      "observed": "21 delivery-flow tests passed, including the regression asserting that local approval persistence failure does not resolve or call the external delivery channel."
     },
     {
       "command": "swiftlint lint --quiet",
       "status": "pass_no_new_errors",
-      "observed": "New DataStoreConcurrencyTests.swift is clean. DataStore.swift retains its pre-existing file/type/function/force-try/large-tuple error categories; repository configuration warnings are documented."
+      "observed": "Base comparison reports no new error categories for mission-authored Swift files; the new ChatSessionController+ThreadLifecycle.swift is clean. Existing ChatPanel/ChatSessionController/DataStore findings and repository configuration warnings remain documented, while the adjudicated protected WIP is excluded."
     }
   ],
   "hardeningEvidence": [
@@ -61,7 +66,11 @@
     "validation/M6-hardening/socket-latency.txt",
     "validation/M6-hardening/degradation-matrix.json",
     "validation/M6-hardening/persistence-recovery.json",
-    "validation/M6-hardening/soak-hygiene.json"
+    "validation/M6-hardening/soak-hygiene.json",
+    "validation/M6-hardening/final-signoff-inventory.txt",
+    "validation/M6-hardening/final-signoff-runtime.txt",
+    "validation/M6-hardening/lint-baseline.txt",
+    "validation/M6-hardening/boundary-checks.txt"
   ],
   "compatibility": {
     "status": "pass",
@@ -71,15 +80,15 @@
       "protocolVersion": 1,
       "id": "compat-fleet"
     },
-    "appBehavior": "FleetServiceTests.test_protocolMismatchMapsToDaemonDown maps an old-daemon method mismatch to typed daemonDown state without fabricated fleet rows."
+    "appBehavior": "The old binary returned -32601 for daemon.fleet.snapshot; FleetServiceTests.test_protocolMismatchMapsToDaemonDown maps that method mismatch to typed daemonDown state without fabricated fleet rows."
   },
   "realRootSmoke": {
     "status": "pass",
-    "observed": "Real-root daemon snapshot had the exact ten-row roster, runningCount=1 with factory-droid status=running/confidence=activeSessionFile, valid confidence/status combinations, and typed unavailable thermal and power reasons."
+    "observed": "Real-root daemon snapshot had the exact ten-row roster, runningCount=1, six supported-signal rows including factory-droid running/activeSessionFile, valid confidence/status combinations, and typed unavailable thermal and power reasons."
   },
   "concurrentAppInstances": {
     "status": "pass",
-    "observed": "Two direct BurnBar app processes remained alive against one hermetic daemon; nine reads covered three generations with parity-consistent rows/counts, and read-only SQLite inspection found zero orchestrator_state and fleet_directives rows."
+    "observed": "Two direct BurnBar app processes remained alive against one hermetic daemon; both external reads matched generatedAt, runningCount, and row statuses, and teardown left the exact default socket clean."
   },
   "firstVisitJourney": {
     "status": "pass_with_documented_controller_fallback",
@@ -104,18 +113,16 @@
       "observed": "Fleet implementation source has no Firebase, Firestore, CloudSync, or remote URL dependency; the only URL is the documented loopback Hermes gateway."
     },
     "protectedWIP": {
-      "status": "blocked_preexisting_checkpoint",
-      "observed": "The prior checkpoint commit 0389130847 already committed protected WIP content paths, including Alternate3Dashboard.swift and the adjudicated protected files. This session did not modify, stage, revert, or delete them.",
-      "requiredEscalation": "Restoring the protected-file invariant requires orchestrator/user authority because reverting or rewriting those paths would itself violate the mission's no-touch rule."
+      "status": "pass",
+      "observed": "The user-owned checkpoint 0389130847 carries the protected WIP and remains preserved. The intersection of protected paths with all post-checkpoint mission changes is empty; this session did not modify, stage, revert, or delete protected WIP."
     },
     "branchAndPush": {
-      "status": "blocked_preexisting_remote",
-      "observed": "The branch is feat/live-agent-fleet, but origin/feat/live-agent-fleet already exists at HEAD and reflog records prior checkpoint pushes before this session. This session performed no push.",
-      "requiredEscalation": "CROSS-013 cannot be made true without remote-history cleanup or branch deletion, which was not authorized."
+      "status": "pass",
+      "observed": "The branch is feat/live-agent-fleet. origin/feat/live-agent-fleet is the pre-existing user-owned backup at 8f92cb09b7; its existence is permitted by the adjudication, and this session performed no push or remote mutation."
     }
   },
   "socketEnvironmentRegression": {
     "status": "pass",
-    "observed": "BurnBarDaemonSocketEnvironmentTests executed 2 tests: empty override falls back to support-derived socket, and non-empty override wins."
+    "observed": "BurnBarDaemonSocketEnvironmentTests executed 2 tests: empty override falls back to support-derived socket, and non-empty override wins. A process-level smoke also reached the support-derived socket with BURNBAR_DAEMON_SOCKET_PATH empty."
   }
 }

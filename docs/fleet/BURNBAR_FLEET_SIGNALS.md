@@ -122,6 +122,32 @@ The daemon's fleet snapshot core exposes the following environment seams. Valida
 | Per-probe timeout | (constant `BurnBarFleetProbeConstants.perProbeTimeoutSeconds`, injectable per probe) | `2.0` seconds | Every signal-file content read is bounded: the file is opened non-blocking and polled for readability up to the timeout. A blocking path (FIFO) or a read that exceeds the bound degrades the affected probe typed (`degraded(reason: "... timed out ...")`) and the tick continues on cadence — a hung signal path never stalls the snapshot (VAL-FLEET-019). Hermes uses `hermesProbeBudgetSeconds` (also 2.0 s by default) as one monotonic deadline across its serial `gateway.pid`, heartbeat, gateway-state, and processes reads; it does not multiply the budget by four. |
 | Event retention | `BURNBAR_FLEET_EVENT_RETENTION_SECONDS` | `86400` (24 h) | Accelerates fleet_events pruning for validation (implemented with the persistence layer). |
 
+### Fleet API surface and paths
+
+The versioned fleet method inventory is exactly:
+
+| Wire method | Access | Implementation surface |
+|---|---|---|
+| `daemon.fleet.snapshot` | read | `BurnBarRPCMethod.fleetSnapshot` → `BurnBarDaemonServer` fleet service |
+| `daemon.fleet.orchestrator.get` | read | `BurnBarRPCMethod.fleetOrchestratorGet` → daemon control store |
+| `daemon.fleet.orchestrator.set` | write | `BurnBarRPCMethod.fleetOrchestratorSet` → daemon control store |
+| `daemon.fleet.directive.record` | write | `BurnBarRPCMethod.fleetDirectiveRecord` → daemon control store |
+
+The daemon implements these methods as one-shot JSON-RPC requests over the
+owner-only Unix socket. The default paths are:
+
+```text
+socket:          ~/Library/Application Support/BurnBar/burnbar-daemon.sock
+snapshot file:   ~/Library/Application Support/BurnBar/fleet-snapshot.json
+state database:  ~/Library/Application Support/BurnBar/fleet.sqlite
+```
+
+`BURNBAR_DAEMON_SUPPORT_DIR` redirects all three paths together unless
+`BURNBAR_DAEMON_SOCKET_PATH` is non-empty or `--socket-path PATH` is supplied.
+An empty `BURNBAR_DAEMON_SOCKET_PATH` is unset and falls back to the
+support-directory-derived socket. The top-level `persistenceHealth` field is
+the single typed health surface for the database and snapshot writer.
+
 ### Daemon-owned persistence (M1, implemented)
 
 The daemon persists every completed tick into `fleet.sqlite` (GRDB, already a
