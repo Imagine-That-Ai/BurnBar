@@ -1,0 +1,566 @@
+{
+  "agents": [
+    {
+      "confidence": "unsupported",
+      "displayName": "Claude Code",
+      "id": "claude-code",
+      "note": "No session files present.",
+      "signals": [],
+      "status": "unknown"
+    },
+    {
+      "confidence": "activeSessionFile",
+      "displayName": "Factory Droid",
+      "id": "factory-droid",
+      "lastActivityAt": "2026-08-16T18:13:58.588Z",
+      "projectName": "/Users/dewclaw",
+      "signals": [
+        {
+          "detail": "Declared root present.",
+          "kind": "root-presence",
+          "path": "/Users/dewclaw/.factory"
+        },
+        {
+          "detail": "831 invocation(s)",
+          "kind": "task-ledger",
+          "path": "/Users/dewclaw/.factory/task-invocations.json"
+        },
+        {
+          "detail": "0 entry(ies)",
+          "kind": "process-list",
+          "path": "/Users/dewclaw/.factory/background-processes.json"
+        },
+        {
+          "detail": "mtime /Users/dewclaw/Factory/BurnBar",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/-Users-dewclaw-Factory-BurnBar"
+        },
+        {
+          "detail": "mtime btw",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/btw"
+        },
+        {
+          "detail": "mtime /Volumes/Samsung NVME/offloaded/home/Documents/Projects/imaginethat/cli",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/-Volumes-Samsung NVME-offloaded-home-Documents-Projects-imaginethat-cli"
+        },
+        {
+          "detail": "mtime /Users/dewclaw/Documents/Projects/BurnBar",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/-Users-dewclaw-Documents-Projects-BurnBar"
+        },
+        {
+          "detail": "mtime /Users/dewclaw/BurnBar",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/-Users-dewclaw-BurnBar"
+        },
+        {
+          "detail": "mtime 96b17198-f27c-49f8-85f1-16494cb84006",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/96b17198-f27c-49f8-85f1-16494cb84006"
+        },
+        {
+          "detail": "mtime aabc5f9d-87ca-4c83-83da-1ec134e6bf50",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/aabc5f9d-87ca-4c83-83da-1ec134e6bf50"
+        },
+        {
+          "detail": "mtime /Users/dewclaw/Developer/AgentLens",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/-Users-dewclaw-Developer-AgentLens"
+        },
+        {
+          "detail": "mtime /Users/dewclaw/BurnBar/worktrees/openburnbar/npm",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/-Users-dewclaw-BurnBar-worktrees-openburnbar-npm"
+        },
+        {
+          "detail": "mtime 750736df-395f-4ca4-980c-17e6c3403dec",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/750736df-395f-4ca4-980c-17e6c3403dec"
+        },
+        {
+          "detail": "mtime /Users/dewclaw",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/-Users-dewclaw"
+        },
+        {
+          "detail": "mtime ae2c0215-369e-4683-b6a7-67cad95486bc",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/ae2c0215-369e-4683-b6a7-67cad95486bc"
+        },
+        {
+          "detail": "mtime /private/tmp/burnbar/worker/testA/worktree",
+          "kind": "session-directory",
+          "path": "/Users/dewclaw/.factory/sessions/-private-tmp-burnbar-worker-testA-worktree"
+        },
+        {
+          "detail": "mtime",
+          "kind": "mission-directory",
+          "path": "/Users/dewclaw/.factory/missions/96b17198-f27c-49f8-85f1-16494cb84006"
+        },
+        {
+          "detail": "mtime",
+          "kind": "mission-directory",
+          "path": "/Users/dewclaw/.factory/missions/aabc5f9d-87ca-4c83-83da-1ec134e6bf50"
+        },
+        {
+          "detail": "mtime",
+          "kind": "mission-directory",
+          "path": "/Users/dewclaw/.factory/missions/2d11669f-dd37-4750-b493-27e68bf93242"
+        },
+        {
+          "detail": "mtime",
+          "kind": "mission-directory",
+          "path": "/Users/dewclaw/.factory/missions/5dd5b504-0f37-410d-995b-2350007e5131"
+        },
+        {
+          "detail": "mtime",
+          "kind": "mission-directory",
+          "path": "/Users/dewclaw/.factory/missions/750736df-395f-4ca4-980c-17e6c3403dec"
+        }
+      ],
+      "status": "running"
+    },
+    {
+      "confidence": "logHeartbeat",
+      "displayName": "Codex",
+      "id": "codex",
+      "lastActivityAt": "2026-08-16T18:13:59.803Z",
+      "note": "Corroboration files fresh but no fresh thread-writer lock.",
+      "signals": [
+        {
+          "detail": "mtime 262253s ago",
+          "kind": "lock-file",
+          "path": "/Users/dewclaw/.codex/thread-writer-locks/.coordination.lock"
+        },
+        {
+          "detail": "mtime 22746s ago",
+          "kind": "lock-file",
+          "path": "/Users/dewclaw/.codex/thread-writer-locks/01a00a6e-2630-79e3-8faf-70577d1f46a0.lock"
+        },
+        {
+          "detail": "mtime 92s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.codex/state_5.sqlite-wal"
+        },
+        {
+          "detail": "mtime 2340s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.codex/.codex-global-state.json"
+        }
+      ],
+      "status": "idle"
+    },
+    {
+      "confidence": "exactProcess",
+      "displayName": "Hermes",
+      "id": "hermes",
+      "lastActivityAt": "2026-08-16T18:15:21.811Z",
+      "note": "Gateway alive with zero active agents; idle, not running.",
+      "process": {
+        "pid": 277
+      },
+      "signals": [
+        {
+          "detail": "pid 277",
+          "kind": "process-list",
+          "path": "/Users/dewclaw/.hermes/gateway.pid"
+        },
+        {
+          "detail": "pid 277, 10s ago",
+          "kind": "heartbeat-file",
+          "path": "/Users/dewclaw/.hermes/state/gateway.heartbeat"
+        },
+        {
+          "detail": "active_agents 0",
+          "kind": "heartbeat-file",
+          "path": "/Users/dewclaw/.hermes/gateway_state.json"
+        },
+        {
+          "detail": "0 entry(ies)",
+          "kind": "process-list",
+          "path": "/Users/dewclaw/.hermes/processes.json"
+        }
+      ],
+      "status": "idle"
+    },
+    {
+      "confidence": "unsupported",
+      "displayName": "Grok Bot",
+      "id": "grok-bot",
+      "note": "Daemon signal file absent; supervisor signal alone is not a liveness claim.",
+      "signals": [
+        {
+          "detail": "pid 95717, at 2665s ago",
+          "kind": "heartbeat-file",
+          "path": "/Users/dewclaw/.grokbot/local-exec-supervisor.json"
+        }
+      ],
+      "status": "unknown"
+    },
+    {
+      "confidence": "exactProcess",
+      "displayName": "Grok CLI",
+      "id": "grok-cli",
+      "process": {
+        "pid": 59284
+      },
+      "projectName": "/Users/dewclaw",
+      "signals": [
+        {
+          "detail": "pid 59284",
+          "kind": "session-registry",
+          "path": "/Users/dewclaw/.grok/active_sessions.json"
+        }
+      ],
+      "status": "running"
+    },
+    {
+      "confidence": "logHeartbeat",
+      "displayName": "Pi",
+      "id": "pi",
+      "lastActivityAt": "2026-08-16T11:34:28.315Z",
+      "note": "Newest transcript mtime is beyond the freshness window.",
+      "projectName": "/Users-dewclaw",
+      "signals": [
+        {
+          "detail": "mtime 325283s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-12T22-56-23-189Z_019ff830-ea95-7d1c-a8e5-9fff36ffc2c5.jsonl"
+        },
+        {
+          "detail": "mtime 258426s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-11-11-097Z_019ff8ac-53f8-7461-ae30-5f6aa207cae8.jsonl"
+        },
+        {
+          "detail": "mtime 319084s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-36-35-457Z_019ff8c3-9681-7dfb-ab0a-4c782a1212e8.jsonl"
+        },
+        {
+          "detail": "mtime 319000s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-38-09-903Z_019ff8c5-076f-7852-90e5-fc32743183dd.jsonl"
+        },
+        {
+          "detail": "mtime 318998s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-38-51-659Z_019ff8c5-aa8b-7b16-a052-fbeddf7a42c3.jsonl"
+        },
+        {
+          "detail": "mtime 318948s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-39-09-194Z_019ff8c5-ef0a-7a55-bb59-f98c07653234.jsonl"
+        },
+        {
+          "detail": "mtime 318900s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-39-58-980Z_019ff8c6-b184-7034-9f3e-4c9c629faa31.jsonl"
+        },
+        {
+          "detail": "mtime 318842s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-41-01-992Z_019ff8c7-a7a8-700a-9fc6-7d1a6e7dc0cc.jsonl"
+        },
+        {
+          "detail": "mtime 318802s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-41-43-221Z_019ff8c8-48b5-7880-9bfd-77c932b9bb9f.jsonl"
+        },
+        {
+          "detail": "mtime 318686s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-43-38-301Z_019ff8ca-0a3d-71d3-be23-17d978d2675b.jsonl"
+        },
+        {
+          "detail": "mtime 318662s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-44-26-710Z_019ff8ca-c756-73e6-a05c-add5cd572fa5.jsonl"
+        },
+        {
+          "detail": "mtime 318618s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-44-53-805Z_019ff8cb-312d-700a-a1e7-8cc590171d32.jsonl"
+        },
+        {
+          "detail": "mtime 318434s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-47-20-393Z_019ff8cd-6dc9-7a51-a80e-3d64ac6d7235.jsonl"
+        },
+        {
+          "detail": "mtime 318400s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-48-49-868Z_019ff8ce-cb4c-705b-a2d6-41047665c5a4.jsonl"
+        },
+        {
+          "detail": "mtime 318344s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-49-10-004Z_019ff8cf-19f3-793b-9749-794e8eca3f24.jsonl"
+        },
+        {
+          "detail": "mtime 318309s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-50-16-582Z_019ff8d0-1e06-77b4-b2e3-74f315890628.jsonl"
+        },
+        {
+          "detail": "mtime 318219s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-51-27-740Z_019ff8d1-33fc-7d8f-aef5-114b46c46e01.jsonl"
+        },
+        {
+          "detail": "mtime 318156s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-52-12-097Z_019ff8d1-e141-7786-999e-7fdf2f1adc03.jsonl"
+        },
+        {
+          "detail": "mtime 318069s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-53-52-341Z_019ff8d3-68d5-76b9-a7f3-e4f8b9822f57.jsonl"
+        },
+        {
+          "detail": "mtime 317961s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-55-31-449Z_019ff8d4-ebf8-72a5-a876-49a7b32c44ed.jsonl"
+        },
+        {
+          "detail": "mtime 317940s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-56-28-718Z_019ff8d5-cbae-70f2-908b-033f07de69b4.jsonl"
+        },
+        {
+          "detail": "mtime 317868s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T01-57-42-224Z_019ff8d6-ead0-787c-bc75-896a8e258c21.jsonl"
+        },
+        {
+          "detail": "mtime 256834s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T18-52-58-432Z_019ffc78-6cc0-75f7-a771-1d143cce4720.jsonl"
+        },
+        {
+          "detail": "mtime 253664s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-13T19-46-30-453Z_019ffca9-6fb5-7596-bead-e946bb95d33e.jsonl"
+        },
+        {
+          "detail": "mtime 189619s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-14T13-34-55-504Z_01a0007b-9a10-7eaa-ace1-b2825845800a.jsonl"
+        },
+        {
+          "detail": "mtime 43048s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-16T06-17-17-618Z_01a00937-a832-7626-b092-36aeba6bea51.jsonl"
+        },
+        {
+          "detail": "mtime 42958s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-16T06-18-06-948Z_01a00938-68e4-7928-b841-4bcdb5972551.jsonl"
+        },
+        {
+          "detail": "mtime 24063s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Users-dewclaw--/2026-08-16T06-19-48-162Z_01a00939-f442-764c-aa2b-95cb55fc760a.jsonl"
+        },
+        {
+          "detail": "mtime 255476s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Volumes-Samsung NVME-agent-checkouts-session-receipt--/2026-08-13T19-17-04-473Z_019ffc8e-7d59-736b-931a-8fd2cbe1b35d.jsonl"
+        },
+        {
+          "detail": "mtime 255483s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.pi/agent/sessions/--Volumes-Samsung NVME-agent-checkouts-wallet-flame--/2026-08-13T19-17-04-453Z_019ffc8e-7d45-784b-9b81-12089c54730a.jsonl"
+        }
+      ],
+      "status": "stale"
+    },
+    {
+      "confidence": "activeSessionFile",
+      "displayName": "Cursor",
+      "id": "cursor",
+      "lastActivityAt": "2026-08-16T08:21:45.921Z",
+      "note": "Worker ids present but ai-tracking mtime is beyond the freshness window.",
+      "projectName": "~/BurnBar",
+      "signals": [
+        {
+          "detail": "5 worker id(s)",
+          "kind": "session-registry",
+          "path": "/Users/dewclaw/.cursor/agent-cli-state.json"
+        },
+        {
+          "detail": "mtime 35626s ago",
+          "kind": "log-mtime",
+          "path": "/Users/dewclaw/.cursor/ai-tracking"
+        }
+      ],
+      "status": "stale"
+    },
+    {
+      "confidence": "unsupported",
+      "displayName": "Kimi",
+      "id": "kimi",
+      "note": "No live signal is claimed for Kimi; typed unsupported row (probe plan in BURNBAR_FLEET_SIGNALS.md).",
+      "signals": [],
+      "status": "unknown"
+    },
+    {
+      "confidence": "unsupported",
+      "displayName": "Gemini CLI",
+      "id": "gemini-cli",
+      "note": "No live signal is claimed for Gemini CLI; typed unsupported row (probe plan in BURNBAR_FLEET_SIGNALS.md).",
+      "signals": [],
+      "status": "unknown"
+    }
+  ],
+  "cadenceSeconds": 1,
+  "countsByAgent": {
+    "claude-code": 0,
+    "codex": 0,
+    "cursor": 0,
+    "factory-droid": 1,
+    "gemini-cli": 0,
+    "grok-bot": 0,
+    "grok-cli": 1,
+    "hermes": 0,
+    "kimi": 0,
+    "pi": 0
+  },
+  "generatedAt": "2026-08-16T18:15:32.156Z",
+  "machine": {
+    "cpuPercent": 0,
+    "diskFreeBytes": 120562913280,
+    "loadAverage": [
+      2.80224609375,
+      3.15380859375,
+      3.3505859375
+    ],
+    "memoryTotalBytes": 19667271680,
+    "memoryUsedBytes": 18552619008,
+    "power": {
+      "kind": "unavailable",
+      "reason": "no cheap power-sensor API available on this machine"
+    },
+    "thermal": {
+      "kind": "unavailable",
+      "reason": "pmset thermlog is empty on this machine; no cheap thermal API available"
+    }
+  },
+  "orchestrator": {
+    "designation": {
+      "kind": "none"
+    },
+    "pendingDirectives": 0
+  },
+  "persistenceHealth": {
+    "kind": "ok"
+  },
+  "probeHealth": [
+    {
+      "agent": "claude-code",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.claude",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "factory-droid",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.factory",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "codex",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.codex",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "hermes",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.hermes",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "grok-bot",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.grokbot",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "grok-cli",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.grok",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "pi",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.pi",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "cursor",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.cursor",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "kimi",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.kimi",
+      "state": {
+        "kind": "ok"
+      }
+    },
+    {
+      "agent": "gemini-cli",
+      "checkedAt": "2026-08-16T18:15:32.156Z",
+      "rootPath": "/Users/dewclaw/.gemini",
+      "state": {
+        "kind": "ok"
+      }
+    }
+  ],
+  "repos": [
+    {
+      "agents": [
+        "factory-droid",
+        "grok-cli"
+      ],
+      "projectName": "/Users/dewclaw"
+    },
+    {
+      "agents": [
+        "pi"
+      ],
+      "projectName": "/Users-dewclaw"
+    },
+    {
+      "agents": [
+        "cursor"
+      ],
+      "projectName": "~/BurnBar"
+    }
+  ],
+  "runningCount": 2,
+  "schemaVersion": 1
+}

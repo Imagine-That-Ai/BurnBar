@@ -1,0 +1,21 @@
+CROSS-008 real-root structural validator
+validated_at=2026-08-16T18:15:32.209350+00:00
+source=daemon.fleet.snapshot against real declared roots; read-only; volatile state not asserted
+snapshot_archive=cross-008-real-root-snapshot.json
+schemaVersion=1 roster_agents=10 probeHealth=10 runningCount=2
+machine_numeric_fields=present(cpuPercent,memoryUsedBytes,memoryTotalBytes,loadAverage,diskFreeBytes)
+thermal=unavailable reason_present=True
+power=unavailable reason_present=True
+status_confidence_rows:
+claude-code status=unknown confidence=unsupported signals=0
+factory-droid status=running confidence=activeSessionFile signals=21
+codex status=idle confidence=logHeartbeat signals=4
+hermes status=idle confidence=exactProcess signals=4
+grok-bot status=unknown confidence=unsupported signals=1
+grok-cli status=running confidence=exactProcess signals=1
+pi status=stale confidence=logHeartbeat signals=30
+cursor status=stale confidence=activeSessionFile signals=2
+kimi status=unknown confidence=unsupported signals=0
+gemini-cli status=unknown confidence=unsupported signals=0
+result=PASS
+errors=[]

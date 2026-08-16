@@ -1,0 +1,50 @@
+CROSS-017 current ordered first-visit journey
+run_started=2026-08-16T18:16:40.128432+00:00
+scope=fresh hermetic support/fixture dirs; deterministic fixture; no live model; no real agent roots
+daemon_binary=/Users/dewclaw/Developer/AgentLens/BurnBarDaemon/.build/arm64-apple-macosx/debug/BurnBarDaemon
+gateway_fixture=tools/burnbar-fake-hermes-gateway.py port=18648 scratch=<fresh>
+
+01 fresh-support-and-fixtures
+command=daemon started with BURNBAR_DAEMON_SUPPORT_DIR=<fresh> BURNBAR_FLEET_ROOTS_DIR=<fresh> BURNBAR_FLEET_CADENCE_SECONDS=1 --socket-path <fresh>
+result=PASS schemaVersion=1 agents=10 runningCount=0
+
+02 open-dashboard-fleet
+surface=FleetView; controller fallback is documented because cua-driver is unavailable on this Mac mini
+result=BLOCKED_UI_WITH_CURRENT_DAEMON_EVIDENCE Fleet snapshot has ten declared rows and runningCount=0
+
+03 designate-orchestrator
+request=daemon.fleet.orchestrator.set designation=agent(hermes)
+result=PASS designation={'id': 'hermes', 'kind': 'agent'} subsequent_get={'id': 'hermes', 'kind': 'agent'}
+
+04 switch-existing-chat-to-orchestrator
+fixture=deterministic controller/XCTest path (no live model)
+result=PASS covered by ChatSessionControllerOrchestratorTests and ContextBuilderFleetScrutinyTests in current focused gate; native Send UI is fallback-blocked
+
+05 deterministic-proposal
+proposal={"createdAt": "2026-08-16T18:16:40.248778Z", "id": "m6-journey-directive-001", "kind": "askStatus", "payload": "Report the current gateway status from the local fleet.", "state": {"kind": "proposed"}, "targetAgent": "hermes"}
+result=PASS canonical proposal exists before approval
+
+06 proposal-recorded
+response={"id": "journey-proposed", "protocolVersion": 1, "result": {"directive": {"createdAt": "2026-08-16T18:16:40.248Z", "id": "m6-journey-directive-001", "kind": "askStatus", "payload": "Report the current gateway status from the local fleet.", "state": {"kind": "proposed"}, "targetAgent": "hermes"}}}
+sqlite_authority=read-only fleet_directives inspection follows
+
+07 human-approval-before-delivery
+response={"id": "journey-approved", "protocolVersion": 1, "result": {"directive": {"createdAt": "2026-08-16T18:16:40.248Z", "decidedAt": "2026-08-16T18:16:40.273Z", "deliveryAttemptID": "m6-attempt-001", "deliveryChannel": "hermes", "id": "m6-journey-directive-001", "kind": "askStatus", "payload": "Report the current gateway status from the local fleet.", "state": {"kind": "approved"}, "targetAgent": "hermes"}}}
+assertion=decidedAt and deliveryAttemptID present before gateway request
+
+08 hermes-delivery
+endpoint=http://127.0.0.1:18648/v1/chat/completions
+result=PASS fixture_ack={"burnbar_delivery": {"directive_id": "m6-journey-directive-001", "status": "delivered"}, "choices": [{"finish_reason": "stop", "index": 0, "message": {"content": "directive acknowledged", "role": "assistant"}}], "created": 1786904200, "id": "chatcmpl-fake", "model": "hermes-gateway-fixture", "object": "chat.completion"}
+receipt={"at": 1786904200.619731, "directive_id": "m6-journey-directive-001", "mode": "ack", "response_status": 200, "note": "mode=ack"}
+
+09 delivery-recorded
+response={"id": "journey-delivered", "protocolVersion": 1, "result": {"directive": {"createdAt": "2026-08-16T18:16:40.248Z", "decidedAt": "2026-08-16T18:16:40.273Z", "deliveryAttemptID": "m6-attempt-001", "deliveryChannel": "hermes", "id": "m6-journey-directive-001", "kind": "askStatus", "payload": "Report the current gateway status from the local fleet.", "state": {"kind": "delivered"}, "targetAgent": "hermes"}}}
+sqlite_row=m6-journey-directive-001|{"deliveryAttemptID":"m6-attempt-001","id":"m6-journey-directive-001","payload":"Report the current gateway status from the local fleet.","state":{"kind":"delivered"},"targetAgent":"hermes","decidedAt":"2026-08-16T18:16:40.273Z","kind":"askStatus","createdAt":"2026-08-16T18:16:40.248Z","deliveryChannel":"hermes"}
+result=PASS terminal state agrees with Hermes receipt
+
+10 external-agent-api-read
+command=read-only Python JSON reader of fresh fleet-snapshot.json plus RPC compare
+reader={"generatedAt": "2026-08-16T18:16:40.145Z", "runningCount": 0, "statuses": {"claude-code": "unknown", "codex": "idle", "cursor": "idle", "factory-droid": "idle", "gemini-cli": "unknown", "grok-bot": "unknown", "grok-cli": "idle", "hermes": "unknown", "kimi": "unknown", "pi": "idle"}}
+rpc_file_parity=True
+result=PASS
+teardown=daemon, fixture gateway, and temp dirs owned by this run

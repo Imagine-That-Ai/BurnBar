@@ -1,74 +1,89 @@
-M6 git boundary evidence
+M6 git boundary evidence (post-repair regeneration)
+generated_at=2026-08-16T18:20:36.526248+00:00
 base=c3add7133c0e351ace402b401746dbff6ef168be
-user_checkpoint=0389130847 (allowed to carry protected WIP by adjudication)
+HEAD=9ace232d85011be3348054fa28b0ec31d88ad50b
+branch=feat/live-agent-fleet
+user_checkpoint=038913084767 (allowed to carry protected WIP by adjudication)
 protected path intersection is evaluated per commit; only the user checkpoint may carry protected paths
 
 commit | owner classification | protected intersection
-dda2775c1612 | mission-authored | empty
-d10e25196482 | mission-authored | empty
-7eb8d8948f7a | mission-authored | empty
-3da37ee18dc1 | mission-authored | empty
-17fd9fb85db0 | mission-authored | empty
-99a6824f12b1 | mission-authored | empty
-e34ff27f702e | mission-authored | empty
-5746e75d781a | mission-authored | empty
-14326ef73701 | mission-authored | empty
-3ffc78551b8b | mission-authored | empty
-912ec03ab636 | mission-authored | empty
-b6a8b7b0e324 | mission-authored | empty
-f92c44fd6383 | mission-authored | empty
-ec0f54b170d1 | mission-authored | empty
-3c2efa049eef | mission-authored | empty
-b115bb89f66f | mission-authored | empty
-b255ebd970f3 | mission-authored | empty
-916972f97753 | mission-authored | empty
-da366993a15a | mission-authored | empty
-9599b2030ba2 | mission-authored | empty
-fcfd9bf61a4f | mission-authored | empty
-6b56e3db9702 | mission-authored | empty
-779557d1c3ac | mission-authored | empty
-564d39bf48ae | mission-authored | empty
-24bbe1cdc325 | mission-authored | empty
-aa63533518f0 | mission-authored | empty
-663fe827fb2f | mission-authored | empty
-2dbaf1b7ad19 | mission-authored | empty
-5687f47f9854 | mission-authored | empty
-7118abf90c1e | mission-authored | empty
-3720e704c8f8 | mission-authored | empty
-ac141750d5db | mission-authored | empty
-2477c91a7cfe | mission-authored | empty
-9cb3c49ae867 | mission-authored | empty
-fa8f1d45131f | mission-authored | empty
-64a8215017b7 | mission-authored | empty
-559723597196 | mission-authored | empty
-c3dd59e2fd32 | mission-authored | empty
-227f53806d77 | mission-authored | empty
-3f4226b2cc15 | mission-authored | empty
-34ccc9a53c65 | mission-authored | empty
-13a7c9ed1522 | mission-authored | empty
-57d0c30006ea | mission-authored | empty
-eda528a36686 | mission-authored | empty
-ca7b733b7121 | mission-authored | empty
-a69893605c2e | mission-authored | empty
-22d7a3cc94a3 | mission-authored | empty
-b5a12e811229 | mission-authored | empty
-ae995e24b3ac | mission-authored | empty
-74f674eafdb9 | mission-authored | empty
-2bdc3a7db920 | mission-authored | empty
-c44e9c6b2c60 | mission-authored | empty
-02b45853e968 | mission-authored | empty
-97b090b1d0d9 | mission-authored | empty
-a7ac2e41b217 | mission-authored | empty
-038913084767 | user-owned checkpoint | ['AgentLens/App/AgentLensApp.swift', 'AgentLens/Services/SearchService.swift', 'AgentLens/Services/SettingsManager.swift', 'AgentLens/Views/Dashboard/Alternate3Dashboard.swift', 'AgentLens/Views/Settings/SettingsView.swift', 'BurnBarCore/Sources/BurnBarCore/BurnBarSearchPlanner.swift', 'BurnBarCore/Tests/BurnBarCoreTests/BurnBarCatalogTests.swift', 'BurnBarCore/Tests/BurnBarCoreTests/BurnBarSearchPlannerTests.swift', 'BurnBarDaemon/Tests/BurnBarDaemonTests/BurnBarConfigStoreTests.swift', 'docs/plans/burnbar-live-agent-fleet-droid-mission.md']
-0e93e94a5b8b | mission-authored | empty
-2d4aae260643 | mission-authored | empty
-046241957821 | mission-authored | empty
-b1617c374eb2 | mission-authored | empty
-8f92cb09b723 | mission-authored | empty
-dd23cf9f5d66 | mission-authored | empty
-post-dd23 sign-off commits (913a10cd08, 36b88a150e, 6dfdf3040e6e) | mission-authored | empty
+dda2775c161231335bdb46dd47791cf924d4e502 | mission-authored | empty
+d10e25196482d5ff7f0222c56013d578f0b8aa4f | mission-authored | empty
+7eb8d8948f7a32c2d659821a1b09fcf6d283b18e | mission-authored | empty
+3da37ee18dc1430256b4d9778e1fa4e787609a08 | mission-authored | empty
+17fd9fb85db0688c9029156eca39dfc3380ef743 | mission-authored | empty
+99a6824f12b1728ef24860d5265452f78bc0959b | mission-authored | empty
+e34ff27f702eb9f1ebe5567ac3526c7def9f5ef6 | mission-authored | empty
+5746e75d781a0107416bc40e17d80437d9cb0f07 | mission-authored | empty
+14326ef73701f3a5899372060b2c38727570be85 | mission-authored | empty
+3ffc78551b8bc8297ec9c8bf5a52e0303b93aaeb | mission-authored | empty
+912ec03ab6365c7aec0ca994a55facd26f624031 | mission-authored | empty
+b6a8b7b0e324bf45ecb7c787e9251c152585f20c | mission-authored | empty
+f92c44fd6383466d53973133541d1855e7a5abe0 | mission-authored | empty
+ec0f54b170d154ba4f3851fd0fe2a102fea2720e | mission-authored | empty
+3c2efa049eef484af4b2d99ddf5e2aec4c0a66df | mission-authored | empty
+b115bb89f66fd63c4b36802c5f046578e1880171 | mission-authored | empty
+b255ebd970f3d50a8a008bcc08ccc4542d00408c | mission-authored | empty
+916972f9775328ebc1b5d508cf15712c14badb7b | mission-authored | empty
+da366993a15a7a730f967143214b5f7a1cd85b54 | mission-authored | empty
+9599b2030ba24c966438a7041c6e82450131a8ad | mission-authored | empty
+fcfd9bf61a4f41c7494edd73ac9f5a74e78d7301 | mission-authored | empty
+6b56e3db9702fea55d584a50721f28e875513cc9 | mission-authored | empty
+779557d1c3ac22c1893f28ebe8d413e5d0aca34a | mission-authored | empty
+564d39bf48aee6a5596e3e7b37c5cfbddb28910a | mission-authored | empty
+24bbe1cdc32543dff6eeefa2197a72ef7347e9cc | mission-authored | empty
+aa63533518f05e5d7b51d96dac3962fdce24f856 | mission-authored | empty
+663fe827fb2f0826b9e69e8da2134fd992e05169 | mission-authored | empty
+2dbaf1b7ad19b46b2c4218fc0d73bb71fefca57f | mission-authored | empty
+5687f47f98543fbdb41b36cbbf79f4d9fdc4fc37 | mission-authored | empty
+7118abf90c1ecf874179e074b9f40c23edc8b659 | mission-authored | empty
+3720e704c8f83c84872e5f3bc308505366e9a992 | mission-authored | empty
+ac141750d5dbe7be02e443d9421d103c561a3048 | mission-authored | empty
+2477c91a7cfecb47a817f9b1ff52025f513b91bb | mission-authored | empty
+9cb3c49ae867f42c6a3014ebf205669393a829bd | mission-authored | empty
+fa8f1d45131f86f0b366b4ea78ad85c017312767 | mission-authored | empty
+64a8215017b7ebbac5544e83fdcc47f0b7fb98a7 | mission-authored | empty
+559723597196d7afb311d7f6d078f65816636598 | mission-authored | empty
+c3dd59e2fd322d24a18405299e33052b19899011 | mission-authored | empty
+227f53806d77aab33cb593c49cfcd3e542e76d0b | mission-authored | empty
+3f4226b2cc15e25cfedc6a746b080def0a0c62c3 | mission-authored | empty
+34ccc9a53c65f86dc563b702de1065399e88b782 | mission-authored | empty
+13a7c9ed15226fb2fc724be079d7737ac3c903f8 | mission-authored | empty
+57d0c30006ead53eb95391afd6454212f2ecbe4c | mission-authored | empty
+eda528a36686ede45f70c7675173fb963c83597a | mission-authored | empty
+ca7b733b7121e8367b8cab92ffccec1e03e8bfc5 | mission-authored | empty
+a69893605c2ee4edd5661c6781db8745d2c8669a | mission-authored | empty
+22d7a3cc94a3d68a96687fc1734fe1982d351a84 | mission-authored | empty
+b5a12e811229ff9474ff1ff4c160fa0f89088edc | mission-authored | empty
+ae995e24b3ac2b806417b5a52d0e59079a0d25b4 | mission-authored | empty
+74f674eafdb9d75b06940937ddcc7627feec240b | mission-authored | empty
+2bdc3a7db920019f1723feba6862132c88fe6320 | mission-authored | empty
+c44e9c6b2c6008a91536143a03934ebb6ea0e926 | mission-authored | empty
+02b45853e968b7d9deb2f38b90870525fcb9b1f9 | mission-authored | empty
+97b090b1d0d921636c0be99fc10abdc498edad5f | mission-authored | empty
+a7ac2e41b21755987aa4b6c1a0f1e9f21cfff26d | mission-authored | empty
+038913084767133f1f674bcfdf9cb060d6926c4e | user-owned checkpoint | AgentLens/App/AgentLensApp.swift,AgentLens/Services/SearchService.swift,AgentLens/Services/SettingsManager.swift,AgentLens/Views/Dashboard/Alternate3Dashboard.swift,AgentLens/Views/Settings/SettingsView.swift,BurnBarCore/Sources/BurnBarCore/BurnBarSearchPlanner.swift,BurnBarCore/Tests/BurnBarCoreTests/BurnBarCatalogTests.swift,BurnBarCore/Tests/BurnBarCoreTests/BurnBarSearchPlannerTests.swift,BurnBarDaemon/Tests/BurnBarDaemonTests/BurnBarConfigStoreTests.swift,docs/plans/burnbar-live-agent-fleet-droid-mission.md
+0e93e94a5b8b98d7d3b129c565dba7150ed0d8ca | mission-authored | empty
+2d4aae260643783311d60eb3d07ec525e0a0743a | mission-authored | empty
+046241957821403bafe718c4f678805911216e94 | mission-authored | empty
+b1617c374eb2a283d8292c2425c963361666e56e | mission-authored | empty
+8f92cb09b72350465abb053d920762ac19d61b53 | mission-authored | empty
+dd23cf9f5d669989e6a8a38f5ed6941426622bcc | mission-authored | empty
+913a10cd087cdec00929145a8ed99f3a58bf7b34 | mission-authored | empty
+36b88a150e82ca86a4908cde28fbeb9816331c97 | mission-authored | empty
+6dfdf3040e6e59d2420f12fc5c24361b7b173b26 | mission-authored | empty
+7e878cb15b502e8a75c4525c519efdfb21936c69 | mission-authored | empty
+4a05cc589141a0c521dfe9421f09992248b708ae | mission-authored | empty
+848748a2cf8058042e85d5d66377aadb182cc746 | mission-authored | empty
+b2b47c1b64f5325d7893aa55b931756fd4598fb4 | mission-authored | empty
+747a70093dd37442ab8dc373d28069da2228d41e | mission-authored | empty
+0d2bcba9a086a58cd512533be180b875bba90143 | mission-authored | empty
+9ace232d85011be3348054fa28b0ec31d88ad50b | mission-authored | empty
 
-protected file SHA-256 (working tree vs user checkpoint commit)
+commit_count=72
+mission_authored_protected_intersections=0
+
+protected file SHA-256 (working tree vs user checkpoint)
 AgentLens/Views/Dashboard/Alternate3Dashboard.swift | checkpoint=730c76f940d9b7f7a94f4576a8f6671baff394047652bc47e9a4cb4c3062ee36 | working_tree=730c76f940d9b7f7a94f4576a8f6671baff394047652bc47e9a4cb4c3062ee36 | match=True
 AgentLens/App/AgentLensApp.swift | checkpoint=7b55661d54f4baeb2393dacdaac08e6605ff3aad7b1b34954e7513c1936c01b1 | working_tree=7b55661d54f4baeb2393dacdaac08e6605ff3aad7b1b34954e7513c1936c01b1 | match=True
 AgentLens/Services/SettingsManager.swift | checkpoint=4f99bb490fc01c7698c51e7819527a6695e10a77df235782e36946aadd85d670 | working_tree=4f99bb490fc01c7698c51e7819527a6695e10a77df235782e36946aadd85d670 | match=True
@@ -82,9 +97,8 @@ docs/plans/burnbar-live-agent-fleet-droid-mission.md | checkpoint=3c3234ba23bf37
 
 branch/ref evidence
 branch=feat/live-agent-fleet
-HEAD=6dfdf3040e6e59d2420f12fc5c24361b7b173b26
-origin/feat/live-agent-fleet=8f92cb09b7 (pre-existing user-owned backup; not mutated by mission)
+HEAD=9ace232d85011be3348054fa28b0ec31d88ad50b
+origin/feat/live-agent-fleet=8f92cb09b72350465abb053d920762ac19d61b53 (pre-existing user-owned backup; not mutated)
 mission-session remote operations=none
 extensions/burnbar diff intersection=empty
-per_commit_audit=65 commits from c3add7133c0e; no mission-authored commit touched a protected path
-user_checkpoint_hashes=all 10 protected working-tree SHA-256 values match checkpoint 0389130847
+untracked_protected_or_reserved=.cursor/,tools/__pycache__/,validation/harness/__pycache__/ left untouched

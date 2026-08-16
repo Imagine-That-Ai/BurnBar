@@ -1,15 +1,15 @@
 M6 final integration inventory
 branch=feat/live-agent-fleet
-HEAD=6dfdf3040e6e59d2420f12fc5c24361b7b173b26
+HEAD=9ace232d85011be3348054fa28b0ec31d88ad50b
 origin/feat/live-agent-fleet=8f92cb09b7 (pre-existing user-owned backup; no mission push)
 
 documents=README.md, docs/fleet/BURNBAR_FLEET_SIGNALS.md, docs/fleet/BURNBAR_FLEET_API.md
 roster_count=10 exact_roster=claude-code,factory-droid,codex,hermes,grok-bot,grok-cli,pi,cursor,kimi,gemini-cli
 rpc_methods=4
-method=daemon.fleet.snapshot implementation=BurnBarRPCMethod.fleetSnapshot; dispatch=BurnBarDaemonServer.fleetSnapshot
-method=daemon.fleet.orchestrator.get implementation=BurnBarRPCMethod.fleetOrchestratorGet; dispatch=BurnBarDaemonServer.fleetOrchestratorGet
-method=daemon.fleet.orchestrator.set implementation=BurnBarRPCMethod.fleetOrchestratorSet; dispatch=BurnBarDaemonServer.fleetOrchestratorSet
-method=daemon.fleet.directive.record implementation=BurnBarRPCMethod.fleetDirectiveRecord; dispatch=BurnBarDaemonServer.fleetDirectiveRecord
+method=daemon.fleet.snapshot implementation=BurnBarRPCMethod.fleetSnapshot; dispatch=BurnBarDaemonServer.dispatchFleet; handler=BurnBarDaemonServer.handleFleetSnapshot
+method=daemon.fleet.orchestrator.get implementation=BurnBarRPCMethod.fleetOrchestratorGet; dispatch=BurnBarDaemonServer.dispatchFleet; handler=BurnBarDaemonServer.handleFleetOrchestratorGet
+method=daemon.fleet.orchestrator.set implementation=BurnBarRPCMethod.fleetOrchestratorSet; dispatch=BurnBarDaemonServer.dispatchFleet; handler=BurnBarDaemonServer.handleFleetOrchestratorSet
+method=daemon.fleet.directive.record implementation=BurnBarRPCMethod.fleetDirectiveRecord; dispatch=BurnBarDaemonServer.dispatchFleet; handler=BurnBarDaemonServer.handleFleetDirectiveRecord
 paths=3
 path.socket=~/Library/Application Support/BurnBar/burnbar-daemon.sock; override=--socket-path or non-empty BURNBAR_DAEMON_SOCKET_PATH
 path.snapshot=~/Library/Application Support/BurnBar/fleet-snapshot.json; implementation=BurnBarDaemonPaths.defaultFleetSnapshotURL
@@ -20,9 +20,14 @@ socket_empty_override=executable guard !override.isEmpty; unit test BurnBarDaemo
 readme_semantics=two write methods (orchestrator.set and directive.record); snapshot and orchestrator.get are reads
 protected_post_checkpoint_intersection=empty
 extension_diff=empty
-README smoke=passed separately; see command log in handoff (protocol=1, schema=1, agents=10, cadence=1, persistenceHealth=ok)
+README smoke=passed separately; current claim-to-command matrix=validation/M6-hardening/readme-gate-matrix.txt
 README smoke rerun=passed verbatim (protocol=1, schema=1, agents=10, cadence=1, runningCount=0, persistenceHealth.kind=ok)
+README matrix cases=default support/socket paths; per-agent root override; event retention seam; --socket-path precedence; empty socket override
 compatibility=pre-fleet c3add7133c0e returned typed -32601 for daemon.fleet.snapshot; app protocol-mismatch mapping test passed
 real_root_smoke=passed with exact roster/probeHealth=10, runningCount=3, and running rows at permitted confidence tiers
-concurrent_apps=passed with two direct app processes alive across two ticks; directiveCount=0 and real DB mtime unchanged
+concurrent_apps=blocked-full-ui; cua-driver unavailable; current fallback evidence archived in cross-011-current-evidence.txt; no full FleetView comparison claimed
 empty_socket_override=passed process smoke; empty BURNBAR_DAEMON_SOCKET_PATH resolved to support-derived socket
+cross_008_full_snapshot=validation/M6-hardening/cross-008-real-root-snapshot.json; validator=validation/M6-hardening/cross-008-real-root-structural-validator.txt
+cross_017_ordered_journey=validation/M6-hardening/cross-017-current-journey.log
+cross_011_current=validation/M6-hardening/cross-011-current-evidence.txt; desktop-control blocked, fallback scope explicit
+boundary_current=validation/M6-hardening/boundary-checks.txt; commits_audited=72; mission_authored_protected_intersections=0

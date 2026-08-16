@@ -3,7 +3,7 @@ cadence_seconds=15
 tolerance_formula=max(0.5,2*15/15)=2.0
 interval_bounds=13.0...17.0
 tick_count=3
-interval_min_s=14.999125003814697
-interval_max_s=15.001253008842468
-interval_mean_s=15.000189006328583
-cumulative_drift_s=0.00037801265716552734
+interval_min_s=15.000681042671204
+interval_max_s=15.005826950073242
+interval_mean_s=15.003253996372223
+cumulative_drift_s=0.006507992744445801
