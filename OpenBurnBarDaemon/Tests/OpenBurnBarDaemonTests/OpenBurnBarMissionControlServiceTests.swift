@@ -3438,6 +3438,43 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertNotNil(refreshedProjects.projects.first?.latestDailyReviewAt)
     }
 
+    func testControllerActivityIngestionSkipsInvalidDerivedProjectIdentifiers() async throws {
+        let now = Date(timeIntervalSince1970: 1_710_002_100)
+        let harness = try makeHarness(
+            name: "activity-ingestion-invalid-project",
+            activitySnapshot: BurnBarControllerActivitySnapshot(
+                generatedAt: now,
+                activeProjectSlug: "apollo",
+                projects: [
+                    BurnBarControllerActivityProject(
+                        projectSlug: "~",
+                        displayName: "~",
+                        summary: "Legacy punctuation-only activity row.",
+                        latestActivityAt: now,
+                        sessionCountLast7Days: 0,
+                        totalCostLast7Days: 0,
+                        totalTokensLast7Days: 0
+                    ),
+                    BurnBarControllerActivityProject(
+                        projectSlug: "apollo",
+                        displayName: "Apollo",
+                        summary: "Valid activity remains available.",
+                        latestActivityAt: now,
+                        sessionCountLast7Days: 1,
+                        totalCostLast7Days: 0,
+                        totalTokensLast7Days: 0
+                    )
+                ]
+            )
+        )
+
+        let projects = try await harness.service.controllerProjects(
+            BurnBarControllerProjectsListRequest(includePaused: true, limit: 20)
+        )
+
+        XCTAssertEqual(projects.projects.map(\.projectSlug), ["apollo"])
+    }
+
     func testVAL_GOV_009_ActivityIngestedQuestionDedupeHoldsAcrossSnapshotDigestChanges() async throws {
         let now = Date(timeIntervalSince1970: 1_710_310_000)
         let activityProject = BurnBarControllerActivityProject(

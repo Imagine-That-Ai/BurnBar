@@ -7,7 +7,16 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib/openburnbar-release-app-test-filters.sh
 source "$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh"
 
-"$repo_root/scripts/test-openburnbar-swift.sh"
+node --test "$repo_root/scripts/ci/macos-rust-static-link-boundary.test.mjs"
+
+# Standalone SwiftPM test/daemon executables cannot link BurnBarRemote and Iroh
+# as two Rust static archives in one process. The Xcode app graph still owns
+# BurnBarRemote, so scope the seam to this stage and clear it before every app
+# and Release-build proof below.
+OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 \
+  "$repo_root/scripts/test-openburnbar-swift.sh"
+unset OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK
+
 OPENBURNBAR_APP_TEST_ATTEMPTS="${OPENBURNBAR_APP_TEST_ATTEMPTS:-2}" \
 OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE="${OPENBURNBAR_APP_TEST_DEFAULT_ALLOWANCE:-180}" \
 OPENBURNBAR_APP_TEST_MAX_ALLOWANCE="${OPENBURNBAR_APP_TEST_MAX_ALLOWANCE:-360}" \

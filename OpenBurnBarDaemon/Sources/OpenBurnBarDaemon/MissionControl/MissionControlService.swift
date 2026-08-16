@@ -543,9 +543,25 @@ public actor BurnBarMissionControlService: BurnBarMissionControlServing {
             return
         }
 
-        for activityProject in snapshot.projects {
+        for (index, activityProject) in snapshot.projects.enumerated() {
             try Task.checkCancellation()
-            try await syncActivityProject(activityProject, now: now)
+            do {
+                try await syncActivityProject(activityProject, now: now)
+            } catch let error as BurnBarMissionControlError {
+                switch error {
+                case .invalidProjectIdentifier:
+                    // The activity snapshot is derived, non-authoritative
+                    // input. Older app builds could emit punctuation-only or
+                    // otherwise invalid slugs (for example "~"). One bad row
+                    // must not make every controller list/snapshot RPC fail.
+                    logger.warning(
+                        "mission_control_activity_project_skipped_invalid_identifier",
+                        metadata: ["project_index": "\(index)"]
+                    )
+                default:
+                    throw error
+                }
+            }
         }
     }
 

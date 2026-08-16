@@ -1601,6 +1601,38 @@ final class CLIBridgeTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
     }
 
+    func test_cliExecutableResolver_loginShellProbeIsTimeBounded() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-resolver-timeout-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let shell = root.appendingPathComponent("blocking-shell")
+        try "#!/bin/sh\nexec /bin/sleep 5\n".write(
+            to: shell,
+            atomically: true,
+            encoding: .utf8
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: shell.path
+        )
+
+        let startedAt = Date()
+        let resolved = CLIExecutableResolver.resolveExecutableFromLoginShell(
+            named: "definitely-not-a-real-cli-\(UUID().uuidString)",
+            environment: ["SHELL": shell.path],
+            timeout: 0.05
+        )
+
+        XCTAssertNil(resolved)
+        XCTAssertLessThan(
+            Date().timeIntervalSince(startedAt),
+            1,
+            "A pathological login shell must not stall executable discovery."
+        )
+    }
+
     /// Regression guard for the D4 structured-concurrency conversion.
     ///
     /// `CLIExecutableResolver.resolveExecutable` dropped its `Task.detached { … }.value`

@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import * as vscode from 'vscode';
 
@@ -80,6 +81,9 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     createRange: (startLine, startCharacter, endLine, endCharacter) =>
       new vscode.Range(startLine, startCharacter, endLine, endCharacter),
     confirmWorkspaceEdit: async (changes, changedFiles) => {
+      if (isCursorSmokeWorkspaceEditAutoConfirmAllowed(changes, changedFiles)) {
+        return true;
+      }
       const selection = await vscode.window.showWarningMessage(
         'OpenBurnBar wants to edit workspace files.',
         {
@@ -106,6 +110,52 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     fileUri: (value) => vscode.Uri.file(value),
     joinPath: (base, ...segments) => vscode.Uri.joinPath(toVSCodeUri(base), ...segments)
   };
+}
+
+export function isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+  changes: readonly OpenBurnBarApplyPatchChange[],
+  changedFiles: readonly string[],
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  if (env.BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM !== '1' || changes.length !== 1 || changedFiles.length !== 1) {
+    return false;
+  }
+
+  const outputPath = env.BURNBAR_CURSOR_SMOKE_OUTPUT?.trim();
+  const targetPath = env.BURNBAR_CURSOR_SMOKE_FILE_PATH?.trim();
+  const changePath = changes[0]?.path;
+  const changedFile = changedFiles[0];
+  if (
+    !outputPath ||
+    !targetPath ||
+    !changePath ||
+    !changedFile ||
+    !path.isAbsolute(outputPath) ||
+    !path.isAbsolute(targetPath)
+  ) {
+    return false;
+  }
+
+  const resolvedOutputRoot = path.dirname(path.resolve(outputPath));
+  const resolvedTarget = path.resolve(targetPath);
+  const targetRelativeToOutput = path.relative(resolvedOutputRoot, resolvedTarget);
+  if (
+    targetRelativeToOutput === '' ||
+    targetRelativeToOutput.startsWith('..') ||
+    path.isAbsolute(targetRelativeToOutput) ||
+    path.resolve(changePath) !== resolvedTarget
+  ) {
+    return false;
+  }
+
+  try {
+    const resolvedChangedFile = changedFile.startsWith('file:')
+      ? path.resolve(fileURLToPath(changedFile))
+      : path.resolve(changedFile);
+    return resolvedChangedFile === resolvedTarget;
+  } catch {
+    return false;
+  }
 }
 
 function summarizeWorkspaceEdit(

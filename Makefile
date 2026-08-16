@@ -68,16 +68,16 @@ bootstrap: ## Fresh-clone setup: init submodules, preflight Rust/protoc, build t
 build: bootstrap preflight
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
-	xcodebuild -resolvePackageDependencies \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild -resolvePackageDependencies \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-clonedSourcePackagesDirPath $(CACHE_DIR) \
 		-derivedDataPath $(DERIVED_DATA) \
 		-quiet
 	@echo "==> Building daemon…"
-	swift build --package-path $(DAEMON_PACKAGE) -c release
+	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release
 	@echo "==> Building $(SCHEME) ($(CONFIG))…"
-	xcodebuild \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-configuration $(CONFIG) \
@@ -123,14 +123,14 @@ build-signed: bootstrap preflight
 	@bash scripts/ci/verify-iroh-release-artifact.sh
 	@mkdir -p "$(CACHE_DIR)" "$(DERIVED_DATA)"
 	@echo "==> Resolving packages…"
-	xcodebuild -resolvePackageDependencies \
+	/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild -resolvePackageDependencies \
 		-project $(PROJECT) \
 		-scheme $(SCHEME) \
 		-clonedSourcePackagesDirPath $(CACHE_DIR) \
 		-derivedDataPath $(DERIVED_DATA) \
 		-quiet
 	@echo "==> Building daemon…"
-	swift build --package-path $(DAEMON_PACKAGE) -c release
+	OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1 swift build --package-path $(DAEMON_PACKAGE) -c release
 	@echo "==> Building signed $(SCHEME) ($(CONFIG))…"
 	@TEAM="$(OPENBURNBAR_DEVELOPMENT_TEAM)"; \
 	if [ -z "$$TEAM" ]; then \
@@ -141,7 +141,7 @@ build-signed: bootstrap preflight
 	fi; \
 	if [ -n "$$TEAM" ]; then \
 		echo "    Using development team $$TEAM (set OPENBURNBAR_DEVELOPMENT_TEAM to override)."; \
-		xcodebuild \
+		/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
 			-project $(PROJECT) \
 			-scheme $(SCHEME) \
 			-configuration $(CONFIG) \
@@ -157,7 +157,7 @@ build-signed: bootstrap preflight
 	else \
 		echo "    No OPENBURNBAR_DEVELOPMENT_TEAM set and no Apple Development identity found —"; \
 		echo "    building unsigned; the bundle will be ad-hoc signed for local use."; \
-		xcodebuild \
+		/usr/bin/env -u OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK xcodebuild \
 			-project $(PROJECT) \
 			-scheme $(SCHEME) \
 			-configuration $(CONFIG) \

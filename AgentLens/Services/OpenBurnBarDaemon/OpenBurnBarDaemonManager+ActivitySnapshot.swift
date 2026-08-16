@@ -155,33 +155,36 @@ extension OpenBurnBarDaemonManager {
         return "\(token.prefix(4))…\(token.suffix(4))"
     }
 
-    /// Single-pass slug: alphanumeric kept, everything else collapses to `-`.
-    /// Avoids the previous `map` + `replacingOccurrences("--")` allocation path
-    /// that dominated CPU when called millions of times from the nested filter.
+    /// Single-pass daemon-safe slug: ASCII alphanumerics are kept, every other
+    /// run collapses to `-`, and the result stays within Mission Control's
+    /// 96-byte identifier limit. Punctuation-only and non-ASCII-only names are
+    /// not projects; returning an empty slug keeps them out of the derived
+    /// activity snapshot instead of making every controller RPC reject it.
     nonisolated static func slug(for projectName: String) -> String {
         let trimmed = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
 
+        let maxSlugBytes = 96
         var result = String()
-        result.reserveCapacity(trimmed.utf8.count)
+        result.reserveCapacity(min(trimmed.utf8.count, maxSlugBytes))
         var pendingHyphen = false
-        var didWrite = false
         for scalar in trimmed.lowercased().unicodeScalars {
-            if CharacterSet.alphanumerics.contains(scalar) {
-                if pendingHyphen && didWrite {
+            let value = scalar.value
+            let isASCIIDigit = value >= 48 && value <= 57
+            let isASCIILowercaseLetter = value >= 97 && value <= 122
+            if isASCIIDigit || isASCIILowercaseLetter {
+                if pendingHyphen && !result.isEmpty {
+                    guard result.utf8.count + 2 <= maxSlugBytes else { break }
                     result.append("-")
                 }
+                guard result.utf8.count < maxSlugBytes else { break }
                 result.unicodeScalars.append(scalar)
                 pendingHyphen = false
-                didWrite = true
-            } else {
+            } else if !result.isEmpty {
                 pendingHyphen = true
             }
         }
 
-        if result.isEmpty {
-            return trimmed.lowercased().replacingOccurrences(of: " ", with: "-")
-        }
         return result
     }
 

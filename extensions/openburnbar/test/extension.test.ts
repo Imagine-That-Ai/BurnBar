@@ -568,4 +568,23 @@ describe('activateBurnBarExtension', () => {
       expect(call.join(' ')).not.toContain('launchctl');
     }
   });
+
+  it('drives controller refreshes while the Cursor smoke waits for a delayed companion tool', async () => {
+    const { _waitForCursorSmokeRun } = await import('../src/extension');
+    let phase = 'planning';
+    const refreshRunState = vi.fn().mockImplementation(async () => {
+      phase = refreshRunState.mock.calls.length === 1 ? 'waiting_on_companion' : 'completed';
+    });
+
+    const result = await _waitForCursorSmokeRun({
+      runID: 'run-delayed-tool',
+      refreshRunState,
+      getRunPhase: vi.fn().mockImplementation(async () => phase),
+      maxAttempts: 3,
+      pollDelayMs: 0
+    });
+
+    expect(result).toBe('completed');
+    expect(refreshRunState).toHaveBeenCalledTimes(2);
+  });
 });

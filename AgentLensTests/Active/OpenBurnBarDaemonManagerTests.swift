@@ -1281,8 +1281,14 @@ final class OpenBurnBarDaemonManagerTests: XCTestCase {
 
     func test_slug_collapsesPunctuationWithoutRepeatedHyphens() {
         XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "  Apollo / Mission!!  "), "apollo-mission")
-        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "---"), "---")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "---"), "")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "~"), "")
+        XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "日本語"), "")
         XCTAssertEqual(OpenBurnBarDaemonManager.slug(for: "   "), "")
+        XCTAssertEqual(
+            OpenBurnBarDaemonManager.slug(for: String(repeating: "A", count: 120)),
+            String(repeating: "a", count: 96)
+        )
     }
 
     func test_buildControllerActivitySnapshot_groupsTenThousandConversationsInLinearTime() {

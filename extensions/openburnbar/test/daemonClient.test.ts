@@ -320,7 +320,8 @@ describe('OpenBurnBarDaemonClient', () => {
         if (request.method === 'run.poll') {
           expect(request.params).toEqual({
             clientID: 'client-a',
-            sessionID: 'session-a'
+            sessionID: 'session-a',
+            limit: 50
           });
           socket.end(
             JSON.stringify({
@@ -364,7 +365,8 @@ describe('OpenBurnBarDaemonClient', () => {
     await expect(
       client.pollRuns({
         clientID: 'client-a',
-        sessionID: 'session-a'
+        sessionID: 'session-a',
+        limit: 50
       })
     ).resolves.toMatchObject({
       runs: [],

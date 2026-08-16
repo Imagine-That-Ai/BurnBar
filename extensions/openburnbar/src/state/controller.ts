@@ -192,7 +192,8 @@ export class OpenBurnBarExtensionController {
           const polled = await this.withSessionRetry(() =>
             this.dependencies.client.pollRuns({
               clientID: this.clientID,
-              sessionID: this.sessionID
+              sessionID: this.sessionID,
+              limit: 50
             })
           );
           daemonRuns = polled.runs;
@@ -716,7 +717,8 @@ export class OpenBurnBarExtensionController {
       const polled = await this.withSessionRetry(() =>
         this.dependencies.client.pollRuns({
           clientID: this.clientID,
-          sessionID: this.sessionID
+          sessionID: this.sessionID,
+          limit: 50
         })
       );
 

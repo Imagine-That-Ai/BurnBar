@@ -1,4 +1,13 @@
-import { mkdtempSync, cpSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import {
+  closeSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
@@ -153,23 +162,33 @@ execFileSync("security", [
 // and the spawned Cursor process via OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN.
 const socketAuthToken = randomBytes(16).toString("hex");
 
+const daemonLogDescriptor = openSync(logPath, "a");
 const daemon = spawn(daemonBinary, ["--socket-path", socketPath, "--version", "cursor-smoke"], {
   env: {
     ...process.env,
     OPENBURNBAR_DAEMON_SUPPORT_DIR: supportDir,
     OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken,
+    // The Cursor smoke owns an unsigned SwiftPM DEBUG daemon and an external
+    // Cursor client. Use the DEBUG-only development seam while retaining the
+    // one-shot socket token as the authorization boundary for this isolated run.
+    OPENBURNBAR_DAEMON_DISABLE_PEER_CODESIG: "1",
     BURNBAR_FAKE_PROVIDER_OUTPUTS_FILE: fakeProviderOutputsPath
   },
-  stdio: ["ignore", "ignore", "ignore"]
+  stdio: ["ignore", daemonLogDescriptor, daemonLogDescriptor]
 });
+closeSync(daemonLogDescriptor);
 
 const daemonStart = Date.now();
 while (!existsSync(socketPath)) {
   if (daemon.exitCode != null) {
-    throw new Error(`OpenBurnBar daemon exited before creating the socket (exit ${daemon.exitCode}).`);
+    throw new Error(
+      `OpenBurnBar daemon exited before creating the socket (exit ${daemon.exitCode}).${daemonLogDetail()}`
+    );
   }
   if (Date.now() - daemonStart > 10000) {
-    throw new Error("Timed out waiting for the OpenBurnBar daemon socket to appear.");
+    throw new Error(
+      `Timed out waiting for the OpenBurnBar daemon socket to appear.${daemonLogDetail()}`
+    );
   }
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
@@ -255,6 +274,17 @@ async function waitForDaemonHealth(socketPath, daemonProcess, authToken, timeout
   }
 
   throw new Error(lastError);
+}
+
+function daemonLogDetail() {
+  if (!existsSync(logPath)) {
+    return ` Daemon log: ${logPath}`;
+  }
+  const log = readFileSync(logPath, "utf8");
+  const tail = log.slice(-4000).trim();
+  return tail
+    ? ` Daemon log: ${logPath}\n${tail}`
+    : ` Daemon log: ${logPath} (empty)`;
 }
 
 async function requestHealth(socketPath, authToken) {

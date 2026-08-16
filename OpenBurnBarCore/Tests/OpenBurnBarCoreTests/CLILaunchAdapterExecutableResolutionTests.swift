@@ -2,7 +2,7 @@
 import XCTest
 @testable import OpenBurnBarCore
 // P-15b: CLILaunchAdapter's Foundation-pure resolution surface (and its internal
-// test seams environmentProvider/homeDirectoryProvider/trustedExecutableSearchDirectories/
+// test seams environmentProvider/homeDirectoryProvider/
 // allowsAmbientUserManagedExecutableFallback/ambientFallbackExecutableSearchDirectories)
 // moved to OpenBurnBarKernel; @testable reaches those internals (public members flow via
 // the @_exported umbrella). OpenBurnBarLaunchServices stays for the launch-coordinator
@@ -90,26 +90,27 @@ final class CLILaunchAdapterExecutableResolutionTests: XCTestCase {
             for: .claude,
             homeDirectory: home
         ).contains("\(home)/.local/bin"))
-        let trustedDirectories = CLILaunchAdapter.trustedExecutableSearchDirectories(
-            for: .codex,
-            environment: ["PATH": "\(home)/.local/bin:\(home)/.nvm/versions/node/v20/bin"],
-            homeDirectory: home
-        )
-        XCTAssertTrue(trustedDirectories.contains("\(home)/.local/bin"))
-        XCTAssertTrue(trustedDirectories.contains("\(home)/.codex/bin"))
-        XCTAssertFalse(trustedDirectories.contains("\(home)/.nvm/versions/node/v20/bin"))
+
+        let explicitPaths = SwitcherCLIProfileType.codex.trustedExecutablePaths.map {
+            CLILaunchAdapter.expandPath($0, homeDirectory: home)
+        }
+        XCTAssertTrue(explicitPaths.contains("\(home)/.local/bin/codex"))
+        XCTAssertTrue(explicitPaths.contains("\(home)/.codex/bin/codex"))
+        XCTAssertFalse(explicitPaths.contains { $0.contains("/.nvm/") })
     }
 
     func testJunieSearchPolicyIncludesJunieManagedBinDirectory() {
         let home = "/tmp/openburnbar-cli-resolution-home"
-        let trustedDirectories = CLILaunchAdapter.trustedExecutableSearchDirectories(
-            for: .junie,
-            environment: [:],
-            homeDirectory: home
-        )
+        let explicitPaths = SwitcherCLIProfileType.junie.trustedExecutablePaths.map {
+            CLILaunchAdapter.expandPath($0, homeDirectory: home)
+        }
 
         XCTAssertTrue(SwitcherCLIProfileType.junie.trustedExecutablePaths.contains("$HOME/.junie/bin/junie"))
-        XCTAssertTrue(trustedDirectories.contains("\(home)/.junie/bin"))
+        XCTAssertTrue(explicitPaths.contains("\(home)/.junie/bin/junie"))
+        XCTAssertTrue(CLILaunchAdapter.ambientFallbackExecutableSearchDirectories(
+            for: .junie,
+            homeDirectory: home
+        ).contains("\(home)/.junie/bin"))
     }
 
     func testCLILaunchErrorUsesLocalizedDescriptions() {
