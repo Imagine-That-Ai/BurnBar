@@ -226,7 +226,7 @@ if options.jsonOutput {
         "accepted": acceptCount,
         "corpus_days": corpusDays,
         "projected_candidates_per_day": projectedPerDay,
-        "elapsed_seconds": elapsed,
+        "elapsed_seconds": elapsed
     ]
     var drops: [String: Int] = [:]
     for (reason, count) in dropCounts { drops[reason.rawValue] = count }
