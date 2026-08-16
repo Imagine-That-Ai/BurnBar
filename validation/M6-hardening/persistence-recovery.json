@@ -33,7 +33,7 @@
         "designation": {
           "kind": "none"
         },
-        "generatedAt": "2026-08-16T12:32:05.736Z",
+        "generatedAt": "2026-08-16T16:52:00.710Z",
         "persistenceHealth": {
           "kind": "ok"
         }
@@ -42,7 +42,7 @@
         "designation": {
           "kind": "burnBarManaged"
         },
-        "generatedAt": "2026-08-16T12:32:04.324Z"
+        "generatedAt": "2026-08-16T16:51:59.529Z"
       },
       "during_rebuild": {
         "designation": {
@@ -60,7 +60,7 @@
         "designation": {
           "kind": "none"
         },
-        "generatedAt": "2026-08-16T12:32:07.867Z",
+        "generatedAt": "2026-08-16T16:52:02.939Z",
         "persistenceHealth": {
           "kind": "ok"
         }
@@ -69,7 +69,7 @@
         "designation": {
           "kind": "burnBarManaged"
         },
-        "generatedAt": "2026-08-16T12:32:05.867Z"
+        "generatedAt": "2026-08-16T16:52:00.938Z"
       },
       "during_rebuild": {
         "designation": {
@@ -87,7 +87,7 @@
       "mode": "0o555",
       "persistenceHealth": {
         "kind": "degraded",
-        "reason": "fleet.sqlite store unavailable: SQLite error 14: unable to open database file; fleet-snapshot.json write failed: Error Domain=NSCocoaErrorDomain Code=513 \"You don\u2019t have permission to save the file \u201cfleet-snapshot.json.tmp\u201d in the folder \u201csupport\u201d.\" UserInfo={NSFilePath=/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-recovery-readonly-0fyucj85/support/fleet-snapshot.json.tmp, NSURL=file:///Volumes/DevSSD/BuildCache/tmp/burnbar-m6-recovery-readonly-0fyucj85/support/fleet-snapshot.json.tmp, NSUnderlyingError=0x75eac204e0 {Error Domain=NSPOSIXErrorDomain Code=13 \"Permission denied\"}}; fleet.sqlite snapshot write failed: storeNotOpen"
+        "reason": "fleet.sqlite store unavailable: SQLite error 14: unable to open database file; fleet-snapshot.json write failed: Error Domain=NSCocoaErrorDomain Code=513 \"You don\u2019t have permission to save the file \u201cfleet-snapshot.json.commit\u201d in the folder \u201csupport\u201d.\" UserInfo={NSFilePath=/tmp/burnbar-m6-recovery-readonly-nsgixbg5/support/fleet-snapshot.json.commit, NSURL=file:///tmp/burnbar-m6-recovery-readonly-nsgixbg5/support/fleet-snapshot.json.commit, NSUnderlyingError=0x7ab3098420 {Error Domain=NSPOSIXErrorDomain Code=13 \"Permission denied\"}}; fleet.sqlite snapshot write failed: storeNotOpen"
       },
       "recoveredHealth": {
         "kind": "ok"
@@ -98,48 +98,36 @@
       "attempts": [
         {
           "attempt": 1,
-          "destinationBytes": 4645,
-          "destinationGeneratedAt": "2026-08-16T12:32:10.119Z",
-          "destinationWasPriorComplete": true,
-          "killDelaySeconds": 0.0001
+          "destinationBytes": 4261,
+          "destinationChangedBeforeKill": true,
+          "destinationGeneratedAt": "2026-08-16T16:52:05.249Z",
+          "destinationWasPriorComplete": false,
+          "markerObservedBeforeKill": true,
+          "pauseAfterRenameSeconds": 0.2,
+          "reconciledRPCFileStoreParity": true
         },
         {
           "attempt": 2,
-          "destinationBytes": 4645,
-          "destinationGeneratedAt": "2026-08-16T12:32:10.119Z",
-          "destinationWasPriorComplete": true,
-          "killDelaySeconds": 0.0005
+          "destinationBytes": 4261,
+          "destinationChangedBeforeKill": true,
+          "destinationGeneratedAt": "2026-08-16T16:52:05.355Z",
+          "destinationWasPriorComplete": false,
+          "markerObservedBeforeKill": true,
+          "pauseAfterRenameSeconds": 0.2,
+          "reconciledRPCFileStoreParity": true
         },
         {
           "attempt": 3,
-          "destinationBytes": 4645,
-          "destinationGeneratedAt": "2026-08-16T12:32:10.119Z",
-          "destinationWasPriorComplete": true,
-          "killDelaySeconds": 0.001
-        },
-        {
-          "attempt": 4,
-          "destinationBytes": 4645,
-          "destinationGeneratedAt": "2026-08-16T12:32:10.119Z",
-          "destinationWasPriorComplete": true,
-          "killDelaySeconds": 0.003
-        },
-        {
-          "attempt": 5,
-          "destinationBytes": 4645,
-          "destinationGeneratedAt": "2026-08-16T12:32:10.119Z",
-          "destinationWasPriorComplete": true,
-          "killDelaySeconds": 0.01
-        },
-        {
-          "attempt": 6,
-          "destinationBytes": 4645,
-          "destinationGeneratedAt": "2026-08-16T12:32:10.119Z",
-          "destinationWasPriorComplete": true,
-          "killDelaySeconds": 0.03
+          "destinationBytes": 4261,
+          "destinationChangedBeforeKill": true,
+          "destinationGeneratedAt": "2026-08-16T16:52:05.590Z",
+          "destinationWasPriorComplete": false,
+          "markerObservedBeforeKill": true,
+          "pauseAfterRenameSeconds": 0.2,
+          "reconciledRPCFileStoreParity": true
         }
       ],
-      "lastGoodBytes": 4645,
+      "lastGoodBytes": 4261,
       "orphanTemporaryPromoted": false,
       "status": "pass"
     }

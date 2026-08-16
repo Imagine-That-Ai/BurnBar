@@ -103,6 +103,7 @@ def launch(
     *,
     support: pathlib.Path | None = None,
     cadence: int = 1,
+    pause_after_rename: float | None = None,
 ) -> tuple[subprocess.Popen[bytes], pathlib.Path, pathlib.Path]:
     support = support or base / "support"
     socket_path = base / "daemon.sock"
@@ -115,6 +116,10 @@ def launch(
             "BURNBAR_FLEET_CADENCE_SECONDS": str(cadence),
         }
     )
+    if pause_after_rename is not None:
+        environment["BURNBAR_FLEET_PAUSE_AFTER_FILE_RENAME_SECONDS"] = str(
+            pause_after_rename
+        )
     log_file = log_path.open("ab")
     process = subprocess.Popen(
         [str(binary), "--socket-path", str(socket_path)],
@@ -406,24 +411,56 @@ def case_sigkill_torn_writes(binary: pathlib.Path) -> dict[str, Any]:
         file_path = base / "support" / "fleet-snapshot.json"
         last_good = file_path.read_bytes()
 
-        # Kill during several distinct startup/tick offsets. The write window
-        # is intentionally tiny; each outcome must leave either the preceding
-        # or the next complete generation, never a truncated destination.
-        for index, delay in enumerate((0.0001, 0.0005, 0.001, 0.003, 0.01, 0.03)):
-            process, socket_path, _ = launch(base, binary)
-            time.sleep(delay)
+        # Synchronize SIGKILL on the commit marker and a changed destination.
+        # The daemon is paused after rename and before SQLite commit, so this
+        # actually exercises the crash window rather than killing startup.
+        attempts_target = 3
+        for index in range(attempts_target):
+            prior_last_good = last_good
+            marker = base / "support" / "fleet-snapshot.json.commit"
+            process, socket_path, _ = launch(
+                base, binary, pause_after_rename=0.2
+            )
+            deadline = time.monotonic() + 5
+            marker_observed = False
+            destination_changed = False
+            while time.monotonic() < deadline:
+                marker_observed = marker.exists()
+                destination_changed = file_path.read_bytes() != prior_last_good
+                if marker_observed and destination_changed:
+                    break
+                time.sleep(0.005)
+            assert marker_observed and destination_changed, (
+                "SIGKILL must land after rename with a commit marker present"
+            )
             kill_owned(process)
             process = None
             destination = file_path.read_bytes()
             decoded = json.loads(destination.decode("utf-8"))
             assert decoded["schemaVersion"] == 1
+            assert marker.exists()
+            process, socket_path, _ = launch(base, binary)
+            reconciled = wait_for_snapshot(socket_path)
+            file_payload = json.loads(file_path.read_text(encoding="utf-8"))
+            with sqlite3.connect(f"file:{base / 'support' / 'fleet.sqlite'}?mode=ro", uri=True) as connection:
+                stored_payload = connection.execute(
+                    "SELECT payload FROM fleet_snapshots ORDER BY id DESC LIMIT 1"
+                ).fetchone()[0]
+            assert file_payload == reconciled
+            assert json.loads(stored_payload) == reconciled
+            stop(process)
+            process = None
+            last_good = file_path.read_bytes()
             attempts.append(
                 {
                     "attempt": index + 1,
-                    "killDelaySeconds": delay,
+                    "pauseAfterRenameSeconds": 0.2,
+                    "markerObservedBeforeKill": marker_observed,
+                    "destinationChangedBeforeKill": destination_changed,
                     "destinationBytes": len(destination),
                     "destinationGeneratedAt": decoded["generatedAt"],
-                    "destinationWasPriorComplete": destination == last_good,
+                    "destinationWasPriorComplete": destination == prior_last_good,
+                    "reconciledRPCFileStoreParity": True,
                 }
             )
 

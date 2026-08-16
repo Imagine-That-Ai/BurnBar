@@ -76,7 +76,8 @@ public final class BurnBarFleetStore {
             return health
         }
         if Self.fileIdentity(at: databasePath) == nil,
-           Self.fileIdentity(at: Self.snapshotPath(for: databasePath)) != nil {
+           (Self.fileIdentity(at: Self.snapshotPath(for: databasePath)) != nil
+            || Self.fileIdentity(at: Self.initializationMarkerPath(for: databasePath)) != nil) {
             do {
                 try rebuildDatabase(reason: "store path was deleted before daemon restart")
             } catch {
@@ -88,6 +89,7 @@ public final class BurnBarFleetStore {
         do {
             queue = try Self.openQueue(at: databasePath, migrate: true)
             openedFileIdentity = Self.fileIdentity(at: databasePath)
+            try Self.markInitialized(databasePath: databasePath)
             return health
         } catch {
             guard Self.isRecoverableOpenFailure(error) else {
@@ -157,6 +159,7 @@ public final class BurnBarFleetStore {
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1_fleet") { db in
+            try db.execute(sql: "PRAGMA user_version = 1")
             try db.create(table: "fleet_snapshots") { t in
                 t.autoIncrementedPrimaryKey("id")
                 t.column("generated_at", .double).notNull().indexed()
@@ -219,7 +222,9 @@ public final class BurnBarFleetStore {
                 return nil
             }
             let payload: String = row["payload"]
-            return try Self.decodeSnapshot(payload)
+            let snapshot = try Self.decodeSnapshot(payload)
+            try Self.validateSnapshot(snapshot)
+            return snapshot
         }
     }
 
@@ -556,6 +561,7 @@ public struct BurnBarFleetTransition: Sendable {
 public enum BurnBarFleetPersistenceError: Error, LocalizedError {
     case payloadEncodingFailed
     case payloadDecodingFailed
+    case semanticSnapshotInvalid(String)
     case storeNotOpen
 
     public var errorDescription: String? {
@@ -564,6 +570,8 @@ public enum BurnBarFleetPersistenceError: Error, LocalizedError {
             return "Fleet snapshot payload could not be encoded to UTF-8 JSON."
         case .payloadDecodingFailed:
             return "Stored fleet snapshot payload could not be decoded."
+        case .semanticSnapshotInvalid(let detail):
+            return "Stored fleet snapshot payload is semantically invalid: \(detail)."
         case .storeNotOpen:
             return "Fleet store is not open."
         }

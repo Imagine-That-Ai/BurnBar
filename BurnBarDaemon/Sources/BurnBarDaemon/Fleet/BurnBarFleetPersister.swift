@@ -66,6 +66,7 @@ public final class BurnBarFleetPersister {
     public func open() throws {
         do {
             combinedHealth = try store.open()
+            try fileWriter.reconcile(committedPayload: try store.latestSnapshotPayload())
         } catch {
             combinedHealth = .degraded(reason: BurnBarFleetPersistenceReason.storeUnavailable("\(error)"))
             throw error
@@ -124,6 +125,12 @@ public final class BurnBarFleetPersister {
     /// succeeds.
     @discardableResult
     public func persist(snapshot: BurnBarFleetSnapshot) -> BurnBarFleetSnapshot {
+        do {
+            try BurnBarFleetStore.validateSnapshot(snapshot)
+        } catch {
+            combinedHealth = .degraded(reason: "invalid snapshot payload: \(error)")
+            return snapshot.withPersistenceHealth(combinedHealth)
+        }
         // Transition events: compare against the previous persisted snapshot
         // (fixed-roster model). The first persist records no transitions —
         // there is no prior state to transition from.
@@ -135,7 +142,8 @@ public final class BurnBarFleetPersister {
         var finalSnapshot = snapshot.withPersistenceHealth(Self.mergedHealth(healths))
 
         do {
-            try fileWriter.write(snapshot: finalSnapshot)
+            try fileWriter.prepare(snapshot: finalSnapshot)
+            Self.pauseAfterFileRenameIfRequested()
         } catch {
             healths.append(.degraded(reason: BurnBarFleetPersistenceReason.fileWriteFailed("\(error)")))
             finalSnapshot = snapshot.withPersistenceHealth(Self.mergedHealth(healths))
@@ -143,6 +151,7 @@ public final class BurnBarFleetPersister {
 
         do {
             _ = try store.persistSnapshotAndTransitions(finalSnapshot, transitions: transitions)
+            try? fileWriter.commitPrepared()
             // The store write + event insertion succeeded: the baseline
             // advances to this generation.
             lastPersistedSnapshot = finalSnapshot
@@ -153,16 +162,21 @@ public final class BurnBarFleetPersister {
             // recomputes the transitions against the last persisted state.
             healths.append(.degraded(reason: BurnBarFleetPersistenceReason.storeWriteFailed("\(error)")))
             finalSnapshot = snapshot.withPersistenceHealth(Self.mergedHealth(healths))
+            // Roll back the uncommitted file generation before attempting a
+            // compensating store row. A restart must never promote a file
+            // whose SQLite generation was not committed.
+            try? fileWriter.reconcile(committedPayload: try? store.latestSnapshotPayload())
             // Compensating write: keep the file in parity with the served
             // snapshot. When the file writer is also down, the file stays at
             // the last-good generation (byte-identical) and RPC remains the
             // only current-generation surface (degraded).
             do {
-                try fileWriter.write(snapshot: finalSnapshot)
+                try fileWriter.prepare(snapshot: finalSnapshot)
+                _ = try store.persistSnapshotAndTransitions(finalSnapshot, transitions: transitions)
+                try fileWriter.commitPrepared()
+                lastPersistedSnapshot = finalSnapshot
             } catch {
-                // Both writers down: the file stays last-good; the store has
-                // no row for this generation. No surface contradicts the
-                // served snapshot for the same generation.
+                try? fileWriter.reconcile(committedPayload: try? store.latestSnapshotPayload())
             }
         }
 
@@ -205,7 +219,10 @@ public final class BurnBarFleetPersister {
         from previous: BurnBarFleetSnapshot,
         to current: BurnBarFleetSnapshot
     ) -> [BurnBarFleetTransition] {
-        let previousByID = Dictionary(uniqueKeysWithValues: previous.agents.map { ($0.id, $0) })
+        var previousByID: [BurnBarFleetAgentID: BurnBarFleetAgent] = [:]
+        for agent in previous.agents {
+            previousByID[agent.id] = agent
+        }
         var transitions: [BurnBarFleetTransition] = []
         for agent in current.agents {
             guard let prior = previousByID[agent.id] else { continue }
@@ -235,6 +252,19 @@ public final class BurnBarFleetPersister {
             }
         }
         return reasons.isEmpty ? .ok : .degraded(reason: reasons.joined(separator: "; "))
+    }
+
+    /// Test-only crash-window seam. It pauses after the atomic destination
+    /// rename and before the SQLite transaction, allowing a harness-owned
+    /// SIGKILL to exercise the commit marker reconciliation protocol.
+    private static func pauseAfterFileRenameIfRequested() {
+        guard let raw = ProcessInfo.processInfo.environment[
+            "BURNBAR_FLEET_PAUSE_AFTER_FILE_RENAME_SECONDS"
+        ],
+        let seconds = TimeInterval(raw),
+        seconds > 0
+        else { return }
+        Thread.sleep(forTimeInterval: seconds)
     }
 }
 

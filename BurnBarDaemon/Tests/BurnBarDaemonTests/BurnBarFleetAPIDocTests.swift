@@ -267,13 +267,17 @@ final class BurnBarFleetAPIDocTests: BurnBarFleetRPCTestCase {
 
         let boundaryRoot = tempRoots.appendingPathComponent("freshness-boundary")
         try FileManager.default.createDirectory(at: boundaryRoot, withIntermediateDirectories: true)
+        let referenceNow = Date()
         let environment = ProcessInfo.processInfo.environment.merging(
-            ["BURNBAR_FLEET_SNAPSHOT_PATH": boundaryRoot.appendingPathComponent("snapshot.json").path],
+            [
+                "BURNBAR_FLEET_SNAPSHOT_PATH": boundaryRoot.appendingPathComponent("snapshot.json").path,
+                "BURNBAR_FLEET_NOW": isoString(referenceNow)
+            ],
             uniquingKeysWith: { _, new in new }
         )
 
         var fresh = base
-        fresh["generatedAt"] = isoString(Date().addingTimeInterval(-199.0))
+        fresh["generatedAt"] = isoString(referenceNow.addingTimeInterval(-200.0))
         try JSONSerialization.data(withJSONObject: fresh).write(
             to: URL(fileURLWithPath: environment["BURNBAR_FLEET_SNAPSHOT_PATH"]!)
         )

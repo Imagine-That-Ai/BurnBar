@@ -333,6 +333,12 @@ defined below.
 - Each completed build writes `fleet-snapshot.json.tmp` and then atomically
   renames it to `fleet-snapshot.json`. The temporary file is removed on
   failure and does not remain after a completed write.
+- The rename is guarded by a private commit marker and previous-generation
+  backup until the matching SQLite snapshot transaction commits. If the
+  daemon is killed after rename but before SQLite commit, startup reconciles
+  the marker against the latest `fleet_snapshots` payload and restores the
+  previous complete file before serving a new generation. A pre-commit file
+  can never become a completed generation after restart.
 - A reader during the short `rename(2)` replacement window sees either the
   preceding complete JSON document or the new complete JSON document. It
   never sees a partial document and, after the first tick, never sees an
@@ -366,6 +372,8 @@ For this API's consumer policy, a snapshot is `fresh` while
 hardcoded 15-second default. The embedded consumer below reports this
 classification in its `result.freshness` annotation; callers using only the
 raw file or daemon RPC must apply the same comparison themselves.
+The embedded consumer accepts `BURNBAR_FLEET_NOW` as a deterministic
+validation clock override; normal callers should omit it.
 
 Before the first successful build, `fleet-snapshot.json` is absent **only for
 a fresh support directory**. The snapshot RPC in the same window returns a
@@ -1243,9 +1251,15 @@ def load_snapshot():
 
 snapshot = validate_snapshot(load_snapshot())
 generated_at = iso_date(snapshot["generatedAt"], "generatedAt")
+reference_now = os.environ.get("BURNBAR_FLEET_NOW")
+now = (
+    iso_date(reference_now, "BURNBAR_FLEET_NOW")
+    if reference_now
+    else datetime.now(timezone.utc)
+)
 age_seconds = max(
     0.0,
-    (datetime.now(timezone.utc) - generated_at).total_seconds(),
+    (now - generated_at).total_seconds(),
 )
 threshold_seconds = 2 * snapshot["cadenceSeconds"]
 print(json.dumps({

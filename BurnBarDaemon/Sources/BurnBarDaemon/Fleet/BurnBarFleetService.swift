@@ -117,7 +117,12 @@ public actor BurnBarFleetService {
     /// by `daemon.fleet.orchestrator.get`. Read-only — never mutates control
     /// state (VAL-CROSS-009).
     public func orchestratorState() async -> BurnBarOrchestratorState {
-        await controlStore?.currentState() ?? BurnBarOrchestratorState(designation: .none)
+        (try? await orchestratorStateChecked()) ?? BurnBarOrchestratorState(designation: .none)
+    }
+
+    public func orchestratorStateChecked() async throws -> BurnBarOrchestratorState {
+        persister?.prepareForBuild()
+        return try await controlStore?.currentStateChecked() ?? BurnBarOrchestratorState(designation: .none)
     }
 
     /// Sets the orchestrator designation with the documented overwrite and
@@ -128,6 +133,7 @@ public actor BurnBarFleetService {
         guard let controlStore else {
             throw BurnBarFleetControlError.storeUnavailable("control store is not wired")
         }
+        persister?.prepareForBuild()
         return try await controlStore.setOrchestratorState(state)
     }
 
@@ -137,6 +143,7 @@ public actor BurnBarFleetService {
         guard let controlStore else {
             throw BurnBarFleetControlError.storeUnavailable("control store is not wired")
         }
+        persister?.prepareForBuild()
         return try await controlStore.recordDirective(directive)
     }
 
@@ -152,7 +159,7 @@ public actor BurnBarFleetService {
         // daemon-owned designation/directive history, so the control store
         // must observe that boundary before embedding its state.
         persister?.prepareForBuild()
-        let orchestratorState = await controlStore?.currentState()
+        let orchestratorState = try await controlStore?.currentStateChecked()
             ?? BurnBarOrchestratorState(designation: .none)
         let snapshot = try await builder.build(
             orchestrator: orchestratorState,

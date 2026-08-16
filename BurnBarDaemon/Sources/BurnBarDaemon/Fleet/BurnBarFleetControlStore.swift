@@ -127,25 +127,47 @@ public actor BurnBarFleetControlStore {
                 return
             }
             guard let data = payload.data(using: .utf8) else {
-                recoverMalformedPersistedState()
+                recoverMalformedPersistedState(reason: "orchestrator state payload was malformed")
                 return
             }
             do {
                 inMemoryState = try JSONDecoder().decode(BurnBarOrchestratorState.self, from: data)
             } catch {
-                recoverMalformedPersistedState()
+                recoverMalformedPersistedState(reason: "orchestrator state payload was malformed")
             }
         } catch {
-            recoverMalformedPersistedState()
+            recoverMalformedPersistedState(reason: "orchestrator state payload was malformed")
         }
     }
 
     /// The current orchestrator state: the persisted (or default) designation
-    /// plus the live `pendingDirectives` count. Never mutates control state.
+    /// plus the live `pendingDirectives` count. A malformed persisted control
+    /// row crosses the typed recovery boundary rather than being returned as
+    /// stale state; RPC callers use `currentStateChecked()` for the error.
     public func currentState() -> BurnBarOrchestratorState {
+        do {
+            return try currentStateChecked()
+        } catch {
+            // This compatibility accessor cannot throw. It still crosses the
+            // same recovery boundary and never returns a stale designation or
+            // directive count; RPC callers use currentStateChecked() to expose
+            // the typed error.
+            return BurnBarOrchestratorState(designation: .none)
+        }
+    }
+
+    public func currentStateChecked() throws -> BurnBarOrchestratorState {
         observeStoreRecoveryIfNeeded()
         let state = loadIfNeeded()
-        let pending = (try? pendingDirectivesCount()) ?? state.pendingDirectives
+        let pending: Int
+        do {
+            pending = try pendingDirectivesCount()
+        } catch {
+            recoverMalformedPersistedState(reason: "fleet directive records were malformed")
+            throw BurnBarFleetControlError.storeUnavailable(
+                "fleet directive records are malformed and persistence was rebuilt"
+            )
+        }
         return BurnBarOrchestratorState(
             designation: state.designation,
             setAt: state.setAt,
@@ -161,6 +183,7 @@ public actor BurnBarFleetControlStore {
     public func setOrchestratorState(_ requested: BurnBarOrchestratorState) throws -> BurnBarOrchestratorState {
         observeStoreRecoveryIfNeeded()
         try Self.validateDesignation(requested.designation)
+        try ensurePersistedControlStateIsReadable()
         let current = loadIfNeeded()
 
         // Idempotent clear: none → none is a typed success no-op (ORCH-018).
@@ -170,7 +193,7 @@ public actor BurnBarFleetControlStore {
         // after restart) — so the set response and the immediately following
         // get always agree (set/get coherence; scrutiny round 1).
         if current.designation == .none, requested.designation == .none {
-            let pending = (try? pendingDirectivesCount()) ?? current.pendingDirectives
+            let pending = try pendingDirectivesCount()
             return BurnBarOrchestratorState(
                 designation: .none,
                 setAt: current.setAt,
@@ -193,7 +216,7 @@ public actor BurnBarFleetControlStore {
         } else {
             inMemoryState = updated
         }
-        let pending = (try? pendingDirectivesCount()) ?? 0
+        let pending = try pendingDirectivesCount()
         return BurnBarOrchestratorState(
             designation: updated.designation,
             setAt: updated.setAt,
@@ -291,10 +314,12 @@ public actor BurnBarFleetControlStore {
     /// store for the control plane. Rebuild it through the same typed
     /// recovery boundary as malformed database bytes so a bad payload cannot
     /// silently become a fresh `none` designation.
-    private func recoverMalformedPersistedState() {
+    private func recoverMalformedPersistedState(
+        reason: String = "orchestrator state payload was malformed"
+    ) {
         guard let store else { return }
         do {
-            try store.rebuildDatabase(reason: "orchestrator state payload was malformed")
+            try store.rebuildDatabase(reason: reason)
         } catch {
             // The store records the typed unavailable health. Reads below
             // still return the safe fresh-daemon default.
@@ -323,6 +348,18 @@ public actor BurnBarFleetControlStore {
             return try store.directiveRecords().filter { Self.isPending($0.state) }.count
         }
         return inMemoryRecords.filter { Self.isPending($0.state) }.count
+    }
+
+    private func ensurePersistedControlStateIsReadable() throws {
+        guard let store, store.isOpen else { return }
+        do {
+            _ = try store.directiveRecords()
+        } catch {
+            recoverMalformedPersistedState(reason: "fleet directive records were malformed")
+            throw BurnBarFleetControlError.storeUnavailable(
+                "fleet directive records are malformed and persistence was rebuilt"
+            )
+        }
     }
 
     private func existingDirective(id: String) throws -> BurnBarFleetDirective? {

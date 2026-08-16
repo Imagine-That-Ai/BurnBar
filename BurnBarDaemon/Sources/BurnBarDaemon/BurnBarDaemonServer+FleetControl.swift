@@ -27,7 +27,7 @@ extension BurnBarDaemonServer {
         let response = BurnBarRPCResponseEnvelope(
             id: typedRequest.id,
             protocolVersion: BurnBarProtocolVersion.current,
-            result: BurnBarFleetOrchestratorGetResponse(state: await fleetService.orchestratorState())
+            result: BurnBarFleetOrchestratorGetResponse(state: try await fleetService.orchestratorStateChecked())
         )
         return encode(response)
     }

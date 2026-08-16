@@ -27,24 +27,79 @@ public struct BurnBarFleetFileWriter: Sendable {
             .appendingPathComponent(BurnBarFleetPersistenceConstants.snapshotTemporaryFileName)
     }
 
+    private var commitMarkerURL: URL {
+        fileURL.deletingLastPathComponent()
+            .appendingPathComponent("\(fileURL.lastPathComponent).commit")
+    }
+
+    private var previousURL: URL {
+        fileURL.deletingLastPathComponent()
+            .appendingPathComponent("\(fileURL.lastPathComponent).previous")
+    }
+
+    /// Installs a recoverable file generation. The marker is written before
+    /// rename, so a crash after rename but before SQLite commit is
+    /// distinguishable from a completed generation on restart.
+    public func prepare(snapshot: BurnBarFleetSnapshot) throws {
+        let data = try JSONEncoder().encode(snapshot)
+        let directoryURL = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: previousURL)
+        if fileManager.fileExists(atPath: fileURL.path) {
+            try fileManager.copyItem(at: fileURL, to: previousURL)
+        }
+        let marker = CommitMarker(generatedAt: snapshot.generatedAt.timeIntervalSince1970)
+        try JSONEncoder().encode(marker).write(to: commitMarkerURL)
+        do {
+            try data.write(to: temporaryURL)
+            try Self.atomicReplace(from: temporaryURL.path, to: fileURL.path)
+        } catch {
+            try? fileManager.removeItem(at: temporaryURL)
+            try? fileManager.removeItem(at: commitMarkerURL)
+            try? fileManager.removeItem(at: previousURL)
+            throw error
+        }
+    }
+
+    /// Completes the two-phase file/store commit and removes recovery
+    /// metadata. This is intentionally called only after SQLite succeeds.
+    public func commitPrepared() throws {
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: commitMarkerURL)
+        try? fileManager.removeItem(at: previousURL)
+        try? fileManager.removeItem(at: temporaryURL)
+    }
+
+    /// Reconciles a marker left by SIGKILL. The destination is accepted only
+    /// when it is byte-identical to the latest committed SQLite payload;
+    /// otherwise the previous complete file is restored.
+    public func reconcile(committedPayload: String?) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: commitMarkerURL.path) else {
+            try? fileManager.removeItem(at: temporaryURL)
+            return
+        }
+        let committedData = committedPayload?.data(using: .utf8)
+        let destination = try? Data(contentsOf: fileURL)
+        if let committedData, destination == committedData {
+            try commitPrepared()
+            return
+        }
+        if fileManager.fileExists(atPath: previousURL.path) {
+            try Self.atomicReplace(from: previousURL.path, to: fileURL.path)
+        } else {
+            try? fileManager.removeItem(at: fileURL)
+        }
+        try commitPrepared()
+    }
+
     /// Writes `snapshot` atomically (tmp + rename). Throws on failure; the
     /// destination file is never partially replaced and the tmp file is
     /// removed on failure so no `.tmp` litter survives.
     public func write(snapshot: BurnBarFleetSnapshot) throws {
-        let encoder = JSONEncoder()
-        let data = try encoder.encode(snapshot)
-
-        let directoryURL = fileURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-
-        let temporaryPath = temporaryURL.path
-        do {
-            try data.write(to: URL(fileURLWithPath: temporaryPath))
-            try Self.atomicReplace(from: temporaryPath, to: fileURL.path)
-        } catch {
-            try? FileManager.default.removeItem(atPath: temporaryPath)
-            throw error
-        }
+        try prepare(snapshot: snapshot)
+        try commitPrepared()
     }
 
     /// `rename(2)`: atomic on the same filesystem. Replaces the destination
@@ -59,5 +114,9 @@ public struct BurnBarFleetFileWriter: Sendable {
         guard result == 0 else {
             throw POSIXError(.init(rawValue: errno) ?? .EIO)
         }
+    }
+
+    private struct CommitMarker: Codable {
+        let generatedAt: TimeInterval
     }
 }

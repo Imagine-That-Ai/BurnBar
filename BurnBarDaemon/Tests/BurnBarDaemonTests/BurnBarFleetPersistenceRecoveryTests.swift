@@ -255,6 +255,20 @@ final class BurnBarFleetPersistenceRecoveryTests: XCTestCase {
         XCTAssertEqual(try reopened.directiveRowCount(), 0)
     }
 
+    func testStore_missingDatabaseWithoutSnapshot_rebuildsTypedUsingInitializationMarker() throws {
+        let store = try makeStore()
+        store.close()
+        try FileManager.default.removeItem(at: storeURL)
+
+        let reopened = BurnBarFleetStore(databasePath: storeURL.path)
+        let health = try reopened.open()
+        guard case .degraded(let reason) = health else {
+            return XCTFail("deleted initialized store without a snapshot must degrade typed")
+        }
+        XCTAssertTrue(reason.contains("rebuilt"), "unexpected reason: \(reason)")
+        XCTAssertEqual(reopened.recoveryGeneration, 1)
+    }
+
     func testFileWriter_orphanedTruncatedTemporary_neverPromoted() throws {
         let writer = BurnBarFleetFileWriter(fileURL: snapshotFileURL)
         let lastGood = try makeSnapshot(generatedAt: Date(timeIntervalSince1970: 1_752_000_000))
@@ -344,5 +358,93 @@ final class BurnBarFleetPersistenceRecoveryTests: XCTestCase {
             return XCTFail("malformed control state must trigger typed rebuild health")
         }
         XCTAssertTrue(reason.contains("rebuilt"), "unexpected reason: \(reason)")
+    }
+
+    func testStore_semanticallyCorruptSnapshot_rebuildsBeforeTransitionDerivation() throws {
+        let store = try makeStore()
+        let baseline = try makeSnapshot(
+            generatedAt: Date(),
+            claudeStatus: .running,
+            claudeConfidence: .exactProcess
+        )
+        _ = try store.persistLatestSnapshot(baseline)
+        store.close()
+
+        let rawStore = try DatabaseQueue(path: storeURL.path)
+        try rawStore.write { db in
+            let payload = try XCTUnwrap(
+                String.fetchOne(db, sql: "SELECT payload FROM fleet_snapshots ORDER BY id DESC LIMIT 1")
+            )
+            let data = try XCTUnwrap(payload.data(using: .utf8))
+            var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            var agents = try XCTUnwrap(object["agents"] as? [[String: Any]])
+            agents[1]["id"] = agents[0]["id"]
+            object["agents"] = agents
+            let corrupt = try JSONSerialization.data(withJSONObject: object)
+            try db.execute(
+                sql: "UPDATE fleet_snapshots SET payload = ?",
+                arguments: [String(decoding: corrupt, as: UTF8.self)]
+            )
+        }
+        try rawStore.close()
+
+        let reopened = BurnBarFleetStore(databasePath: storeURL.path)
+        _ = try reopened.open()
+        XCTAssertThrowsError(try reopened.latestSnapshot()) { error in
+            guard case BurnBarFleetPersistenceError.semanticSnapshotInvalid = error else {
+                return XCTFail("expected typed semantic corruption, got \(error)")
+            }
+        }
+
+        let persister = BurnBarFleetPersister(
+            store: reopened,
+            fileWriter: BurnBarFleetFileWriter(fileURL: snapshotFileURL)
+        )
+        persister.loadLastPersistedSnapshot()
+        XCTAssertNil(persister.lastPersisted)
+        guard case .degraded(let reason) = persister.persistenceHealth() else {
+            return XCTFail("semantic corruption must degrade persistence")
+        }
+        XCTAssertTrue(reason.contains("rebuilt"))
+    }
+
+    func testControlStore_malformedDirectivePayload_isTypedDegradationNotStaleCount() async throws {
+        let store = try makeStore()
+        try store.upsertDirective(
+            BurnBarFleetDirective(
+                id: "malformed-directive",
+                kind: .summarize,
+                targetAgent: nil,
+                payload: "payload",
+                state: .proposed,
+                createdAt: Date()
+            )
+        )
+        store.close()
+        let rawStore = try DatabaseQueue(path: storeURL.path)
+        try await rawStore.write { db in
+            try db.execute(
+                sql: "UPDATE fleet_directives SET payload = ?",
+                arguments: ["{\"id\":\"malformed-directive\""]
+            )
+        }
+        try rawStore.close()
+
+        let reopened = BurnBarFleetStore(databasePath: storeURL.path)
+        _ = try reopened.open()
+        let controlStore = BurnBarFleetControlStore(store: reopened)
+        await controlStore.loadPersistedState()
+        do {
+            _ = try await controlStore.currentStateChecked()
+            XCTFail("malformed directive must not return stale control state")
+        } catch {
+            guard case BurnBarFleetControlError.storeUnavailable = error else {
+                return XCTFail("expected typed directive degradation, got \(error)")
+            }
+        }
+        guard case .degraded(let reason) = reopened.currentHealth() else {
+            return XCTFail("malformed directive must rebuild the store")
+        }
+        XCTAssertTrue(reason.contains("rebuilt"))
     }
 }

@@ -19,6 +19,9 @@ public enum BurnBarFleetPersistenceConstants {
     public static let snapshotFileName = "fleet-snapshot.json"
     /// The atomic-write temp name; must never remain after a completed write.
     public static let snapshotTemporaryFileName = "fleet-snapshot.json.tmp"
+    /// Durable initialization marker used to distinguish a deleted stopped
+    /// store from a genuinely fresh support directory with no snapshot yet.
+    public static let storeInitializationMarkerName = "fleet.sqlite.initialized"
 }
 
 /// Reason strings for `persistenceHealth` degradation. Reasons are non-empty
