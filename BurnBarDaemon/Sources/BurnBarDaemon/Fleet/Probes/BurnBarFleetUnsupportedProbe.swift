@@ -19,28 +19,18 @@ public struct BurnBarFleetUnsupportedProbe: BurnBarFleetProbe {
     }
 
     public func probe(now: Date) async -> BurnBarFleetProbeResult {
-        let rootExists = FileManager.default.fileExists(atPath: rootPath)
-
-        let healthState: BurnBarFleetProbeHealthState
-        if rootExists {
-            healthState = .ok
-        } else {
-            healthState = .failed(reason: "Declared root missing: \(rootPath)")
+        if let rootIssue = BurnBarFleetProbeSupport.rootAccessResult(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now
+        ) {
+            return rootIssue
         }
-
-        let agent = BurnBarFleetAgent(
-            id: agentID,
-            displayName: BurnBarFleetSnapshotBuilder.displayName(for: agentID),
-            status: .unknown,
-            confidence: .unsupported,
+        return BurnBarFleetProbeSupport.noEvidenceResult(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now,
             note: note
         )
-        let health = BurnBarFleetProbeHealth(
-            agent: agentID,
-            state: healthState,
-            rootPath: rootPath,
-            checkedAt: now
-        )
-        return BurnBarFleetProbeResult(agent: agent, health: health)
     }
 }

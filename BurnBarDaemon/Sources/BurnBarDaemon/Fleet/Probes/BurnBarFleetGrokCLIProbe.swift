@@ -40,8 +40,12 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
             .appendingPathComponent("active_sessions.json")
             .path
 
-        guard FileManager.default.fileExists(atPath: rootPath) else {
-            return BurnBarFleetProbeSupport.missingRootResult(agentID: agentID, rootPath: rootPath, now: now)
+        if let rootIssue = BurnBarFleetProbeSupport.rootAccessResult(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now
+        ) {
+            return rootIssue
         }
 
         guard FileManager.default.fileExists(atPath: registryPath) else {

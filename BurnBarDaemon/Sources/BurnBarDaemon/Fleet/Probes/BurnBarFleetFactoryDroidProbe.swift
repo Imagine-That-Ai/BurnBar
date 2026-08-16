@@ -56,8 +56,12 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
     public func probe(now: Date) async -> BurnBarFleetProbeResult {
         let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
 
-        guard FileManager.default.fileExists(atPath: rootPath) else {
-            return BurnBarFleetProbeSupport.missingRootResult(agentID: agentID, rootPath: rootPath, now: now)
+        if let rootIssue = BurnBarFleetProbeSupport.rootAccessResult(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now
+        ) {
+            return rootIssue
         }
 
         // 1. Task ledger.

@@ -54,8 +54,12 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
     public func probe(now: Date) async -> BurnBarFleetProbeResult {
         let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
 
-        guard FileManager.default.fileExists(atPath: rootPath) else {
-            return BurnBarFleetProbeSupport.missingRootResult(agentID: agentID, rootPath: rootPath, now: now)
+        if let rootIssue = BurnBarFleetProbeSupport.rootAccessResult(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now
+        ) {
+            return rootIssue
         }
 
         let daemonPath = rootURL.appendingPathComponent("local-exec-daemon.json").path
@@ -123,10 +127,12 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
         signals: [BurnBarFleetSignalSource],
         healthState: BurnBarFleetProbeHealthState
     ) -> BurnBarFleetProbeResult {
+        let daemonIsLive = Self.isLiveDaemon(daemon)
+
         // Running: live daemon pid (pid-reuse guarded) + inflightCount > 0.
         if let daemon, daemon.malformedReason == nil,
            let pid = daemon.pid, let inflight = daemon.inflightCount,
-           BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: daemon.startedAt), inflight > 0 {
+           daemonIsLive, inflight > 0 {
             return BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
@@ -148,7 +154,7 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
         // stale/absent silently hides the missing evidence.
         if let daemon, daemon.malformedReason == nil,
            let pid = daemon.pid, let inflight = daemon.inflightCount,
-           BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: daemon.startedAt), inflight == 0 {
+           daemonIsLive, inflight == 0 {
             var branchHealth = healthState
             if let supervisor, supervisor.malformedReason == nil {
                 let supervisorLive = supervisor.pid.map {
@@ -239,6 +245,13 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
             note: "Roots present, no signal files.",
             healthState: healthState
         )
+    }
+
+    private static func isLiveDaemon(_ daemon: DaemonSignal?) -> Bool {
+        guard let daemon, daemon.malformedReason == nil, let pid = daemon.pid else {
+            return false
+        }
+        return BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: daemon.startedAt)
     }
 
     // MARK: - Parsing

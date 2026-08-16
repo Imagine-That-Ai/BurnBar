@@ -317,6 +317,66 @@ public enum BurnBarFleetProbeReadError: Error, Equatable, Sendable {
 /// Shared probe result builders so every probe reports the same typed shapes
 /// for missing roots, absent evidence, and ordinary rows.
 public enum BurnBarFleetProbeSupport {
+    /// Checks a declared root before a probe touches any child path. Missing
+    /// and unreadable roots both return a typed result; a readable root
+    /// returns nil so the owning probe can inspect its known signals.
+    public static func rootAccessResult(
+        agentID: BurnBarFleetAgentID,
+        rootPath: String,
+        now: Date
+    ) -> BurnBarFleetProbeResult? {
+        guard FileManager.default.fileExists(atPath: rootPath) else {
+            return missingRootResult(agentID: agentID, rootPath: rootPath, now: now)
+        }
+        guard rootPermissionDeniedReason(at: rootPath) == nil else {
+            return permissionDeniedRootResult(agentID: agentID, rootPath: rootPath, now: now)
+        }
+        return nil
+    }
+
+    /// Returns a typed access failure for a declared root that exists but
+    /// cannot be read/traversed. Probes check this before looking for signal
+    /// files so an unreadable root is never mistaken for an installed-but-
+    /// inactive root. The permission-bit check also makes the hermetic
+    /// `chmod 000` fixture deterministic when a validator happens to run as
+    /// uid 0, whose `access(2)` call would otherwise bypass the mode bits.
+    public static func rootPermissionDeniedReason(at rootPath: String) -> String? {
+        var fileStatus = stat()
+        guard lstat(rootPath, &fileStatus) == 0 else {
+            return errno == EACCES
+                ? "Declared root permission denied: \(rootPath)"
+                : nil
+        }
+
+        guard (fileStatus.st_mode & S_IFMT) == S_IFDIR else { return nil }
+        let permissionBits = fileStatus.st_mode & 0o777
+        guard permissionBits != 0,
+              access(rootPath, R_OK | X_OK) == 0 else {
+            return "Declared root permission denied: \(rootPath)"
+        }
+        return nil
+    }
+
+    /// Typed result for a present but unreadable declared root. Permission
+    /// failures are probe-local and intentionally do not expose file content.
+    public static func permissionDeniedRootResult(
+        agentID: BurnBarFleetAgentID,
+        rootPath: String,
+        now: Date
+    ) -> BurnBarFleetProbeResult {
+        let reason = rootPermissionDeniedReason(at: rootPath)
+            ?? "Declared root permission denied: \(rootPath)"
+        return result(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now,
+            status: .unknown,
+            confidence: .unsupported,
+            note: reason,
+            healthState: .degraded(reason: reason)
+        )
+    }
+
     /// Merges a typed reason into an existing health state: an `ok` state
     /// becomes `degraded(reason:)`; a degraded/failed state keeps its kind
     /// and appends the new reason. Used when a branch adds its own typed

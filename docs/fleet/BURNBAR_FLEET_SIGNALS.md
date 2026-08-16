@@ -174,7 +174,7 @@ without data loss.
 ### Snapshot builder behavior (M1 core)
 
 - **Fixed ten-row roster.** Every snapshot's `agents[]` and `probeHealth[]` contain exactly one entry per declared roster id, in canonical order, even when a root is missing or an agent is unsupported. A missing probe degrades to a typed `unknown`/`unsupported` row with a `failed(reason)` health entry — never an omitted row.
-- **Empty-root degradation.** With all roots empty/missing, every row is `unknown` with `unsupported` confidence (never `running`), and every probe-health entry is `failed(reason: "Declared root missing: <path>")` naming the resolved root path.
+- **Empty-root degradation.** With all roots empty/missing, every row is `unknown` with `unsupported` confidence (never `running`), and every probe-health entry is `failed(reason: "Declared root missing: <path>")` naming the resolved root path. A present but unreadable declared root is `unknown`/`unsupported` with `degraded(reason: "Declared root permission denied: <path>")`; the affected probe never treats an access failure as an installed-but-inactive root.
 - **Derived aggregates.** `runningCount` equals the number of `running` rows; `countsByAgent[id]` is `1` iff that row is `running` (else `0`); `repos` groups rows by derived `projectName` (nil/empty project names are omitted from the grouping).
 - **Machine status.** `cpuPercent`, `memoryUsedBytes`, `memoryTotalBytes`, `loadAverage` (3 elements), and `diskFreeBytes` are populated from Mach/`getloadavg`/`statfs`; `thermal` and `power` are typed `unavailable(reason)` on this machine (`pmset -g thermlog` is empty) — values are never invented.
 - **Pre-first-tick RPC behavior (typed).** `daemon.fleet.snapshot` before the first tick completes returns the documented typed error `BurnBar fleet snapshot is not ready yet: the first probe tick has not completed. Retry shortly.` (code `-32603`, internalError) — never a fabricated empty snapshot presented as probed truth. The first tick runs immediately at daemon start, so the not-ready window is one build duration.
@@ -855,6 +855,12 @@ Status semantics: `running` = active work signal right now; `idle` = agent infra
     NON-running (`stale`/`activeSessionFile`) AND carries a typed
     `degraded(reason)` probeHealth state naming the stale/missing heartbeat —
     the missing corroboration is never silently healthy.
+  - **Missing secondary signal degradation (VAL-HARD-008):** a fresh
+    heartbeat plus a valid `active_agents` count can still classify the
+    gateway as idle or running when `processes.json` is absent, but the row
+    carries a typed `degraded(reason)` probeHealth state and a non-secret note
+    that repo attribution is unavailable. The missing secondary signal never
+    fabricates a project name or silently presents fully corroborated health.
   - **Malformed `active_agents` (VAL-FLEET-024):** a `gateway_state.json`
     missing or mistyping `active_agents` (including JSON booleans, which
     must never coerce to 1) is malformed-shape: the row is typed

@@ -43,8 +43,12 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
             .appendingPathComponent("sessions", isDirectory: true)
         let sessionsPath = sessionsDirectory.path
 
-        guard FileManager.default.fileExists(atPath: rootPath) else {
-            return BurnBarFleetProbeSupport.missingRootResult(agentID: agentID, rootPath: rootPath, now: now)
+        if let rootIssue = BurnBarFleetProbeSupport.rootAccessResult(
+            agentID: agentID,
+            rootPath: rootPath,
+            now: now
+        ) {
+            return rootIssue
         }
 
         guard FileManager.default.fileExists(atPath: sessionsPath) else {
