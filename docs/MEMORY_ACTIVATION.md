@@ -19,6 +19,13 @@ lives, and what a human still owns before activation.
 Related design docs (the "why" and the schema): [`MEMORY_BACKEND_PLAN.md`](MEMORY_BACKEND_PLAN.md),
 [`MEMORY_FRONTEND_PLAN.md`](MEMORY_FRONTEND_PLAN.md), [`MEMORY_STRATEGY_AUDIT.md`](MEMORY_STRATEGY_AUDIT.md).
 
+The passive **usage-memory** lane (Safari asks + agent-session rollouts) builds
+on this substrate with its own consent lattice (G0-U), a Stage 0–3 funnel, and
+a hard v1 invariant — usage memories are local-only and never replicate to any
+cloud lane. That delta is documented in
+[`USAGE_MEMORY_DESIGN.md`](USAGE_MEMORY_DESIGN.md); the gates described below
+are the CHAT lane's.
+
 ---
 
 ## 1. The three gates (read this first)

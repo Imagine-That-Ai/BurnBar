@@ -151,6 +151,22 @@ hosted code sync can leave local-only mode, all of these must be true:
 See [Project Code Memory retention](PROJECT_CODE_MEMORY_RETENTION.md) for the
 local and future hosted forget policy.
 
+### Usage memory (v1: local-only)
+
+Usage memories (`safari_ask` / `agent_session` rows mined from Safari asks and
+agent-session rollouts) are **LOCAL-ONLY in v1** — they never reach either
+Pensieve cloud lane. The sealed-facts uploader's candidate query is
+parameterized to chat only, and `commitKnowledgeBatch`'s `SOURCE_KINDS`
+allowlist (`repo_docs, notes, chat_memory, code`) rejects the usage kinds on
+every vector write path. The blocker is the forget-receipt gap: per-vector
+cloud forget receipts do not exist yet — `cloud_search_knowledge` supports only
+source-level deletes, and receipts exist only for the vectorless `memory_facts`
+lane — so a replicated usage memory would be a cloud row the member cannot
+provably forget. Both halves are executable
+(`UsageMemoryCloudSyncInvariantTests.swift`,
+`usageMemoryReplicationInvariant.test.ts`). Design, consent lattice, and the
+program map live in [`USAGE_MEMORY_DESIGN.md`](USAGE_MEMORY_DESIGN.md).
+
 ---
 
 ## Security & threat model
