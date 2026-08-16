@@ -1,7 +1,7 @@
 M6 package gates current evidence
 validated_at=2026-08-16T18:40:36.075Z
 branch=feat/live-agent-fleet
-head=471792d47c06ba8f6bd77b6888b345e290e8bf94
+head=757e9536988b097cb14beb968c8f4917a97c3a25
 toolchain=xcrun Swift 6.3.3 from Xcode-26.6
 command=xcrun swift test --package-path BurnBarCore
 result=pass; executed=128; failures=0

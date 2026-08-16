@@ -73,7 +73,7 @@
       "ticks": 40
     }
   },
-  "head": "471792d47c06ba8f6bd77b6888b345e290e8bf94",
+  "head": "757e9536988b097cb14beb968c8f4917a97c3a25",
   "honesty": "No full UI pass claimed because cua-driver is unavailable; real-root state is structural-only; no remote operation or protected WIP modification.",
   "methodInventory": {
     "dispatch": "BurnBarDaemonServer.dispatchFleet",

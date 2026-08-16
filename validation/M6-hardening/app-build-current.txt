@@ -1,7 +1,7 @@
 M6 app build current evidence
 validated_at=2026-08-16T18:40:36.075Z
 branch=feat/live-agent-fleet
-head=471792d47c06ba8f6bd77b6888b345e290e8bf94
+head=757e9536988b097cb14beb968c8f4917a97c3a25
 command=xcodebuild build -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data
 result=pass; exit=0
 artifact=.derived-data/Build/Products/Debug/BurnBar.app
