@@ -141,6 +141,33 @@ final class BurnBarFleetHermesProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.projectName, "/Users/test/RepoA")
     }
 
+    func testFreshHeartbeatAndProcessesWithoutGatewayState_preservesActiveWorkWithTypedHealth() async throws {
+        let live = try LiveSleepProcess()
+        liveProcess = live
+        let now = Date()
+        try writeGatewayPid(pid: Int(live.pid))
+        try writeHeartbeat(pid: Int(live.pid), updatedAt: now)
+        // gateway_state.json is intentionally absent. The non-empty process
+        // registry is still authoritative active-work evidence.
+        try writeProcesses([["cwd": "/Users/test/PartialHermesRepo"]])
+
+        let result = await makeProbe().probe(now: now)
+
+        XCTAssertEqual(result.agent.status, .running)
+        XCTAssertEqual(result.agent.confidence, .exactProcess)
+        XCTAssertEqual(result.agent.process?.pid, Int(live.pid))
+        XCTAssertEqual(result.agent.projectName, "/Users/test/PartialHermesRepo")
+        XCTAssertTrue(
+            result.agent.note?.contains("gateway_state.json is absent") == true,
+            "missing gateway state must remain visible as a typed caveat"
+        )
+        if case .degraded(let reason) = result.health.state {
+            XCTAssertTrue(reason.contains("gateway_state.json is absent"), "unexpected reason: \(reason)")
+        } else {
+            XCTFail("partial Hermes active-work evidence must remain typed degraded")
+        }
+    }
+
     // MARK: - VAL-FLEET-023: stale heartbeat never yields running
 
     func testLivePidActiveAgentsStaleHeartbeat_nonRunningTypedReason() async throws {

@@ -15,6 +15,7 @@ import os
 import pathlib
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
@@ -22,6 +23,7 @@ import time
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -39,16 +41,36 @@ ROOT_NAMES = {
 }
 ROSTER = tuple(ROOT_NAMES)
 SECRET = "M6-SECRET-CANARY-DO-NOT-LEAK"
+FLEET_ROOT_OVERRIDE_PREFIX = "BURNBAR_FLEET_ROOT_"
+OFFLINE_SANDBOX_PROFILE = (
+    "(version 1) (allow default) "
+    "(deny network-outbound (remote tcp)) "
+    "(deny network-outbound (remote udp)) "
+    "(deny network-outbound (remote ip))"
+)
+APP_BINARY = (
+    REPO
+    / ".derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar"
+)
+OFFLINE_EVIDENCE_DIR = REPO / "validation/M6-hardening"
+OFFLINE_SCREENSHOT = OFFLINE_EVIDENCE_DIR / "offline-fleet-view.png"
+OFFLINE_AX_EVIDENCE = OFFLINE_EVIDENCE_DIR / "offline-fleet-view-ax.json"
 
 
 @lru_cache(maxsize=1)
 def daemon_binary() -> str:
+    built = REPO / "BurnBarDaemon/.build/out/Products/Debug/BurnBarDaemon"
+    if built.is_file() and os.access(built, os.X_OK):
+        return str(built)
     path = subprocess.check_output(
         ["swift", "build", "--package-path", "BurnBarDaemon", "--show-bin-path"],
         cwd=REPO,
         text=True,
     ).strip()
-    return str(pathlib.Path(path) / "BurnBarDaemon")
+    candidate = pathlib.Path(path) / "BurnBarDaemon"
+    if candidate.is_file():
+        return str(candidate)
+    raise RuntimeError(f"swift build did not produce a daemon binary at {candidate}")
 
 
 def rpc(socket_path: pathlib.Path, request_id: str) -> dict[str, Any]:
@@ -78,12 +100,37 @@ def rpc(socket_path: pathlib.Path, request_id: str) -> dict[str, Any]:
         client.close()
 
 
-def wait_for_snapshot(socket_path: pathlib.Path) -> dict[str, Any]:
+def assert_fixture_root_containment(
+    value: dict[str, Any],
+    roots: pathlib.Path,
+) -> None:
+    expected_roots = {
+        agent_id: (roots / root_name).resolve()
+        for agent_id, root_name in ROOT_NAMES.items()
+    }
+    actual_roots = {
+        row["agent"]: pathlib.Path(row["rootPath"]).resolve()
+        for row in value["probeHealth"]
+    }
+    assert set(actual_roots) == set(expected_roots), actual_roots
+    for agent_id, expected in expected_roots.items():
+        assert actual_roots[agent_id] == expected, (
+            f"{agent_id} escaped validator fixture root: "
+            f"{actual_roots[agent_id]} != {expected}"
+        )
+
+
+def wait_for_snapshot(
+    socket_path: pathlib.Path,
+    roots: pathlib.Path | None = None,
+) -> dict[str, Any]:
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         try:
             response = rpc(socket_path, "m6-wait")
             if "result" in response:
+                if roots is not None:
+                    assert_fixture_root_containment(snapshot(response), roots)
                 return response
         except (OSError, ValueError, KeyError):
             pass
@@ -95,11 +142,14 @@ def wait_until(
     socket_path: pathlib.Path,
     predicate: Callable[[dict[str, Any]], bool],
     description: str,
+    roots: pathlib.Path | None = None,
 ) -> dict[str, Any]:
     deadline = time.monotonic() + 6
     while time.monotonic() < deadline:
         response = rpc(socket_path, "m6-case")
         snapshot = response.get("result", {}).get("snapshot")
+        if snapshot is not None and roots is not None:
+            assert_fixture_root_containment(snapshot, roots)
         if snapshot is not None and predicate(snapshot):
             return response
         time.sleep(0.1)
@@ -123,6 +173,48 @@ def write_json(path: pathlib.Path, value: Any) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
+def fixture_tree_manifest(roots: pathlib.Path) -> list[dict[str, Any]]:
+    """Return a secret-free manifest of the validator-owned fixture tree."""
+    if not roots.exists():
+        return []
+    manifest: list[dict[str, Any]] = []
+    for path in sorted(roots.rglob("*")):
+        relative = path.relative_to(roots)
+        entry: dict[str, Any] = {
+            "path": str(relative),
+            "kind": "directory" if path.is_dir() else "file",
+            "mode": oct(path.stat().st_mode & 0o777),
+        }
+        if path.is_file():
+            entry["size"] = path.stat().st_size
+        manifest.append(entry)
+    return manifest
+
+
+def case_evidence(
+    *,
+    baseline_response: dict[str, Any] | None,
+    degraded_response: dict[str, Any] | None,
+    roots: pathlib.Path,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Archive complete, secret-free evidence for independent review."""
+    evidence: dict[str, Any] = {
+        "fixture_tree_manifest": fixture_tree_manifest(roots),
+        "baseline_raw_rpc": baseline_response,
+        "degraded_raw_rpc": degraded_response,
+    }
+    if baseline_response and "result" in baseline_response:
+        evidence["baseline_snapshot"] = snapshot(baseline_response)
+        evidence["baseline_health"] = snapshot(baseline_response)["probeHealth"]
+    if degraded_response and "result" in degraded_response:
+        evidence["degraded_snapshot"] = snapshot(degraded_response)
+        evidence["degraded_health"] = snapshot(degraded_response)["probeHealth"]
+    if extra:
+        evidence.update(extra)
+    return evidence
+
+
 def make_roots(base: pathlib.Path) -> pathlib.Path:
     roots = base / "roots"
     for name in ROOT_NAMES.values():
@@ -141,11 +233,22 @@ def launch(
     roots: pathlib.Path,
     *,
     sandboxed: bool = False,
+    socket_path: pathlib.Path | None = None,
 ) -> tuple[subprocess.Popen[bytes], pathlib.Path, pathlib.Path]:
     support = base / "support"
-    socket_path = base / "daemon.sock"
+    socket_path = socket_path or base / "daemon.sock"
     log_path = base / "daemon.log"
     environment = os.environ.copy()
+    # Per-agent overrides intentionally win over BURNBAR_FLEET_ROOTS_DIR in
+    # the daemon. A validator must not inherit one from the invoking shell,
+    # because that would let a probe escape this fixture tree.
+    inherited_overrides = [
+        key
+        for key in environment
+        if key.startswith(FLEET_ROOT_OVERRIDE_PREFIX)
+    ]
+    for key in inherited_overrides:
+        environment.pop(key, None)
     environment.update(
         {
             "BURNBAR_DAEMON_SUPPORT_DIR": str(support),
@@ -153,18 +256,17 @@ def launch(
             "BURNBAR_FLEET_CADENCE_SECONDS": "1",
         }
     )
+    assert not any(
+        key.startswith(FLEET_ROOT_OVERRIDE_PREFIX)
+        for key in environment
+        if key != "BURNBAR_FLEET_ROOTS_DIR"
+    ), "per-agent root override leaked into hermetic daemon environment"
     command = [daemon_binary(), "--socket-path", str(socket_path)]
     if sandboxed:
         # AF_UNIX local serving remains available while outbound TCP/UDP/IP
         # access is denied. This is the same profile used by the offline
         # CROSS-018 run; no network toggle or external service is touched.
-        profile = (
-            "(version 1) (allow default) "
-            "(deny network-outbound (remote tcp)) "
-            "(deny network-outbound (remote udp)) "
-            "(deny network-outbound (remote ip))"
-        )
-        command = ["/usr/bin/sandbox-exec", "-p", profile, *command]
+        command = ["/usr/bin/sandbox-exec", "-p", OFFLINE_SANDBOX_PROFILE, *command]
 
     log_file = log_path.open("wb")
     process = subprocess.Popen(
@@ -180,15 +282,37 @@ def launch(
     return process, socket_path, log_path
 
 
-def stop(process: subprocess.Popen[bytes]) -> None:
+def stop(
+    process: subprocess.Popen[bytes],
+    *,
+    child_pid: int | None = None,
+) -> None:
     if process.poll() is not None:
-        return
-    process.terminate()
-    try:
-        process.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=3)
+        if child_pid is None:
+            return
+    else:
+        process.terminate()
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=3)
+    if child_pid is not None:
+        try:
+            os.kill(child_pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+        try:
+            os.kill(child_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 def restore_permissions(roots: pathlib.Path) -> None:
@@ -203,13 +327,14 @@ def case_root_missing() -> dict[str, Any]:
     try:
         roots = make_roots(base)
         process, socket_path, _ = launch(base, roots)
-        baseline_response = wait_for_snapshot(socket_path)
+        baseline_response = wait_for_snapshot(socket_path, roots)
         baseline = snapshot(baseline_response)
         shutil.rmtree(roots / "grokbot")
         response = wait_until(
             socket_path,
             lambda value: health(value)["grok-bot"]["state"]["kind"] == "failed",
             "missing grok-bot root",
+            roots,
         )
         current = snapshot(response)
         current_rows = rows(current)
@@ -225,6 +350,11 @@ def case_root_missing() -> dict[str, Any]:
             "affected_agent": "grok-bot",
             "health": current_health["grok-bot"],
             "healthy_sibling_rows_unchanged": True,
+            **case_evidence(
+                baseline_response=baseline_response,
+                degraded_response=response,
+                roots=roots,
+            ),
         }
     finally:
         if process:
@@ -239,13 +369,14 @@ def case_permission_denied() -> dict[str, Any]:
     try:
         roots = make_roots(base)
         process, socket_path, _ = launch(base, roots)
-        baseline_response = wait_for_snapshot(socket_path)
+        baseline_response = wait_for_snapshot(socket_path, roots)
         baseline = snapshot(baseline_response)
         (roots / "grokbot").chmod(0)
         response = wait_until(
             socket_path,
             lambda value: health(value)["grok-bot"]["state"]["kind"] == "degraded",
             "permission-denied grok-bot root",
+            roots,
         )
         current = snapshot(response)
         current_rows = rows(current)
@@ -264,6 +395,11 @@ def case_permission_denied() -> dict[str, Any]:
             "fixture_mode": mode,
             "health": current_health["grok-bot"],
             "healthy_sibling_rows_unchanged": True,
+            **case_evidence(
+                baseline_response=baseline_response,
+                degraded_response=response,
+                roots=roots,
+            ),
         }
     finally:
         if process:
@@ -278,7 +414,7 @@ def case_corrupt_json() -> dict[str, Any]:
     try:
         roots = make_roots(base)
         process, socket_path, _ = launch(base, roots)
-        baseline_response = wait_for_snapshot(socket_path)
+        baseline_response = wait_for_snapshot(socket_path, roots)
         baseline = snapshot(baseline_response)
         (roots / "grok" / "active_sessions.json").write_text(
             '{"session_id": "truncated"',
@@ -288,6 +424,7 @@ def case_corrupt_json() -> dict[str, Any]:
             socket_path,
             lambda value: health(value)["grok-cli"]["state"]["kind"] == "degraded",
             "corrupt Grok CLI registry",
+            roots,
         )
         current = snapshot(response)
         current_rows = rows(current)
@@ -306,6 +443,11 @@ def case_corrupt_json() -> dict[str, Any]:
             "echoed_request_id": response["id"],
             "health": current_health["grok-cli"],
             "healthy_sibling_rows_unchanged": True,
+            **case_evidence(
+                baseline_response=baseline_response,
+                degraded_response=response,
+                roots=roots,
+            ),
         }
     finally:
         if process:
@@ -328,7 +470,7 @@ def case_secret_honesty() -> dict[str, Any]:
             {"pid": 999_999, "inflightCount": 1},
         )
         process, socket_path, log_path = launch(base, roots)
-        response = wait_for_snapshot(socket_path)
+        response = wait_for_snapshot(socket_path, roots)
         current = snapshot(response)
         file_bytes = (base / "support" / "fleet-snapshot.json").read_bytes()
         served_bytes = json.dumps(response, sort_keys=True).encode()
@@ -347,6 +489,11 @@ def case_secret_honesty() -> dict[str, Any]:
             "affected_agent": "grok-bot",
             "secret_hits_in_rpc_file_support_logs": 0,
             "connection_file_read": False,
+            **case_evidence(
+                baseline_response=None,
+                degraded_response=response,
+                roots=roots,
+            ),
         }
     finally:
         if process:
@@ -407,7 +554,7 @@ def case_pid_reuse() -> dict[str, Any]:
         os.kill(pid, 0)
         daemon, socket_path, _ = launch(base, roots)
         try:
-            response = wait_for_snapshot(socket_path)
+            response = wait_for_snapshot(socket_path, roots)
             current = rows(snapshot(response))
             guarded = ("claude-code", "grok-bot", "hermes", "factory-droid")
             for agent_id in guarded:
@@ -420,6 +567,11 @@ def case_pid_reuse() -> dict[str, Any]:
                 "kill_zero_alive": True,
                 "process_start": process_start,
                 "guarded_agents": list(guarded),
+                **case_evidence(
+                    baseline_response=None,
+                    degraded_response=response,
+                    roots=roots,
+                ),
             }
         finally:
             stop(daemon)
@@ -454,7 +606,7 @@ def case_missing_secondary() -> dict[str, Any]:
         # processes.json intentionally absent.
         daemon, socket_path, _ = launch(base, roots)
         try:
-            response = wait_for_snapshot(socket_path)
+            response = wait_for_snapshot(socket_path, roots)
             hermes = rows(snapshot(response))["hermes"]
             hermes_health = health(snapshot(response))["hermes"]
             assert hermes["status"] == "idle"
@@ -467,6 +619,11 @@ def case_missing_secondary() -> dict[str, Any]:
                 "agent": hermes,
                 "health": hermes_health,
                 "missing_secondary": "processes.json",
+                **case_evidence(
+                    baseline_response=None,
+                    degraded_response=response,
+                    roots=roots,
+                ),
             }
         finally:
             stop(daemon)
@@ -483,7 +640,8 @@ def case_sibling_isolation() -> dict[str, Any]:
     try:
         roots = make_roots(base)
         process, socket_path, _ = launch(base, roots)
-        baseline = snapshot(wait_for_snapshot(socket_path))
+        baseline_response = wait_for_snapshot(socket_path, roots)
+        baseline = snapshot(baseline_response)
         shutil.rmtree(roots / "grokbot")
         (roots / "grok" / "active_sessions.json").write_text("{ malformed", encoding="utf-8")
         (roots / "factory").chmod(0)
@@ -495,6 +653,7 @@ def case_sibling_isolation() -> dict[str, Any]:
                 and health(value)["factory-droid"]["state"]["kind"] == "degraded"
             ),
             "three simultaneous probe failures",
+            roots,
         )
         current = snapshot(response)
         current_rows = rows(current)
@@ -517,6 +676,11 @@ def case_sibling_isolation() -> dict[str, Any]:
             "failed_agents": ["grok-bot", "grok-cli", "factory-droid"],
             "distinct_health_reasons": True,
             "healthy_sibling_rows_unchanged": True,
+            **case_evidence(
+                baseline_response=baseline_response,
+                degraded_response=response,
+                roots=roots,
+            ),
         }
     finally:
         if process:
@@ -529,61 +693,429 @@ def static_fleet_import_scan() -> dict[str, Any]:
     source_roots = [
         REPO / "BurnBarCore/Sources/BurnBarCore/BurnBarFleetContracts.swift",
         REPO / "BurnBarCore/Sources/BurnBarCore/BurnBarFleetRPCContracts.swift",
+        REPO / "BurnBarCore/Sources/BurnBarCore/BurnBarContracts.swift",
         REPO / "BurnBarDaemon/Sources/BurnBarDaemon/Fleet",
         REPO / "BurnBarDaemon/Sources/BurnBarDaemon/BurnBarDaemonServer.swift",
+        REPO / "BurnBarDaemon/Sources/BurnBarDaemon/BurnBarDaemonServer+RPCDispatch.swift",
+        REPO / "BurnBarDaemon/Sources/BurnBarDaemon/BurnBarDaemonServer+FleetControl.swift",
         REPO / "AgentLens/Services/Fleet",
         REPO / "AgentLens/Services/BurnBarDaemon/BurnBarFleetSocketClient.swift",
+        REPO / "AgentLens/Services/ContextBuilder.swift",
         REPO / "AgentLens/Views/Dashboard/FleetView.swift",
         REPO / "AgentLens/Views/Dashboard/FleetViewModel.swift",
         REPO / "AgentLens/Views/Dashboard/FleetAgentCardViews.swift",
+        REPO / "AgentLens/Views/Dashboard/DashboardView.swift",
+        REPO / "AgentLens/Views/Chat/ChatMessageView.swift",
+        REPO / "AgentLens/Views/Chat/ChatSessionController.swift",
+        REPO / "AgentLens/Views/Chat/ChatSessionController+Delivery.swift",
     ]
     files: list[pathlib.Path] = []
     for root in source_roots:
+        assert root.exists(), f"fleet serving path is missing: {root}"
         if root.is_file():
             files.append(root)
         else:
             files.extend(sorted(root.rglob("*.swift")))
-    forbidden = re.compile(
+    forbidden_import = re.compile(
         r"^\s*import\s+(?:Firebase\w*|Firestore\w*|CloudKit\w*|GoogleSignIn)\b",
         re.MULTILINE,
     )
-    violations = []
+    forbidden_symbols = re.compile(
+        r"\b(?:Firestore|CloudKit|FirebaseFirestore|CloudSyncService|"
+        r"ICloudSessionMirrorService)\b"
+    )
+    import_violations: list[str] = []
+    symbol_violations: list[str] = []
+    remote_url_violations: list[str] = []
     for path in files:
         text = path.read_text(encoding="utf-8")
-        if forbidden.search(text):
-            violations.append(str(path.relative_to(REPO)))
-    assert not violations, violations
+        relative_path = str(path.relative_to(REPO))
+        if forbidden_import.search(text):
+            import_violations.append(relative_path)
+        # DashboardView owns non-fleet dashboard wiring, so inspect only its
+        # fleet route below for cloud symbols. Every other serving-path file
+        # must be cloud-symbol free in its entirety.
+        if path.name != "DashboardView.swift" and forbidden_symbols.search(text):
+            symbol_violations.append(relative_path)
+        if relative_path.startswith("AgentLens/Services/Fleet/"):
+            for url_match in re.finditer(r"https?://[^\s\"')]+", text):
+                parsed = urlparse(url_match.group(0))
+                if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+                    remote_url_violations.append(
+                        f"{relative_path}:{url_match.group(0)}"
+                    )
+    assert not import_violations, import_violations
+    assert not symbol_violations, symbol_violations
+    assert not remote_url_violations, remote_url_violations
     dashboard = (
         REPO / "AgentLens/Views/Dashboard/DashboardView.swift"
     ).read_text(encoding="utf-8")
     fleet_route = re.search(
-        r"case \.fleet:(.*?)case \.provider\(",
+        r"(?ms)^\s*case \.fleet:\s*\n(?P<body>\s*FleetView\(.*?)(?=^\s*case \.provider\()",
         dashboard,
-        flags=re.DOTALL,
     )
     assert fleet_route is not None
-    assert "cloudSyncService" not in fleet_route.group(1)
+    assert "FleetView(" in fleet_route.group("body")
+    assert "cloudSyncService" not in fleet_route.group("body")
+    assert "iCloudSessionMirrorService" not in fleet_route.group("body")
     return {
         "status": "pass",
         "files_scanned": len(files),
-        "forbidden_cloud_imports": [],
+        "scanned_paths": [str(path.relative_to(REPO)) for path in files],
+        "forbidden_cloud_imports": import_violations,
+        "forbidden_cloud_symbols": symbol_violations,
+        "non_loopback_urls": remote_url_violations,
         "fleet_route_cloud_references": [],
+        "fleet_route": "DashboardView.swift case .fleet -> FleetView",
     }
 
 
-def case_offline_serving() -> dict[str, Any]:
-    base = pathlib.Path(tempfile.mkdtemp(prefix="burnbar-m6-offline-"))
-    process: subprocess.Popen[bytes] | None = None
+def _cua_call(
+    driver: str,
+    driver_socket: pathlib.Path,
+    tool: str,
+    arguments: dict[str, Any],
+    *,
+    session: str,
+) -> dict[str, Any]:
+    payload = dict(arguments)
+    payload["session"] = session
+    completed = subprocess.run(
+        [driver, "call", tool, "--socket", str(driver_socket)],
+        input=(json.dumps(payload) + "\n").encode(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"cua-driver {tool} failed ({completed.returncode}): "
+            f"{completed.stderr.decode(errors='replace').strip()}"
+        )
     try:
+        result = json.loads(completed.stdout.decode())
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"cua-driver {tool} returned non-JSON output: "
+            f"{completed.stdout.decode(errors='replace')}"
+        ) from error
+    if isinstance(result, dict) and result.get("code") in {
+        "window_target_not_found",
+        "window_id_not_found",
+        "ax_window_unresolved",
+    }:
+        raise RuntimeError(f"cua-driver {tool} refused the exact app target: {result}")
+    return result
+
+
+def _process_id_for_executable(executable: pathlib.Path) -> int | None:
+    completed = subprocess.run(
+        ["ps", "-axo", "pid=,command="],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+        timeout=5,
+    )
+    expected = str(executable)
+    for line in completed.stdout.decode().splitlines():
+        fields = line.strip().split(maxsplit=1)
+        if len(fields) != 2:
+            continue
+        try:
+            pid = int(fields[0])
+        except ValueError:
+            continue
+        if fields[1].split(" ", maxsplit=1)[0] == expected:
+            return pid
+    return None
+
+
+def _process_id_for_socket(socket_path: pathlib.Path) -> int | None:
+    completed = subprocess.run(
+        ["lsof", "-t", str(socket_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+        timeout=5,
+    )
+    for line in completed.stdout.decode().splitlines():
+        try:
+            return int(line.strip())
+        except ValueError:
+            continue
+    return None
+
+
+def _wait_for_app_window(
+    driver: str,
+    driver_socket: pathlib.Path,
+    app_pid: int,
+    *,
+    session: str,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        windows = _cua_call(
+            driver,
+            driver_socket,
+            "list_windows",
+            {"pid": app_pid},
+            session=session,
+        ).get("windows", [])
+        for window in windows:
+            if window.get("title") == "BurnBar":
+                return window
+        time.sleep(0.25)
+    raise RuntimeError("BurnBar did not expose an accessibility window within 30s")
+
+
+def _wait_for_fleet_render(
+    driver: str,
+    driver_socket: pathlib.Path,
+    app_pid: int,
+    window_id: int,
+    *,
+    session: str,
+) -> dict[str, Any]:
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        state = _cua_call(
+            driver,
+            driver_socket,
+            "get_window_state",
+            {
+                "pid": app_pid,
+                "window_id": window_id,
+                "include_screenshot": False,
+                "max_elements": 500,
+            },
+            session=session,
+        )
+        labels = {
+            element.get("label")
+            for element in state.get("elements", [])
+            if element.get("label")
+        }
+        if "Live Agent Fleet" in labels:
+            return state
+        time.sleep(0.25)
+    raise RuntimeError("FleetView did not render its Live Agent Fleet heading")
+
+
+def case_offline_serving() -> dict[str, Any]:
+    # The macOS AF_UNIX path limit is 104 bytes. Keep this fixture outside the
+    # mounted build-cache TMPDIR so HOME/Application Support/BurnBar remains
+    # short enough for the app's production socket path.
+    base = pathlib.Path(tempfile.mkdtemp(prefix="m6-offline-", dir="/tmp"))
+    process: subprocess.Popen[bytes] | None = None
+    app_process: subprocess.Popen[bytes] | None = None
+    driver_process: subprocess.Popen[bytes] | None = None
+    app_pid: int | None = None
+    driver: str | None = shutil.which("cua-driver")
+    driver_socket = base / "cua-driver.sock"
+    session = f"m6-offline-fleet-{base.name}"
+    try:
+        if not APP_BINARY.is_file():
+            raise RuntimeError(f"app build missing: {APP_BINARY}")
         roots = make_roots(base)
-        process, socket_path, _ = launch(base, roots, sandboxed=True)
-        response = wait_for_snapshot(socket_path)
+        home = base / "home"
+        app_socket = home / "Library/Application Support/BurnBar/burnbar-daemon.sock"
+        app_socket.parent.mkdir(parents=True, exist_ok=True)
+        process, socket_path, daemon_log = launch(
+            base,
+            roots,
+            sandboxed=True,
+            socket_path=app_socket,
+        )
+        response = wait_for_snapshot(socket_path, roots)
         current = snapshot(response)
         file_path = base / "support" / "fleet-snapshot.json"
         assert file_path.exists()
         file_snapshot = json.loads(file_path.read_text(encoding="utf-8"))
         assert current == file_snapshot
         assert len(current["agents"]) == len(ROSTER) == 10
+        if driver is None:
+            return {
+                "status": "blocked",
+                "blocker": (
+                    "cua-driver is not installed or not on PATH; the required "
+                    "desktop-control FleetView capture could not be attempted."
+                ),
+                "desktop_control_attempted": False,
+                "capture_command": "command -v cua-driver",
+                "capture_command_result": "not found",
+                "fallback_required": (
+                    "Run the scoped FleetView/FleetViewModel XCTest fallback and "
+                    "report this UI proof as blocked-with-fallback-evidence."
+                ),
+                "rpc_result": True,
+                "well_known_file": str(file_path.name),
+                "rpc_file_parity": True,
+                "fleet_rows": len(current["agents"]),
+                **case_evidence(
+                    baseline_response=response,
+                    degraded_response=response,
+                    roots=roots,
+                ),
+            }
+
+        driver_log = base / "cua-driver.log"
+        driver_log_file = driver_log.open("wb")
+        driver_process = subprocess.Popen(
+            [driver, "serve", "--socket", str(driver_socket), "--no-overlay"],
+            stdout=driver_log_file,
+            stderr=subprocess.STDOUT,
+        )
+        driver_log_file.close()
+        deadline = time.monotonic() + 10
+        while not driver_socket.exists() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        if not driver_socket.exists():
+            raise RuntimeError("cua-driver did not create its temporary socket")
+        _cua_call(
+            driver,
+            driver_socket,
+            "start_session",
+            {"capture_scope": "window"},
+            session=session,
+        )
+
+        app_environment = os.environ.copy()
+        for key in list(app_environment):
+            if key.startswith(FLEET_ROOT_OVERRIDE_PREFIX):
+                app_environment.pop(key, None)
+        app_environment.update(
+            {
+                "HOME": str(home),
+                "CFFIXED_USER_HOME": str(home),
+                "BURNBAR_FLEET_ROOTS_DIR": str(roots),
+                "BURNBAR_DAEMON_SUPPORT_DIR": str(base / "support"),
+            }
+        )
+        # The one-shot dashboard flag is scoped to the validator-owned HOME.
+        subprocess.run(
+            ["defaults", "write", "com.burnbar.app", "hasShownInitialDashboard", "-bool", "false"],
+            env=app_environment,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=10,
+        )
+        app_log = base / "app.log"
+        app_log_file = app_log.open("wb")
+        app_process = subprocess.Popen(
+            [
+                "/usr/bin/sandbox-exec",
+                "-p",
+                OFFLINE_SANDBOX_PROFILE,
+                str(APP_BINARY),
+            ],
+            cwd=REPO,
+            env=app_environment,
+            stdout=app_log_file,
+            stderr=subprocess.STDOUT,
+        )
+        app_log_file.close()
+        app_pid = _process_id_for_executable(APP_BINARY)
+        if app_pid is None:
+            raise RuntimeError("could not resolve the exact BurnBar app PID")
+        window = _wait_for_app_window(
+            driver,
+            driver_socket,
+            app_pid,
+            session=session,
+        )
+        window_id = int(window["window_id"])
+        route_state = _cua_call(
+            driver,
+            driver_socket,
+            "get_window_state",
+            {
+                "pid": app_pid,
+                "window_id": window_id,
+                "query": "Fleet",
+                "include_screenshot": False,
+                "max_elements": 500,
+            },
+            session=session,
+        )
+        route_elements = route_state.get("elements", [])
+        route_element = next(
+            (
+                element
+                for element in route_elements
+                if element.get("label") == "Fleet, Live agents & machine state"
+            ),
+            None,
+        )
+        if route_element is None:
+            raise RuntimeError("Fleet route was not reachable from the running dashboard")
+        _cua_call(
+            driver,
+            driver_socket,
+            "click",
+            {
+                "pid": app_pid,
+                "window_id": window_id,
+                "element_token": route_element["element_token"],
+                "delivery_mode": "background",
+            },
+            session=session,
+        )
+        rendered = _wait_for_fleet_render(
+            driver,
+            driver_socket,
+            app_pid,
+            window_id,
+            session=session,
+        )
+        rendered = _cua_call(
+            driver,
+            driver_socket,
+            "get_window_state",
+            {
+                "pid": app_pid,
+                "window_id": window_id,
+                "include_screenshot": True,
+                "screenshot_out_file": str(OFFLINE_SCREENSHOT),
+                "max_elements": 500,
+            },
+            session=session,
+        )
+        labels = [
+            element["label"]
+            for element in rendered.get("elements", [])
+            if element.get("label")
+        ]
+        assert "Live Agent Fleet" in labels
+        assert any("running" in label.lower() for label in labels)
+        assert any("declared agents" in label.lower() for label in labels)
+        assert OFFLINE_SCREENSHOT.is_file() and OFFLINE_SCREENSHOT.stat().st_size > 0
+        OFFLINE_AX_EVIDENCE.write_text(
+            json.dumps(
+                {
+                    "status": "pass",
+                    "surface": "BurnBar.app DashboardView -> FleetView",
+                    "network_profile": OFFLINE_SANDBOX_PROFILE,
+                    "daemon_socket": str(socket_path),
+                    "route": {
+                        "label": route_element["label"],
+                        "reachable": True,
+                        "clicked": True,
+                    },
+                    "render": {
+                        "heading": "Live Agent Fleet",
+                        "labels": labels,
+                        "screenshot": str(OFFLINE_SCREENSHOT.relative_to(REPO)),
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         return {
             "status": "pass",
             "sandbox_profile": "deny outbound tcp/udp/ip; allow local AF_UNIX serving",
@@ -591,17 +1123,57 @@ def case_offline_serving() -> dict[str, Any]:
             "well_known_file": str(file_path.name),
             "rpc_file_parity": True,
             "fleet_rows": len(current["agents"]),
+            "app_surface": {
+                "status": "pass",
+                "route": "DashboardView -> FleetView",
+                "window_title": window["title"],
+                "screenshot": str(OFFLINE_SCREENSHOT.relative_to(REPO)),
+                "accessibility_evidence": str(OFFLINE_AX_EVIDENCE.relative_to(REPO)),
+                "heading": "Live Agent Fleet",
+                "running_label_observed": True,
+                "declared_agents_label_observed": True,
+            },
+        }
+    except RuntimeError as error:
+        return {
+            "status": "blocked",
+            "blocker": str(error),
+            "desktop_control_attempted": driver is not None,
+            "fallback_required": (
+                "The app surface was attempted but did not produce capture "
+                "evidence; use scoped FleetView XCTest evidence and retain this "
+                "blocker verbatim."
+            ),
         }
     finally:
+        if driver and driver_process:
+            try:
+                _cua_call(
+                    driver,
+                    driver_socket,
+                    "end_session",
+                    {},
+                    session=session,
+                )
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                pass
+        if app_process:
+            stop(app_process, child_pid=app_pid)
         if process:
-            stop(process)
+            daemon_pid = _process_id_for_socket(socket_path)
+            stop(process, child_pid=daemon_pid)
+        if driver_process:
+            stop(driver_process)
         restore_permissions(base / "roots")
         shutil.rmtree(base, ignore_errors=True)
 
 
 def main() -> None:
+    offline_static_scan = static_fleet_import_scan()
+    offline_run = case_offline_serving()
     evidence = {
         "harness": "validation/harness/fleet_degradation_matrix.py",
+        "evidence_version": 2,
         "fixture_scope": "temporary directories under /tmp; no real agent roots",
         "cases": {
             "VAL-HARD-003_missing_root": case_root_missing(),
@@ -612,13 +1184,14 @@ def main() -> None:
             "VAL-HARD-008_missing_secondary": case_missing_secondary(),
             "VAL-HARD-009_sibling_isolation": case_sibling_isolation(),
             "VAL-CROSS-018_offline_serving": {
-                "status": "pass",
-                "static_import_scan": static_fleet_import_scan(),
-                "blocked_network_run": case_offline_serving(),
-                "app_surface": {
-                    "surface": "FleetView/FleetViewModel",
-                    "verification": "existing FleetViewModel XCTest + static fleet import scan",
-                },
+                "status": (
+                    "pass"
+                    if offline_static_scan["status"] == "pass"
+                    and offline_run["status"] == "pass"
+                    else offline_run["status"]
+                ),
+                "static_import_scan": offline_static_scan,
+                "blocked_network_run": offline_run,
             },
         },
     }
@@ -627,6 +1200,14 @@ def main() -> None:
     output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     for name, result in evidence["cases"].items():
         print(f"{name}: {result.get('status', 'composite')}")
+    statuses = [result.get("status") for result in evidence["cases"].values()]
+    if all(status == "pass" for status in statuses):
+        print("matrix=8/8 pass")
+    else:
+        print(
+            "matrix=blocked/failed; "
+            f"pass_count={sum(status == 'pass' for status in statuses)}/8"
+        )
     print(f"evidence={output.relative_to(REPO)}")
 
 

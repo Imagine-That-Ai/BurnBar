@@ -219,12 +219,34 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
         let signals = context.signals
 
         // A fresh heartbeat without gateway_state cannot distinguish idle
-        // from active work. Preserve that uncertainty as typed degradation.
+        // from active work when processes.json is empty. A non-empty
+        // processes.json is itself the documented active-work signal, so
+        // preserve that evidence and classify the gateway as running while
+        // surfacing the missing primary signal as typed health.
         if context.gatewayState == nil,
            context.pidAlive,
            context.heartbeatFresh,
            context.heartbeatMatchesGateway {
             let reason = "gateway_state.json is absent; active_agents is unavailable."
+            let healthState = BurnBarFleetProbeSupport.degradedHealth(
+                signals.healthState,
+                reason: reason
+            )
+            if context.hasActiveWork, let pid = context.pid {
+                return BurnBarFleetProbeSupport.result(
+                    agentID: context.agentID,
+                    rootPath: context.rootPath,
+                    now: context.now,
+                    status: .running,
+                    confidence: .exactProcess,
+                    projectName: context.processes?.entries.first?.cwd,
+                    lastActivityAt: heartbeat?.updatedAt,
+                    process: BurnBarFleetProcessInfo(pid: pid),
+                    signals: signals.sources,
+                    note: reason,
+                    healthState: healthState
+                )
+            }
             return BurnBarFleetProbeSupport.result(
                 agentID: context.agentID,
                 rootPath: context.rootPath,
@@ -234,10 +256,7 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
                 lastActivityAt: heartbeat?.updatedAt,
                 signals: signals.sources,
                 note: reason,
-                healthState: BurnBarFleetProbeSupport.degradedHealth(
-                    signals.healthState,
-                    reason: reason
-                )
+                healthState: healthState
             )
         }
 
