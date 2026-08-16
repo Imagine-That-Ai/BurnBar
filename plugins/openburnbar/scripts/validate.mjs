@@ -300,6 +300,17 @@ if (mcpRaw === null) {
     if (server.url !== HOSTED_MCP_URL) {
       fail(`mcp.json openburnbar.url must be ${HOSTED_MCP_URL}, got ${JSON.stringify(server.url)}`);
     }
+    // Authorization invariant (exact case): the headers object must carry an
+    // exact-case `Authorization` header equal to the bearer placeholder. A
+    // missing Authorization header — or a lowercase `authorization:` header
+    // carrying Basic or any other value — fails closed even when other
+    // headers exist. Property lookup is case-sensitive, so a lowercase
+    // `authorization` key cannot satisfy this check.
+    if (!server.headers || server.headers.Authorization !== BEARER_PLACEHOLDER) {
+      fail(
+        `mcp.json Authorization must be exactly ${BEARER_PLACEHOLDER} (no literal credentials), got ${JSON.stringify(server.headers && server.headers.Authorization)}`,
+      );
+    }
     // Every header value is scanned, not just Authorization: any header may
     // smuggle a literal credential (e.g. X-Api-Key: sk-...).
     const headerEntries = server.headers ? Object.entries(server.headers) : [];
