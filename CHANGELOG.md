@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - CI impact: Node Signal contracts lockfile no longer wakes macOS
+- `packages/signal-envelope-contracts` `package.json` / lockfile changes used
+  to match the catch-all npm `FULL_PATTERNS` and force every product lane,
+  including App PR Gate. That burned ~90 minutes of macos-26 rebuilding
+  libsignal FFI for a Node eslint bump, then cancelled at the job ceiling
+  (BurnBar #2247). Those two npm manifests now select the functions lane
+  only; other files under the package stay fail-closed. Fast Feedback still
+  runs the contracts tests. Other `packages/*` lockfiles stay fail-closed
+  full.
+
 ### Changed - App PR Gate and Headless leave the PR / merge-queue path
 - **AgentLens macos-26 App PR Gate and Headless App Build no longer run on
   `pull_request`.** Fast Feedback plus the ten required security/quality
