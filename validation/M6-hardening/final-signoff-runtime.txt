@@ -1,7 +1,7 @@
 M6 final integration runtime evidence
 validated_at=2026-08-16T18:20:19.766780+00:00
 branch=feat/live-agent-fleet
-head=9ace232d85011be3348054fa28b0ec31d88ad50b
+head=6fa5004e7a9426ef999ae35336d660d52ca4bf84
 
 [method-inventory]
 result=pass

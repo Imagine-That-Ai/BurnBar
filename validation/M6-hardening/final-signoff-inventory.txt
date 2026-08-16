@@ -1,6 +1,6 @@
 M6 final integration inventory
 branch=feat/live-agent-fleet
-HEAD=9ace232d85011be3348054fa28b0ec31d88ad50b
+HEAD=6fa5004e7a9426ef999ae35336d660d52ca4bf84
 origin/feat/live-agent-fleet=8f92cb09b7 (pre-existing user-owned backup; no mission push)
 
 documents=README.md, docs/fleet/BURNBAR_FLEET_SIGNALS.md, docs/fleet/BURNBAR_FLEET_API.md

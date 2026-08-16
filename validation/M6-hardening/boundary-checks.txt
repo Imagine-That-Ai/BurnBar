@@ -1,7 +1,7 @@
 M6 git boundary evidence (post-repair regeneration)
-generated_at=2026-08-16T18:20:36.526248+00:00
+generated_at=2026-08-16T18:21:36.417006+00:00
 base=c3add7133c0e351ace402b401746dbff6ef168be
-HEAD=9ace232d85011be3348054fa28b0ec31d88ad50b
+HEAD=6fa5004e7a9426ef999ae35336d660d52ca4bf84
 branch=feat/live-agent-fleet
 user_checkpoint=038913084767 (allowed to carry protected WIP by adjudication)
 protected path intersection is evaluated per commit; only the user checkpoint may carry protected paths
@@ -79,8 +79,9 @@ b2b47c1b64f5325d7893aa55b931756fd4598fb4 | mission-authored | empty
 747a70093dd37442ab8dc373d28069da2228d41e | mission-authored | empty
 0d2bcba9a086a58cd512533be180b875bba90143 | mission-authored | empty
 9ace232d85011be3348054fa28b0ec31d88ad50b | mission-authored | empty
+6fa5004e7a9426ef999ae35336d660d52ca4bf84 | mission-authored | empty
 
-commit_count=72
+commit_count=73
 mission_authored_protected_intersections=0
 
 protected file SHA-256 (working tree vs user checkpoint)
@@ -97,7 +98,7 @@ docs/plans/burnbar-live-agent-fleet-droid-mission.md | checkpoint=3c3234ba23bf37
 
 branch/ref evidence
 branch=feat/live-agent-fleet
-HEAD=9ace232d85011be3348054fa28b0ec31d88ad50b
+HEAD=6fa5004e7a9426ef999ae35336d660d52ca4bf84
 origin/feat/live-agent-fleet=8f92cb09b72350465abb053d920762ac19d61b53 (pre-existing user-owned backup; not mutated)
 mission-session remote operations=none
 extensions/burnbar diff intersection=empty
