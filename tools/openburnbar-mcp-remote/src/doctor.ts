@@ -18,12 +18,19 @@ export async function doctor(): Promise<number> {
     checks.push({ name: "endpoint", ok: false, detail: err instanceof Error ? err.message : String(err) });
   }
   if (readAccessToken()) {
-    const list = await forwardMcpMessage({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }, endpoint);
-    checks.push({
-      name: "tools/list",
-      ok: !("error" in (list as Record<string, unknown>)),
-      detail: JSON.stringify(list).slice(0, 240)
-    });
+    // Keep tools/list inside the structured report: a network or protocol
+    // failure here must surface as a FAIL line (exit 1), not an uncaught
+    // throw that escapes the PASS/FAIL output path.
+    try {
+      const list = await forwardMcpMessage({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }, endpoint);
+      checks.push({
+        name: "tools/list",
+        ok: !("error" in (list as Record<string, unknown>)),
+        detail: JSON.stringify(list).slice(0, 240)
+      });
+    } catch (err) {
+      checks.push({ name: "tools/list", ok: false, detail: err instanceof Error ? err.message : String(err) });
+    }
   }
   for (const check of checks) {
     process.stdout.write(`${check.ok ? "PASS" : "FAIL"} ${check.name}: ${check.detail}\n`);
