@@ -53,6 +53,12 @@ def daemon_binary() -> pathlib.Path:
     return pathlib.Path(path) / "BurnBarDaemon"
 
 
+def temporary_base(prefix: str) -> pathlib.Path:
+    # macOS limits AF_UNIX paths to 104 bytes. Keep the daemon socket under
+    # /tmp instead of inheriting a potentially long per-user TMPDIR path.
+    return pathlib.Path(tempfile.mkdtemp(prefix=prefix, dir="/tmp"))
+
+
 def rpc(socket_path: pathlib.Path, request: dict[str, Any]) -> dict[str, Any]:
     client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     client.settimeout(3)
@@ -192,7 +198,7 @@ def get_designation(socket_path: pathlib.Path) -> dict[str, Any]:
 
 
 def case_corruption_and_schema(binary: pathlib.Path) -> dict[str, Any]:
-    base = pathlib.Path(tempfile.mkdtemp(prefix="burnbar-m6-recovery-schema-"))
+    base = temporary_base("burnbar-m6-recovery-schema-")
     process: subprocess.Popen[bytes] | None = None
     try:
         make_roots(base)
@@ -264,7 +270,7 @@ def case_corruption_and_schema(binary: pathlib.Path) -> dict[str, Any]:
 
 
 def case_delete_while_running(binary: pathlib.Path) -> dict[str, Any]:
-    base = pathlib.Path(tempfile.mkdtemp(prefix="burnbar-m6-recovery-delete-"))
+    base = temporary_base("burnbar-m6-recovery-delete-")
     process: subprocess.Popen[bytes] | None = None
     try:
         make_roots(base)
@@ -316,7 +322,7 @@ def case_delete_while_running(binary: pathlib.Path) -> dict[str, Any]:
 
 
 def case_delete_after_restart(binary: pathlib.Path) -> dict[str, Any]:
-    base = pathlib.Path(tempfile.mkdtemp(prefix="burnbar-m6-recovery-restart-delete-"))
+    base = temporary_base("burnbar-m6-recovery-restart-delete-")
     process: subprocess.Popen[bytes] | None = None
     try:
         make_roots(base)
@@ -370,7 +376,7 @@ def case_delete_after_restart(binary: pathlib.Path) -> dict[str, Any]:
 
 
 def case_read_only(binary: pathlib.Path) -> dict[str, Any]:
-    base = pathlib.Path(tempfile.mkdtemp(prefix="burnbar-m6-recovery-readonly-"))
+    base = temporary_base("burnbar-m6-recovery-readonly-")
     process: subprocess.Popen[bytes] | None = None
     support = base / "support"
     try:
@@ -399,7 +405,7 @@ def case_read_only(binary: pathlib.Path) -> dict[str, Any]:
 
 
 def case_sigkill_torn_writes(binary: pathlib.Path) -> dict[str, Any]:
-    base = pathlib.Path(tempfile.mkdtemp(prefix="burnbar-m6-recovery-torn-"))
+    base = temporary_base("burnbar-m6-recovery-torn-")
     process: subprocess.Popen[bytes] | None = None
     attempts: list[dict[str, Any]] = []
     try:

@@ -3372,24 +3372,37 @@ final class DataStore {
         resolvedSummaryProvider: String?,
         resolvedSummaryModel: String?
     ) -> Bool {
-        let coreUnchanged =
-            existing.provider == incoming.provider
-            && existing.sessionId == incoming.sessionId
-            && existing.projectName == incoming.projectName
-            && existing.startTime == incoming.startTime
-            && existing.endTime == incoming.endTime
-            && existing.messageCount == incoming.messageCount
-            && existing.userWordCount == incoming.userWordCount
-            && existing.assistantWordCount == incoming.assistantWordCount
-            && existing.keyFiles == incoming.keyFiles
-            && existing.keyCommands == incoming.keyCommands
-            && existing.keyTools == incoming.keyTools
-            && existing.inferredTaskTitle == incoming.inferredTaskTitle
-            && existing.lastAssistantMessage == incoming.lastAssistantMessage
-            && existing.fullText == incoming.fullText
+        let providerUnchanged = existing.provider == incoming.provider
+        let sessionIDUnchanged = existing.sessionId == incoming.sessionId
+        let projectNameUnchanged = existing.projectName == incoming.projectName
+        let startTimeUnchanged = existing.startTime == incoming.startTime
+        let endTimeUnchanged = existing.endTime == incoming.endTime
+        let messageCountUnchanged = existing.messageCount == incoming.messageCount
+        let userWordCountUnchanged = existing.userWordCount == incoming.userWordCount
+        let assistantWordCountUnchanged = existing.assistantWordCount == incoming.assistantWordCount
+        let keyFilesUnchanged = existing.keyFiles == incoming.keyFiles
+        let keyCommandsUnchanged = existing.keyCommands == incoming.keyCommands
+        let keyToolsUnchanged = existing.keyTools == incoming.keyTools
+        let taskTitleUnchanged = existing.inferredTaskTitle == incoming.inferredTaskTitle
+        let lastAssistantMessageUnchanged =
+            existing.lastAssistantMessage == incoming.lastAssistantMessage
+        let fullTextUnchanged = existing.fullText == incoming.fullText
+        let coreUnchanged = providerUnchanged
+            && sessionIDUnchanged
+            && projectNameUnchanged
+            && startTimeUnchanged
+            && endTimeUnchanged
+            && messageCountUnchanged
+            && userWordCountUnchanged
+            && assistantWordCountUnchanged
+            && keyFilesUnchanged
+            && keyCommandsUnchanged
+            && keyToolsUnchanged
+            && taskTitleUnchanged
+            && lastAssistantMessageUnchanged
+            && fullTextUnchanged
 
-        let summaryUnchanged =
-            existing.summary == resolvedSummary
+        let summaryUnchanged = existing.summary == resolvedSummary
             && existing.summaryTitle == resolvedSummaryTitle
             && existing.summaryUpdatedAt == resolvedSummaryUpdatedAt
             && existing.summaryProvider == resolvedSummaryProvider
@@ -3880,18 +3893,28 @@ private struct LocalSearchStore {
             let disposition: SourceArtifactWriteDisposition
 
             if let existing {
-                let isUnchanged =
-                    existing.status == .active
-                    && existing.sourceKind == artifact.sourceKind
-                    && existing.canonicalPath == artifact.canonicalPath
-                    && existing.rootPath == artifact.rootPath
-                    && existing.relativePath == artifact.relativePath
-                    && existing.provenance == artifact.provenance
-                    && existing.title == artifact.title
-                    && existing.body == artifact.body
-                    && existing.contentHash == artifact.contentHash
-                    && existing.fileSizeBytes == artifact.fileSizeBytes
-                    && existing.fileModifiedAt == artifact.fileModifiedAt
+                let statusUnchanged = existing.status == .active
+                let sourceKindUnchanged = existing.sourceKind == artifact.sourceKind
+                let canonicalPathUnchanged = existing.canonicalPath == artifact.canonicalPath
+                let rootPathUnchanged = existing.rootPath == artifact.rootPath
+                let relativePathUnchanged = existing.relativePath == artifact.relativePath
+                let provenanceUnchanged = existing.provenance == artifact.provenance
+                let titleUnchanged = existing.title == artifact.title
+                let bodyUnchanged = existing.body == artifact.body
+                let contentHashUnchanged = existing.contentHash == artifact.contentHash
+                let fileSizeUnchanged = existing.fileSizeBytes == artifact.fileSizeBytes
+                let modifiedAtUnchanged = existing.fileModifiedAt == artifact.fileModifiedAt
+                let isUnchanged = statusUnchanged
+                    && sourceKindUnchanged
+                    && canonicalPathUnchanged
+                    && rootPathUnchanged
+                    && relativePathUnchanged
+                    && provenanceUnchanged
+                    && titleUnchanged
+                    && bodyUnchanged
+                    && contentHashUnchanged
+                    && fileSizeUnchanged
+                    && modifiedAtUnchanged
 
                 if isUnchanged {
                     try db.execute(
