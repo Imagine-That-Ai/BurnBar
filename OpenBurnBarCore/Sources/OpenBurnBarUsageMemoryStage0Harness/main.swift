@@ -247,6 +247,6 @@ if options.jsonOutput {
         let count = dropCounts[reason, default: 0]
         guard count > 0 else { continue }
         let share = gatedTotal > 0 ? Double(count) * 100 / Double(gatedTotal) : 0
-        print(String(format: "  %-18s %8d  (%.1f%%)", (reason.rawValue as NSString).utf8String!, count, share))
+        print(String(format: "  %-18@ %8d  (%.1f%%)", reason.rawValue as NSString, count, share))
     }
 }
