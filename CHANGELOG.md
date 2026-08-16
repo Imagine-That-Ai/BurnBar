@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - App PR Gate and Headless leave the PR / merge-queue path
+- **AgentLens macos-26 App PR Gate and Headless App Build no longer run on
+  `pull_request`.** Fast Feedback plus the ten required security/quality
+  contexts remain the merge door. Merge-queue ALLGREEN no longer waits 53–69
+  minutes (App) or 21–30 minutes (Headless) on hosted macos-26.
+- **The builds stay real.** App PR Gate runs on push to `main`, nightly at
+  09:17 UTC, and `workflow_dispatch`. Headless runs on path-filtered push to
+  `main`, nightly at 10:47 UTC, and `workflow_dispatch`. A broken AgentLens
+  graph is visible after merge, not silent.
+- **`merge_group` on App PR Gate emits skipped receipts only** so a stale
+  base-SHA BurnBar CI Gate inventory cannot hang the queue. macos-26 jobs do
+  not run on that path. Headless has no `merge_group` trigger.
+- **BurnBar CI Gate's merge-queue inventory no longer lists**
+  `App build + test (AgentLens)` or `Mobile build + unit test`. The ten
+  required branch-protection contexts are unchanged. `CI_POOL` /
+  `MACOS_GATE_POOL` are unchanged.
+
 ### Added - Metered usage-memory curation gateway (U4)
 - **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
   token-metered gateway for cloud usage-memory curation inference

@@ -8,12 +8,15 @@ still fail closed on the full component inventory in
 is always emitted and fails closed until every required component context is
 successful, neutral, or intentionally skipped.
 
-Slow walls kept off the fast PR set (still required on merge_group / classic
-protection where applicable): App build + test (AgentLens), Mobile build + unit
-test, Daemon PR Gate, Android PR Gate, PR Windows Full Gate, and Domain Core PR
-Gate. Domain Core stays path-scoped evidence when `rust=true`; its aggregator
-must not sit in the 45-minute eligibility umbrella while
-`swift-consumer-contracts` can still run for tens of minutes.
+Slow walls kept off the fast PR set: Daemon PR Gate, Android PR Gate, PR Windows
+Full Gate, and Domain Core PR Gate remain merge-queue / classic-protection
+walls where applicable. App build + test (AgentLens) and Mobile build + unit
+test are post-merge/nightly macos-26 proofs — they do not run on
+`pull_request`, and `merge_group` only emits skipped receipts so a stale
+BurnBar CI Gate inventory cannot hang the queue. Headless App Build is
+push-to-main + nightly only. Domain Core stays path-scoped evidence when
+`rust=true`; its aggregator must not sit in the 45-minute eligibility umbrella
+while `swift-consumer-contracts` can still run for tens of minutes.
 
 ## Path classification
 
