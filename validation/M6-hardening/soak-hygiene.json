@@ -17,9 +17,9 @@
     "samples": [
       {
         "tick": 1,
-        "generatedAt": "2026-08-16T05:48:55.135Z",
-        "observedAt": "2026-08-16T05:48:55.167383+00:00",
-        "rss_kb": 19152,
+        "generatedAt": "2026-08-16T12:42:17.891Z",
+        "observedAt": "2026-08-16T12:42:18.007607+00:00",
+        "rss_kb": 19120,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -27,9 +27,9 @@
       },
       {
         "tick": 2,
-        "generatedAt": "2026-08-16T05:48:56.146Z",
-        "observedAt": "2026-08-16T05:48:56.201829+00:00",
-        "rss_kb": 19168,
+        "generatedAt": "2026-08-16T12:42:18.890Z",
+        "observedAt": "2026-08-16T12:42:19.006751+00:00",
+        "rss_kb": 17648,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -37,9 +37,9 @@
       },
       {
         "tick": 3,
-        "generatedAt": "2026-08-16T05:48:57.135Z",
-        "observedAt": "2026-08-16T05:48:57.182679+00:00",
-        "rss_kb": 19184,
+        "generatedAt": "2026-08-16T12:42:19.892Z",
+        "observedAt": "2026-08-16T12:42:20.011642+00:00",
+        "rss_kb": 17584,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -47,9 +47,9 @@
       },
       {
         "tick": 4,
-        "generatedAt": "2026-08-16T05:48:58.135Z",
-        "observedAt": "2026-08-16T05:48:58.153642+00:00",
-        "rss_kb": 19216,
+        "generatedAt": "2026-08-16T12:42:20.926Z",
+        "observedAt": "2026-08-16T12:42:21.072112+00:00",
+        "rss_kb": 17600,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -57,9 +57,9 @@
       },
       {
         "tick": 5,
-        "generatedAt": "2026-08-16T05:48:59.134Z",
-        "observedAt": "2026-08-16T05:48:59.186734+00:00",
-        "rss_kb": 19232,
+        "generatedAt": "2026-08-16T12:42:21.890Z",
+        "observedAt": "2026-08-16T12:42:22.020189+00:00",
+        "rss_kb": 17600,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -67,9 +67,9 @@
       },
       {
         "tick": 6,
-        "generatedAt": "2026-08-16T05:49:00.135Z",
-        "observedAt": "2026-08-16T05:49:00.158923+00:00",
-        "rss_kb": 19280,
+        "generatedAt": "2026-08-16T12:42:22.889Z",
+        "observedAt": "2026-08-16T12:42:23.074001+00:00",
+        "rss_kb": 17600,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -77,9 +77,9 @@
       },
       {
         "tick": 7,
-        "generatedAt": "2026-08-16T05:49:01.135Z",
-        "observedAt": "2026-08-16T05:49:01.159282+00:00",
-        "rss_kb": 19296,
+        "generatedAt": "2026-08-16T12:42:23.892Z",
+        "observedAt": "2026-08-16T12:42:24.008254+00:00",
+        "rss_kb": 17712,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -87,9 +87,9 @@
       },
       {
         "tick": 8,
-        "generatedAt": "2026-08-16T05:49:02.136Z",
-        "observedAt": "2026-08-16T05:49:02.193558+00:00",
-        "rss_kb": 19376,
+        "generatedAt": "2026-08-16T12:42:24.890Z",
+        "observedAt": "2026-08-16T12:42:25.007977+00:00",
+        "rss_kb": 17760,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -97,9 +97,9 @@
       },
       {
         "tick": 9,
-        "generatedAt": "2026-08-16T05:49:03.135Z",
-        "observedAt": "2026-08-16T05:49:03.152838+00:00",
-        "rss_kb": 19424,
+        "generatedAt": "2026-08-16T12:42:25.891Z",
+        "observedAt": "2026-08-16T12:42:26.008177+00:00",
+        "rss_kb": 17744,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -107,9 +107,9 @@
       },
       {
         "tick": 10,
-        "generatedAt": "2026-08-16T05:49:04.135Z",
-        "observedAt": "2026-08-16T05:49:04.167399+00:00",
-        "rss_kb": 19440,
+        "generatedAt": "2026-08-16T12:42:26.890Z",
+        "observedAt": "2026-08-16T12:42:27.009147+00:00",
+        "rss_kb": 17776,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -117,9 +117,9 @@
       },
       {
         "tick": 11,
-        "generatedAt": "2026-08-16T05:49:05.138Z",
-        "observedAt": "2026-08-16T05:49:05.192265+00:00",
-        "rss_kb": 19440,
+        "generatedAt": "2026-08-16T12:42:27.890Z",
+        "observedAt": "2026-08-16T12:42:28.025585+00:00",
+        "rss_kb": 17728,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -127,9 +127,9 @@
       },
       {
         "tick": 12,
-        "generatedAt": "2026-08-16T05:49:06.134Z",
-        "observedAt": "2026-08-16T05:49:06.151738+00:00",
-        "rss_kb": 19488,
+        "generatedAt": "2026-08-16T12:42:28.892Z",
+        "observedAt": "2026-08-16T12:42:29.082254+00:00",
+        "rss_kb": 17728,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -137,9 +137,9 @@
       },
       {
         "tick": 13,
-        "generatedAt": "2026-08-16T05:49:07.135Z",
-        "observedAt": "2026-08-16T05:49:07.165766+00:00",
-        "rss_kb": 19488,
+        "generatedAt": "2026-08-16T12:42:29.890Z",
+        "observedAt": "2026-08-16T12:42:30.007603+00:00",
+        "rss_kb": 17728,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -147,9 +147,9 @@
       },
       {
         "tick": 14,
-        "generatedAt": "2026-08-16T05:49:08.135Z",
-        "observedAt": "2026-08-16T05:49:08.183983+00:00",
-        "rss_kb": 19504,
+        "generatedAt": "2026-08-16T12:42:30.892Z",
+        "observedAt": "2026-08-16T12:42:31.007943+00:00",
+        "rss_kb": 17728,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -157,9 +157,9 @@
       },
       {
         "tick": 15,
-        "generatedAt": "2026-08-16T05:49:09.135Z",
-        "observedAt": "2026-08-16T05:49:09.203349+00:00",
-        "rss_kb": 19552,
+        "generatedAt": "2026-08-16T12:42:31.898Z",
+        "observedAt": "2026-08-16T12:42:32.012995+00:00",
+        "rss_kb": 17392,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -167,9 +167,9 @@
       },
       {
         "tick": 16,
-        "generatedAt": "2026-08-16T05:49:10.134Z",
-        "observedAt": "2026-08-16T05:49:10.165060+00:00",
-        "rss_kb": 19584,
+        "generatedAt": "2026-08-16T12:42:32.890Z",
+        "observedAt": "2026-08-16T12:42:33.011899+00:00",
+        "rss_kb": 17520,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -177,9 +177,9 @@
       },
       {
         "tick": 17,
-        "generatedAt": "2026-08-16T05:49:11.138Z",
-        "observedAt": "2026-08-16T05:49:11.156434+00:00",
-        "rss_kb": 19584,
+        "generatedAt": "2026-08-16T12:42:33.906Z",
+        "observedAt": "2026-08-16T12:42:34.018240+00:00",
+        "rss_kb": 17488,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -187,9 +187,9 @@
       },
       {
         "tick": 18,
-        "generatedAt": "2026-08-16T05:49:12.135Z",
-        "observedAt": "2026-08-16T05:49:12.168351+00:00",
-        "rss_kb": 19600,
+        "generatedAt": "2026-08-16T12:42:34.890Z",
+        "observedAt": "2026-08-16T12:42:35.010191+00:00",
+        "rss_kb": 17552,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -197,9 +197,9 @@
       },
       {
         "tick": 19,
-        "generatedAt": "2026-08-16T05:49:13.136Z",
-        "observedAt": "2026-08-16T05:49:13.202258+00:00",
-        "rss_kb": 19600,
+        "generatedAt": "2026-08-16T12:42:35.891Z",
+        "observedAt": "2026-08-16T12:42:36.049334+00:00",
+        "rss_kb": 17456,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -207,9 +207,9 @@
       },
       {
         "tick": 20,
-        "generatedAt": "2026-08-16T05:49:14.135Z",
-        "observedAt": "2026-08-16T05:49:14.170517+00:00",
-        "rss_kb": 19632,
+        "generatedAt": "2026-08-16T12:42:36.890Z",
+        "observedAt": "2026-08-16T12:42:37.012741+00:00",
+        "rss_kb": 17440,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -217,9 +217,9 @@
       },
       {
         "tick": 21,
-        "generatedAt": "2026-08-16T05:49:15.135Z",
-        "observedAt": "2026-08-16T05:49:15.185629+00:00",
-        "rss_kb": 19632,
+        "generatedAt": "2026-08-16T12:42:37.891Z",
+        "observedAt": "2026-08-16T12:42:38.008175+00:00",
+        "rss_kb": 17456,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -227,9 +227,9 @@
       },
       {
         "tick": 22,
-        "generatedAt": "2026-08-16T05:49:16.135Z",
-        "observedAt": "2026-08-16T05:49:16.153047+00:00",
-        "rss_kb": 19648,
+        "generatedAt": "2026-08-16T12:42:38.890Z",
+        "observedAt": "2026-08-16T12:42:38.917142+00:00",
+        "rss_kb": 17600,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -237,9 +237,9 @@
       },
       {
         "tick": 23,
-        "generatedAt": "2026-08-16T05:49:17.136Z",
-        "observedAt": "2026-08-16T05:49:17.166237+00:00",
-        "rss_kb": 19648,
+        "generatedAt": "2026-08-16T12:42:39.889Z",
+        "observedAt": "2026-08-16T12:42:40.010038+00:00",
+        "rss_kb": 17536,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -247,9 +247,9 @@
       },
       {
         "tick": 24,
-        "generatedAt": "2026-08-16T05:49:18.141Z",
-        "observedAt": "2026-08-16T05:49:18.210427+00:00",
-        "rss_kb": 19664,
+        "generatedAt": "2026-08-16T12:42:40.890Z",
+        "observedAt": "2026-08-16T12:42:41.012025+00:00",
+        "rss_kb": 17456,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -257,9 +257,9 @@
       },
       {
         "tick": 25,
-        "generatedAt": "2026-08-16T05:49:19.134Z",
-        "observedAt": "2026-08-16T05:49:19.177832+00:00",
-        "rss_kb": 19680,
+        "generatedAt": "2026-08-16T12:42:41.890Z",
+        "observedAt": "2026-08-16T12:42:42.007426+00:00",
+        "rss_kb": 17472,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -267,9 +267,9 @@
       },
       {
         "tick": 26,
-        "generatedAt": "2026-08-16T05:49:20.135Z",
-        "observedAt": "2026-08-16T05:49:20.193137+00:00",
-        "rss_kb": 19680,
+        "generatedAt": "2026-08-16T12:42:42.906Z",
+        "observedAt": "2026-08-16T12:42:43.007877+00:00",
+        "rss_kb": 17472,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -277,9 +277,9 @@
       },
       {
         "tick": 27,
-        "generatedAt": "2026-08-16T05:49:21.135Z",
-        "observedAt": "2026-08-16T05:49:21.164898+00:00",
-        "rss_kb": 19712,
+        "generatedAt": "2026-08-16T12:42:43.890Z",
+        "observedAt": "2026-08-16T12:42:44.008947+00:00",
+        "rss_kb": 17488,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -287,9 +287,9 @@
       },
       {
         "tick": 28,
-        "generatedAt": "2026-08-16T05:49:22.135Z",
-        "observedAt": "2026-08-16T05:49:22.154766+00:00",
-        "rss_kb": 19712,
+        "generatedAt": "2026-08-16T12:42:44.907Z",
+        "observedAt": "2026-08-16T12:42:45.009243+00:00",
+        "rss_kb": 17552,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -297,9 +297,9 @@
       },
       {
         "tick": 29,
-        "generatedAt": "2026-08-16T05:49:23.136Z",
-        "observedAt": "2026-08-16T05:49:23.167330+00:00",
-        "rss_kb": 19728,
+        "generatedAt": "2026-08-16T12:42:45.891Z",
+        "observedAt": "2026-08-16T12:42:46.007404+00:00",
+        "rss_kb": 17488,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -307,9 +307,9 @@
       },
       {
         "tick": 30,
-        "generatedAt": "2026-08-16T05:49:24.135Z",
-        "observedAt": "2026-08-16T05:49:24.177158+00:00",
-        "rss_kb": 19728,
+        "generatedAt": "2026-08-16T12:42:46.890Z",
+        "observedAt": "2026-08-16T12:42:47.007891+00:00",
+        "rss_kb": 17536,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -317,9 +317,9 @@
       },
       {
         "tick": 31,
-        "generatedAt": "2026-08-16T05:49:25.135Z",
-        "observedAt": "2026-08-16T05:49:25.186969+00:00",
-        "rss_kb": 19744,
+        "generatedAt": "2026-08-16T12:42:47.891Z",
+        "observedAt": "2026-08-16T12:42:48.010069+00:00",
+        "rss_kb": 17552,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -327,9 +327,9 @@
       },
       {
         "tick": 32,
-        "generatedAt": "2026-08-16T05:49:26.135Z",
-        "observedAt": "2026-08-16T05:49:26.175937+00:00",
-        "rss_kb": 19744,
+        "generatedAt": "2026-08-16T12:42:48.890Z",
+        "observedAt": "2026-08-16T12:42:49.013591+00:00",
+        "rss_kb": 17568,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -337,9 +337,9 @@
       },
       {
         "tick": 33,
-        "generatedAt": "2026-08-16T05:49:27.136Z",
-        "observedAt": "2026-08-16T05:49:27.158035+00:00",
-        "rss_kb": 19760,
+        "generatedAt": "2026-08-16T12:42:49.892Z",
+        "observedAt": "2026-08-16T12:42:50.007731+00:00",
+        "rss_kb": 17584,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -347,9 +347,9 @@
       },
       {
         "tick": 34,
-        "generatedAt": "2026-08-16T05:49:28.135Z",
-        "observedAt": "2026-08-16T05:49:28.173207+00:00",
-        "rss_kb": 19760,
+        "generatedAt": "2026-08-16T12:42:50.890Z",
+        "observedAt": "2026-08-16T12:42:51.012366+00:00",
+        "rss_kb": 17584,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -357,9 +357,9 @@
       },
       {
         "tick": 35,
-        "generatedAt": "2026-08-16T05:49:29.135Z",
-        "observedAt": "2026-08-16T05:49:29.168775+00:00",
-        "rss_kb": 19776,
+        "generatedAt": "2026-08-16T12:42:51.890Z",
+        "observedAt": "2026-08-16T12:42:52.013477+00:00",
+        "rss_kb": 17536,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -367,9 +367,9 @@
       },
       {
         "tick": 36,
-        "generatedAt": "2026-08-16T05:49:30.135Z",
-        "observedAt": "2026-08-16T05:49:30.277442+00:00",
-        "rss_kb": 19776,
+        "generatedAt": "2026-08-16T12:42:52.890Z",
+        "observedAt": "2026-08-16T12:42:53.097327+00:00",
+        "rss_kb": 17552,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -377,9 +377,9 @@
       },
       {
         "tick": 37,
-        "generatedAt": "2026-08-16T05:49:31.135Z",
-        "observedAt": "2026-08-16T05:49:31.158286+00:00",
-        "rss_kb": 19792,
+        "generatedAt": "2026-08-16T12:42:53.890Z",
+        "observedAt": "2026-08-16T12:42:54.009367+00:00",
+        "rss_kb": 17552,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -387,9 +387,9 @@
       },
       {
         "tick": 38,
-        "generatedAt": "2026-08-16T05:49:32.135Z",
-        "observedAt": "2026-08-16T05:49:32.171680+00:00",
-        "rss_kb": 19792,
+        "generatedAt": "2026-08-16T12:42:54.890Z",
+        "observedAt": "2026-08-16T12:42:55.098980+00:00",
+        "rss_kb": 17520,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -397,9 +397,9 @@
       },
       {
         "tick": 39,
-        "generatedAt": "2026-08-16T05:49:33.135Z",
-        "observedAt": "2026-08-16T05:49:33.199481+00:00",
-        "rss_kb": 19824,
+        "generatedAt": "2026-08-16T12:42:55.891Z",
+        "observedAt": "2026-08-16T12:42:56.104042+00:00",
+        "rss_kb": 17520,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -407,9 +407,9 @@
       },
       {
         "tick": 40,
-        "generatedAt": "2026-08-16T05:49:34.135Z",
-        "observedAt": "2026-08-16T05:49:34.176744+00:00",
-        "rss_kb": 19856,
+        "generatedAt": "2026-08-16T12:42:56.890Z",
+        "observedAt": "2026-08-16T12:42:57.009569+00:00",
+        "rss_kb": 17520,
         "fd_count": 12,
         "thread_count": 5,
         "child_count": 0,
@@ -417,52 +417,52 @@
       }
     ],
     "intervals_seconds": [
-      1.0014448750007432,
-      1.0344284999882802,
-      0.9808649590122513,
-      0.9709574579901528,
-      1.0330777500057593,
-      0.9721948750084266,
-      1.0003522079787217,
-      1.0342773750016931,
-      0.9592772090109065,
-      1.0145568329899106,
-      1.0248606670065783,
-      0.9594720829918515,
-      1.0140239169995766,
-      1.0182109160232358,
-      1.019361291982932,
-      0.9617078330193181,
-      0.9913731249980628,
-      1.0119118339789566,
-      1.033904166019056,
-      0.9682547919801436,
-      1.0151058330084197,
-      0.9674197499989532,
-      1.013183792005293,
-      1.0441866249893792,
-      0.9674018750083633,
-      1.0153011250076815,
-      0.9717521669808775,
-      0.9898647500085644,
-      1.0125627499946859,
-      1.0098221249936614,
-      1.009802833024878,
-      0.9889732500014361,
-      0.9820932500006165,
-      1.0151659999974072,
-      0.9955663750006352,
-      1.1086610829806887,
-      0.8808392090140842,
-      1.0133915829937905,
-      1.0278009999892674,
-      0.9772562920115888
+      1.0756582499889191,
+      0.9991440000012517,
+      1.0048869580205064,
+      1.0604654169874266,
+      0.9480727910122368,
+      1.0538093749783002,
+      0.9342503750231117,
+      0.9997135419980623,
+      1.000200666981982,
+      1.0009638330084272,
+      1.0163622919935733,
+      1.05671999999322,
+      0.9253600000229198,
+      1.000340208003763,
+      1.0050493329763412,
+      0.9988952919957228,
+      1.0061943330219947,
+      0.9920926250051707,
+      1.039139708998846,
+      0.963402875000611,
+      0.9954285409767181,
+      0.9089634170231875,
+      1.0928910419752356,
+      1.0019662910199258,
+      0.995415041979868,
+      1.0004505420220084,
+      1.00106012498145,
+      1.0002965409948956,
+      0.998156084009679,
+      1.000481499999296,
+      1.0021774159977213,
+      1.003514834010275,
+      0.9941377909854054,
+      1.0046297090011649,
+      1.001109916018322,
+      1.083844833978219,
+      0.9120332500024233,
+      1.0896125830186065,
+      1.0050563330005389,
+      0.9055272089899518
     ],
     "on_time_ticks": 40,
     "late_ticks": 0,
-    "rss_baseline_kb": 19296,
-    "rss_end_kb": 19856,
-    "rss_end_to_warmup_ratio": 1.029021558872305,
+    "rss_baseline_kb": 17712,
+    "rss_end_kb": 17520,
+    "rss_end_to_warmup_ratio": 0.989159891598916,
     "rss_bound_ratio": 1.2,
     "rss_strictly_monotonic_growth": false,
     "fd_baseline": 12,
@@ -558,6 +558,7 @@
     "stable_snapshot_projection": true
   },
   "degradation_logging": {
+    "event_tick_semantics": "The 40 requested cadence intervals follow one initial baseline snapshot, so degradation events are recorded for ticks 1 through 41.",
     "affected_agents": [
       "grok-cli"
     ],
@@ -785,11 +786,11 @@
     "declared_manifest_before": [
       {
         "agent": "claude-code",
-        "path": "sessions/72679.json",
+        "path": "sessions/43258.json",
         "state": "file",
         "size": 95,
-        "mtime_ns": 1786859333514255743,
-        "sha256": "c7367d59c418c42f192bf4221e603b46c9f53e8a83389d899c671d6a8e97da7c"
+        "mtime_ns": 1786884135533673512,
+        "sha256": "b2355478290a8706b25e8c839904619a1303b7cf3c6b5fc9d1baee0abea4d7c0"
       },
       {
         "agent": "codex",
@@ -806,7 +807,7 @@
         "path": "thread-writer-locks/m6.lock",
         "state": "file",
         "size": 0,
-        "mtime_ns": 1786859333515923458,
+        "mtime_ns": 1786884135538634656,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -814,7 +815,7 @@
         "path": "agent-cli-state.json",
         "state": "file",
         "size": 52,
-        "mtime_ns": 1786859333516227417,
+        "mtime_ns": 1786884135539304575,
         "sha256": "b76922c1d6bf2f3afe6691809517235a8aaaaeac294d4d9bd3d41ab25bbef60b"
       },
       {
@@ -822,7 +823,7 @@
         "path": "ai-tracking/tracking.db",
         "state": "file",
         "size": 18,
-        "mtime_ns": 1786859333516333668,
+        "mtime_ns": 1786884135539397534,
         "sha256": "99e86c5b00793b73e98a3c33317d7274135fe223976116bb2be6b4eb0b8a5e08"
       },
       {
@@ -830,8 +831,8 @@
         "path": "background-processes.json",
         "state": "file",
         "size": 79,
-        "mtime_ns": 1786859333515511289,
-        "sha256": "ac37c8302849a74fef1e7e275d074f7cafdca2c29c293eab6eb9edfb1cf38b29"
+        "mtime_ns": 1786884135537969112,
+        "sha256": "ce98044daf4bed1fb2f11c9bb58bd92bb6dfb5470c193b70bd6957218934b133"
       },
       {
         "agent": "factory-droid",
@@ -848,7 +849,7 @@
         "path": "task-invocations.json",
         "state": "file",
         "size": 18,
-        "mtime_ns": 1786859333515417539,
+        "mtime_ns": 1786884135537884153,
         "sha256": "b02b51713509f6e7334a5c854eeb44035a15af34038a53f022dae3a99b9ab8e1"
       },
       {
@@ -856,8 +857,8 @@
         "path": "local-exec-daemon.json",
         "state": "file",
         "size": 31,
-        "mtime_ns": 1786859333514831120,
-        "sha256": "bbb8f5d4290bbd49b55edb584ca93a96626175e5359f7f207195a0579d0050d4"
+        "mtime_ns": 1786884135535564561,
+        "sha256": "fac9bb0180153dc1db5c382e392305a13b295ed36e7d4b5abaf95cfe69bd808b"
       },
       {
         "agent": "grok-bot",
@@ -869,15 +870,15 @@
         "path": "local-exec-supervisor.json",
         "state": "file",
         "size": 32,
-        "mtime_ns": 1786859333514949746,
-        "sha256": "366be1156b952f60f71de7e2ff540faf9e1db7cd128bc6097fe7bd822d0b1138"
+        "mtime_ns": 1786884135536210772,
+        "sha256": "98082abdd46ad89af5a159e8325266076d27dc4198c90ab79100460ee95cfd16"
       },
       {
         "agent": "grok-cli",
         "path": "active_sessions.json",
         "state": "file",
         "size": 54,
-        "mtime_ns": 1786859333515789874,
+        "mtime_ns": 1786884135538545989,
         "sha256": "0ea8c05d2e6fe6b6244dc96d0dd7beba847f78674049d48652fc881703e7afd9"
       },
       {
@@ -890,23 +891,23 @@
         "path": "gateway.pid",
         "state": "file",
         "size": 13,
-        "mtime_ns": 1786859333515036871,
-        "sha256": "9e4d6d1cd4e5724237d5cb4aa1c7b8370262dd935a30da0a14c7810cbf396039"
+        "mtime_ns": 1786884135536752482,
+        "sha256": "ff6960eb3de557b55b4cad22647c00e45435698444c9391f78e41c362c45d3a6"
       },
       {
         "agent": "hermes",
         "path": "gateway_state.json",
         "state": "file",
         "size": 57,
-        "mtime_ns": 1786859333515243497,
-        "sha256": "5907d4c5e21566e3c08c3888b342949bf8f853220ec30066950dca5e7bfdabd6"
+        "mtime_ns": 1786884135537386485,
+        "sha256": "32816fdb568f78025c9a56f8428a4b65d270e7b888cc9bd81b921adc39027745"
       },
       {
         "agent": "hermes",
         "path": "processes.json",
         "state": "file",
         "size": 2,
-        "mtime_ns": 1786859333515341747,
+        "mtime_ns": 1786884135537784111,
         "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
@@ -914,26 +915,26 @@
         "path": "state/gateway.heartbeat",
         "state": "file",
         "size": 53,
-        "mtime_ns": 1786859333515139830,
-        "sha256": "33fcfa2420af15af5f407ac31e568846d2b730e8c1d20c1b63f6e26f96a7409c"
+        "mtime_ns": 1786884135537277401,
+        "sha256": "cf5ea6c1aa7852fd78ac079171c3a215871d358b8fd81ac17772030b21de1ebe"
       },
       {
         "agent": "pi",
         "path": "agent/sessions/--fixture--AgentLens/m6.jsonl",
         "state": "file",
         "size": 94,
-        "mtime_ns": 1786859333516118208,
+        "mtime_ns": 1786884135539201283,
         "sha256": "67095379538c4e9c6e36fdfa834596d856b6245c80a5ccf86ed27c0e7bb7d710"
       }
     ],
     "declared_manifest_after": [
       {
         "agent": "claude-code",
-        "path": "sessions/72679.json",
+        "path": "sessions/43258.json",
         "state": "file",
         "size": 95,
-        "mtime_ns": 1786859333514255743,
-        "sha256": "c7367d59c418c42f192bf4221e603b46c9f53e8a83389d899c671d6a8e97da7c"
+        "mtime_ns": 1786884135533673512,
+        "sha256": "b2355478290a8706b25e8c839904619a1303b7cf3c6b5fc9d1baee0abea4d7c0"
       },
       {
         "agent": "codex",
@@ -950,7 +951,7 @@
         "path": "thread-writer-locks/m6.lock",
         "state": "file",
         "size": 0,
-        "mtime_ns": 1786859333515923458,
+        "mtime_ns": 1786884135538634656,
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -958,7 +959,7 @@
         "path": "agent-cli-state.json",
         "state": "file",
         "size": 52,
-        "mtime_ns": 1786859333516227417,
+        "mtime_ns": 1786884135539304575,
         "sha256": "b76922c1d6bf2f3afe6691809517235a8aaaaeac294d4d9bd3d41ab25bbef60b"
       },
       {
@@ -966,7 +967,7 @@
         "path": "ai-tracking/tracking.db",
         "state": "file",
         "size": 18,
-        "mtime_ns": 1786859333516333668,
+        "mtime_ns": 1786884135539397534,
         "sha256": "99e86c5b00793b73e98a3c33317d7274135fe223976116bb2be6b4eb0b8a5e08"
       },
       {
@@ -974,8 +975,8 @@
         "path": "background-processes.json",
         "state": "file",
         "size": 79,
-        "mtime_ns": 1786859333515511289,
-        "sha256": "ac37c8302849a74fef1e7e275d074f7cafdca2c29c293eab6eb9edfb1cf38b29"
+        "mtime_ns": 1786884135537969112,
+        "sha256": "ce98044daf4bed1fb2f11c9bb58bd92bb6dfb5470c193b70bd6957218934b133"
       },
       {
         "agent": "factory-droid",
@@ -992,7 +993,7 @@
         "path": "task-invocations.json",
         "state": "file",
         "size": 18,
-        "mtime_ns": 1786859333515417539,
+        "mtime_ns": 1786884135537884153,
         "sha256": "b02b51713509f6e7334a5c854eeb44035a15af34038a53f022dae3a99b9ab8e1"
       },
       {
@@ -1000,8 +1001,8 @@
         "path": "local-exec-daemon.json",
         "state": "file",
         "size": 31,
-        "mtime_ns": 1786859333514831120,
-        "sha256": "bbb8f5d4290bbd49b55edb584ca93a96626175e5359f7f207195a0579d0050d4"
+        "mtime_ns": 1786884135535564561,
+        "sha256": "fac9bb0180153dc1db5c382e392305a13b295ed36e7d4b5abaf95cfe69bd808b"
       },
       {
         "agent": "grok-bot",
@@ -1013,15 +1014,15 @@
         "path": "local-exec-supervisor.json",
         "state": "file",
         "size": 32,
-        "mtime_ns": 1786859333514949746,
-        "sha256": "366be1156b952f60f71de7e2ff540faf9e1db7cd128bc6097fe7bd822d0b1138"
+        "mtime_ns": 1786884135536210772,
+        "sha256": "98082abdd46ad89af5a159e8325266076d27dc4198c90ab79100460ee95cfd16"
       },
       {
         "agent": "grok-cli",
         "path": "active_sessions.json",
         "state": "file",
         "size": 54,
-        "mtime_ns": 1786859333515789874,
+        "mtime_ns": 1786884135538545989,
         "sha256": "0ea8c05d2e6fe6b6244dc96d0dd7beba847f78674049d48652fc881703e7afd9"
       },
       {
@@ -1034,23 +1035,23 @@
         "path": "gateway.pid",
         "state": "file",
         "size": 13,
-        "mtime_ns": 1786859333515036871,
-        "sha256": "9e4d6d1cd4e5724237d5cb4aa1c7b8370262dd935a30da0a14c7810cbf396039"
+        "mtime_ns": 1786884135536752482,
+        "sha256": "ff6960eb3de557b55b4cad22647c00e45435698444c9391f78e41c362c45d3a6"
       },
       {
         "agent": "hermes",
         "path": "gateway_state.json",
         "state": "file",
         "size": 57,
-        "mtime_ns": 1786859333515243497,
-        "sha256": "5907d4c5e21566e3c08c3888b342949bf8f853220ec30066950dca5e7bfdabd6"
+        "mtime_ns": 1786884135537386485,
+        "sha256": "32816fdb568f78025c9a56f8428a4b65d270e7b888cc9bd81b921adc39027745"
       },
       {
         "agent": "hermes",
         "path": "processes.json",
         "state": "file",
         "size": 2,
-        "mtime_ns": 1786859333515341747,
+        "mtime_ns": 1786884135537784111,
         "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
       },
       {
@@ -1058,15 +1059,15 @@
         "path": "state/gateway.heartbeat",
         "state": "file",
         "size": 53,
-        "mtime_ns": 1786859333515139830,
-        "sha256": "33fcfa2420af15af5f407ac31e568846d2b730e8c1d20c1b63f6e26f96a7409c"
+        "mtime_ns": 1786884135537277401,
+        "sha256": "cf5ea6c1aa7852fd78ac079171c3a215871d358b8fd81ac17772030b21de1ebe"
       },
       {
         "agent": "pi",
         "path": "agent/sessions/--fixture--AgentLens/m6.jsonl",
         "state": "file",
         "size": 94,
-        "mtime_ns": 1786859333516118208,
+        "mtime_ns": 1786884135539201283,
         "sha256": "67095379538c4e9c6e36fdfa834596d856b6245c80a5ccf86ed27c0e7bb7d710"
       }
     ],
@@ -1080,19 +1081,19 @@
     "factory_row_not_driven_by_undeclared_content": true
   },
   "liveness": {
-    "canary_pid": 72679,
+    "canary_pid": 43258,
     "canary_nonzero_signal_log": [],
     "canary_received_no_nonzero_signal": true,
-    "dead_pid_fixture": 72680,
+    "dead_pid_fixture": 43259,
     "pid_reuse_fixture": {
       "agent": "factory-droid",
       "recorded_start_time": "one hour before canary start",
-      "canary_pid": 72679
+      "canary_pid": 43258
     },
     "static_scan": {
       "scanned_root": "BurnBarDaemon/Sources/BurnBarDaemon/Fleet/Probes",
       "allowed_kill_zero_checks": [
-        "BurnBarDaemon/Sources/BurnBarDaemon/Fleet/Probes/BurnBarFleetProbeSupport.swift:44"
+        "BurnBarDaemon/Sources/BurnBarDaemon/Fleet/Probes/BurnBarFleetProbeSupport.swift:47"
       ],
       "offending_calls": [],
       "proc_pidinfo_allowed": true

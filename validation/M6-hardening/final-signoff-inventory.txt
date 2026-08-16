@@ -1,6 +1,6 @@
 M6 final integration inventory
 branch=feat/live-agent-fleet
-HEAD=branch tip at validation time (reported in worker handoff)
+HEAD=6dfdf3040e6e59d2420f12fc5c24361b7b173b26
 origin/feat/live-agent-fleet=8f92cb09b7 (pre-existing user-owned backup; no mission push)
 
 documents=README.md, docs/fleet/BURNBAR_FLEET_SIGNALS.md, docs/fleet/BURNBAR_FLEET_API.md
@@ -21,3 +21,8 @@ readme_semantics=two write methods (orchestrator.set and directive.record); snap
 protected_post_checkpoint_intersection=empty
 extension_diff=empty
 README smoke=passed separately; see command log in handoff (protocol=1, schema=1, agents=10, cadence=1, persistenceHealth=ok)
+README smoke rerun=passed verbatim (protocol=1, schema=1, agents=10, cadence=1, runningCount=0, persistenceHealth.kind=ok)
+compatibility=pre-fleet c3add7133c0e returned typed -32601 for daemon.fleet.snapshot; app protocol-mismatch mapping test passed
+real_root_smoke=passed with exact roster/probeHealth=10, runningCount=3, and running rows at permitted confidence tiers
+concurrent_apps=passed with two direct app processes alive across two ticks; directiveCount=0 and real DB mtime unchanged
+empty_socket_override=passed process smoke; empty BURNBAR_DAEMON_SOCKET_PATH resolved to support-derived socket

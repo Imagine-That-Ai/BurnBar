@@ -66,7 +66,7 @@ a7ac2e41b217 | mission-authored | empty
 b1617c374eb2 | mission-authored | empty
 8f92cb09b723 | mission-authored | empty
 dd23cf9f5d66 | mission-authored | empty
-post-dd23 sign-off commits (913a10cd08, 36b88a150e, and evidence-only follow-up) | mission-authored | empty
+post-dd23 sign-off commits (913a10cd08, 36b88a150e, 6dfdf3040e6e) | mission-authored | empty
 
 protected file SHA-256 (working tree vs user checkpoint commit)
 AgentLens/Views/Dashboard/Alternate3Dashboard.swift | checkpoint=730c76f940d9b7f7a94f4576a8f6671baff394047652bc47e9a4cb4c3062ee36 | working_tree=730c76f940d9b7f7a94f4576a8f6671baff394047652bc47e9a4cb4c3062ee36 | match=True
@@ -82,7 +82,9 @@ docs/plans/burnbar-live-agent-fleet-droid-mission.md | checkpoint=3c3234ba23bf37
 
 branch/ref evidence
 branch=feat/live-agent-fleet
-HEAD=branch tip at validation time (reported in worker handoff)
+HEAD=6dfdf3040e6e59d2420f12fc5c24361b7b173b26
 origin/feat/live-agent-fleet=8f92cb09b7 (pre-existing user-owned backup; not mutated by mission)
 mission-session remote operations=none
 extensions/burnbar diff intersection=empty
+per_commit_audit=65 commits from c3add7133c0e; no mission-authored commit touched a protected path
+user_checkpoint_hashes=all 10 protected working-tree SHA-256 values match checkpoint 0389130847

@@ -1,6 +1,7 @@
 M6 final integration runtime evidence
-validated_at=2026-08-16
+validated_at=2026-08-16T12:43:16Z
 branch=feat/live-agent-fleet
+head=6dfdf3040e6e59d2420f12fc5c24361b7b173b26
 
 [readme-executable-smoke]
 command=extract README.md section "### Fleet smoke test" and run its ```sh block verbatim
@@ -17,19 +18,26 @@ note=the daemon log's separate Swift Testing "0 tests" line is spurious and excl
 
 [app-gates]
 command=xcodegen
-result=pass; added ChatSessionController+ThreadLifecycle.swift membership
+result=pass; project.pbxproj unchanged because membership was already current
 command=xcodebuild build -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data
 result=pass; BUILD SUCCEEDED after the final chat-controller lifecycle and delivery-fence fixes
 command=xcodebuild test ... focused fleet/provider/parser/concurrency classes
-result=pass; executed=191; failures=0
-command=xcodebuild test ... isolated parser compatibility classes
-result=pass; executed=93; failures=0
+result=pass; executed=280; failures=0 across 33 focused classes
+focused_classes=FleetServiceTests, FleetViewModelTests, FleetFormattingTests, FleetConfidencePresentationTests, FleetStatusPresentationTests, FleetRepoGroupingTests, FleetMachinePanelTests, FleetResourceConsumersTests, FleetTokenBurnEstimatorTests, FleetLayoutIntegrityTests, AgentProviderCoverageTests, GrokBotParserTests, UsageAggregatorParserRegistrationTests, UsageAggregatorRefreshAllTests, PiParserTests, GrokCLIParserTests, PiParserStrictnessRound2Tests, PiParserStrictnessRound3Tests, PiParserStrictnessRound4Tests, GrokCLIParserStrictnessRound2Tests, GrokCLIParserStrictnessRound3Tests, GrokCLIParserStrictnessRound4Tests, GrokCLIParserProofGapTests, HermeticSeamContainmentTests, ModelFilterParserRootOverrideTests, ProviderZeroDataCompositionTests, ProviderZeroDataSurfaceTests, ProviderSummaryUnknownModelTests, ContextBuilderFleetTests, ContextBuilderFleetScrutinyTests, BurnBarDaemonManagerTests, DataStoreConcurrencyTests, RecursiveSupportManifestTests
 command=xcodebuild test ... orchestrator/delivery classes
 result=pass; executed=66 across six classes; failures=0
+orchestrator_delivery_classes=ChatSessionControllerOrchestratorTests, ChatSessionControllerDeliveryAuthorityTests, ChatSessionControllerDeliveryFlowTests, HermesDirectiveChannelTests, BurnBarFleetDeliveryRunnerTests, ChatDeliveryStatePersistenceTests
 command=xcodebuild test ... -only-testing:BurnBarTests/ChatSessionControllerDeliveryFlowTests
 result=pass; executed=21; failures=0; includes the local-approval-persistence no-channel-resolution assertion
-exploratory_preexisting_failures=an additional quota/connector-only selection executed 112 tests with 14 known AGENTS.md failures (ProviderQuotaServiceTests 10, CursorConnectorTests 4); excluded from the fleet seal gate
 full_suite_deviation=the full BurnBarTests suite was not used as a seal gate because AGENTS.md records 19 unrelated pre-existing failures; feature-scoped classes were run instead
+
+[hardening-reruns]
+command=python3 validation/harness/fleet_degradation_matrix.py
+result=pass; all 8 degradation/offline cases passed
+command=python3 validation/harness/fleet_persistence_recovery.py
+result=pass; corruption/schema, delete/restart, read-only support, and SIGKILL torn-write cases passed
+command=python3 validation/harness/fleet_soak_hygiene.py
+result=pass; 40/40 ticks on time, late_ticks=0, fd/thread deltas=0, RSS ratio=0.989, socket=0600, canary received no nonzero signal
 
 [socket-environment]
 command=BurnBarDaemonSocketEnvironmentTests plus executable smoke with BURNBAR_DAEMON_SOCKET_PATH=""
@@ -40,11 +48,11 @@ command=pre-fleet daemon built from c3add7133c0e351ace402b401746dbff6ef168be aga
 result=pass; typed response code=-32601, protocolVersion=1, id=compat-fleet; app mapping is typed daemonDown/protocol mismatch
 
 [real-root-smoke]
-result=pass; exact roster=10; runningCount=1; supported-signal-rows=6; running factory-droid/activeSessionFile; thermal and power typed unavailable
+result=pass; exact roster/probeHealth=10; runningCount=3; running factory-droid/activeSessionFile, grok-cli/exactProcess, cursor/activeSessionFile; thermal and power typed unavailable
 note=only structural truths were asserted; no volatile named agent state was required
 
 [concurrent-app-instances]
-result=pass; two direct app processes stayed alive; two reads shared generatedAt/runningCount/status parity; exact default socket was clean after teardown
+result=pass; two direct app processes stayed alive across two ticks; hermetic snapshot runningCount=0, directiveCount=0, real BurnBar DB mtime unchanged; exact default socket was clean after teardown
 
 [journey]
 result=pass_with_documented_controller_fallback
@@ -52,10 +60,18 @@ steps=fresh Fleet fixture, daemon-authoritative designation, orchestrator chat c
 fallback=the native image-only Send control did not submit under desktop automation; deterministic controller/XCTest coverage supplied proposal/approval/delivery evidence while Fleet/Hermes surfaces were separately validated
 
 [boundaries]
-protected_post_checkpoint_intersection=empty
+base=c3add7133c0e351ace402b401746dbff6ef168be
+commits_audited=65
+mission_commit_protected_intersection=empty
+user_checkpoint=038913084767133f1f674bcfdf9cb060d6926c4e; all 10 protected SHA-256 matches=True
 extension_diff=empty
 mission_pushes=none
 origin_backup=origin/feat/live-agent-fleet at 8f92cb09b7 is user-owned and was not mutated
 
 [lint]
-result=no new error categories versus c3add7133c0e351ace402b401746dbff6ef168be for mission-authored Swift; see lint-baseline.txt
+result=no new error categories versus c3add7133c0e351ace402b401746dbff6ef168be across 165 non-protected Swift files; see lint-baseline.txt
+
+[transient-attempts]
+daemon_direct_run=timed out at the shell wrapper and left one exact XCTest PID; stopped that PID, then process-group rerun passed 386/386
+soak_first_two_retries=failed under external load (cadence tolerance, then warm-up FD/thread band); final retry after load eased passed 40/40
+orchestrator_wrapper=misclassified benign linkd.autoShortcut log lines after a passing 23-test class; corrected wrapper rerun passed all 66 orchestrator/delivery tests

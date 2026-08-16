@@ -1,7 +1,8 @@
 {
   "feature": "fleet-final-integration-signoff",
   "branch": "feat/live-agent-fleet",
-  "validatedAt": "2026-08-16",
+  "validatedAt": "2026-08-16T12:43:16Z",
+  "head": "6dfdf3040e6e59d2420f12fc5c24361b7b173b26",
   "documentationInventory": {
     "status": "pass",
     "documents": [
@@ -35,7 +36,7 @@
     {
       "command": "xcodegen",
       "status": "pass",
-      "observed": "Generated project includes ChatSessionController+ThreadLifecycle.swift; no hand-edited project metadata."
+      "observed": "xcodegen completed; project.pbxproj remained unchanged because target membership was already current."
     },
     {
       "command": "xcodebuild build ... CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO",
@@ -45,7 +46,7 @@
     {
       "command": "xcodebuild test ... focused fleet/orchestrator/delivery/concurrency classes",
       "status": "pass",
-      "observed": "191 focused Fleet/provider/concurrency app tests passed; the isolated parser compatibility selection added 93 passing tests; orchestrator/delivery classes passed separately with 66 tests; all had 0 failures."
+      "observed": "The current focused fleet/provider/parser/concurrency selection executed 280 tests with 0 failures; the separate orchestrator/delivery selection executed 66 tests with 0 failures."
     },
     {
       "command": "xcodebuild test ... -only-testing:BurnBarTests/ChatSessionControllerDeliveryFlowTests",
@@ -55,7 +56,106 @@
     {
       "command": "swiftlint lint --quiet",
       "status": "pass_no_new_errors",
-      "observed": "Base comparison reports no new error categories for mission-authored Swift files; the new ChatSessionController+ThreadLifecycle.swift is clean. Existing ChatPanel/ChatSessionController/DataStore findings and repository configuration warnings remain documented, while the adjudicated protected WIP is excluded."
+      "observed": "The positional changed-file command exits 2 on the repository's known warning-threshold/baseline findings; a base-vs-current category comparison over 165 non-protected mission Swift files reports new_error_categories=none. Protected WIP and sanctioned BurnBarContracts.swift were excluded."
+    }
+  ],
+  "rerunCommands": [
+    {
+      "command": "swift test --package-path BurnBarCore",
+      "exitCode": 0,
+      "observed": "Executed 128 tests, 0 failures."
+    },
+    {
+      "command": "swift test --package-path BurnBarDaemon",
+      "exitCode": 0,
+      "observed": "Executed 386 tests, 0 failures; the separate Swift Testing 0-test line was ignored."
+    },
+    {
+      "command": "xcodegen",
+      "exitCode": 0,
+      "observed": "Regenerated successfully; no generated-project diff."
+    },
+    {
+      "command": "xcodebuild build -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data",
+      "exitCode": 0,
+      "observed": "Unsigned Debug build completed with BUILD SUCCEEDED."
+    },
+    {
+      "command": "xcodebuild test -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data -only-testing:BurnBarTests/FleetServiceTests -only-testing:BurnBarTests/FleetViewModelTests -only-testing:BurnBarTests/FleetFormattingTests -only-testing:BurnBarTests/FleetConfidencePresentationTests -only-testing:BurnBarTests/FleetStatusPresentationTests -only-testing:BurnBarTests/FleetRepoGroupingTests -only-testing:BurnBarTests/FleetMachinePanelTests -only-testing:BurnBarTests/FleetResourceConsumersTests -only-testing:BurnBarTests/FleetTokenBurnEstimatorTests -only-testing:BurnBarTests/FleetLayoutIntegrityTests -only-testing:BurnBarTests/AgentProviderCoverageTests -only-testing:BurnBarTests/GrokBotParserTests -only-testing:BurnBarTests/UsageAggregatorParserRegistrationTests -only-testing:BurnBarTests/UsageAggregatorRefreshAllTests -only-testing:BurnBarTests/PiParserTests -only-testing:BurnBarTests/GrokCLIParserTests -only-testing:BurnBarTests/PiParserStrictnessRound2Tests -only-testing:BurnBarTests/PiParserStrictnessRound3Tests -only-testing:BurnBarTests/PiParserStrictnessRound4Tests -only-testing:BurnBarTests/GrokCLIParserStrictnessRound2Tests -only-testing:BurnBarTests/GrokCLIParserStrictnessRound3Tests -only-testing:BurnBarTests/GrokCLIParserStrictnessRound4Tests -only-testing:BurnBarTests/GrokCLIParserProofGapTests -only-testing:BurnBarTests/HermeticSeamContainmentTests -only-testing:BurnBarTests/ModelFilterParserRootOverrideTests -only-testing:BurnBarTests/ProviderZeroDataCompositionTests -only-testing:BurnBarTests/ProviderZeroDataSurfaceTests -only-testing:BurnBarTests/ProviderSummaryUnknownModelTests -only-testing:BurnBarTests/ContextBuilderFleetTests -only-testing:BurnBarTests/ContextBuilderFleetScrutinyTests -only-testing:BurnBarTests/BurnBarDaemonManagerTests -only-testing:BurnBarTests/DataStoreConcurrencyTests -only-testing:BurnBarTests/RecursiveSupportManifestTests",
+      "exitCode": 0,
+      "observed": "Executed 280 tests, 0 failures."
+    },
+    {
+      "command": "xcodebuild test -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data -only-testing:BurnBarTests/ChatSessionControllerOrchestratorTests -only-testing:BurnBarTests/ChatSessionControllerDeliveryAuthorityTests -only-testing:BurnBarTests/ChatSessionControllerDeliveryFlowTests -only-testing:BurnBarTests/HermesDirectiveChannelTests -only-testing:BurnBarTests/BurnBarFleetDeliveryRunnerTests -only-testing:BurnBarTests/ChatDeliveryStatePersistenceTests",
+      "exitCode": 0,
+      "observed": "Executed 66 tests, 0 failures across ChatSessionControllerOrchestratorTests, ChatSessionControllerDeliveryAuthorityTests, ChatSessionControllerDeliveryFlowTests, HermesDirectiveChannelTests, BurnBarFleetDeliveryRunnerTests, and ChatDeliveryStatePersistenceTests."
+    },
+    {
+      "command": "python3 validation/harness/fleet_degradation_matrix.py",
+      "exitCode": 0,
+      "observed": "All 8 degradation/offline cases passed, including typed root failures, secret-negative scan, PID reuse, sibling isolation, and offline local serving."
+    },
+    {
+      "command": "python3 validation/harness/fleet_persistence_recovery.py",
+      "exitCode": 0,
+      "observed": "Corruption/schema rebuild, delete/restart, read-only support, and six SIGKILL torn-write attempts passed."
+    },
+    {
+      "command": "python3 validation/harness/fleet_soak_hygiene.py",
+      "exitCode": 0,
+      "observed": "40/40 cadence ticks on time; late_ticks=0; FD/thread deltas=0; RSS ratio=0.989; socket mode 0600; canary received no nonzero signal; fixture manifests unchanged."
+    },
+    {
+      "command": "README.md section '### Fleet smoke test' shell block, verbatim",
+      "exitCode": 0,
+      "observed": "protocol=1, schema=1, agents=10, cadence=1, runningCount=0, persistenceHealth.kind=ok; file jq check passed."
+    },
+    {
+      "command": "cross-document semantic inventory and fleet-serving static scan",
+      "exitCode": 0,
+      "observed": "Exact roster=10, methods=4, paths=3, environment seams=5, persistenceHealth present, empty socket normalized, 45 fleet-serving source files scanned with no forbidden cloud imports and only loopback Hermes URL."
+    },
+    {
+      "command": "pre-fleet daemon from c3add7133c0e351ace402b401746dbff6ef168be against daemon.fleet.snapshot",
+      "exitCode": 0,
+      "observed": "Typed response code=-32601, protocolVersion=1, id=compat-fleet; FleetService protocol-mismatch mapping test passed in focused app selection."
+    },
+    {
+      "command": "real-root daemon structural smoke",
+      "exitCode": 0,
+      "observed": "Exact roster/probeHealth coverage, runningCount=3, running rows factory-droid activeSessionFile, grok-cli exactProcess, cursor activeSessionFile, and typed unavailable thermal/power."
+    },
+    {
+      "command": "two direct BurnBar app processes against one hermetic daemon at the documented default socket",
+      "exitCode": 0,
+      "observed": "Both app processes remained alive across two ticks; snapshot runningCount=0; directiveCount=0; real BurnBar DB mtime unchanged; teardown left the default socket clean."
+    },
+    {
+      "command": "empty BURNBAR_DAEMON_SOCKET_PATH executable smoke",
+      "exitCode": 0,
+      "observed": "Empty override resolved to support/burnbar-daemon.sock and daemon.health returned ok; support contained fleet-snapshot.json and fleet.sqlite."
+    },
+    {
+      "command": "adjudicated per-commit protected-path, branch, remote-ref, and extension audit",
+      "exitCode": 0,
+      "observed": "65 commits audited from c3add7133c0e; no mission-authored commit touched protected paths; checkpoint 0389130847 protected-file hashes all matched; origin/feat/live-agent-fleet remained 8f92cb09b7; extension intersection empty."
+    }
+  ],
+  "transientAttempts": [
+    {
+      "command": "swift test --package-path BurnBarDaemon (initial direct invocation)",
+      "exitCode": 124,
+      "observed": "The shell timeout left one exact BurnBarDaemon XCTest PID; this session stopped that PID and reran the same suite in a process group, which completed with 386 tests and 0 failures."
+    },
+    {
+      "command": "python3 validation/harness/fleet_soak_hygiene.py (two retries under external load)",
+      "exitCode": 1,
+      "observed": "The first retry exceeded cadence tolerance and the second escaped the warm-up FD/thread band while machine load averaged 38.11 and then 44.57; no validator processes remained. The final retry after load eased passed 40/40 ticks with zero late ticks and zero FD/thread drift."
+    },
+    {
+      "command": "xcodebuild test orchestrator/delivery wrapper (first invocation)",
+      "exitCode": 1,
+      "observed": "The wrapper misclassified benign com.apple.linkd.autoShortcut OS-log lines as failures after ChatSessionControllerOrchestratorTests itself returned rc=0 with 23 tests and 0 failures; a corrected wrapper reran all remaining classes successfully."
     }
   ],
   "hardeningEvidence": [
@@ -84,11 +184,11 @@
   },
   "realRootSmoke": {
     "status": "pass",
-    "observed": "Real-root daemon snapshot had the exact ten-row roster, runningCount=1, six supported-signal rows including factory-droid running/activeSessionFile, valid confidence/status combinations, and typed unavailable thermal and power reasons."
+    "observed": "Current real-root daemon snapshot had the exact ten-row roster and probe-health coverage, runningCount=3, running rows factory-droid/activeSessionFile, grok-cli/exactProcess, and cursor/activeSessionFile, valid confidence/status combinations, and typed unavailable thermal and power reasons."
   },
   "concurrentAppInstances": {
     "status": "pass",
-    "observed": "Two direct BurnBar app processes remained alive against one hermetic daemon; both external reads matched generatedAt, runningCount, and row statuses, and teardown left the exact default socket clean."
+    "observed": "Two direct BurnBar app processes remained alive across two ticks against one hermetic daemon at the documented default socket; external snapshot was valid, directiveCount stayed 0, the real BurnBar DB mtime was unchanged, and teardown left the socket clean."
   },
   "firstVisitJourney": {
     "status": "pass_with_documented_controller_fallback",
@@ -106,7 +206,7 @@
   "boundaryChecks": {
     "extensionChanges": {
       "status": "pass",
-      "observed": "git diff against feat/alternate3-liquid-glass-dashboard contains no extensions/burnbar/** paths."
+      "observed": "git diff from the mission base c3add7133c0e contains no extensions/burnbar/** paths."
     },
     "fleetServingPath": {
       "status": "pass",
@@ -114,11 +214,11 @@
     },
     "protectedWIP": {
       "status": "pass",
-      "observed": "The user-owned checkpoint 0389130847 carries the protected WIP and remains preserved. The intersection of protected paths with all post-checkpoint mission changes is empty; this session did not modify, stage, revert, or delete protected WIP."
+      "observed": "Per-commit audit over 65 commits found an empty protected-path intersection for every mission-authored commit. User checkpoint 0389130847 is the sole allowed protected-path carrier and all 10 working-tree SHA-256 comparisons matched; this session did not modify, stage, revert, or delete protected WIP."
     },
     "branchAndPush": {
       "status": "pass",
-      "observed": "The branch is feat/live-agent-fleet. origin/feat/live-agent-fleet is the pre-existing user-owned backup at 8f92cb09b7; its existence is permitted by the adjudication, and this session performed no push or remote mutation."
+      "observed": "The branch is feat/live-agent-fleet. origin/feat/live-agent-fleet remains the pre-existing user-owned backup at 8f92cb09b7; no push, fetch, or other remote-mutating command was executed in this session."
     }
   },
   "socketEnvironmentRegression": {

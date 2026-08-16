@@ -14,7 +14,7 @@
         "well_known_file": "fleet-snapshot.json"
       },
       "static_import_scan": {
-        "files_scanned": 39,
+        "files_scanned": 41,
         "fleet_route_cloud_references": [],
         "forbidden_cloud_imports": [],
         "status": "pass"
@@ -25,11 +25,11 @@
       "affected_agent": "grok-bot",
       "health": {
         "agent": "grok-bot",
-        "checkedAt": "2026-08-16T03:47:38.296Z",
-        "rootPath": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-missing-vowwvteh/roots/grokbot",
+        "checkedAt": "2026-08-16T12:31:54.502Z",
+        "rootPath": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-missing-yclfczc2/roots/grokbot",
         "state": {
           "kind": "failed",
-          "reason": "Declared root missing: /Volumes/DevSSD/BuildCache/tmp/burnbar-m6-missing-vowwvteh/roots/grokbot"
+          "reason": "Declared root missing: /Volumes/DevSSD/BuildCache/tmp/burnbar-m6-missing-yclfczc2/roots/grokbot"
         }
       },
       "healthy_sibling_rows_unchanged": true,
@@ -40,11 +40,11 @@
       "fixture_mode": "0o0",
       "health": {
         "agent": "grok-bot",
-        "checkedAt": "2026-08-16T03:47:39.476Z",
-        "rootPath": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-permission-i7o8o5dl/roots/grokbot",
+        "checkedAt": "2026-08-16T12:31:55.723Z",
+        "rootPath": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-permission-9qpwwhjs/roots/grokbot",
         "state": {
           "kind": "degraded",
-          "reason": "Declared root permission denied: /Volumes/DevSSD/BuildCache/tmp/burnbar-m6-permission-i7o8o5dl/roots/grokbot"
+          "reason": "Declared root permission denied: /Volumes/DevSSD/BuildCache/tmp/burnbar-m6-permission-9qpwwhjs/roots/grokbot"
         }
       },
       "healthy_sibling_rows_unchanged": true,
@@ -55,8 +55,8 @@
       "echoed_request_id": "m6-case",
       "health": {
         "agent": "grok-cli",
-        "checkedAt": "2026-08-16T03:47:40.630Z",
-        "rootPath": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-corrupt-icf7md00/roots/grok",
+        "checkedAt": "2026-08-16T12:31:56.911Z",
+        "rootPath": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-corrupt-43nwvr22/roots/grok",
         "state": {
           "kind": "degraded",
           "reason": "Signal file is not valid JSON."
@@ -79,8 +79,8 @@
         "factory-droid"
       ],
       "kill_zero_alive": true,
-      "pid": 13685,
-      "process_start": "13685 Sat Aug 15 22:47:41 2026",
+      "pid": 19365,
+      "process_start": "19365 Sun Aug 16 07:31:57 2026",
       "status": "pass"
     },
     "VAL-HARD-008_missing_secondary": {
@@ -88,34 +88,34 @@
         "confidence": "exactProcess",
         "displayName": "Hermes",
         "id": "hermes",
-        "lastActivityAt": "2026-08-16T03:47:41.357Z",
+        "lastActivityAt": "2026-08-16T12:31:57.307Z",
         "note": "Gateway alive with zero active agents; idle, not running. processes.json is absent; repo attribution is unavailable.",
         "process": {
-          "pid": 13693
+          "pid": 19372
         },
         "signals": [
           {
-            "detail": "pid 13693",
+            "detail": "pid 19372",
             "kind": "process-list",
-            "path": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-secondary-5m9201_t/roots/hermes/gateway.pid"
+            "path": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-secondary-u738ej_c/roots/hermes/gateway.pid"
           },
           {
-            "detail": "pid 13693, 0s ago",
+            "detail": "pid 19372, 0s ago",
             "kind": "heartbeat-file",
-            "path": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-secondary-5m9201_t/roots/hermes/state/gateway.heartbeat"
+            "path": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-secondary-u738ej_c/roots/hermes/state/gateway.heartbeat"
           },
           {
             "detail": "active_agents 0",
             "kind": "heartbeat-file",
-            "path": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-secondary-5m9201_t/roots/hermes/gateway_state.json"
+            "path": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-secondary-u738ej_c/roots/hermes/gateway_state.json"
           }
         ],
         "status": "idle"
       },
       "health": {
         "agent": "hermes",
-        "checkedAt": "2026-08-16T03:47:41.389Z",
-        "rootPath": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-secondary-5m9201_t/roots/hermes",
+        "checkedAt": "2026-08-16T12:31:57.335Z",
+        "rootPath": "/Volumes/DevSSD/BuildCache/tmp/burnbar-m6-secondary-u738ej_c/roots/hermes",
         "state": {
           "kind": "degraded",
           "reason": "processes.json is absent; repo attribution is unavailable."
@@ -135,6 +135,6 @@
       "status": "pass"
     }
   },
-  "fixture_scope": "temporary directories under /tmp; no real agent roots",
+  "fixture_scope": "temporary validator directories under TMPDIR (/Volumes/DevSSD/BuildCache/tmp on this machine); no real agent roots",
   "harness": "validation/harness/fleet_degradation_matrix.py"
 }
