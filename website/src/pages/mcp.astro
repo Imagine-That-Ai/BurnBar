@@ -44,8 +44,8 @@ const channels = [
   {
     sigil: "03",
     band: "Bridge · stdio shim",
-    name: "openburnbar-mcp-remote",
-    runtime: "Node 22 · zero runtime deps",
+    name: "openburnbar",
+    runtime: "Node 22 · zero runtime deps · npm i -g openburnbar",
     audience: "Codex · Claude Code · Droid · Kimi · Forge",
     transport: "stdio ⇄ HTTPS",
     auth: "macOS Keychain → 0600 file → env var",
@@ -289,11 +289,12 @@ const hostedSnippets: Snippet[] = [
     label: "Codex CLI",
     meta: "~/.codex/config.toml — stdio shim, recommended",
     lines: [
-      "$ codex mcp add openburnbar -- openburnbar-mcp-remote mcp serve",
+      "$ npm i -g openburnbar",
+      "$ codex mcp add openburnbar -- openburnbar mcp serve",
       "# or paste this block into ~/.codex/config.toml",
       "",
       "[mcp_servers.openburnbar]",
-      'command = "openburnbar-mcp-remote"',
+      'command = "openburnbar"',
       'args = ["mcp", "serve"]',
       "startup_timeout_sec = 15",
       "tool_timeout_sec = 60"
@@ -318,7 +319,7 @@ const hostedSnippets: Snippet[] = [
       "{",
       '  "mcpServers": {',
       '    "openburnbar": {',
-      '      "command": "openburnbar-mcp-remote",',
+      '      "command": "openburnbar",',
       '      "args": ["mcp", "serve"]',
       "    }",
       "  }",
@@ -333,7 +334,7 @@ const hostedSnippets: Snippet[] = [
       "{",
       '  "mcpServers": {',
       '    "openburnbar": {',
-      '      "command": "openburnbar-mcp-remote",',
+      '      "command": "openburnbar",',
       '      "args": ["mcp", "serve"]',
       "    }",
       "  }",
@@ -810,8 +811,10 @@ const slo = [
         <span class="eyebrow eyebrow--ember">Install</span>
         <h2 id="install-h">Drop into any client in under a minute.</h2>
         <p class="lead">
-          The hosted path uses the <code>openburnbar-mcp-remote</code> stdio shim (or direct HTTP for
-          clients that speak the 2025-11-25 spec). The local path is one shell script and a JSON snippet.
+          The hosted path uses the <code>openburnbar</code> CLI from npm — install it with
+          <code>npm i -g openburnbar</code> or run it ad-hoc with <code>npx -y openburnbar</code> —
+          as the stdio shim (or hit direct HTTP if your client speaks the 2025-11-25 spec). The local
+          path is one shell script and a JSON snippet.
         </p>
       </header>
 
@@ -1029,8 +1032,9 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
         <h2 id="ccmirror-h">Connect, list, revoke — from inside the app.</h2>
         <p>
           The macOS app and the iPhone/iPad app both ship a Remote MCP card. It pulls the live
-          <code>remote_mcp_clients</code> Firestore collection scoped to your user, shows the stdio shim
-          and doctor commands, and lets you revoke any connected agent with one confirmation.
+          <code>remote_mcp_clients</code> Firestore collection scoped to your user, shows the
+          <code>openburnbar</code> stdio shim (install: <code>npm i -g openburnbar</code>) and
+          doctor commands, and lets you revoke any connected agent with one confirmation.
         </p>
         <p>
           Revocation hits the <code>revokeRemoteMcpClient</code> callable; the next bearer-token refresh
@@ -1074,7 +1078,8 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
         </p>
         <dl class="ccmirror__rows mono">
           <div><dt>Endpoint</dt><dd>https://mcp.burnbar.ai/mcp</dd></div>
-          <div><dt>Stdio shim</dt><dd>openburnbar-mcp-remote mcp serve</dd></div>
+          <div><dt>Install</dt><dd>npm i -g openburnbar</dd></div>
+          <div><dt>Stdio shim</dt><dd>openburnbar mcp serve</dd></div>
           <div><dt>Doctor</dt><dd>openburnbar mcp doctor</dd></div>
         </dl>
 

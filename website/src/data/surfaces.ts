@@ -101,7 +101,7 @@ export const SURFACES: Surface[] = [
     status: "shipping",
     statusLabel: "Shipping",
     description:
-      "openburnbar — eight commands for scripting, agents, and operators. Same daemon, no extra account.",
+      "openburnbar-cli — eight commands for scripting, agents, and operators. Same daemon, no extra account. (Distinct from the npm package `openburnbar`, which is the Node MCP / resume / memory CLI.)",
     bullets: [
       "health · controller · questions · followups · missions",
       "mission-approve · simulator-runs · simulator-replay",

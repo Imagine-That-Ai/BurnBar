@@ -52,7 +52,10 @@ The Pensieve memory hook — on-device embed, cloak, and seal plus a local commi
 - `memory run` — reads a transcript from `--transcript <path>` or stdin, prepares net-new memory chunks.
 - `memory sync` — same pipeline, explicit sync.
 
-All three are fully local. No network calls, ever.
+All three are local-first and make no calls to mcp.burnbar.ai. Honest caveats:
+`memory run`/`sync` spawn your own `claude -p` CLI for extraction (the transcript
+is processed by your own Anthropic CLI, billed to your usage), and the embedder
+downloads `Xenova/bge-small-en-v1.5` from Hugging Face on first use.
 
 ### `openburnbar resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn]`
 
@@ -71,7 +74,7 @@ Prints the one-line usage and exits 0. No network.
 | `mcp login` | Yes — device-link start/poll against `https://mcp.burnbar.ai` |
 | `resume` / `obbresume` | Yes — `tools/call` against `https://mcp.burnbar.ai/mcp` |
 | `mcp install` | No — prints local config |
-| `memory install\|run\|sync` | No — on-device only |
+| `memory install\|run\|sync` | No calls to mcp.burnbar.ai — may spawn your `claude -p` CLI and download the embedder (`Xenova/bge-small-en-v1.5`) on first use |
 | `--help` / `-h` / no args | No — usage text only |
 
 The endpoint is `https://mcp.burnbar.ai/mcp` by default; `OPENBURNBAR_MCP_ENDPOINT` overrides it (loopback hosts allowed for local development, everything else must be https).
