@@ -1,0 +1,1903 @@
+{
+  "current_space_id": 1,
+  "windows": [
+    {
+      "app_name": "BurnBar",
+      "bounds": {
+        "height": 658.0,
+        "width": 780.0,
+        "x": 570.0,
+        "y": 135.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 5852,
+      "space_ids": [
+        1
+      ],
+      "title": "",
+      "window_id": 14183,
+      "z_index": 139
+    },
+    {
+      "app_name": "Cua Driver",
+      "bounds": {
+        "height": 1080.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 98139,
+      "space_ids": [
+        1
+      ],
+      "title": "",
+      "window_id": 14172,
+      "z_index": 137
+    },
+    {
+      "app_name": "CursorUIViewService",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 0.0,
+        "y": 1016.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1345,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14171,
+      "z_index": 136
+    },
+    {
+      "app_name": "universalAccessAuthWarn",
+      "bounds": {
+        "height": 181.0,
+        "width": 461.0,
+        "x": 729.0,
+        "y": 225.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 1997,
+      "space_ids": [
+        1
+      ],
+      "title": "Device Control and Data Access",
+      "window_id": 14152,
+      "z_index": 135
+    },
+    {
+      "app_name": "AutoFill",
+      "bounds": {
+        "height": 237.0,
+        "width": 312.0,
+        "x": 0.0,
+        "y": 843.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 97001,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14118,
+      "z_index": 134
+    },
+    {
+      "app_name": "factory-desktop",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96832,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14116,
+      "z_index": 133
+    },
+    {
+      "app_name": "factory-desktop",
+      "bounds": {
+        "height": 800.0,
+        "width": 1200.0,
+        "x": 604.0,
+        "y": 33.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 96832,
+      "space_ids": [
+        1
+      ],
+      "title": "Find and finish droid mission - Factory",
+      "window_id": 14115,
+      "z_index": 132
+    },
+    {
+      "app_name": "factory-desktop",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96832,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14113,
+      "z_index": 130
+    },
+    {
+      "app_name": "factory-desktop",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96832,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14112,
+      "z_index": 129
+    },
+    {
+      "app_name": "factory-desktop",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96832,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14111,
+      "z_index": 128
+    },
+    {
+      "app_name": "factory-desktop",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96832,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14110,
+      "z_index": 127
+    },
+    {
+      "app_name": "CursorUIViewService",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 0.0,
+        "y": 1016.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1345,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14109,
+      "z_index": 126
+    },
+    {
+      "app_name": "Open and Save Panel Service",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96744,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14103,
+      "z_index": 125
+    },
+    {
+      "app_name": "Safari",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96711,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14102,
+      "z_index": 124
+    },
+    {
+      "app_name": "Safari",
+      "bounds": {
+        "height": 960.0,
+        "width": 1915.0,
+        "x": 5.0,
+        "y": 30.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 96711,
+      "space_ids": [
+        1
+      ],
+      "title": "Personal — CubeLove — a voxel Earth built with love",
+      "window_id": 14101,
+      "z_index": 123
+    },
+    {
+      "app_name": "Safari",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96711,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14099,
+      "z_index": 121
+    },
+    {
+      "app_name": "Safari",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96711,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14098,
+      "z_index": 120
+    },
+    {
+      "app_name": "Safari",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96711,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14097,
+      "z_index": 119
+    },
+    {
+      "app_name": "Safari",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 96711,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14096,
+      "z_index": 118
+    },
+    {
+      "app_name": "CursorUIViewService",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 0.0,
+        "y": 1016.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1345,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14094,
+      "z_index": 117
+    },
+    {
+      "app_name": "Splashtop Streamer",
+      "bounds": {
+        "height": 0.0,
+        "width": 0.0,
+        "x": -265.0,
+        "y": 1253.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 83786,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14084,
+      "z_index": 116
+    },
+    {
+      "app_name": "CursorUIViewService",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 0.0,
+        "y": 1016.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1345,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14020,
+      "z_index": 115
+    },
+    {
+      "app_name": "AutoFill",
+      "bounds": {
+        "height": 237.0,
+        "width": 312.0,
+        "x": 960.0,
+        "y": 413.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 403,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14019,
+      "z_index": 114
+    },
+    {
+      "app_name": "Hermes",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 319,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14017,
+      "z_index": 113
+    },
+    {
+      "app_name": "Hermes",
+      "bounds": {
+        "height": 620.0,
+        "width": 960.0,
+        "x": 960.0,
+        "y": 30.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 319,
+      "space_ids": [
+        1
+      ],
+      "title": "Hermes",
+      "window_id": 14016,
+      "z_index": 112
+    },
+    {
+      "app_name": "Hermes",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 319,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14014,
+      "z_index": 110
+    },
+    {
+      "app_name": "Hermes",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 319,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14013,
+      "z_index": 109
+    },
+    {
+      "app_name": "Hermes",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 319,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14012,
+      "z_index": 108
+    },
+    {
+      "app_name": "Hermes",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 319,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14011,
+      "z_index": 107
+    },
+    {
+      "app_name": "CursorUIViewService",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1345,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13976,
+      "z_index": 106
+    },
+    {
+      "app_name": "Google Chrome",
+      "bounds": {
+        "height": 1.0,
+        "width": 1.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 53346,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13684,
+      "z_index": 105
+    },
+    {
+      "app_name": "Google Chrome",
+      "bounds": {
+        "height": 1.0,
+        "width": 1.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 53346,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13683,
+      "z_index": 104
+    },
+    {
+      "app_name": "Splashtop Streamer",
+      "bounds": {
+        "height": 453.0,
+        "width": 468.0,
+        "x": 0.0,
+        "y": 537.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 83786,
+      "space_ids": null,
+      "title": "Virtual Display",
+      "window_id": 14079,
+      "z_index": 103
+    },
+    {
+      "app_name": "Google Chrome",
+      "bounds": {
+        "height": 89.0,
+        "width": 1118.0,
+        "x": 121.0,
+        "y": 47.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 53346,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13682,
+      "z_index": 102
+    },
+    {
+      "app_name": "Splashtop Streamer",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 83786,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14078,
+      "z_index": 101
+    },
+    {
+      "app_name": "Google Chrome",
+      "bounds": {
+        "height": 107.0,
+        "width": 1118.0,
+        "x": 121.0,
+        "y": 47.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 53346,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13681,
+      "z_index": 100
+    },
+    {
+      "app_name": "Google Chrome",
+      "bounds": {
+        "height": 720.0,
+        "width": 1280.0,
+        "x": 22.0,
+        "y": 22.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 53346,
+      "space_ids": null,
+      "title": "Hermes Security Sentinel • 2026-08-16 Morning Run",
+      "window_id": 13680,
+      "z_index": 99
+    },
+    {
+      "app_name": "AutoFill",
+      "bounds": {
+        "height": 237.0,
+        "width": 312.0,
+        "x": 260.0,
+        "y": 693.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 36260,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13370,
+      "z_index": 98
+    },
+    {
+      "app_name": "Antigravity",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 36162,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13368,
+      "z_index": 97
+    },
+    {
+      "app_name": "Antigravity",
+      "bounds": {
+        "height": 900.0,
+        "width": 1400.0,
+        "x": 260.0,
+        "y": 30.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 36162,
+      "space_ids": [
+        1
+      ],
+      "title": "Migrate Droid Mission Loc...",
+      "window_id": 13367,
+      "z_index": 96
+    },
+    {
+      "app_name": "Antigravity",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 36162,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13365,
+      "z_index": 94
+    },
+    {
+      "app_name": "Antigravity",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 36162,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13364,
+      "z_index": 93
+    },
+    {
+      "app_name": "Antigravity",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 36162,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13363,
+      "z_index": 92
+    },
+    {
+      "app_name": "Antigravity",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 36162,
+      "space_ids": null,
+      "title": "",
+      "window_id": 13362,
+      "z_index": 91
+    },
+    {
+      "app_name": "TextExpander",
+      "bounds": {
+        "height": 628.0,
+        "width": 1030.0,
+        "x": 235.0,
+        "y": 225.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 82986,
+      "space_ids": [
+        1
+      ],
+      "title": "TextExpander",
+      "window_id": 12661,
+      "z_index": 89
+    },
+    {
+      "app_name": "TextExpander",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82986,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12660,
+      "z_index": 88
+    },
+    {
+      "app_name": "TextExpander",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82986,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12658,
+      "z_index": 86
+    },
+    {
+      "app_name": "TextExpander",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82986,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12657,
+      "z_index": 85
+    },
+    {
+      "app_name": "TextExpander",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82986,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12656,
+      "z_index": 84
+    },
+    {
+      "app_name": "Ghostty",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82660,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12638,
+      "z_index": 83
+    },
+    {
+      "app_name": "Ghostty",
+      "bounds": {
+        "height": 960.0,
+        "width": 960.0,
+        "x": 0.0,
+        "y": 30.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82660,
+      "space_ids": null,
+      "title": "π - dewclaw",
+      "window_id": 12637,
+      "z_index": 82
+    },
+    {
+      "app_name": "Ghostty",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82660,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12634,
+      "z_index": 81
+    },
+    {
+      "app_name": "Ghostty",
+      "bounds": {
+        "height": 960.0,
+        "width": 960.0,
+        "x": 0.0,
+        "y": 30.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82660,
+      "space_ids": null,
+      "title": "…/openburnbar-npm/tools/openburnbar-mcp-remote",
+      "window_id": 13030,
+      "z_index": 80
+    },
+    {
+      "app_name": "Ghostty",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82660,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12633,
+      "z_index": 79
+    },
+    {
+      "app_name": "Ghostty",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82660,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12632,
+      "z_index": 78
+    },
+    {
+      "app_name": "TextExpander",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82986,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12655,
+      "z_index": 77
+    },
+    {
+      "app_name": "Ghostty",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 82660,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12635,
+      "z_index": 74
+    },
+    {
+      "app_name": "AutoFill",
+      "bounds": {
+        "height": 251.0,
+        "width": 322.0,
+        "x": 0.0,
+        "y": 829.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 20838,
+      "space_ids": null,
+      "title": "",
+      "window_id": 11391,
+      "z_index": 73
+    },
+    {
+      "app_name": "CursorUIViewService",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 448.0,
+        "y": 846.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1345,
+      "space_ids": null,
+      "title": "",
+      "window_id": 11390,
+      "z_index": 72
+    },
+    {
+      "app_name": "1Password",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 19561,
+      "space_ids": null,
+      "title": "",
+      "window_id": 11389,
+      "z_index": 71
+    },
+    {
+      "app_name": "1Password",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 19561,
+      "space_ids": null,
+      "title": "",
+      "window_id": 11358,
+      "z_index": 70
+    },
+    {
+      "app_name": "1Password",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 19561,
+      "space_ids": null,
+      "title": "",
+      "window_id": 11357,
+      "z_index": 69
+    },
+    {
+      "app_name": "1Password",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 19561,
+      "space_ids": null,
+      "title": "",
+      "window_id": 11356,
+      "z_index": 68
+    },
+    {
+      "app_name": "1Password",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 19561,
+      "space_ids": null,
+      "title": "",
+      "window_id": 11355,
+      "z_index": 67
+    },
+    {
+      "app_name": "Wispr Flow",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 4030,
+      "space_ids": null,
+      "title": "",
+      "window_id": 10825,
+      "z_index": 66
+    },
+    {
+      "app_name": "Wispr Flow",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 4030,
+      "space_ids": null,
+      "title": "",
+      "window_id": 10824,
+      "z_index": 65
+    },
+    {
+      "app_name": "Wispr Flow",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 4030,
+      "space_ids": null,
+      "title": "",
+      "window_id": 10823,
+      "z_index": 64
+    },
+    {
+      "app_name": "Wispr Flow",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 4030,
+      "space_ids": null,
+      "title": "",
+      "window_id": 10822,
+      "z_index": 63
+    },
+    {
+      "app_name": "1Password 7",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 78818,
+      "space_ids": null,
+      "title": "",
+      "window_id": 9440,
+      "z_index": 58
+    },
+    {
+      "app_name": "Ghostty",
+      "bounds": {
+        "height": 960.0,
+        "width": 960.0,
+        "x": 0.0,
+        "y": 30.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 82660,
+      "space_ids": [
+        1
+      ],
+      "title": "CubeLove NPC Scenes: Disc Kill, Bespoke … - grok",
+      "window_id": 13409,
+      "z_index": 57
+    },
+    {
+      "app_name": "1Password 7",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 78818,
+      "space_ids": null,
+      "title": "",
+      "window_id": 9439,
+      "z_index": 56
+    },
+    {
+      "app_name": "1Password 7",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 78818,
+      "space_ids": null,
+      "title": "",
+      "window_id": 9438,
+      "z_index": 55
+    },
+    {
+      "app_name": "1Password 7",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 78818,
+      "space_ids": null,
+      "title": "",
+      "window_id": 9437,
+      "z_index": 54
+    },
+    {
+      "app_name": "Ollama",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 40993,
+      "space_ids": null,
+      "title": "",
+      "window_id": 8673,
+      "z_index": 52
+    },
+    {
+      "app_name": "Ollama",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 40993,
+      "space_ids": null,
+      "title": "",
+      "window_id": 8672,
+      "z_index": 51
+    },
+    {
+      "app_name": "Ollama",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 40993,
+      "space_ids": null,
+      "title": "",
+      "window_id": 8671,
+      "z_index": 50
+    },
+    {
+      "app_name": "Ollama",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 40993,
+      "space_ids": null,
+      "title": "",
+      "window_id": 8670,
+      "z_index": 49
+    },
+    {
+      "app_name": "CampoRemoteService",
+      "bounds": {
+        "height": 168.0,
+        "width": 280.0,
+        "x": 0.0,
+        "y": 912.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 83987,
+      "space_ids": null,
+      "title": "",
+      "window_id": 14085,
+      "z_index": 48
+    },
+    {
+      "app_name": "Ollama",
+      "bounds": {
+        "height": 600.0,
+        "width": 800.0,
+        "x": 560.0,
+        "y": 152.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 40993,
+      "space_ids": [
+        1
+      ],
+      "title": "Ollama",
+      "window_id": 8669,
+      "z_index": 47
+    },
+    {
+      "app_name": "UTM",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 16583,
+      "space_ids": null,
+      "title": "",
+      "window_id": 7796,
+      "z_index": 46
+    },
+    {
+      "app_name": "UTM",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 16583,
+      "space_ids": null,
+      "title": "",
+      "window_id": 7795,
+      "z_index": 45
+    },
+    {
+      "app_name": "UTM",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 16583,
+      "space_ids": null,
+      "title": "",
+      "window_id": 7794,
+      "z_index": 44
+    },
+    {
+      "app_name": "UTM",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 16583,
+      "space_ids": null,
+      "title": "",
+      "window_id": 7793,
+      "z_index": 43
+    },
+    {
+      "app_name": "Wispr Flow",
+      "bounds": {
+        "height": 850.0,
+        "width": 1350.0,
+        "x": 285.0,
+        "y": 58.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 4030,
+      "space_ids": null,
+      "title": "Hub",
+      "window_id": 10819,
+      "z_index": 41
+    },
+    {
+      "app_name": "Docker Desktop",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 20554,
+      "space_ids": null,
+      "title": "",
+      "window_id": 6045,
+      "z_index": 40
+    },
+    {
+      "app_name": "Docker Desktop",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 20554,
+      "space_ids": null,
+      "title": "",
+      "window_id": 6043,
+      "z_index": 39
+    },
+    {
+      "app_name": "Docker Desktop",
+      "bounds": {
+        "height": 720.0,
+        "width": 1281.0,
+        "x": 15.0,
+        "y": 35.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 20554,
+      "space_ids": [
+        1
+      ],
+      "title": "Containers - Docker Desktop",
+      "window_id": 6040,
+      "z_index": 37
+    },
+    {
+      "app_name": "UTM",
+      "bounds": {
+        "height": 652.0,
+        "width": 900.0,
+        "x": 510.0,
+        "y": 188.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 16583,
+      "space_ids": null,
+      "title": "UTM",
+      "window_id": 6008,
+      "z_index": 36
+    },
+    {
+      "app_name": "Docker Desktop",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 20554,
+      "space_ids": null,
+      "title": "",
+      "window_id": 6044,
+      "z_index": 35
+    },
+    {
+      "app_name": "Docker Desktop",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 20554,
+      "space_ids": null,
+      "title": "",
+      "window_id": 6042,
+      "z_index": 34
+    },
+    {
+      "app_name": "CursorUIViewService",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1345,
+      "space_ids": null,
+      "title": "",
+      "window_id": 12811,
+      "z_index": 30
+    },
+    {
+      "app_name": "BurnBar",
+      "bounds": {
+        "height": 750.0,
+        "width": 1100.0,
+        "x": 410.0,
+        "y": 83.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": true,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 5852,
+      "space_ids": [
+        1
+      ],
+      "title": "BurnBar",
+      "window_id": 14173,
+      "z_index": 28
+    },
+    {
+      "app_name": "Siri",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1231,
+      "space_ids": null,
+      "title": "",
+      "window_id": 1866,
+      "z_index": 27
+    },
+    {
+      "app_name": "Ollama",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 40993,
+      "space_ids": null,
+      "title": "",
+      "window_id": 8674,
+      "z_index": 25
+    },
+    {
+      "app_name": "Finder",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1218,
+      "space_ids": null,
+      "title": "",
+      "window_id": 62,
+      "z_index": 19
+    },
+    {
+      "app_name": "loginwindow",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 630,
+      "space_ids": null,
+      "title": "",
+      "window_id": 45,
+      "z_index": 18
+    },
+    {
+      "app_name": "Finder",
+      "bounds": {
+        "height": 64.0,
+        "width": 64.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1218,
+      "space_ids": null,
+      "title": "",
+      "window_id": 129,
+      "z_index": 14
+    },
+    {
+      "app_name": "Mail",
+      "bounds": {
+        "height": 632.0,
+        "width": 420.0,
+        "x": 700.0,
+        "y": 198.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 58345,
+      "space_ids": null,
+      "title": "iCloud Mail Cleanup",
+      "window_id": 7723,
+      "z_index": 10
+    },
+    {
+      "app_name": "Universal Control",
+      "bounds": {
+        "height": 0.0,
+        "width": 0.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1155,
+      "space_ids": null,
+      "title": "",
+      "window_id": 16,
+      "z_index": 9
+    },
+    {
+      "app_name": "Mail",
+      "bounds": {
+        "height": 500.0,
+        "width": 500.0,
+        "x": 0.0,
+        "y": 580.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 58345,
+      "space_ids": null,
+      "title": "",
+      "window_id": 7722,
+      "z_index": 8
+    },
+    {
+      "app_name": "Finder",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1218,
+      "space_ids": null,
+      "title": "",
+      "window_id": 61,
+      "z_index": 6
+    },
+    {
+      "app_name": "Mail",
+      "bounds": {
+        "height": 720.0,
+        "width": 1280.0,
+        "x": 320.0,
+        "y": 90.0
+      },
+      "current_space_id": 1,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": true,
+      "pid": 58345,
+      "space_ids": [
+        1
+      ],
+      "title": "Inbox",
+      "window_id": 7721,
+      "z_index": 5
+    },
+    {
+      "app_name": "Finder",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1218,
+      "space_ids": null,
+      "title": "",
+      "window_id": 60,
+      "z_index": 4
+    },
+    {
+      "app_name": "Finder",
+      "bounds": {
+        "height": 30.0,
+        "width": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "current_space_id": null,
+      "is_on_screen": false,
+      "layer": 0,
+      "on_current_space": null,
+      "pid": 1218,
+      "space_ids": null,
+      "title": "",
+      "window_id": 59,
+      "z_index": 3
+    }
+  ]
+}

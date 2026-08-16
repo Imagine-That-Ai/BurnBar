@@ -1,0 +1,37 @@
+real_attempt=desktop coordinate click at (658,15), no popover window/AX surface observed
+fallback inspection:
+MenuBarPopoverView fleet references:
+FleetService instantiation:
+AgentLens/Views/Dashboard/DashboardView.swift:32:    @State private var overviewAppeared = false
+AgentLens/Views/Dashboard/DashboardView.swift:43:    @State private var fleetService = FleetService(
+AgentLens/Views/Dashboard/DashboardView.swift:700:        .onAppear { overviewAppeared = true }
+AgentLens/Views/Dashboard/DashboardView.swift:902:            .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:903:            .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:904:            .animation(DesignSystem.Animation.standard.delay(0), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:913:            .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:914:            .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:915:            .animation(DesignSystem.Animation.standard.delay(0.06), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:924:            .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:925:            .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:926:            .animation(DesignSystem.Animation.standard.delay(0.12), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:935:            .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:936:            .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:937:            .animation(DesignSystem.Animation.standard.delay(0.18), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:965:                        .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:966:                        .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:967:                        .animation(DesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:974:        .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:975:        .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:976:        .animation(DesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:1003:                        .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:1004:                        .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:1005:                        .animation(DesignSystem.Animation.standard.delay(Double(index) * 0.06), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:1012:        .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:1013:        .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:1014:        .animation(DesignSystem.Animation.standard.delay(0.24), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:1033:            .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:1034:            .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:1035:            .animation(DesignSystem.Animation.standard.delay(0.28), value: overviewAppeared)
+AgentLens/Views/Dashboard/DashboardView.swift:1072:            .opacity(overviewAppeared ? 1 : 0)
+AgentLens/Views/Dashboard/DashboardView.swift:1073:            .offset(y: overviewAppeared ? 0 : 8)
+AgentLens/Views/Dashboard/DashboardView.swift:1074:            .animation(DesignSystem.Animation.standard.delay(0.34), value: overviewAppeared)

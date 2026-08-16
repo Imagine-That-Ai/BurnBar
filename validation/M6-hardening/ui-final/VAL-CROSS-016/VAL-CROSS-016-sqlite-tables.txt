@@ -1,0 +1,6 @@
+fleet_directives
+fleet_events
+fleet_snapshots
+grdb_migrations
+orchestrator_state
+sqlite_sequence

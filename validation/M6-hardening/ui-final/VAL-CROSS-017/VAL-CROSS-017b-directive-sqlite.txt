@@ -1,0 +1,1 @@
+m4-proposal-001|{"deliveryAttemptID":"97E7215F-C283-4F66-9960-3B8608A97712","payload":"Report current status","decidedAt":"2026-08-16T21:45:27.842Z","state":{"kind":"delivered"},"deliveryChannel":"hermes","kind":"askStatus","targetAgent":"hermes","createdAt":"2026-08-16T21:45:20.780Z","id":"m4-proposal-001"}|1786916720.78

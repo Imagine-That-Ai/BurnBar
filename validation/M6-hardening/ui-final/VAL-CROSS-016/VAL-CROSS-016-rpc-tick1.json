@@ -1,0 +1,229 @@
+{
+  "result": {
+    "snapshot": {
+      "machine": {
+        "memoryTotalBytes": 20886765568,
+        "memoryUsedBytes": 20702773248,
+        "thermal": {
+          "kind": "unavailable",
+          "reason": "pmset thermlog is empty on this machine; no cheap thermal API available"
+        },
+        "cpuPercent": 28.1078803202697,
+        "loadAverage": [
+          3.67138671875,
+          4.216796875,
+          4.66064453125
+        ],
+        "power": {
+          "kind": "unavailable",
+          "reason": "no cheap power-sensor API available on this machine"
+        },
+        "diskFreeBytes": 148945051648
+      },
+      "generatedAt": "2026-08-16T21:39:54.216Z",
+      "persistenceHealth": {
+        "kind": "ok"
+      },
+      "repos": [],
+      "runningCount": 0,
+      "countsByAgent": {
+        "gemini-cli": 0,
+        "codex": 0,
+        "claude-code": 0,
+        "hermes": 0,
+        "cursor": 0,
+        "grok-bot": 0,
+        "pi": 0,
+        "factory-droid": 0,
+        "kimi": 0,
+        "grok-cli": 0
+      },
+      "agents": [
+        {
+          "id": "claude-code",
+          "note": "No sessions directory present.",
+          "status": "unknown",
+          "displayName": "Claude Code",
+          "confidence": "unsupported",
+          "signals": []
+        },
+        {
+          "id": "factory-droid",
+          "note": "Roots present, no signal files; installed but inactive.",
+          "status": "idle",
+          "displayName": "Factory Droid",
+          "confidence": "activeSessionFile",
+          "signals": [
+            {
+              "kind": "root-presence",
+              "path": "/tmp/burnbar-cross-016b.BANA/roots/factory",
+              "detail": "Declared root present."
+            }
+          ]
+        },
+        {
+          "id": "codex",
+          "note": "Roots present, no lock files.",
+          "status": "idle",
+          "displayName": "Codex",
+          "confidence": "logHeartbeat",
+          "signals": []
+        },
+        {
+          "id": "hermes",
+          "note": "Gateway pid signal absent.",
+          "status": "unknown",
+          "displayName": "Hermes",
+          "confidence": "unsupported",
+          "signals": []
+        },
+        {
+          "id": "grok-bot",
+          "note": "Roots present, no signal files.",
+          "status": "unknown",
+          "displayName": "Grok Bot",
+          "confidence": "unsupported",
+          "signals": []
+        },
+        {
+          "id": "grok-cli",
+          "note": "Registry file absent.",
+          "status": "idle",
+          "displayName": "Grok CLI",
+          "confidence": "activeSessionFile",
+          "signals": [
+            {
+              "kind": "session-registry",
+              "path": "/tmp/burnbar-cross-016b.BANA/roots/grok/active_sessions.json",
+              "detail": "Registry file absent."
+            }
+          ]
+        },
+        {
+          "id": "pi",
+          "note": "Roots present, no transcript files.",
+          "status": "idle",
+          "displayName": "Pi",
+          "confidence": "logHeartbeat",
+          "signals": []
+        },
+        {
+          "id": "cursor",
+          "note": "Roots present, no signal files.",
+          "status": "idle",
+          "displayName": "Cursor",
+          "confidence": "activeSessionFile",
+          "signals": []
+        },
+        {
+          "id": "kimi",
+          "note": "No live signal is claimed for Kimi; typed unsupported row (probe plan in BURNBAR_FLEET_SIGNALS.md).",
+          "status": "unknown",
+          "displayName": "Kimi",
+          "confidence": "unsupported",
+          "signals": []
+        },
+        {
+          "id": "gemini-cli",
+          "note": "No live signal is claimed for Gemini CLI; typed unsupported row (probe plan in BURNBAR_FLEET_SIGNALS.md).",
+          "status": "unknown",
+          "displayName": "Gemini CLI",
+          "confidence": "unsupported",
+          "signals": []
+        }
+      ],
+      "probeHealth": [
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "claude-code",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/claude",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "factory-droid",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/factory",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "codex",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/codex",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "hermes",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/hermes",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "grok-bot",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/grokbot",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "grok-cli",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/grok",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "pi",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/pi",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "cursor",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/cursor",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "kimi",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/kimi",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        },
+        {
+          "state": {
+            "kind": "ok"
+          },
+          "agent": "gemini-cli",
+          "rootPath": "/tmp/burnbar-cross-016b.BANA/roots/gemini",
+          "checkedAt": "2026-08-16T21:39:54.216Z"
+        }
+      ],
+      "cadenceSeconds": 2,
+      "orchestrator": {
+        "pendingDirectives": 0,
+        "designation": {
+          "kind": "none"
+        }
+      },
+      "schemaVersion": 1
+    }
+  },
+  "protocolVersion": 1,
+  "id": "cross-016"
+}

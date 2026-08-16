@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-08-16T21:45:46.482Z",
+  "runningCount": 0,
+  "statuses": {
+    "claude-code": "unknown",
+    "factory-droid": "idle",
+    "codex": "idle",
+    "hermes": "unknown",
+    "grok-bot": "unknown",
+    "grok-cli": "idle",
+    "pi": "idle",
+    "cursor": "idle",
+    "kimi": "unknown",
+    "gemini-cli": "unknown"
+  },
+  "rpcFileParity": true
+}

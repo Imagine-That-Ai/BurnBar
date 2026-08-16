@@ -1,0 +1,92 @@
+{
+  "apps": [
+    {
+      "bundle_id": "com.apple.finder",
+      "name": "Finder",
+      "pid": 1218
+    },
+    {
+      "bundle_id": "com.utmapp.UTM",
+      "name": "UTM",
+      "pid": 16583
+    },
+    {
+      "bundle_id": "com.electron.dockerdesktop",
+      "name": "Docker Desktop",
+      "pid": 20554
+    },
+    {
+      "bundle_id": "com.electron.wispr-flow",
+      "name": "Wispr Flow",
+      "pid": 4030
+    },
+    {
+      "bundle_id": "com.mitchellh.ghostty",
+      "name": "Ghostty",
+      "pid": 82660
+    },
+    {
+      "bundle_id": "com.smileonmymac.textexpander",
+      "name": "TextExpander",
+      "pid": 82986
+    },
+    {
+      "bundle_id": "com.google.antigravity",
+      "name": "Antigravity",
+      "pid": 36162
+    },
+    {
+      "bundle_id": "com.nousresearch.hermes",
+      "name": "Hermes",
+      "pid": 319
+    },
+    {
+      "bundle_id": "com.apple.Safari",
+      "name": "Safari",
+      "pid": 96711
+    },
+    {
+      "bundle_id": "com.electron.factory",
+      "name": "factory-desktop",
+      "pid": 96832
+    }
+  ],
+  "windows": [
+    {
+      "app_name": "Cua Driver",
+      "pid": 98139,
+      "title": "",
+      "window_id": 14172
+    },
+    {
+      "app_name": "factory-desktop",
+      "pid": 96832,
+      "title": "Find and finish droid mission - Factory",
+      "window_id": 14115
+    },
+    {
+      "app_name": "universalAccessAuthWarn",
+      "pid": 1997,
+      "title": "Device Control and Data Access",
+      "window_id": 14152
+    },
+    {
+      "app_name": "Antigravity",
+      "pid": 36162,
+      "title": "Migrate Droid Mission Loc...",
+      "window_id": 13367
+    },
+    {
+      "app_name": "Ghostty",
+      "pid": 82660,
+      "title": "CubeLove NPC Scenes: Disc Kill, Bespoke … - grok",
+      "window_id": 13409
+    },
+    {
+      "app_name": "Hermes",
+      "pid": 319,
+      "title": "Hermes",
+      "window_id": 14016
+    }
+  ]
+}

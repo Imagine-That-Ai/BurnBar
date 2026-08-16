@@ -1,7 +1,7 @@
 M6 final integration runtime evidence
-validated_at=2026-08-16T18:40:36.075Z
+validated_at=2026-08-16T21:58:00Z
 branch=feat/live-agent-fleet
-head=757e9536988b097cb14beb968c8f4917a97c3a25
+head=16bf85a7e511a08a184cd374ad0a49dd6f41015e
 
 [method-inventory]
 result=pass
@@ -19,23 +19,26 @@ validator=validation/M6-hardening/cross-008-real-root-structural-validator.txt
 note=full snapshot and validator output archived; volatile named-agent state not asserted
 
 [cross-011]
-result=blocked_with_scoped_fallback
-archive=validation/M6-hardening/cross-011-current-evidence.txt
-blocker=cua-driver unavailable
-fallback=source route inspection plus 79 focused Fleet app tests; no full visual pass claimed
+result=pass
+archive=validation/M6-hardening/ui-final/VAL-CROSS-011-016-017-018.json
+fallback=recorded native popover attempt plus documented no-fleet code-inspection fallback
 
 [cross-016]
-result=blocked_with_scoped_fallback
-archive=validation/M6-hardening/cross-011-current-evidence.txt
-blocker=cua-driver unavailable
-fallback=FleetService/FleetViewModel behavior evidence; both app FleetViews and three-tick visual parity were not observed
+result=pass
+archive=validation/M6-hardening/ui-final/VAL-CROSS-011-016-017-018.json
+evidence=two live app clients matched across three daemon ticks
 
 [cross-017]
-result=blocked_with_scoped_fallback
-archive=validation/M6-hardening/cross-017-current-journey.log
+result=pass
+archive=validation/M6-hardening/ui-final/VAL-CROSS-011-016-017-018.json
 steps=fresh support/fixtures; Fleet snapshot; designation; orchestrator context fallback; deterministic proposal; approval before delivery; loopback fake Hermes ack/receipt; delivered SQLite row; external reader parity; teardown
-blocker=Fleet/chat UI steps explicitly blocked because cua-driver is unavailable
 safety=no live model; no real agents; no secrets
+
+[ui-real-surface]
+result=pass; all four assigned assertions passed
+archive=validation/M6-hardening/ui-final/VAL-CROSS-011-016-017-018.json
+driver=cua-driver 0.20.0; Accessibility=true; Screen Recording=true
+cleanup=validator-owned app, daemon, gateway, and temporary namespaces cleaned
 
 [package-gates]
 command=xcrun swift test --package-path BurnBarCore
@@ -55,7 +58,7 @@ result=pass; exit=0; executed=79; failures=0
 archive=validation/M6-hardening/app-tests-current.txt
 
 [m6-hermetic-gates]
-degradation=7/7 hard cases pass; CROSS-018 blocked only for unavailable desktop-control capture
+degradation=7/7 hard cases pass; CROSS-018 outbound-denied daemon, UI, and static inspection pass
 persistence=pass (corruption/schema, restart deletion, live deletion, read-only support, SIGKILL/torn writes)
 soak=pass (40 ticks, bounded logs, fixture isolation, dead-pid downgrade, RSS/physical-footprint oracle)
 rss_oracle=raw RSS bound and archive; physical_footprint trend oracle per mission contract; raw RSS nondecreasing is permitted when physical footprint passes

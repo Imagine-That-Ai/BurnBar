@@ -1,0 +1,138 @@
+{
+  "groupId": "VAL-CROSS-011-016-017-018",
+  "testedAt": "2026-08-16T21:58:00Z",
+  "isolation": {
+    "repo": "/Users/dewclaw/Developer/AgentLens",
+    "branch": "feat/live-agent-fleet",
+    "evidenceRoot": "/Users/dewclaw/Developer/AgentLens/validation/M6-hardening/ui-final",
+    "daemon": "BurnBarDaemon/.build/arm64-apple-macosx/debug/BurnBarDaemon",
+    "app": ".derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar",
+    "tempNamespaces": ["/tmp/burnbar-cross-011.QcIE", "/tmp/burnbar-cross-016b.BANA", "/tmp/burnbar-cross-017b.G0Cd", "/tmp/burnbar-cross-018.F84u"],
+    "cua": "cua-driver 0.20.0; Accessibility=true; Screen Recording=true"
+  },
+  "toolsUsed": ["cua-driver", "python3 AF_UNIX", "sqlite3 read-only", "jq", "sandbox-exec"],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-011",
+      "title": "Mission-boundary regression — pre-existing app surfaces still work",
+      "status": "pass",
+      "steps": [
+        {"action": "Launch fresh sandboxed app and hermetic daemon", "expected": "BurnBar dashboard opens", "observed": "BurnBar window opened; Overview AX tree captured."},
+        {"action": "Inspect Overview", "expected": "Overview usage surface renders", "observed": "Agent providers, 0 sessions recorded, usage toolbar and provider summary rendered honestly."},
+        {"action": "Open Factory provider detail", "expected": "Pre-existing provider detail renders", "observed": "Factory detail rendered with quota, volume, session ledger and no-session state."},
+        {"action": "Open Settings", "expected": "Settings opens", "observed": "Settings window screenshot shows General/Account/Providers/Alerts/Notifications and Appearance controls."},
+        {"action": "Exercise All Providers, Claude Code, Codex, Database, Projects, Session Logs sidebar routes", "expected": "Every pre-fleet route reachable", "observed": "Each route click produced a corresponding before/after AX tree and screenshot; route-specific titles/content observed."},
+        {"action": "Attempt real menu-bar popover", "expected": "Popover opens with pre-fleet content", "observed": "Real desktop coordinate attempt produced no popover window/AX surface; documented fallback used: MenuBarPopoverView.swift has zero fleet references and FleetService is confined to DashboardView Fleet route."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-overview.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-factory-detail.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-settings.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-all-providers.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-claude-code.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-codex.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-database.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-projects.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-session-logs.png"
+        ],
+        "rawAX": "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-overview-ax.json and route-specific *-after.json files",
+        "consoleErrors": "none observed; native app logs empty",
+        "network": "No browser network surface; local daemon socket only",
+        "popoverFallback": "validation/M6-hardening/ui-final/VAL-CROSS-011/VAL-CROSS-011-popover-fallback.txt"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-016",
+      "title": "Concurrent app instances are safe or explicitly singleton",
+      "status": "pass",
+      "steps": [
+        {"action": "Launch two independent BurnBar processes against one hermetic daemon/socket policy", "expected": "Both clients launch without crash", "observed": "Two processes/windows observed: client1 pid 14623/window 14215 and client2 pid 14706/window 14217."},
+        {"action": "Open FleetView in both", "expected": "Both render Fleet", "observed": "Both AX trees rendered Live Agent Fleet, 0 agents running, Updated just now, 10 agent rows and identical statuses."},
+        {"action": "Poll across three cadence ticks", "expected": "Cadence remains on time and state is internally consistent", "observed": "RPC ticks generated at 21:39:54.216Z, 21:39:56.220Z, 21:39:58.219Z; 0 running and identical 10-agent statuses each tick; both clients remained healthy."},
+        {"action": "Inspect directive DB", "expected": "No duplicate directive records", "observed": "Read-only fleet_directives count = 0."}
+      ],
+      "evidence": {
+        "screenshots": [
+          "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-client1-tick1.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-client1-tick2.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-client1-tick3.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-client2-tick1.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-client2-tick2.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-client2-tick3.png"
+        ],
+        "rawAX": "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-client{1,2}-tick{1,2,3}-ax.json",
+        "rpc": "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-rpc-tick{1,2,3}.json",
+        "sqlite": "validation/M6-hardening/ui-final/VAL-CROSS-016/VAL-CROSS-016-directive-count.txt",
+        "consoleErrors": "none observed; app logs empty",
+        "network": "AF_UNIX daemon socket; no cloud requests"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-017",
+      "title": "First-visit fleet journey reaches an honest external read",
+      "status": "pass",
+      "steps": [
+        {"action": "Launch fresh support/fixtures and open Dashboard/Fleet", "expected": "Fleet UI shows fixture counts", "observed": "Fleet screenshot/AX shows 0 agents running, 10 declared rows, Updated just now."},
+        {"action": "Designate Hermes orchestrator", "expected": "Daemon-authoritative Hermes designation", "observed": "UI AX shows Designated: Hermes and picker value Hermes after documented daemon RPC set; direct native picker action was attempted but CUA returned AXPress -25202, so the authoritative RPC path was used and observed."},
+        {"action": "Open existing chat and switch to Orchestrator mode", "expected": "Existing chat shows Orchestrator: hermes", "observed": "Chat screenshot/AX shows Mode=Orchestrator and Orchestrator: hermes."},
+        {"action": "Ask fleet question via deterministic PATH/HOME shim", "expected": "Canonical proposal appears", "observed": "Fake codex emitted nonce-bound m4-proposal-001 askStatus/hermes proposal; UI shows Directive proposal, payload and Approve proposal."},
+        {"action": "Approve proposal", "expected": "Approval precedes delivery", "observed": "UI first showed Approved; gateway receipt then returned HTTP 200 ack; final UI showed Directive delivered."},
+        {"action": "Inspect directive SQLite and fresh external reader", "expected": "Delivered row and RPC/file parity", "observed": "Read-only row m4-proposal-001 state=delivered, deliveryChannel=hermes; external reader rpcFileParity=true with matching generatedAt/runningCount/statuses."}
+      ],
+      "evidence": {
+        "screenshots": [
+          "validation/M6-hardening/ui-final/VAL-CROSS-017/VAL-CROSS-017b-dashboard.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-017/VAL-CROSS-017b-fleet.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-017/VAL-CROSS-017b-proposal.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-017/VAL-CROSS-017b-delivery.png"
+        ],
+        "orderedLogs": "validation/M6-hardening/ui-final/VAL-CROSS-017/fake-cli.log, fixture.log, proposal.json, delivery.json",
+        "directiveSQLite": "validation/M6-hardening/ui-final/VAL-CROSS-017/VAL-CROSS-017b-directive-sqlite.txt",
+        "gatewayReceipt": "validation/M6-hardening/ui-final/VAL-CROSS-017/receipts.jsonl",
+        "externalReader": "validation/M6-hardening/ui-final/VAL-CROSS-017/VAL-CROSS-017b-external-reader.json",
+        "consoleErrors": "none observed; app/daemon logs empty",
+        "network": "Loopback fake Hermes only at 127.0.0.1:18650; no real credentials"
+      },
+      "issues": "The first picker AXPress attempt failed with -25202; the documented daemon-authoritative RPC set path was used, then the UI observed the resulting Hermes state."
+    },
+    {
+      "id": "VAL-CROSS-018",
+      "title": "Fleet serving path works offline and does not use cloud state",
+      "status": "pass",
+      "steps": [
+        {"action": "Run daemon with deny-network-outbound sandbox profile and no cloud credentials", "expected": "Daemon remains locally usable", "observed": "Daemon bound local AF_UNIX socket under profile (allow default, deny network-outbound, allow network-bind/inbound)."},
+        {"action": "Read Fleet RPC and well-known file", "expected": "Local snapshot served and persisted", "observed": "RPC returned schemaVersion 1 snapshot, runningCount 0, persistenceHealth ok; fleet-snapshot.json matched and was archived."},
+        {"action": "Render FleetView", "expected": "Actual Fleet UI renders from local daemon", "observed": "Normal app connected to the offline daemon; AX/screenshot show Live Agent Fleet, 0 agents running, Updated just now, honest Unknown rows."},
+        {"action": "Static/import inspection", "expected": "No Firestore/Firebase/CloudSync fleet serving dependency", "observed": "No Firebase, Firestore, CloudSync or cloud-storage imports in fleet serving code; only the separately documented loopback Hermes URLSession delivery channel is present."}
+      ],
+      "evidence": {
+        "screenshots": [
+          "validation/M6-hardening/ui-final/VAL-CROSS-018/VAL-CROSS-018-fleet-local.png",
+          "validation/M6-hardening/ui-final/VAL-CROSS-018/VAL-CROSS-018-dashboard.png"
+        ],
+        "rawAX": "validation/M6-hardening/ui-final/VAL-CROSS-018/VAL-CROSS-018-fleet-local-ax.json",
+        "rpc": "validation/M6-hardening/ui-final/VAL-CROSS-018/VAL-CROSS-018-rpc.json",
+        "wellKnown": "validation/M6-hardening/ui-final/VAL-CROSS-018/VAL-CROSS-018-fleet-snapshot.json",
+        "staticInspection": "validation/M6-hardening/ui-final/VAL-CROSS-018/VAL-CROSS-018-static-import-inspection.txt",
+        "networkDeniedRun": "validation/M6-hardening/ui-final/VAL-CROSS-018/daemon2.log; no network/cloud errors or requests observed",
+        "consoleErrors": "none observed; app3.log empty"
+      },
+      "issues": "The app itself was not sandboxed for the final UI capture because macOS seatbelt denied its local socket connect; the daemon remained under the deny-network profile, and the normal app used only the local socket."
+    }
+  ],
+  "frictions": [
+    {"description":"Native SwiftUI AX popup menu selection for Fleet designation returned -25202/element-outside-target-window.","resolved":true,"resolution":"Used the documented daemon-authoritative orchestrator.set RPC and verified the resulting Hermes state in FleetView.","affectedAssertions":["VAL-CROSS-017"]},
+    {"description":"The app appends /v1/chat/completions to BURNBAR_HERMES_GATEWAY_URL.","resolved":true,"resolution":"Restarted the fresh journey with the base loopback URL http://127.0.0.1:18650 rather than a URL already containing the path.","affectedAssertions":["VAL-CROSS-017"]},
+    {"description":"First sandbox profile denied Unix socket bind as well as outbound network.","resolved":true,"resolution":"Used explicit local network-bind/inbound allowances with network-outbound denied; daemon RPC and UI then worked.","affectedAssertions":["VAL-CROSS-018"]}
+  ],
+  "blockers": [],
+  "cleanup": {
+    "status":"complete",
+    "details":"Validator-owned BurnBar app, daemon, and fake gateway PIDs were stopped by exact PID/socket resolution. Evidence was copied to the allowed ui-final directory. Temporary /tmp namespaces were removed after evidence archival; no product, protected WIP, agent root, mission ledger, or ~/.factory/artifacts path was touched."
+  },
+  "summary":"All four assigned assertions passed. CROSS-011 passed with the documented code-inspection fallback for the real menu-bar popover; CROSS-016 passed with two live clients across three ticks; CROSS-017 passed end to end through approved Hermes delivery and fresh reader parity; CROSS-018 passed with a local daemon under outbound-denied sandbox and actual Fleet UI rendering."
+}

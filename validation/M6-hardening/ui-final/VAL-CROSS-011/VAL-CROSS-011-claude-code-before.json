@@ -1,0 +1,1887 @@
+{
+  "_note": "Prefer `elements` — `tree_markdown` will continue to work but new fields will only be added to the structured side. Issue #22865: use `max_elements` / `max_depth` to bound the AX walk on apps with very large trees.",
+  "background_input": {
+    "exact_window": {
+      "pid": 6613,
+      "status": "matched",
+      "window_id": 14187
+    },
+    "observation": {
+      "frame_freshness": "unknown",
+      "one_shot_capture": "unavailable"
+    },
+    "routes": [
+      {
+        "route": "accessibility",
+        "status": "available"
+      },
+      {
+        "route": "window_pointer",
+        "status": "available"
+      },
+      {
+        "route": "pid_keyboard",
+        "status": "available"
+      }
+    ]
+  },
+  "element_count": 165,
+  "elements": [
+    {
+      "depth": 0,
+      "element_index": 0,
+      "element_token": "s00000008:0",
+      "frame": {
+        "h": 750.0,
+        "w": 1100.0,
+        "x": 410.0,
+        "y": 83.0
+      },
+      "label": "BurnBar",
+      "role": "AXWindow"
+    },
+    {
+      "depth": 1,
+      "element_index": 1,
+      "element_token": "s00000008:1",
+      "enabled": true,
+      "frame": {
+        "h": 54.0,
+        "w": 54.0,
+        "x": 1436.0,
+        "y": 759.0
+      },
+      "label": "Sparkle",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 2,
+      "element_token": "s00000008:2",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 265.5
+      },
+      "label": "All Providers, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 3,
+      "element_token": "s00000008:3",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 323.5
+      },
+      "label": "Aider, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 4,
+      "element_token": "s00000008:4",
+      "enabled": true,
+      "frame": {
+        "h": 81.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 381.5
+      },
+      "label": "Augment, 0 sessions, Not yet supported / Unsupported",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 5,
+      "element_token": "s00000008:5",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 469.5
+      },
+      "label": "Claude Code, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 6,
+      "element_token": "s00000008:6",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 527.5
+      },
+      "label": "Cline, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 7,
+      "element_token": "s00000008:7",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 585.5
+      },
+      "label": "Codex, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 8,
+      "element_token": "s00000008:8",
+      "enabled": true,
+      "frame": {
+        "h": 64.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 643.5
+      },
+      "label": "Copilot, 0 sessions, Estimated / no sessions yet",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 9,
+      "element_token": "s00000008:9",
+      "enabled": true,
+      "frame": {
+        "h": 64.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 714.5
+      },
+      "label": "Cursor, 0 sessions, Estimated / no sessions yet",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 10,
+      "element_token": "s00000008:10",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 785.5
+      },
+      "label": "Factory, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 11,
+      "element_token": "s00000008:11",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 843.5
+      },
+      "label": "Forge, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 12,
+      "element_token": "s00000008:12",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 901.5
+      },
+      "label": "Gemini CLI, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 13,
+      "element_token": "s00000008:13",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 959.5
+      },
+      "label": "Goose, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 14,
+      "element_token": "s00000008:14",
+      "enabled": true,
+      "frame": {
+        "h": 81.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1017.5
+      },
+      "label": "Grok Bot, 0 sessions, Not yet supported / Unsupported",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 15,
+      "element_token": "s00000008:15",
+      "enabled": true,
+      "frame": {
+        "h": 81.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1105.5
+      },
+      "label": "Grok CLI, 0 sessions, Estimated / no sessions yet",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 16,
+      "element_token": "s00000008:16",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1193.5
+      },
+      "label": "Hermes, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 17,
+      "element_token": "s00000008:17",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1251.5
+      },
+      "label": "Kilo Code, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 18,
+      "element_token": "s00000008:18",
+      "enabled": true,
+      "frame": {
+        "h": 64.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1309.5
+      },
+      "label": "Kimi, 0 sessions, Exact / no sessions yet",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 19,
+      "element_token": "s00000008:19",
+      "enabled": true,
+      "frame": {
+        "h": 81.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1380.5
+      },
+      "label": "MiniMax, 0 sessions, Estimated / no sessions yet",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 20,
+      "element_token": "s00000008:20",
+      "enabled": true,
+      "frame": {
+        "h": 64.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1468.5
+      },
+      "label": "Pi, 0 sessions, Estimated / no sessions yet",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 21,
+      "element_token": "s00000008:21",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1539.5
+      },
+      "label": "Roo Code, 0 sessions, 0",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 22,
+      "element_token": "s00000008:22",
+      "enabled": true,
+      "frame": {
+        "h": 64.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1597.5
+      },
+      "label": "Zai, 0 sessions, Estimated / no sessions yet",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 23,
+      "element_token": "s00000008:23",
+      "enabled": true,
+      "frame": {
+        "h": 64.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1668.5
+      },
+      "label": "Database, Corpus, search & system truth",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 24,
+      "element_token": "s00000008:24",
+      "enabled": true,
+      "frame": {
+        "h": 51.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1739.5
+      },
+      "label": "Projects, 0 projects",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 25,
+      "element_token": "s00000008:25",
+      "enabled": true,
+      "frame": {
+        "h": 64.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1797.5
+      },
+      "label": "Session Logs, Full transcripts & chat history",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 26,
+      "element_token": "s00000008:26",
+      "enabled": true,
+      "frame": {
+        "h": 64.0,
+        "w": 209.0,
+        "x": 425.5,
+        "y": 1868.5
+      },
+      "label": "Fleet, Live agents & machine state",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 27,
+      "element_token": "s00000008:27",
+      "enabled": true,
+      "frame": {
+        "h": 78.0,
+        "w": 176.0,
+        "x": 442.0,
+        "y": 2098.0
+      },
+      "label": "Add BurnBar to Cursor, Opens the extension install page",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 3,
+      "element_index": 28,
+      "element_token": "s00000008:28",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 3,
+      "element_index": 29,
+      "element_token": "s00000008:29",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 3,
+      "element_index": 30,
+      "element_token": "s00000008:30",
+      "frame": {
+        "h": 447.0,
+        "w": 6.0,
+        "x": 641.0,
+        "y": 383.0
+      },
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 3,
+      "element_index": 31,
+      "element_token": "s00000008:31",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 32,
+      "element_token": "s00000008:32",
+      "enabled": true,
+      "frame": {
+        "h": 31.0,
+        "w": 160.0,
+        "x": 1000.0,
+        "y": 364.0
+      },
+      "label": "Scan Now",
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 1,
+      "element_index": 33,
+      "element_token": "s00000008:33",
+      "frame": {
+        "h": 52.0,
+        "w": 1100.0,
+        "x": 410.0,
+        "y": 83.0
+      },
+      "parent_index": 0,
+      "role": "AXToolbar"
+    },
+    {
+      "depth": 2,
+      "element_index": 34,
+      "element_token": "s00000008:34",
+      "enabled": true,
+      "frame": {
+        "h": 52.0,
+        "w": 44.0,
+        "x": 602.0,
+        "y": 83.0
+      },
+      "label": "Hide Sidebar",
+      "parent_index": 33,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 35,
+      "element_token": "s00000008:35",
+      "enabled": true,
+      "frame": {
+        "h": 36.0,
+        "w": 38.0,
+        "x": 853.0,
+        "y": 91.0
+      },
+      "label": "Cpu Chip",
+      "parent_index": 33,
+      "role": "AXRadioButton",
+      "selected": true,
+      "value": "1"
+    },
+    {
+      "depth": 3,
+      "element_index": 36,
+      "element_token": "s00000008:36",
+      "enabled": true,
+      "frame": {
+        "h": 36.0,
+        "w": 38.0,
+        "x": 891.0,
+        "y": 91.0
+      },
+      "label": "Transparent Three-Dimensional Cube With Visible Edges",
+      "parent_index": 33,
+      "role": "AXRadioButton",
+      "selected": false,
+      "value": "0"
+    },
+    {
+      "depth": 2,
+      "element_index": 37,
+      "element_token": "s00000008:37",
+      "enabled": true,
+      "frame": {
+        "h": 15.0,
+        "w": 73.0,
+        "x": 979.0,
+        "y": 101.0
+      },
+      "label": "Today",
+      "parent_index": 33,
+      "role": "AXMenuButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 38,
+      "element_token": "s00000008:38",
+      "enabled": true,
+      "frame": {
+        "h": 15.0,
+        "w": 79.0,
+        "x": 1060.0,
+        "y": 101.0
+      },
+      "label": "Tokens",
+      "parent_index": 33,
+      "role": "AXMenuButton"
+    },
+    {
+      "depth": 2,
+      "element_index": 39,
+      "element_token": "s00000008:39",
+      "enabled": true,
+      "frame": {
+        "h": 52.0,
+        "w": 36.0,
+        "x": 1183.0,
+        "y": 83.0
+      },
+      "label": "Import from logs",
+      "parent_index": 33,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 40,
+      "element_token": "s00000008:40",
+      "enabled": true,
+      "frame": {
+        "h": 52.0,
+        "w": 36.0,
+        "x": 1219.0,
+        "y": 83.0
+      },
+      "label": "Recount totals",
+      "parent_index": 33,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 41,
+      "element_token": "s00000008:41",
+      "enabled": true,
+      "frame": {
+        "h": 52.0,
+        "w": 40.0,
+        "x": 1255.0,
+        "y": 83.0
+      },
+      "label": "Gear Shape, Filled",
+      "parent_index": 33,
+      "role": "AXButton",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 42,
+      "element_token": "s00000008:42",
+      "enabled": true,
+      "frame": {
+        "h": 16.0,
+        "w": 16.0,
+        "x": 428.0,
+        "y": 101.0
+      },
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 1,
+      "element_index": 43,
+      "element_token": "s00000008:43",
+      "enabled": true,
+      "frame": {
+        "h": 16.0,
+        "w": 16.0,
+        "x": 474.0,
+        "y": 101.0
+      },
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 1,
+      "element_index": 44,
+      "element_token": "s00000008:44",
+      "enabled": true,
+      "frame": {
+        "h": 16.0,
+        "w": 16.0,
+        "x": 451.0,
+        "y": 101.0
+      },
+      "parent_index": 0,
+      "role": "AXButton"
+    },
+    {
+      "depth": 0,
+      "element_index": 45,
+      "element_token": "s00000008:45",
+      "enabled": true,
+      "frame": {
+        "h": 30.0,
+        "w": 1920.0,
+        "x": 0.0,
+        "y": 0.0
+      },
+      "role": "AXMenuBar",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 46,
+      "element_token": "s00000008:46",
+      "enabled": true,
+      "label": "Apple",
+      "parent_index": 45,
+      "role": "AXMenuBarItem",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 47,
+      "element_token": "s00000008:47",
+      "enabled": true,
+      "parent_index": 46,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 48,
+      "element_token": "s00000008:48",
+      "enabled": true,
+      "label": "About This Mac",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 49,
+      "element_token": "s00000008:49",
+      "enabled": true,
+      "label": "System Information",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 50,
+      "element_token": "s00000008:50",
+      "enabled": true,
+      "label": "System Settings…",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 51,
+      "element_token": "s00000008:51",
+      "enabled": true,
+      "label": "App Store",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 52,
+      "element_token": "s00000008:52",
+      "enabled": true,
+      "label": "Recent Items",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 4,
+      "element_index": 53,
+      "element_token": "s00000008:53",
+      "enabled": true,
+      "parent_index": 52,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 54,
+      "element_token": "s00000008:54",
+      "enabled": true,
+      "label": "Antigravity",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 55,
+      "element_token": "s00000008:55",
+      "enabled": true,
+      "label": "Show “Antigravity” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 56,
+      "element_token": "s00000008:56",
+      "enabled": true,
+      "label": "ChatGPT",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 57,
+      "element_token": "s00000008:57",
+      "enabled": true,
+      "label": "Show “ChatGPT” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 58,
+      "element_token": "s00000008:58",
+      "enabled": true,
+      "label": "Factory",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 59,
+      "element_token": "s00000008:59",
+      "enabled": true,
+      "label": "Show “Factory” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 60,
+      "element_token": "s00000008:60",
+      "enabled": true,
+      "label": "Google Chrome",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 61,
+      "element_token": "s00000008:61",
+      "enabled": true,
+      "label": "Show “Google Chrome” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 62,
+      "element_token": "s00000008:62",
+      "enabled": true,
+      "label": "Grok Bot",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 63,
+      "element_token": "s00000008:63",
+      "enabled": true,
+      "label": "Show “Grok Bot” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 64,
+      "element_token": "s00000008:64",
+      "enabled": true,
+      "label": "Hermes",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 65,
+      "element_token": "s00000008:65",
+      "enabled": true,
+      "label": "Show “Hermes” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 66,
+      "element_token": "s00000008:66",
+      "enabled": true,
+      "label": "Hermes",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 67,
+      "element_token": "s00000008:67",
+      "enabled": true,
+      "label": "Show “Hermes” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 68,
+      "element_token": "s00000008:68",
+      "enabled": true,
+      "label": "Phone",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 69,
+      "element_token": "s00000008:69",
+      "enabled": true,
+      "label": "Show “Phone” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 70,
+      "element_token": "s00000008:70",
+      "enabled": true,
+      "label": "Safari",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 71,
+      "element_token": "s00000008:71",
+      "enabled": true,
+      "label": "Show “Safari” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 72,
+      "element_token": "s00000008:72",
+      "enabled": true,
+      "label": "System Settings",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 73,
+      "element_token": "s00000008:73",
+      "enabled": true,
+      "label": "Show “System Settings” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 74,
+      "element_token": "s00000008:74",
+      "enabled": true,
+      "label": "BurnBarBench Vol. 1 - Executive Report.pdf",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 75,
+      "element_token": "s00000008:75",
+      "enabled": true,
+      "label": "Show “BurnBarBench Vol. 1 - Executive Report.pdf” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 76,
+      "element_token": "s00000008:76",
+      "enabled": true,
+      "label": "BurnBarBench Vol. 1 - Executive Report.pdf",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 77,
+      "element_token": "s00000008:77",
+      "enabled": true,
+      "label": "Show “BurnBarBench Vol. 1 - Executive Report.pdf” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 78,
+      "element_token": "s00000008:78",
+      "enabled": true,
+      "label": "BurnBarBench Vol. 1 - Statistical Report.pdf",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 79,
+      "element_token": "s00000008:79",
+      "enabled": true,
+      "label": "Show “BurnBarBench Vol. 1 - Statistical Report.pdf” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 80,
+      "element_token": "s00000008:80",
+      "enabled": true,
+      "label": "burnbench-audit-closure.pdf",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 81,
+      "element_token": "s00000008:81",
+      "enabled": true,
+      "label": "Show “burnbench-audit-closure.pdf” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 82,
+      "element_token": "s00000008:82",
+      "enabled": true,
+      "label": "BurnBench-Report-20260813.zip",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 83,
+      "element_token": "s00000008:83",
+      "enabled": true,
+      "label": "Show “BurnBench-Report-20260813.zip” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 84,
+      "element_token": "s00000008:84",
+      "enabled": true,
+      "label": "burnbench-report.pdf",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 85,
+      "element_token": "s00000008:85",
+      "enabled": true,
+      "label": "Show “burnbench-report.pdf” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 86,
+      "element_token": "s00000008:86",
+      "enabled": true,
+      "label": "codebase-diligence-review-3d0cb8",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 87,
+      "element_token": "s00000008:87",
+      "enabled": true,
+      "label": "Show “codebase-diligence-review-3d0cb8” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 88,
+      "element_token": "s00000008:88",
+      "enabled": true,
+      "label": "imaginethat-cli",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 89,
+      "element_token": "s00000008:89",
+      "enabled": true,
+      "label": "Show “imaginethat-cli” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 90,
+      "element_token": "s00000008:90",
+      "enabled": true,
+      "label": "imaginethat-llc-1",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 91,
+      "element_token": "s00000008:91",
+      "enabled": true,
+      "label": "Show “imaginethat-llc-1” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 92,
+      "element_token": "s00000008:92",
+      "enabled": true,
+      "label": "newYorkBuildingCraft.ts",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 93,
+      "element_token": "s00000008:93",
+      "enabled": true,
+      "label": "Show “newYorkBuildingCraft.ts” in Finder",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 94,
+      "element_token": "s00000008:94",
+      "enabled": true,
+      "label": "Macintosh HD",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 95,
+      "element_token": "s00000008:95",
+      "enabled": true,
+      "label": "Macintosh HD",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 96,
+      "element_token": "s00000008:96",
+      "enabled": true,
+      "label": "Clear Menu",
+      "parent_index": 53,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 97,
+      "element_token": "s00000008:97",
+      "enabled": true,
+      "label": "Force Quit…",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 98,
+      "element_token": "s00000008:98",
+      "enabled": true,
+      "label": "Force Quit BurnBar",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 99,
+      "element_token": "s00000008:99",
+      "enabled": true,
+      "label": "Sleep",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 100,
+      "element_token": "s00000008:100",
+      "enabled": true,
+      "label": "Restart…",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 101,
+      "element_token": "s00000008:101",
+      "enabled": true,
+      "label": "Restart",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 102,
+      "element_token": "s00000008:102",
+      "enabled": true,
+      "label": "Shut Down…",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 103,
+      "element_token": "s00000008:103",
+      "enabled": true,
+      "label": "Shut Down",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 104,
+      "element_token": "s00000008:104",
+      "enabled": true,
+      "label": "Lock Screen",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 105,
+      "element_token": "s00000008:105",
+      "enabled": true,
+      "label": "Log Out Imagine…",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 106,
+      "element_token": "s00000008:106",
+      "enabled": true,
+      "label": "Log Out Imagine",
+      "parent_index": 47,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 107,
+      "element_token": "s00000008:107",
+      "enabled": true,
+      "label": "BurnBar",
+      "parent_index": 45,
+      "role": "AXMenuBarItem",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 108,
+      "element_token": "s00000008:108",
+      "enabled": true,
+      "parent_index": 107,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 109,
+      "element_token": "s00000008:109",
+      "enabled": true,
+      "label": "About BurnBar",
+      "parent_index": 108,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 110,
+      "element_token": "s00000008:110",
+      "enabled": true,
+      "label": "Services",
+      "parent_index": 108,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 4,
+      "element_index": 111,
+      "element_token": "s00000008:111",
+      "enabled": true,
+      "parent_index": 110,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 112,
+      "element_token": "s00000008:112",
+      "enabled": true,
+      "label": "Activity Monitor",
+      "parent_index": 111,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 113,
+      "element_token": "s00000008:113",
+      "enabled": true,
+      "label": "Allocations & Leaks",
+      "parent_index": 111,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 114,
+      "element_token": "s00000008:114",
+      "enabled": true,
+      "label": "File Activity",
+      "parent_index": 111,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 115,
+      "element_token": "s00000008:115",
+      "enabled": true,
+      "label": "System Trace",
+      "parent_index": 111,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 116,
+      "element_token": "s00000008:116",
+      "enabled": true,
+      "label": "Services Settings…",
+      "parent_index": 111,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 117,
+      "element_token": "s00000008:117",
+      "enabled": true,
+      "label": "Hide Others",
+      "parent_index": 108,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 118,
+      "element_token": "s00000008:118",
+      "enabled": true,
+      "label": "Show All",
+      "parent_index": 108,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 119,
+      "element_token": "s00000008:119",
+      "enabled": true,
+      "label": "Quit BurnBar",
+      "parent_index": 108,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 120,
+      "element_token": "s00000008:120",
+      "enabled": true,
+      "label": "Edit",
+      "parent_index": 45,
+      "role": "AXMenuBarItem",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 121,
+      "element_token": "s00000008:121",
+      "enabled": true,
+      "parent_index": 120,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 122,
+      "element_token": "s00000008:122",
+      "enabled": true,
+      "label": "AutoFill",
+      "parent_index": 121,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 4,
+      "element_index": 123,
+      "element_token": "s00000008:123",
+      "enabled": true,
+      "parent_index": 122,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 124,
+      "element_token": "s00000008:124",
+      "enabled": true,
+      "label": "Emoji & Symbols",
+      "parent_index": 121,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 125,
+      "element_token": "s00000008:125",
+      "enabled": true,
+      "label": "View",
+      "parent_index": 45,
+      "role": "AXMenuBarItem",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 126,
+      "element_token": "s00000008:126",
+      "enabled": true,
+      "parent_index": 125,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 127,
+      "element_token": "s00000008:127",
+      "enabled": true,
+      "label": "Window",
+      "parent_index": 45,
+      "role": "AXMenuBarItem",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 128,
+      "element_token": "s00000008:128",
+      "enabled": true,
+      "parent_index": 127,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 129,
+      "element_token": "s00000008:129",
+      "enabled": true,
+      "label": "Close",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 130,
+      "element_token": "s00000008:130",
+      "enabled": true,
+      "label": "Close All",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 131,
+      "element_token": "s00000008:131",
+      "enabled": true,
+      "label": "Minimize",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 132,
+      "element_token": "s00000008:132",
+      "enabled": true,
+      "label": "Minimize All",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 133,
+      "element_token": "s00000008:133",
+      "enabled": true,
+      "label": "Zoom",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 134,
+      "element_token": "s00000008:134",
+      "enabled": true,
+      "label": "Zoom All",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 135,
+      "element_token": "s00000008:135",
+      "enabled": true,
+      "label": "Fill",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 136,
+      "element_token": "s00000008:136",
+      "enabled": true,
+      "label": "Center",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 137,
+      "element_token": "s00000008:137",
+      "enabled": true,
+      "label": "Move & Resize",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 4,
+      "element_index": 138,
+      "element_token": "s00000008:138",
+      "enabled": true,
+      "parent_index": 137,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 139,
+      "element_token": "s00000008:139",
+      "enabled": true,
+      "label": "Left",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 140,
+      "element_token": "s00000008:140",
+      "enabled": true,
+      "label": "Right",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 141,
+      "element_token": "s00000008:141",
+      "enabled": true,
+      "label": "Top",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 142,
+      "element_token": "s00000008:142",
+      "enabled": true,
+      "label": "Bottom",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 143,
+      "element_token": "s00000008:143",
+      "enabled": true,
+      "label": "Top Left",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 144,
+      "element_token": "s00000008:144",
+      "enabled": true,
+      "label": "Top Right",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 145,
+      "element_token": "s00000008:145",
+      "enabled": true,
+      "label": "Bottom Left",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 146,
+      "element_token": "s00000008:146",
+      "enabled": true,
+      "label": "Bottom Right",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 147,
+      "element_token": "s00000008:147",
+      "enabled": true,
+      "label": "Left & Right",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 148,
+      "element_token": "s00000008:148",
+      "enabled": true,
+      "label": "Left & Quarters",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 149,
+      "element_token": "s00000008:149",
+      "enabled": true,
+      "label": "Right & Left",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 150,
+      "element_token": "s00000008:150",
+      "enabled": true,
+      "label": "Right & Quarters",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 151,
+      "element_token": "s00000008:151",
+      "enabled": true,
+      "label": "Top & Bottom",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 152,
+      "element_token": "s00000008:152",
+      "enabled": true,
+      "label": "Top & Quarters",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 153,
+      "element_token": "s00000008:153",
+      "enabled": true,
+      "label": "Bottom & Top",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 154,
+      "element_token": "s00000008:154",
+      "enabled": true,
+      "label": "Bottom & Quarters",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 5,
+      "element_index": 155,
+      "element_token": "s00000008:155",
+      "enabled": true,
+      "label": "Quarters",
+      "parent_index": 138,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 156,
+      "element_token": "s00000008:156",
+      "enabled": true,
+      "label": "Move to Alberto’s iPad",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 157,
+      "element_token": "s00000008:157",
+      "enabled": true,
+      "label": "Bring All to Front",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 158,
+      "element_token": "s00000008:158",
+      "enabled": true,
+      "label": "Arrange in Front",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 159,
+      "element_token": "s00000008:159",
+      "enabled": true,
+      "label": "BurnBar",
+      "parent_index": 128,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 160,
+      "element_token": "s00000008:160",
+      "enabled": true,
+      "label": "Help",
+      "parent_index": 45,
+      "role": "AXMenuBarItem",
+      "selected": false
+    },
+    {
+      "depth": 2,
+      "element_index": 161,
+      "element_token": "s00000008:161",
+      "enabled": true,
+      "parent_index": 160,
+      "role": "AXMenu",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 162,
+      "element_token": "s00000008:162",
+      "enabled": true,
+      "label": "Send BurnBar Feedback to Apple",
+      "parent_index": 161,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 3,
+      "element_index": 163,
+      "element_token": "s00000008:163",
+      "enabled": true,
+      "label": "BurnBar Help",
+      "parent_index": 161,
+      "role": "AXMenuItem",
+      "selected": false
+    },
+    {
+      "depth": 1,
+      "element_index": 164,
+      "element_token": "s00000008:164",
+      "enabled": true,
+      "frame": {
+        "h": 24.0,
+        "w": 36.0,
+        "x": 1212.0,
+        "y": 3.0
+      },
+      "label": "BurnBar, Today: 0 tokens",
+      "role": "AXMenuBarItem",
+      "selected": false
+    }
+  ],
+  "elements_complete": false,
+  "pid": 6613,
+  "returned_element_count": 165,
+  "snapshot_id": "s00000008",
+  "total_element_count": 165,
+  "tree_markdown": "- [0] AXWindow \"BurnBar\" [actions=[raise]]\n  - [1] AXButton (Sparkle) [id=sparkles actions=[press]]\n    - AXImage (BurnBar)\n    - AXStaticText = \"COMMAND\"\n    - AXStaticText = \"Agent providers\"\n    - AXStaticText = \"Scan, compare spend, and drill into model behavior from one workspace.\"\n    - [2] AXButton (All Providers, 0 sessions, 0) [actions=[press]]\n    - [3] AXButton (Aider, 0 sessions, 0) [actions=[press]]\n    - [4] AXButton (Augment, 0 sessions, Not yet supported / Unsupported) [actions=[press]]\n    - [5] AXButton (Claude Code, 0 sessions, 0) [actions=[press]]\n    - [6] AXButton (Cline, 0 sessions, 0) [actions=[press]]\n    - [7] AXButton (Codex, 0 sessions, 0) [actions=[press]]\n    - [8] AXButton (Copilot, 0 sessions, Estimated / no sessions yet) [actions=[press]]\n    - [9] AXButton (Cursor, 0 sessions, Estimated / no sessions yet) [actions=[press]]\n    - [10] AXButton (Factory, 0 sessions, 0) [actions=[press]]\n    - [11] AXButton (Forge, 0 sessions, 0) [actions=[press]]\n    - [12] AXButton (Gemini CLI, 0 sessions, 0) [actions=[press]]\n    - [13] AXButton (Goose, 0 sessions, 0) [actions=[press]]\n    - [14] AXButton (Grok Bot, 0 sessions, Not yet supported / Unsupported) [actions=[press]]\n    - [15] AXButton (Grok CLI, 0 sessions, Estimated / no sessions yet) [actions=[press]]\n    - [16] AXButton (Hermes, 0 sessions, 0) [actions=[press]]\n    - [17] AXButton (Kilo Code, 0 sessions, 0) [actions=[press]]\n    - [18] AXButton (Kimi, 0 sessions, Exact / no sessions yet) [actions=[press]]\n    - [19] AXButton (MiniMax, 0 sessions, Estimated / no sessions yet) [actions=[press]]\n    - [20] AXButton (Pi, 0 sessions, Estimated / no sessions yet) [actions=[press]]\n    - [21] AXButton (Roo Code, 0 sessions, 0) [actions=[press]]\n    - [22] AXButton (Zai, 0 sessions, Estimated / no sessions yet) [actions=[press]]\n    - [23] AXButton (Database, Corpus, search & system truth) [actions=[press]]\n    - [24] AXButton (Projects, 0 projects) [actions=[press]]\n    - [25] AXButton (Session Logs, Full transcripts & chat history) [actions=[press]]\n    - [26] AXButton (Fleet, Live agents & machine state) [actions=[press]]\n    - AXStaticText = \"WINDOW\"\n    - AXStaticText = \"Today\"\n    - AXStaticText = \"0 active providers\"\n    - AXStaticText = \"CURSOR\"\n    - [27] AXButton (Add BurnBar to Cursor, Opens the extension install page) [help=\"Install BurnBar in Cursor (burnbar.burnbar)\" actions=[press]]\n      - [28] AXButton [actions=[press]]\n      - [29] AXButton [actions=[press]]\n      - [30] AXButton [actions=[press]]\n      - [31] AXButton [actions=[press]]\n    - AXImage (Cpu Chip)\n    - AXStaticText = \"No sessions recorded\"\n    - AXStaticText = \"BurnBar will automatically import sessions from your configured agent logs.\nClick Scan to import now.\"\n    - [32] AXButton (Scan Now) [actions=[press]]\n  - [33] AXToolbar [actions=[showmenu]]\n    - [34] AXButton (Hide Sidebar) [id= help=\"Hide Sidebar\" actions=[increment,decrement,delete,showmenu,cancel,press]]\n    - AXButton (Back)\n    - AXStaticText = \"BurnBar\"\n      - [35] AXRadioButton (Cpu Chip) [id=cpu actions=[press]]\n      - [36] AXRadioButton (Transparent Three-Dimensional Cube With Visible Edges) [id=cube.transparent actions=[press]]\n    - [37] AXMenuButton \"Today\" [actions=[press]]\n    - [38] AXMenuButton \"Tokens\" [help=\"Show totals in USD or token volume\" actions=[press]]\n    - AXStaticText = \"0\"\n    - [39] AXButton (Import from logs) [id= help=\"Import new and updated sessions from your agent log folders.\" actions=[increment,decrement,delete,showmenu,cancel,press,name:move previous\ntarget:0x0\nselector:(null),name:move next\ntarget:0x0\nselector:(null),name:remove from toolbar\ntarget:0x0\nselector:(null)]]\n    - [40] AXButton (Recount totals) [id= help=\"Rebuild usage totals from saved sessions (clears derived numbers, then tallies again).\" actions=[increment,decrement,delete,showmenu,cancel,press,name:move previous\ntarget:0x0\nselector:(null),name:move next\ntarget:0x0\nselector:(null),name:remove from toolbar\ntarget:0x0\nselector:(null)]]\n    - [41] AXButton (Gear Shape, Filled) [id=gearshape.fill help=\"Settings\" actions=[increment,decrement,delete,showmenu,cancel,press,name:move previous\ntarget:0x0\nselector:(null),name:remove from toolbar\ntarget:0x0\nselector:(null)]]\n  - [42] AXButton [actions=[press]]\n  - [43] AXButton [actions=[press,showmenu]]\n  - [44] AXButton [actions=[press]]\n- [45] AXMenuBar [actions=[cancel]]\n  - [46] AXMenuBarItem \"Apple\" [actions=[cancel,press,pick]]\n    - [47] AXMenu [actions=[cancel]]\n      - [48] AXMenuItem \"About This Mac\" [id=_aboutThisMacRequested: actions=[cancel,press,pick]]\n      - [49] AXMenuItem \"System Information\" [id=_systemInformationRequested: actions=[cancel,press,pick]]\n      - [50] AXMenuItem \"System Settings…\" [id=_systemSettingsRequested: actions=[cancel,press,pick]]\n      - [51] AXMenuItem \"App Store\" [id=_appStoreRequested: actions=[cancel,press,pick]]\n      - [52] AXMenuItem \"Recent Items\" [id=_recentsRequested: actions=[cancel,press,pick]]\n        - [53] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Applications\"\n          - [54] AXMenuItem \"Antigravity\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [55] AXMenuItem \"Show “Antigravity” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [56] AXMenuItem \"ChatGPT\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [57] AXMenuItem \"Show “ChatGPT” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [58] AXMenuItem \"Factory\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [59] AXMenuItem \"Show “Factory” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [60] AXMenuItem \"Google Chrome\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [61] AXMenuItem \"Show “Google Chrome” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [62] AXMenuItem \"Grok Bot\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [63] AXMenuItem \"Show “Grok Bot” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [64] AXMenuItem \"Hermes\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [65] AXMenuItem \"Show “Hermes” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [66] AXMenuItem \"Hermes\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [67] AXMenuItem \"Show “Hermes” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [68] AXMenuItem \"Phone\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [69] AXMenuItem \"Show “Phone” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [70] AXMenuItem \"Safari\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [71] AXMenuItem \"Show “Safari” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [72] AXMenuItem \"System Settings\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [73] AXMenuItem \"Show “System Settings” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - AXMenuItem \"Documents\"\n          - [74] AXMenuItem \"BurnBarBench Vol. 1 - Executive Report.pdf\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [75] AXMenuItem \"Show “BurnBarBench Vol. 1 - Executive Report.pdf” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [76] AXMenuItem \"BurnBarBench Vol. 1 - Executive Report.pdf\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [77] AXMenuItem \"Show “BurnBarBench Vol. 1 - Executive Report.pdf” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [78] AXMenuItem \"BurnBarBench Vol. 1 - Statistical Report.pdf\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [79] AXMenuItem \"Show “BurnBarBench Vol. 1 - Statistical Report.pdf” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [80] AXMenuItem \"burnbench-audit-closure.pdf\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [81] AXMenuItem \"Show “burnbench-audit-closure.pdf” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [82] AXMenuItem \"BurnBench-Report-20260813.zip\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [83] AXMenuItem \"Show “BurnBench-Report-20260813.zip” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [84] AXMenuItem \"burnbench-report.pdf\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [85] AXMenuItem \"Show “burnbench-report.pdf” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [86] AXMenuItem \"codebase-diligence-review-3d0cb8\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [87] AXMenuItem \"Show “codebase-diligence-review-3d0cb8” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [88] AXMenuItem \"imaginethat-cli\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [89] AXMenuItem \"Show “imaginethat-cli” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [90] AXMenuItem \"imaginethat-llc-1\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [91] AXMenuItem \"Show “imaginethat-llc-1” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [92] AXMenuItem \"newYorkBuildingCraft.ts\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [93] AXMenuItem \"Show “newYorkBuildingCraft.ts” in Finder\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - AXMenuItem \"Servers\"\n          - [94] AXMenuItem \"Macintosh HD\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [95] AXMenuItem \"Macintosh HD\" [id=_recentItemRequested: actions=[cancel,press,pick]]\n          - [96] AXMenuItem \"Clear Menu\" [id=_clearRecentItemsRequested: actions=[cancel,press,pick]]\n      - [97] AXMenuItem \"Force Quit…\" [id=_forceQuitPanelRequested: actions=[cancel,press,pick]]\n      - [98] AXMenuItem \"Force Quit BurnBar\" [id=_forceQuitRequested: actions=[cancel,press,pick]]\n      - [99] AXMenuItem \"Sleep\" [id=_sleepRequested: actions=[cancel,press,pick]]\n      - [100] AXMenuItem \"Restart…\" [id=_restartRequested: actions=[cancel,press,pick]]\n      - [101] AXMenuItem \"Restart\" [id=_restartNowRequested: actions=[cancel,press,pick]]\n      - [102] AXMenuItem \"Shut Down…\" [id=_shutDownRequested: actions=[cancel,press,pick]]\n      - [103] AXMenuItem \"Shut Down\" [id=_shutDownNowRequested: actions=[cancel,press,pick]]\n      - [104] AXMenuItem \"Lock Screen\" [id=_lockScreenRequested: actions=[cancel,press,pick]]\n      - [105] AXMenuItem \"Log Out Imagine…\" [id=_logOutRequested: actions=[cancel,press,pick]]\n      - [106] AXMenuItem \"Log Out Imagine\" [id=_logOutNowRequested: actions=[cancel,press,pick]]\n  - [107] AXMenuBarItem \"BurnBar\" [actions=[cancel,press,pick]]\n    - [108] AXMenu [actions=[cancel]]\n      - [109] AXMenuItem \"About BurnBar\" [id=orderFrontStandardAboutPanel: actions=[cancel,press,pick]]\n      - [110] AXMenuItem \"Services\" [actions=[cancel,press,pick]]\n        - [111] AXMenu [actions=[cancel]]\n          - [112] AXMenuItem \"Activity Monitor\" [id=_processRequest: actions=[cancel,press,pick]]\n          - [113] AXMenuItem \"Allocations & Leaks\" [id=_processRequest: actions=[cancel,press,pick]]\n          - [114] AXMenuItem \"File Activity\" [id=_processRequest: actions=[cancel,press,pick]]\n          - [115] AXMenuItem \"System Trace\" [id=_processRequest: actions=[cancel,press,pick]]\n          - [116] AXMenuItem \"Services Settings…\" [id=_configureServicesMenu: actions=[cancel,press,pick]]\n      - AXMenuItem \"Hide BurnBar\"\n      - [117] AXMenuItem \"Hide Others\" [id=hideOtherApplications: actions=[cancel,press,pick]]\n      - [118] AXMenuItem \"Show All\" [id=unhideAllApplications: actions=[cancel,press,pick]]\n      - [119] AXMenuItem \"Quit BurnBar\" [id=terminate: actions=[cancel,press,pick]]\n  - [120] AXMenuBarItem \"Edit\" [actions=[cancel,press,pick]]\n    - [121] AXMenu [actions=[cancel]]\n      - AXMenuItem \"Undo\"\n      - AXMenuItem \"Redo\"\n      - AXMenuItem \"Cut\"\n      - AXMenuItem \"Copy\"\n      - AXMenuItem \"Paste\"\n      - AXMenuItem \"Delete\"\n      - AXMenuItem \"Select All\"\n      - [122] AXMenuItem \"AutoFill\" [id=_NSMenuItemAutoFillIdentifier actions=[cancel,press,pick]]\n        - [123] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Contact…\"\n          - AXMenuItem \"Passwords…\"\n          - AXMenuItem \"Credit Card…\"\n      - AXMenuItem \"Start Dictation\"\n      - [124] AXMenuItem \"Emoji & Symbols\" [id=orderFrontCharacterPalette: actions=[cancel,press,pick]]\n  - [125] AXMenuBarItem \"View\" [actions=[cancel,press,pick]]\n    - [126] AXMenu [actions=[cancel]]\n      - AXMenuItem \"Enter Full Screen\"\n  - [127] AXMenuBarItem \"Window\" [actions=[cancel,press,pick]]\n    - [128] AXMenu [actions=[cancel]]\n      - [129] AXMenuItem \"Close\" [id=performClose: actions=[cancel,press,pick]]\n      - [130] AXMenuItem \"Close All\" [id=closeAll: actions=[cancel,press,pick]]\n      - [131] AXMenuItem \"Minimize\" [id=performMiniaturize: actions=[cancel,press,pick]]\n      - [132] AXMenuItem \"Minimize All\" [id=miniaturizeAll: actions=[cancel,press,pick]]\n      - [133] AXMenuItem \"Zoom\" [id=performZoom: actions=[cancel,press,pick]]\n      - [134] AXMenuItem \"Zoom All\" [id=zoomAll: actions=[cancel,press,pick]]\n      - [135] AXMenuItem \"Fill\" [id=_zoomFill: actions=[cancel,press,pick]]\n      - [136] AXMenuItem \"Center\" [id=_zoomCenter: actions=[cancel,press,pick]]\n      - [137] AXMenuItem \"Move & Resize\" [actions=[cancel,press,pick]]\n        - [138] AXMenu [actions=[cancel]]\n          - AXMenuItem \"Halves\"\n          - [139] AXMenuItem \"Left\" [id=_zoomLeft: actions=[cancel,press,pick]]\n          - [140] AXMenuItem \"Right\" [id=_zoomRight: actions=[cancel,press,pick]]\n          - [141] AXMenuItem \"Top\" [id=_zoomTop: actions=[cancel,press,pick]]\n          - [142] AXMenuItem \"Bottom\" [id=_zoomBottom: actions=[cancel,press,pick]]\n          - AXMenuItem \"Quarters\"\n          - [143] AXMenuItem \"Top Left\" [id=_zoomTopLeft: actions=[cancel,press,pick]]\n          - [144] AXMenuItem \"Top Right\" [id=_zoomTopRight: actions=[cancel,press,pick]]\n          - [145] AXMenuItem \"Bottom Left\" [id=_zoomBottomLeft: actions=[cancel,press,pick]]\n          - [146] AXMenuItem \"Bottom Right\" [id=_zoomBottomRight: actions=[cancel,press,pick]]\n          - AXMenuItem \"Arrange\"\n          - [147] AXMenuItem \"Left & Right\" [id=_zoomLeftAndRight: actions=[cancel,press,pick]]\n          - [148] AXMenuItem \"Left & Quarters\" [id=_zoomLeftThreeUp: actions=[cancel,press,pick]]\n          - [149] AXMenuItem \"Right & Left\" [id=_zoomRightAndLeft: actions=[cancel,press,pick]]\n          - [150] AXMenuItem \"Right & Quarters\" [id=_zoomRightThreeUp: actions=[cancel,press,pick]]\n          - [151] AXMenuItem \"Top & Bottom\" [id=_zoomTopAndBottom: actions=[cancel,press,pick]]\n          - [152] AXMenuItem \"Top & Quarters\" [id=_zoomTopThreeUp: actions=[cancel,press,pick]]\n          - [153] AXMenuItem \"Bottom & Top\" [id=_zoomBottomAndTop: actions=[cancel,press,pick]]\n          - [154] AXMenuItem \"Bottom & Quarters\" [id=_zoomBottomThreeUp: actions=[cancel,press,pick]]\n          - [155] AXMenuItem \"Quarters\" [id=_zoomQuarters: actions=[cancel,press,pick]]\n          - AXMenuItem \"Return to Previous Size\"\n      - AXMenuItem \"Full Screen Tile\"\n      - [156] AXMenuItem \"Move to Alberto’s iPad\" [id=_toggleIPad: actions=[cancel,press,pick]]\n      - [157] AXMenuItem \"Bring All to Front\" [id=arrangeInFront: actions=[cancel,press,pick]]\n      - [158] AXMenuItem \"Arrange in Front\" [id=alternateArrangeInFront: actions=[cancel,press,pick]]\n      - AXMenuItem \"Remove Window from Set\"\n      - [159] AXMenuItem \"BurnBar\" [id=makeKeyAndOrderFront: actions=[cancel,press,pick]]\n  - [160] AXMenuBarItem \"Help\" [actions=[cancel,press,pick]]\n    - [161] AXMenu [actions=[cancel]]\n      - [162] AXMenuItem \"Send BurnBar Feedback to Apple\" [id=_openFeedbackAssistant: actions=[cancel,press,pick]]\n      - [163] AXMenuItem \"BurnBar Help\" [id=showHelp: actions=[cancel,press,pick]]\n  - [164] AXMenuBarItem \"BurnBar, Today: 0 tokens\" [help=\"Today: 0 tokens\" actions=[press]]\n",
+  "window_id": 14187
+}

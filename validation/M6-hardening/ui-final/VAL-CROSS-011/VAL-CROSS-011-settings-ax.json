@@ -1,0 +1,57 @@
+{
+  "_note": "Prefer `elements` — `tree_markdown` will continue to work but new fields will only be added to the structured side. Issue #22865: use `max_elements` / `max_depth` to bound the AX walk on apps with very large trees.",
+  "background_input": {
+    "exact_window": {
+      "pid": 5852,
+      "status": "ax_unresolved",
+      "window_id": 14183
+    },
+    "observation": {
+      "frame_freshness": "unknown",
+      "one_shot_capture": "available"
+    },
+    "routes": [
+      {
+        "reason": "off_space_or_ax_unresolved",
+        "route": "accessibility",
+        "status": "refused"
+      },
+      {
+        "reason": "off_space_or_ax_unresolved",
+        "route": "window_pointer",
+        "status": "refused"
+      },
+      {
+        "reason": "off_space_or_ax_unresolved",
+        "route": "pid_keyboard",
+        "status": "refused"
+      }
+    ]
+  },
+  "degraded": true,
+  "degraded_reason": "ax_window_unresolved: window_id 14183 exists and is owned by pid 5852, but none of the 1 AXWindow element(s) under that pid reports this CGWindowID. The tree is returned EMPTY on purpose: the accessibility elements reachable under this pid belong to other surfaces (the menu bar, other windows), not to the requested window, so presenting them would misground the next action.",
+  "element_count": 0,
+  "elements": [],
+  "elements_complete": false,
+  "escalation": {
+    "reason": "observation-only: the screenshot in this response IS the requested window, but background input (including px) is refused while its AX surface is unresolved — events could reach a same-process sibling window. Re-snapshot after the app settles, or act with delivery_mode:\"foreground\".",
+    "recommended": "foreground"
+  },
+  "pid": 5852,
+  "returned_element_count": 0,
+  "screenshot_file_path": "/private/tmp/burnbar-cross-011.QcIE/VAL-CROSS-011-settings.png",
+  "screenshot_frame_valid": true,
+  "screenshot_height": 658,
+  "screenshot_mime_type": "image/png",
+  "screenshot_scale": 1.0,
+  "screenshot_width": 780,
+  "total_element_count": 0,
+  "tree_markdown": "",
+  "window_bounds": {
+    "height": 658.0,
+    "width": 780.0,
+    "x": 570.0,
+    "y": 135.0
+  },
+  "window_id": 14183
+}

@@ -1,0 +1,1 @@
+CREATE TABLE "fleet_directives" ("id" INTEGER PRIMARY KEY AUTOINCREMENT, "directive_id" TEXT NOT NULL UNIQUE, "payload" TEXT NOT NULL, "created_at" DOUBLE NOT NULL);

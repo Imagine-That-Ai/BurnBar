@@ -1,0 +1,231 @@
+{
+  "id": "reader-rpc",
+  "result": {
+    "snapshot": {
+      "runningCount": 0,
+      "agents": [
+        {
+          "id": "claude-code",
+          "confidence": "unsupported",
+          "displayName": "Claude Code",
+          "signals": [],
+          "note": "No sessions directory present.",
+          "status": "unknown"
+        },
+        {
+          "id": "factory-droid",
+          "confidence": "activeSessionFile",
+          "displayName": "Factory Droid",
+          "signals": [
+            {
+              "detail": "Declared root present.",
+              "path": "/tmp/burnbar-cross-017b.G0Cd/roots/factory",
+              "kind": "root-presence"
+            }
+          ],
+          "note": "Roots present, no signal files; installed but inactive.",
+          "status": "idle"
+        },
+        {
+          "id": "codex",
+          "confidence": "logHeartbeat",
+          "displayName": "Codex",
+          "signals": [],
+          "note": "Roots present, no lock files.",
+          "status": "idle"
+        },
+        {
+          "id": "hermes",
+          "confidence": "unsupported",
+          "displayName": "Hermes",
+          "signals": [],
+          "note": "Gateway pid signal absent.",
+          "status": "unknown"
+        },
+        {
+          "id": "grok-bot",
+          "confidence": "unsupported",
+          "displayName": "Grok Bot",
+          "signals": [],
+          "note": "Roots present, no signal files.",
+          "status": "unknown"
+        },
+        {
+          "id": "grok-cli",
+          "confidence": "activeSessionFile",
+          "displayName": "Grok CLI",
+          "signals": [
+            {
+              "detail": "Registry file absent.",
+              "kind": "session-registry",
+              "path": "/tmp/burnbar-cross-017b.G0Cd/roots/grok/active_sessions.json"
+            }
+          ],
+          "note": "Registry file absent.",
+          "status": "idle"
+        },
+        {
+          "id": "pi",
+          "confidence": "logHeartbeat",
+          "displayName": "Pi",
+          "signals": [],
+          "note": "Roots present, no transcript files.",
+          "status": "idle"
+        },
+        {
+          "id": "cursor",
+          "confidence": "activeSessionFile",
+          "displayName": "Cursor",
+          "signals": [],
+          "note": "Roots present, no signal files.",
+          "status": "idle"
+        },
+        {
+          "id": "kimi",
+          "confidence": "unsupported",
+          "displayName": "Kimi",
+          "signals": [],
+          "note": "No live signal is claimed for Kimi; typed unsupported row (probe plan in BURNBAR_FLEET_SIGNALS.md).",
+          "status": "unknown"
+        },
+        {
+          "id": "gemini-cli",
+          "confidence": "unsupported",
+          "displayName": "Gemini CLI",
+          "signals": [],
+          "note": "No live signal is claimed for Gemini CLI; typed unsupported row (probe plan in BURNBAR_FLEET_SIGNALS.md).",
+          "status": "unknown"
+        }
+      ],
+      "countsByAgent": {
+        "factory-droid": 0,
+        "grok-bot": 0,
+        "grok-cli": 0,
+        "codex": 0,
+        "pi": 0,
+        "kimi": 0,
+        "cursor": 0,
+        "claude-code": 0,
+        "gemini-cli": 0,
+        "hermes": 0
+      },
+      "orchestrator": {
+        "setAt": "2026-08-16T21:45:03.821Z",
+        "pendingDirectives": 0,
+        "designation": {
+          "id": "hermes",
+          "kind": "agent"
+        }
+      },
+      "probeHealth": [
+        {
+          "agent": "claude-code",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/claude",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "factory-droid",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/factory",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "codex",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/codex",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "hermes",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/hermes",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "grok-bot",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/grokbot",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "grok-cli",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/grok",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "pi",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/pi",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "cursor",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/cursor",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "kimi",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/kimi",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        },
+        {
+          "agent": "gemini-cli",
+          "state": {
+            "kind": "ok"
+          },
+          "rootPath": "/tmp/burnbar-cross-017b.G0Cd/roots/gemini",
+          "checkedAt": "2026-08-16T21:45:46.482Z"
+        }
+      ],
+      "persistenceHealth": {
+        "kind": "ok"
+      },
+      "generatedAt": "2026-08-16T21:45:46.482Z",
+      "machine": {
+        "power": {
+          "reason": "no cheap power-sensor API available on this machine",
+          "kind": "unavailable"
+        },
+        "cpuPercent": 20.168067226890756,
+        "loadAverage": [
+          5.48876953125,
+          6.08642578125,
+          5.39892578125
+        ],
+        "thermal": {
+          "reason": "pmset thermlog is empty on this machine; no cheap thermal API available",
+          "kind": "unavailable"
+        },
+        "memoryTotalBytes": 19161972736,
+        "memoryUsedBytes": 18805555200,
+        "diskFreeBytes": 148870270976
+      },
+      "schemaVersion": 1,
+      "cadenceSeconds": 1,
+      "repos": []
+    }
+  },
+  "protocolVersion": 1
+}
