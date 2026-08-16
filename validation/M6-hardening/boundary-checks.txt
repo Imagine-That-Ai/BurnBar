@@ -82,7 +82,7 @@ docs/plans/burnbar-live-agent-fleet-droid-mission.md | checkpoint=3c3234ba23bf37
 
 branch/ref evidence
 branch=feat/live-agent-fleet
-HEAD=f06f3af09f
+HEAD=branch tip at validation time (reported in worker handoff)
 origin/feat/live-agent-fleet=8f92cb09b7 (pre-existing user-owned backup; not mutated by mission)
 mission-session remote operations=none
 extensions/burnbar diff intersection=empty
