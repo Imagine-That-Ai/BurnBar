@@ -10,11 +10,13 @@ Install globally from npm:
 npm i -g openburnbar
 ```
 
-Or run it without installing:
+A global install is what the generated client configs (`openburnbar mcp install <client>`) assume — they reference the `openburnbar` bin by name, which has to resolve on your PATH. For ad-hoc, one-off runs (`--help`, `mcp doctor`, `memory run`) you can skip the install:
 
 ```bash
 npx -y openburnbar --help
 ```
+
+`npx` executes the package in an ephemeral cache; use it for manual runs, not as the `command` in a saved MCP client config.
 
 The package ships four bin names, all pointing at the same entry point: `openburnbar` (the name to use), `openburnbar-mcp-remote` (compatibility alias for existing local configs), `obbresume`, and `OBB`.
 
@@ -34,7 +36,7 @@ Run the stdio JSON-RPC shim. Forwards JSON-RPC to `https://mcp.burnbar.ai/mcp`, 
 
 ### `openburnbar mcp install <client>`
 
-Print a client config for `codex`, `claude`, `cursor`, `droid`, `kimi`, `forge`, or `generic` (default). Every snippet invokes `openburnbar mcp serve` — never the old package name. Purely local: prints to stdout, makes no network calls.
+Print a client config for `codex`, `claude`, `cursor`, `droid`, `kimi`, `forge`, or `generic` (default). Every snippet invokes `openburnbar mcp serve` — never the old package name — so the `openburnbar` bin must resolve on your PATH: `npm i -g openburnbar` first. Purely local: prints to stdout, makes no network calls.
 
 ### `openburnbar mcp doctor`
 
@@ -46,7 +48,13 @@ With a token argument, stores it as the MCP bearer. Without one, runs the intera
 
 ### `openburnbar memory <install|run|sync> [sourceSlug] [--transcript <path>]`
 
-The Pensieve memory hook — on-device embed, cloak, and seal plus a local commit queue.
+The Pensieve memory hook — on-device embed, cloak, and seal plus a local commit queue. **Works on a clean install:** `memory install`. **Needs one extra:** `memory run`/`sync` import Transformers.js lazily from your environment (the shim itself ships zero runtime dependencies), so install the on-device embedder once:
+
+```bash
+npm install -g @huggingface/transformers
+```
+
+Without it, `memory run`/`sync` fail with an actionable error naming the exact install command.
 
 - `memory install` — installs the chat-memory hook that pipes session-end transcripts into `openburnbar memory run`.
 - `memory run` — reads a transcript from `--transcript <path>` or stdin, prepares net-new memory chunks.
@@ -74,7 +82,8 @@ Prints the one-line usage and exits 0. No network.
 | `mcp login` | Yes — device-link start/poll against `https://mcp.burnbar.ai` |
 | `resume` / `obbresume` | Yes — `tools/call` against `https://mcp.burnbar.ai/mcp` |
 | `mcp install` | No — prints local config |
-| `memory install\|run\|sync` | No calls to mcp.burnbar.ai — may spawn your `claude -p` CLI and download the embedder (`Xenova/bge-small-en-v1.5`) on first use |
+| `memory install` | No — writes the local hook file |
+| `memory run\|sync` | No calls to mcp.burnbar.ai — spawns your `claude -p` CLI and downloads the embedder model (`Xenova/bge-small-en-v1.5`) from Hugging Face on first use; also requires `npm install -g @huggingface/transformers` |
 | `--help` / `-h` / no args | No — usage text only |
 
 The endpoint is `https://mcp.burnbar.ai/mcp` by default; `OPENBURNBAR_MCP_ENDPOINT` overrides it (loopback hosts allowed for local development, everything else must be https).

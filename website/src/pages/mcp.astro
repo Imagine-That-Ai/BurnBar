@@ -811,10 +811,11 @@ const slo = [
         <span class="eyebrow eyebrow--ember">Install</span>
         <h2 id="install-h">Drop into any client in under a minute.</h2>
         <p class="lead">
-          The hosted path uses the <code>openburnbar</code> CLI from npm — install it with
-          <code>npm i -g openburnbar</code> or run it ad-hoc with <code>npx -y openburnbar</code> — as
-          the stdio shim (or hit direct HTTP if your client speaks the 2025-11-25 spec). The local path
-          is one shell script and a JSON snippet.
+          The hosted path uses the <code>openburnbar</code> CLI from npm — install it globally with
+          <code>npm i -g openburnbar</code> so the generated client configs can resolve the bin on your
+          PATH (<code>npx -y openburnbar</code> works for ad-hoc runs, not as a saved config command)
+          — as the stdio shim (or hit direct HTTP if your client speaks the 2025-11-25 spec). The local
+          path is one shell script and a JSON snippet.
         </p>
       </header>
 
