@@ -121,6 +121,11 @@ public actor BurnBarFleetService {
     /// snapshot carries the post-persist `persistenceHealth`.
     @discardableResult
     public func buildOnce() async throws -> BurnBarFleetSnapshot {
+        // Reconcile an externally deleted/replaced fleet.sqlite before
+        // reading control state. A rebuild intentionally clears the
+        // daemon-owned designation/directive history, so the control store
+        // must observe that boundary before embedding its state.
+        persister?.prepareForBuild()
         let orchestratorState = await controlStore?.currentState()
             ?? BurnBarOrchestratorState(designation: .none)
         let snapshot = try await builder.build(

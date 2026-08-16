@@ -1,6 +1,7 @@
 import BurnBarCore
 @testable import BurnBarDaemon
 import Foundation
+import GRDB
 import XCTest
 
 /// Recovery/parity regression tests for the persistence layer (scrutiny
@@ -200,5 +201,148 @@ final class BurnBarFleetPersistenceRecoveryTests: XCTestCase {
         XCTAssertEqual(events.first?.kind, "status_changed")
         XCTAssertEqual(events.first?.fromStatus, "running")
         XCTAssertEqual(events.first?.toStatus, "idle")
+    }
+
+    // MARK: - Schema mismatch and torn temporary recovery
+
+    func testStore_schemaMarkerWithMissingV1Tables_rebuildsTyped() throws {
+        // Simulate an old/partial store that claims the v1 migration ran but
+        // does not contain the complete current schema. GRDB will not rerun
+        // an already-applied migration, so BurnBarFleetStore must validate
+        // the required tables and take the typed rebuild path.
+        let oldStore = try DatabaseQueue(path: storeURL.path)
+        try oldStore.write { db in
+            try db.execute(sql: "CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY)")
+            try db.execute(
+                sql: "INSERT INTO grdb_migrations (identifier) VALUES ('v1_fleet')"
+            )
+        }
+        try oldStore.close()
+
+        let store = BurnBarFleetStore(databasePath: storeURL.path)
+        let health = try store.open()
+        guard case .degraded(let reason) = health else {
+            return XCTFail("partial old schema must degrade typed, got \(health)")
+        }
+        XCTAssertTrue(reason.contains("rebuilt"))
+        XCTAssertTrue(reason.contains("schema mismatch"))
+        XCTAssertEqual(store.recoveryGeneration, 1)
+
+        _ = try store.persistLatestSnapshot(
+            makeSnapshot(generatedAt: Date(), persistenceHealth: health)
+        )
+        XCTAssertNotNil(try store.latestSnapshot())
+        XCTAssertEqual(try store.orchestratorStateRowCount(), 0)
+        XCTAssertEqual(try store.directiveRowCount(), 0)
+    }
+
+    func testStore_missingDatabaseWithLastGoodFile_rebuildsTyped() throws {
+        let store = try makeStore()
+        let snapshot = try makeSnapshot(generatedAt: Date(), claudeStatus: .idle)
+        _ = try store.persistLatestSnapshot(snapshot)
+        try BurnBarFleetFileWriter(fileURL: snapshotFileURL).write(snapshot: snapshot)
+        store.close()
+        try FileManager.default.removeItem(at: storeURL)
+
+        let reopened = BurnBarFleetStore(databasePath: storeURL.path)
+        let health = try reopened.open()
+        guard case .degraded(let reason) = health else {
+            return XCTFail("missing store with a last-good file must degrade typed")
+        }
+        XCTAssertTrue(reason.contains("rebuilt"), "unexpected reason: \(reason)")
+        XCTAssertEqual(reopened.recoveryGeneration, 1)
+        XCTAssertEqual(try reopened.orchestratorStateRowCount(), 0)
+        XCTAssertEqual(try reopened.directiveRowCount(), 0)
+    }
+
+    func testFileWriter_orphanedTruncatedTemporary_neverPromoted() throws {
+        let writer = BurnBarFleetFileWriter(fileURL: snapshotFileURL)
+        let lastGood = try makeSnapshot(generatedAt: Date(timeIntervalSince1970: 1_752_000_000))
+        let next = try makeSnapshot(generatedAt: Date(timeIntervalSince1970: 1_752_000_001))
+        try writer.write(snapshot: lastGood)
+        try Data(#"{"schemaVersion":1,"agents":"truncated""#.utf8).write(to: writer.temporaryURL)
+
+        // A restart or the next tick must write a complete replacement; the
+        // orphaned/truncated temp file is never promoted as the destination.
+        try writer.write(snapshot: next)
+
+        let destination = try Data(contentsOf: snapshotFileURL)
+        let decoded = try JSONDecoder().decode(BurnBarFleetSnapshot.self, from: destination)
+        XCTAssertEqual(decoded.generatedAt, next.generatedAt)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: writer.temporaryURL.path))
+    }
+
+    func testPersister_malformedSnapshotPayload_rebuildsTypedAndResetsBaseline() throws {
+        let store = try makeStore()
+        let baseline = try makeSnapshot(
+            generatedAt: Date(),
+            claudeStatus: .running,
+            claudeConfidence: .exactProcess
+        )
+        _ = try store.persistLatestSnapshot(baseline)
+        store.close()
+
+        let rawStore = try DatabaseQueue(path: storeURL.path)
+        try rawStore.write { db in
+            try db.execute(
+                sql: "UPDATE fleet_snapshots SET payload = ?",
+                arguments: ["{malformed snapshot"]
+            )
+        }
+        try rawStore.close()
+
+        let reopened = BurnBarFleetStore(databasePath: storeURL.path)
+        _ = try reopened.open()
+        let persister = BurnBarFleetPersister(
+            store: reopened,
+            fileWriter: BurnBarFleetFileWriter(fileURL: snapshotFileURL)
+        )
+        persister.loadLastPersistedSnapshot()
+
+        XCTAssertNil(persister.lastPersisted)
+        guard case .degraded(let reason) = persister.persistenceHealth() else {
+            return XCTFail("malformed snapshot must trigger typed rebuild health")
+        }
+        XCTAssertTrue(reason.contains("rebuilt"), "unexpected reason: \(reason)")
+
+        let recovery = persister.persist(
+            snapshot: try makeSnapshot(
+                generatedAt: Date(),
+                claudeStatus: .idle,
+                claudeConfidence: .exactProcess
+            )
+        )
+        guard case .degraded = recovery.persistenceHealth else {
+            return XCTFail("first post-rebuild snapshot must disclose recovery")
+        }
+        let recovered = persister.persist(
+            snapshot: try makeSnapshot(
+                generatedAt: Date().addingTimeInterval(1),
+                claudeStatus: .idle,
+                claudeConfidence: .exactProcess
+            )
+        )
+        XCTAssertEqual(recovered.persistenceHealth, .ok)
+        XCTAssertEqual(try reopened.events(for: .claudeCode).count, 0)
+    }
+
+    func testControlStore_malformedStatePayload_rebuildsTypedAndClearsDesignation() async throws {
+        let store = try makeStore()
+        try store.setOrchestratorState(payload: "{malformed control state")
+        let persister = BurnBarFleetPersister(
+            store: store,
+            fileWriter: BurnBarFleetFileWriter(fileURL: snapshotFileURL)
+        )
+        let controlStore = BurnBarFleetControlStore(store: store)
+
+        await controlStore.loadPersistedState()
+        let state = await controlStore.currentState()
+
+        XCTAssertEqual(state.designation, .none)
+        XCTAssertEqual(try store.orchestratorStateRowCount(), 0)
+        guard case .degraded(let reason) = persister.persistenceHealth() else {
+            return XCTFail("malformed control state must trigger typed rebuild health")
+        }
+        XCTAssertTrue(reason.contains("rebuilt"), "unexpected reason: \(reason)")
     }
 }

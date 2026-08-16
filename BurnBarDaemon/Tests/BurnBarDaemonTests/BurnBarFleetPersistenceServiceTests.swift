@@ -340,11 +340,148 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
         XCTAssertEqual(second.persistenceHealth, .ok, "rebuild degradation clears on the next successful persist")
     }
 
+    // MARK: - Store deletion while the daemon remains running (VAL-HARD-018)
+
+    func testRPC_storeDeletedWhileRunning_rebuildsTyped_andClearsDesignation() async throws {
+        let socketPath = "/tmp/burnbar-fleet-persist-delete-live-\(UUID().uuidString).sock"
+        let (probes, _) = makeProbes(claudeStatus: .idle, claudeConfidence: .exactProcess)
+        let storeDir = fixtureRoot.appendingPathComponent("live-store", isDirectory: true)
+        let storePath = storeDir.appendingPathComponent("fleet.sqlite").path
+        let filePath = fixtureRoot.appendingPathComponent("fleet-snapshot.json").path
+        let configuration = BurnBarDaemonConfiguration(
+            socketPath: socketPath,
+            fleetStorePath: storePath,
+            fleetSnapshotFilePath: filePath
+        )
+        let store = BurnBarFleetStore(databasePath: storePath)
+        let writer = BurnBarFleetFileWriter(fileURL: URL(fileURLWithPath: filePath))
+        let persister = BurnBarFleetPersister(store: store, fileWriter: writer)
+        let controlStore = BurnBarFleetControlStore(store: store)
+        let service = BurnBarFleetService(
+            builder: BurnBarFleetSnapshotBuilder(cadenceSeconds: 1, probes: probes),
+            persister: persister,
+            controlStore: controlStore
+        )
+        let server = BurnBarDaemonServer(configuration: configuration, fleetService: service)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let before = try await waitForSnapshot(socketPath: socketPath, timeout: 10)
+        XCTAssertEqual(before.orchestrator.designation, .none)
+
+        let designated = try await service.setOrchestratorState(
+            BurnBarOrchestratorState(designation: .burnBarManaged)
+        )
+        XCTAssertEqual(designated.designation, .burnBarManaged)
+        let designatedState = await service.orchestratorState()
+        XCTAssertEqual(designatedState.designation, .burnBarManaged)
+
+        // Unlink only the configured database while the daemon's SQLite
+        // connection is still open. The next tick must notice the path
+        // identity change rather than writing the deleted inode.
+        try FileManager.default.removeItem(atPath: storePath)
+
+        let recovery = try await waitForSnapshot(
+            socketPath: socketPath,
+            timeout: 10,
+            matching: { snapshot in
+                if case .degraded(let reason) = snapshot.persistenceHealth {
+                    return reason.contains("rebuilt")
+                }
+                return false
+            }
+        )
+        guard case .degraded(let reason) = recovery.persistenceHealth else {
+            return XCTFail("store deletion must expose typed degraded health")
+        }
+        XCTAssertTrue(reason.contains("orchestration history discarded"))
+        XCTAssertEqual(recovery.orchestrator.designation, .none)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storePath))
+
+        let recovered = try await waitForSnapshotAfter(
+            socketPath: socketPath,
+            after: recovery.generatedAt,
+            timeout: 10
+        )
+        XCTAssertEqual(recovered.persistenceHealth, .ok)
+        XCTAssertEqual(recovered.orchestrator.designation, .none)
+    }
+
+    // MARK: - Read-only support directory (VAL-HARD-021)
+
+    func testRPC_readOnlySupportDirectory_servesSnapshotWithPersistenceDegraded() async throws {
+        let socketPath = "/tmp/burnbar-fleet-persist-readonly-\(UUID().uuidString).sock"
+        let supportDirectory = fixtureRoot.appendingPathComponent("readonly-support", isDirectory: true)
+        try FileManager.default.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
+        let configuration = BurnBarDaemonConfiguration(
+            socketPath: socketPath,
+            fleetStorePath: supportDirectory.appendingPathComponent("fleet.sqlite").path,
+            fleetSnapshotFilePath: supportDirectory.appendingPathComponent("fleet-snapshot.json").path
+        )
+        let (probes, _) = makeProbes(claudeStatus: .idle, claudeConfidence: .exactProcess)
+        let service = BurnBarFleetService(
+            builder: BurnBarFleetSnapshotBuilder(cadenceSeconds: 1, probes: probes),
+            persister: BurnBarFleetPersister(
+                store: BurnBarFleetStore(databasePath: configuration.fleetStorePath),
+                fileWriter: BurnBarFleetFileWriter(
+                    fileURL: URL(fileURLWithPath: configuration.fleetSnapshotFilePath)
+                )
+            )
+        )
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o555],
+            ofItemAtPath: supportDirectory.path
+        )
+        defer {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: supportDirectory.path
+            )
+        }
+
+        let server = BurnBarDaemonServer(configuration: configuration, fleetService: service)
+        try await server.start()
+        addTeardownBlock { await server.stop() }
+
+        let snapshot = try await waitForSnapshot(socketPath: socketPath, timeout: 10)
+        guard case .degraded(let reason) = snapshot.persistenceHealth else {
+            return XCTFail("read-only support dir must expose typed persistence degradation")
+        }
+        XCTAssertFalse(reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        XCTAssertEqual(snapshot.agents.count, BurnBarFleetAgentID.declaredRoster.count)
+        XCTAssertFalse(
+            snapshot.probeHealth.contains {
+                if case .degraded(let probeReason) = $0.state {
+                    return probeReason.localizedCaseInsensitiveContains("fleet.sqlite")
+                        || probeReason.localizedCaseInsensitiveContains("fleet-snapshot.json")
+                }
+                return false
+            },
+            "persistence failures belong only in persistenceHealth"
+        )
+
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: supportDirectory.path
+        )
+        let recovered = try await waitForSnapshot(
+            socketPath: socketPath,
+            timeout: 10,
+            matching: { $0.persistenceHealth == .ok }
+        )
+        XCTAssertEqual(recovered.persistenceHealth, .ok)
+    }
+
     /// Polls `daemon.fleet.snapshot` until a ready snapshot is served.
-    private func waitForSnapshot(socketPath: String, timeout: TimeInterval) async throws -> BurnBarFleetSnapshot {
+    private func waitForSnapshot(
+        socketPath: String,
+        timeout: TimeInterval,
+        matching: ((BurnBarFleetSnapshot) -> Bool)? = nil
+    ) async throws -> BurnBarFleetSnapshot {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if let snapshot = try? self.snapshotViaRPC(socketPath: socketPath) {
+            if let snapshot = try? self.snapshotViaRPC(socketPath: socketPath),
+               matching?(snapshot) ?? true {
                 return snapshot
             }
             try await Task.sleep(nanoseconds: 100_000_000)

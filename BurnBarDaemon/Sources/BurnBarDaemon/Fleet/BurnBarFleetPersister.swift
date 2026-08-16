@@ -78,7 +78,34 @@ public final class BurnBarFleetPersister {
 
     /// The current combined persistence health (store + file writer).
     public func persistenceHealth() -> BurnBarFleetPersistenceHealth {
-        combinedHealth
+        Self.mergedHealth([combinedHealth, store.currentHealth()])
+    }
+
+    /// Reconciles the configured store path with the database handle before
+    /// a build. SQLite can keep writing to an unlinked inode after an
+    /// external `fleet.sqlite` deletion, so this check must happen while the
+    /// daemon remains open rather than waiting for the next process restart.
+    /// A successful rebuild also updates the health before the control store
+    /// is read, allowing it to discard cached designation/directives.
+    public func prepareForBuild() {
+        if !store.isOpen {
+            do {
+                combinedHealth = try store.open()
+            } catch {
+                combinedHealth = .degraded(
+                    reason: BurnBarFleetPersistenceReason.storeUnavailable("\(error)")
+                )
+            }
+            return
+        }
+        do {
+            try store.recoverIfStorePathChanged()
+            combinedHealth = store.currentHealth()
+        } catch {
+            combinedHealth = .degraded(
+                reason: BurnBarFleetPersistenceReason.storeUnavailable("\(error)")
+            )
+        }
     }
 
     /// Persists one completed snapshot and returns the snapshot to serve
@@ -152,7 +179,23 @@ public final class BurnBarFleetPersister {
     /// Loads the last persisted snapshot from the store at startup so
     /// transition baselines survive daemon restarts.
     public func loadLastPersistedSnapshot() {
-        lastPersistedSnapshot = try? store.latestSnapshot()
+        do {
+            lastPersistedSnapshot = try store.latestSnapshot()
+        } catch {
+            // A readable row with malformed snapshot JSON is a corrupt
+            // persistence store, not an empty baseline. Rebuild through the
+            // typed recovery path so the next snapshot discloses the loss
+            // instead of silently dropping transition history.
+            lastPersistedSnapshot = nil
+            do {
+                try store.rebuildDatabase(reason: "stored snapshot payload was malformed")
+                combinedHealth = store.currentHealth()
+            } catch {
+                combinedHealth = .degraded(
+                    reason: BurnBarFleetPersistenceReason.storeUnavailable("\(error)")
+                )
+            }
+        }
     }
 
     /// Derives the fixed-roster transitions between two snapshots. The store
@@ -183,11 +226,13 @@ public final class BurnBarFleetPersister {
     /// Merges health states: `.ok` when every input is `.ok`, otherwise
     /// `degraded` with the non-empty reasons joined by "; ".
     private static func mergedHealth(_ healths: [BurnBarFleetPersistenceHealth]) -> BurnBarFleetPersistenceHealth {
-        let reasons = healths.compactMap { health -> String? in
+        var reasons: [String] = []
+        for health in healths {
             if case .degraded(let reason) = health {
-                return reason
+                if !reasons.contains(reason) {
+                    reasons.append(reason)
+                }
             }
-            return nil
         }
         return reasons.isEmpty ? .ok : .degraded(reason: reasons.joined(separator: "; "))
     }

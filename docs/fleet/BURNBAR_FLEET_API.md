@@ -641,13 +641,27 @@ default event retention is exactly 24 hours; validators may set
 completed snapshot payloads are retained by default.
 
 The live projection is rebuildable from probes. If `fleet.sqlite` is corrupt,
-the daemon deletes and recreates it, publishes the first recovery snapshot
-with `persistenceHealth.kind == "degraded"` and a reason containing
-`rebuilt`, then clears that degradation only after the next successful
-persist. Deleting or rebuilding the store discards daemon-owned orchestrator
-designation and directive history; designation re-initializes to
-`{"kind":"none"}`. This is intentional and must be treated as data loss for
-control history, not as a restored empty state.
+has an incompatible/partial schema, or is deleted/replaced while the daemon is
+running, the daemon closes the old handle, deletes/recreates the store, and
+publishes the first recovery snapshot with
+`persistenceHealth.kind == "degraded"` and a reason containing `rebuilt`.
+If the store is deleted while the daemon is stopped but a last-good snapshot
+file remains, startup takes the same typed rebuild path before the first tick.
+Malformed persisted snapshot or orchestrator-state JSON is treated as the same
+corrupt-store boundary, rather than silently becoming an empty baseline.
+Compatible older v1 stores migrate in place. The rebuild degradation clears
+only after the next successful persist. Deleting or rebuilding the store
+discards daemon-owned orchestrator designation and directive history;
+designation re-initializes to `{"kind":"none"}`. This is intentional and must
+be treated as data loss for control history, not as a restored empty state.
+
+If the support directory is read-only, the daemon still serves probe-backed
+RPC snapshots. The top-level `persistenceHealth` is
+`{"kind":"degraded","reason":"..."}` for the SQLite/file-writer failure;
+clients must not reinterpret this as per-agent probe health. Atomic file
+replacement uses a temporary path and `rename(2)`. A crash or `SIGKILL`
+during a write leaves the previous complete file in place; an orphaned
+temporary file is never promoted and is ignored/cleaned on the next tick.
 
 ## Dates and optionality
 

@@ -24,23 +24,34 @@ import GRDB
 /// implementation does not use.
 ///
 /// Rebuild semantics (invariant 6): the live projection always rebuilds from
-/// probes. Store corruption is detected, the store is deleted + recreated,
-/// and the recovery is surfaced through `persistenceHealth: degraded(reason)`
-/// (reason `storeRebuilt`) until the next successful persist. Store deletion
-/// discards daemon-owned orchestration history and re-initializes designation
-/// to `none` — disclosed in `docs/fleet/BURNBAR_FLEET_SIGNALS.md`.
+/// probes. A corrupt, incompatible, or externally deleted store is deleted +
+/// recreated, and the recovery is surfaced through
+/// `persistenceHealth: degraded(reason)` (reason `storeRebuilt`) until the
+/// next successful persist. Store deletion discards daemon-owned
+/// orchestration history and re-initializes designation to `none` —
+/// disclosed in `docs/fleet/BURNBAR_FLEET_SIGNALS.md`.
 public final class BurnBarFleetStore {
     public let databasePath: String
     public let eventRetentionSeconds: TimeInterval
     public let snapshotRetentionCount: Int
 
-    private var queue: DatabaseQueue?
-    private var health: BurnBarFleetPersistenceHealth = .ok
+    var queue: DatabaseQueue?
+    var health: BurnBarFleetPersistenceHealth = .ok
+    /// The identity of the database file attached to `queue`. SQLite keeps an
+    /// open descriptor valid after an external unlink, so checking only
+    /// `queue != nil` would let a daemon keep writing to a deleted inode while
+    /// the configured `fleet.sqlite` path is absent.
+    var openedFileIdentity: FileIdentity?
+    /// Monotonically increases whenever the store is rebuilt after an
+    /// externally deleted/replaced, corrupt, or incompatible database. The
+    /// control store observes this token and drops daemon-owned designation
+    /// and directive state rather than resurrecting it from memory.
+    public private(set) var recoveryGeneration: UInt64 = 0
     /// Rebuild degradation that must remain visible on the FIRST published
     /// snapshot after a delete+recreate (served via RPC, written to
     /// fleet-snapshot.json, persisted to fleet_snapshots) and clear only on
     /// the NEXT successful persist after that publication (VAL-HARD-012/013).
-    private var pendingRebuildHealth: BurnBarFleetPersistenceHealth?
+    var pendingRebuildHealth: BurnBarFleetPersistenceHealth?
 
     public init(
         databasePath: String,
@@ -64,33 +75,48 @@ public final class BurnBarFleetStore {
             // Already open (idempotent).
             return health
         }
+        if Self.fileIdentity(at: databasePath) == nil,
+           Self.fileIdentity(at: Self.snapshotPath(for: databasePath)) != nil {
+            do {
+                try rebuildDatabase(reason: "store path was deleted before daemon restart")
+            } catch {
+                health = .degraded(reason: BurnBarFleetPersistenceReason.storeUnavailable("\(error)"))
+                throw error
+            }
+            return health
+        }
         do {
             queue = try Self.openQueue(at: databasePath, migrate: true)
+            openedFileIdentity = Self.fileIdentity(at: databasePath)
             return health
         } catch {
-            guard Self.looksCorrupt(error) else {
+            guard Self.isRecoverableOpenFailure(error) else {
                 health = .degraded(reason: BurnBarFleetPersistenceReason.storeUnavailable("\(error)"))
                 throw error
             }
             // Rebuild: delete + recreate. Deletion discards orchestration
             // history; the projection itself always rebuilds from probes.
-            try? FileManager.default.removeItem(atPath: databasePath)
             do {
-                queue = try Self.openQueue(at: databasePath, migrate: true)
+                try rebuildDatabase(reason: Self.rebuildDetail(for: error))
             } catch {
                 health = .degraded(reason: BurnBarFleetPersistenceReason.storeUnavailable("\(error)"))
                 throw error
             }
-            let rebuildHealth = BurnBarFleetPersistenceHealth.degraded(
-                reason: BurnBarFleetPersistenceReason.storeRebuilt("recreated after corruption")
-            )
-            health = rebuildHealth
-            // The rebuild window spans the first published recovery snapshot:
-            // it must be visible on that snapshot (RPC + file + store row) and
-            // clear only on the next successful persist after publication.
-            pendingRebuildHealth = rebuildHealth
             return health
         }
+    }
+
+    /// Detects an external delete or replacement of `fleet.sqlite` while the
+    /// daemon is running and rebuilds before the next snapshot is built.
+    ///
+    /// SQLite permits an already-open connection to continue operating on an
+    /// unlinked inode. Treating a path identity change as a recovery boundary
+    /// prevents the daemon from serving a healthy-looking projection whose
+    /// store is no longer present at the configured path.
+    public func recoverIfStorePathChanged() throws {
+        guard queue != nil, let openedFileIdentity else { return }
+        guard Self.fileIdentity(at: databasePath) != openedFileIdentity else { return }
+        try rebuildDatabase(reason: "store path was deleted or replaced while the daemon was running")
     }
 
     /// Closes the store (used by tests; the daemon keeps the store open for
@@ -98,6 +124,7 @@ public final class BurnBarFleetStore {
     public func close() {
         try? queue?.close()
         queue = nil
+        openedFileIdentity = nil
     }
 
     public func currentHealth() -> BurnBarFleetPersistenceHealth {
@@ -109,7 +136,11 @@ public final class BurnBarFleetStore {
         return health
     }
 
-    private static func openQueue(at path: String, migrate: Bool) throws -> DatabaseQueue {
+    func advanceRecoveryGeneration() {
+        recoveryGeneration &+= 1
+    }
+
+    static func openQueue(at path: String, migrate: Bool) throws -> DatabaseQueue {
         let directoryURL = URL(fileURLWithPath: path).deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
@@ -117,23 +148,13 @@ public final class BurnBarFleetStore {
         if migrate {
             try migrator.migrate(queue)
         }
+        try validateSchema(queue)
         return queue
-    }
-
-    /// GRDB database error that indicates an unreadable/corrupt database file.
-    private static func looksCorrupt(_ error: Error) -> Bool {
-        guard let databaseError = error as? DatabaseError else { return false }
-        switch databaseError.resultCode {
-        case .SQLITE_CORRUPT, .SQLITE_NOTADB, .SQLITE_IOERR:
-            return true
-        default:
-            return false
-        }
     }
 
     // MARK: - Schema
 
-    private static var migrator: DatabaseMigrator {
+    static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1_fleet") { db in
             try db.create(table: "fleet_snapshots") { t in
@@ -185,32 +206,7 @@ public final class BurnBarFleetStore {
     /// the NEXT successful persist after that publication.
     @discardableResult
     public func persistLatestSnapshot(_ snapshot: BurnBarFleetSnapshot) throws -> BurnBarFleetSnapshot {
-        guard let queue else { throw BurnBarFleetPersistenceError.storeNotOpen }
-
-        let payload = try Self.encodeSnapshot(snapshot)
-        try queue.write { db in
-            try db.execute(
-                sql: "INSERT INTO fleet_snapshots (generated_at, payload) VALUES (?, ?)",
-                arguments: [snapshot.generatedAt.timeIntervalSince1970, payload]
-            )
-            try db.execute(
-                sql: "DELETE FROM fleet_snapshots WHERE id NOT IN (SELECT id FROM fleet_snapshots ORDER BY id DESC LIMIT ?)",
-                arguments: [snapshotRetentionCount]
-            )
-            try db.execute(
-                sql: "DELETE FROM fleet_events WHERE at < ?",
-                arguments: [Date().addingTimeInterval(-eventRetentionSeconds).timeIntervalSince1970]
-            )
-        }
-        if pendingRebuildHealth != nil {
-            // The recovery snapshot has now been published (persisted with
-            // the rebuild health embedded). The window closes after this
-            // persist; the next successful persist reports the store's
-            // normal health.
-            pendingRebuildHealth = nil
-        }
-        health = .ok
-        return snapshot
+        try persistSnapshotAndTransitions(snapshot, transitions: [])
     }
 
     /// The latest completed snapshot from the store, or nil when none has

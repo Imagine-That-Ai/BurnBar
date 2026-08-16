@@ -34,10 +34,11 @@ public enum BurnBarFleetPersistenceReason {
         "fleet.sqlite snapshot write failed: \(detail)"
     }
 
-    /// The store was corrupt and was rebuilt (deletion discards orchestration
+    /// The store was not trusted and was rebuilt after corruption, schema
+    /// mismatch, or external deletion (deletion discards orchestration
     /// history and re-initializes designation to none — disclosed in docs).
     public static func storeRebuilt(_ detail: String) -> String {
-        "fleet.sqlite was corrupt and rebuilt (orchestration history discarded): \(detail)"
+        "fleet.sqlite was rebuilt (orchestration history discarded): \(detail)"
     }
 
     /// The well-known file could not be written atomically.

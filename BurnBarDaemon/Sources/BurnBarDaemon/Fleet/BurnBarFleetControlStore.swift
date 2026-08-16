@@ -103,6 +103,7 @@ public actor BurnBarFleetControlStore {
     private let store: BurnBarFleetStore?
     private var inMemoryState: BurnBarOrchestratorState?
     private var inMemoryRecords: [BurnBarFleetDirective] = []
+    private var observedRecoveryGeneration: UInt64 = 0
 
     public init(store: BurnBarFleetStore? = nil) {
         self.store = store
@@ -114,19 +115,35 @@ public actor BurnBarFleetControlStore {
     /// (used at daemon start so a restarted daemon serves the prior
     /// designation from the first read; `currentState()` also lazy-loads).
     public func loadPersistedState() {
+        observeStoreRecoveryIfNeeded()
         guard let store, store.isOpen else {
             inMemoryState = nil
+            inMemoryRecords.removeAll(keepingCapacity: true)
             return
         }
-        inMemoryState = try? store.orchestratorStatePayload().flatMap { payload in
-            guard let data = payload.data(using: .utf8) else { return nil }
-            return try? JSONDecoder().decode(BurnBarOrchestratorState.self, from: data)
+        do {
+            guard let payload = try store.orchestratorStatePayload() else {
+                inMemoryState = nil
+                return
+            }
+            guard let data = payload.data(using: .utf8) else {
+                recoverMalformedPersistedState()
+                return
+            }
+            do {
+                inMemoryState = try JSONDecoder().decode(BurnBarOrchestratorState.self, from: data)
+            } catch {
+                recoverMalformedPersistedState()
+            }
+        } catch {
+            recoverMalformedPersistedState()
         }
     }
 
     /// The current orchestrator state: the persisted (or default) designation
     /// plus the live `pendingDirectives` count. Never mutates control state.
     public func currentState() -> BurnBarOrchestratorState {
+        observeStoreRecoveryIfNeeded()
         let state = loadIfNeeded()
         let pending = (try? pendingDirectivesCount()) ?? state.pendingDirectives
         return BurnBarOrchestratorState(
@@ -142,6 +159,7 @@ public actor BurnBarFleetControlStore {
     /// store.
     @discardableResult
     public func setOrchestratorState(_ requested: BurnBarOrchestratorState) throws -> BurnBarOrchestratorState {
+        observeStoreRecoveryIfNeeded()
         try Self.validateDesignation(requested.designation)
         let current = loadIfNeeded()
 
@@ -189,6 +207,7 @@ public actor BurnBarFleetControlStore {
     /// authoritative record instead of accepting the candidate.
     @discardableResult
     public func recordDirective(_ directive: BurnBarFleetDirective) throws -> BurnBarFleetDirective {
+        observeStoreRecoveryIfNeeded()
         try Self.validateDirective(directive)
         // Recovery reads use the same idempotent record surface with an
         // `approved` candidate. The daemon record is authoritative for
@@ -256,7 +275,37 @@ public actor BurnBarFleetControlStore {
 
     // MARK: - Internal
 
+    /// A store rebuild is an intentional control-state loss boundary. Do not
+    /// let this actor's cached designation/directive records resurrect the
+    /// state that was discarded from the recreated SQLite file.
+    private func observeStoreRecoveryIfNeeded() {
+        guard let store else { return }
+        let generation = store.recoveryGeneration
+        guard generation != observedRecoveryGeneration else { return }
+        observedRecoveryGeneration = generation
+        inMemoryState = nil
+        inMemoryRecords.removeAll(keepingCapacity: true)
+    }
+
+    /// A readable SQLite row with malformed control JSON is still a corrupt
+    /// store for the control plane. Rebuild it through the same typed
+    /// recovery boundary as malformed database bytes so a bad payload cannot
+    /// silently become a fresh `none` designation.
+    private func recoverMalformedPersistedState() {
+        guard let store else { return }
+        do {
+            try store.rebuildDatabase(reason: "orchestrator state payload was malformed")
+        } catch {
+            // The store records the typed unavailable health. Reads below
+            // still return the safe fresh-daemon default.
+        }
+        observeStoreRecoveryIfNeeded()
+        inMemoryState = nil
+        inMemoryRecords.removeAll(keepingCapacity: true)
+    }
+
     private func loadIfNeeded() -> BurnBarOrchestratorState {
+        observeStoreRecoveryIfNeeded()
         if let inMemoryState {
             return inMemoryState
         }

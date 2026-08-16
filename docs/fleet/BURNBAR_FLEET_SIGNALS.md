@@ -162,14 +162,39 @@ at insert time is pruned immediately (it never survives even one persist).
 **Rebuild semantics (invariant 6).** The live fleet projection always
 rebuilds from probes. Store corruption is detected on open: the store is
 deleted + recreated and the recovery is surfaced through
-`persistenceHealth: degraded(reason: "... rebuilt ...")`. The rebuild window
-spans the FIRST published recovery snapshot: the degraded health is visible
-on that snapshot via RPC, in `fleet-snapshot.json`, and in the
-`fleet_snapshots` row, and clears only on the NEXT successful persist after
-that publication (VAL-HARD-012/013). **Store deletion discards daemon-owned
-orchestration history and re-initializes designation to `none`** — this loss
-is by design and disclosed here; the live projection itself is rebuildable
-without data loss.
+`persistenceHealth: degraded(reason: "... rebuilt ...")`. The same typed
+rebuild path handles a schema-version mismatch or a missing required v1
+table/column. An older store with a compatible v1 migration marker is
+migrated in place; an incompatible/partial store is deleted and rebuilt
+instead. The rebuild window spans the FIRST published recovery snapshot: the
+degraded health is visible on that snapshot via RPC, in `fleet-snapshot.json`,
+and in the `fleet_snapshots` row, and clears only on the NEXT successful
+persist after that publication (VAL-HARD-012/013/020). **Store deletion
+discards daemon-owned orchestration history and re-initializes designation to
+`none`** — this loss is by design and disclosed here; the live projection
+itself is rebuildable without data loss.
+Malformed persisted snapshot or orchestrator-state JSON follows the same
+typed rebuild boundary; it never silently resets a transition baseline or
+control designation without `persistenceHealth` disclosure.
+
+The daemon also checks the database-file identity before each completed
+snapshot build. If `fleet.sqlite` is deleted or replaced while the daemon is
+running, an open SQLite descriptor is not trusted: it is closed, the store is
+rebuilt, and the next snapshot carries the same typed rebuild degradation
+(VAL-HARD-018). Cached orchestrator state is cleared at that boundary, so a
+designation or directive history is never resurrected from memory.
+After a restart, a missing `fleet.sqlite` with an existing last-good snapshot
+file is also treated as a rebuild boundary before the first new tick
+(VAL-HARD-012).
+
+The file writer uses `fleet-snapshot.json.tmp` followed by an atomic rename.
+If the daemon is killed during a write, an orphaned or truncated `.tmp` is
+never promoted. The prior destination remains the last-good complete JSON
+document; the next completed tick overwrites/cleans the temporary path before
+publishing a new generation (VAL-HARD-019). A support directory that cannot
+be written leaves RPC reads available but reports
+`persistenceHealth: degraded(reason)`; this is persistence health, not a
+per-agent `probeHealth` failure (VAL-HARD-021).
 
 ### Snapshot builder behavior (M1 core)
 
