@@ -114,6 +114,20 @@ final class BurnBarFleetPersistenceTests: XCTestCase {
         XCTAssertEqual(stored.agents.count, 10)
     }
 
+    func testStore_boundsSQLitePageCacheForRSSStability() async throws {
+        let store = try makeStore()
+
+        let configuredCacheKiB = try await store.queue!.read { db in
+            try Int.fetchOne(db, sql: "PRAGMA cache_size")
+        }
+
+        XCTAssertEqual(
+            configuredCacheKiB,
+            -BurnBarFleetPersistenceConstants.sqlitePageCacheKiB,
+            "fleet persistence must bound SQLite's page cache so retained snapshots do not look like an RSS leak"
+        )
+    }
+
     func testStore_recordsStatusChangedEventWithExactFromTo() async throws {
         let store = try makeStore()
         let persister = BurnBarFleetPersister(

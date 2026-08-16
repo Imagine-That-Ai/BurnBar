@@ -147,6 +147,16 @@ public final class BurnBarFleetStore {
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
         let queue = try DatabaseQueue(path: path)
+        // GRDB/SQLite otherwise grows its page cache as the retained snapshot
+        // table grows. That is bounded allocator retention rather than a
+        // leaked Swift object, but it makes the daemon's RSS look like a
+        // monotonic leak during the M6 soak. Keep the cache bounded in both
+        // production and hermetic validation.
+        try queue.write { db in
+            try db.execute(
+                sql: "PRAGMA cache_size = -\(BurnBarFleetPersistenceConstants.sqlitePageCacheKiB)"
+            )
+        }
         if migrate {
             try migrator.migrate(queue)
         }

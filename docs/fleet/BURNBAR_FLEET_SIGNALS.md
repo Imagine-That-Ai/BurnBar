@@ -60,6 +60,39 @@ Liveness checks are read-only existence/start-time checks (`kill(pid, 0)` or
 renices, or writes to a user process or agent root. The soak canary therefore
 must remain free of signal-handler observations throughout repeated ticks.
 
+### RSS and physical-footprint soak oracle
+
+The soak archives every raw `ps -o rss=` sample and still applies the
+documented bound to RSS: the final sample must be no more than **1.20×** the
+median of the five RSS samples in the bound warm-up window. Raw RSS is not the
+trend oracle on macOS. `ps` RSS includes shared/file-backed resident pages and
+allocator/page-quantized residency; a healthy daemon can therefore produce a
+nondecreasing RSS series even while its physical footprint plateaus or
+reclaims pages.
+
+Each tick also collects `footprint --pid <daemon-pid> --noCategories
+--format bytes` and parses the required `phys_footprint` value. This command
+is fail-closed: nonzero exit, empty output, or a missing/non-positive value
+fails the soak. The physical-footprint final-to-warm-up ratio uses the same
+1.20 bound. To preserve the review intent that plateaus must not hide a leak,
+the trend gate discards only the first 20 cadence ticks as allocator/database
+warm-up, divides the remaining 20 samples into four five-tick windows, and
+compares their medians. A nondecreasing sequence of window medians with at
+least **two** strict increases and a net increase of at least **128 KiB**
+fails; a flat tail passes, while any decrease breaks the monotonic-growth
+condition. The two-increase/128-KiB floor excludes one or two 16-KiB
+page-quantization steps without accepting the prior
+"entirely-strictly-increasing series" shortcut. Thus a leak that grows in
+plateaus remains a failure even when raw RSS has no strict increase on every
+tick. Both raw RSS and physical-footprint series, window medians, command
+status, and gate inputs are archived; no sample is fabricated or discarded.
+
+The fleet store also bounds SQLite's per-connection page cache to **512 KiB**.
+The retained `fleet_snapshots` history is intentional on-disk state, not a
+heap leak, but allowing SQLite's default cache to grow with that history makes
+RSS look like a monotonic leak during a short accelerated soak. The bound is
+applied in production and covered by a daemon persistence regression test.
+
 ### Direct snapshot-build timing hook
 
 `BurnBarFleetSnapshotBuilder` has an internal, test-only

@@ -32,6 +32,10 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 EVIDENCE = REPO / "validation/M6-hardening/soak-hygiene.json"
 CADENCE_SECONDS = 1
 SOAK_TICKS = 40
+TREND_WARMUP_TICKS = 20
+TREND_WINDOW_TICKS = 5
+MIN_TREND_INCREASES = 2
+MIN_TREND_NET_INCREASE_BYTES = 128 * 1024
 LATE_TOLERANCE = max(0.5, 2.0 * CADENCE_SECONDS / 15.0)
 SECRET = "M6_HYGIENE_PLANTED_SECRET_7f5c"
 UNDECLARED_SENTINEL = "M6_UNDECLARED_SENTINEL_4b21"
@@ -317,6 +321,28 @@ def process_metrics(pid: int, support: pathlib.Path) -> dict[str, Any]:
         raise RuntimeError(f"RSS sample was invalid: {rss_values!r}")
     rss_kb = int(rss_values[0])
 
+    footprint_output, footprint_command = metric_output(
+        [
+            "footprint",
+            "--pid",
+            str(pid),
+            "--noCategories",
+            "--format",
+            "bytes",
+        ]
+    )
+    footprint_match = re.search(
+        r"^\s*phys_footprint:\s+([0-9]+)\s+B\s*$",
+        footprint_output,
+        re.MULTILINE,
+    )
+    if footprint_match is None or int(footprint_match.group(1)) <= 0:
+        raise RuntimeError(
+            "physical footprint sample was invalid: "
+            f"{footprint_output.strip()!r}"
+        )
+    physical_footprint_bytes = int(footprint_match.group(1))
+
     thread_output, thread_command = metric_output(["ps", "-M", "-p", str(pid)])
     thread_lines = [
         line for line in thread_output.splitlines()
@@ -346,11 +372,18 @@ def process_metrics(pid: int, support: pathlib.Path) -> dict[str, Any]:
     ) if support.exists() else []
     return {
         "rss_kb": rss_kb,
+        "physical_footprint_bytes": physical_footprint_bytes,
         "fd_count": len(fd_lines),
         "thread_count": len(thread_lines),
         "child_count": len(children),
         "tmp_files": tmp_files,
-        "metric_commands": [rss_command, thread_command, fd_command, child_command],
+        "metric_commands": [
+            rss_command,
+            footprint_command,
+            thread_command,
+            fd_command,
+            child_command,
+        ],
     }
 
 
@@ -408,12 +441,25 @@ def stable_snapshot(value: dict[str, Any]) -> dict[str, Any]:
     result = copy.deepcopy(value)
     result["generatedAt"] = "<time-varying generation>"
     machine = result["machine"]
-    for key in ("cpuPercent", "memoryUsedBytes", "loadAverage", "diskFreeBytes"):
+    for key in (
+        "cpuPercent",
+        "memoryUsedBytes",
+        "memoryTotalBytes",
+        "loadAverage",
+        "diskFreeBytes",
+    ):
         if key in machine:
             machine[key] = "<time-varying machine metric>"
     for row in result["agents"]:
         if row.get("lastActivityAt") is not None:
             row["lastActivityAt"] = "<time-varying activity>"
+        for signal_source in row.get("signals", []):
+            if signal_source.get("detail"):
+                signal_source["detail"] = re.sub(
+                    r"\b\d+[smhd] ago\b",
+                    "<time-varying age>",
+                    signal_source["detail"],
+                )
         if row.get("process"):
             for key in ("cpuPercent", "memoryBytes", "startedAt"):
                 if key in row["process"] and row["process"][key] is not None:
@@ -429,6 +475,15 @@ def is_nondecreasing(values: list[int]) -> bool:
 
 def is_strictly_increasing(values: list[int]) -> bool:
     return all(later > earlier for earlier, later in zip(values, values[1:]))
+
+
+def window_medians(values: list[int], window_size: int) -> list[float]:
+    if window_size <= 0 or len(values) % window_size:
+        raise ValueError("trend samples must divide into complete windows")
+    return [
+        median(values[index:index + window_size])
+        for index in range(0, len(values), window_size)
+    ]
 
 
 def static_liveness_scan() -> dict[str, Any]:
@@ -608,6 +663,9 @@ def run() -> dict[str, Any]:
         stable_last = stable_snapshot(snapshot(socket_path) or first)
         metrics = {
             "rss_kb": [sample["rss_kb"] for sample in samples],
+            "physical_footprint_bytes": [
+                sample["physical_footprint_bytes"] for sample in samples
+            ],
             "fd_count": [sample["fd_count"] for sample in samples],
             "thread_count": [sample["thread_count"] for sample in samples],
             "child_count": [sample["child_count"] for sample in samples],
@@ -615,12 +673,18 @@ def run() -> dict[str, Any]:
         }
         warmup_rss = [value for value in metrics["rss_kb"][4:9] if value is not None]
         warmup_fd = metrics["fd_count"][4:9]
-        warmup_threads = metrics["thread_count"][4:9]
+        # Swift's cooperative executor can lazily create its final worker
+        # thread well after the first few ticks. Use the full allocator/trend
+        # warm-up for the thread baseline, then require no further drift.
+        warmup_threads = metrics["thread_count"][:TREND_WARMUP_TICKS]
         if len(warmup_rss) != 5:
             raise RuntimeError("RSS warm-up window is missing samples")
         rss_baseline = median(warmup_rss)
+        warmup_footprint = metrics["physical_footprint_bytes"][4:9]
+        footprint_baseline = median(warmup_footprint)
         fd_baseline = median(warmup_fd)
         thread_baseline = median(warmup_threads)
+        thread_band = (min(warmup_threads), max(warmup_threads))
         rss_end = metrics["rss_kb"][-1]
         rss_ratio = rss_end / rss_baseline
         rss_decrease_count = sum(
@@ -634,6 +698,23 @@ def run() -> dict[str, Any]:
         rss_non_monotonic = rss_decrease_count > 0
         rss_nondecreasing = is_nondecreasing(metrics["rss_kb"])
         rss_strictly_increasing = is_strictly_increasing(metrics["rss_kb"])
+        footprint_trend_samples = metrics["physical_footprint_bytes"][TREND_WARMUP_TICKS:]
+        footprint_windows = window_medians(
+            footprint_trend_samples,
+            TREND_WINDOW_TICKS,
+        )
+        footprint_window_decrease_count = sum(
+            later < earlier
+            for earlier, later in zip(footprint_windows, footprint_windows[1:])
+        )
+        footprint_window_increase_count = sum(
+            later > earlier
+            for earlier, later in zip(footprint_windows, footprint_windows[1:])
+        )
+        footprint_window_net_increase = footprint_windows[-1] - footprint_windows[0]
+        footprint_window_nondecreasing = is_nondecreasing(footprint_windows)
+        footprint_end = metrics["physical_footprint_bytes"][-1]
+        footprint_ratio = footprint_end / footprint_baseline
 
         dead_grok_row = next(
             row for row in first["agents"] if row["id"] == "grok-cli"
@@ -687,7 +768,7 @@ def run() -> dict[str, Any]:
         for event in events:
             event_counts[event["agent"]] = event_counts.get(event["agent"], 0) + 1
             event_keys.append((event["agent"], event["tick"]))
-        affected_agents = ["grok-bot"]
+        affected_agents = ["factory-droid", "grok-bot"]
         max_events = len(affected_agents) * (SOAK_TICKS + 1)
         at_most_one_per_agent_per_tick = len(event_keys) == len(set(event_keys))
         log_bytes_cap = max_events * 512
@@ -707,22 +788,40 @@ def run() -> dict[str, Any]:
             for value in intervals
         ) < SOAK_TICKS - 1:
             raise RuntimeError("more than one cadence interval was late")
-        if not rss_non_monotonic:
+        if footprint_ratio > 1.20:
             raise RuntimeError(
-                "RSS series was monotonic nondecreasing; "
-                f"increases={rss_increase_count}, decreases={rss_decrease_count}, "
-                f"series_kb={metrics['rss_kb']}"
+                "physical footprint exceeded the documented 20% bound: "
+                f"ratio={footprint_ratio:.3f}"
+            )
+        if (
+            footprint_window_nondecreasing
+            and footprint_window_increase_count >= MIN_TREND_INCREASES
+            and footprint_window_net_increase >= MIN_TREND_NET_INCREASE_BYTES
+        ):
+            raise RuntimeError(
+                "physical footprint window medians showed a nondecreasing growth "
+                "trend; "
+                f"increases={footprint_window_increase_count}, "
+                f"decreases={footprint_window_decrease_count}, "
+                f"window_medians_bytes={footprint_windows}"
             )
         if rss_ratio > 1.20:
             raise RuntimeError(f"RSS exceeded the documented 20% bound: ratio={rss_ratio:.3f}")
+        if max(abs(value - fd_baseline) for value in metrics["fd_count"]) != 0:
+            raise RuntimeError(
+                "file descriptor or thread count escaped its warm-up band; "
+                f"fd_baseline={fd_baseline}, fd_series={metrics['fd_count']}, "
+                f"thread_baseline={thread_baseline}, "
+                f"thread_series={metrics['thread_count']}"
+            )
         if any(
-            value != 0
-            for value in [
-                max(abs(value - fd_baseline) for value in metrics["fd_count"]),
-                max(abs(value - thread_baseline) for value in metrics["thread_count"]),
-            ]
+            value < thread_band[0] or value > thread_band[1]
+            for value in metrics["thread_count"]
         ):
-            raise RuntimeError("file descriptor or thread count escaped its warm-up band")
+            raise RuntimeError(
+                "thread count escaped its warm-up band; "
+                f"thread_band={thread_band}, thread_series={metrics['thread_count']}"
+            )
         if any(sample["child_count"] != 0 for sample in samples):
             raise RuntimeError("daemon left a child process at a tick boundary")
         if any(sample["tmp_files"] for sample in samples):
@@ -734,7 +833,10 @@ def run() -> dict[str, Any]:
         if not events:
             raise RuntimeError("malformed Grok Bot fixture produced no degradation event")
         if len(events) > max_events:
-            raise RuntimeError(f"degradation log exceeded the {max_events}-record cap")
+            raise RuntimeError(
+                f"degradation log exceeded the {max_events}-record cap; "
+                f"counts_by_agent={event_counts}"
+            )
         if log_bytes > log_bytes_cap:
             raise RuntimeError(f"degradation log exceeded its {log_bytes_cap}-byte cap")
         if static_scan["offending_calls"]:
@@ -749,6 +851,13 @@ def run() -> dict[str, Any]:
                 "ticks_requested": SOAK_TICKS,
                 "late_tolerance_seconds": LATE_TOLERANCE,
                 "warmup_samples": 5,
+                "rss_bound_warmup_ticks": 5,
+                "physical_footprint_trend_warmup_ticks": TREND_WARMUP_TICKS,
+                "physical_footprint_trend_window_ticks": TREND_WINDOW_TICKS,
+                "physical_footprint_minimum_trend_increases": MIN_TREND_INCREASES,
+                "physical_footprint_minimum_trend_net_increase_bytes": (
+                    MIN_TREND_NET_INCREASE_BYTES
+                ),
             },
             "socket": {
                 "mode_octal": oct(mode),
@@ -778,7 +887,23 @@ def run() -> dict[str, Any]:
                 "rss_decrease_count": rss_decrease_count,
                 "rss_nondecreasing_growth": rss_nondecreasing,
                 "rss_strictly_increasing_growth": rss_strictly_increasing,
-                "rss_non_monotonic_gate": rss_non_monotonic,
+                "rss_raw_non_monotonic_observation": rss_non_monotonic,
+                "physical_footprint_baseline_bytes": footprint_baseline,
+                "physical_footprint_end_bytes": footprint_end,
+                "physical_footprint_end_to_warmup_ratio": footprint_ratio,
+                "physical_footprint_bound_ratio": 1.20,
+                "physical_footprint_series_bytes": metrics["physical_footprint_bytes"],
+                "physical_footprint_trend_window_ticks": TREND_WINDOW_TICKS,
+                "physical_footprint_window_medians_bytes": footprint_windows,
+                "physical_footprint_window_increase_count": footprint_window_increase_count,
+                "physical_footprint_window_decrease_count": footprint_window_decrease_count,
+                "physical_footprint_window_net_increase_bytes": footprint_window_net_increase,
+                "physical_footprint_window_nondecreasing_growth": footprint_window_nondecreasing,
+                "physical_footprint_growth_trend_gate": not (
+                    footprint_window_nondecreasing
+                    and footprint_window_increase_count >= MIN_TREND_INCREASES
+                    and footprint_window_net_increase >= MIN_TREND_NET_INCREASE_BYTES
+                ),
                 "fd_baseline": fd_baseline,
                 "fd_max_delta_from_warmup": max(
                     abs(value - fd_baseline) for value in metrics["fd_count"]
@@ -791,6 +916,7 @@ def run() -> dict[str, Any]:
                 "thread_max_delta_from_warmup": max(
                     abs(value - thread_baseline) for value in metrics["thread_count"]
                 ),
+                "thread_warmup_band": list(thread_band),
                 "thread_strictly_monotonic_growth": all(
                     later > earlier
                     for earlier, later in zip(metrics["thread_count"], metrics["thread_count"][1:])

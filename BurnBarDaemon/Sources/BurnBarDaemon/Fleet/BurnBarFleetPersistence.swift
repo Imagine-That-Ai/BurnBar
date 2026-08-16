@@ -15,6 +15,9 @@ public enum BurnBarFleetPersistenceConstants {
     /// Completed snapshot payloads retained in `fleet_snapshots`
     /// (240 ≈ 1 hour at the default 15s cadence).
     public static let defaultSnapshotRetentionCount = 240
+    /// Bound SQLite's per-connection page cache so retained snapshot history
+    /// does not turn into process RSS growth as the database grows.
+    public static let sqlitePageCacheKiB = 512
     /// The well-known file name (also used to detect tmp litter).
     public static let snapshotFileName = "fleet-snapshot.json"
     /// The atomic-write temp name; must never remain after a completed write.
