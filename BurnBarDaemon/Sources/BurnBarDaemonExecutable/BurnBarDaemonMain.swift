@@ -34,7 +34,7 @@ private enum BurnBarDaemonCommandLine {
         arguments: [String],
         environment: [String: String]
     ) throws -> BurnBarDaemonConfiguration {
-        var socketPath = environment["BURNBAR_DAEMON_SOCKET_PATH"] ?? BurnBarDaemonPaths.defaultSocketPath
+        var socketPath = BurnBarDaemonPaths.socketPath(environment: environment)
         var daemonVersion = environment["BURNBAR_DAEMON_VERSION"] ?? BurnBarDaemonVersion.current
         var indexDatabasePath = environment["BURNBAR_INDEX_DATABASE_PATH"]
 

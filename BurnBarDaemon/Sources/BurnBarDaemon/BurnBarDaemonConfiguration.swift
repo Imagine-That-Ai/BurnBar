@@ -22,6 +22,30 @@ public enum BurnBarDaemonPaths {
         defaultSocketURL.path
     }
 
+    /// Resolves the executable's socket override using the same empty-value
+    /// semantics as the documented shell and Python readers. An empty
+    /// `BURNBAR_DAEMON_SOCKET_PATH` is unset and falls back to the support
+    /// directory-derived default.
+    public static func socketPath(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String {
+        if let override = environment["BURNBAR_DAEMON_SOCKET_PATH"], !override.isEmpty {
+            return override
+        }
+        return defaultSocketPath(environment: environment)
+    }
+
+    /// Resolves the default socket from an injected environment. The
+    /// executable uses this overload so hermetic callers can test the same
+    /// support-directory fallback without mutating process-wide environment.
+    public static func defaultSocketPath(
+        environment: [String: String]
+    ) -> String {
+        supportDirectoryURL(environment: environment)
+            .appendingPathComponent("burnbar-daemon.sock", isDirectory: false)
+            .path
+    }
+
     public static var defaultConfigStoreURL: URL {
         supportDirectoryURL.appendingPathComponent("provider-config.json", isDirectory: false)
     }
@@ -47,6 +71,19 @@ public enum BurnBarDaemonPaths {
     /// The well-known atomic snapshot file any local agent can read.
     public static var defaultFleetSnapshotURL: URL {
         supportDirectoryURL.appendingPathComponent("fleet-snapshot.json", isDirectory: false)
+    }
+
+    private static func supportDirectoryURL(environment: [String: String]) -> URL {
+        if let override = environment["BURNBAR_DAEMON_SUPPORT_DIR"],
+           !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+
+        let homePath = environment["HOME"]
+            .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            ?? FileManager.default.homeDirectoryForCurrentUser.path
+        return URL(fileURLWithPath: homePath, isDirectory: true)
+            .appendingPathComponent("Library/Application Support/BurnBar", isDirectory: true)
     }
 }
 

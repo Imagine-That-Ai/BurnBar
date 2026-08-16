@@ -126,6 +126,148 @@ Implementation detail and rollout notes live in [`docs/BURNBAR_SEARCH_ARCHITECTU
 
 Quota reporting is separate from spend history. Codex quota comes from the latest local rollout/session snapshot, Claude Code quota comes from the local statusline bridge, MiniMax and Z.ai use official API responses, and Factory / Droid remaining is an explicit estimate from BurnBar-tracked raw monthly tokens rather than Factory billable tokens.
 
+## Live Agent Fleet
+
+BurnBar also exposes a local, read-only view of the agents active on this
+machine. The daemon is the control plane: the app and external agents read
+the daemon's versioned RPC or its atomically written snapshot file; they do
+not crawl agent roots themselves. The fixed roster is:
+
+```text
+claude-code, factory-droid, codex, hermes, grok-bot,
+grok-cli, pi, cursor, kimi, gemini-cli
+```
+
+Each row reports `running`, `idle`, `stale`, or `unknown` together with an
+honest confidence tier (`exactProcess`, `activeSessionFile`, `logHeartbeat`,
+`estimated`, or `unsupported`). Missing, malformed, or unsupported signals
+remain typed rows instead of becoming fabricated liveness. Fleet serving is
+local-only and does not use Firebase, Firestore, cloud relay, spawning, run
+graphs, or cross-agent arbitration.
+
+The default local paths are:
+
+```text
+socket:          ~/Library/Application Support/BurnBar/burnbar-daemon.sock
+snapshot file:   ~/Library/Application Support/BurnBar/fleet-snapshot.json
+state database:  ~/Library/Application Support/BurnBar/fleet.sqlite
+```
+
+`BURNBAR_DAEMON_SUPPORT_DIR` redirects the support directory and therefore the
+default socket, snapshot, and database together. A non-empty
+`BURNBAR_DAEMON_SOCKET_PATH` overrides only the socket; an empty value is
+treated as unset by the daemon and documented readers. The daemon also
+accepts `--socket-path PATH`, which wins over the environment override.
+`BURNBAR_FLEET_ROOTS_DIR` points probes at hermetic fixture roots, and
+`BURNBAR_FLEET_CADENCE_SECONDS` changes both the ticker and the reported
+`cadenceSeconds` (the default is 15 seconds). Probe roots are read-only and
+`~/.factory/artifacts/` is never traversed.
+
+The versioned fleet methods are:
+
+```text
+daemon.fleet.snapshot             read latest completed snapshot
+daemon.fleet.orchestrator.get    read daemon-owned designation
+daemon.fleet.orchestrator.set    write an approved designation
+daemon.fleet.directive.record    record an approved/dismissed/delivery outcome
+```
+
+The three write methods are control-plane operations, not general agent
+permissions. They validate payloads, preserve typed outcomes, and serialize
+daemon-owned state.
+
+### Fleet smoke test
+
+From the repository root, run this complete command block. It builds the
+daemon, starts one hermetic instance with empty fixture roots, reads a
+versioned snapshot over AF_UNIX, and checks the raw `fleet-snapshot.json`
+file. The trap stops only the daemon started by this block and removes its
+temporary directory.
+
+```sh
+set -eu
+TMPD="$(mktemp -d "${TMPDIR:-/tmp}/burnbar-readme.XXXXXX")"
+DAEMON_PID=""
+cleanup() {
+  if [ -n "$DAEMON_PID" ]; then
+    kill "$DAEMON_PID" 2>/dev/null || true
+    wait "$DAEMON_PID" 2>/dev/null || true
+  fi
+  rm -rf "$TMPD"
+}
+trap cleanup EXIT
+
+for root in claude factory codex hermes grokbot grok pi cursor kimi gemini; do
+  mkdir -p "$TMPD/roots/$root"
+done
+
+BIN="$(swift build --package-path BurnBarDaemon --show-bin-path)/BurnBarDaemon"
+BURNBAR_DAEMON_SUPPORT_DIR="$TMPD/support" \
+BURNBAR_FLEET_ROOTS_DIR="$TMPD/roots" \
+BURNBAR_FLEET_CADENCE_SECONDS=1 \
+"$BIN" --socket-path "$TMPD/burnbar-daemon.sock" >"$TMPD/daemon.log" 2>&1 &
+DAEMON_PID=$!
+
+export BURNBAR_DAEMON_SUPPORT_DIR="$TMPD/support"
+export BURNBAR_DAEMON_SOCKET_PATH="$TMPD/burnbar-daemon.sock"
+python3 - <<'PY'
+import json
+import os
+import socket
+import time
+
+sock_path = os.environ["BURNBAR_DAEMON_SOCKET_PATH"]
+request = b'{"id":"readme-fleet","method":"daemon.fleet.snapshot"}\n'
+for _ in range(80):
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(2)
+    try:
+        client.connect(sock_path)
+        client.sendall(request)
+        response = json.loads(client.makefile("rb").read().decode())
+    except (OSError, json.JSONDecodeError):
+        response = {}
+    finally:
+        client.close()
+    if response.get("protocolVersion") == 1 and "result" in response:
+        snapshot = response["result"]["snapshot"]
+        assert snapshot["schemaVersion"] == 1
+        assert len(snapshot["agents"]) == 10
+        print(
+            "fleet smoke: protocol=1 schema=1 "
+            f"agents={len(snapshot['agents'])} cadence={snapshot['cadenceSeconds']}"
+        )
+        break
+    time.sleep(0.05)
+else:
+    raise SystemExit("fleet snapshot did not become ready")
+PY
+
+jq '{schemaVersion, generatedAt, cadenceSeconds, runningCount, persistenceHealth}' \
+  "$BURNBAR_DAEMON_SUPPORT_DIR/fleet-snapshot.json"
+```
+
+For the complete schema, typed error matrix, read-only Python consumer,
+orchestrator approval flow, Hermes delivery outcome, and restart/freshness
+rules, see [`docs/fleet/BURNBAR_FLEET_API.md`](docs/fleet/BURNBAR_FLEET_API.md)
+and the canonical signal inventory in
+[`docs/fleet/BURNBAR_FLEET_SIGNALS.md`](docs/fleet/BURNBAR_FLEET_SIGNALS.md).
+
+An app built against a newer fleet contract degrades honestly when paired
+with an older daemon: `daemon.fleet.snapshot` may return a typed
+method-not-found or protocol error, and Fleet shows an unavailable/mismatch
+state rather than fabricated rows. The existing usage dashboard, provider
+details, settings, and menu-bar surfaces remain independent. Multiple app
+instances may read the same daemon snapshot safely; daemon-owned designation
+and directive writes remain serialized and are never duplicated by reads.
+
+The first-visit control path is deliberately human-approved: open Fleet,
+designate BurnBar or a declared agent, switch the existing chat panel to
+Orchestrator, inspect the proposal, approve or dismiss it, and treat Hermes
+delivery as either a recorded delivered/failed outcome or an explicit typed
+unsupported result. No step spawns agents, builds an execution graph, or
+arbitrates work across agents.
+
 ### Cursor agent provider scope (narrower on purpose)
 
 Routed Cursor traffic is a smaller club than the table above.

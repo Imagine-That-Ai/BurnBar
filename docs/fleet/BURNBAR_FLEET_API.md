@@ -27,7 +27,9 @@ The default socket is:
 The path is resolved as follows:
 
 1. `BurnBarDaemon --socket-path PATH` wins when supplied.
-2. Otherwise `BURNBAR_DAEMON_SOCKET_PATH` is used when non-empty.
+2. Otherwise `BURNBAR_DAEMON_SOCKET_PATH` is used when non-empty. An empty
+   value is treated as unset, so shell, Python, and the daemon executable all
+   fall back to the support-directory-derived socket.
 3. Otherwise the daemon uses
    `<support-directory>/burnbar-daemon.sock`.
 
