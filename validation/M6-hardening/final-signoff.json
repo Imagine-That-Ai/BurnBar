@@ -23,27 +23,30 @@
   },
   "branch": "feat/live-agent-fleet",
   "evidenceArchives": {
-    "appBuild": "validation/M6-hardening/app-build-current.txt",
-    "cross008Snapshot": "validation/M6-hardening/cross-008-real-root-snapshot.json",
-    "cross008Validator": "validation/M6-hardening/cross-008-real-root-structural-validator.txt",
-    "cross011": "validation/M6-hardening/cross-011-current-evidence.txt",
-    "cross016": "validation/M6-hardening/cross-011-current-evidence.txt",
-    "cross017": "validation/M6-hardening/cross-017-current-journey.log",
-    "methodInventory": "validation/M6-hardening/final-signoff-inventory.txt",
-    "packageGates": "validation/M6-hardening/package-gates-current.txt",
-    "readmeMatrix": "validation/M6-hardening/readme-gate-matrix.txt"
+    "appBuild": "app-build-current.txt",
+    "appTests": "app-tests-current.txt",
+    "cross008Snapshot": "cross-008-real-root-snapshot.json",
+    "cross008Validator": "cross-008-real-root-structural-validator.txt",
+    "cross011": "cross-011-current-evidence.txt",
+    "cross016": "cross-011-current-evidence.txt",
+    "cross017": "cross-017-current-journey.log",
+    "degradation": "degradation-matrix.json",
+    "methodInventory": "final-signoff-inventory.txt",
+    "packageGates": "package-gates-current.txt",
+    "persistence": "persistence-recovery.json",
+    "readmeMatrix": "readme-gate-matrix.txt",
+    "soak": "soak-hygiene.json"
   },
   "feature": "fleet-final-integration-signoff",
   "gates": {
     "AppBuild": {
-      "exitCode": 65,
-      "reason": "missing local XCFrameworks for grpc, abseil, and FirebaseFirestoreInternal under /Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts",
-      "status": "blocked"
+      "exitCode": 0,
+      "status": "pass"
     },
     "AppFocusedTests": {
-      "exitCode": 65,
-      "reason": "same missing XCFramework dependencies; tests did not execute",
-      "status": "blocked"
+      "exitCode": 0,
+      "status": "pass",
+      "tests": 79
     },
     "Core": {
       "status": "pass",
@@ -52,10 +55,22 @@
     "Daemon": {
       "status": "pass",
       "tests": 398
+    },
+    "DegradationMatrix": {
+      "cross018": "blocked_desktop_control_unavailable",
+      "hardCases": "7/7 pass",
+      "status": "blocked"
+    },
+    "PersistenceRecovery": {
+      "status": "pass"
+    },
+    "SoakHygiene": {
+      "status": "pass",
+      "ticks": 40
     }
   },
-  "head": "6fa5004e7a9426ef999ae35336d660d52ca4bf84",
-  "honesty": "No full UI pass claimed; real-root state is structural-only; no remote operation or protected WIP modification.",
+  "head": "aee1fddf817f51ad27d264220344bc4c12ddb8e7",
+  "honesty": "No full UI pass claimed because cua-driver is unavailable; real-root state is structural-only; no remote operation or protected WIP modification.",
   "methodInventory": {
     "dispatch": "BurnBarDaemonServer.dispatchFleet",
     "handlers": [
@@ -67,20 +82,12 @@
     "status": "pass"
   },
   "readmeGate": {
-    "cases": [
-      "default support/socket",
-      "per-agent root override",
-      "event retention seam",
-      "--socket-path precedence",
-      "empty socket env fallback"
-    ],
     "matrix": "readme-gate-matrix.txt",
     "status": "pass"
   },
   "status": "blocked",
   "unresolvedBlockers": [
-    "cua-driver unavailable, so CROSS-011/CROSS-016 full UI evidence is blocked",
-    "local app .spm-cache has missing grpc/abseil/FirebaseFirestoreInternal XCFrameworks, so current unsigned app build and focused app tests are blocked"
+    "cua-driver unavailable, so CROSS-011/CROSS-016/CROSS-018 full desktop evidence is blocked"
   ],
-  "validatedAt": "2026-08-16T18:21:36.408891+00:00"
+  "validatedAt": "2026-08-16T18:40:36.075Z"
 }

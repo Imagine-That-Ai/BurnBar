@@ -1,37 +1,47 @@
+M6 app build current evidence
+validated_at=2026-08-16T18:40:36.075Z
+branch=feat/live-agent-fleet
+head=aee1fddf817f51ad27d264220344bc4c12ddb8e7
+command=xcodebuild build -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data
+result=pass; exit=0
+artifact=.derived-data/Build/Products/Debug/BurnBar.app
+signing=ad-hoc; architecture=arm64
+
+[xcodebuild-output]
 Command line invocation:
-    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data
+    "/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/usr/bin/xcodebuild" build -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination platform=macOS,arch=arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data
 
 Build settings from command line:
     CODE_SIGNING_ALLOWED = NO
     CODE_SIGNING_REQUIRED = NO
 
+2026-08-16 13:26:21.795 xcodebuild[19907:22835941]  DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+2026-08-16 13:26:21.838 xcodebuild[19907:22835902] [MT] DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
+2026-08-16 13:26:21.846 xcodebuild[19907:22835902] [MT] DVTDeviceOperation: Encountered a build number "" that is incompatible with DVTBuildVersion.
 Resolve Package Graph
 
 
 Resolved source packages:
-  InteropForGoogle: https://github.com/google/interop-ios-for-google-sdks.git @ 101.0.0
-  GoogleUtilities: https://github.com/google/GoogleUtilities.git @ 8.1.0
-  abseil: https://github.com/google/abseil-cpp-binary.git @ 1.2024072200.0
+  SwiftProtobuf: https://github.com/apple/swift-protobuf.git @ 1.36.1
+  GoogleDataTransport: https://github.com/google/GoogleDataTransport.git @ 10.1.0
+  GTMSessionFetcher: https://github.com/google/gtm-session-fetcher.git @ 3.5.0
+  BurnBarCore: /Users/dewclaw/Developer/AgentLens/BurnBarCore
+  GRDB: https://github.com/groue/GRDB.swift @ 7.10.0
   GTMAppAuth: https://github.com/google/GTMAppAuth.git @ 4.1.1
   GoogleAppMeasurement: https://github.com/google/GoogleAppMeasurement.git @ 11.15.0
-  nanopb: https://github.com/firebase/nanopb.git @ 2.30910.0
-  AppAuth: https://github.com/openid/AppAuth-iOS.git @ 1.7.6
-  Firebase: https://github.com/firebase/firebase-ios-sdk @ 11.15.0
-  GTMSessionFetcher: https://github.com/google/gtm-session-fetcher.git @ 3.5.0
-  GoogleDataTransport: https://github.com/google/GoogleDataTransport.git @ 10.1.0
-  BurnBarCore: /Users/dewclaw/Developer/AgentLens/BurnBarCore
   leveldb: https://github.com/firebase/leveldb.git @ 1.22.5
-  GRDB: https://github.com/groue/GRDB.swift @ 7.10.0
-  GoogleAdsOnDeviceConversion: https://github.com/googleads/google-ads-on-device-conversion-ios-sdk @ 2.3.0
+  InteropForGoogle: https://github.com/google/interop-ios-for-google-sdks.git @ 101.0.0
+  Firebase: https://github.com/firebase/firebase-ios-sdk @ 11.15.0
   Promises: https://github.com/google/promises.git @ 2.4.0
-  AppCheck: https://github.com/google/app-check.git @ 11.2.0
-  SwiftProtobuf: https://github.com/apple/swift-protobuf.git @ 1.36.1
-  gRPC: https://github.com/google/grpc-binary.git @ 1.69.1
+  abseil: https://github.com/google/abseil-cpp-binary.git @ 1.2024072200.0
+  GoogleUtilities: https://github.com/google/GoogleUtilities.git @ 8.1.0
   GoogleSignIn: https://github.com/google/GoogleSignIn-iOS @ 8.0.0
+  AppCheck: https://github.com/google/app-check.git @ 11.2.0
+  GoogleAdsOnDeviceConversion: https://github.com/googleads/google-ads-on-device-conversion-ios-sdk @ 2.3.0
+  AppAuth: https://github.com/openid/AppAuth-iOS.git @ 1.7.6
+  nanopb: https://github.com/firebase/nanopb.git @ 2.30910.0
+  gRPC: https://github.com/google/grpc-binary.git @ 1.69.1
 
---- xcodebuild: WARNING: Using the first of multiple matching destinations:
-{ platform:macOS, arch:arm64, id:00006040-000208562620801C, name:My Mac }
-{ platform:macOS, arch:x86_64, id:00006040-000208562620801C, name:My Mac }
 ComputePackagePrebuildTargetDependencyGraph
 
 Prepare packages
@@ -47,47 +57,47 @@ note: Building targets in dependency order
 note: Target dependency graph (87 targets)
     Target 'BurnBar' in project 'BurnBar'
         ➜ Explicit dependency on target 'BurnBarDaemonExecutable' in project 'BurnBar'
-        ➜ Explicit dependency on target 'BurnBarCore-product' in project 'BurnBarCore'
-        ➜ Explicit dependency on target 'GRDB-product' in project 'GRDB'
-        ➜ Explicit dependency on target 'FirebaseAuth-product' in project 'Firebase'
-        ➜ Explicit dependency on target 'FirebaseFirestore-product' in project 'Firebase'
-        ➜ Explicit dependency on target 'GoogleSignIn-product' in project 'GoogleSignIn'
-    Target 'GoogleSignIn-product' in project 'GoogleSignIn'
+        ➜ Explicit dependency on target 'BurnBarCore' in project 'BurnBarCore'
+        ➜ Explicit dependency on target 'GRDB' in project 'GRDB'
+        ➜ Explicit dependency on target 'FirebaseAuth' in project 'Firebase'
+        ➜ Explicit dependency on target 'FirebaseFirestore' in project 'Firebase'
+        ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
+    Target 'GoogleSignIn' in project 'GoogleSignIn'
         ➜ Explicit dependency on target 'GoogleSignIn' in project 'GoogleSignIn'
         ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn'
-        ➜ Explicit dependency on target 'AppAuth-product' in project 'AppAuth'
-        ➜ Explicit dependency on target 'AppCheckCore-product' in project 'AppCheck'
-        ➜ Explicit dependency on target 'GTMAppAuth-product' in project 'GTMAppAuth'
-        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
     Target 'GoogleSignIn' in project 'GoogleSignIn'
         ➜ Explicit dependency on target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn'
-        ➜ Explicit dependency on target 'AppAuth-product' in project 'AppAuth'
-        ➜ Explicit dependency on target 'AppCheckCore-product' in project 'AppCheck'
-        ➜ Explicit dependency on target 'GTMAppAuth-product' in project 'GTMAppAuth'
-        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
-    Target 'GTMAppAuth-product' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMAppAuth' in project 'GTMAppAuth'
         ➜ Explicit dependency on target 'GTMAppAuth' in project 'GTMAppAuth'
         ➜ Explicit dependency on target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth'
-        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
-        ➜ Explicit dependency on target 'AppAuthCore-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
     Target 'GTMAppAuth' in project 'GTMAppAuth'
         ➜ Explicit dependency on target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth'
-        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
-        ➜ Explicit dependency on target 'AppAuthCore-product' in project 'AppAuth'
-    Target 'AppAuthCore-product' in project 'AppAuth'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
+    Target 'AppAuthCore' in project 'AppAuth'
         ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
         ➜ Explicit dependency on target 'AppAuth_AppAuthCore' in project 'AppAuth'
     Target 'GTMAppAuth_GTMAppAuth' in project 'GTMAppAuth' (no dependencies)
-    Target 'AppCheckCore-product' in project 'AppCheck'
-        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
-        ➜ Explicit dependency on target 'FBLPromises-product' in project 'Promises'
-        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULUserDefaults-product' in project 'GoogleUtilities'
     Target 'AppCheckCore' in project 'AppCheck'
-        ➜ Explicit dependency on target 'FBLPromises-product' in project 'Promises'
-        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULUserDefaults-product' in project 'GoogleUtilities'
-    Target 'GULUserDefaults-product' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULUserDefaults' in project 'GoogleUtilities'
+    Target 'AppCheckCore' in project 'AppCheck'
+        ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULUserDefaults' in project 'GoogleUtilities'
+    Target 'GULUserDefaults' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
@@ -99,13 +109,13 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
     Target 'GoogleUtilities_GoogleUtilities-UserDefaults' in project 'GoogleUtilities' (no dependencies)
-    Target 'FBLPromises-product' in project 'Promises'
+    Target 'FBLPromises' in project 'Promises'
         ➜ Explicit dependency on target 'FBLPromises' in project 'Promises'
         ➜ Explicit dependency on target 'Promises_FBLPromises' in project 'Promises'
     Target 'FBLPromises' in project 'Promises'
         ➜ Explicit dependency on target 'Promises_FBLPromises' in project 'Promises'
     Target 'Promises_FBLPromises' in project 'Promises' (no dependencies)
-    Target 'AppAuth-product' in project 'AppAuth'
+    Target 'AppAuth' in project 'AppAuth'
         ➜ Explicit dependency on target 'AppAuth' in project 'AppAuth'
         ➜ Explicit dependency on target 'AppAuth_AppAuth' in project 'AppAuth'
         ➜ Explicit dependency on target 'AppAuthCore' in project 'AppAuth'
@@ -117,7 +127,7 @@ note: Target dependency graph (87 targets)
     Target 'AppAuth_AppAuthCore' in project 'AppAuth' (no dependencies)
     Target 'AppAuth_AppAuth' in project 'AppAuth' (no dependencies)
     Target 'GoogleSignIn_GoogleSignIn' in project 'GoogleSignIn' (no dependencies)
-    Target 'FirebaseFirestore-product' in project 'Firebase'
+    Target 'FirebaseFirestore' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseFirestoreTarget' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseFirestoreInternalWrapper' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseAppCheckInterop' in project 'Firebase'
@@ -127,13 +137,13 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'FirebaseCoreExtension' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseSharedSwift' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseFirestore' in project 'Firebase'
-        ➜ Explicit dependency on target 'GULNSData-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULLogger-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'abseil-product' in project 'abseil'
-        ➜ Explicit dependency on target 'gRPC-C++-product' in project 'gRPC'
-        ➜ Explicit dependency on target 'nanopb-product' in project 'nanopb'
-        ➜ Explicit dependency on target 'leveldb-product' in project 'leveldb'
+        ➜ Explicit dependency on target 'GULNSData' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULLogger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'abseil' in project 'abseil'
+        ➜ Explicit dependency on target 'gRPC-C++' in project 'gRPC'
+        ➜ Explicit dependency on target 'nanopb' in project 'nanopb'
+        ➜ Explicit dependency on target 'leveldb' in project 'leveldb'
     Target 'FirebaseFirestoreTarget' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseFirestoreInternalWrapper' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseAppCheckInterop' in project 'Firebase'
@@ -143,13 +153,13 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'FirebaseCoreExtension' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseSharedSwift' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseFirestore' in project 'Firebase'
-        ➜ Explicit dependency on target 'GULNSData-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULLogger-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'abseil-product' in project 'abseil'
-        ➜ Explicit dependency on target 'gRPC-C++-product' in project 'gRPC'
-        ➜ Explicit dependency on target 'nanopb-product' in project 'nanopb'
-        ➜ Explicit dependency on target 'leveldb-product' in project 'leveldb'
+        ➜ Explicit dependency on target 'GULNSData' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULLogger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'abseil' in project 'abseil'
+        ➜ Explicit dependency on target 'gRPC-C++' in project 'gRPC'
+        ➜ Explicit dependency on target 'nanopb' in project 'nanopb'
+        ➜ Explicit dependency on target 'leveldb' in project 'leveldb'
     Target 'FirebaseFirestore' in project 'Firebase'
         ➜ Explicit dependency on target 'Firebase_FirebaseFirestore' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseFirestoreInternalWrapper' in project 'Firebase'
@@ -159,36 +169,36 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'FirebaseCore' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseCoreExtension' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseSharedSwift' in project 'Firebase'
-        ➜ Explicit dependency on target 'GULNSData-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULLogger-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'abseil-product' in project 'abseil'
-        ➜ Explicit dependency on target 'gRPC-C++-product' in project 'gRPC'
-        ➜ Explicit dependency on target 'nanopb-product' in project 'nanopb'
-        ➜ Explicit dependency on target 'leveldb-product' in project 'leveldb'
-    Target 'leveldb-product' in project 'leveldb'
+        ➜ Explicit dependency on target 'GULNSData' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULLogger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'abseil' in project 'abseil'
+        ➜ Explicit dependency on target 'gRPC-C++' in project 'gRPC'
+        ➜ Explicit dependency on target 'nanopb' in project 'nanopb'
+        ➜ Explicit dependency on target 'leveldb' in project 'leveldb'
+    Target 'leveldb' in project 'leveldb'
         ➜ Explicit dependency on target 'leveldb' in project 'leveldb'
         ➜ Explicit dependency on target 'leveldb_leveldb' in project 'leveldb'
     Target 'leveldb' in project 'leveldb'
         ➜ Explicit dependency on target 'leveldb_leveldb' in project 'leveldb'
     Target 'leveldb_leveldb' in project 'leveldb' (no dependencies)
-    Target 'nanopb-product' in project 'nanopb'
+    Target 'nanopb' in project 'nanopb'
         ➜ Explicit dependency on target 'nanopb' in project 'nanopb'
         ➜ Explicit dependency on target 'nanopb_nanopb' in project 'nanopb'
     Target 'nanopb' in project 'nanopb'
         ➜ Explicit dependency on target 'nanopb_nanopb' in project 'nanopb'
     Target 'nanopb_nanopb' in project 'nanopb' (no dependencies)
-    Target 'gRPC-C++-product' in project 'gRPC'
+    Target 'gRPC-C++' in project 'gRPC'
         ➜ Explicit dependency on target 'grpcppWrapper' in project 'gRPC'
         ➜ Explicit dependency on target 'gRPC_grpcppWrapper' in project 'gRPC'
         ➜ Explicit dependency on target 'grpcWrapper' in project 'gRPC'
         ➜ Explicit dependency on target 'opensslWrapper' in project 'gRPC'
-        ➜ Explicit dependency on target 'abseil-product' in project 'abseil'
+        ➜ Explicit dependency on target 'abseil' in project 'abseil'
     Target 'grpcppWrapper' in project 'gRPC'
         ➜ Explicit dependency on target 'gRPC_grpcppWrapper' in project 'gRPC'
         ➜ Explicit dependency on target 'grpcWrapper' in project 'gRPC'
         ➜ Explicit dependency on target 'opensslWrapper' in project 'gRPC'
-        ➜ Explicit dependency on target 'abseil-product' in project 'abseil'
+        ➜ Explicit dependency on target 'abseil' in project 'abseil'
     Target 'opensslWrapper' in project 'gRPC'
         ➜ Explicit dependency on target 'gRPC_opensslWrapper' in project 'gRPC'
     Target 'gRPC_opensslWrapper' in project 'gRPC' (no dependencies)
@@ -196,7 +206,7 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'gRPC_grpcWrapper' in project 'gRPC'
     Target 'gRPC_grpcWrapper' in project 'gRPC' (no dependencies)
     Target 'gRPC_grpcppWrapper' in project 'gRPC' (no dependencies)
-    Target 'abseil-product' in project 'abseil'
+    Target 'abseil' in project 'abseil'
         ➜ Explicit dependency on target 'abslWrapper' in project 'abseil'
         ➜ Explicit dependency on target 'abseil_abslWrapper' in project 'abseil'
     Target 'abslWrapper' in project 'abseil'
@@ -205,7 +215,7 @@ note: Target dependency graph (87 targets)
     Target 'Firebase_FirebaseFirestore' in project 'Firebase' (no dependencies)
     Target 'FirebaseSharedSwift' in project 'Firebase' (no dependencies)
     Target 'FirebaseFirestoreInternalWrapper' in project 'Firebase' (no dependencies)
-    Target 'FirebaseAuth-product' in project 'Firebase'
+    Target 'FirebaseAuth' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseAuth' in project 'Firebase'
         ➜ Explicit dependency on target 'Firebase_FirebaseAuth' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseAppCheckInterop' in project 'Firebase'
@@ -215,12 +225,12 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'FirebaseCoreInternal' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseCore' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseCoreExtension' in project 'Firebase'
-        ➜ Explicit dependency on target 'RecaptchaInterop-product' in project 'InteropForGoogle'
-        ➜ Explicit dependency on target 'GULNSData-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULLogger-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULAppDelegateSwizzler-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'RecaptchaInterop' in project 'InteropForGoogle'
+        ➜ Explicit dependency on target 'GULNSData' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULLogger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULAppDelegateSwizzler' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
     Target 'FirebaseAuth' in project 'Firebase'
         ➜ Explicit dependency on target 'Firebase_FirebaseAuth' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseAppCheckInterop' in project 'Firebase'
@@ -230,19 +240,19 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'FirebaseCoreInternal' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseCore' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseCoreExtension' in project 'Firebase'
-        ➜ Explicit dependency on target 'RecaptchaInterop-product' in project 'InteropForGoogle'
-        ➜ Explicit dependency on target 'GULNSData-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULLogger-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULAppDelegateSwizzler-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
-    Target 'GTMSessionFetcherCore-product' in project 'GTMSessionFetcher'
+        ➜ Explicit dependency on target 'RecaptchaInterop' in project 'InteropForGoogle'
+        ➜ Explicit dependency on target 'GULNSData' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULLogger' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULAppDelegateSwizzler' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
+    Target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
         ➜ Explicit dependency on target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
         ➜ Explicit dependency on target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher'
     Target 'GTMSessionFetcherCore' in project 'GTMSessionFetcher'
         ➜ Explicit dependency on target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher'
     Target 'GTMSessionFetcher_GTMSessionFetcherCore' in project 'GTMSessionFetcher' (no dependencies)
-    Target 'GULAppDelegateSwizzler-product' in project 'GoogleUtilities'
+    Target 'GULAppDelegateSwizzler' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities-AppDelegateSwizzler' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-AppDelegateSwizzler' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
@@ -281,10 +291,10 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'Firebase_FirebaseCore' in project 'Firebase'
         ➜ Explicit dependency on target 'Firebase' in project 'Firebase'
         ➜ Explicit dependency on target 'FirebaseCoreInternal' in project 'Firebase'
-        ➜ Explicit dependency on target 'GULNSData-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULEnvironment-product' in project 'GoogleUtilities'
-        ➜ Explicit dependency on target 'GULLogger-product' in project 'GoogleUtilities'
-    Target 'GULLogger-product' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULNSData' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULEnvironment' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULLogger' in project 'GoogleUtilities'
+    Target 'GULLogger' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities-Logger' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Logger' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
@@ -294,7 +304,7 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
     Target 'GoogleUtilities_GoogleUtilities-Logger' in project 'GoogleUtilities' (no dependencies)
-    Target 'GULEnvironment-product' in project 'GoogleUtilities'
+    Target 'GULEnvironment' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities-Environment' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-Environment' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'third-party-IsAppEncrypted' in project 'GoogleUtilities'
@@ -306,8 +316,8 @@ note: Target dependency graph (87 targets)
     Target 'Firebase_FirebaseCore' in project 'Firebase' (no dependencies)
     Target 'FirebaseCoreInternal' in project 'Firebase'
         ➜ Explicit dependency on target 'Firebase_FirebaseCoreInternal' in project 'Firebase'
-        ➜ Explicit dependency on target 'GULNSData-product' in project 'GoogleUtilities'
-    Target 'GULNSData-product' in project 'GoogleUtilities'
+        ➜ Explicit dependency on target 'GULNSData' in project 'GoogleUtilities'
+    Target 'GULNSData' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities-NSData' in project 'GoogleUtilities'
         ➜ Explicit dependency on target 'GoogleUtilities_GoogleUtilities-NSData' in project 'GoogleUtilities'
     Target 'GoogleUtilities-NSData' in project 'GoogleUtilities'
@@ -316,8 +326,8 @@ note: Target dependency graph (87 targets)
     Target 'Firebase_FirebaseCoreInternal' in project 'Firebase' (no dependencies)
     Target 'Firebase' in project 'Firebase' (no dependencies)
     Target 'FirebaseAuthInternal' in project 'Firebase'
-        ➜ Explicit dependency on target 'RecaptchaInterop-product' in project 'InteropForGoogle'
-    Target 'RecaptchaInterop-product' in project 'InteropForGoogle'
+        ➜ Explicit dependency on target 'RecaptchaInterop' in project 'InteropForGoogle'
+    Target 'RecaptchaInterop' in project 'InteropForGoogle'
         ➜ Explicit dependency on target 'RecaptchaInterop' in project 'InteropForGoogle'
     Target 'RecaptchaInterop' in project 'InteropForGoogle' (no dependencies)
     Target 'FirebaseAuthInterop' in project 'Firebase' (no dependencies)
@@ -325,12 +335,12 @@ note: Target dependency graph (87 targets)
     Target 'Firebase_FirebaseAuth' in project 'Firebase' (no dependencies)
     Target 'BurnBarDaemonExecutable' in project 'BurnBar'
         ➜ Explicit dependency on target 'BurnBarDaemon' in project 'BurnBar'
-        ➜ Explicit dependency on target 'BurnBarCore-product' in project 'BurnBarCore'
-        ➜ Explicit dependency on target 'GRDB-product' in project 'GRDB'
+        ➜ Explicit dependency on target 'BurnBarCore' in project 'BurnBarCore'
+        ➜ Explicit dependency on target 'GRDB' in project 'GRDB'
     Target 'BurnBarDaemon' in project 'BurnBar'
-        ➜ Explicit dependency on target 'BurnBarCore-product' in project 'BurnBarCore'
-        ➜ Explicit dependency on target 'GRDB-product' in project 'GRDB'
-    Target 'GRDB-product' in project 'GRDB'
+        ➜ Explicit dependency on target 'BurnBarCore' in project 'BurnBarCore'
+        ➜ Explicit dependency on target 'GRDB' in project 'GRDB'
+    Target 'GRDB' in project 'GRDB'
         ➜ Explicit dependency on target 'GRDB' in project 'GRDB'
         ➜ Explicit dependency on target 'GRDB_GRDB' in project 'GRDB'
     Target 'GRDB' in project 'GRDB'
@@ -338,7 +348,7 @@ note: Target dependency graph (87 targets)
         ➜ Explicit dependency on target 'GRDBSQLite' in project 'GRDB'
     Target 'GRDBSQLite' in project 'GRDB' (no dependencies)
     Target 'GRDB_GRDB' in project 'GRDB' (no dependencies)
-    Target 'BurnBarCore-product' in project 'BurnBarCore'
+    Target 'BurnBarCore' in project 'BurnBarCore'
         ➜ Explicit dependency on target 'BurnBarCore' in project 'BurnBarCore'
         ➜ Explicit dependency on target 'BurnBarCore_BurnBarCore' in project 'BurnBarCore'
     Target 'BurnBarCore' in project 'BurnBarCore'
@@ -349,59 +359,958 @@ GatherProvisioningInputs
 
 CreateBuildDescription
 
-ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+ClangStatCache /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk /Users/dewclaw/Developer/AgentLens/.derived-data/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448f7254f0b6ad00e3a4f369379fc5a24280.sdkstatcache
+    cd /Users/dewclaw/Developer/AgentLens/BurnBar.xcodeproj
+    /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -o /Users/dewclaw/Developer/AgentLens/.derived-data/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448f7254f0b6ad00e3a4f369379fc5a24280.sdkstatcache
 
-ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -x c -c /dev/null
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/nanopb_nanopb.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/nanopb_nanopb.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/nanopb_nanopb.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
 
-ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -x objective-c -c /dev/null
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/gRPC_opensslWrapper.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/gRPC_opensslWrapper.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/gRPC_opensslWrapper.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
 
-ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -x c -c /dev/null
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/gRPC_grpcWrapper.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/gRPC_grpcWrapper.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/gRPC_grpcWrapper.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
 
-ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/leveldb_leveldb.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/leveldb_leveldb.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/leveldb_leveldb.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
 
-ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX27.0.sdk -x c++ -c /dev/null
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/abseil_abslWrapper.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/abseil_abslWrapper.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/abseil_abslWrapper.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
 
-ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-Reachability.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-Reachability.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-Reachability.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
 
-ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/libtool -V
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-Network.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-Network.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-Network.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
 
-ReadFileContents /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/share/docc/features.json
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleSignIn_GoogleSignIn.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleSignIn_GoogleSignIn.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleSignIn_GoogleSignIn.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
 
-Build description signature: b92707154baf9acb4aa615966bb6d72e
-Build description path: /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/XCBuildData/b92707154baf9acb4aa615966bb6d72e.xcbuilddata
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpcpp/grpcpp.xcframework'. (in target 'grpcppWrapper' from project 'gRPC')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpc/grpc.xcframework'. (in target 'grpcppWrapper' from project 'gRPC')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/openssl_grpc/openssl_grpc.xcframework'. (in target 'grpcppWrapper' from project 'gRPC')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/firebase-ios-sdk/FirebaseFirestoreInternal/FirebaseFirestoreInternal.xcframework'. (in target 'FirebaseFirestore-product' from project 'Firebase')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/abseil-cpp-binary/absl/absl.xcframework'. (in target 'FirebaseFirestore-product' from project 'Firebase')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpcpp/grpcpp.xcframework'. (in target 'FirebaseFirestore-product' from project 'Firebase')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpc/grpc.xcframework'. (in target 'FirebaseFirestore-product' from project 'Firebase')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/openssl_grpc/openssl_grpc.xcframework'. (in target 'FirebaseFirestore-product' from project 'Firebase')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/firebase-ios-sdk/FirebaseFirestoreInternal/FirebaseFirestoreInternal.xcframework'. (in target 'FirebaseFirestoreInternalWrapper' from project 'Firebase')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/firebase-ios-sdk/FirebaseFirestoreInternal/FirebaseFirestoreInternal.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/abseil-cpp-binary/absl/absl.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpcpp/grpcpp.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpc/grpc.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/openssl_grpc/openssl_grpc.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/firebase-ios-sdk/FirebaseFirestoreInternal/FirebaseFirestoreInternal.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/abseil-cpp-binary/absl/absl.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpcpp/grpcpp.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpc/grpc.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/openssl_grpc/openssl_grpc.xcframework'. (in target 'BurnBar' from project 'BurnBar')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/abseil-cpp-binary/absl/absl.xcframework'. (in target 'abseil-product' from project 'abseil')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/firebase-ios-sdk/FirebaseFirestoreInternal/FirebaseFirestoreInternal.xcframework'. (in target 'FirebaseFirestoreTarget' from project 'Firebase')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/firebase-ios-sdk/FirebaseFirestoreInternal/FirebaseFirestoreInternal.xcframework'. (in target 'FirebaseFirestore' from project 'Firebase')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpc/grpc.xcframework'. (in target 'grpcWrapper' from project 'gRPC')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/abseil-cpp-binary/absl/absl.xcframework'. (in target 'abslWrapper' from project 'abseil')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/openssl_grpc/openssl_grpc.xcframework'. (in target 'opensslWrapper' from project 'gRPC')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpcpp/grpcpp.xcframework'. (in target 'gRPC-C++-product' from project 'gRPC')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/grpc/grpc.xcframework'. (in target 'gRPC-C++-product' from project 'gRPC')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/grpc-binary/openssl_grpc/openssl_grpc.xcframework'. (in target 'gRPC-C++-product' from project 'gRPC')
-error: There is no XCFramework found at '/Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts/abseil-cpp-binary/absl/absl.xcframework'. (in target 'gRPC-C++-product' from project 'gRPC')
-** BUILD FAILED **
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseFirestore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseFirestore.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseFirestore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+SwiftDriver BurnBar normal arm64 com.apple.xcode.tools.swift.compiler (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-SwiftDriver -- /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name BurnBar -Onone @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.SwiftFileList -DDEBUG -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GRDB.swift/Sources/GRDBSQLite/module.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/RecaptchaInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Network.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Reachability.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-AppDelegateSwizzler.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAuthInternal.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAuthInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-NSData.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/abslWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/opensslWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/grpcWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/grpcppWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/nanopb.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/leveldb.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseCoreExtension.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAppCheckInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseFirestoreInternalWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseFirestoreTarget.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleSignIn.modulemap -enable-upcoming-feature StrictConcurrency -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/dewclaw/Developer/AgentLens/.derived-data/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -c -j12 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448f7254f0b6ad00e3a4f369379fc5a24280.sdkstatcache -output-file-map /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -sdk-module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar_const_extract_protocols.json -Xcc -iquote -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-generated-files.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-own-target-headers.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar-c02deae1f8dd0a681d8aaa8351b39fe5-VFS/all-product-headers.yaml -Xcc -iquote -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-project-headers.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/interop-ios-for-google-sdks/RecaptchaEnterprise/RecaptchaInterop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Network/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Reachability/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/AppDelegateSwizzler/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAuth/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAuth/Interop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/NSData+zlib/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/abseil-cpp-binary/absl-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/openssl-grpc-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/grpc-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/grpcpp-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/nanopb/spm_headers -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/leveldb/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseCore/Extension -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseCore/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/CoreOnly/Sources -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAppCheck/Interop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseFirestoreInternal -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/SwiftPM-PlatformExclude/FirebaseFirestoreWrap/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources-normal/arm64 -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources/arm64 -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar-Swift.h -working-directory /Users/dewclaw/Developer/AgentLens -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/gRPC_grpcppWrapper.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/gRPC_grpcppWrapper.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/gRPC_grpcppWrapper.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Promises_FBLPromises.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Promises_FBLPromises.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Promises_FBLPromises.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-UserDefaults.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-UserDefaults.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-UserDefaults.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-NSData.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-NSData.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-NSData.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-Logger.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-Logger.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-Logger.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-Environment.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-Environment.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-Environment.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-AppDelegateSwizzler.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-AppDelegateSwizzler.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GoogleUtilities_GoogleUtilities-AppDelegateSwizzler.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GTMAppAuth_GTMAppAuth.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GTMAppAuth_GTMAppAuth.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GTMAppAuth_GTMAppAuth.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GRDB_GRDB.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GRDB_GRDB.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GRDB_GRDB.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GTMSessionFetcher_GTMSessionFetcherCore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GTMSessionFetcher_GTMSessionFetcherCore.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/GTMSessionFetcher_GTMSessionFetcherCore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseCoreInternal.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseCoreInternal.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseCoreInternal.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseCoreExtension.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseCoreExtension.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseCoreExtension.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseCore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseCore.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseCore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseAuth.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseAuth.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/Firebase_FirebaseAuth.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/BurnBarCore_BurnBarCore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBarCore_BurnBarCore.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBarCore_BurnBarCore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/AppAuth_AppAuthCore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/AppAuth_AppAuthCore.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/AppAuth_AppAuthCore.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/AppAuth_AppAuth.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/AppAuth_AppAuth.bundle (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/AppAuth_AppAuth.bundle /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources
+
+ProcessInfoPlistFile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Info.plist /Users/dewclaw/Developer/AgentLens/AgentLens/Resources/BurnBar-Info.plist (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-infoPlistUtility /Users/dewclaw/Developer/AgentLens/AgentLens/Resources/BurnBar-Info.plist -producttype com.apple.product-type.application -genpkginfo /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/PkgInfo -expandbuildsettings -platform macosx -additionalcontentfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/assetcatalog_generated_info.plist -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Frameworks/FirebaseFirestoreInternal.framework -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Frameworks/absl.framework -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Frameworks/grpc.framework -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Frameworks/grpcpp.framework -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Frameworks/openssl_grpc.framework -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/AppAuth_AppAuth.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/AppAuth_AppAuthCore.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/BurnBarCore_BurnBarCore.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseAuth.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseCore.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseCoreExtension.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseCoreInternal.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Firebase_FirebaseFirestore.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GRDB_GRDB.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GTMAppAuth_GTMAppAuth.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GTMSessionFetcher_GTMSessionFetcherCore.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleSignIn_GoogleSignIn.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-AppDelegateSwizzler.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-Environment.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-Logger.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-NSData.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-Network.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-Reachability.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/GoogleUtilities_GoogleUtilities-UserDefaults.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/Promises_FBLPromises.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/abseil_abslWrapper.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/gRPC_grpcWrapper.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/gRPC_grpcppWrapper.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/gRPC_opensslWrapper.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/leveldb_leveldb.bundle -scanforprivacyfile /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources/nanopb_nanopb.bundle -o /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Info.plist
+
+SwiftCompile normal arm64 Compiling\ DashboardActionGlyphs.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/DashboardActionGlyphs.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/DashboardActionGlyphs.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
 
 
-The following build commands failed:
-	Building project BurnBar with scheme BurnBar and configuration Debug
-(1 failure)
-app_build_exit=65
+SwiftCompile normal arm64 Compiling\ DailyDigestManager.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/DailyDigestManager.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/DailyDigestManager.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ CursorConnectorManager.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CursorConnector/CursorConnectorManager.swift (in target 'BurnBar' from project 'BurnBar')
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CursorConnector/CursorConnectorManager.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ DashboardView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/DashboardView.swift (in target 'BurnBar' from project 'BurnBar')
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/DashboardView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ CursorConnectorModels.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CursorConnector/CursorConnectorModels.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CursorConnector/CursorConnectorModels.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ DatabaseWorkspaceSnapshotBuilder.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/DatabaseWorkspaceSnapshotBuilder.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/DatabaseWorkspaceSnapshotBuilder.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftEmitModule normal arm64 Emitting\ module\ for\ BurnBar (in target 'BurnBar' from project 'BurnBar')
+
+EmitSwiftModule normal arm64 (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeCodeParser.swift:12:24: warning: static property 'iso8601Basic' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeCodeParser.swift:12:24: note: add '@MainActor' to make static property 'iso8601Basic' part of global actor 'MainActor'
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeCodeParser.swift:12:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeCodeParser.swift:18:24: warning: static property 'iso8601Fractional' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeCodeParser.swift:18:24: note: add '@MainActor' to make static property 'iso8601Fractional' part of global actor 'MainActor'
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeCodeParser.swift:18:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeConversationExtractor.swift:24:24: warning: static property 'iso8601Basic' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeConversationExtractor.swift:24:24: note: add '@MainActor' to make static property 'iso8601Basic' part of global actor 'MainActor'
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeConversationExtractor.swift:24:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeConversationExtractor.swift:30:24: warning: static property 'iso8601Fractional' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeConversationExtractor.swift:30:24: note: add '@MainActor' to make static property 'iso8601Fractional' part of global actor 'MainActor'
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ClaudeConversationExtractor.swift:30:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift:570:24: warning: static property 'fleetDateFormatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let fleetDateFormatter: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift:570:24: note: add '@MainActor' to make static property 'fleetDateFormatter' part of global actor 'MainActor'
+    private static let fleetDateFormatter: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift:570:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let fleetDateFormatter: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:15:24: warning: static property 'iso8601Basic' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:15:24: note: add '@MainActor' to make static property 'iso8601Basic' part of global actor 'MainActor'
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:15:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:21:24: warning: static property 'iso8601Fractional' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:21:24: note: add '@MainActor' to make static property 'iso8601Fractional' part of global actor 'MainActor'
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:21:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:16:24: warning: static property 'iso8601Basic' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:16:24: note: add '@MainActor' to make static property 'iso8601Basic' part of global actor 'MainActor'
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:16:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:22:24: warning: static property 'iso8601Fractional' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:22:24: note: add '@MainActor' to make static property 'iso8601Fractional' part of global actor 'MainActor'
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:22:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GrokCLIParser.swift:616:24: warning: static property 'fractionalFormatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GrokCLIParser.swift:616:24: note: add '@MainActor' to make static property 'fractionalFormatter' part of global actor 'MainActor'
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GrokCLIParser.swift:616:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GrokCLIParser.swift:622:24: warning: static property 'plainFormatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GrokCLIParser.swift:622:24: note: add '@MainActor' to make static property 'plainFormatter' part of global actor 'MainActor'
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GrokCLIParser.swift:622:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:15:24: warning: static property 'iso8601Basic' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:15:24: note: add '@MainActor' to make static property 'iso8601Basic' part of global actor 'MainActor'
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:15:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:21:24: warning: static property 'iso8601Fractional' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:21:24: note: add '@MainActor' to make static property 'iso8601Fractional' part of global actor 'MainActor'
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:21:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:427:24: warning: static property 'fractionalFormatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:427:24: note: add '@MainActor' to make static property 'fractionalFormatter' part of global actor 'MainActor'
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:427:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:433:24: warning: static property 'plainFormatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:433:24: note: add '@MainActor' to make static property 'plainFormatter' part of global actor 'MainActor'
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:433:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProviderQuota/ProviderQuotaService.swift:1853:5: warning: 'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type 'DateFormatter', consider removing it
+    nonisolated(unsafe) static let zaiDateFormatter: DateFormatter = {
+    ^~~~~~~~~~~~~~~~~~~~
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/SearchService.swift:1711:93: warning: converting function value of type '@MainActor () -> SharedArtifactAccessContext?' to '() -> SharedArtifactAccessContext?' loses global actor 'MainActor'; this is an error in the Swift 6 language mode
+        sharedArtifactAccessContextProvider: @escaping () -> SharedArtifactAccessContext? = SearchService.defaultSharedArtifactAccessContext,
+                                                                                            ^
+
+SwiftCompile normal arm64 Compiling\ DatabaseWorkspaceView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/DatabaseWorkspaceView.swift (in target 'BurnBar' from project 'BurnBar')
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/DatabaseWorkspaceView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ DataStore.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/DataStore.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/DataStore.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/DataStore.swift:1593:78: warning: main actor-isolated static property 'legacyChatThreadID' can not be referenced from a nonisolated context; this is an error in the Swift 6 language mode
+                t.add(column: "threadId", .text).notNull().defaults(to: Self.legacyChatThreadID)
+                                                                             ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/DataStore.swift:650:16: note: static property declared here
+    static let legacyChatThreadID = "burnbar-chat-legacy"
+               ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/DataStore.swift:1611:34: warning: main actor-isolated static property 'legacyChatThreadID' can not be referenced from a Sendable closure; this is an error in the Swift 6 language mode
+                arguments: [Self.legacyChatThreadID]
+                                 ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/DataStore.swift:650:16: note: static property declared here
+    static let legacyChatThreadID = "burnbar-chat-legacy"
+               ^
+
+SwiftDriverJobDiscovery normal arm64 Compiling DailyDigestManager.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ AgentLensApp.swift /Users/dewclaw/Developer/AgentLens/AgentLens/App/AgentLensApp.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/App/AgentLensApp.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ SettingsView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Settings/SettingsView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Settings/SettingsView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling DashboardActionGlyphs.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling CursorConnectorModels.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling DatabaseWorkspaceSnapshotBuilder.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling CursorConnectorManager.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling AgentLensApp.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Emitting module for BurnBar (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriver\ Compilation\ Requirements BurnBar normal arm64 com.apple.xcode.tools.swift.compiler (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-Swift-Compilation-Requirements -- /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name BurnBar -Onone @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.SwiftFileList -DDEBUG -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GRDB.swift/Sources/GRDBSQLite/module.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/RecaptchaInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Network.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Reachability.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-AppDelegateSwizzler.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAuthInternal.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAuthInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-NSData.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/abslWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/opensslWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/grpcWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/grpcppWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/nanopb.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/leveldb.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseCoreExtension.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAppCheckInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseFirestoreInternalWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseFirestoreTarget.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleSignIn.modulemap -enable-upcoming-feature StrictConcurrency -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/dewclaw/Developer/AgentLens/.derived-data/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -c -j12 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448f7254f0b6ad00e3a4f369379fc5a24280.sdkstatcache -output-file-map /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -sdk-module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar_const_extract_protocols.json -Xcc -iquote -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-generated-files.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-own-target-headers.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar-c02deae1f8dd0a681d8aaa8351b39fe5-VFS/all-product-headers.yaml -Xcc -iquote -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-project-headers.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/interop-ios-for-google-sdks/RecaptchaEnterprise/RecaptchaInterop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Network/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Reachability/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/AppDelegateSwizzler/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAuth/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAuth/Interop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/NSData+zlib/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/abseil-cpp-binary/absl-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/openssl-grpc-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/grpc-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/grpcpp-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/nanopb/spm_headers -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/leveldb/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseCore/Extension -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseCore/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/CoreOnly/Sources -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAppCheck/Interop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseFirestoreInternal -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/SwiftPM-PlatformExclude/FirebaseFirestoreWrap/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources-normal/arm64 -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources/arm64 -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar-Swift.h -working-directory /Users/dewclaw/Developer/AgentLens -experimental-emit-module-separately -disable-cmo
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.swiftsourceinfo (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.swiftsourceinfo /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.swiftmodule/Project/arm64-apple-macos.swiftsourceinfo
+
+Copy /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.swiftmodule/arm64-apple-macos.abi.json /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.abi.json (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks -rename /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.abi.json /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.swiftmodule/arm64-apple-macos.abi.json
+
+SwiftDriverJobDiscovery normal arm64 Compiling DataStore.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ Alternate3Dashboard.swift,\ ArtifactAuthoringService.swift,\ BurnBarDaemonManager.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/Alternate3Dashboard.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ArtifactAuthoringService.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/BurnBarDaemon/BurnBarDaemonManager.swift (in target 'BurnBar' from project 'BurnBar')
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/Alternate3Dashboard.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ArtifactAuthoringService.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/BurnBarDaemon/BurnBarDaemonManager.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ ChatPanel.swift,\ ChatSessionController+Delivery.swift,\ ChatSessionController+ThreadLifecycle.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatPanel.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController+Delivery.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController+ThreadLifecycle.swift (in target 'BurnBar' from project 'BurnBar')
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatPanel.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController+Delivery.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController+Delivery.swift:306:59: warning: sending value of non-Sendable type '(BurnBarFleetDirective) throws -> BurnBarFleetDirective' risks causing data races; this is an error in the Swift 6 language mode
+            let result = await BurnBarFleetDeliveryRunner.run(
+                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~
+/Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController+Delivery.swift:306:59: note: sending main actor-isolated value of non-Sendable type '(BurnBarFleetDirective) throws -> BurnBarFleetDirective' to nonisolated static method 'run(directive:channel:prepare:record:)' risks causing races in between main actor-isolated and nonisolated uses
+            let result = await BurnBarFleetDeliveryRunner.run(
+                                                          ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController+Delivery.swift:306:59: warning: sending value of non-Sendable type '(BurnBarFleetDirective) throws -> BurnBarFleetDirective' risks causing data races; this is an error in the Swift 6 language mode
+            let result = await BurnBarFleetDeliveryRunner.run(
+                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~
+/Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController+Delivery.swift:306:59: note: sending main actor-isolated value of non-Sendable type '(BurnBarFleetDirective) throws -> BurnBarFleetDirective' to nonisolated static method 'run(directive:channel:prepare:record:)' risks causing races in between main actor-isolated and nonisolated uses
+            let result = await BurnBarFleetDeliveryRunner.run(
+                                                          ^
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController+ThreadLifecycle.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ InsightEngine.swift,\ MenuBarPopoverView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/InsightEngine.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Popover/MenuBarPopoverView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/InsightEngine.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/InsightEngine.swift:171:70: warning: left side of nil coalescing operator '??' has non-optional type 'Date', so the right side is never used
+        let latestUsageAt = dataStore.usages.compactMap { $0.endTime ?? $0.startTime }.max()
+                                                          ~~~~~~~~~~~^~~~~~~~~~~~~~~
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Popover/MenuBarPopoverView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ NarrativeCardView.swift,\ OnboardingView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/NarrativeCardView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Popover/OnboardingView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/NarrativeCardView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Popover/OnboardingView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ ModelDashboardView.swift,\ ModelProviderLogoView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/ModelDashboardView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/ModelProviderLogoView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/ModelDashboardView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/ModelProviderLogoView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ ProviderQuotaService.swift,\ ProviderQuotaViews.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProviderQuota/ProviderQuotaService.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/ProviderQuotaViews.swift (in target 'BurnBar' from project 'BurnBar')
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProviderQuota/ProviderQuotaService.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProviderQuota/ProviderQuotaService.swift:1853:5: warning: 'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type 'DateFormatter', consider removing it
+    nonisolated(unsafe) static let zaiDateFormatter: DateFormatter = {
+    ^~~~~~~~~~~~~~~~~~~~
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/ProviderQuotaViews.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ ProviderDashboardView.swift,\ ProviderLogoView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/ProviderDashboardView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/ProviderLogoView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/ProviderDashboardView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/ProviderLogoView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ ProjectionPipelineService.swift,\ ProjectsView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProjectionPipelineService.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/ProjectsView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProjectionPipelineService.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/ProjectsView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ ChatSessionController.swift,\ CloudSyncService.swift,\ ContextBuilder.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CloudSyncService.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatSessionController.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CloudSyncService.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift:570:24: warning: static property 'fleetDateFormatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let fleetDateFormatter: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift:570:24: note: add '@MainActor' to make static property 'fleetDateFormatter' part of global actor 'MainActor'
+    private static let fleetDateFormatter: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift:570:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let fleetDateFormatter: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/ContextBuilder.swift:59:17: warning: variable 'blockLines' was never mutated; consider changing to 'let' constant
+            var blockLines = formatBlock(ordinal: ordinal, result: r)
+            ~~~ ^
+            let
+
+SwiftCompile normal arm64 Compiling\ SearchService.swift,\ SessionDetailView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/SearchService.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/SessionDetailView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/SearchService.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/SearchService.swift:1711:93: warning: converting function value of type '@MainActor () -> SharedArtifactAccessContext?' to '() -> SharedArtifactAccessContext?' loses global actor 'MainActor'; this is an error in the Swift 6 language mode
+        sharedArtifactAccessContextProvider: @escaping () -> SharedArtifactAccessContext? = SearchService.defaultSharedArtifactAccessContext,
+                                                                                            ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/SearchService.swift:46:13: warning: result of 'try?' is unused
+            try? h.seekToEnd()
+            ^~~~~~~~~~~~~~~~~~
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/SearchService.swift:2386:21: warning: variable 'remainingCandidates' was never mutated; consider changing to 'let' constant
+                var remainingCandidates = scoredResults.filter { !rerankedIDs.contains($0.chunkID) }
+                ~~~ ^
+                let
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/SessionDetailView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling NarrativeCardView.swift, OnboardingView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ ConversationIndexer.swift,\ CrossEncoderReranker.swift,\ InsightBriefCard.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ConversationIndexer.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CrossEncoderReranker.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/InsightBriefCard.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ConversationIndexer.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CrossEncoderReranker.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/InsightBriefCard.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling ProjectionPipelineService.swift, ProjectsView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ SessionLogsView.swift,\ UsageAggregator.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/SessionLogs/SessionLogsView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/UsageAggregator.swift (in target 'BurnBar' from project 'BurnBar')
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/SessionLogs/SessionLogsView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/UsageAggregator.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling DashboardView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ModelDashboardView.swift, ModelProviderLogoView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling SettingsView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ProviderDashboardView.swift, ProviderLogoView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling InsightEngine.swift, MenuBarPopoverView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ConversationIndexer.swift, CrossEncoderReranker.swift, InsightBriefCard.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling DatabaseWorkspaceView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ CLIBridge.swift,\ ChatFAB.swift,\ ChatMessageView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CLIBridge.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatFAB.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatMessageView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/CLIBridge.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatFAB.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/ChatMessageView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ AccountManager.swift,\ AppLogoView.swift,\ CLIAssistantConsentSheet.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/AccountManager.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/AppLogoView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/CLIAssistantConsentSheet.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/AccountManager.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/AppLogoView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Chat/CLIAssistantConsentSheet.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ ColorAdaptive.swift,\ DesignSystem.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/ColorAdaptive.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/DesignSystem.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/ColorAdaptive.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/DesignSystem.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ FleetView.swift,\ FleetViewModel.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/FleetView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/FleetViewModel.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/FleetView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/FleetViewModel.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ ForgeDevParser.swift,\ GooseParser.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:15:24: warning: static property 'iso8601Basic' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:15:24: note: add '@MainActor' to make static property 'iso8601Basic' part of global actor 'MainActor'
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:15:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:21:24: warning: static property 'iso8601Fractional' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:21:24: note: add '@MainActor' to make static property 'iso8601Fractional' part of global actor 'MainActor'
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/ForgeDevParser.swift:21:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:16:24: warning: static property 'iso8601Basic' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:16:24: note: add '@MainActor' to make static property 'iso8601Basic' part of global actor 'MainActor'
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:16:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:22:24: warning: static property 'iso8601Fractional' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:22:24: note: add '@MainActor' to make static property 'iso8601Fractional' part of global actor 'MainActor'
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/GooseParser.swift:22:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+
+SwiftCompile normal arm64 Compiling\ SettingsManager.swift,\ ThemeManager.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/SettingsManager.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/ThemeManager.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/SettingsManager.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/ThemeManager.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 Compiling\ InsightCardView.swift,\ LLMModelBrand.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Popover/InsightCardView.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/LLMModelBrand.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Popover/InsightCardView.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/LLMModelBrand.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChatSessionController.swift, CloudSyncService.swift, ContextBuilder.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ FleetAgentCardViews.swift,\ FleetService.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/FleetAgentCardViews.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/Fleet/FleetService.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Dashboard/FleetAgentCardViews.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/Fleet/FleetService.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling ColorAdaptive.swift, DesignSystem.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ HermesParser.swift,\ ICloudSessionMirrorService.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ICloudSessionMirrorService.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:15:24: warning: static property 'iso8601Basic' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:15:24: note: add '@MainActor' to make static property 'iso8601Basic' part of global actor 'MainActor'
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:15:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Basic: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:21:24: warning: static property 'iso8601Fractional' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:21:24: note: add '@MainActor' to make static property 'iso8601Fractional' part of global actor 'MainActor'
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/HermesParser.swift:21:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let iso8601Fractional: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ICloudSessionMirrorService.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling Alternate3Dashboard.swift, ArtifactAuthoringService.swift, BurnBarDaemonManager.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ ProviderUsageAPIService.swift,\ SessionLedgerSection.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProviderUsageAPI/ProviderUsageAPIService.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/SessionLedgerSection.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProviderUsageAPI/ProviderUsageAPIService.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/SessionLedgerSection.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling InsightCardView.swift, LLMModelBrand.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ MiniSparkline.swift,\ OpenAIUsageAPI.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/MiniSparkline.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProviderUsageAPI/OpenAIUsageAPI.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Views/Components/MiniSparkline.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/ProviderUsageAPI/OpenAIUsageAPI.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling ForgeDevParser.swift, GooseParser.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 Compiling\ PiParser.swift,\ ProviderTheme.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/ProviderTheme.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:427:24: warning: static property 'fractionalFormatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:427:24: note: add '@MainActor' to make static property 'fractionalFormatter' part of global actor 'MainActor'
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:427:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let fractionalFormatter: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:433:24: warning: static property 'plainFormatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state; this is an error in the Swift 6 language mode
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+/Volumes/Samsung NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/Foundation.framework/Headers/NSISO8601DateFormatter.h:46:12: note: class 'ISO8601DateFormatter' does not conform to the 'Sendable' protocol
+@interface NSISO8601DateFormatter : NSFormatter <NSSecureCoding> {
+           ^
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:433:24: note: add '@MainActor' to make static property 'plainFormatter' part of global actor 'MainActor'
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+    @MainActor
+/Users/dewclaw/Developer/AgentLens/AgentLens/Services/LogParser/PiParser.swift:433:24: note: disable concurrency-safety checks if accesses are protected by an external synchronization mechanism
+    private static let plainFormatter: ISO8601DateFormatter = {
+                       ^
+    nonisolated(unsafe)
+
+SwiftCompile normal arm64 /Users/dewclaw/Developer/AgentLens/AgentLens/Theme/ProviderTheme.swift (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+
+
+SwiftDriverJobDiscovery normal arm64 Compiling AccountManager.swift, AppLogoView.swift, CLIAssistantConsentSheet.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ChatPanel.swift, ChatSessionController+Delivery.swift, ChatSessionController+ThreadLifecycle.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling SearchService.swift, SessionDetailView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling MiniSparkline.swift, OpenAIUsageAPI.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling FleetView.swift, FleetViewModel.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling SettingsManager.swift, ThemeManager.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling FleetAgentCardViews.swift, FleetService.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling CLIBridge.swift, ChatFAB.swift, ChatMessageView.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling HermesParser.swift, ICloudSessionMirrorService.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling PiParser.swift, ProviderTheme.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ProviderUsageAPIService.swift, SessionLedgerSection.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ProviderQuotaService.swift, ProviderQuotaViews.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriverJobDiscovery normal arm64 Compiling SessionLogsView.swift, UsageAggregator.swift (in target 'BurnBar' from project 'BurnBar')
+
+SwiftDriver\ Compilation BurnBar normal arm64 com.apple.xcode.tools.swift.compiler (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-Swift-Compilation -- /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name BurnBar -Onone @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.SwiftFileList -DDEBUG -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GRDB.swift/Sources/GRDBSQLite/module.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/RecaptchaInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Network.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Reachability.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-AppDelegateSwizzler.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAuthInternal.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAuthInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-NSData.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/abslWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/opensslWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/grpcWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/grpcppWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/nanopb.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/leveldb.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseCoreExtension.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseAppCheckInterop.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseFirestoreInternalWrapper.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/FirebaseFirestoreTarget.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppAuth.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Logger.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-Environment.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/third-party-IsAppEncrypted.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleUtilities-UserDefaults.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppCheckCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/AppAuthCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GTMSessionFetcherCore.modulemap -Xcc -fmodule-map-file\=/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GeneratedModuleMaps/GoogleSignIn.modulemap -enable-upcoming-feature StrictConcurrency -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -target arm64-apple-macos14.0 -g -module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -index-store-path /Users/dewclaw/Developer/AgentLens/.derived-data/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -c -j12 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/SDKStatCaches.noindex/macosx26.5-25F70-688ef53f1462e2c8f657fdc38a81448f7254f0b6ad00e3a4f369379fc5a24280.sdkstatcache -output-file-map /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -sdk-module-cache-path /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/dewclaw/Developer/AgentLens/.derived-data/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar_const_extract_protocols.json -Xcc -iquote -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-generated-files.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-own-target-headers.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar-c02deae1f8dd0a681d8aaa8351b39fe5-VFS/all-product-headers.yaml -Xcc -iquote -Xcc /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-project-headers.hmap -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/interop-ios-for-google-sdks/RecaptchaEnterprise/RecaptchaInterop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Network/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Reachability/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/AppDelegateSwizzler/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAuth/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAuth/Interop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/NSData+zlib/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/abseil-cpp-binary/absl-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/openssl-grpc-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/grpc-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/grpc-binary/grpcpp-Wrapper/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/nanopb/spm_headers -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/leveldb/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseCore/Extension -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseCore/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/CoreOnly/Sources -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseAppCheck/Interop/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/FirebaseFirestoreInternal -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/firebase-ios-sdk/SwiftPM-PlatformExclude/FirebaseFirestoreWrap/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/AppAuth-iOS/Sources/AppAuth -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/promises/Sources/FBLPromises/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Logger/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/Environment/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/third_party/IsAppEncrypted/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleUtilities/GoogleUtilities/UserDefaults/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/app-check/AppCheckCore/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/AppAuth-iOS/Sources/AppAuthCore -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/gtm-session-fetcher/Sources/Core/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.spm-cache/checkouts/GoogleSignIn-iOS/GoogleSignIn/Sources/Public -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/include -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources-normal/arm64 -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources/arm64 -Xcc -I/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar-Swift.h -working-directory /Users/dewclaw/Developer/AgentLens -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar.debug.dylib normal (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-macos14.0 -dynamiclib -isysroot /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -O0 -L/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -L/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/EagerLinkingTBDs/Debug -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -filelist /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.LinkFileList -install_name @rpath/BurnBar.debug.dylib -Xlinker -rpath -Xlinker /usr/lib/swift -Xlinker -rpath -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/../Frameworks -Xlinker -object_path_lto -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar_dependency_info.dat -fobjc-link-runtime -L/Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.swiftmodule @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar-linker-args.resp -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -lc++ -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -Wl,-no_warn_duplicate_libraries -framework CoreGraphics -framework CoreText -framework Foundation -framework LocalAuthentication -framework Security -framework AppKit -framework Security -framework DeviceCheck -framework AppKit -lc++ -framework SystemConfiguration -lz -framework Security -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -framework FirebaseFirestoreInternal -framework absl -framework grpcpp -framework grpc -framework openssl_grpc -o /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar.debug.dylib -Xlinker -add_ast_path -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBarCore.build/Debug/BurnBarCore.build/Objects-normal/arm64/BurnBarCore.swiftmodule @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBarCore.build/Debug/BurnBarCore.build/Objects-normal/arm64/BurnBarCore-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GRDB.build/Debug/GRDB.build/Objects-normal/arm64/GRDB.swiftmodule @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GRDB.build/Debug/GRDB.build/Objects-normal/arm64/GRDB-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/Firebase.build/Debug/FirebaseAuth.build/Objects-normal/arm64/FirebaseAuth.swiftmodule @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/Firebase.build/Debug/FirebaseAuth.build/Objects-normal/arm64/FirebaseAuth-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/Firebase.build/Debug/FirebaseCoreInternal.build/Objects-normal/arm64/FirebaseCoreInternal.swiftmodule @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/Firebase.build/Debug/FirebaseCoreInternal.build/Objects-normal/arm64/FirebaseCoreInternal-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/Firebase.build/Debug/FirebaseSharedSwift.build/Objects-normal/arm64/FirebaseSharedSwift.swiftmodule @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/Firebase.build/Debug/FirebaseSharedSwift.build/Objects-normal/arm64/FirebaseSharedSwift-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/Firebase.build/Debug/FirebaseFirestore.build/Objects-normal/arm64/FirebaseFirestore.swiftmodule @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/Firebase.build/Debug/FirebaseFirestore.build/Objects-normal/arm64/FirebaseFirestore-linker-args.resp -Xlinker -add_ast_path -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GTMAppAuth.build/Debug/GTMAppAuth.build/Objects-normal/arm64/GTMAppAuth.swiftmodule @/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/GTMAppAuth.build/Debug/GTMAppAuth.build/Objects-normal/arm64/GTMAppAuth-linker-args.resp
+
+ConstructStubExecutorLinkFileList /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-ExecutorLinkFileList-normal-arm64.txt (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    construct-stub-executor-link-file-list /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar.debug.dylib /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'BurnBar' from project 'BurnBar')
+
+Ld /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar normal (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-macos14.0 -isysroot /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk -O0 -L/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -F/Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/../Frameworks -rdynamic -Xlinker -no_deduplicate -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar-ExecutorLinkFileList-normal-arm64.txt /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar.debug.dylib -o /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar
+
+CopySwiftLibs /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar.debug.dylib --scan-folder /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Frameworks --scan-folder /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/PlugIns --scan-folder /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Library/SystemExtensions --scan-folder /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Extensions --platform macosx --toolchain /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.MhtAKa/Metal.xctoolchain --toolchain /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Frameworks --strip-bitcode --strip-bitcode-tool /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os --back-deploy-swift-span
+Ignoring --strip-bitcode because --sign was not passed
+
+ExtractAppIntentsMetadata (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.MhtAKa/Metal.xctoolchain --module-name BurnBar --sdk-root /Volumes/Samsung\ NVME/offloaded-home/Xcode-26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk --xcode-version 17F113 --platform-family macOS --deployment-target 14.0 --bundle-identifier com.burnbar.app --output /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/Resources --target-triple arm64-apple-macos14.0 --binary-file /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app/Contents/MacOS/BurnBar --dependency-file /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar_dependency_info.dat --stringsdata-file /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.SwiftFileList --metadata-file-list /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar.DependencyMetadataFileList --static-metadata-file-list /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/BurnBar.DependencyStaticMetadataFileList --swift-const-vals-list /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Intermediates.noindex/BurnBar.build/Debug/BurnBar.build/Objects-normal/arm64/BurnBar.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-08-16 13:26:36.422 appintentsmetadataprocessor[20033:22836518] Starting appintentsmetadataprocessor export
+2026-08-16 13:26:36.425 appintentsmetadataprocessor[20033:22836518] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+RegisterExecutionPolicyException /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-RegisterExecutionPolicyException /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app
+
+Validate /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    builtin-validationUtility /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app -no-validate-extension -infoplist-subpath Contents/Info.plist
+
+RegisterWithLaunchServices /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    /System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -f -R -trusted /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app
+
+Touch /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app (in target 'BurnBar' from project 'BurnBar')
+    cd /Users/dewclaw/Developer/AgentLens
+    /usr/bin/touch -c /Users/dewclaw/Developer/AgentLens/.derived-data/Build/Products/Debug/BurnBar.app
+
+** BUILD SUCCEEDED **

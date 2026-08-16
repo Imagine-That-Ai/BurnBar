@@ -1,7 +1,7 @@
 M6 final integration runtime evidence
-validated_at=2026-08-16T18:20:19.766780+00:00
+validated_at=2026-08-16T18:40:36.075Z
 branch=feat/live-agent-fleet
-head=6fa5004e7a9426ef999ae35336d660d52ca4bf84
+head=aee1fddf817f51ad27d264220344bc4c12ddb8e7
 
 [method-inventory]
 result=pass
@@ -11,7 +11,6 @@ archive=validation/M6-hardening/final-signoff-inventory.txt
 [readme-gate]
 result=pass
 archive=validation/M6-hardening/readme-gate-matrix.txt
-cases=default support/socket; per-agent root override; event retention; socket precedence; empty socket env
 
 [cross-008]
 result=pass_structural_read_only
@@ -22,14 +21,14 @@ note=full snapshot and validator output archived; volatile named-agent state not
 [cross-011]
 result=blocked_with_scoped_fallback
 archive=validation/M6-hardening/cross-011-current-evidence.txt
-blocker=cua-driver unavailable: /bin/bash: cua-driver: command not found
-fallback=source route inspection, popover no-fleet-reference inspection, and selected XCTest fallback only; no full visual pass claimed
+blocker=cua-driver unavailable
+fallback=source route inspection plus 79 focused Fleet app tests; no full visual pass claimed
 
 [cross-016]
 result=blocked_with_scoped_fallback
 archive=validation/M6-hardening/cross-011-current-evidence.txt
-blocker=cua-driver unavailable: /bin/bash: cua-driver: command not found
-fallback=FleetService/FleetViewModel behavior evidence only; both app FleetViews and three-tick visual parity were not observed; process liveness is not promoted to a UI pass
+blocker=cua-driver unavailable
+fallback=FleetService/FleetViewModel behavior evidence; both app FleetViews and three-tick visual parity were not observed
 
 [cross-017]
 result=pass_with_controller_fallback
@@ -38,23 +37,26 @@ steps=fresh support/fixtures; Fleet snapshot; designation; orchestrator context 
 safety=no live model; no real agents; no secrets
 
 [package-gates]
-command=swift test --package-path BurnBarCore (Xcode 27 Swift 6.4 PATH)
+command=xcrun swift test --package-path BurnBarCore
 result=pass; executed=128; failures=0
-command=swift test --package-path BurnBarDaemon (Xcode 27 Swift 6.4 PATH)
+command=xcrun swift test --package-path BurnBarDaemon
 result=pass; executed=398; failures=0
 archive=validation/M6-hardening/package-gates-current.txt
 
 [app-build]
-command=xcodebuild build -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination platform=macOS CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data
-result=blocked; exit=65
-blocker=missing XCFrameworks in the local .spm-cache at /Users/albertonunez/Developer/AgentLens/.spm-cache/artifacts (grpc, abseil, FirebaseFirestoreInternal); no app build pass claimed
+command=xcodebuild build -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data
+result=pass; exit=0
 archive=validation/M6-hardening/app-build-current.txt
 
 [app-tests]
-command=xcodebuild test with exact unsigned flags and focused Fleet/provider fallback classes
-result=blocked; exit=65
-blocker=same missing XCFramework paths; tests did not execute
-archive=validation/M6-hardening/cross-011-current-evidence.txt
+command=xcodebuild test -project BurnBar.xcodeproj -scheme BurnBar -configuration Debug -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -clonedSourcePackagesDirPath .spm-cache -derivedDataPath .derived-data -only-testing:BurnBarTests/FleetViewModelTests -only-testing:BurnBarTests/FleetServiceTests -only-testing:BurnBarTests/FleetPanelsTests -only-testing:BurnBarTests/BurnBarFleetDeliveryTests -only-testing:BurnBarTests/ContextBuilderFleetTests -only-testing:BurnBarTests/ContextBuilderFleetScrutinyTests -only-testing:BurnBarTests/BurnBarDaemonManagerTests
+result=pass; exit=0; executed=79; failures=0
+archive=validation/M6-hardening/app-tests-current.txt
+
+[m6-hermetic-gates]
+degradation=7/7 hard cases pass; CROSS-018 blocked only for unavailable desktop-control capture
+persistence=pass (corruption/schema, restart deletion, live deletion, read-only support, SIGKILL/torn writes)
+soak=pass (40 ticks, bounded logs, fixture isolation, dead-pid downgrade, RSS/physical-footprint oracle)
 
 [boundaries]
 protected_paths=not modified by this worker; .cursor/, tools/__pycache__/, validation/harness/__pycache__/ left untouched

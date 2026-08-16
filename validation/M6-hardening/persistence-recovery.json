@@ -33,7 +33,7 @@
         "designation": {
           "kind": "none"
         },
-        "generatedAt": "2026-08-16T16:52:00.710Z",
+        "generatedAt": "2026-08-16T18:39:56.211Z",
         "persistenceHealth": {
           "kind": "ok"
         }
@@ -42,7 +42,7 @@
         "designation": {
           "kind": "burnBarManaged"
         },
-        "generatedAt": "2026-08-16T16:51:59.529Z"
+        "generatedAt": "2026-08-16T18:39:55.072Z"
       },
       "during_rebuild": {
         "designation": {
@@ -60,7 +60,7 @@
         "designation": {
           "kind": "none"
         },
-        "generatedAt": "2026-08-16T16:52:02.939Z",
+        "generatedAt": "2026-08-16T18:39:58.314Z",
         "persistenceHealth": {
           "kind": "ok"
         }
@@ -69,7 +69,7 @@
         "designation": {
           "kind": "burnBarManaged"
         },
-        "generatedAt": "2026-08-16T16:52:00.938Z"
+        "generatedAt": "2026-08-16T18:39:56.310Z"
       },
       "during_rebuild": {
         "designation": {
@@ -87,7 +87,7 @@
       "mode": "0o555",
       "persistenceHealth": {
         "kind": "degraded",
-        "reason": "fleet.sqlite store unavailable: SQLite error 14: unable to open database file; fleet-snapshot.json write failed: Error Domain=NSCocoaErrorDomain Code=513 \"You don\u2019t have permission to save the file \u201cfleet-snapshot.json.commit\u201d in the folder \u201csupport\u201d.\" UserInfo={NSFilePath=/tmp/burnbar-m6-recovery-readonly-nsgixbg5/support/fleet-snapshot.json.commit, NSURL=file:///tmp/burnbar-m6-recovery-readonly-nsgixbg5/support/fleet-snapshot.json.commit, NSUnderlyingError=0x7ab3098420 {Error Domain=NSPOSIXErrorDomain Code=13 \"Permission denied\"}}; fleet.sqlite snapshot write failed: storeNotOpen"
+        "reason": "fleet.sqlite store unavailable: SQLite error 14: unable to open database file; fleet-snapshot.json write failed: Error Domain=NSCocoaErrorDomain Code=513 \"You don\u2019t have permission to save the file \u201cfleet-snapshot.json.commit\u201d in the folder \u201csupport\u201d.\" UserInfo={NSFilePath=/tmp/burnbar-m6-recovery-readonly-0tsgafue/support/fleet-snapshot.json.commit, NSURL=file:///tmp/burnbar-m6-recovery-readonly-0tsgafue/support/fleet-snapshot.json.commit, NSUnderlyingError=0x74d3044660 {Error Domain=NSPOSIXErrorDomain Code=13 \"Permission denied\"}}; fleet.sqlite snapshot write failed: storeNotOpen"
       },
       "recoveredHealth": {
         "kind": "ok"
@@ -98,9 +98,9 @@
       "attempts": [
         {
           "attempt": 1,
-          "destinationBytes": 4261,
+          "destinationBytes": 4263,
           "destinationChangedBeforeKill": true,
-          "destinationGeneratedAt": "2026-08-16T16:52:05.249Z",
+          "destinationGeneratedAt": "2026-08-16T18:40:00.599Z",
           "destinationWasPriorComplete": false,
           "markerObservedBeforeKill": true,
           "pauseAfterRenameSeconds": 0.2,
@@ -108,9 +108,9 @@
         },
         {
           "attempt": 2,
-          "destinationBytes": 4261,
+          "destinationBytes": 4263,
           "destinationChangedBeforeKill": true,
-          "destinationGeneratedAt": "2026-08-16T16:52:05.355Z",
+          "destinationGeneratedAt": "2026-08-16T18:40:00.700Z",
           "destinationWasPriorComplete": false,
           "markerObservedBeforeKill": true,
           "pauseAfterRenameSeconds": 0.2,
@@ -118,16 +118,16 @@
         },
         {
           "attempt": 3,
-          "destinationBytes": 4261,
+          "destinationBytes": 4263,
           "destinationChangedBeforeKill": true,
-          "destinationGeneratedAt": "2026-08-16T16:52:05.590Z",
+          "destinationGeneratedAt": "2026-08-16T18:40:00.997Z",
           "destinationWasPriorComplete": false,
           "markerObservedBeforeKill": true,
           "pauseAfterRenameSeconds": 0.2,
           "reconciledRPCFileStoreParity": true
         }
       ],
-      "lastGoodBytes": 4261,
+      "lastGoodBytes": 4263,
       "orphanTemporaryPromoted": false,
       "status": "pass"
     }
