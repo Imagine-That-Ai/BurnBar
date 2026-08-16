@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "status": "passed",
-  "generatedAt": "2026-08-15T05:18:28Z",
+  "generatedAt": "2026-08-16T17:35:00Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
   "candidateReleaseTag": "v1.0.34",
   "testedSourceCommit": "84f20390ff52d7dd7bd2588f6b3b4384bab951a5",
   "artifactDigests": [
     {
       "path": "OpenBurnBarCore/Package.swift",
-      "sha256": "6923131297374b1c9d81084030572735de5fa3b3949529576e27b2c3653da859"
+      "sha256": "6b54937f99d05872e1d389bb910b657887b1ef7ba05f8758418139ef5b785ebc"
     },
     {
       "path": "OpenBurnBarCore/Tests/OpenBurnBarSignalCoreTests/CryptoKitAtRestInteropTests.swift",
