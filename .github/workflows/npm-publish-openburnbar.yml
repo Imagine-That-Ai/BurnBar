@@ -72,6 +72,9 @@ jobs:
           echo "Tag openburnbar-npm-v${tag_version} matches package.json version ${pkg_version}"
 
       - name: Publish to npm (OIDC trusted publishing)
-        if: github.event_name == 'push' || inputs.dry_run == 'false'
+        # Tag pushes always publish. Manual runs publish only when the boolean
+        # dry_run input is explicitly false — the inputs context preserves the
+        # declared boolean type, so compare against false, not the string 'false'.
+        if: github.event_name == 'push' || inputs.dry_run == false
         working-directory: tools/openburnbar-mcp-remote
         run: npm publish --access public
