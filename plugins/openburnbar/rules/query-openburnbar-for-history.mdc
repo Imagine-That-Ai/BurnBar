@@ -3,7 +3,11 @@ description: When the user asks about past agent work, spend, or "what did we do
 alwaysApply: false
 ---
 
-Query OpenBurnBar MCP for session history and spend evidence instead of
-guessing. Run `burnbar_resolve_capabilities` first, then search conversations
-and read usage metadata. Quote evidence from tool results and say when a
-field is still sealed ciphertext.
+When the user asks about past agent work, spend, burn, or "what did we do",
+query the OpenBurnBar MCP for session history and spend evidence:
+
+1. Call `burnbar_resolve_capabilities` first and read the returned tool list.
+2. Call `burnbar_search_conversations` for session history and
+   `burnbar_recent_usage` for spend metadata.
+3. Quote titles, snippets, and usage numbers from tool results as evidence.
+4. Name any field still sealed ciphertext instead of inventing its contents.

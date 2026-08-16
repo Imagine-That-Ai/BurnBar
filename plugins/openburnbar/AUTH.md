@@ -74,7 +74,14 @@ Treat the variable as a session credential that needs re-minting; pasting a
 
 ## Hosted tools and default grant scopes (honest)
 
-Always-visible hosted tools the plugin may use:
+"Always-visible" means the tools appear in the hosted MCP `tools/list`.
+It does **not** mean every grant can call every tool: a tool can be listed
+and still fail with an insufficient-scope error until the grant includes its
+scope. The knowledge tools below are the visible-but-not-always-granted case:
+a default grant lists them in `tools/list` yet lacks `knowledge:read`, so
+calls to them fail until that scope is added.
+
+Tools that appear in `tools/list`:
 
 - `burnbar_resolve_capabilities` (capability introspection)
 - `burnbar_search_conversations` (sealed titles/snippets)
@@ -84,11 +91,16 @@ Always-visible hosted tools the plugin may use:
 - `burnbar_recent_usage`
 - `burnbar_list_resumable_conversations` (sealed titles)
 - `burnbar_resume_conversation` (sealed plan; print-only in the plugin)
-- `burnbar_search_knowledge` (sealed)
-- `burnbar_get_knowledge_document` (sealed)
+- `burnbar_search_knowledge` (sealed; **needs `knowledge:read` — a default
+  grant lacks it**)
+- `burnbar_get_knowledge_document` (sealed; **needs `knowledge:read` — a
+  default grant lacks it**)
 
 Default grant scopes are **`search:read`, `conversation:read`, `usage:read`,
-`index:status`** — **not** `knowledge:read` / `code:read`. Flag-gated code
+`index:status`** — **not** `knowledge:read` / `code:read`. So the knowledge
+tools are listed in `tools/list` but are **not always-granted**: agents must
+call `burnbar_resolve_capabilities` (or check the grant) and state the
+`knowledge:read` caveat before attempting a knowledge call. Flag-gated code
 tools (`burnbar_search_code`, `burnbar_get_code_document`) are **not**
 advertised as available. The protected-resource metadata
 (`/.well-known/oauth-protected-resource`) confirms the same four scopes.
