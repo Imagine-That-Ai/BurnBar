@@ -1,4 +1,6 @@
+import { appendFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import * as vscode from 'vscode';
@@ -65,6 +67,12 @@ export interface BurnBarWorkspaceApi {
   joinPath(base: BurnBarWorkspaceUri, ...paths: string[]): BurnBarWorkspaceUri;
 }
 
+export interface CursorSmokeWorkspaceEditConfiguration {
+  autoConfirm?: boolean;
+  outputPath?: string;
+  filePath?: string;
+}
+
 export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): BurnBarWorkspaceApi {
   return {
     hostKind,
@@ -81,9 +89,26 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
     createRange: (startLine, startCharacter, endLine, endCharacter) =>
       new vscode.Range(startLine, startCharacter, endLine, endCharacter),
     confirmWorkspaceEdit: async (changes, changedFiles) => {
-      if (isCursorSmokeWorkspaceEditAutoConfirmAllowed(changes, changedFiles)) {
+      const smokeConfig =
+        typeof vscode.workspace.getConfiguration === 'function' ? vscode.workspace.getConfiguration() : undefined;
+      const smokeConfiguration = {
+        autoConfirm: smokeConfig?.get<boolean>('openburnbar.cursorSmoke.autoConfirm'),
+        outputPath: smokeConfig?.get<string>('openburnbar.cursorSmoke.outputPath'),
+        filePath: smokeConfig?.get<string>('openburnbar.cursorSmoke.filePath')
+      };
+      const autoConfirmAllowed = isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        changes,
+        changedFiles,
+        process.env,
+        smokeConfiguration
+      );
+      cursorSmokeDiagnostic(
+        `confirmWorkspaceEdit autoConfirmAllowed=${autoConfirmAllowed} changes=${changes.length} files=${changedFiles.length}`
+      );
+      if (autoConfirmAllowed) {
         return true;
       }
+      cursorSmokeDiagnostic('confirmWorkspaceEdit showing modal');
       const selection = await vscode.window.showWarningMessage(
         'OpenBurnBar wants to edit workspace files.',
         {
@@ -115,14 +140,20 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
 export function isCursorSmokeWorkspaceEditAutoConfirmAllowed(
   changes: readonly OpenBurnBarApplyPatchChange[],
   changedFiles: readonly string[],
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  config: CursorSmokeWorkspaceEditConfiguration = {}
 ): boolean {
-  if (env.BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM !== '1' || changes.length !== 1 || changedFiles.length !== 1) {
+  const autoConfirm = env.BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM;
+  const isAutoConfirmEnabled = autoConfirm === undefined ? config.autoConfirm === true : autoConfirm === '1';
+  if (!isAutoConfirmEnabled || changes.length !== 1 || changedFiles.length !== 1) {
+    cursorSmokeDiagnostic(
+      `autoConfirm rejected precondition enabled=${isAutoConfirmEnabled} changes=${changes.length} files=${changedFiles.length}`
+    );
     return false;
   }
 
-  const outputPath = env.BURNBAR_CURSOR_SMOKE_OUTPUT?.trim();
-  const targetPath = env.BURNBAR_CURSOR_SMOKE_FILE_PATH?.trim();
+  const outputPath = env.BURNBAR_CURSOR_SMOKE_OUTPUT?.trim() || config.outputPath?.trim();
+  const targetPath = env.BURNBAR_CURSOR_SMOKE_FILE_PATH?.trim() || config.filePath?.trim();
   const changePath = changes[0]?.path;
   const changedFile = changedFiles[0];
   if (
@@ -133,18 +164,28 @@ export function isCursorSmokeWorkspaceEditAutoConfirmAllowed(
     !path.isAbsolute(outputPath) ||
     !path.isAbsolute(targetPath)
   ) {
+    cursorSmokeDiagnostic(
+      `autoConfirm rejected requiredPaths output=${Boolean(outputPath)} target=${Boolean(targetPath)} change=${Boolean(changePath)} changedFile=${Boolean(changedFile)}`
+    );
     return false;
   }
 
   const resolvedOutputRoot = path.dirname(path.resolve(outputPath));
+  const outputRelativeToTemp = path.relative(path.resolve(tmpdir()), resolvedOutputRoot);
   const resolvedTarget = path.resolve(targetPath);
   const targetRelativeToOutput = path.relative(resolvedOutputRoot, resolvedTarget);
   if (
+    outputRelativeToTemp === '' ||
+    outputRelativeToTemp.startsWith('..') ||
+    path.isAbsolute(outputRelativeToTemp) ||
     targetRelativeToOutput === '' ||
     targetRelativeToOutput.startsWith('..') ||
     path.isAbsolute(targetRelativeToOutput) ||
     path.resolve(changePath) !== resolvedTarget
   ) {
+    cursorSmokeDiagnostic(
+      `autoConfirm rejected containment outputRelativeToTemp=${JSON.stringify(outputRelativeToTemp)} targetRelativeToOutput=${JSON.stringify(targetRelativeToOutput)} changeMatches=${path.resolve(changePath) === resolvedTarget}`
+    );
     return false;
   }
 
@@ -152,9 +193,20 @@ export function isCursorSmokeWorkspaceEditAutoConfirmAllowed(
     const resolvedChangedFile = changedFile.startsWith('file:')
       ? path.resolve(fileURLToPath(changedFile))
       : path.resolve(changedFile);
-    return resolvedChangedFile === resolvedTarget;
+    const matches = resolvedChangedFile === resolvedTarget;
+    cursorSmokeDiagnostic(`autoConfirm changedFileMatches=${matches}`);
+    return matches;
   } catch {
+    cursorSmokeDiagnostic('autoConfirm rejected changedFileParse');
     return false;
+  }
+}
+
+function cursorSmokeDiagnostic(message: string): void {
+  try {
+    appendFileSync('/tmp/openburnbar-smoke-debug.log', `${message}\n`, 'utf8');
+  } catch {
+    // Best-effort diagnostics for the isolated Cursor smoke only.
   }
 }
 

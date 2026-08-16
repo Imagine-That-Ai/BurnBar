@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Console usage profile** (`apps/console/app/profile`): a Codex/Cursor-style
+  activity page — identity header, lifetime stat row (lifetime/peak tokens,
+  total requests, current and longest streaks), a GitHub-style contribution
+  heatmap of daily token activity with Daily / Weekly / Cumulative modes, a
+  90-day token trend, and most-used provider/model insights. All figures come
+  from the owner-readable `usage_rollups/all_time` doc; untracked dimensions
+  (fast mode, reasoning mix, skills) are stated as untracked, never mocked.
+
 ### Changed - Instant graphics, GRDB, and quota mining
 - **Constellation / logo swarm fills** now batch every live draw path
   (swarm, formed logo, color-driver) by `RGBA.bucketKey` instead of one

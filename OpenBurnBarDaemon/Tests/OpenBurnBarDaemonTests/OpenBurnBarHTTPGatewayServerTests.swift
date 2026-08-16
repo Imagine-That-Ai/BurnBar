@@ -177,6 +177,14 @@ final class BurnBarHTTPGatewayServerTests: XCTestCase {
         }
     }
 
+    func testGatewayListenerUsesDedicatedLaunchCriticalQueue() async throws {
+        let harness = try GatewayHarness()
+        let identity = await harness.listenerQueueIdentity()
+
+        XCTAssertEqual(identity.label, BurnBarHTTPGatewayServer.listenerQueueLabel)
+        XCTAssertEqual(identity.qosClass, .userInitiated)
+    }
+
     func testGatewayStartRefusesUnauthenticatedLoopbackBind() async throws {
         // The server must refuse to bind a fail-closed configuration so a stray
         // unauthenticated gateway can never come up and serve credits. Reuse the
@@ -5855,6 +5863,11 @@ final class GatewayHarness: @unchecked Sendable {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [GatewayUpstreamURLProtocol.self]
         return URLSession(configuration: configuration)
+    }
+
+    func listenerQueueIdentity() async -> (label: String, qosClass: DispatchQoS.QoSClass) {
+        let queue = await server.listenerQueue
+        return (queue.label, queue.qos.qosClass)
     }
 
     func configureZAIProviderForGateway() async throws {

@@ -1769,3 +1769,39 @@ OPENBURNBAR_APP_TEST_ATTEMPTS=1 \
   -only-testing:OpenBurnBarTests/OpenBurnBarSearchIntegrationHarnessTests/test_projectionPerf_queueLatencyAndThroughput_guardrails \
   -only-testing:OpenBurnBarTests/PixelClockSettingsCardTests
 ```
+
+## 34. Release-smoke isolation and launch-critical gateway readiness
+
+The final August 16 Release smoke exposed two failures that did not reproduce
+as product-data defects. Both appeared only while the host was concurrently
+building the large macOS app target.
+
+Cursor does not reliably propagate launch environment variables into every
+extension-host process. The smoke's `apply_patch` confirmation could therefore
+fall back to an interactive modal even though the outer Cursor process had the
+expected variables. The smoke now writes the same isolated output path, exact
+target path, and auto-confirm flag into its temporary workspace settings. The
+extension accepts those settings only when the edit contains exactly one file,
+the target exactly matches the declared file, and the output root is below the
+operating system's temporary directory. An explicit environment value still
+overrides the setting. The polling budget is 480 attempts at 250 milliseconds,
+and the outer smoke runner allows 180 seconds, so a valid run is not abandoned
+at the former 60-second boundary under Release-build load.
+
+The focused extension suite passes 42 tests. A real Cursor run completed the
+read-file and apply-patch workflow in 13 seconds with run ID
+`5D145C98-C3C1-4C2D-8650-E88F5D97E942`.
+
+The daemon HTTP gateway formerly started its `NWListener` on the process-wide
+global utility queue. Under heavy unrelated host work, listener readiness could
+miss the launch probe even though the same test completed in 90 milliseconds
+when isolated. The listener now owns the dedicated serial queue
+`com.openburnbar.daemon.http-gateway.listener` at `userInitiated` quality of
+service because binding is launch-critical. Accepted connection work still
+immediately enters structured Swift tasks, so the queue adds no idle polling
+or connection fan-out.
+
+The dedicated-queue contract passes its focused two-test slice. The complete
+gateway suite passes 112 tests in 15.6 seconds under the same loaded host, and
+the complete daemon suite passes 1,550 tests with 10 skips and zero failures
+in 88.6 seconds.

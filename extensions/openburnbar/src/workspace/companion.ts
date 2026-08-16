@@ -1,3 +1,4 @@
+import { appendFileSync } from 'node:fs';
 import { TextDecoder } from 'node:util';
 
 import * as vscode from 'vscode';
@@ -208,14 +209,19 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
 
     for (const change of request.changes) {
       const uri = resolveWorkspaceUri(this.api, change.path);
+      smokeDebug('applyPatch before openTextDocument');
       const document = await this.api.openTextDocument(uri);
+      smokeDebug('applyPatch after openTextDocument');
       openedDocuments.set(uri.toString(), document);
       const range = await this.rangeForChange(uri, change, document);
+      smokeDebug('applyPatch after rangeForChange');
       edit.replace(uri, range, change.text);
       changedFiles.add(uri.toString());
     }
 
+    smokeDebug('applyPatch before confirmWorkspaceEdit');
     const confirmed = await this.api.confirmWorkspaceEdit(request.changes, [...changedFiles]);
+    smokeDebug(`applyPatch after confirmWorkspaceEdit confirmed=${confirmed}`);
     if (!confirmed) {
       throw new OpenBurnBarWorkspaceRpcError(
         'APPLY_PATCH_CANCELLED',
@@ -223,7 +229,9 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
       );
     }
 
+    smokeDebug('applyPatch before applyEdit');
     const applied = await this.api.applyEdit(edit);
+    smokeDebug(`applyPatch after applyEdit applied=${applied}`);
     if (!applied) {
       throw new OpenBurnBarWorkspaceRpcError('APPLY_EDIT_FAILED', 'VS Code rejected the OpenBurnBar workspace edit.');
     }
@@ -233,7 +241,9 @@ export class OpenBurnBarWorkspaceCompanion implements vscode.Disposable {
       if (!document) {
         continue;
       }
+      smokeDebug('applyPatch before document.save');
       const saved = await document.save?.();
+      smokeDebug(`applyPatch after document.save saved=${saved}`);
       if (saved === false) {
         throw new OpenBurnBarWorkspaceRpcError(
           'SAVE_FAILED',
@@ -364,7 +374,9 @@ function assertTrustedToolAllowed(
 }
 
 function smokeDebug(message: string): void {
-  if (process.env.BURNBAR_CURSOR_SMOKE_OUTPUT) {
-    console.warn(`[OpenBurnBar smoke] ${message}`);
+  try {
+    appendFileSync('/tmp/openburnbar-smoke-debug.log', `${message}\n`, 'utf8');
+  } catch {
+    // Best-effort diagnostics for the isolated Cursor smoke only.
   }
 }

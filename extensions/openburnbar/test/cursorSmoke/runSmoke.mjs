@@ -34,6 +34,7 @@ const smokeOutput = join(tempRoot, "smoke-output.json");
 const socketPath = join("/tmp", `obbcs-${smokeID}.sock`);
 const logPath = join("/tmp", `obbcs-${smokeID}.log`);
 const fakeProviderOutputsPath = join(tempRoot, "fake-provider-outputs.json");
+const smokeFilePath = join(workspaceDir, "src", "example.ts");
 
 mkdirSync(userDataDir, { recursive: true });
 mkdirSync(extensionsDir, { recursive: true });
@@ -42,7 +43,7 @@ mkdirSync(supportDir, { recursive: true });
 mkdirSync(join(userDataDir, "User"), { recursive: true });
 mkdirSync(join(workspaceDir, "src"), { recursive: true });
 
-writeFileSync(join(workspaceDir, "src", "example.ts"), "export const value = 42;\n", "utf8");
+writeFileSync(smokeFilePath, "export const value = 42;\n", "utf8");
 writeFileSync(
   fakeProviderOutputsPath,
   JSON.stringify({
@@ -59,7 +60,7 @@ writeFileSync(
         action: "read_file",
         requestedTool: "read_file",
         arguments: {
-          path: join(workspaceDir, "src", "example.ts")
+          path: smokeFilePath
         },
         rationale: "Inspect the current file contents before patching."
       }),
@@ -69,7 +70,7 @@ writeFileSync(
         arguments: {
           changes: [
             {
-              path: join(workspaceDir, "src", "example.ts"),
+              path: smokeFilePath,
               text: "export const value = 43;\n"
             }
           ]
@@ -90,8 +91,9 @@ writeFileSync(
   JSON.stringify(
     {
       "security.workspace.trust.enabled": false,
+      "openburnbar.cursorSmoke.autoConfirm": true,
       "openburnbar.cursorSmoke.outputPath": smokeOutput,
-      "openburnbar.cursorSmoke.filePath": join(workspaceDir, "src", "example.ts"),
+      "openburnbar.cursorSmoke.filePath": smokeFilePath,
       "openburnbar.cursorSmoke.modelID": "glm-5"
     },
     null,
@@ -199,7 +201,11 @@ const cursor = spawn(cursorBinary, [workspaceDir, "--new-window", "--user-data-d
   env: {
     ...process.env,
     OPENBURNBAR_DAEMON_SOCKET_PATH: socketPath,
-    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken
+    OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN: socketAuthToken,
+    BURNBAR_CURSOR_SMOKE_OUTPUT: smokeOutput,
+    BURNBAR_CURSOR_SMOKE_FILE_PATH: smokeFilePath,
+    BURNBAR_CURSOR_SMOKE_MODEL: "glm-5",
+    BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM: "1"
   },
   stdio: ["ignore", "ignore", "ignore"]
 });
@@ -214,7 +220,7 @@ while (!existsSync(smokeOutput)) {
 
 let result = JSON.parse(readFileSync(smokeOutput, "utf8"));
 while (!result.ok && !result.error) {
-  if (Date.now() - start > 120000) {
+  if (Date.now() - start > 180000) {
     throw new Error("Timed out waiting for Cursor smoke run completion.");
   }
 

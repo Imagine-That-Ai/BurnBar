@@ -587,4 +587,22 @@ describe('activateBurnBarExtension', () => {
     expect(result).toBe('completed');
     expect(refreshRunState).toHaveBeenCalledTimes(2);
   });
+
+  it('keeps the real Cursor smoke alive beyond the legacy 60-second poll budget', async () => {
+    const { _waitForCursorSmokeRun } = await import('../src/extension');
+    let phase = 'planning';
+    const refreshRunState = vi.fn().mockImplementation(async () => {
+      phase = refreshRunState.mock.calls.length <= 240 ? 'waiting_on_companion' : 'completed';
+    });
+
+    const result = await _waitForCursorSmokeRun({
+      runID: 'run-under-release-build-load',
+      refreshRunState,
+      getRunPhase: vi.fn().mockImplementation(async () => phase),
+      pollDelayMs: 0
+    });
+
+    expect(result).toBe('completed');
+    expect(refreshRunState).toHaveBeenCalledTimes(241);
+  });
 });

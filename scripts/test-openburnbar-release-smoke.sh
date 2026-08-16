@@ -4,6 +4,11 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Keep every Xcode package-resolution stage on the repository's supported
+# source-built Firestore graph. The prebuilt grpc-binary graph crashes on
+# supported iOS 27 devices and must not be written back by a macOS smoke run.
+export FIREBASE_SOURCE_FIRESTORE="${FIREBASE_SOURCE_FIRESTORE:-1}"
+
 # shellcheck source=scripts/lib/openburnbar-release-app-test-filters.sh
 source "$repo_root/scripts/lib/openburnbar-release-app-test-filters.sh"
 
@@ -30,6 +35,7 @@ npm --prefix "$repo_root/extensions/openburnbar" run test:cursor-smoke
 
 uid="$(id -u)"
 app_path="$repo_root/.derived-data/Build/Products/Release/OpenBurnBar.app"
+app_bin="$app_path/Contents/MacOS/OpenBurnBar"
 daemon_bin="$app_path/Contents/Helpers/OpenBurnBarDaemon"
 daemon_core_dylib="$app_path/Contents/Helpers/libOpenBurnBarCore.dylib"
 app_core_framework="$app_path/Contents/Frameworks/OpenBurnBarCore.framework"
@@ -55,20 +61,43 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
+if [[ ! -x "$app_bin" ]]; then
+  echo "Release app executable not found at $app_bin" >&2
+  exit 1
+fi
+
 if [[ ! -x "$daemon_bin" ]]; then
   echo "Embedded daemon helper not found at $daemon_bin" >&2
   exit 1
 fi
 
-if [[ ! -f "$daemon_core_dylib" ]]; then
-  echo "Embedded daemon support library not found at $daemon_core_dylib" >&2
-  exit 1
-fi
+verify_optional_runtime_dependency() {
+  local binary="$1"
+  local dependency_fragment="$2"
+  local embedded_path="$3"
+  local description="$4"
 
-if [[ ! -d "$app_core_framework" ]]; then
-  echo "Embedded app framework not found at $app_core_framework" >&2
-  exit 1
-fi
+  if otool -L "$binary" | grep -Fq "$dependency_fragment"; then
+    if [[ ! -e "$embedded_path" ]]; then
+      echo "$description is linked by $binary but missing at $embedded_path" >&2
+      exit 1
+    fi
+    echo "Verified dynamically linked $description at $embedded_path"
+  else
+    echo "Verified $description is statically linked into $binary"
+  fi
+}
+
+verify_optional_runtime_dependency \
+  "$daemon_bin" \
+  "libOpenBurnBarCore.dylib" \
+  "$daemon_core_dylib" \
+  "daemon OpenBurnBarCore runtime"
+verify_optional_runtime_dependency \
+  "$app_bin" \
+  "OpenBurnBarCore.framework" \
+  "$app_core_framework" \
+  "app OpenBurnBarCore runtime"
 
 python3 - <<PY
 from pathlib import Path

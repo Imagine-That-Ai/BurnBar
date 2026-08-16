@@ -56,6 +56,11 @@ test("Xcode app resolution and builds always restore the full binary graph", () 
 test("release smoke clears the seam before app and release-build proofs", () => {
   assert.match(
     releaseSmoke,
+    /export FIREBASE_SOURCE_FIRESTORE="\$\{FIREBASE_SOURCE_FIRESTORE:-1\}"/u,
+    "release smoke must preserve the repository's source-Firestore package graph",
+  );
+  assert.match(
+    releaseSmoke,
     new RegExp(`${seam}=1 \\\\\\n  "\\$repo_root/scripts/test-openburnbar-swift\\.sh"`, "u"),
   );
   assert.match(releaseSmoke, new RegExp(`unset ${seam}`, "u"));
@@ -70,6 +75,33 @@ test("release smoke clears the seam before app and release-build proofs", () => 
     "the seam must be cleared before the Release app build",
   );
   assert.doesNotMatch(releaseSmoke, new RegExp(`export ${seam}`, "u"));
+});
+
+test("release smoke verifies the core runtime according to the actual Mach-O graph", () => {
+  assert.match(
+    releaseSmoke,
+    /verify_optional_runtime_dependency\(\) \{[\s\S]*otool -L "\$binary" \| grep -Fq "\$dependency_fragment"/u,
+  );
+  assert.match(
+    releaseSmoke,
+    /Verified \$description is statically linked into \$binary/u,
+  );
+  assert.match(
+    releaseSmoke,
+    /verify_optional_runtime_dependency \\\n  "\$daemon_bin" \\\n  "libOpenBurnBarCore\.dylib"/u,
+  );
+  assert.match(
+    releaseSmoke,
+    /verify_optional_runtime_dependency \\\n  "\$app_bin" \\\n  "OpenBurnBarCore\.framework"/u,
+  );
+  assert.doesNotMatch(
+    releaseSmoke,
+    /if \[\[ ! -f "\$daemon_core_dylib" \]\]/u,
+  );
+  assert.doesNotMatch(
+    releaseSmoke,
+    /if \[\[ ! -d "\$app_core_framework" \]\]/u,
+  );
 });
 
 test("remote-engine compilation follows the manifest graph instead of stale module discovery", () => {

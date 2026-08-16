@@ -210,6 +210,21 @@ describe('isCursorSmokeWorkspaceEditAutoConfirmAllowed', () => {
     ).toBe(true);
   });
 
+  it('uses the isolated workspace settings when Cursor drops launch environment variables', () => {
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: targetPath, text: 'export const value = 43;\n' }],
+        [`file://${targetPath}`],
+        {},
+        {
+          autoConfirm: true,
+          outputPath,
+          filePath: targetPath
+        }
+      )
+    ).toBe(true);
+  });
+
   it('keeps confirmation enabled for mismatched or non-isolated edit targets', () => {
     expect(
       isCursorSmokeWorkspaceEditAutoConfirmAllowed(
@@ -223,6 +238,17 @@ describe('isCursorSmokeWorkspaceEditAutoConfirmAllowed', () => {
         [{ path: targetPath, text: 'changed\n' }],
         [`file://${targetPath}`],
         { ...env, BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM: '0' }
+      )
+    ).toBe(false);
+    expect(
+      isCursorSmokeWorkspaceEditAutoConfirmAllowed(
+        [{ path: '/Users/test/project/example.ts', text: 'changed\n' }],
+        ['file:///Users/test/project/example.ts'],
+        {
+          ...env,
+          BURNBAR_CURSOR_SMOKE_OUTPUT: '/Users/test/project/smoke-output.json',
+          BURNBAR_CURSOR_SMOKE_FILE_PATH: '/Users/test/project/example.ts'
+        }
       )
     ).toBe(false);
   });
