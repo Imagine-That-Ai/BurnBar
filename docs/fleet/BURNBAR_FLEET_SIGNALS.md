@@ -33,6 +33,30 @@ Snapshot cadence: **15 seconds** by default (`BURNBAR_FLEET_CADENCE_SECONDS` ove
 
 ## M6 hardening measurements
 
+### Soak, logging, and boundary hygiene
+
+The daemon's owner-only fleet socket is mode `0600` and is owned by the
+invoking user. A fleet tick emits at most one structured
+`fleet_probe_degraded` record per affected roster agent. The record contains
+only the wire agent id, `degraded`/`failed` state, monotonic tick number, and
+daemon pid; it never includes probe reasons, paths, signal contents, stack
+traces, or exception text. Typed reasons remain in `probeHealth` for RPC/file
+consumers. This keeps repeated degradation output bounded at one record per
+agent per completed tick and prevents secret-bearing fixture contents from
+reaching logs.
+
+Hardening manifests enumerate only the declared signal paths in the
+per-agent inventory. They explicitly prune `~/.factory/artifacts/**` before
+any traversal and never read, hash, stat, or copy that protected subtree.
+Hermetic evidence uses a temporary `factory/artifacts/**` sentinel to prove
+that the excluded subtree cannot influence a snapshot; the sentinel content
+is not included in the evidence.
+
+Liveness checks are read-only existence/start-time checks (`kill(pid, 0)` or
+`proc_pidinfo`). The probe layer never sends a nonzero signal, terminates,
+renices, or writes to a user process or agent root. The soak canary therefore
+must remain free of signal-handler observations throughout repeated ticks.
+
 ### Direct snapshot-build timing hook
 
 `BurnBarFleetSnapshotBuilder` has an internal, test-only

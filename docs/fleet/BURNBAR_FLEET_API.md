@@ -61,6 +61,11 @@ send no request do not block other clients. The request frame is raw UTF-8,
 must be no more than 65,536 bytes excluding its trailing newline, and the
 response is one JSON line. Reads are safe for multiple clients.
 
+The socket is created with owner-only POSIX mode `0600` (and is owned by the
+invoking user). Group and world access are never granted, regardless of the
+process umask. Same-user AF_UNIX clients can use the documented read examples
+below; other users are denied by the operating system.
+
 ## Protocol version and envelopes
 
 `BurnBarProtocolVersion.current` is **1** and the daemon supports `[1]`.

@@ -38,18 +38,22 @@ public actor BurnBarFleetService {
 
     public var cadenceSeconds: Int { builder.cadenceSeconds }
 
+    private let logger: BurnBarDaemonLogger
     private var latestSnapshot: BurnBarFleetSnapshot?
     private var tickTask: Task<Void, Never>?
     private var isRunning = false
+    private var completedTickCount = 0
 
     public init(
         builder: BurnBarFleetSnapshotBuilder,
         persister: BurnBarFleetPersister? = nil,
-        controlStore: BurnBarFleetControlStore? = nil
+        controlStore: BurnBarFleetControlStore? = nil,
+        logger: BurnBarDaemonLogger = BurnBarDaemonLogger(category: "fleet")
     ) {
         self.builder = builder
         self.persister = persister
         self.controlStore = controlStore
+        self.logger = logger
     }
 
     /// Starts the cadence ticker. The first tick runs immediately; subsequent
@@ -134,11 +138,47 @@ public actor BurnBarFleetService {
         )
         if let persister {
             let persisted = persister.persist(snapshot: snapshot)
+            completedTickCount += 1
+            logProbeDegradations(in: persisted)
             latestSnapshot = persisted
             return persisted
         }
+        completedTickCount += 1
+        logProbeDegradations(in: snapshot)
         latestSnapshot = snapshot
         return snapshot
+    }
+
+    /// Emits one bounded, structured record per affected agent for each
+    /// completed tick. Reasons intentionally stay out of the log: probe
+    /// health payloads carry the typed detail, while the log only carries
+    /// stable state and identity fields so malformed fixture contents,
+    /// paths, and secrets cannot be disclosed.
+    private func logProbeDegradations(in snapshot: BurnBarFleetSnapshot) {
+        var loggedAgents = Set<String>()
+        for health in snapshot.probeHealth {
+            let state: String
+            switch health.state {
+            case .ok:
+                continue
+            case .degraded:
+                state = "degraded"
+            case .failed:
+                state = "failed"
+            }
+
+            let agent = health.agent.wireValue
+            guard loggedAgents.insert(agent).inserted else { continue }
+            logger.notice(
+                "fleet_probe_degraded",
+                metadata: [
+                    "agent": agent,
+                    "state": state,
+                    "tick": "\(completedTickCount)",
+                    "daemon_pid": "\(ProcessInfo.processInfo.processIdentifier)"
+                ]
+            )
+        }
     }
 
     private func runTicker() async {

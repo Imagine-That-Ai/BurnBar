@@ -1,0 +1,1101 @@
+{
+  "status": "pass",
+  "configuration": {
+    "cadence_seconds": 1,
+    "ticks_requested": 40,
+    "late_tolerance_seconds": 0.5,
+    "warmup_samples": 5
+  },
+  "socket": {
+    "mode_octal": "0o600",
+    "owner_uid": 501,
+    "invoking_uid": 501,
+    "owner_only": true,
+    "same_user_rpc": true
+  },
+  "soak": {
+    "samples": [
+      {
+        "tick": 1,
+        "generatedAt": "2026-08-16T05:48:55.135Z",
+        "observedAt": "2026-08-16T05:48:55.167383+00:00",
+        "rss_kb": 19152,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 2,
+        "generatedAt": "2026-08-16T05:48:56.146Z",
+        "observedAt": "2026-08-16T05:48:56.201829+00:00",
+        "rss_kb": 19168,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 3,
+        "generatedAt": "2026-08-16T05:48:57.135Z",
+        "observedAt": "2026-08-16T05:48:57.182679+00:00",
+        "rss_kb": 19184,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 4,
+        "generatedAt": "2026-08-16T05:48:58.135Z",
+        "observedAt": "2026-08-16T05:48:58.153642+00:00",
+        "rss_kb": 19216,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 5,
+        "generatedAt": "2026-08-16T05:48:59.134Z",
+        "observedAt": "2026-08-16T05:48:59.186734+00:00",
+        "rss_kb": 19232,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 6,
+        "generatedAt": "2026-08-16T05:49:00.135Z",
+        "observedAt": "2026-08-16T05:49:00.158923+00:00",
+        "rss_kb": 19280,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 7,
+        "generatedAt": "2026-08-16T05:49:01.135Z",
+        "observedAt": "2026-08-16T05:49:01.159282+00:00",
+        "rss_kb": 19296,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 8,
+        "generatedAt": "2026-08-16T05:49:02.136Z",
+        "observedAt": "2026-08-16T05:49:02.193558+00:00",
+        "rss_kb": 19376,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 9,
+        "generatedAt": "2026-08-16T05:49:03.135Z",
+        "observedAt": "2026-08-16T05:49:03.152838+00:00",
+        "rss_kb": 19424,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 10,
+        "generatedAt": "2026-08-16T05:49:04.135Z",
+        "observedAt": "2026-08-16T05:49:04.167399+00:00",
+        "rss_kb": 19440,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 11,
+        "generatedAt": "2026-08-16T05:49:05.138Z",
+        "observedAt": "2026-08-16T05:49:05.192265+00:00",
+        "rss_kb": 19440,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 12,
+        "generatedAt": "2026-08-16T05:49:06.134Z",
+        "observedAt": "2026-08-16T05:49:06.151738+00:00",
+        "rss_kb": 19488,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 13,
+        "generatedAt": "2026-08-16T05:49:07.135Z",
+        "observedAt": "2026-08-16T05:49:07.165766+00:00",
+        "rss_kb": 19488,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 14,
+        "generatedAt": "2026-08-16T05:49:08.135Z",
+        "observedAt": "2026-08-16T05:49:08.183983+00:00",
+        "rss_kb": 19504,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 15,
+        "generatedAt": "2026-08-16T05:49:09.135Z",
+        "observedAt": "2026-08-16T05:49:09.203349+00:00",
+        "rss_kb": 19552,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 16,
+        "generatedAt": "2026-08-16T05:49:10.134Z",
+        "observedAt": "2026-08-16T05:49:10.165060+00:00",
+        "rss_kb": 19584,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 17,
+        "generatedAt": "2026-08-16T05:49:11.138Z",
+        "observedAt": "2026-08-16T05:49:11.156434+00:00",
+        "rss_kb": 19584,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 18,
+        "generatedAt": "2026-08-16T05:49:12.135Z",
+        "observedAt": "2026-08-16T05:49:12.168351+00:00",
+        "rss_kb": 19600,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 19,
+        "generatedAt": "2026-08-16T05:49:13.136Z",
+        "observedAt": "2026-08-16T05:49:13.202258+00:00",
+        "rss_kb": 19600,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 20,
+        "generatedAt": "2026-08-16T05:49:14.135Z",
+        "observedAt": "2026-08-16T05:49:14.170517+00:00",
+        "rss_kb": 19632,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 21,
+        "generatedAt": "2026-08-16T05:49:15.135Z",
+        "observedAt": "2026-08-16T05:49:15.185629+00:00",
+        "rss_kb": 19632,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 22,
+        "generatedAt": "2026-08-16T05:49:16.135Z",
+        "observedAt": "2026-08-16T05:49:16.153047+00:00",
+        "rss_kb": 19648,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 23,
+        "generatedAt": "2026-08-16T05:49:17.136Z",
+        "observedAt": "2026-08-16T05:49:17.166237+00:00",
+        "rss_kb": 19648,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 24,
+        "generatedAt": "2026-08-16T05:49:18.141Z",
+        "observedAt": "2026-08-16T05:49:18.210427+00:00",
+        "rss_kb": 19664,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 25,
+        "generatedAt": "2026-08-16T05:49:19.134Z",
+        "observedAt": "2026-08-16T05:49:19.177832+00:00",
+        "rss_kb": 19680,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 26,
+        "generatedAt": "2026-08-16T05:49:20.135Z",
+        "observedAt": "2026-08-16T05:49:20.193137+00:00",
+        "rss_kb": 19680,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 27,
+        "generatedAt": "2026-08-16T05:49:21.135Z",
+        "observedAt": "2026-08-16T05:49:21.164898+00:00",
+        "rss_kb": 19712,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 28,
+        "generatedAt": "2026-08-16T05:49:22.135Z",
+        "observedAt": "2026-08-16T05:49:22.154766+00:00",
+        "rss_kb": 19712,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 29,
+        "generatedAt": "2026-08-16T05:49:23.136Z",
+        "observedAt": "2026-08-16T05:49:23.167330+00:00",
+        "rss_kb": 19728,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 30,
+        "generatedAt": "2026-08-16T05:49:24.135Z",
+        "observedAt": "2026-08-16T05:49:24.177158+00:00",
+        "rss_kb": 19728,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 31,
+        "generatedAt": "2026-08-16T05:49:25.135Z",
+        "observedAt": "2026-08-16T05:49:25.186969+00:00",
+        "rss_kb": 19744,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 32,
+        "generatedAt": "2026-08-16T05:49:26.135Z",
+        "observedAt": "2026-08-16T05:49:26.175937+00:00",
+        "rss_kb": 19744,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 33,
+        "generatedAt": "2026-08-16T05:49:27.136Z",
+        "observedAt": "2026-08-16T05:49:27.158035+00:00",
+        "rss_kb": 19760,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 34,
+        "generatedAt": "2026-08-16T05:49:28.135Z",
+        "observedAt": "2026-08-16T05:49:28.173207+00:00",
+        "rss_kb": 19760,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 35,
+        "generatedAt": "2026-08-16T05:49:29.135Z",
+        "observedAt": "2026-08-16T05:49:29.168775+00:00",
+        "rss_kb": 19776,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 36,
+        "generatedAt": "2026-08-16T05:49:30.135Z",
+        "observedAt": "2026-08-16T05:49:30.277442+00:00",
+        "rss_kb": 19776,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 37,
+        "generatedAt": "2026-08-16T05:49:31.135Z",
+        "observedAt": "2026-08-16T05:49:31.158286+00:00",
+        "rss_kb": 19792,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 38,
+        "generatedAt": "2026-08-16T05:49:32.135Z",
+        "observedAt": "2026-08-16T05:49:32.171680+00:00",
+        "rss_kb": 19792,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 39,
+        "generatedAt": "2026-08-16T05:49:33.135Z",
+        "observedAt": "2026-08-16T05:49:33.199481+00:00",
+        "rss_kb": 19824,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      },
+      {
+        "tick": 40,
+        "generatedAt": "2026-08-16T05:49:34.135Z",
+        "observedAt": "2026-08-16T05:49:34.176744+00:00",
+        "rss_kb": 19856,
+        "fd_count": 12,
+        "thread_count": 5,
+        "child_count": 0,
+        "tmp_files": []
+      }
+    ],
+    "intervals_seconds": [
+      1.0014448750007432,
+      1.0344284999882802,
+      0.9808649590122513,
+      0.9709574579901528,
+      1.0330777500057593,
+      0.9721948750084266,
+      1.0003522079787217,
+      1.0342773750016931,
+      0.9592772090109065,
+      1.0145568329899106,
+      1.0248606670065783,
+      0.9594720829918515,
+      1.0140239169995766,
+      1.0182109160232358,
+      1.019361291982932,
+      0.9617078330193181,
+      0.9913731249980628,
+      1.0119118339789566,
+      1.033904166019056,
+      0.9682547919801436,
+      1.0151058330084197,
+      0.9674197499989532,
+      1.013183792005293,
+      1.0441866249893792,
+      0.9674018750083633,
+      1.0153011250076815,
+      0.9717521669808775,
+      0.9898647500085644,
+      1.0125627499946859,
+      1.0098221249936614,
+      1.009802833024878,
+      0.9889732500014361,
+      0.9820932500006165,
+      1.0151659999974072,
+      0.9955663750006352,
+      1.1086610829806887,
+      0.8808392090140842,
+      1.0133915829937905,
+      1.0278009999892674,
+      0.9772562920115888
+    ],
+    "on_time_ticks": 40,
+    "late_ticks": 0,
+    "rss_baseline_kb": 19296,
+    "rss_end_kb": 19856,
+    "rss_end_to_warmup_ratio": 1.029021558872305,
+    "rss_bound_ratio": 1.2,
+    "rss_strictly_monotonic_growth": false,
+    "fd_baseline": 12,
+    "fd_max_delta_from_warmup": 0,
+    "fd_strictly_monotonic_growth": false,
+    "thread_baseline": 5,
+    "thread_max_delta_from_warmup": 0,
+    "thread_strictly_monotonic_growth": false,
+    "child_counts": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "tmp_files": [
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      []
+    ],
+    "stable_snapshot_projection": true
+  },
+  "degradation_logging": {
+    "affected_agents": [
+      "grok-cli"
+    ],
+    "events": [
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 1
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 2
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 3
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 4
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 5
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 6
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 7
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 8
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 9
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 10
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 11
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 12
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 13
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 14
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 15
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 16
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 17
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 18
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 19
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 20
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 21
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 22
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 23
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 24
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 25
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 26
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 27
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 28
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 29
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 30
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 31
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 32
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 33
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 34
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 35
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 36
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 37
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 38
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 39
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 40
+      },
+      {
+        "agent": "grok-cli",
+        "state": "degraded",
+        "tick": 41
+      }
+    ],
+    "counts_by_agent": {
+      "grok-cli": 41
+    },
+    "max_records": 41,
+    "record_key_uniqueness": true,
+    "at_most_one_per_agent_per_tick": true,
+    "captured_event_bytes": 6755,
+    "log_bytes_cap": 20992,
+    "log_bytes_bounded": true,
+    "no_stack_trace_markers": true,
+    "secret_absent": true,
+    "sentinels_absent": true
+  },
+  "fixture_isolation": {
+    "declared_manifest_before": [
+      {
+        "agent": "claude-code",
+        "path": "sessions/72679.json",
+        "state": "file",
+        "size": 95,
+        "mtime_ns": 1786859333514255743,
+        "sha256": "c7367d59c418c42f192bf4221e603b46c9f53e8a83389d899c671d6a8e97da7c"
+      },
+      {
+        "agent": "codex",
+        "path": ".codex-global-state.json",
+        "state": "missing"
+      },
+      {
+        "agent": "codex",
+        "path": "state_5.sqlite-wal",
+        "state": "missing"
+      },
+      {
+        "agent": "codex",
+        "path": "thread-writer-locks/m6.lock",
+        "state": "file",
+        "size": 0,
+        "mtime_ns": 1786859333515923458,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "agent": "cursor",
+        "path": "agent-cli-state.json",
+        "state": "file",
+        "size": 52,
+        "mtime_ns": 1786859333516227417,
+        "sha256": "b76922c1d6bf2f3afe6691809517235a8aaaaeac294d4d9bd3d41ab25bbef60b"
+      },
+      {
+        "agent": "cursor",
+        "path": "ai-tracking/tracking.db",
+        "state": "file",
+        "size": 18,
+        "mtime_ns": 1786859333516333668,
+        "sha256": "99e86c5b00793b73e98a3c33317d7274135fe223976116bb2be6b4eb0b8a5e08"
+      },
+      {
+        "agent": "factory-droid",
+        "path": "background-processes.json",
+        "state": "file",
+        "size": 79,
+        "mtime_ns": 1786859333515511289,
+        "sha256": "ac37c8302849a74fef1e7e275d074f7cafdca2c29c293eab6eb9edfb1cf38b29"
+      },
+      {
+        "agent": "factory-droid",
+        "path": "missions",
+        "state": "missing"
+      },
+      {
+        "agent": "factory-droid",
+        "path": "sessions",
+        "state": "missing"
+      },
+      {
+        "agent": "factory-droid",
+        "path": "task-invocations.json",
+        "state": "file",
+        "size": 18,
+        "mtime_ns": 1786859333515417539,
+        "sha256": "b02b51713509f6e7334a5c854eeb44035a15af34038a53f022dae3a99b9ab8e1"
+      },
+      {
+        "agent": "grok-bot",
+        "path": "local-exec-daemon.json",
+        "state": "file",
+        "size": 31,
+        "mtime_ns": 1786859333514831120,
+        "sha256": "bbb8f5d4290bbd49b55edb584ca93a96626175e5359f7f207195a0579d0050d4"
+      },
+      {
+        "agent": "grok-bot",
+        "path": "local-exec-daemon.log",
+        "state": "missing"
+      },
+      {
+        "agent": "grok-bot",
+        "path": "local-exec-supervisor.json",
+        "state": "file",
+        "size": 32,
+        "mtime_ns": 1786859333514949746,
+        "sha256": "366be1156b952f60f71de7e2ff540faf9e1db7cd128bc6097fe7bd822d0b1138"
+      },
+      {
+        "agent": "grok-cli",
+        "path": "active_sessions.json",
+        "state": "file",
+        "size": 54,
+        "mtime_ns": 1786859333515789874,
+        "sha256": "0ea8c05d2e6fe6b6244dc96d0dd7beba847f78674049d48652fc881703e7afd9"
+      },
+      {
+        "agent": "grok-cli",
+        "path": "active_sessions.lock",
+        "state": "missing"
+      },
+      {
+        "agent": "hermes",
+        "path": "gateway.pid",
+        "state": "file",
+        "size": 13,
+        "mtime_ns": 1786859333515036871,
+        "sha256": "9e4d6d1cd4e5724237d5cb4aa1c7b8370262dd935a30da0a14c7810cbf396039"
+      },
+      {
+        "agent": "hermes",
+        "path": "gateway_state.json",
+        "state": "file",
+        "size": 57,
+        "mtime_ns": 1786859333515243497,
+        "sha256": "5907d4c5e21566e3c08c3888b342949bf8f853220ec30066950dca5e7bfdabd6"
+      },
+      {
+        "agent": "hermes",
+        "path": "processes.json",
+        "state": "file",
+        "size": 2,
+        "mtime_ns": 1786859333515341747,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "agent": "hermes",
+        "path": "state/gateway.heartbeat",
+        "state": "file",
+        "size": 53,
+        "mtime_ns": 1786859333515139830,
+        "sha256": "33fcfa2420af15af5f407ac31e568846d2b730e8c1d20c1b63f6e26f96a7409c"
+      },
+      {
+        "agent": "pi",
+        "path": "agent/sessions/--fixture--AgentLens/m6.jsonl",
+        "state": "file",
+        "size": 94,
+        "mtime_ns": 1786859333516118208,
+        "sha256": "67095379538c4e9c6e36fdfa834596d856b6245c80a5ccf86ed27c0e7bb7d710"
+      }
+    ],
+    "declared_manifest_after": [
+      {
+        "agent": "claude-code",
+        "path": "sessions/72679.json",
+        "state": "file",
+        "size": 95,
+        "mtime_ns": 1786859333514255743,
+        "sha256": "c7367d59c418c42f192bf4221e603b46c9f53e8a83389d899c671d6a8e97da7c"
+      },
+      {
+        "agent": "codex",
+        "path": ".codex-global-state.json",
+        "state": "missing"
+      },
+      {
+        "agent": "codex",
+        "path": "state_5.sqlite-wal",
+        "state": "missing"
+      },
+      {
+        "agent": "codex",
+        "path": "thread-writer-locks/m6.lock",
+        "state": "file",
+        "size": 0,
+        "mtime_ns": 1786859333515923458,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "agent": "cursor",
+        "path": "agent-cli-state.json",
+        "state": "file",
+        "size": 52,
+        "mtime_ns": 1786859333516227417,
+        "sha256": "b76922c1d6bf2f3afe6691809517235a8aaaaeac294d4d9bd3d41ab25bbef60b"
+      },
+      {
+        "agent": "cursor",
+        "path": "ai-tracking/tracking.db",
+        "state": "file",
+        "size": 18,
+        "mtime_ns": 1786859333516333668,
+        "sha256": "99e86c5b00793b73e98a3c33317d7274135fe223976116bb2be6b4eb0b8a5e08"
+      },
+      {
+        "agent": "factory-droid",
+        "path": "background-processes.json",
+        "state": "file",
+        "size": 79,
+        "mtime_ns": 1786859333515511289,
+        "sha256": "ac37c8302849a74fef1e7e275d074f7cafdca2c29c293eab6eb9edfb1cf38b29"
+      },
+      {
+        "agent": "factory-droid",
+        "path": "missions",
+        "state": "missing"
+      },
+      {
+        "agent": "factory-droid",
+        "path": "sessions",
+        "state": "missing"
+      },
+      {
+        "agent": "factory-droid",
+        "path": "task-invocations.json",
+        "state": "file",
+        "size": 18,
+        "mtime_ns": 1786859333515417539,
+        "sha256": "b02b51713509f6e7334a5c854eeb44035a15af34038a53f022dae3a99b9ab8e1"
+      },
+      {
+        "agent": "grok-bot",
+        "path": "local-exec-daemon.json",
+        "state": "file",
+        "size": 31,
+        "mtime_ns": 1786859333514831120,
+        "sha256": "bbb8f5d4290bbd49b55edb584ca93a96626175e5359f7f207195a0579d0050d4"
+      },
+      {
+        "agent": "grok-bot",
+        "path": "local-exec-daemon.log",
+        "state": "missing"
+      },
+      {
+        "agent": "grok-bot",
+        "path": "local-exec-supervisor.json",
+        "state": "file",
+        "size": 32,
+        "mtime_ns": 1786859333514949746,
+        "sha256": "366be1156b952f60f71de7e2ff540faf9e1db7cd128bc6097fe7bd822d0b1138"
+      },
+      {
+        "agent": "grok-cli",
+        "path": "active_sessions.json",
+        "state": "file",
+        "size": 54,
+        "mtime_ns": 1786859333515789874,
+        "sha256": "0ea8c05d2e6fe6b6244dc96d0dd7beba847f78674049d48652fc881703e7afd9"
+      },
+      {
+        "agent": "grok-cli",
+        "path": "active_sessions.lock",
+        "state": "missing"
+      },
+      {
+        "agent": "hermes",
+        "path": "gateway.pid",
+        "state": "file",
+        "size": 13,
+        "mtime_ns": 1786859333515036871,
+        "sha256": "9e4d6d1cd4e5724237d5cb4aa1c7b8370262dd935a30da0a14c7810cbf396039"
+      },
+      {
+        "agent": "hermes",
+        "path": "gateway_state.json",
+        "state": "file",
+        "size": 57,
+        "mtime_ns": 1786859333515243497,
+        "sha256": "5907d4c5e21566e3c08c3888b342949bf8f853220ec30066950dca5e7bfdabd6"
+      },
+      {
+        "agent": "hermes",
+        "path": "processes.json",
+        "state": "file",
+        "size": 2,
+        "mtime_ns": 1786859333515341747,
+        "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      },
+      {
+        "agent": "hermes",
+        "path": "state/gateway.heartbeat",
+        "state": "file",
+        "size": 53,
+        "mtime_ns": 1786859333515139830,
+        "sha256": "33fcfa2420af15af5f407ac31e568846d2b730e8c1d20c1b63f6e26f96a7409c"
+      },
+      {
+        "agent": "pi",
+        "path": "agent/sessions/--fixture--AgentLens/m6.jsonl",
+        "state": "file",
+        "size": 94,
+        "mtime_ns": 1786859333516118208,
+        "sha256": "67095379538c4e9c6e36fdfa834596d856b6245c80a5ccf86ed27c0e7bb7d710"
+      }
+    ],
+    "declared_manifest_unchanged": true,
+    "excluded_paths": [
+      "factory/artifacts/**",
+      "factory/undeclared-sibling/**"
+    ],
+    "traversal_rule": "Manifest enumerates only DECLARED_PATHS; factory/artifacts/** is pruned before traversal and its content is never read.",
+    "snapshot_sentinels_absent": true,
+    "factory_row_not_driven_by_undeclared_content": true
+  },
+  "liveness": {
+    "canary_pid": 72679,
+    "canary_nonzero_signal_log": [],
+    "canary_received_no_nonzero_signal": true,
+    "dead_pid_fixture": 72680,
+    "pid_reuse_fixture": {
+      "agent": "factory-droid",
+      "recorded_start_time": "one hour before canary start",
+      "canary_pid": 72679
+    },
+    "static_scan": {
+      "scanned_root": "BurnBarDaemon/Sources/BurnBarDaemon/Fleet/Probes",
+      "allowed_kill_zero_checks": [
+        "BurnBarDaemon/Sources/BurnBarDaemon/Fleet/Probes/BurnBarFleetProbeSupport.swift:44"
+      ],
+      "offending_calls": [],
+      "proc_pidinfo_allowed": true
+    }
+  }
+}

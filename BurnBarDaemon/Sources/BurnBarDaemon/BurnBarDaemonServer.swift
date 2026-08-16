@@ -8,6 +8,7 @@ public enum BurnBarDaemonError: Error, LocalizedError {
     case failedToCreateSocket(code: Int32, detail: String)
     case failedToBindSocket(path: String, code: Int32, detail: String)
     case failedToListen(path: String, code: Int32, detail: String)
+    case failedToSetSocketPermissions(path: String, code: Int32, detail: String)
     case failedToCreateParentDirectory(String)
     /// The request frame exceeded the 64KB payload cap. The second associated
     /// value is the partial frame read so far (used to recover the request id
@@ -26,6 +27,8 @@ public enum BurnBarDaemonError: Error, LocalizedError {
             return "Failed to bind BurnBar daemon socket at \(path) (\(code)): \(detail)"
         case .failedToListen(let path, let code, let detail):
             return "Failed to listen on BurnBar daemon socket at \(path) (\(code)): \(detail)"
+        case .failedToSetSocketPermissions(let path, let code, let detail):
+            return "Failed to set owner-only permissions on BurnBar daemon socket at \(path) (\(code)): \(detail)"
         case .failedToCreateParentDirectory(let path):
             return "Failed to create BurnBar daemon socket directory: \(path)"
         case .requestTooLarge(let maxBytes, _):
@@ -758,6 +761,13 @@ private enum BurnBarUnixDomainSocket {
     }
 
     static func makeListeningSocket(at socketPath: String) throws -> Int32 {
+        // AF_UNIX path permissions inherit the process umask at bind time.
+        // Narrow it for this short setup window, then restore the caller's
+        // setting before returning so daemon startup cannot publish a
+        // group/world-readable socket.
+        let previousUmask = umask(mode_t(0o077))
+        defer { _ = umask(previousUmask) }
+
         let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fileDescriptor != -1 else {
             throw BurnBarDaemonError.failedToCreateSocket(
@@ -779,6 +789,22 @@ private enum BurnBarUnixDomainSocket {
             guard bindResult == 0 else {
                 let code = errno
                 throw BurnBarDaemonError.failedToBindSocket(
+                    path: socketPath,
+                    code: code,
+                    detail: String(cString: strerror(code))
+                )
+            }
+
+            // `bind(2)` applies the narrowed umask above. Set the exact
+            // documented owner-only mode on the path before listening;
+            // macOS does not support fchmod(2) on an AF_UNIX socket
+            // descriptor, so chmod(2) is the portable path operation here.
+            let permissionResult = socketPath.withCString {
+                chmod($0, mode_t(0o600))
+            }
+            guard permissionResult == 0 else {
+                let code = errno
+                throw BurnBarDaemonError.failedToSetSocketPermissions(
                     path: socketPath,
                     code: code,
                     detail: String(cString: strerror(code))
