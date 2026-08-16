@@ -12,8 +12,77 @@ const repoRoot = path.resolve(__dirname, "../..");
 
 const failures = [];
 
+function normalizeFirestoreRequestDataAliases(source) {
+  const stripped = stripCodeCommentsAndStrings(source);
+  const openBraces = [];
+  const scopes = [];
+
+  for (let index = 0; index < stripped.length; index += 1) {
+    if (stripped[index] === "{") {
+      openBraces.push(index);
+    } else if (stripped[index] === "}") {
+      const start = openBraces.pop();
+      if (start !== undefined) scopes.push({ start, end: index });
+    }
+  }
+
+  const declarations = [];
+  const declarationPattern =
+    /\blet\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*request\s*\.\s*resource\s*\.\s*data\s*;/gu;
+  for (const match of stripped.matchAll(declarationPattern)) {
+    const declarationStart = match.index;
+    const declarationEnd = declarationStart + match[0].length;
+    const scope = scopes
+      .filter(
+        (candidate) =>
+          candidate.start < declarationStart &&
+          declarationEnd <= candidate.end,
+      )
+      .sort((left, right) => right.start - left.start)[0];
+    if (scope) {
+      declarations.push({
+        alias: match[1],
+        declarationEnd,
+        scopeEnd: scope.end,
+      });
+    }
+  }
+
+  const replacements = new Map();
+  for (const declaration of declarations) {
+    const aliasPattern = new RegExp(
+      String.raw`\b${escapeRegExp(declaration.alias)}\b`,
+      "gu",
+    );
+    const scopeBody = stripped.slice(
+      declaration.declarationEnd,
+      declaration.scopeEnd,
+    );
+    for (const match of scopeBody.matchAll(aliasPattern)) {
+      const start = declaration.declarationEnd + match.index;
+      const end = start + match[0].length;
+      replacements.set(`${start}:${end}`, { start, end });
+    }
+  }
+
+  let normalized = source;
+  const orderedReplacements = [...replacements.values()].sort(
+    (left, right) => right.start - left.start,
+  );
+  for (const replacement of orderedReplacements) {
+    normalized =
+      normalized.slice(0, replacement.start) +
+      "request.resource.data" +
+      normalized.slice(replacement.end);
+  }
+  return normalized;
+}
+
 function readRel(relativePath) {
-  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+  const source = fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+  return relativePath === "firestore.rules"
+    ? normalizeFirestoreRequestDataAliases(source)
+    : source;
 }
 
 function escapeRegExp(value) {
@@ -117,7 +186,9 @@ function executableIncludes(text, needle) {
 }
 
 function rulesReturnedExpression(section) {
-  const stripped = stripCodeCommentsAndStrings(section);
+  const stripped = stripCodeCommentsAndStrings(
+    normalizeFirestoreRequestDataAliases(section),
+  );
   const match = /\breturn\b/u.exec(stripped);
   if (!match) return "";
   const start = match.index + match[0].length;
@@ -226,7 +297,9 @@ function assertSectionRejectsFieldOrDeniesWrite(
 }
 
 function rulesSectionRejectsField(section, field) {
-  return stripCodeComments(section).includes(
+  return stripCodeComments(
+    normalizeFirestoreRequestDataAliases(section),
+  ).includes(
     `!("${field}" in request.resource.data)`,
   );
 }
@@ -387,6 +460,13 @@ function runSelfTest() {
         ),
     ],
     [
+      "rules hasOnly accepts a scoped request-data alias",
+      () =>
+        rulesSectionReturnsHasOnly(
+          'function ok() { let d = request.resource.data; return d.keys().hasOnly(["id"]); }',
+        ),
+    ],
+    [
       "rules hasOnly in comments does not satisfy",
       () =>
         !rulesSectionReturnsHasOnly(
@@ -446,6 +526,39 @@ function runSelfTest() {
           'match /x { allow write: if !("repoFullName" in request.resource.data); }',
           "repoFullName",
         ),
+    ],
+    [
+      "aliased executable field rejection satisfies",
+      () =>
+        rulesSectionRejectsField(
+          'function ok() { let d = request.resource.data; return !("repoFullName" in d); }',
+          "repoFullName",
+        ),
+    ],
+    [
+      "request-data alias normalization stays inside its declaring scope",
+      () => {
+        const normalized = normalizeFirestoreRequestDataAliases(
+          'function first() { let d = request.resource.data; return d.id; }\nfunction second() { return d.id; }',
+        );
+        return (
+          normalized.includes("return request.resource.data.id;") &&
+          normalized.includes("function second() { return d.id; }")
+        );
+      },
+    ],
+    [
+      "request-data alias normalization ignores comments and strings",
+      () => {
+        const normalized = normalizeFirestoreRequestDataAliases(
+          'function ok() { let d = request.resource.data; // d.id\n return d.id == "d.id"; }',
+        );
+        return (
+          normalized.includes("// d.id") &&
+          normalized.includes('"d.id"') &&
+          normalized.includes("return request.resource.data.id")
+        );
+      },
     ],
   ];
   const failed = checks.filter(([, check]) => !check()).map(([name]) => name);
