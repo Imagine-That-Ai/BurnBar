@@ -4116,12 +4116,23 @@ test("L37 signalEnvelope is accepted on exact mobile_assistant_chats direct writ
     { ciphertextLayer: { payloadCiphertextB64: "not_base64!!" } }, // bad base64 charset
     { ciphertextLayer: { payloadCiphertextB64: "abc" } }, // length not %4
     { ciphertextLayer: { payloadCiphertextB64: "" } }, // empty ciphertext
+    { ciphertextLayer: { payloadCiphertextB64: 7 } }, // non-string ciphertext
+    { envelope: { ciphertextLayer: "not-a-map" } }, // nested ciphertext type confusion
     { ciphertextLayer: { payloadAADLabel: "has a space" } }, // label charset (no spaces/pipe)
     { ciphertextLayer: { extra: "x" } }, // unlisted ciphertextLayer key (hasOnly)
     { keyDelivery: { contentKeyLength: 16 } }, // wrong content-key length
     { keyDelivery: { scheme: "signal-doubleratchet-pqxdh-v1" } }, // transport scheme in keyDelivery
     { keyDelivery: { wraps: [] } }, // empty wraps (< 1)
     { keyDelivery: { extra: "x" } }, // unlisted keyDelivery key (hasOnly)
+    { envelope: { keyDelivery: "not-a-map" } }, // nested key-delivery type confusion
+    { envelope: { binding: "not-a-map" } }, // nested binding type confusion
+    { senderAuth: { senderIdentityKeyB64: "A".repeat(40) } }, // wrong identity-key wire length
+    { senderAuth: { senderIdentityKeyB64: "!".repeat(44) } }, // bad identity-key base64 charset
+    { senderAuth: { senderIdentityKeyB64: 7 } }, // non-string identity key
+    { senderAuth: { signatureB64: "A".repeat(84) } }, // wrong signature wire length
+    { senderAuth: { signatureB64: "!".repeat(88) } }, // bad signature base64 charset
+    { senderAuth: { signatureB64: 7 } }, // non-string signature
+    { envelope: { senderAuth: "not-a-map" } }, // nested sender-auth type confusion
   ];
   let m = 200;
   for (const forge of forgeries) {

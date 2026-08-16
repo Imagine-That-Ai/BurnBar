@@ -27,6 +27,7 @@ export const AUTH_ONLY_CALLABLES = [
   "listEncryptedProjectMemorySnapshots",
   "purgeKnowledgeMemory",
   "purgeLegacyKnowledgeVectors",
+  "curateUsageMemoryBatch",
   "listKnowledgeRepos",
   "requestKnowledgeResync",
   "signalActivationReadiness",

@@ -92,28 +92,55 @@ struct MemoryReviewInboxView: View {
     // MARK: - Filter bar
 
     private var filterBar: some View {
-        HStack(spacing: DesignSystem.Spacing.xs) {
-            ForEach(MemoryReviewInboxModel.Filter.allCases) { filter in
-                filterChip(filter)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(MemoryReviewInboxModel.Filter.allCases) { filter in
+                    filterChip(filter)
+                }
+                Spacer()
             }
-            Spacer()
+            HStack(spacing: DesignSystem.Spacing.xs) {
+                ForEach(MemoryReviewInboxModel.SourceFilter.allCases) { source in
+                    sourceChip(source)
+                }
+                Spacer()
+            }
         }
     }
 
     private func filterChip(_ filter: MemoryReviewInboxModel.Filter) -> some View {
-        let isActive = model.filter == filter
+        chip(
+            title: filter.title,
+            count: filter == .pending && model.pendingCount > 0 ? model.pendingCount : nil,
+            isActive: model.filter == filter
+        ) {
+            model.filter = filter
+        }
+    }
+
+    private func sourceChip(_ source: MemoryReviewInboxModel.SourceFilter) -> some View {
+        chip(title: source.title, count: nil, isActive: model.sourceFilter == source) {
+            model.sourceFilter = source
+        }
+    }
+
+    private func chip(
+        title: String,
+        count: Int?,
+        isActive: Bool,
+        select: @escaping () -> Void
+    ) -> some View {
         let accent = DesignSystem.Colors.ember
-        let showCount = filter == .pending && model.pendingCount > 0
         return Button {
             withAnimation(DesignSystem.Animation.snappy) {
-                model.filter = filter
+                select()
             }
         } label: {
             HStack(spacing: DesignSystem.Spacing.xs) {
-                Text(filter.title)
+                Text(title)
                     .font(DesignSystem.Typography.tiny)
-                if showCount {
-                    Text("\(model.pendingCount)")
+                if let count {
+                    Text("\(count)")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(isActive ? accent : DesignSystem.Colors.textMuted)
                         .padding(.horizontal, DesignSystem.Spacing.xs)
@@ -186,7 +213,8 @@ struct MemoryReviewInboxView: View {
                             item: item,
                             isPending: model.filter == .pending,
                             onApprove: { Task { await model.approve(item.id) } },
-                            onReject: { Task { await model.reject(item.id) } }
+                            onReject: { Task { await model.reject(item.id) } },
+                            onForget: { Task { await model.forget(item.id) } }
                         )
                     }
                 }
@@ -203,9 +231,22 @@ struct MemoryReviewInboxView: View {
             icon: model.filter == .pending ? "tray" : "checkmark.seal",
             title: model.filter == .pending ? "No memories to review" : "Nothing approved yet",
             message: model.filter == .pending
-                ? "When a chat turns up a durable fact or preference worth remembering, it lands here for your approval."
+                ? pendingEmptyMessage
                 : "Memories you approve will appear here. You can revoke any of them at any time."
         )
+    }
+
+    /// Pending empty-state copy, phrased for the selected source so a filtered
+    /// view never claims chats are the only way rows arrive.
+    private var pendingEmptyMessage: String {
+        switch model.sourceFilter {
+        case .all, .chat:
+            "When a chat turns up a durable fact or preference worth remembering, it lands here for your approval."
+        case .safariAsk:
+            "When a Safari ask turns up a durable fact or preference worth remembering, it lands here for your approval."
+        case .agentSession:
+            "When an agent session turns up a durable fact or preference worth remembering, it lands here for your approval."
+        }
     }
 }
 
@@ -215,6 +256,10 @@ struct MemoryReviewInboxView: View {
 /// `MemoryReviewInboxModel` in `@State` prevents parent view refreshes (for
 /// example the dashboard pending-count badge update after an approve/reject)
 /// from replacing a loaded model with a fresh empty one.
+///
+/// `sourceFilter` pre-selects a source chip for link-outs (for example the
+/// Safari learning timeline's "Usage memory proposals" banner opens the inbox
+/// filtered to `.safariAsk`); the default keeps every source visible.
 @MainActor
 struct MemoryReviewInboxHost: View {
     @State private var model: MemoryReviewInboxModel
@@ -222,14 +267,36 @@ struct MemoryReviewInboxHost: View {
     init(
         store: ControlPlaneStore,
         scope: MemoryScope,
+        sourceFilter: MemoryReviewInboxModel.SourceFilter = .all,
         afterStatusChange: @escaping @MainActor () async -> Void = {}
     ) {
         self._model = State(initialValue: MemoryReviewInboxModel(
             scope: scope,
-            loadPage: { request in try await store.chatMemoryPage(request) },
+            sourceFilter: sourceFilter,
+            loadPage: { request, sourceKinds in
+                try await store.memoryPage(request, sourceKinds: sourceKinds)
+            },
+            // Sealed bodies are fetched by memory id and carry their own source
+            // kind, so the chat-named opener serves usage rows too.
             openBody: { id in try await store.openChatMemoryBody(id: id) },
-            setStatus: { id, status in
-                let changed = try await store.setChatMemoryReviewStatus(id: id, status: status, now: Date())
+            setStatus: { id, status, sourceKinds in
+                let changed = try await store.setMemoryReviewStatus(
+                    id: id,
+                    status: status,
+                    sourceKinds: sourceKinds,
+                    now: Date()
+                )
+                await afterStatusChange()
+                return changed
+            },
+            forget: { id, sourceKinds in
+                let changed = try await store.deleteMemoryAuthorityRecord(
+                    id: id,
+                    sourceKinds: sourceKinds,
+                    now: Date()
+                )
+                // A forgotten approved memory must leave the exported set the
+                // same way a revoked one does.
                 await afterStatusChange()
                 return changed
             }
@@ -304,17 +371,20 @@ private struct MemoryReviewEmptyState: View {
 // MARK: - Row
 
 /// One reviewable memory card. Shows the transiently-opened body (truncated), a kind
-/// badge, a confidence hint, the source citation chip (read-only — `onJumpToLocal: nil`
-/// self-disables it), and the review actions. Pending rows offer Approve / Reject
-/// (reject behind a destructive confirmation); approved rows show an "Approved" mark
-/// and offer Revoke.
+/// badge, a source tag for usage rows, a confidence hint, the source citation chip
+/// (read-only — `onJumpToLocal: nil` self-disables it), and the review actions.
+/// Pending rows offer Approve / Reject (reject behind a destructive confirmation);
+/// approved rows show an "Approved" mark and offer Revoke. Every row offers "Forget
+/// permanently" (hard delete) from its context menu, behind its own confirmation.
 struct MemoryReviewRow: View {
     let item: MemoryReviewInboxModel.Item
     let isPending: Bool
     let onApprove: () -> Void
     let onReject: () -> Void
+    let onForget: () -> Void
 
     @State private var confirmingReject = false
+    @State private var confirmingForget = false
 
     private var confidencePercent: Int {
         Int((item.memory.confidence * 100).rounded())
@@ -325,6 +395,9 @@ struct MemoryReviewRow: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     kindBadge
+                    if let sourceTag {
+                        sourceTagView(sourceTag)
+                    }
                     confidenceHint
                     Spacer(minLength: 0)
                 }
@@ -345,6 +418,13 @@ struct MemoryReviewRow: View {
             }
             .padding(DesignSystem.Spacing.sm)
         }
+        .contextMenu {
+            Button(role: .destructive) {
+                confirmingForget = true
+            } label: {
+                Label("Forget permanently", systemImage: "trash")
+            }
+        }
         .confirmationDialog(
             "Reject this memory?",
             isPresented: $confirmingReject,
@@ -355,9 +435,49 @@ struct MemoryReviewRow: View {
         } message: {
             Text("It won't be remembered or used in any chat. You can't undo this.")
         }
+        .confirmationDialog(
+            "Forget this memory?",
+            isPresented: $confirmingForget,
+            titleVisibility: .visible
+        ) {
+            Button("Forget", role: .destructive) { onForget() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It is deleted permanently, including from your other devices. You can't undo this.")
+        }
     }
 
     // MARK: - Subviews
+
+    /// Metadata tag naming the extraction source for usage rows. Chat rows show
+    /// nothing — their card stays exactly as it shipped.
+    private var sourceTag: (label: String, icon: String)? {
+        switch item.memory.sourceKind {
+        case .safariAsk: ("Safari ask", "safari")
+        case .agentSession: ("Agent session", "terminal")
+        case .chat, .code: nil
+        }
+    }
+
+    private func sourceTagView(_ tag: (label: String, icon: String)) -> some View {
+        HStack(spacing: DesignSystem.Spacing.xxs) {
+            Image(systemName: tag.icon)
+                .font(.system(size: 9, weight: .medium))
+            Text(tag.label)
+                .font(DesignSystem.Typography.tiny)
+        }
+        .foregroundStyle(DesignSystem.Colors.textMuted)
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .padding(.vertical, DesignSystem.Spacing.xxs)
+        .background(
+            Capsule(style: .continuous)
+                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.5))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(DesignSystem.Colors.border.opacity(0.4), lineWidth: 0.5)
+        )
+    }
 
     private var bodyText: String {
         let trimmed = item.body.trimmingCharacters(in: .whitespacesAndNewlines)

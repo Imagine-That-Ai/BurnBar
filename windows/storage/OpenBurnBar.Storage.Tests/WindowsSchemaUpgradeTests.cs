@@ -21,20 +21,21 @@ namespace OpenBurnBar.Storage.Tests;
 /// receiving it.
 /// </para>
 /// <para>
-/// These tests build a database at the PREVIOUS endpoint (v59_founder_lens, 60
+/// These tests build a database at an EARLIER endpoint (v59_founder_lens, 60
 /// migrations) the only honest way available off-Windows — provision the current
-/// endpoint, then regress the v60 delta back out of it — seed it with rows a real
-/// user would have, and require that reopening it upgrades in place: column added,
-/// index created, rows backfilled with the shared CASE, endpoint advanced, and
-/// every pre-existing row still there.
+/// endpoint, then regress the v60 + v61 deltas back out of it — seed it with rows
+/// a real user would have, and require that reopening it upgrades in place across
+/// BOTH pending steps in one transaction: column added, index created, rows
+/// backfilled with the shared CASE, the stamp-only v61 step applied, endpoint
+/// advanced, and every pre-existing row still there.
 /// </para>
 /// </summary>
 public sealed class WindowsSchemaUpgradeTests
 {
     private const string PreviousEndpoint = "v59_founder_lens";
     private const long PreviousMigrationCount = 60;
-    private const string CurrentEndpoint = "v60_billing_kind";
-    private const long CurrentMigrationCount = 61;
+    private const string CurrentEndpoint = "v61_usage_memory";
+    private const long CurrentMigrationCount = 62;
 
     private const string Passphrase = "OBB-WinPort-SchemaUpgrade-Test-Key-0000000=";
     private const string KeyProvenance = "test-static:schema-upgrade";
@@ -151,10 +152,13 @@ public sealed class WindowsSchemaUpgradeTests
         provisioner.EnsureReady(profile.DatabasePath, Passphrase, KeyProvenance);
         SeedUsageRows(profile.DatabasePath);
 
-        // Drop only the stamp: the ALTER already landed. A naive replay would die
-        // on "duplicate column name: billingKind"; the ensureColumn-style guard
-        // has to skip it and finish the remaining work.
-        Execute(profile.DatabasePath, "DELETE FROM grdb_migrations WHERE identifier = 'v60_billing_kind'");
+        // Drop only the stamps: the v60 ALTER already landed. A naive replay would
+        // die on "duplicate column name: billingKind"; the ensureColumn-style guard
+        // has to skip it and finish the remaining work. The v61 stamp must go too —
+        // history must stay a strict PREFIX for the upgrade path to engage.
+        Execute(
+            profile.DatabasePath,
+            "DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory')");
 
         WindowsStorageProvisioningReport report =
             provisioner.EnsureReady(profile.DatabasePath, Passphrase, KeyProvenance);
@@ -215,7 +219,7 @@ public sealed class WindowsSchemaUpgradeTests
         var provisioner = new WindowsSqlCipherProvisioner();
         provisioner.EnsureReady(profile.DatabasePath, Passphrase, KeyProvenance);
 
-        // Two migrations behind, and v59_founder_lens has no additive step: the
+        // Three migrations behind, and v59_founder_lens has no additive step: the
         // provisioner must refuse rather than invent one.
         RegressToPreviousEndpoint(profile.DatabasePath);
         Execute(profile.DatabasePath, "DELETE FROM grdb_migrations WHERE identifier = 'v59_founder_lens'");
@@ -318,7 +322,8 @@ public sealed class WindowsSchemaUpgradeTests
 
     /// <summary>
     /// Turn a current-endpoint database back into a genuine PREVIOUS-endpoint one
-    /// by removing exactly the v60 delta (index, column, stamp). This is the same
+    /// by removing exactly the v60 delta (index, column, stamp) and the v61 stamp
+    /// (the stamp-only step has no schema delta on Windows). This is the same
     /// technique the existing older-endpoint regression test uses; the provisioner
     /// can only create the current endpoint, so a real v59 file cannot be minted
     /// here any other way.
@@ -330,7 +335,7 @@ public sealed class WindowsSchemaUpgradeTests
             """
             DROP INDEX IF EXISTS token_usage_billing_kind_time_idx;
             ALTER TABLE token_usage DROP COLUMN billingKind;
-            DELETE FROM grdb_migrations WHERE identifier = 'v60_billing_kind';
+            DELETE FROM grdb_migrations WHERE identifier IN ('v60_billing_kind', 'v61_usage_memory');
             """);
     }
 

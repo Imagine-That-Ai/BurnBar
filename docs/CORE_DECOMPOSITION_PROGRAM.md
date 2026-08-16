@@ -616,6 +616,8 @@ targets would only duplicate parser/quota cache boundaries already covered by
 of bounded headroom); file-count ceilings, Quota's ceiling, and the main-target shim baseline
 stay unchanged. The deny-gate is otherwise unmodified.
 
+**Usage-memory v61 ceiling adjustment (2026-08-16):** PR #2259 adds the byte-identical `OpenBurnBarDatabase+UsageMemoryMigrations.swift` sibling to `OpenBurnBarData` (21 files / 4,573 LOC). File ceiling moves 20 → 21; LOC ceiling stays 4,920.
+
 ### Whole-program composition proof (verbatim results)
 
 Run on macOS (Apple Swift 6.4, Xcode 27.0 beta, arch arm64) from the isolated
