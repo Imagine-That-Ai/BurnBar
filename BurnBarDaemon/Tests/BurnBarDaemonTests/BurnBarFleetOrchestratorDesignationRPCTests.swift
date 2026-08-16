@@ -423,10 +423,7 @@ final class BurnBarFleetOrchestratorDesignationRPCTests: BurnBarFleetOrchestrato
                     let data = try encoder.encode(envelope) + Data([0x0A])
                     let fileDescriptor = try self.connectSocket(socketPath: socketPath)
                     defer { close(fileDescriptor) }
-                    data.withUnsafeBytes { rawBuffer in
-                        guard let baseAddress = rawBuffer.baseAddress else { return }
-                        _ = write(fileDescriptor, baseAddress, rawBuffer.count)
-                    }
+                    try writeFleetSocketData(data, to: fileDescriptor)
                     let response = try self.readResponse(from: fileDescriptor)
                     let decoded = try JSONDecoder().decode(
                         BurnBarRPCResponseEnvelope<BurnBarFleetOrchestratorSetResponse>.self,

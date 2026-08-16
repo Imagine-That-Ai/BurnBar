@@ -1,6 +1,5 @@
 import BurnBarCore
 @testable import BurnBarDaemon
-import Darwin
 import Foundation
 import XCTest
 
@@ -480,7 +479,10 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
-        throw XCTSkip("snapshot never became ready within \(timeout)s")
+        throw BurnBarFleetTestTimeoutError.deadlineExceeded(
+            operation: "persistence snapshot readiness poll",
+            timeout: timeout
+        )
     }
 
     /// Polls `daemon.fleet.snapshot` until a snapshot with a `generatedAt`
@@ -498,7 +500,10 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
-        throw XCTSkip("snapshot after \(after) never became ready within \(timeout)s")
+        throw BurnBarFleetTestTimeoutError.deadlineExceeded(
+            operation: "persistence newer snapshot poll after \(after)",
+            timeout: timeout
+        )
     }
 
     /// One `daemon.fleet.snapshot` RPC round-trip returning the served
@@ -521,92 +526,6 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
         _ envelope: Envelope,
         socketPath: String
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
-        XCTAssertNotEqual(fileDescriptor, -1)
-
-        var noSigPipe: Int32 = 1
-        setsockopt(
-            fileDescriptor,
-            SOL_SOCKET,
-            SO_NOSIGPIPE,
-            &noSigPipe,
-            socklen_t(MemoryLayout<Int32>.size)
-        )
-
-        var address = try socketAddress(for: socketPath)
-        let connectResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
-                connect(fileDescriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
-            }
-        }
-
-        guard connectResult == 0 else {
-            let code = errno
-            close(fileDescriptor)
-            throw POSIXError(.init(rawValue: code) ?? .EIO)
-        }
-
-        defer {
-            close(fileDescriptor)
-        }
-
-        let encoder = JSONEncoder()
-        let payload = try encoder.encode(envelope) + Data([0x0A])
-        payload.withUnsafeBytes { rawBuffer in
-            guard let baseAddress = rawBuffer.baseAddress else {
-                return
-            }
-            var bytesRemaining = rawBuffer.count
-            var offset = 0
-
-            while bytesRemaining > 0 {
-                let pointer = baseAddress.advanced(by: offset)
-                let bytesWritten = write(fileDescriptor, pointer, bytesRemaining)
-                XCTAssertGreaterThan(bytesWritten, 0)
-                bytesRemaining -= bytesWritten
-                offset += bytesWritten
-            }
-        }
-
-        var response = Data()
-        var buffer = [UInt8](repeating: 0, count: 1024)
-        while true {
-            let bytesRead = read(fileDescriptor, &buffer, buffer.count)
-            if bytesRead == 0 {
-                break
-            }
-            XCTAssertGreaterThan(bytesRead, 0)
-            response.append(contentsOf: buffer.prefix(bytesRead))
-            if response.last == 0x0A {
-                break
-            }
-        }
-
-        while response.last == 0x0A || response.last == 0x0D {
-            response.removeLast()
-        }
-
-        let decoder = JSONDecoder()
-        return try decoder.decode(BurnBarRPCResponseEnvelope<Response>.self, from: response)
-    }
-
-    private func socketAddress(for socketPath: String) throws -> sockaddr_un {
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
-
-        let pathBytes = Array(socketPath.utf8)
-        guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
-            throw POSIXError(.ENAMETOOLONG)
-        }
-
-        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
-            rawBuffer.initializeMemory(as: UInt8.self, repeating: 0)
-            for (index, byte) in pathBytes.enumerated() {
-                rawBuffer[index] = byte
-            }
-        }
-
-        return address
+        try sendFleetEnvelope(envelope, socketPath: socketPath)
     }
 }

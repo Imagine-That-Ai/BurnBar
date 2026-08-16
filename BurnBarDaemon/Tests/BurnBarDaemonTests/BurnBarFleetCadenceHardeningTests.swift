@@ -78,6 +78,59 @@ final class BurnBarFleetCadenceHardeningTests: M6FleetHardeningTestCase {
         print(output)
     }
 
+    func testDefaultCadence_runsRealTickerWithinDocumentedWindow() async throws {
+        let cadenceSeconds = BurnBarFleetCadencePolicy.defaultCadenceSeconds
+        let metrics = M6ProbeMetrics()
+        let builder = BurnBarFleetSnapshotBuilder(
+            cadenceSeconds: cadenceSeconds,
+            probes: m6Fixture.makeCountingProbes(
+                metrics: metrics,
+                degradedAgent: .grokBot
+            )
+        )
+        let service = BurnBarFleetService(builder: builder)
+        await service.start()
+        addTeardownBlock { await service.stop() }
+
+        let snapshots = try await collectSnapshots(
+            from: service,
+            count: 3,
+            timeout: 40
+        )
+        let intervals = zip(snapshots, snapshots.dropFirst()).map {
+            $1.generatedAt.timeIntervalSince($0.generatedAt)
+        }
+        let bounds = BurnBarFleetCadencePolicy.intervalBounds(for: cadenceSeconds)
+        XCTAssertEqual(intervals.count, 2)
+        XCTAssertTrue(intervals.allSatisfy { bounds.contains($0) }, "\(intervals)")
+
+        let elapsed = snapshots.last!.generatedAt.timeIntervalSince(
+            snapshots.first!.generatedAt
+        )
+        let expected = Double(snapshots.count - 1) * Double(cadenceSeconds)
+        let cumulativeDrift = abs(elapsed - expected)
+        let tolerance = BurnBarFleetCadencePolicy.toleranceSeconds(for: cadenceSeconds)
+        XCTAssertLessThanOrEqual(
+            cumulativeDrift,
+            tolerance,
+            "intervals=\(intervals), cumulative drift=\(cumulativeDrift)s"
+        )
+
+        let output = """
+        metric=cadence-default-real
+        cadence_seconds=\(cadenceSeconds)
+        tolerance_formula=max(0.5,2*\(cadenceSeconds)/15)=\(tolerance)
+        interval_bounds=\(bounds.lowerBound)...\(bounds.upperBound)
+        tick_count=\(snapshots.count)
+        interval_min_s=\(intervals.min() ?? 0)
+        interval_max_s=\(intervals.max() ?? 0)
+        interval_mean_s=\(intervals.reduce(0, +) / Double(max(intervals.count, 1)))
+        cumulative_drift_s=\(cumulativeDrift)
+        """
+        try M6EvidenceWriter.write(output, fileName: "cadence-default-real.txt")
+        print(output)
+    }
+
     private func collectSnapshots(
         from service: BurnBarFleetService,
         count: Int,
@@ -96,7 +149,10 @@ final class BurnBarFleetCadenceHardeningTests: M6FleetHardeningTestCase {
             }
         }
         guard snapshots.count == count else {
-            throw XCTSkip("only collected \(snapshots.count)/\(count) cadence ticks")
+            throw BurnBarFleetTestTimeoutError.deadlineExceeded(
+                operation: "cadence tick collection (\(snapshots.count)/\(count) ticks)",
+                timeout: timeout
+            )
         }
         return snapshots
     }

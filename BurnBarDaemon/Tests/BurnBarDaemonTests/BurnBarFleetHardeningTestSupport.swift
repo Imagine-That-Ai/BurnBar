@@ -372,13 +372,24 @@ struct M6TimingStats: Sendable {
         allValues = sorted
         count = sorted.count
         minMilliseconds = sorted.first ?? 0
-        medianMilliseconds = Self.percentile(sorted, fraction: 0.50)
+        medianMilliseconds = Self.median(sorted)
         p95Milliseconds = Self.percentile(sorted, fraction: 0.95)
         maxMilliseconds = sorted.last ?? 0
     }
 
     var distributionLine: String {
         allValues.map { String(format: "%.3f", $0) }.joined(separator: ",")
+    }
+
+    /// The median averages the two middle samples for an even-sized run.
+    /// Other percentiles use the lower nearest-rank convention.
+    private static func median(_ sorted: [Double]) -> Double {
+        guard !sorted.isEmpty else { return 0 }
+        let middle = sorted.count / 2
+        if sorted.count.isMultiple(of: 2) {
+            return (sorted[middle - 1] + sorted[middle]) / 2
+        }
+        return sorted[middle]
     }
 
     private static func percentile(_ sorted: [Double], fraction: Double) -> Double {

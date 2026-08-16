@@ -59,7 +59,10 @@ extension BurnBarFleetRPCTestCase {
             }
             try await Task.sleep(nanoseconds: 50_000_000)
         }
-        throw XCTSkip("snapshot did not become ready after \(previous.generatedAt)")
+        throw BurnBarFleetTestTimeoutError.deadlineExceeded(
+            operation: "newer snapshot poll after \(previous.generatedAt)",
+            timeout: timeout
+        )
     }
 }
 

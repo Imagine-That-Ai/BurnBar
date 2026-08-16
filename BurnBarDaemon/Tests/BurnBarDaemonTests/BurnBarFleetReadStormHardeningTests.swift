@@ -101,9 +101,9 @@ final class BurnBarFleetReadStormHardeningTests: M6FleetHardeningTestCase {
             XCTAssertNotNil(envelope.result?.snapshot)
             latencies.append(elapsed)
         }
-        let sorted = latencies.sorted()
-        let p50 = sorted[sorted.count / 2]
-        let maxLatency = sorted.last ?? 0
+        let latencyStats = M6TimingStats(values: latencies)
+        let p50 = latencyStats.medianMilliseconds
+        let maxLatency = latencyStats.maxMilliseconds
         let budget = BurnBarFleetRPCLatencyBudget.current()
         XCTAssertLessThan(
             p50,
@@ -134,11 +134,11 @@ final class BurnBarFleetReadStormHardeningTests: M6FleetHardeningTestCase {
         firstResponse: BurnBarFleetSnapshot
     ) {
         for response in snapshots.dropFirst() {
-            XCTAssertEqual(response.generatedAt, firstResponse.generatedAt)
-            XCTAssertEqual(response.agents, firstResponse.agents)
-            XCTAssertEqual(response.probeHealth, firstResponse.probeHealth)
-            XCTAssertEqual(response.runningCount, firstResponse.runningCount)
-            XCTAssertEqual(response.countsByAgent, firstResponse.countsByAgent)
+            XCTAssertEqual(
+                response,
+                firstResponse,
+                "every storm response must match the complete snapshot payload"
+            )
         }
     }
 
@@ -158,7 +158,8 @@ final class BurnBarFleetReadStormHardeningTests: M6FleetHardeningTestCase {
         metric=read-storm
         readers=50
         responses=\(evidence.responseCount)
-        parity=all responses matched generatedAt,agents,probeHealth,runningCount,countsByAgent
+        parity=all responses matched complete snapshots
+        parity_fields=schema,cadence,machine,agents,repos,orchestrator,probeHealth,persistenceHealth,aggregates
         probe_starts_through_blocked_tick=\(evidence.blockedMetrics.starts)
         completed_build_samples=\(evidence.completedBuildCount)
         max_in_flight_probe_calls=\(evidence.blockedMetrics.maxInFlight)
@@ -178,7 +179,10 @@ final class BurnBarFleetReadStormHardeningTests: M6FleetHardeningTestCase {
             }
             try await Task.sleep(nanoseconds: 10_000_000)
         }
-        throw XCTSkip("slow fixture probe did not enter its blocked tick")
+        throw BurnBarFleetTestTimeoutError.deadlineExceeded(
+            operation: "storm gate blocked-tick readiness",
+            timeout: 5
+        )
     }
 
     private func readConcurrentSnapshots(
@@ -229,18 +233,14 @@ private extension BurnBarFleetReadStormHardeningTests {
         let metrics = M6ProbeMetrics()
         let stormGate = M6StormGate()
         let timingCollector = M6TimingCollector()
-        let builder = BurnBarFleetSnapshotBuilder(
-            cadenceSeconds: cadenceSeconds,
-            probes: m6Fixture.makeCountingProbes(
-                metrics: metrics,
-                stormGate: stormGate,
-                degradedAgent: .grokBot
-            )
+        let probes = m6Fixture.makeCountingProbes(
+            metrics: metrics,
+            stormGate: stormGate,
+            degradedAgent: .grokBot
         )
         let timedBuilder = BurnBarFleetSnapshotBuilder(
             cadenceSeconds: cadenceSeconds,
-            probes: builder.probes,
-            machineStatusProbe: builder.machineStatusProbe,
+            probes: probes,
             buildTimingHook: timingCollector.hook()
         )
         let service = BurnBarFleetService(builder: timedBuilder)

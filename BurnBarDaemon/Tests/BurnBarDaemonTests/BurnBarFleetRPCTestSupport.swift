@@ -5,6 +5,169 @@ import Foundation
 import GRDB
 import XCTest
 
+enum BurnBarFleetTestTimeoutError: Error, CustomStringConvertible, Sendable {
+    case deadlineExceeded(operation: String, timeout: TimeInterval)
+
+    var description: String {
+        switch self {
+        case let .deadlineExceeded(operation, timeout):
+            return "\(operation) did not complete within \(timeout)s"
+        }
+    }
+}
+
+private let fleetSocketIOTimeoutSeconds: TimeInterval = 5
+private let fleetSocketResponseMaxBytes = 65_536
+
+func configureFleetSocketTimeouts(
+    _ fileDescriptor: Int32,
+    seconds: TimeInterval = fleetSocketIOTimeoutSeconds
+) throws {
+    var timeout = timeval(
+        tv_sec: Int(seconds),
+        tv_usec: Int32((seconds - floor(seconds)) * 1_000_000)
+    )
+    for option in [SO_RCVTIMEO, SO_SNDTIMEO] {
+        guard setsockopt(
+            fileDescriptor,
+            SOL_SOCKET,
+            option,
+            &timeout,
+            socklen_t(MemoryLayout<timeval>.size)
+        ) == 0 else {
+            throw POSIXError(.init(rawValue: errno) ?? .EIO)
+        }
+    }
+}
+
+func writeFleetSocketData(_ data: Data, to fileDescriptor: Int32) throws {
+    try data.withUnsafeBytes { rawBuffer in
+        guard let baseAddress = rawBuffer.baseAddress else { return }
+        var bytesRemaining = rawBuffer.count
+        var offset = 0
+        while bytesRemaining > 0 {
+            let bytesWritten = write(
+                fileDescriptor,
+                baseAddress.advanced(by: offset),
+                bytesRemaining
+            )
+            guard bytesWritten > 0 else {
+                let code = errno
+                if code == EAGAIN || code == EWOULDBLOCK {
+                    throw POSIXError(.ETIMEDOUT)
+                }
+                throw POSIXError(.init(rawValue: code) ?? .EIO)
+            }
+            bytesRemaining -= bytesWritten
+            offset += bytesWritten
+        }
+    }
+}
+
+func readFleetSocketResponse(from fileDescriptor: Int32) throws -> Data {
+    var response = Data()
+    var buffer = [UInt8](repeating: 0, count: 1024)
+    while true {
+        let bytesRead = read(fileDescriptor, &buffer, buffer.count)
+        if bytesRead == 0 {
+            break
+        }
+        guard bytesRead > 0 else {
+            let code = errno
+            if code == EAGAIN || code == EWOULDBLOCK {
+                throw POSIXError(.ETIMEDOUT)
+            }
+            throw POSIXError(.init(rawValue: code) ?? .EIO)
+        }
+        response.append(contentsOf: buffer.prefix(bytesRead))
+        guard response.count <= fleetSocketResponseMaxBytes else {
+            throw POSIXError(.EMSGSIZE)
+        }
+        if response.last == 0x0A {
+            break
+        }
+    }
+
+    while response.last == 0x0A || response.last == 0x0D {
+        response.removeLast()
+    }
+    return response
+}
+
+func fleetSocketAddress(for socketPath: String) throws -> sockaddr_un {
+    var address = sockaddr_un()
+    address.sun_family = sa_family_t(AF_UNIX)
+    address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
+
+    let pathBytes = Array(socketPath.utf8)
+    guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
+        throw POSIXError(.ENAMETOOLONG)
+    }
+
+    withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
+        rawBuffer.initializeMemory(as: UInt8.self, repeating: 0)
+        for (index, byte) in pathBytes.enumerated() {
+            rawBuffer[index] = byte
+        }
+    }
+
+    return address
+}
+
+func connectFleetSocket(socketPath: String) throws -> Int32 {
+    let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+    guard fileDescriptor != -1 else {
+        throw POSIXError(.init(rawValue: errno) ?? .EIO)
+    }
+
+    var noSigPipe: Int32 = 1
+    guard setsockopt(
+        fileDescriptor,
+        SOL_SOCKET,
+        SO_NOSIGPIPE,
+        &noSigPipe,
+        socklen_t(MemoryLayout<Int32>.size)
+    ) == 0 else {
+        let code = errno
+        close(fileDescriptor)
+        throw POSIXError(.init(rawValue: code) ?? .EIO)
+    }
+    try configureFleetSocketTimeouts(fileDescriptor)
+
+    var address = try fleetSocketAddress(for: socketPath)
+    let connectResult = withUnsafePointer(to: &address) { pointer in
+        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
+            connect(
+                fileDescriptor,
+                reboundPointer,
+                socklen_t(MemoryLayout<sockaddr_un>.stride)
+            )
+        }
+    }
+    guard connectResult == 0 else {
+        let code = errno
+        close(fileDescriptor)
+        throw POSIXError(.init(rawValue: code) ?? .EIO)
+    }
+    return fileDescriptor
+}
+
+func sendFleetEnvelope<Envelope: Encodable, Response: Decodable>(
+    _ envelope: Envelope,
+    socketPath: String
+) throws -> BurnBarRPCResponseEnvelope<Response> {
+    let fileDescriptor = try connectFleetSocket(socketPath: socketPath)
+    defer { close(fileDescriptor) }
+
+    let payload = try JSONEncoder().encode(envelope) + Data([0x0A])
+    try writeFleetSocketData(payload, to: fileDescriptor)
+    let response = try readFleetSocketResponse(from: fileDescriptor)
+    return try JSONDecoder().decode(
+        BurnBarRPCResponseEnvelope<Response>.self,
+        from: response
+    )
+}
+
 /// Shared fixtures + socket helpers for the RPC transport/error-matrix tests
 /// (VAL-RPC-002..007, 010..014, 016). Kept in a support file so each test
 /// class stays under the lint type-body budget.
@@ -149,87 +312,20 @@ class BurnBarFleetRPCTestCase: XCTestCase {
     }
 
     func connectSocket(socketPath: String) throws -> Int32 {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fileDescriptor != -1 else {
-            throw POSIXError(.init(rawValue: errno) ?? .EIO)
-        }
-
-        var noSigPipe: Int32 = 1
-        setsockopt(
-            fileDescriptor,
-            SOL_SOCKET,
-            SO_NOSIGPIPE,
-            &noSigPipe,
-            socklen_t(MemoryLayout<Int32>.size)
-        )
-
-        var address = try socketAddress(for: socketPath)
-        let connectResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
-                connect(fileDescriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
-            }
-        }
-
-        guard connectResult == 0 else {
-            let code = errno
-            close(fileDescriptor)
-            throw POSIXError(.init(rawValue: code) ?? .EIO)
-        }
-
-        return fileDescriptor
+        try connectFleetSocket(socketPath: socketPath)
     }
 
     func writeAll(_ data: Data, to fileDescriptor: Int32) throws {
-        try data.withUnsafeBytes { rawBuffer in
-            guard let baseAddress = rawBuffer.baseAddress else { return }
-            var bytesRemaining = rawBuffer.count
-            var offset = 0
-            while bytesRemaining > 0 {
-                let bytesWritten = write(fileDescriptor, baseAddress.advanced(by: offset), bytesRemaining)
-                guard bytesWritten > 0 else {
-                    throw POSIXError(.init(rawValue: errno) ?? .EIO)
-                }
-                bytesRemaining -= bytesWritten
-                offset += bytesWritten
-            }
-        }
+        try writeFleetSocketData(data, to: fileDescriptor)
     }
 
     func readResponse(from fileDescriptor: Int32) throws -> Data {
-        var response = Data()
-        var buffer = [UInt8](repeating: 0, count: 1024)
-        while true {
-            let bytesRead = read(fileDescriptor, &buffer, buffer.count)
-            if bytesRead == 0 {
-                break
-            }
-            guard bytesRead > 0 else {
-                throw POSIXError(.init(rawValue: errno) ?? .EIO)
-            }
-            response.append(contentsOf: buffer.prefix(bytesRead))
-            if response.last == 0x0A {
-                break
-            }
-        }
-
-        while response.last == 0x0A || response.last == 0x0D {
-            response.removeLast()
-        }
-        return response
+        try readFleetSocketResponse(from: fileDescriptor)
     }
 
-    /// Reads until EOF; returns true when EOF (0 bytes) is observed within a
-    /// bounded window (2s receive timeout).
+    /// Reads until EOF; returns true when EOF (0 bytes) is observed within the
+    /// bounded receive timeout configured when the socket was connected.
     func readEOF(from fileDescriptor: Int32) throws -> Bool {
-        var timeout = timeval(tv_sec: 2, tv_usec: 0)
-        setsockopt(
-            fileDescriptor,
-            SOL_SOCKET,
-            SO_RCVTIMEO,
-            &timeout,
-            socklen_t(MemoryLayout<timeval>.size)
-        )
-
         var buffer = [UInt8](repeating: 0, count: 1024)
         let bytesRead = read(fileDescriptor, &buffer, buffer.count)
         if bytesRead == 0 {
@@ -243,23 +339,7 @@ class BurnBarFleetRPCTestCase: XCTestCase {
     }
 
     func socketAddress(for socketPath: String) throws -> sockaddr_un {
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
-
-        let pathBytes = Array(socketPath.utf8)
-        guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
-            throw POSIXError(.ENAMETOOLONG)
-        }
-
-        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
-            rawBuffer.initializeMemory(as: UInt8.self, repeating: 0)
-            for (index, byte) in pathBytes.enumerated() {
-                rawBuffer[index] = byte
-            }
-        }
-
-        return address
+        try fleetSocketAddress(for: socketPath)
     }
 
     /// Polls `daemon.fleet.snapshot` until a ready snapshot is served.
@@ -276,7 +356,10 @@ class BurnBarFleetRPCTestCase: XCTestCase {
             }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
-        throw XCTSkip("snapshot never became ready within \(timeout)s")
+        throw BurnBarFleetTestTimeoutError.deadlineExceeded(
+            operation: "snapshot readiness poll",
+            timeout: timeout
+        )
     }
 }
 
@@ -446,26 +529,7 @@ class BurnBarFleetOrchestratorRPCTestCase: XCTestCase {
         _ envelope: Envelope,
         socketPath: String
     ) throws -> BurnBarRPCResponseEnvelope<Response> {
-        let fileDescriptor = try connectSocket(socketPath: socketPath)
-        defer { close(fileDescriptor) }
-
-        let encoder = JSONEncoder()
-        let payload = try encoder.encode(envelope) + Data([0x0A])
-        payload.withUnsafeBytes { rawBuffer in
-            guard let baseAddress = rawBuffer.baseAddress else { return }
-            var bytesRemaining = rawBuffer.count
-            var offset = 0
-            while bytesRemaining > 0 {
-                let pointer = baseAddress.advanced(by: offset)
-                let bytesWritten = write(fileDescriptor, pointer, bytesRemaining)
-                XCTAssertGreaterThan(bytesWritten, 0)
-                bytesRemaining -= bytesWritten
-                offset += bytesWritten
-            }
-        }
-
-        let response = try readResponse(from: fileDescriptor)
-        return try JSONDecoder().decode(BurnBarRPCResponseEnvelope<Response>.self, from: response)
+        try sendFleetEnvelope(envelope, socketPath: socketPath)
     }
 
     /// Sends one raw request line and returns the raw response line.
@@ -473,81 +537,20 @@ class BurnBarFleetOrchestratorRPCTestCase: XCTestCase {
         let fileDescriptor = try connectSocket(socketPath: socketPath)
         defer { close(fileDescriptor) }
 
-        let data = Data(payload.utf8) + Data([0x0A])
-        data.withUnsafeBytes { rawBuffer in
-            guard let baseAddress = rawBuffer.baseAddress else { return }
-            _ = write(fileDescriptor, baseAddress, rawBuffer.count)
-        }
-        let response = try readResponse(from: fileDescriptor)
+        try writeFleetSocketData(Data(payload.utf8) + Data([0x0A]), to: fileDescriptor)
+        let response = try readFleetSocketResponse(from: fileDescriptor)
         return String(decoding: response, as: UTF8.self)
     }
 
     func connectSocket(socketPath: String) throws -> Int32 {
-        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
-        XCTAssertNotEqual(fileDescriptor, -1)
-
-        var noSigPipe: Int32 = 1
-        setsockopt(
-            fileDescriptor,
-            SOL_SOCKET,
-            SO_NOSIGPIPE,
-            &noSigPipe,
-            socklen_t(MemoryLayout<Int32>.size)
-        )
-
-        var address = try socketAddress(for: socketPath)
-        let connectResult = withUnsafePointer(to: &address) { pointer in
-            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { reboundPointer in
-                Darwin.connect(fileDescriptor, reboundPointer, socklen_t(MemoryLayout<sockaddr_un>.stride))
-            }
-        }
-        guard connectResult == 0 else {
-            let code = errno
-            close(fileDescriptor)
-            throw POSIXError(.init(rawValue: code) ?? .EIO)
-        }
-        return fileDescriptor
+        try connectFleetSocket(socketPath: socketPath)
     }
 
     func socketAddress(for socketPath: String) throws -> sockaddr_un {
-        var address = sockaddr_un()
-        address.sun_family = sa_family_t(AF_UNIX)
-        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.stride)
-
-        let pathBytes = Array(socketPath.utf8)
-        guard pathBytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
-            throw POSIXError(.ENAMETOOLONG)
-        }
-
-        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
-            rawBuffer.initializeMemory(as: UInt8.self, repeating: 0)
-            for (index, byte) in pathBytes.enumerated() {
-                rawBuffer[index] = byte
-            }
-        }
-
-        return address
+        try fleetSocketAddress(for: socketPath)
     }
 
     func readResponse(from fileDescriptor: Int32) throws -> Data {
-        var response = Data()
-        var buffer = [UInt8](repeating: 0, count: 1024)
-        while true {
-            let bytesRead = read(fileDescriptor, &buffer, buffer.count)
-            if bytesRead == 0 {
-                break
-            }
-            guard bytesRead > 0 else {
-                throw POSIXError(.init(rawValue: errno) ?? .EIO)
-            }
-            response.append(contentsOf: buffer.prefix(bytesRead))
-            if response.last == 0x0A {
-                break
-            }
-        }
-        while response.last == 0x0A || response.last == 0x0D {
-            response.removeLast()
-        }
-        return response
+        return try readFleetSocketResponse(from: fileDescriptor)
     }
 }

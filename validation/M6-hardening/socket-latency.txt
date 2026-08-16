@@ -1,7 +1,7 @@
 metric=rpc-serving-secondary
 reads=20
-p50_ms=90.53275
-max_ms=538.354334
-budget=p50<250.0,max<1000.0
-load1=27.53466796875, normalized=1.5297037760416667
+p50_ms=8.7259585
+max_ms=83.391958
+budget=p50<50.0,max<500.0
+load1=7.5751953125, normalized=0.4208441840277778
 note=secondary socket request latency; not a direct builder measurement

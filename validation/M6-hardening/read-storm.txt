@@ -1,10 +1,11 @@
 metric=read-storm
 readers=50
 responses=50
-parity=all responses matched generatedAt,agents,probeHealth,runningCount,countsByAgent
+parity=all responses matched complete snapshots
+parity_fields=schema,cadence,machine,agents,repos,orchestrator,probeHealth,persistenceHealth,aggregates
 probe_starts_through_blocked_tick=11
 completed_build_samples=2
 max_in_flight_probe_calls=1
 cadence_seconds=1
 interval_tolerance=0.5...1.5
-interval_observed_s=1.0
+interval_observed_s=1.000999927520752

@@ -9,6 +9,12 @@ import XCTest
 final class BurnBarFleetBuildPerfTests: M6FleetHardeningTestCase {
     private let runCount = 40
 
+    func testTimingStats_evenSampleMedianAveragesMiddleSamples() {
+        let stats = M6TimingStats(values: [1, 2, 100, 101])
+
+        XCTAssertEqual(stats.medianMilliseconds, 51)
+    }
+
     func testDirectBuilder_fixedFixture_meetsBudget() async throws {
         let collector = M6TimingCollector()
         let builder = m6Fixture.makeDefaultBuilder(
@@ -38,10 +44,17 @@ final class BurnBarFleetBuildPerfTests: M6FleetHardeningTestCase {
 
         let seedBuilder = m6Fixture.makeDefaultBuilder(cadenceSeconds: 15)
         let seed = try await seedBuilder.build()
-        try seedHistory(store: store, seed: seed)
+        let oldTransitionAt = try seedHistory(store: store, seed: seed)
         let seededRows = try M6SQLiteInspection.rowCounts(databasePath: databasePath)
         XCTAssertEqual(seededRows.snapshots, BurnBarFleetPersistenceConstants.defaultSnapshotRetentionCount)
         XCTAssertGreaterThan(seededRows.events, 0)
+        let seededEvents = try store.events(for: .claudeCode)
+        XCTAssertFalse(
+            seededEvents.contains {
+                abs($0.at.timeIntervalSince(oldTransitionAt)) < 0.001
+            },
+            "the event seeded outside the 24-hour retention window must be absent"
+        )
 
         let collector = M6TimingCollector()
         let builder = m6Fixture.makeDefaultBuilder(cadenceSeconds: 15, timingHook: collector.hook())
@@ -79,7 +92,7 @@ final class BurnBarFleetBuildPerfTests: M6FleetHardeningTestCase {
     private func seedHistory(
         store: BurnBarFleetStore,
         seed: BurnBarFleetSnapshot
-    ) throws {
+    ) throws -> Date {
         let oldTransitionAt = Date().addingTimeInterval(
             -BurnBarFleetPersistenceConstants.defaultEventRetentionSeconds - 1
         )
@@ -96,6 +109,7 @@ final class BurnBarFleetBuildPerfTests: M6FleetHardeningTestCase {
                 transitions: [makeTransition(at: historical.generatedAt)]
             )
         }
+        return oldTransitionAt
     }
 
     private func makeTransition(at date: Date) -> BurnBarFleetTransition {
@@ -136,7 +150,7 @@ final class BurnBarFleetBuildPerfTests: M6FleetHardeningTestCase {
         } ?? "fleet.sqlite_history_rows=not-seeded\n"
         let retention = historyRows == nil
             ? ""
-            : "pruned_event_seed=older_than_24h_and_absent_after_seed\n"
+            : "pruned_event_seed=older_than_24h;old_event_query_matches=0\n"
         let output = """
         metric=direct-builder
         fixture=\(fixtureDescription)
