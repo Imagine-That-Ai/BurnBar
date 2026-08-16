@@ -13,212 +13,108 @@ public enum BurnBarSafariProtocol {
 
 public enum BurnBarSafariActionKind: String, Codable, CaseIterable, Hashable, Sendable {
     case pageContext = "page_context"
-    case screenshot
-    case fullPageScreenshot = "full_page_screenshot"
-    case click
-    case type
-    case pressKey = "press_key"
-    case scroll
-    case hover
-    case focus
-    case selectOption = "select_option"
-    case navigate
-    case openTab = "open_tab"
-    case closeTab = "close_tab"
-    case listTabs = "list_tabs"
-    case waitFor = "wait_for"
-    case runJavaScript = "run_javascript"
-    case extract
-    case abort
+    case screenshot, fullPageScreenshot = "full_page_screenshot"
+    case click, type, pressKey = "press_key", scroll, hover, focus, selectOption = "select_option"
+    case navigate, openTab = "open_tab", closeTab = "close_tab", listTabs = "list_tabs"
+    case waitFor = "wait_for", runJavaScript = "run_javascript", extract, abort
 
     public var isReadOnly: Bool {
         switch self {
-        case .pageContext, .screenshot, .fullPageScreenshot, .listTabs, .waitFor, .extract:
-            return true
-        case .click, .type, .pressKey, .scroll, .hover, .focus, .selectOption,
-             .navigate, .openTab, .closeTab, .runJavaScript, .abort:
-            return false
+        case .pageContext, .screenshot, .fullPageScreenshot, .listTabs, .waitFor, .extract: return true
+        case .click, .type, .pressKey, .scroll, .hover, .focus, .selectOption, .navigate, .openTab, .closeTab, .runJavaScript, .abort: return false
         }
     }
-
     public var modifiesPageOrSession: Bool { !isReadOnly }
 }
 
-/// The exact history/navigation operation requested by `safari.navigate`.
-///
-/// Keeping this separate from `BurnBarSafariActionKind` prevents the URL-only
-/// shape from becoming an implicit default: callers must say whether they are
-/// loading a URL, moving through history, or reloading the current page.
 public enum BurnBarSafariNavigationOperation: String, Codable, CaseIterable, Hashable, Sendable {
-    case url
-    case back
-    case forward
-    case reload
+    case url, back, forward, reload
 }
 
 public struct BurnBarSafariViewport: Codable, Hashable, Sendable {
-    public let width: Double
-    public let height: Double
-    public let devicePixelRatio: Double
-    public let visualOffsetX: Double
-    public let visualOffsetY: Double
-    public let scrollX: Double
-    public let scrollY: Double
-    public let pageWidth: Double
-    public let pageHeight: Double
+    public let width, height, devicePixelRatio, visualOffsetX, visualOffsetY, scrollX, scrollY, pageWidth, pageHeight: Double
 
     public init(
-        width: Double,
-        height: Double,
-        devicePixelRatio: Double,
-        visualOffsetX: Double = 0,
-        visualOffsetY: Double = 0,
-        scrollX: Double = 0,
-        scrollY: Double = 0,
-        pageWidth: Double,
-        pageHeight: Double
+        width: Double, height: Double, devicePixelRatio: Double,
+        visualOffsetX: Double = 0, visualOffsetY: Double = 0,
+        scrollX: Double = 0, scrollY: Double = 0,
+        pageWidth: Double, pageHeight: Double
     ) {
-        self.width = width
-        self.height = height
-        self.devicePixelRatio = devicePixelRatio
-        self.visualOffsetX = visualOffsetX
-        self.visualOffsetY = visualOffsetY
-        self.scrollX = scrollX
-        self.scrollY = scrollY
-        self.pageWidth = pageWidth
-        self.pageHeight = pageHeight
+        self.width = width; self.height = height; self.devicePixelRatio = devicePixelRatio
+        self.visualOffsetX = visualOffsetX; self.visualOffsetY = visualOffsetY
+        self.scrollX = scrollX; self.scrollY = scrollY; self.pageWidth = pageWidth; self.pageHeight = pageHeight
     }
 }
 
 public struct BurnBarSafariPageState: Codable, Hashable, Sendable {
     public let tabId: Int
     public let windowId: Int?
-    public let url: String
-    public let title: String
-    /// Monotonically increasing value assigned by the content script whenever
-    /// top-frame navigation invalidates selectors and viewport coordinates.
+    public let url, title: String
     public let navigationEpoch: Int
-    public let isActive: Bool
-    public let isTopFrame: Bool
+    public let isActive, isTopFrame: Bool
     public let capturedAt: Date
 
     public init(
-        tabId: Int,
-        windowId: Int? = nil,
-        url: String,
-        title: String,
-        navigationEpoch: Int,
-        isActive: Bool,
-        isTopFrame: Bool = true,
-        capturedAt: Date = Date()
+        tabId: Int, windowId: Int? = nil, url: String, title: String,
+        navigationEpoch: Int, isActive: Bool, isTopFrame: Bool = true, capturedAt: Date = Date()
     ) {
-        self.tabId = tabId
-        self.windowId = windowId
-        self.url = url
-        self.title = title
-        self.navigationEpoch = navigationEpoch
-        self.isActive = isActive
-        self.isTopFrame = isTopFrame
-        self.capturedAt = capturedAt
+        self.tabId = tabId; self.windowId = windowId; self.url = url; self.title = title
+        self.navigationEpoch = navigationEpoch; self.isActive = isActive; self.isTopFrame = isTopFrame; self.capturedAt = capturedAt
     }
 }
 
 public struct BurnBarSafariPageContext: Codable, Hashable, Sendable {
     public let pageState: BurnBarSafariPageState
     public let viewport: BurnBarSafariViewport
-    public let readableMarkdown: String
-    public let accessibilitySnapshot: String
+    public let readableMarkdown, accessibilitySnapshot: String
     public let truncated: Bool
     public let sourceCharacterCount: Int
 
     public init(
-        pageState: BurnBarSafariPageState,
-        viewport: BurnBarSafariViewport,
-        readableMarkdown: String,
-        accessibilitySnapshot: String,
-        truncated: Bool,
-        sourceCharacterCount: Int
+        pageState: BurnBarSafariPageState, viewport: BurnBarSafariViewport,
+        readableMarkdown: String, accessibilitySnapshot: String, truncated: Bool, sourceCharacterCount: Int
     ) {
-        self.pageState = pageState
-        self.viewport = viewport
-        self.readableMarkdown = readableMarkdown
-        self.accessibilitySnapshot = accessibilitySnapshot
-        self.truncated = truncated
-        self.sourceCharacterCount = sourceCharacterCount
+        self.pageState = pageState; self.viewport = viewport; self.readableMarkdown = readableMarkdown
+        self.accessibilitySnapshot = accessibilitySnapshot; self.truncated = truncated; self.sourceCharacterCount = sourceCharacterCount
     }
 }
 
 public struct BurnBarSafariTabSnapshot: Codable, Hashable, Identifiable, Sendable {
     public var id: Int { tabId }
-
     public let tabId: Int
     public let windowId: Int?
-    public let url: String
-    public let title: String
-    public let isActive: Bool
-    public let isOwned: Bool
+    public let url, title: String
+    public let isActive, isOwned: Bool
     public let navigationEpoch: Int
 
-    public init(
-        tabId: Int,
-        windowId: Int? = nil,
-        url: String,
-        title: String,
-        isActive: Bool,
-        isOwned: Bool,
-        navigationEpoch: Int
-    ) {
-        self.tabId = tabId
-        self.windowId = windowId
-        self.url = url
-        self.title = title
-        self.isActive = isActive
-        self.isOwned = isOwned
-        self.navigationEpoch = navigationEpoch
+    public init(tabId: Int, windowId: Int? = nil, url: String, title: String, isActive: Bool, isOwned: Bool, navigationEpoch: Int) {
+        self.tabId = tabId; self.windowId = windowId; self.url = url; self.title = title
+        self.isActive = isActive; self.isOwned = isOwned; self.navigationEpoch = navigationEpoch
     }
 }
 
 public struct BurnBarSafariExtensionCapabilities: Codable, Hashable, Sendable {
-    public let captureVisibleTab: Bool
-    public let scripting: Bool
-    public let nativeMessaging: Bool
-    public let activeTabPermission: Bool
-    public let siteAccessGranted: Bool
+    public let captureVisibleTab, scripting, nativeMessaging, activeTabPermission, siteAccessGranted: Bool
 
-    public init(
-        captureVisibleTab: Bool,
-        scripting: Bool,
-        nativeMessaging: Bool,
-        activeTabPermission: Bool,
-        siteAccessGranted: Bool
-    ) {
-        self.captureVisibleTab = captureVisibleTab
-        self.scripting = scripting
-        self.nativeMessaging = nativeMessaging
-        self.activeTabPermission = activeTabPermission
-        self.siteAccessGranted = siteAccessGranted
+    public init(captureVisibleTab: Bool, scripting: Bool, nativeMessaging: Bool, activeTabPermission: Bool, siteAccessGranted: Bool) {
+        self.captureVisibleTab = captureVisibleTab; self.scripting = scripting; self.nativeMessaging = nativeMessaging
+        self.activeTabPermission = activeTabPermission; self.siteAccessGranted = siteAccessGranted
     }
 }
 
 public struct BurnBarSafariSessionAttachRequest: Codable, Hashable, Sendable {
-    public let extensionInstanceId: String
-    public let clientName: String
+    public let extensionInstanceId, clientName: String
     public let supportedProtocolVersions: [Int]
     public let activePage: BurnBarSafariPageState?
     public let capabilities: BurnBarSafariExtensionCapabilities
 
     public init(
-        extensionInstanceId: String,
-        clientName: String,
+        extensionInstanceId: String, clientName: String,
         supportedProtocolVersions: [Int] = [BurnBarSafariProtocol.currentVersion],
-        activePage: BurnBarSafariPageState? = nil,
-        capabilities: BurnBarSafariExtensionCapabilities
+        activePage: BurnBarSafariPageState? = nil, capabilities: BurnBarSafariExtensionCapabilities
     ) {
-        self.extensionInstanceId = extensionInstanceId
-        self.clientName = clientName
-        self.supportedProtocolVersions = supportedProtocolVersions
-        self.activePage = activePage
-        self.capabilities = capabilities
+        self.extensionInstanceId = extensionInstanceId; self.clientName = clientName
+        self.supportedProtocolVersions = supportedProtocolVersions; self.activePage = activePage; self.capabilities = capabilities
     }
 }
 
@@ -228,16 +124,9 @@ public struct BurnBarSafariSessionAttachResponse: Codable, Hashable, Sendable {
     public let leaseExpiresAt: Date
     public let pollAfterMillis: Int
 
-    public init(
-        sessionId: String,
-        protocolVersion: Int,
-        leaseExpiresAt: Date,
-        pollAfterMillis: Int = 200
-    ) {
-        self.sessionId = sessionId
-        self.protocolVersion = protocolVersion
-        self.leaseExpiresAt = leaseExpiresAt
-        self.pollAfterMillis = pollAfterMillis
+    public init(sessionId: String, protocolVersion: Int, leaseExpiresAt: Date, pollAfterMillis: Int = 200) {
+        self.sessionId = sessionId; self.protocolVersion = protocolVersion
+        self.leaseExpiresAt = leaseExpiresAt; self.pollAfterMillis = pollAfterMillis
     }
 }
 
@@ -246,17 +135,13 @@ public struct BurnBarSafariSessionDetachRequest: Codable, Hashable, Sendable {
     public let reason: String?
 
     public init(sessionId: String, reason: String? = nil) {
-        self.sessionId = sessionId
-        self.reason = reason
+        self.sessionId = sessionId; self.reason = reason
     }
 }
 
 public struct BurnBarSafariSessionStatusRequest: Codable, Hashable, Sendable {
     public let sessionId: String
-
-    public init(sessionId: String) {
-        self.sessionId = sessionId
-    }
+    public init(sessionId: String) { self.sessionId = sessionId }
 }
 
 public struct BurnBarSafariSessionStatusResponse: Codable, Hashable, Sendable {
@@ -267,50 +152,29 @@ public struct BurnBarSafariSessionStatusResponse: Codable, Hashable, Sendable {
     public let ownedTabIds: [Int]
 
     public init(
-        sessionId: String,
-        attached: Bool,
-        leaseExpiresAt: Date? = nil,
-        activePage: BurnBarSafariPageState? = nil,
-        ownedTabIds: [Int] = []
+        sessionId: String, attached: Bool, leaseExpiresAt: Date? = nil,
+        activePage: BurnBarSafariPageState? = nil, ownedTabIds: [Int] = []
     ) {
-        self.sessionId = sessionId
-        self.attached = attached
-        self.leaseExpiresAt = leaseExpiresAt
-        self.activePage = activePage
-        self.ownedTabIds = ownedTabIds
+        self.sessionId = sessionId; self.attached = attached
+        self.leaseExpiresAt = leaseExpiresAt; self.activePage = activePage; self.ownedTabIds = ownedTabIds
     }
 }
 
 public struct BurnBarSafariCommand: Codable, Hashable, Identifiable, Sendable {
     public var id: String { commandId }
-
-    public let commandId: String
-    public let sessionId: String
+    public let commandId, sessionId: String
     public let action: BurnBarSafariActionKind
     public let arguments: BurnBarJSONValue
-    public let targetTabId: Int?
-    public let expectedNavigationEpoch: Int?
-    public let issuedAt: Date
-    public let expiresAt: Date
+    public let targetTabId, expectedNavigationEpoch: Int?
+    public let issuedAt, expiresAt: Date
 
     public init(
-        commandId: String = UUID().uuidString,
-        sessionId: String,
-        action: BurnBarSafariActionKind,
-        arguments: BurnBarJSONValue = .object([:]),
-        targetTabId: Int? = nil,
-        expectedNavigationEpoch: Int? = nil,
-        issuedAt: Date = Date(),
-        expiresAt: Date
+        commandId: String = UUID().uuidString, sessionId: String, action: BurnBarSafariActionKind,
+        arguments: BurnBarJSONValue = .object([:]), targetTabId: Int? = nil, expectedNavigationEpoch: Int? = nil,
+        issuedAt: Date = Date(), expiresAt: Date
     ) {
-        self.commandId = commandId
-        self.sessionId = sessionId
-        self.action = action
-        self.arguments = arguments
-        self.targetTabId = targetTabId
-        self.expectedNavigationEpoch = expectedNavigationEpoch
-        self.issuedAt = issuedAt
-        self.expiresAt = expiresAt
+        self.commandId = commandId; self.sessionId = sessionId; self.action = action; self.arguments = arguments
+        self.targetTabId = targetTabId; self.expectedNavigationEpoch = expectedNavigationEpoch; self.issuedAt = issuedAt; self.expiresAt = expiresAt
     }
 }
 
@@ -319,14 +183,8 @@ public struct BurnBarSafariCommandPollRequest: Codable, Hashable, Sendable {
     public let activePage: BurnBarSafariPageState?
     public let knownTabs: [BurnBarSafariTabSnapshot]
 
-    public init(
-        sessionId: String,
-        activePage: BurnBarSafariPageState? = nil,
-        knownTabs: [BurnBarSafariTabSnapshot] = []
-    ) {
-        self.sessionId = sessionId
-        self.activePage = activePage
-        self.knownTabs = knownTabs
+    public init(sessionId: String, activePage: BurnBarSafariPageState? = nil, knownTabs: [BurnBarSafariTabSnapshot] = []) {
+        self.sessionId = sessionId; self.activePage = activePage; self.knownTabs = knownTabs
     }
 }
 
@@ -335,20 +193,13 @@ public struct BurnBarSafariCommandPollResponse: Codable, Hashable, Sendable {
     public let leaseExpiresAt: Date
     public let pollAfterMillis: Int
 
-    public init(
-        command: BurnBarSafariCommand?,
-        leaseExpiresAt: Date,
-        pollAfterMillis: Int = 200
-    ) {
-        self.command = command
-        self.leaseExpiresAt = leaseExpiresAt
-        self.pollAfterMillis = pollAfterMillis
+    public init(command: BurnBarSafariCommand?, leaseExpiresAt: Date, pollAfterMillis: Int = 200) {
+        self.command = command; self.leaseExpiresAt = leaseExpiresAt; self.pollAfterMillis = pollAfterMillis
     }
 }
 
 public struct BurnBarSafariCommandCompletionRequest: Codable, Hashable, Sendable {
-    public let sessionId: String
-    public let commandId: String
+    public let sessionId, commandId: String
     public let ok: Bool
     public let result: BurnBarJSONValue?
     public let error: String?
@@ -356,57 +207,35 @@ public struct BurnBarSafariCommandCompletionRequest: Codable, Hashable, Sendable
     public let tabs: [BurnBarSafariTabSnapshot]
 
     public init(
-        sessionId: String,
-        commandId: String,
-        ok: Bool,
-        result: BurnBarJSONValue? = nil,
-        error: String? = nil,
-        pageState: BurnBarSafariPageState,
-        tabs: [BurnBarSafariTabSnapshot] = []
+        sessionId: String, commandId: String, ok: Bool, result: BurnBarJSONValue? = nil,
+        error: String? = nil, pageState: BurnBarSafariPageState, tabs: [BurnBarSafariTabSnapshot] = []
     ) {
-        self.sessionId = sessionId
-        self.commandId = commandId
-        self.ok = ok
-        self.result = result
-        self.error = error
-        self.pageState = pageState
-        self.tabs = tabs
+        self.sessionId = sessionId; self.commandId = commandId; self.ok = ok
+        self.result = result; self.error = error; self.pageState = pageState; self.tabs = tabs
     }
 }
 
 public struct BurnBarSafariCommandCompletionResponse: Codable, Hashable, Sendable {
     public let accepted: Bool
-
-    public init(accepted: Bool) {
-        self.accepted = accepted
-    }
+    public init(accepted: Bool) { self.accepted = accepted }
 }
 
 public struct BurnBarSafariToolRequest: Codable, Hashable, Sendable {
     public let safariSessionId: String
-    public let computerUseSessionId: String?
-    public let runId: String?
-    public let tabId: Int?
-    public let expectedNavigationEpoch: Int?
+    public let computerUseSessionId, runId: String?
+    public let tabId, expectedNavigationEpoch: Int?
     public let timeoutMillis: Int
     public let arguments: BurnBarJSONValue
 
     public init(
-        safariSessionId: String,
-        computerUseSessionId: String? = nil,
-        runId: String? = nil,
-        tabId: Int? = nil,
-        expectedNavigationEpoch: Int? = nil,
+        safariSessionId: String, computerUseSessionId: String? = nil, runId: String? = nil,
+        tabId: Int? = nil, expectedNavigationEpoch: Int? = nil,
         timeoutMillis: Int = BurnBarSafariProtocol.defaultCommandTimeoutMillis,
         arguments: BurnBarJSONValue = .object([:])
     ) {
-        self.safariSessionId = safariSessionId
-        self.computerUseSessionId = computerUseSessionId
-        self.runId = runId
-        self.tabId = tabId
-        self.expectedNavigationEpoch = expectedNavigationEpoch
-        self.timeoutMillis = timeoutMillis
-        self.arguments = arguments
+        self.safariSessionId = safariSessionId; self.computerUseSessionId = computerUseSessionId; self.runId = runId
+        self.tabId = tabId; self.expectedNavigationEpoch = expectedNavigationEpoch
+        self.timeoutMillis = timeoutMillis; self.arguments = arguments
     }
 }
 
@@ -419,108 +248,53 @@ public struct BurnBarSafariToolResponse: Codable, Hashable, Sendable {
     public let auditHeadHashHex: String?
 
     public init(
-        ok: Bool,
-        result: BurnBarJSONValue? = nil,
-        error: String? = nil,
-        pageState: BurnBarSafariPageState,
-        auditEntryIndex: Int? = nil,
-        auditHeadHashHex: String? = nil
+        ok: Bool, result: BurnBarJSONValue? = nil, error: String? = nil,
+        pageState: BurnBarSafariPageState, auditEntryIndex: Int? = nil, auditHeadHashHex: String? = nil
     ) {
-        self.ok = ok
-        self.result = result
-        self.error = error
-        self.pageState = pageState
-        self.auditEntryIndex = auditEntryIndex
-        self.auditHeadHashHex = auditHeadHashHex
+        self.ok = ok; self.result = result; self.error = error
+        self.pageState = pageState; self.auditEntryIndex = auditEntryIndex; self.auditHeadHashHex = auditHeadHashHex
     }
 }
 
 public struct BurnBarSafariBootstrapRequest: Codable, Hashable, Sendable {
     public let sessionId: String?
-
-    public init(sessionId: String? = nil) {
-        self.sessionId = sessionId
-    }
+    public init(sessionId: String? = nil) { self.sessionId = sessionId }
 }
 
 public struct BurnBarSafariBootstrapResponse: Codable, Hashable, Sendable {
     public let daemonVersion: String
     public let protocolVersion: Int
-    public let gatewayBaseURL: String?
-    /// This is the daemon's loopback bearer, never a provider credential. The
-    /// WebExtension keeps it in the background worker's memory and never
-    /// exposes it to content scripts or page-world code.
-    public let gatewayBearerToken: String?
-    /// Opaque, short-lived proof that the general loopback gateway request was
-    /// initiated by the exact currently attached Safari extension session.
-    /// This capability grants attribution only: it is not provider, page-action,
-    /// or Computer Use authority.
-    public let gatewayAttributionCapability: String?
-    public let gatewayAttributionExpiresAt: String?
-    public let gatewayAvailable: Bool
-    public let computerUseAvailable: Bool
-    public let learningAvailable: Bool
-    public let learningOptedIn: Bool
+    public let gatewayBaseURL, gatewayBearerToken, gatewayAttributionCapability, gatewayAttributionExpiresAt: String?
+    public let gatewayAvailable, computerUseAvailable, learningAvailable, learningOptedIn: Bool
     public let tier: String
 
     public init(
-        daemonVersion: String,
-        protocolVersion: Int,
-        gatewayBaseURL: String?,
-        gatewayBearerToken: String?,
-        gatewayAttributionCapability: String? = nil,
-        gatewayAttributionExpiresAt: String? = nil,
-        gatewayAvailable: Bool,
-        computerUseAvailable: Bool,
-        learningAvailable: Bool,
-        learningOptedIn: Bool,
-        tier: String
+        daemonVersion: String, protocolVersion: Int, gatewayBaseURL: String?,
+        gatewayBearerToken: String?, gatewayAttributionCapability: String? = nil,
+        gatewayAttributionExpiresAt: String? = nil, gatewayAvailable: Bool,
+        computerUseAvailable: Bool, learningAvailable: Bool, learningOptedIn: Bool, tier: String
     ) {
-        self.daemonVersion = daemonVersion
-        self.protocolVersion = protocolVersion
-        self.gatewayBaseURL = gatewayBaseURL
-        self.gatewayBearerToken = gatewayBearerToken
-        self.gatewayAttributionCapability = gatewayAttributionCapability
-        self.gatewayAttributionExpiresAt = gatewayAttributionExpiresAt
-        self.gatewayAvailable = gatewayAvailable
-        self.computerUseAvailable = computerUseAvailable
-        self.learningAvailable = learningAvailable
-        self.learningOptedIn = learningOptedIn
-        self.tier = tier
+        self.daemonVersion = daemonVersion; self.protocolVersion = protocolVersion
+        self.gatewayBaseURL = gatewayBaseURL; self.gatewayBearerToken = gatewayBearerToken
+        self.gatewayAttributionCapability = gatewayAttributionCapability; self.gatewayAttributionExpiresAt = gatewayAttributionExpiresAt
+        self.gatewayAvailable = gatewayAvailable; self.computerUseAvailable = computerUseAvailable
+        self.learningAvailable = learningAvailable; self.learningOptedIn = learningOptedIn; self.tier = tier
     }
 }
 
 public struct BurnBarSafariUISnapshotRequest: Codable, Hashable, Sendable {
-    public let safariSessionId: String?
-    public let computerUseSessionId: String?
-    public let runId: String?
+    public let safariSessionId, computerUseSessionId, runId: String?
 
-    public init(
-        safariSessionId: String? = nil,
-        computerUseSessionId: String? = nil,
-        runId: String? = nil
-    ) {
-        self.safariSessionId = safariSessionId
-        self.computerUseSessionId = computerUseSessionId
-        self.runId = runId
+    public init(safariSessionId: String? = nil, computerUseSessionId: String? = nil, runId: String? = nil) {
+        self.safariSessionId = safariSessionId; self.computerUseSessionId = computerUseSessionId; self.runId = runId
     }
 }
 
-/// A trusted, installed CLI that the native Safari hand-off boundary can
-/// actually launch in its mechanically enforced read-only mode.
-///
-/// Execution flags and filesystem paths remain daemon-private. The browser
-/// receives only presentation identity; its normalizer assigns the fixed
-/// `cli` / installed / local / no-vision invariants.
 public struct BurnBarSafariInstalledAgent: Codable, Hashable, Sendable {
-    public let id: String
-    public let displayName: String
-    public let providerName: String
+    public let id, displayName, providerName: String
 
     public init(id: String, displayName: String, providerName: String) {
-        self.id = id
-        self.displayName = displayName
-        self.providerName = providerName
+        self.id = id; self.displayName = displayName; self.providerName = providerName
     }
 }
 
@@ -535,192 +309,98 @@ public struct BurnBarSafariUISnapshotResponse: Codable, Sendable {
     public let learning: BurnBarSafariLearningTimelineResponse
 
     private enum CodingKeys: String, CodingKey {
-        case bootstrap
-        case catalog
-        case installedAgents
-        case membership
-        case safariSession
-        case run
-        case approvals
-        case learning
+        case bootstrap, catalog, installedAgents, membership, safariSession, run, approvals, learning
     }
 
     public init(
-        bootstrap: BurnBarSafariBootstrapResponse,
-        catalog: BurnBarCatalogResponse,
-        installedAgents: [BurnBarSafariInstalledAgent] = [],
-        membership: BurnBarMembershipStatusResponse,
-        safariSession: BurnBarSafariSessionStatusResponse?,
-        run: BurnBarRunStateSnapshot?,
-        approvals: ComputerUseApprovalPendingResponse,
-        learning: BurnBarSafariLearningTimelineResponse
+        bootstrap: BurnBarSafariBootstrapResponse, catalog: BurnBarCatalogResponse,
+        installedAgents: [BurnBarSafariInstalledAgent] = [], membership: BurnBarMembershipStatusResponse,
+        safariSession: BurnBarSafariSessionStatusResponse?, run: BurnBarRunStateSnapshot?,
+        approvals: ComputerUseApprovalPendingResponse, learning: BurnBarSafariLearningTimelineResponse
     ) {
-        self.bootstrap = bootstrap
-        self.catalog = catalog
-        self.installedAgents = installedAgents
-        self.membership = membership
-        self.safariSession = safariSession
-        self.run = run
-        self.approvals = approvals
-        self.learning = learning
+        self.bootstrap = bootstrap; self.catalog = catalog; self.installedAgents = installedAgents
+        self.membership = membership; self.safariSession = safariSession; self.run = run
+        self.approvals = approvals; self.learning = learning
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        bootstrap = try container.decode(
-            BurnBarSafariBootstrapResponse.self,
-            forKey: .bootstrap
-        )
-        catalog = try container.decode(
-            BurnBarCatalogResponse.self,
-            forKey: .catalog
-        )
-        installedAgents = try container.decodeIfPresent(
-            [BurnBarSafariInstalledAgent].self,
-            forKey: .installedAgents
-        ) ?? []
-        membership = try container.decode(
-            BurnBarMembershipStatusResponse.self,
-            forKey: .membership
-        )
-        safariSession = try container.decodeIfPresent(
-            BurnBarSafariSessionStatusResponse.self,
-            forKey: .safariSession
-        )
-        run = try container.decodeIfPresent(
-            BurnBarRunStateSnapshot.self,
-            forKey: .run
-        )
-        approvals = try container.decode(
-            ComputerUseApprovalPendingResponse.self,
-            forKey: .approvals
-        )
-        learning = try container.decode(
-            BurnBarSafariLearningTimelineResponse.self,
-            forKey: .learning
-        )
+        bootstrap = try container.decode(BurnBarSafariBootstrapResponse.self, forKey: .bootstrap)
+        catalog = try container.decode(BurnBarCatalogResponse.self, forKey: .catalog)
+        installedAgents = try container.decodeIfPresent([BurnBarSafariInstalledAgent].self, forKey: .installedAgents) ?? []
+        membership = try container.decode(BurnBarMembershipStatusResponse.self, forKey: .membership)
+        safariSession = try container.decodeIfPresent(BurnBarSafariSessionStatusResponse.self, forKey: .safariSession)
+        run = try container.decodeIfPresent(BurnBarRunStateSnapshot.self, forKey: .run)
+        approvals = try container.decode(ComputerUseApprovalPendingResponse.self, forKey: .approvals)
+        learning = try container.decode(BurnBarSafariLearningTimelineResponse.self, forKey: .learning)
     }
 }
 
-/// Bounded, native-normalized context for a read-only Safari → CLI hand-off.
-///
-/// The WebExtension cannot select a daemon method or filesystem destination.
-/// It supplies page-owned data to the native bridge, which validates and
-/// narrows that data into this fixed contract. The daemon independently
-/// revalidates the live Safari page before creating an owner-only package.
 public struct BurnBarSafariHandoffRequest: Codable, Hashable, Sendable {
     public static let maximumPromptBytes = 32 * 1024
     public static let maximumMarkdownBytes = 512 * 1024
     public static let maximumAccessibilitySnapshotBytes = 512 * 1024
     public static let maximumScreenshotBytes = 8 * 1024 * 1024
 
-    public let safariSessionId: String
-    public let targetHarness: String
-    public let prompt: String
+    public let safariSessionId, targetHarness, prompt: String
     public let pageState: BurnBarSafariPageState
-    public let readableMarkdown: String
-    public let accessibilitySnapshot: String
+    public let readableMarkdown, accessibilitySnapshot: String
     public let screenshotJPEG: Data
-    public let screenshotWidth: Int
-    public let screenshotHeight: Int
+    public let screenshotWidth, screenshotHeight: Int
     public let screenshotTruncated: Bool
 
     public init(
-        safariSessionId: String,
-        targetHarness: String,
-        prompt: String,
-        pageState: BurnBarSafariPageState,
-        readableMarkdown: String,
-        accessibilitySnapshot: String,
-        screenshotJPEG: Data,
-        screenshotWidth: Int,
-        screenshotHeight: Int,
-        screenshotTruncated: Bool
+        safariSessionId: String, targetHarness: String, prompt: String,
+        pageState: BurnBarSafariPageState, readableMarkdown: String,
+        accessibilitySnapshot: String, screenshotJPEG: Data,
+        screenshotWidth: Int, screenshotHeight: Int, screenshotTruncated: Bool
     ) {
-        self.safariSessionId = safariSessionId
-        self.targetHarness = targetHarness
-        self.prompt = prompt
-        self.pageState = pageState
-        self.readableMarkdown = readableMarkdown
-        self.accessibilitySnapshot = accessibilitySnapshot
-        self.screenshotJPEG = screenshotJPEG
-        self.screenshotWidth = screenshotWidth
-        self.screenshotHeight = screenshotHeight
+        self.safariSessionId = safariSessionId; self.targetHarness = targetHarness; self.prompt = prompt
+        self.pageState = pageState; self.readableMarkdown = readableMarkdown
+        self.accessibilitySnapshot = accessibilitySnapshot; self.screenshotJPEG = screenshotJPEG
+        self.screenshotWidth = screenshotWidth; self.screenshotHeight = screenshotHeight
         self.screenshotTruncated = screenshotTruncated
     }
 }
 
-/// Safe projection returned to the WebExtension after a CLI hand-off launch.
-/// Paths and argv remain daemon-private; the browser receives only the exact
-/// Safari-owned run identity needed for the ordinary run snapshot/poll model.
 public struct BurnBarSafariHandoffResponse: Codable, Hashable, Sendable {
     public let runId: String
     public let phase: BurnBarRunPhase
-    public let launched: Bool
-    public let running: Bool
+    public let launched, running: Bool
 
-    public init(
-        runId: String,
-        phase: BurnBarRunPhase,
-        launched: Bool,
-        running: Bool
-    ) {
-        self.runId = runId
-        self.phase = phase
-        self.launched = launched
-        self.running = running
+    public init(runId: String, phase: BurnBarRunPhase, launched: Bool, running: Bool) {
+        self.runId = runId; self.phase = phase; self.launched = launched; self.running = running
     }
 }
 
 public enum BurnBarSafariApprovalDecision: String, Codable, CaseIterable, Hashable, Sendable {
-    case allowOnce = "allow_once"
-    case allowSession = "allow_session"
-    case block
+    case allowOnce = "allow_once", allowSession = "allow_session", block
 }
 
-/// Authenticated Safari approval response. The request intentionally contains
-/// no Computer Use session identifier: the daemon resolves that identity from
-/// the live Safari session mapping and rejects stale or substituted approvals.
 public struct BurnBarSafariApprovalRespondRequest: Codable, Hashable, Sendable {
-    public let safariSessionId: String
-    public let approvalId: String
+    public let safariSessionId, approvalId: String
     public let decision: BurnBarSafariApprovalDecision
 
-    public init(
-        safariSessionId: String,
-        approvalId: String,
-        decision: BurnBarSafariApprovalDecision
-    ) {
-        self.safariSessionId = safariSessionId
-        self.approvalId = approvalId
-        self.decision = decision
+    public init(safariSessionId: String, approvalId: String, decision: BurnBarSafariApprovalDecision) {
+        self.safariSessionId = safariSessionId; self.approvalId = approvalId; self.decision = decision
     }
 }
 
 public struct BurnBarSafariApprovalRespondResponse: Codable, Hashable, Sendable {
     public let accepted: Bool
-    public let approvalId: String
-    public let runId: String
+    public let approvalId, runId: String
 
     public init(accepted: Bool, approvalId: String, runId: String) {
-        self.accepted = accepted
-        self.approvalId = approvalId
-        self.runId = runId
+        self.accepted = accepted; self.approvalId = approvalId; self.runId = runId
     }
 }
 
 public enum BurnBarSafariTrustDecision: String, Codable, CaseIterable, Hashable, Sendable {
-    case allow
-    case deny
-    case remove
+    case allow, deny, remove
 }
 
-/// Updates the daemon-owned, future-session trust policy for one exact HTTPS
-/// origin. Live Computer Use manifests stay immutable; a changed policy takes
-/// effect when the popup starts the next Safari Computer Use session.
 public struct BurnBarSafariTrustUpdateRequest: Codable, Hashable, Sendable {
-    public let safariSessionId: String
-    public let origin: String
+    public let safariSessionId, origin: String
     public let decision: BurnBarSafariTrustDecision
     public let trustMode: String
     public let actionBudget: Int?
@@ -728,21 +408,11 @@ public struct BurnBarSafariTrustUpdateRequest: Codable, Hashable, Sendable {
     public let killSwitchEnabled: Bool?
 
     public init(
-        safariSessionId: String,
-        origin: String,
-        decision: BurnBarSafariTrustDecision,
-        trustMode: String,
-        actionBudget: Int? = nil,
-        expiresAt: Date? = nil,
-        killSwitchEnabled: Bool? = nil
+        safariSessionId: String, origin: String, decision: BurnBarSafariTrustDecision,
+        trustMode: String, actionBudget: Int? = nil, expiresAt: Date? = nil, killSwitchEnabled: Bool? = nil
     ) {
-        self.safariSessionId = safariSessionId
-        self.origin = origin
-        self.decision = decision
-        self.trustMode = trustMode
-        self.actionBudget = actionBudget
-        self.expiresAt = expiresAt
-        self.killSwitchEnabled = killSwitchEnabled
+        self.safariSessionId = safariSessionId; self.origin = origin; self.decision = decision
+        self.trustMode = trustMode; self.actionBudget = actionBudget; self.expiresAt = expiresAt; self.killSwitchEnabled = killSwitchEnabled
     }
 }
 
@@ -753,47 +423,29 @@ public struct BurnBarSafariTrustUpdateResponse: Codable, Hashable, Sendable {
     public let decision: BurnBarSafariTrustDecision
     public let killSwitchEnabled: Bool
 
-    public init(
-        accepted: Bool,
-        ruleId: String?,
-        origin: String,
-        decision: BurnBarSafariTrustDecision,
-        killSwitchEnabled: Bool
-    ) {
-        self.accepted = accepted
-        self.ruleId = ruleId
-        self.origin = origin
-        self.decision = decision
-        self.killSwitchEnabled = killSwitchEnabled
+    public init(accepted: Bool, ruleId: String?, origin: String, decision: BurnBarSafariTrustDecision, killSwitchEnabled: Bool) {
+        self.accepted = accepted; self.ruleId = ruleId; self.origin = origin
+        self.decision = decision; self.killSwitchEnabled = killSwitchEnabled
     }
 }
 
 public enum BurnBarSafariLearningTrigger: String, Codable, CaseIterable, Hashable, Sendable {
-    case userCorrection = "user_correction"
-    case recoveredFailure = "recovered_failure"
-    case repeatedWorkflow = "repeated_workflow"
-    case longActionSequence = "long_action_sequence"
+    case userCorrection = "user_correction", recoveredFailure = "recovered_failure"
+    case repeatedWorkflow = "repeated_workflow", longActionSequence = "long_action_sequence"
 }
 
 public enum BurnBarSafariLearningProposalKind: String, Codable, CaseIterable, Hashable, Sendable {
-    case memory
-    case skill
-    case siteRule = "site_rule"
+    case memory, skill, siteRule = "site_rule"
 }
 
 public enum BurnBarSafariLearningReviewStatus: String, Codable, CaseIterable, Hashable, Sendable {
-    case proposed
-    case approved
-    case rejected
-    case archived
+    case proposed, approved, rejected, archived
 }
 
 public struct BurnBarSafariLearningObservation: Codable, Hashable, Sendable {
-    public let observationId: String
-    public let safariSessionId: String
+    public let observationId, safariSessionId: String
     public let runId: String?
-    public let sourceURL: String
-    public let sourceTitle: String
+    public let sourceURL, sourceTitle: String
     public let trigger: BurnBarSafariLearningTrigger
     public let actionCount: Int
     public let content: String
@@ -801,215 +453,122 @@ public struct BurnBarSafariLearningObservation: Codable, Hashable, Sendable {
     public let observedAt: Date
 
     public init(
-        observationId: String = UUID().uuidString,
-        safariSessionId: String,
-        runId: String? = nil,
-        sourceURL: String,
-        sourceTitle: String,
-        trigger: BurnBarSafariLearningTrigger,
-        actionCount: Int,
-        content: String,
-        tags: [String] = [],
-        observedAt: Date = Date()
+        observationId: String = UUID().uuidString, safariSessionId: String, runId: String? = nil,
+        sourceURL: String, sourceTitle: String, trigger: BurnBarSafariLearningTrigger,
+        actionCount: Int, content: String, tags: [String] = [], observedAt: Date = Date()
     ) {
-        self.observationId = observationId
-        self.safariSessionId = safariSessionId
-        self.runId = runId
-        self.sourceURL = sourceURL
-        self.sourceTitle = sourceTitle
-        self.trigger = trigger
-        self.actionCount = actionCount
-        self.content = content
-        self.tags = tags
-        self.observedAt = observedAt
+        self.observationId = observationId; self.safariSessionId = safariSessionId; self.runId = runId
+        self.sourceURL = sourceURL; self.sourceTitle = sourceTitle; self.trigger = trigger
+        self.actionCount = actionCount; self.content = content; self.tags = tags; self.observedAt = observedAt
     }
 }
 
 public struct BurnBarSafariLearningProposal: Codable, Hashable, Identifiable, Sendable {
     public var id: String { proposalId }
-
     public let proposalId: String
     public let version: Int
     public let kind: BurnBarSafariLearningProposalKind
-    public let title: String
-    public let content: String
-    public let reason: String
-    public let expectedOutcome: String
-    public let sourceURL: String
-    public let sourceObservationId: String
+    public let title, content, reason, expectedOutcome, sourceURL, sourceObservationId: String
     public let reviewStatus: BurnBarSafariLearningReviewStatus
-    public let createdAt: Date
-    public let updatedAt: Date
+    public let createdAt, updatedAt: Date
 
     public init(
-        proposalId: String = UUID().uuidString,
-        version: Int = 1,
-        kind: BurnBarSafariLearningProposalKind,
-        title: String,
-        content: String,
-        reason: String,
-        expectedOutcome: String,
-        sourceURL: String,
-        sourceObservationId: String,
+        proposalId: String = UUID().uuidString, version: Int = 1, kind: BurnBarSafariLearningProposalKind,
+        title: String, content: String, reason: String, expectedOutcome: String,
+        sourceURL: String, sourceObservationId: String,
         reviewStatus: BurnBarSafariLearningReviewStatus = .proposed,
-        createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        createdAt: Date = Date(), updatedAt: Date = Date()
     ) {
-        self.proposalId = proposalId
-        self.version = version
-        self.kind = kind
-        self.title = title
-        self.content = content
-        self.reason = reason
-        self.expectedOutcome = expectedOutcome
-        self.sourceURL = sourceURL
-        self.sourceObservationId = sourceObservationId
-        self.reviewStatus = reviewStatus
-        self.createdAt = createdAt
-        self.updatedAt = updatedAt
+        self.proposalId = proposalId; self.version = version; self.kind = kind
+        self.title = title; self.content = content; self.reason = reason; self.expectedOutcome = expectedOutcome
+        self.sourceURL = sourceURL; self.sourceObservationId = sourceObservationId
+        self.reviewStatus = reviewStatus; self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 }
 
 public struct BurnBarSafariLearningProposalRequest: Codable, Hashable, Sendable {
     public let observation: BurnBarSafariLearningObservation
-
-    public init(observation: BurnBarSafariLearningObservation) {
-        self.observation = observation
-    }
+    public init(observation: BurnBarSafariLearningObservation) { self.observation = observation }
 }
 
 public struct BurnBarSafariLearningListRequest: Codable, Hashable, Sendable {
     public let status: BurnBarSafariLearningReviewStatus?
     public let limit: Int
-
-    public init(status: BurnBarSafariLearningReviewStatus? = nil, limit: Int = 100) {
-        self.status = status
-        self.limit = limit
-    }
+    public init(status: BurnBarSafariLearningReviewStatus? = nil, limit: Int = 100) { self.status = status; self.limit = limit }
 }
 
 public struct BurnBarSafariLearningListResponse: Codable, Hashable, Sendable {
     public let proposals: [BurnBarSafariLearningProposal]
-
-    public init(proposals: [BurnBarSafariLearningProposal]) {
-        self.proposals = proposals
-    }
+    public init(proposals: [BurnBarSafariLearningProposal]) { self.proposals = proposals }
 }
 
 public struct BurnBarSafariLearningMutationRequest: Codable, Hashable, Sendable {
     public let proposalId: String
     public let expectedVersion: Int
-
-    public init(proposalId: String, expectedVersion: Int) {
-        self.proposalId = proposalId
-        self.expectedVersion = expectedVersion
-    }
+    public init(proposalId: String, expectedVersion: Int) { self.proposalId = proposalId; self.expectedVersion = expectedVersion }
 }
 
 public struct BurnBarSafariLearningUpdateRequest: Codable, Hashable, Sendable {
     public let proposalId: String
     public let expectedVersion: Int
-    public let title: String
-    public let content: String
-
-    public init(
-        proposalId: String,
-        expectedVersion: Int,
-        title: String,
-        content: String
-    ) {
-        self.proposalId = proposalId
-        self.expectedVersion = expectedVersion
-        self.title = title
-        self.content = content
+    public let title, content: String
+    public init(proposalId: String, expectedVersion: Int, title: String, content: String) {
+        self.proposalId = proposalId; self.expectedVersion = expectedVersion; self.title = title; self.content = content
     }
 }
 
 public struct BurnBarSafariLearningForgetRequest: Codable, Hashable, Sendable {
     public let proposalId: String
     public let expectedVersion: Int?
-
-    public init(proposalId: String, expectedVersion: Int? = nil) {
-        self.proposalId = proposalId
-        self.expectedVersion = expectedVersion
-    }
+    public init(proposalId: String, expectedVersion: Int? = nil) { self.proposalId = proposalId; self.expectedVersion = expectedVersion }
 }
 
 public struct BurnBarSafariLearningOptInRequest: Codable, Hashable, Sendable {
     public let consentVersion: Int
-
-    public init(consentVersion: Int = 1) {
-        self.consentVersion = consentVersion
-    }
+    public init(consentVersion: Int = 1) { self.consentVersion = consentVersion }
 }
 
 public struct BurnBarSafariLearningProposalResponse: Codable, Hashable, Sendable {
     public let proposal: BurnBarSafariLearningProposal
-
-    public init(proposal: BurnBarSafariLearningProposal) {
-        self.proposal = proposal
-    }
+    public init(proposal: BurnBarSafariLearningProposal) { self.proposal = proposal }
 }
 
 public struct BurnBarSafariLearningRecallRequest: Codable, Hashable, Sendable {
     public let query: String
     public let limit: Int
-
-    public init(query: String, limit: Int = 8) {
-        self.query = query
-        self.limit = limit
-    }
+    public init(query: String, limit: Int = 8) { self.query = query; self.limit = limit }
 }
 
 public struct BurnBarSafariLearningRecallResponse: Codable, Hashable, Sendable {
-    /// Bounded supplemental personalization already wrapped as untrusted
-    /// content by the daemon. Callers must preserve that trust boundary and
-    /// must never promote this text into policy or instructions.
     public let untrustedContext: String?
-
-    public init(untrustedContext: String?) {
-        self.untrustedContext = untrustedContext
-    }
+    public init(untrustedContext: String?) { self.untrustedContext = untrustedContext }
 }
 
 public struct BurnBarSafariLearningRollbackRequest: Codable, Hashable, Sendable {
     public let proposalId: String
     public let targetVersion: Int
-
-    public init(proposalId: String, targetVersion: Int) {
-        self.proposalId = proposalId
-        self.targetVersion = targetVersion
-    }
+    public init(proposalId: String, targetVersion: Int) { self.proposalId = proposalId; self.targetVersion = targetVersion }
 }
 
 public struct BurnBarSafariLearningTimelineResponse: Codable, Hashable, Sendable {
     public let enabled: Bool
     public let tier: String
     public let proposals: [BurnBarSafariLearningProposal]
-
     public init(enabled: Bool, tier: String, proposals: [BurnBarSafariLearningProposal]) {
-        self.enabled = enabled
-        self.tier = tier
-        self.proposals = proposals
+        self.enabled = enabled; self.tier = tier; self.proposals = proposals
     }
 }
 
 public struct BurnBarSafariLearningOptOutRequest: Codable, Hashable, Sendable {
     public let deleteLearnedProfile: Bool
-
-    public init(deleteLearnedProfile: Bool) {
-        self.deleteLearnedProfile = deleteLearnedProfile
-    }
+    public init(deleteLearnedProfile: Bool) { self.deleteLearnedProfile = deleteLearnedProfile }
 }
 
 public struct BurnBarSafariLearningStateResponse: Codable, Hashable, Sendable {
     public let enabled: Bool
     public let tier: String
     public let deletedEntryCount: Int
-
     public init(enabled: Bool, tier: String, deletedEntryCount: Int = 0) {
-        self.enabled = enabled
-        self.tier = tier
-        self.deletedEntryCount = deletedEntryCount
+        self.enabled = enabled; self.tier = tier; self.deletedEntryCount = deletedEntryCount
     }
 }

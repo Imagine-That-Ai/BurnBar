@@ -5,9 +5,6 @@ import OpenBurnBarParserSupport
 public typealias AgentProviderIngestionCatalog = OpenBurnBarParserSupport.AgentProviderIngestionCatalog
 
 /// Canonical provider log directory and file-pattern discovery for Linux and cross-platform ingestion.
-///
-/// macOS-specific VS Code globalStorage paths are mapped to `~/.config/Code/User/globalStorage/...` on Linux.
-/// Session identity is derived from resolved absolute paths so symlink/rotation cases do not rewrite IDs silently.
 public enum AgentProviderLogDiscovery {
     public struct ResolvedLogSource: Equatable, Sendable {
         public var provider: AgentProvider
@@ -70,5 +67,14 @@ public enum AgentProviderLogDiscovery {
 
     public static func sessionIdentityKey(provider: AgentProvider, resolvedPath: String) -> String {
         "\(provider.rawValue)|\(resolvedPath)"
+    }
+}
+
+public extension AgentProvider {
+    /// Filesystem directory where the provider writes session logs the file
+    /// watcher can scrape, resolved for the current host. Windows remaps the
+    /// macOS logical form through ``LogPathPlatform``.
+    var logDirectory: String {
+        LogPathPlatform.resolveLogDirectory(AgentProviderLogDiscovery.logicalLogDirectory(for: self))
     }
 }

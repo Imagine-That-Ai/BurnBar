@@ -51,6 +51,7 @@ const siblingTargets = [
   "OpenBurnBarParserSupport",
   "OpenBurnBarSQLiteReader",
   "OpenBurnBarLogParsers",
+  "OpenBurnBarAccountIdentity",
   "OpenBurnBarQuota",
   "OpenBurnBarVectorKit",
   "OpenBurnBarInsights",

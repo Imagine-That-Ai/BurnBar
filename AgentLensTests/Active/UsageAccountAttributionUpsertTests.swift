@@ -10,6 +10,7 @@ import XCTest
 /// unattributed row. Without an explicit claim step the attributed row would
 /// insert *alongside* its predecessor and double every historical session's
 /// tokens and cost on the first refresh after attribution ships.
+@MainActor
 final class UsageAccountAttributionUpsertTests: XCTestCase {
     func testAttributedRowReplacesItsUnattributedPredecessor() async throws {
         let store = try makeInMemoryDataStore()

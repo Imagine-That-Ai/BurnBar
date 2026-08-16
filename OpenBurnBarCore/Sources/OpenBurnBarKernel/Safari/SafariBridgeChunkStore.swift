@@ -15,69 +15,34 @@ public struct BurnBarSafariCommittedChunkTransfer: Hashable, Sendable {
     public let originalMethod: BurnBarSafariBridgeMethod
     public let payload: Data
 
-    public init(
-        transferID: String,
-        originalMethod: BurnBarSafariBridgeMethod,
-        payload: Data
-    ) {
-        self.transferID = transferID
-        self.originalMethod = originalMethod
-        self.payload = payload
+    public init(transferID: String, originalMethod: BurnBarSafariBridgeMethod, payload: Data) {
+        self.transferID = transferID; self.originalMethod = originalMethod; self.payload = payload
     }
 }
 
 public enum BurnBarSafariChunkStoreError: Error, LocalizedError, Equatable, Sendable {
-    case invalidTransferIdentifier
-    case invalidMetadata
-    case transferAlreadyExists
-    case transferNotFound
-    case tooManyTransfers
-    case invalidChunkIndex
-    case duplicateChunk
-    case invalidBase64
-    case chunkTooLarge
-    case transferTooLarge
-    case incompleteTransfer
-    case lengthMismatch
-    case digestMismatch
-    case expired
-    case symbolicLinkRejected
-    case insecurePermissions
+    case invalidTransferIdentifier, invalidMetadata, transferAlreadyExists, transferNotFound
+    case tooManyTransfers, invalidChunkIndex, duplicateChunk, invalidBase64, chunkTooLarge
+    case transferTooLarge, incompleteTransfer, lengthMismatch, digestMismatch, expired, symbolicLinkRejected, insecurePermissions
 
     public var errorDescription: String? {
         switch self {
-        case .invalidTransferIdentifier:
-            return "Safari chunk transfer identifier is invalid."
-        case .invalidMetadata:
-            return "Safari chunk transfer metadata is invalid."
-        case .transferAlreadyExists:
-            return "Safari chunk transfer already exists."
-        case .transferNotFound:
-            return "Safari chunk transfer was not found."
-        case .tooManyTransfers:
-            return "Too many Safari chunk transfers are active."
-        case .invalidChunkIndex:
-            return "Safari chunk index is outside the declared range."
-        case .duplicateChunk:
-            return "Safari chunk was already appended."
-        case .invalidBase64:
-            return "Safari chunk data is not valid base64."
-        case .chunkTooLarge:
-            return "Safari chunk exceeds the per-message size limit."
-        case .transferTooLarge:
-            return "Safari chunk transfer exceeds the total size limit."
-        case .incompleteTransfer:
-            return "Safari chunk transfer is incomplete."
-        case .lengthMismatch:
-            return "Safari chunk transfer length does not match its declaration."
-        case .digestMismatch:
-            return "Safari chunk transfer digest does not match its declaration."
-        case .expired:
-            return "Safari chunk transfer has expired."
-        case .symbolicLinkRejected:
-            return "Symbolic links are not accepted in Safari chunk storage."
-        case .insecurePermissions:
-            return "Safari chunk storage permissions are too broad."
+        case .invalidTransferIdentifier: return "Safari chunk transfer identifier is invalid."
+        case .invalidMetadata: return "Safari chunk transfer metadata is invalid."
+        case .transferAlreadyExists: return "Safari chunk transfer already exists."
+        case .transferNotFound: return "Safari chunk transfer was not found."
+        case .tooManyTransfers: return "Too many Safari chunk transfers are active."
+        case .invalidChunkIndex: return "Safari chunk index is outside the declared range."
+        case .duplicateChunk: return "Safari chunk was already appended."
+        case .invalidBase64: return "Safari chunk data is not valid base64."
+        case .chunkTooLarge: return "Safari chunk exceeds the per-message size limit."
+        case .transferTooLarge: return "Safari chunk transfer exceeds the total size limit."
+        case .incompleteTransfer: return "Safari chunk transfer is incomplete."
+        case .lengthMismatch: return "Safari chunk transfer length does not match its declaration."
+        case .digestMismatch: return "Safari chunk transfer digest does not match its declaration."
+        case .expired: return "Safari chunk transfer has expired."
+        case .symbolicLinkRejected: return "Symbolic links are not accepted in Safari chunk storage."
+        case .insecurePermissions: return "Safari chunk storage permissions are too broad."
         }
     }
 }

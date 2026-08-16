@@ -120,51 +120,23 @@ private enum LocalUsageParserSupport {
     }
 
     static func usage(
-        provider: AgentProvider,
-        sessionID: String,
-        project: String,
-        model: String,
-        input: Int,
-        output: Int,
-        cacheCreation: Int = 0,
-        cacheRead: Int = 0,
-        reasoning: Int = 0,
-        cost: Double,
-        start: Date,
-        end: Date,
-        method: UsageProvenanceMethod,
-        confidence: UsageProvenanceConfidence,
+        provider: AgentProvider, sessionID: String, project: String, model: String,
+        input: Int, output: Int, cacheCreation: Int = 0, cacheRead: Int = 0, reasoning: Int = 0,
+        cost: Double, start: Date, end: Date, method: UsageProvenanceMethod, confidence: UsageProvenanceConfidence,
         estimatorVersion: String = ""
     ) -> TokenUsage? {
         guard input > 0 || output > 0 || cacheCreation > 0 || cacheRead > 0 || reasoning > 0 else { return nil }
         return TokenUsage(
-            provider: provider,
-            sessionId: sessionID,
-            projectName: project,
-            model: model,
-            inputTokens: input,
-            outputTokens: output,
-            cacheCreationTokens: cacheCreation,
-            cacheReadTokens: cacheRead,
-            reasoningTokens: reasoning,
-            costUSD: cost,
-            startTime: start,
-            endTime: end,
-            provenanceMethod: method,
-            provenanceConfidence: confidence,
-            estimatorVersion: estimatorVersion
+            provider: provider, sessionId: sessionID, projectName: project, model: model,
+            inputTokens: input, outputTokens: output, cacheCreationTokens: cacheCreation, cacheReadTokens: cacheRead,
+            reasoningTokens: reasoning, costUSD: cost, startTime: start, endTime: end,
+            provenanceMethod: method, provenanceConfidence: confidence, estimatorVersion: estimatorVersion
         )
     }
 
     static func transcript(
-        provider: AgentProvider,
-        sessionID: String,
-        project: String,
-        turns: [Turn],
-        start: Date?,
-        end: Date?,
-        fileModifiedAt: Date?,
-        workingDirectory: String? = nil
+        provider: AgentProvider, sessionID: String, project: String, turns: [Turn],
+        start: Date?, end: Date?, fileModifiedAt: Date?, workingDirectory: String? = nil
     ) -> ConversationRecord {
         let userTurns = turns.filter { $0.role == "user" || $0.role == "human" }
         let assistantTurns = turns.filter { $0.role == "assistant" || $0.role == "agent" || $0.role == "model" }
@@ -177,24 +149,15 @@ private enum LocalUsageParserSupport {
         let firstUser = userTurns.first?.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return ConversationRecord(
             id: ConversationRecord.stableId(provider: provider, sessionId: sessionID),
-            provider: provider,
-            sessionId: sessionID,
-            projectName: project,
-            startTime: start,
-            endTime: end,
-            messageCount: turns.count,
+            provider: provider, sessionId: sessionID, projectName: project,
+            startTime: start, endTime: end, messageCount: turns.count,
             userWordCount: userTurns.reduce(0) { $0 + $1.text.split { $0.isWhitespace || $0.isNewline }.count },
             assistantWordCount: assistantTurns.reduce(0) { $0 + $1.text.split { $0.isWhitespace || $0.isNewline }.count },
-            keyFiles: [],
-            keyCommands: [],
-            keyTools: [],
+            keyFiles: [], keyCommands: [], keyTools: [],
             inferredTaskTitle: String((firstUser.flatMap { $0.isEmpty ? nil : $0 } ?? project).prefix(120)),
             lastAssistantMessage: String((assistantTurns.last?.text ?? "").prefix(500)),
-            fullText: fullText,
-            indexedAt: Date(),
-            workingDirectory: workingDirectory,
-            fileModifiedAt: fileModifiedAt,
-            summary: nil
+            fullText: fullText, indexedAt: Date(),
+            workingDirectory: workingDirectory, fileModifiedAt: fileModifiedAt, summary: nil
         )
     }
 
@@ -255,25 +218,14 @@ public final class AiderParser: LogParser, Sendable {
     private let rootOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
 
-    public init(
-        rootOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(rootOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.rootOverride = rootOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: rootOverride,
-                live: appPaths.aiderParserCacheURL,
-                fileName: ".obb-aider-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "AiderParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: rootOverride, live: appPaths.aiderParserCacheURL, fileName: ".obb-aider-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "AiderParser"
         )
     }
 
@@ -364,25 +316,14 @@ public final class CursorParser: LogParser, Sendable {
     private let databaseOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
 
-    public init(
-        databaseOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(databaseOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.databaseOverride = databaseOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: databaseOverride?.deletingLastPathComponent(),
-                live: appPaths.cursorParserCacheURL,
-                fileName: ".obb-cursor-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "CursorParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: databaseOverride?.deletingLastPathComponent(), live: appPaths.cursorParserCacheURL, fileName: ".obb-cursor-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "CursorParser"
         )
     }
 
@@ -445,26 +386,15 @@ public final class OpenCodeParser: LogParser, Sendable {
     private let databaseOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
     private let partReadCount = Locked(0)
 
-    public init(
-        databaseOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(databaseOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.databaseOverride = databaseOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: databaseOverride?.deletingLastPathComponent(),
-                live: appPaths.openCodeParserCacheURL,
-                fileName: ".obb-opencode-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "OpenCodeParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: databaseOverride?.deletingLastPathComponent(), live: appPaths.openCodeParserCacheURL, fileName: ".obb-opencode-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "OpenCodeParser"
         )
     }
 
@@ -614,34 +544,14 @@ public final class OpenCodeParser: LogParser, Sendable {
                 ? TokenExtractionUtility.currentEstimatorVersion
                 : ""
             if let usage = LocalUsageParserSupport.usage(
-                provider: .openCode,
-                sessionID: session,
-                project: project,
-                model: model,
-                input: input,
-                output: output,
-                cacheCreation: cacheCreation,
-                cacheRead: cacheRead,
-                cost: cost,
-                start: start,
-                end: end,
-                method: method,
-                confidence: confidence,
-                estimatorVersion: estimatorVersion
+                provider: .openCode, sessionID: session, project: project, model: model,
+                input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead,
+                cost: cost, start: start, end: end, method: method, confidence: confidence, estimatorVersion: estimatorVersion
             ) {
                 usages.append(usage)
             }
             if options.includeConversationBodies && !turns.isEmpty {
-                conversations.append(LocalUsageParserSupport.transcript(
-                    provider: .openCode,
-                    sessionID: session,
-                    project: project,
-                    turns: turns,
-                    start: start,
-                    end: end,
-                    fileModifiedAt: end,
-                    workingDirectory: meta?.directory
-                ))
+                conversations.append(LocalUsageParserSupport.transcript(provider: .openCode, sessionID: session, project: project, turns: turns, start: start, end: end, fileModifiedAt: end, workingDirectory: meta?.directory))
             }
         }
         if let signature {
@@ -748,25 +658,14 @@ public final class PiAgentParser: LogParser, Sendable {
     private let sessionsOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
 
-    public init(
-        sessionsOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(sessionsOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.sessionsOverride = sessionsOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: sessionsOverride,
-                live: appPaths.piAgentParserCacheURL,
-                fileName: ".obb-pi-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "PiAgentParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: sessionsOverride, live: appPaths.piAgentParserCacheURL, fileName: ".obb-pi-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "PiAgentParser"
         )
     }
 
@@ -850,33 +749,13 @@ public final class PiAgentParser: LogParser, Sendable {
             ? TokenExtractionUtility.currentEstimatorVersion
             : ""
         let usage = LocalUsageParserSupport.usage(
-            provider: provider,
-            sessionID: sessionID,
-            project: project,
-            model: model,
-            input: input,
-            output: output,
-            cacheCreation: cacheCreation,
-            cacheRead: cacheRead,
-            cost: cost,
-            start: startTime,
-            end: endTime,
-            method: method,
-            confidence: confidence,
-            estimatorVersion: estimatorVersion
-        )
+                provider: provider, sessionID: sessionID, project: project, model: model,
+                input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead,
+                cost: cost, start: startTime, end: endTime, method: method, confidence: confidence, estimatorVersion: estimatorVersion
+            )
         let conversation = turns.isEmpty
             ? nil
-            : LocalUsageParserSupport.transcript(
-                provider: provider,
-                sessionID: sessionID,
-                project: cwd ?? sessionID,
-                turns: turns,
-                start: startTime,
-                end: endTime,
-                fileModifiedAt: mtime,
-                workingDirectory: cwd
-            )
+            : LocalUsageParserSupport.transcript(provider: provider, sessionID: sessionID, project: cwd ?? sessionID, turns: turns, start: startTime, end: endTime, fileModifiedAt: mtime, workingDirectory: cwd)
         return (usage, conversation)
     }
 }
@@ -889,25 +768,14 @@ public final class OMPParser: LogParser, Sendable {
     private let sessionsOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
 
-    public init(
-        sessionsOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(sessionsOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.sessionsOverride = sessionsOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: sessionsOverride,
-                live: appPaths.ompParserCacheURL,
-                fileName: ".obb-omp-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "OMPParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: sessionsOverride, live: appPaths.ompParserCacheURL, fileName: ".obb-omp-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "OMPParser"
         )
     }
 
@@ -969,25 +837,14 @@ public final class OpenClawParser: LogParser, Sendable {
     private let sessionsOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
 
-    public init(
-        sessionsOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(sessionsOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.sessionsOverride = sessionsOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: sessionsOverride,
-                live: appPaths.openClawParserCacheURL,
-                fileName: ".obb-openclaw-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "OpenClawParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: sessionsOverride, live: appPaths.openClawParserCacheURL, fileName: ".obb-openclaw-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "OpenClawParser"
         )
     }
 
@@ -1053,13 +910,7 @@ public final class OpenClawParser: LogParser, Sendable {
                 let userChars = turns.filter { $0.role == "user" }.reduce(0) { $0 + $1.text.count }
                 let assistantChars = turns.filter { $0.role == "assistant" }
                     .reduce(0) { $0 + $1.text.count }
-                let estimate = TokenExtractionUtility.estimateFallbackTokens(
-                    userVisibleChars: userChars,
-                    assistantVisibleChars: assistantChars,
-                    assistantReasoningChars: 0,
-                    userMessageCount: 1,
-                    assistantMessageCount: 1
-                )
+                let estimate = TokenExtractionUtility.estimateFallbackTokens(userVisibleChars: userChars, assistantVisibleChars: assistantChars, assistantReasoningChars: 0, userMessageCount: 1, assistantMessageCount: 1)
                 input = estimate.input
                 output = estimate.output
                 method = .heuristicEstimate
@@ -1075,19 +926,9 @@ public final class OpenClawParser: LogParser, Sendable {
                 ? TokenExtractionUtility.currentEstimatorVersion
                 : ""
             if let usage = LocalUsageParserSupport.usage(
-                provider: .openClaw,
-                sessionID: session,
-                project: "OpenClaw",
-                model: model,
-                input: input,
-                output: output,
-                cacheRead: cacheRead,
-                cost: cost,
-                start: startTime,
-                end: endTime,
-                method: method,
-                confidence: confidence,
-                estimatorVersion: estimatorVersion
+                provider: .openClaw, sessionID: session, project: "OpenClaw", model: model,
+                input: input, output: output, cacheRead: cacheRead, cost: cost, start: startTime, end: endTime,
+                method: method, confidence: confidence, estimatorVersion: estimatorVersion
             ) {
                 usages.append(usage)
                 if let signature {
@@ -1096,15 +937,7 @@ public final class OpenClawParser: LogParser, Sendable {
                 }
             }
             if options.includeConversationBodies {
-                conversations.append(LocalUsageParserSupport.transcript(
-                    provider: .openClaw,
-                    sessionID: session,
-                    project: "OpenClaw",
-                    turns: turns,
-                    start: startTime,
-                    end: endTime,
-                    fileModifiedAt: mtime
-                ))
+                conversations.append(LocalUsageParserSupport.transcript(provider: .openClaw, sessionID: session, project: "OpenClaw", turns: turns, start: startTime, end: endTime, fileModifiedAt: mtime))
             }
         }
         let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
@@ -1123,25 +956,14 @@ public final class OllamaParser: LogParser, Sendable {
     private let logsOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
 
-    public init(
-        logsOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(logsOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.logsOverride = logsOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: logsOverride,
-                live: appPaths.ollamaParserCacheURL,
-                fileName: ".obb-ollama-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "OllamaParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: logsOverride, live: appPaths.ollamaParserCacheURL, fileName: ".obb-ollama-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "OllamaParser"
         )
     }
 
@@ -1213,25 +1035,14 @@ public final class JunieParser: LogParser, Sendable {
     private let sessionsOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<FileSetSignature>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
 
-    public init(
-        sessionsOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(sessionsOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.sessionsOverride = sessionsOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: sessionsOverride,
-                live: appPaths.junieParserCacheURL,
-                fileName: ".obb-junie-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "JunieParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: sessionsOverride, live: appPaths.junieParserCacheURL, fileName: ".obb-junie-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "JunieParser"
         )
     }
 
@@ -1331,13 +1142,7 @@ public final class JunieParser: LogParser, Sendable {
             var confidence: UsageProvenanceConfidence = .exact
             if input == 0 && output == 0 && cacheCreation == 0 && cacheRead == 0 && reasoning == 0 {
                 guard userChars + assistantChars > 0 else { continue }
-                let estimate = TokenExtractionUtility.estimateFallbackTokens(
-                    userVisibleChars: userChars,
-                    assistantVisibleChars: assistantChars,
-                    assistantReasoningChars: 0,
-                    userMessageCount: 1,
-                    assistantMessageCount: 1
-                )
+                let estimate = TokenExtractionUtility.estimateFallbackTokens(userVisibleChars: userChars, assistantVisibleChars: assistantChars, assistantReasoningChars: 0, userMessageCount: 1, assistantMessageCount: 1)
                 input = estimate.input
                 output = estimate.output
                 method = .heuristicEstimate
@@ -1357,21 +1162,9 @@ public final class JunieParser: LogParser, Sendable {
                 ? TokenExtractionUtility.currentEstimatorVersion
                 : ""
             if let usage = LocalUsageParserSupport.usage(
-                provider: .junie,
-                sessionID: id,
-                project: project,
-                model: model,
-                input: input,
-                output: output,
-                cacheCreation: cacheCreation,
-                cacheRead: cacheRead,
-                reasoning: reasoning,
-                cost: cost,
-                start: startTime,
-                end: endTime,
-                method: method,
-                confidence: confidence,
-                estimatorVersion: estimatorVersion
+                provider: .junie, sessionID: id, project: project, model: model,
+                input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead, reasoning: reasoning,
+                cost: cost, start: startTime, end: endTime, method: method, confidence: confidence, estimatorVersion: estimatorVersion
             ) {
                 usages.append(usage)
                 if let signature {
@@ -1380,16 +1173,7 @@ public final class JunieParser: LogParser, Sendable {
                 }
             }
             if options.includeConversationBodies, !turns.isEmpty {
-                conversations.append(LocalUsageParserSupport.transcript(
-                    provider: .junie,
-                    sessionID: id,
-                    project: project,
-                    turns: turns,
-                    start: startTime,
-                    end: endTime,
-                    fileModifiedAt: mtime,
-                    workingDirectory: projects[id]
-                ))
+                conversations.append(LocalUsageParserSupport.transcript(provider: .junie, sessionID: id, project: project, turns: turns, start: startTime, end: endTime, fileModifiedAt: mtime, workingDirectory: projects[id]))
             }
         }
         let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)
@@ -1409,29 +1193,16 @@ public final class ModelFilterParser: LogParser, Sendable {
     private let sessionsOverride: URL?
     private let fileManager: FileManager
     private let cacheStore: ParserDiskCacheStore<CachedUsageBundleEntry<CompositeFileSignature<FileSignature>>>
-    private let sessionScanCount = Locked(0)
-    private let sessionCacheHitCount = Locked(0)
+    private let sessionScanCount = Locked(0), sessionCacheHitCount = Locked(0)
 
-    public init(
-        modelPattern: String,
-        provider: AgentProvider,
-        sessionsOverride: URL? = nil,
-        fileManager: FileManager = .default,
-        appPaths: OpenBurnBarAppPaths = .live()
-    ) {
+    public init(modelPattern: String, provider: AgentProvider, sessionsOverride: URL? = nil, fileManager: FileManager = .default, appPaths: OpenBurnBarAppPaths = .live()) {
         self.modelPattern = modelPattern.lowercased()
         self.provider = provider
         self.sessionsOverride = sessionsOverride
         self.fileManager = fileManager
         self.cacheStore = ParserDiskCacheStore(
-            cacheURL: LocalUsageParserSupport.idleCacheURL(
-                overrideDirectory: sessionsOverride,
-                live: appPaths.modelFilterParserCacheURL(for: provider),
-                fileName: ".obb-\(provider.persistedToken)-parser-cache.plist"
-            ),
-            fileManager: fileManager,
-            schemaVersion: 1,
-            logLabel: "ModelFilterParser"
+            cacheURL: LocalUsageParserSupport.idleCacheURL(overrideDirectory: sessionsOverride, live: appPaths.modelFilterParserCacheURL(for: provider), fileName: ".obb-\(provider.persistedToken)-parser-cache.plist"),
+            fileManager: fileManager, schemaVersion: 1, logLabel: "ModelFilterParser"
         )
     }
 
@@ -1528,13 +1299,7 @@ public final class ModelFilterParser: LogParser, Sendable {
                     persist([])
                     continue
                 }
-                let estimate = TokenExtractionUtility.estimateFallbackTokens(
-                    userVisibleChars: userChars,
-                    assistantVisibleChars: assistantChars,
-                    assistantReasoningChars: 0,
-                    userMessageCount: 1,
-                    assistantMessageCount: 1
-                )
+                let estimate = TokenExtractionUtility.estimateFallbackTokens(userVisibleChars: userChars, assistantVisibleChars: assistantChars, assistantReasoningChars: 0, userMessageCount: 1, assistantMessageCount: 1)
                 input = estimate.input
                 output = estimate.output
                 method = .heuristicEstimate
@@ -1555,20 +1320,9 @@ public final class ModelFilterParser: LogParser, Sendable {
                 ? TokenExtractionUtility.currentEstimatorVersion
                 : ""
             if let usage = LocalUsageParserSupport.usage(
-                provider: provider,
-                sessionID: id,
-                project: project,
-                model: resolvedModel,
-                input: input,
-                output: output,
-                cacheCreation: cacheCreation,
-                cacheRead: cacheRead,
-                cost: cost,
-                start: startTime,
-                end: endTime,
-                method: method,
-                confidence: confidence,
-                estimatorVersion: estimatorVersion
+                provider: provider, sessionID: id, project: project, model: resolvedModel,
+                input: input, output: output, cacheCreation: cacheCreation, cacheRead: cacheRead,
+                cost: cost, start: startTime, end: endTime, method: method, confidence: confidence, estimatorVersion: estimatorVersion
             ) {
                 usages.append(usage)
                 persist([usage])
@@ -1576,15 +1330,7 @@ public final class ModelFilterParser: LogParser, Sendable {
                 persist([])
             }
             if options.includeConversationBodies, !turns.isEmpty {
-                conversations.append(LocalUsageParserSupport.transcript(
-                    provider: provider,
-                    sessionID: id,
-                    project: project,
-                    turns: turns,
-                    start: startTime,
-                    end: endTime,
-                    fileModifiedAt: mtime
-                ))
+                conversations.append(LocalUsageParserSupport.transcript(provider: provider, sessionID: id, project: project, turns: turns, start: startTime, end: endTime, fileModifiedAt: mtime))
             }
         }
         let stale = Set(parseCache.fileEntries.keys).subtracting(activePaths)

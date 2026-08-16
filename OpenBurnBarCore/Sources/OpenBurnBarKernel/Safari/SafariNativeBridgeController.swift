@@ -91,52 +91,31 @@ public struct BurnBarSafariPopupActionResult: Codable, Hashable, Sendable {
 /// under the App Group by ``BurnBarSafariBridgeChunkStore``.
 public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
     private enum PopupAction: String, CaseIterable {
-        case bootstrap
-        case catalog
-        case uiSnapshot = "ui.snapshot"
-        case ask
-        case agentic
-        case handoff
-        case approval
-        case abort
-        case trustKillSwitch = "trust.killSwitch"
-        case trustUpdate = "trust.update"
-        case learningOptIn = "learning.optIn"
-        case learningOptOut = "learning.optOut"
-        case learningRecall = "learning.recall"
-        case learningPropose = "learning.propose"
-        case learningUpdate = "learning.update"
-        case learningApprove = "learning.approve"
-        case learningReject = "learning.reject"
-        case learningForget = "learning.forget"
-        case learningRollback = "learning.rollback"
+        case bootstrap, catalog, uiSnapshot = "ui.snapshot", ask, agentic, handoff, approval, abort
+        case trustKillSwitch = "trust.killSwitch", trustUpdate = "trust.update", learningOptIn = "learning.optIn"
+        case learningOptOut = "learning.optOut", learningRecall = "learning.recall", learningPropose = "learning.propose"
+        case learningUpdate = "learning.update", learningApprove = "learning.approve", learningReject = "learning.reject"
+        case learningForget = "learning.forget", learningRollback = "learning.rollback"
     }
 
     private struct BridgePageContext: Codable, Hashable, Sendable {
         let pageState: BurnBarSafariPageState
         let viewport: BurnBarJSONValue
-        let markdown: String
-        let snapshot: String
+        let markdown, snapshot: String
         let nodes: [BurnBarJSONValue]
-        let truncated: Bool
-        let sensitive: Bool
+        let truncated, sensitive: Bool
         let capturedAt: Date
     }
 
     private struct BridgeScreenshot: Codable, Hashable, Sendable {
-        let dataUrl: String
-        let mediaType: String
-        let width: Int
-        let height: Int
-        let byteLength: Int
+        let dataUrl, mediaType: String
+        let width, height, byteLength: Int
         let source: String
         let truncated: Bool
     }
 
     private struct AgenticPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let prompt: String
-        let agentId: String
+        let safariSessionId, prompt, agentId: String
         let pageContext: BridgePageContext
         let screenshot: BridgeScreenshot
         let tabId: Int
@@ -145,18 +124,14 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
     }
 
     private struct HandoffPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let prompt: String
-        let agentId: String
+        let safariSessionId, prompt, agentId: String
         let pageContext: BridgePageContext
         let screenshot: BridgeScreenshot
         let tabId: Int
     }
 
     private struct ApprovalPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let approvalId: String
-        let decision: String
+        let safariSessionId, approvalId, decision: String
     }
 
     private struct AbortPayload: Codable, Hashable, Sendable {
@@ -172,15 +147,12 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
 
     private struct UISnapshotPayload: Codable, Hashable, Sendable {
         let safariSessionId: String
-        let computerUseSessionId: String?
-        let runId: String?
+        let computerUseSessionId, runId: String?
     }
 
     private struct TrustKillSwitchPayload: Codable, Hashable, Sendable {
         let safariSessionId: String
-        let enabled: Bool?
-        let globalKillSwitch: Bool?
-        let killSwitchEnabled: Bool?
+        let enabled, globalKillSwitch, killSwitchEnabled: Bool?
 
         var resolvedValue: Bool? {
             let values = [enabled, globalKillSwitch, killSwitchEnabled].compactMap { $0 }
@@ -195,15 +167,11 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
     private struct TrustCompatibilityPayload: Codable, Hashable, Sendable {
         let safariSessionId: String
         let origin: String?
-        let allowed: Bool?
-        let sensitiveOverride: Bool?
-        let onlyCurrentTab: Bool?
-        let globalKillSwitch: Bool?
+        let allowed, sensitiveOverride, onlyCurrentTab, globalKillSwitch: Bool?
     }
 
     private struct CanonicalTrustPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let origin: String
+        let safariSessionId, origin: String
         let decision: BurnBarSafariTrustDecision
         let trustMode: String
         let actionBudget: Int?
@@ -212,13 +180,11 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
     }
 
     private struct LearningOptInPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let consentVersion: Int?
+        let safariSessionId: String; let consentVersion: Int?
     }
 
     private struct LearningOptOutPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let deleteLearnedProfile: Bool?
+        let safariSessionId: String; let deleteLearnedProfile: Bool?
     }
 
     private struct LearningMutationPayload: Codable, Hashable, Sendable {
@@ -242,31 +208,19 @@ public final class BurnBarSafariNativeBridgeController: @unchecked Sendable {
     }
 
     private struct LearningRecallPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let query: String
-        let limit: Int?
+        let safariSessionId, query: String; let limit: Int?
     }
 
     private struct LearningCorrectionPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let correctionId: String
-        let correction: String
-        let tabId: Int
-        let url: String
+        let safariSessionId, correctionId, correction: String; let tabId: Int; let url: String
     }
 
     private struct LearningUpdatePayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let proposalId: String
-        let expectedVersion: Int
-        let title: String
-        let content: String
+        let safariSessionId, proposalId: String; let expectedVersion: Int; let title, content: String
     }
 
     private struct LearningRollbackPayload: Codable, Hashable, Sendable {
-        let safariSessionId: String
-        let proposalId: String
-        let targetVersion: Int
+        let safariSessionId, proposalId: String; let targetVersion: Int
     }
 
     private let daemon: BurnBarSafariDaemonRPCTransport

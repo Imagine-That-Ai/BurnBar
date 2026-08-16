@@ -12,12 +12,10 @@ import Security
 #endif
 
 public struct BurnBarSafariDaemonRuntimePaths: Hashable, Sendable {
-    public let socketURL: URL
-    public let socketAuthTokenFileURL: URL
+    public let socketURL, socketAuthTokenFileURL: URL
 
     public init(socketURL: URL, socketAuthTokenFileURL: URL) {
-        self.socketURL = socketURL
-        self.socketAuthTokenFileURL = socketAuthTokenFileURL
+        self.socketURL = socketURL; self.socketAuthTokenFileURL = socketAuthTokenFileURL
     }
 
     public static func live(
@@ -53,27 +51,19 @@ public struct BurnBarSafariDaemonAuthToken: Hashable, Sendable {
     public let source: BurnBarSafariDaemonTokenSource
 
     public init(value: String, source: BurnBarSafariDaemonTokenSource) {
-        self.value = value
-        self.source = source
+        self.value = value; self.source = source
     }
 }
 
 public enum BurnBarSafariDaemonTokenError: Error, LocalizedError, Equatable, Sendable {
-    case unavailable
-    case invalidTokenFile
-    case insecureTokenFile
-    case keychainFailure(status: Int32)
+    case unavailable, invalidTokenFile, insecureTokenFile, keychainFailure(status: Int32)
 
     public var errorDescription: String? {
         switch self {
-        case .unavailable:
-            return "OpenBurnBar daemon authentication is unavailable."
-        case .invalidTokenFile:
-            return "The OpenBurnBar daemon token file is invalid."
-        case .insecureTokenFile:
-            return "The OpenBurnBar daemon token file failed its security checks."
-        case .keychainFailure(let status):
-            return "OpenBurnBar could not read daemon authentication from Keychain (OSStatus \(status))."
+        case .unavailable: return "OpenBurnBar daemon authentication is unavailable."
+        case .invalidTokenFile: return "The OpenBurnBar daemon token file is invalid."
+        case .insecureTokenFile: return "The OpenBurnBar daemon token file failed its security checks."
+        case .keychainFailure(let status): return "OpenBurnBar could not read daemon authentication from Keychain (OSStatus \(status))."
         }
     }
 }
@@ -215,48 +205,25 @@ public struct BurnBarSafariDaemonTokenResolver: Sendable {
 }
 
 public enum BurnBarSafariDaemonSocketError: Error, LocalizedError, Equatable, Sendable {
-    case platformUnavailable
-    case socketPathTooLong
-    case requestTooLarge
-    case responseTooLarge
-    case emptyResponse
-    case malformedResponse
-    case responseIdentifierMismatch
-    case protocolMismatch(expected: Int, actual: Int)
-    case timedOut
-    case connectionFailed(code: Int32)
-    case writeFailed(code: Int32)
-    case readFailed(code: Int32)
-    case daemonError(code: Int, message: String)
+    case platformUnavailable, socketPathTooLong, requestTooLarge, responseTooLarge, emptyResponse
+    case malformedResponse, responseIdentifierMismatch, protocolMismatch(expected: Int, actual: Int)
+    case timedOut, connectionFailed(code: Int32), writeFailed(code: Int32), readFailed(code: Int32), daemonError(code: Int, message: String)
 
     public var errorDescription: String? {
         switch self {
-        case .platformUnavailable:
-            return "The OpenBurnBar daemon socket is unavailable on this platform."
-        case .socketPathTooLong:
-            return "The OpenBurnBar daemon socket path is too long."
-        case .requestTooLarge:
-            return "The OpenBurnBar daemon request exceeds the safe socket envelope limit."
-        case .responseTooLarge:
-            return "The OpenBurnBar daemon response exceeds the safe socket response limit."
-        case .emptyResponse:
-            return "The OpenBurnBar daemon returned an empty response."
-        case .malformedResponse:
-            return "The OpenBurnBar daemon returned a malformed response."
-        case .responseIdentifierMismatch:
-            return "The OpenBurnBar daemon response identifier does not match its request."
-        case .protocolMismatch(let expected, let actual):
-            return "OpenBurnBar daemon protocol mismatch (expected \(expected), received \(actual))."
-        case .timedOut:
-            return "The OpenBurnBar daemon request timed out."
-        case .connectionFailed(let code):
-            return "OpenBurnBar daemon socket connection failed (errno \(code))."
-        case .writeFailed(let code):
-            return "OpenBurnBar daemon socket write failed (errno \(code))."
-        case .readFailed(let code):
-            return "OpenBurnBar daemon socket read failed (errno \(code))."
-        case .daemonError(_, let message):
-            return message
+        case .platformUnavailable: return "The OpenBurnBar daemon socket is unavailable on this platform."
+        case .socketPathTooLong: return "The OpenBurnBar daemon socket path is too long."
+        case .requestTooLarge: return "The OpenBurnBar daemon request exceeds the safe socket envelope limit."
+        case .responseTooLarge: return "The OpenBurnBar daemon response exceeds the safe socket response limit."
+        case .emptyResponse: return "The OpenBurnBar daemon returned an empty response."
+        case .malformedResponse: return "The OpenBurnBar daemon returned a malformed response."
+        case .responseIdentifierMismatch: return "The OpenBurnBar daemon response identifier does not match its request."
+        case .protocolMismatch(let expected, let actual): return "OpenBurnBar daemon protocol mismatch (expected \(expected), received \(actual))."
+        case .timedOut: return "The OpenBurnBar daemon request timed out."
+        case .connectionFailed(let code): return "OpenBurnBar daemon socket connection failed (errno \(code))."
+        case .writeFailed(let code): return "OpenBurnBar daemon socket write failed (errno \(code))."
+        case .readFailed(let code): return "OpenBurnBar daemon socket read failed (errno \(code))."
+        case .daemonError(_, let message): return message
         }
     }
 }

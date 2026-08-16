@@ -26,17 +26,22 @@ public struct ProviderAccountIdentityWindow: Codable, Equatable, Sendable {
 /// feature exists for) that is wrong often enough to mislead someone into
 /// cancelling the wrong seat. Unattributed history keeps reporting under the
 /// provider's existing default lane instead.
-public final class ProviderAccountIdentityTimelineStore: @unchecked Sendable {
-    struct State: Codable, Equatable {
+public final class ProviderAccountIdentityTimelineStore: Sendable {
+    struct State: Codable, Equatable, Sendable {
         var schemaVersion: Int = 1
         var windows: [String: [ProviderAccountIdentityWindow]] = [:]
     }
 
+    /// Journal plus the bookkeeping the persist throttle needs, held together so
+    /// one `Locked` guards both.
+    private struct Storage: Sendable {
+        var state: State
+        var lastPersistedAt: Date?
+    }
+
     private let fileURL: URL
     private let fileManager: FileManager
-    private let lock = NSLock()
-    private var state: State
-    private var lastPersistedAt: Date?
+    private let storage: Locked<Storage>
 
     /// `lastSeen` advances on every observation. A pure `lastSeen` bump is
     /// rewritten at most this often so refresh ticks do not rewrite the file
@@ -46,12 +51,9 @@ public final class ProviderAccountIdentityTimelineStore: @unchecked Sendable {
     public init(fileURL: URL, fileManager: FileManager = .default) {
         self.fileURL = fileURL
         self.fileManager = fileManager
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? Self.decoder.decode(State.self, from: data) {
-            self.state = decoded
-        } else {
-            self.state = State()
-        }
+        let loaded = (try? Data(contentsOf: fileURL))
+            .flatMap { try? Self.decoder.decode(State.self, from: $0) }
+        self.storage = Locked(Storage(state: loaded ?? State(), lastPersistedAt: nil))
     }
 
     public func observe(
@@ -59,33 +61,33 @@ public final class ProviderAccountIdentityTimelineStore: @unchecked Sendable {
         provider: AgentProvider,
         at date: Date = Date()
     ) {
-        lock.lock()
-        defer { lock.unlock() }
-
-        var windows = state.windows[provider.rawValue] ?? []
-        // Anything other than advancing `lastSeen` changes how rows attribute,
-        // so it is persisted immediately rather than waiting for the throttle.
-        let changesAttribution: Bool
-        if var last = windows.last, last.rawIdentity == identity.rawIdentity {
-            changesAttribution = last.label != identity.label || last.scope != identity.scope
-            last.lastSeen = max(last.lastSeen, date)
-            last.label = identity.label
-            last.scope = identity.scope
-            windows[windows.count - 1] = last
-        } else {
-            changesAttribution = true
-            windows.append(
-                ProviderAccountIdentityWindow(
-                    rawIdentity: identity.rawIdentity,
-                    label: identity.label,
-                    scope: identity.scope,
-                    firstSeen: date,
-                    lastSeen: date
+        storage.withLock { storage in
+            var windows = storage.state.windows[provider.rawValue] ?? []
+            // Anything other than advancing `lastSeen` changes how rows
+            // attribute, so it is persisted immediately rather than waiting for
+            // the throttle.
+            let changesAttribution: Bool
+            if var last = windows.last, last.rawIdentity == identity.rawIdentity {
+                changesAttribution = last.label != identity.label || last.scope != identity.scope
+                last.lastSeen = max(last.lastSeen, date)
+                last.label = identity.label
+                last.scope = identity.scope
+                windows[windows.count - 1] = last
+            } else {
+                changesAttribution = true
+                windows.append(
+                    ProviderAccountIdentityWindow(
+                        rawIdentity: identity.rawIdentity,
+                        label: identity.label,
+                        scope: identity.scope,
+                        firstSeen: date,
+                        lastSeen: date
+                    )
                 )
-            )
+            }
+            storage.state.windows[provider.rawValue] = windows
+            persist(&storage, force: changesAttribution, at: date)
         }
-        state.windows[provider.rawValue] = windows
-        persistLocked(force: changesAttribution, at: date)
     }
 
     /// Returns the single identity window covering `[start, end]`, or `nil`
@@ -96,10 +98,8 @@ public final class ProviderAccountIdentityTimelineStore: @unchecked Sendable {
         start: Date,
         end: Date
     ) -> ProviderAccountIdentityWindow? {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard let windows = state.windows[provider.rawValue], !windows.isEmpty else { return nil }
+        let windows = storage.withLock { $0.state.windows[provider.rawValue] ?? [] }
+        guard !windows.isEmpty else { return nil }
         let end = max(start, end)
 
         var covering: [ProviderAccountIdentityWindow] = []
@@ -117,8 +117,8 @@ public final class ProviderAccountIdentityTimelineStore: @unchecked Sendable {
         return window
     }
 
-    private func persistLocked(force: Bool, at date: Date) {
-        if !force, let lastPersistedAt,
+    private func persist(_ storage: inout Storage, force: Bool, at date: Date) {
+        if !force, let lastPersistedAt = storage.lastPersistedAt,
            date.timeIntervalSince(lastPersistedAt) < Self.lastSeenPersistInterval {
             return
         }
@@ -127,9 +127,9 @@ public final class ProviderAccountIdentityTimelineStore: @unchecked Sendable {
                 at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            let data = try Self.encoder.encode(state)
+            let data = try Self.encoder.encode(storage.state)
             try data.write(to: fileURL, options: .atomic)
-            lastPersistedAt = date
+            storage.lastPersistedAt = date
         } catch {
             // Best-effort journal: a failed write only delays attribution until
             // the next successful observation; never fail the refresh for it.

@@ -21,26 +21,17 @@ public struct BurnBarSafariAppGroupPayloadReference: Codable, Hashable, Sendable
     public static let kind = "openburnbar.safari.app-group-payload"
 
     public let version: Int
-    public let kind: String
-    public let filePath: String
+    public let kind, filePath: String
     public let byteLength: Int
     public let sha256: String
     public let expiresAtUnixMillis: Int64
 
     public init(
-        version: Int = Self.currentVersion,
-        kind: String = Self.kind,
-        filePath: String,
-        byteLength: Int,
-        sha256: String,
-        expiresAtUnixMillis: Int64
+        version: Int = Self.currentVersion, kind: String = Self.kind,
+        filePath: String, byteLength: Int, sha256: String, expiresAtUnixMillis: Int64
     ) {
-        self.version = version
-        self.kind = kind
-        self.filePath = filePath
-        self.byteLength = byteLength
-        self.sha256 = sha256
-        self.expiresAtUnixMillis = expiresAtUnixMillis
+        self.version = version; self.kind = kind; self.filePath = filePath
+        self.byteLength = byteLength; self.sha256 = sha256; self.expiresAtUnixMillis = expiresAtUnixMillis
     }
 
     public var expiresAt: Date {

@@ -11,14 +11,13 @@ import OpenBurnBarKernel
 /// fields on rows whose session interval maps to exactly one identity. Rows a
 /// parser has already attributed, and rows whose interval spans an account
 /// switch, are left untouched.
-public final class ProviderAccountUsageAttributor: @unchecked Sendable {
+public final class ProviderAccountUsageAttributor: Sendable {
     private let resolvers: [any ProviderAccountIdentityResolving]
     private let timeline: ProviderAccountIdentityTimelineStore
     private let now: @Sendable () -> Date
     private let observationInterval: TimeInterval
 
-    private let lock = NSLock()
-    private var lastObservationAt: Date?
+    private let lastObservationAt = Locked<Date?>(nil)
 
     public init(
         resolvers: [any ProviderAccountIdentityResolving],
@@ -44,13 +43,12 @@ public final class ProviderAccountUsageAttributor: @unchecked Sendable {
     /// `.claude.json`) can be large files.
     public func refreshObservations() {
         let stamp = now()
-        lock.lock()
-        if let last = lastObservationAt, stamp.timeIntervalSince(last) < observationInterval {
-            lock.unlock()
-            return
+        let shouldObserve = lastObservationAt.withLock { last -> Bool in
+            if let last, stamp.timeIntervalSince(last) < observationInterval { return false }
+            last = stamp
+            return true
         }
-        lastObservationAt = stamp
-        lock.unlock()
+        guard shouldObserve else { return }
 
         for resolver in resolvers {
             guard let identity = resolver.resolveCurrentIdentity() else { continue }
