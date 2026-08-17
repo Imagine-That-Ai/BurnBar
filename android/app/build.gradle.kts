@@ -56,7 +56,7 @@ plugins {
 
 val openBurnBarAppVersionName =
     providers.gradleProperty("openBurnBarAppVersionName")
-        .orElse("1.0.35")
+        .orElse("1.0.36")
 fun Any?.asJsonMap(): Map<*, *> = this as? Map<*, *> ?: emptyMap<Any, Any>()
 fun Any?.asJsonList(): List<*> = this as? List<*> ?: emptyList<Any>()
 

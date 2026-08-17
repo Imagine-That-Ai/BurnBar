@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.36] - 2026-08-17
+
+### Fixed
+- Repair the strict Functions release gate after the Firestore rules helper
+  refactor introduced local document aliases. The contract tests now bind
+  their assertions to the exact Hermes and Pi helper blocks and continue to
+  prove the same relay-only, encrypted-payload, and field-allowlist policy.
+- Supersede the unpublished `v1.0.35` candidate without moving its immutable
+  tag. This release includes the full `1.0.35` feature set below.
+
 ## [1.0.35] - 2026-08-17
 
 ### Added - `openburnbar app install` / `app update` (npm 0.1.1)
