@@ -97,11 +97,18 @@ public final class GrokParser: LogParser, Sendable {
             ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
 
             for sessionDir in sessionDirs {
+                let updatesURL = sessionDir.appendingPathComponent("updates.jsonl")
                 if Self.sessionLooksIdle(
                     sessionDir,
                     cutoff: options.minimumFileModificationDate,
                     fileManager: fileManager
                 ) {
+                    // Live-lane idle skip must still pin updates.jsonl in
+                    // activePaths. Otherwise the stale-path prune below drops
+                    // ParserDiskCache and catch-up re-scans the whole tree.
+                    if fileManager.fileExists(atPath: updatesURL.path) {
+                        activePaths.insert(updatesURL.standardizedFileURL.path)
+                    }
                     continue
                 }
 
@@ -109,7 +116,7 @@ public final class GrokParser: LogParser, Sendable {
                     sessionDir.appendingPathComponent("summary.json"),
                     sessionDir.appendingPathComponent("signals.json"),
                     sessionDir.appendingPathComponent("chat_history.jsonl"),
-                    sessionDir.appendingPathComponent("updates.jsonl")
+                    updatesURL
                 ].filter { fileManager.fileExists(atPath: $0.path) }
 
                 let metadataRoot = sessionDir.appendingPathComponent("subagents", isDirectory: true)
@@ -123,7 +130,6 @@ public final class GrokParser: LogParser, Sendable {
                         .filter { fileManager.fileExists(atPath: $0.path) })
                 }
 
-                let updatesURL = sessionDir.appendingPathComponent("updates.jsonl")
                 if fileManager.fileExists(atPath: updatesURL.path) {
                     activePaths.insert(updatesURL.standardizedFileURL.path)
                 }
@@ -142,6 +148,11 @@ public final class GrokParser: LogParser, Sendable {
                     cachedExactUsageByDirectory[sessionDir] = cached.breakdown
                     if options.includeCachedUnchangedUsages, let usage = cached.usage {
                         usages.append(usage)
+                    }
+                    if let updatesCached = parseCache.fileEntries[updatesURL.standardizedFileURL.path],
+                       let updatesSignature = FileSignature(for: updatesURL, using: fileManager),
+                       updatesCached.signature == updatesSignature {
+                        updatesCacheHitCount.withLock { $0 += 1 }
                     }
                     continue
                 }
