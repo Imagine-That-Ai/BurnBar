@@ -194,6 +194,9 @@ describe('createBurnBarWorkspaceApi', () => {
 describe('isCursorSmokeWorkspaceEditAutoConfirmAllowed', () => {
   const outputPath = '/private/tmp/openburnbar-cursor-smoke-abc123/smoke-output.json';
   const targetPath = '/private/tmp/openburnbar-cursor-smoke-abc123/workspace/src/example.ts';
+  // The fixtures live under the macOS smoke root, so pass it explicitly: the
+  // default approved roots are platform-dependent and CI runs on Linux.
+  const approvedTempRoots = ['/private/tmp'];
   const env = {
     BURNBAR_CURSOR_SMOKE_AUTO_CONFIRM: '1',
     BURNBAR_CURSOR_SMOKE_OUTPUT: outputPath,
@@ -205,7 +208,9 @@ describe('isCursorSmokeWorkspaceEditAutoConfirmAllowed', () => {
       isCursorSmokeWorkspaceEditAutoConfirmAllowed(
         [{ path: targetPath, text: 'export const value = 43;\n' }],
         [`file://${targetPath}`],
-        env
+        env,
+        {},
+        approvedTempRoots
       )
     ).toBe(true);
   });
@@ -220,7 +225,8 @@ describe('isCursorSmokeWorkspaceEditAutoConfirmAllowed', () => {
           autoConfirm: true,
           outputPath,
           filePath: targetPath
-        }
+        },
+        approvedTempRoots
       )
     ).toBe(true);
   });

@@ -718,6 +718,7 @@ private extension UsageAggregator {
     }
 
     func scheduleNextProjectionSweepIfNeeded() async {
+        // try?-ok(lease probe is best-effort; a failed read skips this sweep, next projection request retries)
         guard let nextAvailableAt = try? await dataStore.nextProjectionJobLeaseOpportunity() else {
             return
         }

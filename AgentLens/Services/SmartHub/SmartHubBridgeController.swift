@@ -595,6 +595,7 @@ final class SmartHubBridgeController {
         ) { [dataStore] requestedPeriods in
             guard let dataStore else { return [:] }
             let ranges = requestedPeriods.map { Self.dateRange(for: $0, now: now) }
+            // try?-ok(cost totals are best-effort display data; failure shows empty rail)
             guard let loadedTotals = try? await dataStore.providerRunCostTotals(in: ranges) else {
                 return [:]
             }

@@ -68,7 +68,7 @@ final class PixelClockSettingsCardTests: XCTestCase {
                 "Flash and Finish Setup",
                 "Detect after flash",
                 "Customize display",
-                "Advanced",
+                "Advanced"
             ]
         )
 

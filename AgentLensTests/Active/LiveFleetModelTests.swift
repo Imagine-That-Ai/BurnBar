@@ -27,7 +27,8 @@ final class LiveFleetModelTests: XCTestCase {
         )
 
         guard case .wroteRecently(_, let source) = model.rows.first?.liveness else {
-            return XCTFail("Expected a recent write, got \(String(describing: model.rows.first?.liveness))")
+            XCTFail("Expected a recent write, got \(String(describing: model.rows.first?.liveness))")
+            return
         }
         if case .sessionLogWrite = source { } else {
             XCTFail("The watcher's evidence should win over the parsed row")
@@ -48,7 +49,8 @@ final class LiveFleetModelTests: XCTestCase {
         )
 
         guard case .unobservable(let reason) = model.rows.first?.liveness else {
-            return XCTFail("An unwatchable provider must report why, not appear quiet")
+            XCTFail("An unwatchable provider must report why, not appear quiet")
+            return
         }
         XCTAssertEqual(reason, "App Store build can't read agent logs")
     }
@@ -70,7 +72,8 @@ final class LiveFleetModelTests: XCTestCase {
         )
 
         guard case .unobservable = model.rows.first?.liveness else {
-            return XCTFail("Pre-sleep timestamps must not render as current after a wake")
+            XCTFail("Pre-sleep timestamps must not render as current after a wake")
+            return
         }
     }
 

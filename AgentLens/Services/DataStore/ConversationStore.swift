@@ -83,6 +83,7 @@ final class ConversationStore: Sendable {
               let data = payload.data(using: .utf8) else {
             return nil
         }
+        // try?-ok(legacy/foreign payloads decode to nil; callers treat nil as "no hash")
         return try? JSONDecoder().decode(String.self, from: data)
     }
 

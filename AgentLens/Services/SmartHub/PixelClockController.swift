@@ -381,9 +381,10 @@ final class PixelClockController {
                     self.updateProbeStatus(.awtrixReady)
                 }
                 await self.inputController?.ingest(currentAppName: appName, config: config)
+                // try?-ok(sleep cancellation)
                 try? await Task.sleep(
                     nanoseconds: Self.inputPollNanoseconds(hasAppName: appName != nil)
-                ) // try?-ok(sleep cancellation)
+                )
             }
         }
 

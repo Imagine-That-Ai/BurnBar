@@ -61,27 +61,13 @@ apps/console/lib/escrow.ts ::: zero-knowledge ::: 1
 apps/console/lib/api.ts ::: zero-knowledge ::: 1
 
 # ===================== [internal] internal specs / briefs ========================
-# Honesty-guardrail doc ("## Honest claim ceiling"): the phrase is the CAVEATED honest
-# form (discloses the deterministic-index structure leak in the same sentence).
-docs/searchable-index-leakage.md ::: search without reading ::: 1
-docs/FEATURE_GATING_SPEC.md ::: server searches without reading it ::: 2
-docs/FEATURE_GATING_SPEC.md ::: searches without reading ::: 4
+# (docs/ reorg on usage-memory/pr3-stage0-gate: docs/pricing/*, docs/searchable-index-leakage.md
+# and docs/security/SECURITY_REMEDIATION_2026-06-09.md were deleted; the FEATURE_GATING_SPEC.md
+# quotes were reworded. Their former allowlist baselines were removed with them.)
 docs/PENSIEVE_CONTROL_CENTER.md ::: zero-knowledge ::: 2
 docs/PENSIEVE_CONTROL_CENTER_RUNBOOK.md ::: zero-knowledge ::: 2
 docs/PROVIDERS.md ::: zero-knowledge ::: 1
-docs/pricing/1_architecture_and_cost_vectors.md ::: zero-knowledge ::: 3
-docs/pricing/3_paid_pro_cloud_tier.md ::: zero-knowledge ::: 4
-docs/pricing/4_cost_of_goods_sold_cogs_model.md ::: zero-knowledge ::: 1
-docs/pricing/5_pricing_strategy_and_recommendations.md ::: zero-knowledge ::: 5
-docs/pricing/gpt-pro-brief/01_PRODUCT_AND_SYSTEM_OVERVIEW.md ::: zero-knowledge ::: 2
-docs/pricing/gpt-pro-brief/02_CLOUD_BACKEND_AND_INFRASTRUCTURE.md ::: zero-knowledge ::: 1
-docs/pricing/gpt-pro-brief/03_FEATURE_COST_AND_QUOTA_MAP.md ::: zero-knowledge ::: 3
-docs/pricing/gpt-pro-brief/05_TWO_TIER_PRICING_BRIEF_FOR_GPT_PRO.md ::: zero-knowledge ::: 2
-docs/pricing/gpt-pro-brief/06_OPERATIONAL_EXECUTION_APPENDIX.md ::: zero-knowledge ::: 1
-# Cure53 §9.2 / App.E (2026-06-12): the BurnBar §9.2 honesty additions ("no one in
-# the middle" / "that includes us" / unqualified product-wide E2E) were conditioned
-# DOWN in the user-facing copy (faq.ts:204, floo.astro). This remediation note QUOTES
-# the old Floo phrase verbatim ("The 'no one in the middle, includes us' Floo claim
-# becomes fully accurate once C-1 lands") to track the finding — it is an internal
-# audit doc, NOT shipped to users, so the quote is reviewed + allowlisted.
-docs/security/SECURITY_REMEDIATION_2026-06-09.md ::: no one in the middle ::: 1
+# Meta-references: these two internal planning docs QUOTE "zero-knowledge" only to ban
+# it from user-facing copy ("What the paywall may not say"). Not a claim — a rule.
+docs/PRODUCT_FOCUS_AND_ONBOARDING_PLAN.md ::: zero-knowledge ::: 1
+docs/product-focus/MONETIZATION_AND_TRIAL_SPEC.md ::: zero-knowledge ::: 1

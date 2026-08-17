@@ -6,6 +6,15 @@ import OpenBurnBarCore
 // Model-filter, OpenCode, and Pi-agent log parsers.
 // Extracted from UsageAggregatorParsers.swift (god-file decomposition) — same module, verbatim.
 
+/// Typed seam over a decoded JSON log line. Provider logs carry ad-hoc per-line
+/// keys (`model`/`message.model`, `usage`/`message.usage`), so the storage stays
+/// an untyped dictionary — but the boundary cast lives in exactly one accessor.
+private typealias LogLineJSONObject = [String: Any]
+
+private func logLineObject(_ value: Any?) -> LogLineJSONObject? {
+    value as? LogLineJSONObject
+}
+
 final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
     let provider: AgentProvider
     private let modelPattern: String
@@ -300,7 +309,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
 
             conv.ingest(jsonLine: json)
 
-            if let message = json["message"] as? [String: Any] {
+            if let message = logLineObject(json["message"]) {
                 let role = (message["role"] as? String)?.lowercased()
                 if let content = message["content"] {
                     let metrics = OpenBurnBarCore.TokenExtractionUtility.contentMetrics(from: content)
@@ -326,7 +335,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
             }
 
             if usedSettingsTotals {
-                if let message = json["message"] as? [String: Any],
+                if let message = logLineObject(json["message"]),
                    message["role"] as? String == "assistant",
                    let ts = json["timestamp"] as? String {
                     // Shared lenient parser: accepts fractional seconds and skips
@@ -338,7 +347,7 @@ final class ModelFilterParser: OpenBurnBarCore.LogParser, Sendable {
                 continue
             }
 
-            if let message = json["message"] as? [String: Any],
+            if let message = logLineObject(json["message"]),
                let usage = message["usage"] as? [String: Any] {
                 let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(
                     usage,
@@ -1216,9 +1225,10 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
             }
 
             OpenBurnBarCore.parserAutoReleasePool {
-                guard let json = try? JSONSerialization.jsonObject(
+                // try?-ok(per-line decode, skip)
+                guard let json = logLineObject(try? JSONSerialization.jsonObject(
                     with: Data(line.utf8)
-                ) as? [String: Any] else { // try?-ok(per-line decode, skip)
+                )) else {
                     return
                 }
 
@@ -1227,15 +1237,15 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
                     if startTime == nil { startTime = date }
                     endTime = date
                 }
-                if let m = (json["model"] as? String ?? (json["message"] as? [String: Any])?["model"] as? String)?.nonEmpty {
+                if let m = (json["model"] as? String ?? logLineObject(json["message"])?["model"] as? String)?.nonEmpty {
                     model = OpenBurnBarCore.TokenExtractionUtility.normalizeModelName(m)
                 }
                 if let cwd = (json["cwd"] as? String ?? json["workingDirectory"] as? String ?? json["directory"] as? String)?.nonEmpty {
                     workingDirectory = cwd
                 }
 
-                if let usage = json["usage"] as? [String: Any]
-                    ?? (json["message"] as? [String: Any])?["usage"] as? [String: Any] {
+                if let usage = logLineObject(json["usage"])
+                    ?? logLineObject(logLineObject(json["message"])?["usage"]) {
                     let extracted = OpenBurnBarCore.TokenExtractionUtility.extractUsageTokens(usage)
                     inputTokens += extracted.input
                     outputTokens += extracted.output
@@ -1246,7 +1256,7 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
                 guard includeConversationBodies else { return }
                 contentExtractionLineCount += 1
 
-                let message = json["message"] as? [String: Any]
+                let message = logLineObject(json["message"])
                 let role = (json["role"] as? String ?? message?["role"] as? String ?? json["type"] as? String ?? "").lowercased()
                 let content = Self.contentText(json["content"] ?? message?["content"] ?? json["text"])
 
@@ -1372,10 +1382,11 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
         file: URL,
         resourceGovernor: OpenBurnBarCore.ParserResourceGovernor?
     ) throws -> (userChars: Int, assistantChars: Int, messageCount: Int, lineCount: Int) {
+        // try?-ok(unreadable file falls back to zeroed metrics)
         guard let handle = try? FileHandle(forReadingFrom: file) else {
             return (0, 0, 0, 0)
         }
-        defer { try? handle.close() }
+        defer { try? handle.close() } // try?-ok(handle teardown)
 
         var userChars = 0
         var assistantChars = 0
@@ -1388,12 +1399,13 @@ final class PiAgentParser: OpenBurnBarCore.LogParser, Sendable {
                 try resourceGovernor?.checkpoint()
             }
             OpenBurnBarCore.parserAutoReleasePool {
-                guard let json = try? JSONSerialization.jsonObject(
+                // try?-ok(per-line decode, skip)
+                guard let json = logLineObject(try? JSONSerialization.jsonObject(
                     with: Data(line.utf8)
-                ) as? [String: Any] else {
+                )) else {
                     return
                 }
-                let message = json["message"] as? [String: Any]
+                let message = logLineObject(json["message"])
                 let role = (
                     json["role"] as? String
                         ?? message?["role"] as? String

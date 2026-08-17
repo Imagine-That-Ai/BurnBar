@@ -67,7 +67,7 @@ export interface BurnBarWorkspaceApi {
   joinPath(base: BurnBarWorkspaceUri, ...paths: string[]): BurnBarWorkspaceUri;
 }
 
-export interface CursorSmokeWorkspaceEditConfiguration {
+interface CursorSmokeWorkspaceEditConfiguration {
   autoConfirm?: boolean;
   outputPath?: string;
   filePath?: string;
@@ -136,7 +136,7 @@ export function createBurnBarWorkspaceApi(hostKind: BurnBarWorkspaceHostKind): B
 export function isCursorSmokeWorkspaceEditAutoConfirmAllowed(
   changes: readonly OpenBurnBarApplyPatchChange[],
   changedFiles: readonly string[],
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
   config: CursorSmokeWorkspaceEditConfiguration = {},
   approvedTempRoots: readonly string[] = cursorSmokeTempRoots()
 ): boolean {

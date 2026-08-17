@@ -43,7 +43,8 @@ final class FleetLivenessResolverTests: XCTestCase {
         let liveness = FleetLivenessResolver.resolve(FleetLivenessResolver.Evidence(), now: now)
 
         guard case .unobservable = liveness else {
-            return XCTFail("No evidence must resolve to .unobservable, got \(liveness)")
+            XCTFail("No evidence must resolve to .unobservable, got \(liveness)")
+            return
         }
     }
 
@@ -76,7 +77,8 @@ final class FleetLivenessResolverTests: XCTestCase {
         evidence.unobservableReason = "Not watched while asleep"
 
         guard case .unobservable(let reason) = FleetLivenessResolver.resolve(evidence, now: now) else {
-            return XCTFail("A sleep gap must suppress a stale write")
+            XCTFail("A sleep gap must suppress a stale write")
+            return
         }
         XCTAssertEqual(reason, "Not watched while asleep")
     }
@@ -89,7 +91,8 @@ final class FleetLivenessResolverTests: XCTestCase {
         evidence.unobservableReason = "Not watched while asleep"
 
         guard case .workingHere = FleetLivenessResolver.resolve(evidence, now: now) else {
-            return XCTFail("An in-app turn must outrank a sleep gap")
+            XCTFail("An in-app turn must outrank a sleep gap")
+            return
         }
     }
 
@@ -100,7 +103,8 @@ final class FleetLivenessResolverTests: XCTestCase {
         evidence.lastWrite = (now.addingTimeInterval(-(FleetWindow.active - 1)), .parsedUsageRow)
 
         guard case .wroteRecently = FleetLivenessResolver.resolve(evidence, now: now) else {
-            return XCTFail("A write inside the active window is recent")
+            XCTFail("A write inside the active window is recent")
+            return
         }
     }
 
@@ -109,7 +113,8 @@ final class FleetLivenessResolverTests: XCTestCase {
         evidence.lastWrite = (now.addingTimeInterval(-(FleetWindow.active + 1)), .parsedUsageRow)
 
         guard case .quietSince = FleetLivenessResolver.resolve(evidence, now: now) else {
-            return XCTFail("A write outside the active window is quiet — but still not idle")
+            XCTFail("A write outside the active window is quiet — but still not idle")
+            return
         }
     }
 
@@ -120,7 +125,8 @@ final class FleetLivenessResolverTests: XCTestCase {
         evidence.lastWrite = (now.addingTimeInterval(-10), .sessionLogWrite("a.jsonl"))
 
         guard case .blocked = FleetLivenessResolver.resolve(evidence, now: now) else {
-            return XCTFail("A blocked agent must report the block, not the write")
+            XCTFail("A blocked agent must report the block, not the write")
+            return
         }
     }
 
@@ -130,7 +136,8 @@ final class FleetLivenessResolverTests: XCTestCase {
         evidence.lastWrite = (now.addingTimeInterval(120), .sessionLogWrite("a.jsonl"))
 
         guard case .wroteRecently = FleetLivenessResolver.resolve(evidence, now: now) else {
-            return XCTFail("A future-dated write must degrade to recent, not to quiet")
+            XCTFail("A future-dated write must degrade to recent, not to quiet")
+            return
         }
     }
 
@@ -139,7 +146,8 @@ final class FleetLivenessResolverTests: XCTestCase {
         evidence.presence = .ready
 
         guard case .standingBy = FleetLivenessResolver.resolve(evidence, now: now) else {
-            return XCTFail("A reachable agent we have simply not seen yet is standing by")
+            XCTFail("A reachable agent we have simply not seen yet is standing by")
+            return
         }
     }
 

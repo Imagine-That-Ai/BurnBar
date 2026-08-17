@@ -955,15 +955,7 @@ final class MercuryControlStreamMediaSink: MediaStreamSink, Sendable {
 
     private func startHeartbeatLoop() {
         guard heartbeatInterval > 0 else { return }
-        heartbeatTask.write(Task { [
-            sendGate,
-            uid,
-            connectionID,
-            streamClass,
-            heartbeatInterval,
-            extraHeartbeatCapabilities,
-            streamingCapabilityProvider
-        ] in
+        heartbeatTask.write(Task { [sendGate, uid, connectionID, streamClass, heartbeatInterval, extraHeartbeatCapabilities, streamingCapabilityProvider] in
             let streamingCapabilities = streamingCapabilityProvider().wireValue
             await Self.sendMirrorHealthHeartbeat(
                 sendGate: sendGate,

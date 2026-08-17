@@ -140,7 +140,7 @@ final class ProviderSessionActivityWatcher {
         pending[provider]?.cancel()
         pending[provider] = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(for: self.configuration.debounce)
+            try? await Task.sleep(for: self.configuration.debounce) // try?-ok(cancellation only; debounce sleep)
             guard Task.isCancelled == false else { return }
             self.commit(provider: provider, paths: paths, root: root)
         }
@@ -154,6 +154,7 @@ final class ProviderSessionActivityWatcher {
         var newest: (date: Date, path: String)?
         for path in paths {
             let url = URL(fileURLWithPath: path)
+            // try?-ok(session file may vanish between event and stat; skip it)
             guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
                   let modified = values.contentModificationDate else { continue }
             if let current = newest, current.date >= modified { continue }

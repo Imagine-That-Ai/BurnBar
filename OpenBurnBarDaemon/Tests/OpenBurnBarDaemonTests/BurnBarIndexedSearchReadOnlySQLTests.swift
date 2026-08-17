@@ -208,7 +208,7 @@ final class BurnBarIndexedSearchReadOnlySQLTests: XCTestCase {
             "SQLCipher codec not linked in this build; keyed-read coverage requires it."
         )
         let path = tempDir.appendingPathComponent("cipher.sqlite").path
-        let key = "b3BlbmJ1cm5iYXItdGVzdC1rZXk="
+        let key = "b3BlbmJ1cm5iYXItdGVzdC1rZXk=" // gitleaks:allow — base64("openburnbar-test-key"), a throwaway fixture passphrase, not a credential
         try makeFixtureDatabase(at: path, cipherKey: key)
 
         // The fixture must be genuine ciphertext, or this test is the same lie
