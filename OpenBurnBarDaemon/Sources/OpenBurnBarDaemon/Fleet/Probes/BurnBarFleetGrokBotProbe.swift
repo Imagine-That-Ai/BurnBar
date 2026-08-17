@@ -101,7 +101,7 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
             ? .ok
             : .degraded(reason: healthReasons.joined(separator: " "))
 
-        return Self.classify(
+        let classified = Self.classify(
             agentID: agentID,
             rootPath: rootPath,
             now: now,
@@ -111,6 +111,25 @@ public struct BurnBarFleetGrokBotProbe: BurnBarFleetProbe {
             signals: signals,
             healthState: healthState
         )
+        // Declared signals expose inflightCount, not per-agent ids. Do not
+        // invent unnamed threads from the count; emit the daemon itself
+        // when it is a live or fresh member.
+        var threads: [BurnBarFleetThread] = []
+        if classified.agent.status == .running || classified.agent.status == .idle {
+            threads.append(
+                BurnBarFleetThread(
+                    id: "daemon",
+                    agentID: agentID,
+                    status: classified.agent.status,
+                    confidence: classified.agent.confidence,
+                    lastActivityAt: classified.agent.lastActivityAt,
+                    process: classified.agent.process,
+                    signals: classified.agent.signals,
+                    note: classified.agent.note ?? "Grok Bot daemon; per-inflight ids are not in declared signal files."
+                )
+            )
+        }
+        return BurnBarFleetProbeSupport.attaching(threads: threads, to: classified)
     }
 
     /// Classifies the row. Running requires a live daemon pid (verified with

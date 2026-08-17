@@ -141,13 +141,73 @@ public struct BurnBarFleetHermesProbe: BurnBarFleetProbe {
             sources: sources,
             healthState: healthState
         )
-        return Self.classify(
+        let classified = Self.classify(
             agentID: agentID,
             rootPath: rootPath,
             now: now,
             heartbeatFreshnessSeconds: heartbeatFreshnessSeconds,
             signals: signals
         )
+        return Self.withThreads(
+            classified,
+            now: now,
+            heartbeatFreshnessSeconds: heartbeatFreshnessSeconds,
+            signals: signals
+        )
+    }
+
+    private static func withThreads(
+        _ result: BurnBarFleetProbeResult,
+        now: Date,
+        heartbeatFreshnessSeconds: TimeInterval,
+        signals: Signals
+    ) -> BurnBarFleetProbeResult {
+        var threads: [BurnBarFleetThread] = []
+        let pid = signals.gatewayPid?.pid
+        let live = pid.map {
+            isLiveGatewayPid($0, gatewayPid: signals.gatewayPid, heartbeat: signals.heartbeat)
+        } ?? false
+        let heartbeatFresh = signals.heartbeat?.isFresh(
+            now: now,
+            freshnessSeconds: heartbeatFreshnessSeconds
+        ) ?? false
+        if live || heartbeatFresh {
+            threads.append(
+                BurnBarFleetThread(
+                    id: "gateway",
+                    agentID: result.agent.id,
+                    status: result.agent.status,
+                    confidence: result.agent.confidence,
+                    projectName: result.agent.projectName,
+                    lastActivityAt: result.agent.lastActivityAt ?? signals.heartbeat?.updatedAt,
+                    process: result.agent.process,
+                    signals: result.agent.signals,
+                    note: "Hermes gateway process."
+                )
+            )
+        }
+        if let processes = signals.processes, processes.malformedReason == nil {
+            var seen = Set<String>()
+            for (index, entry) in processes.entries.enumerated() {
+                let raw = entry.cwd.map { "cwd-\($0.replacingOccurrences(of: "/", with: "-"))" }
+                    ?? "proc-\(index)"
+                guard let threadID = BurnBarFleetProbeSupport.sanitizedSessionRef(raw),
+                      seen.insert(threadID).inserted
+                else { continue }
+                threads.append(
+                    BurnBarFleetThread(
+                        id: threadID,
+                        agentID: result.agent.id,
+                        status: live && heartbeatFresh ? .running : result.agent.status,
+                        confidence: .logHeartbeat,
+                        projectName: entry.cwd,
+                        lastActivityAt: signals.heartbeat?.updatedAt,
+                        note: "processes.json entry."
+                    )
+                )
+            }
+        }
+        return BurnBarFleetProbeSupport.attaching(threads: threads, to: result)
     }
 
     private struct ClassificationContext {

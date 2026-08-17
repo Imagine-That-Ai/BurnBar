@@ -558,6 +558,277 @@ final class FleetViewModel {
         agent.confidence == .unsupported
     }
 
+    // MARK: - Command Well
+
+    var selectedAgentID: BurnBarFleetAgentID = .claudeCode
+    var selectedThreadID: String?
+    var composeKind: BurnBarFleetDirectiveKind = .askStatus
+    var composePayload: String = ""
+    var threadFilter: String = ""
+    var lastHandoffNote: String?
+
+    var selectedAgent: BurnBarFleetAgent? {
+        agents.first { $0.id == selectedAgentID }
+    }
+
+    var threadsForSelectedCLI: [BurnBarFleetThread] {
+        guard let snapshot else { return [] }
+        let query = threadFilter.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let threads = snapshot.threads(for: selectedAgentID)
+        let filtered = query.isEmpty ? threads : threads.filter { thread in
+            thread.id.lowercased().contains(query)
+                || (thread.projectName?.lowercased().contains(query) ?? false)
+                || (thread.currentTask?.lowercased().contains(query) ?? false)
+                || FleetStatusPresentation.label(for: thread.status).lowercased().contains(query)
+        }
+        return filtered.sorted { lhs, rhs in
+            if lhs.status.rollupRank != rhs.status.rollupRank {
+                return lhs.status.rollupRank > rhs.status.rollupRank
+            }
+            return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
+        }
+    }
+
+    var selectedThread: BurnBarFleetThread? {
+        if let selectedThreadID {
+            return threadsForSelectedCLI.first { $0.id == selectedThreadID }
+                ?? snapshot?.threads.first { $0.agentID == selectedAgentID && $0.id == selectedThreadID }
+        }
+        return threadsForSelectedCLI.first
+    }
+
+    var queue: [BurnBarFleetDirective] {
+        snapshot?.recentDirectives ?? []
+    }
+
+    struct NeedsYouItem: Identifiable, Equatable {
+        let id: String
+        let text: String
+    }
+
+    var needsYouItems: [NeedsYouItem] {
+        var items: [NeedsYouItem] = []
+        switch loadState {
+        case .daemonDown(let reason):
+            items.append(NeedsYouItem(id: "daemon", text: "Daemon unreachable: \(reason)"))
+        case .loading:
+            break
+        case .ready, .empty:
+            break
+        }
+        if isStale {
+            items.append(NeedsYouItem(id: "stale", text: "Snapshot is stale — the daemon has not refreshed on cadence."))
+        }
+        if let error = orchestratorStateError {
+            items.append(NeedsYouItem(id: "designation", text: "Designation unavailable: \(error)"))
+        }
+        if let error = service.directiveActionError {
+            items.append(NeedsYouItem(id: "directive", text: error))
+        }
+        if let snapshot {
+            let pending = snapshot.recentDirectives.filter {
+                if case .proposed = $0.state { return true }
+                if case .approved = $0.state { return true }
+                return false
+            }
+            if !pending.isEmpty {
+                items.append(NeedsYouItem(
+                    id: "pending",
+                    text: "\(pending.count) directive\(pending.count == 1 ? "" : "s") waiting for approve or dismiss."
+                ))
+            }
+            let failed = snapshot.recentDirectives.filter {
+                if case .failed = $0.state { return true }
+                return false
+            }
+            if !failed.isEmpty {
+                items.append(NeedsYouItem(
+                    id: "failed",
+                    text: "\(failed.count) directive\(failed.count == 1 ? "" : "s") failed."
+                ))
+            }
+            let degraded = snapshot.probeHealth.filter {
+                if case .ok = $0.state { return false }
+                return true
+            }
+            if !degraded.isEmpty {
+                items.append(NeedsYouItem(
+                    id: "probes",
+                    text: "\(degraded.count) probe\(degraded.count == 1 ? "" : "s") degraded or failed."
+                ))
+            }
+        }
+        return items
+    }
+
+    func consumePendingJump() {
+        guard let jump = service.consumePendingJump() else { return }
+        selectedAgentID = jump.0
+        selectedThreadID = jump.1
+    }
+
+    func selectCLI(_ agentID: BurnBarFleetAgentID) {
+        selectedAgentID = agentID
+        if selectedThread?.agentID != agentID {
+            selectedThreadID = threadsForSelectedCLI.first?.id
+        }
+    }
+
+    func selectThread(_ thread: BurnBarFleetThread) {
+        selectedAgentID = thread.agentID
+        selectedThreadID = thread.id
+    }
+
+    func moveThreadSelection(by delta: Int) {
+        let threads = threadsForSelectedCLI
+        guard !threads.isEmpty else { return }
+        let current = selectedThread.flatMap { selected in threads.firstIndex(where: { $0.id == selected.id }) } ?? 0
+        let next = min(max(current + delta, 0), threads.count - 1)
+        selectedThreadID = threads[next].id
+    }
+
+    func runningThreadCount(for agentID: BurnBarFleetAgentID) -> Int? {
+        guard snapshot != nil else { return nil }
+        return snapshot?.countsByAgent[agentID.wireValue] ?? 0
+    }
+
+    func emptyCLIReason(for agentID: BurnBarFleetAgentID) -> String {
+        if snapshot == nil { return "Waiting for snapshot." }
+        if let agent = agents.first(where: { $0.id == agentID }) {
+            if agent.confidence == .unsupported {
+                return agent.note ?? "No live signal. Inbox still accepts a command."
+            }
+            if let note = agent.note, !note.isEmpty { return note }
+        }
+        return "No live or fresh threads for this CLI."
+    }
+
+    @discardableResult
+    func queueDirective(state: BurnBarFleetDirectiveState = .proposed) async -> BurnBarFleetDirective? {
+        let payload: String
+        switch composeKind {
+        case .askStatus:
+            payload = composePayload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "Ask this thread for a concise status update."
+                : composePayload
+        case .summarize:
+            payload = composePayload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "Summarize the current work in this thread."
+                : composePayload
+        case .focusRepo:
+            payload = composePayload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "Focus on \(selectedThread?.projectName ?? selectedAgent?.projectName ?? "the current repo")."
+                : composePayload
+        case .suggestAssignee, .custom:
+            let trimmed = composePayload.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                lastHandoffNote = "Custom payload cannot be empty."
+                return nil
+            }
+            payload = trimmed
+        }
+        let sessionRef = selectedThread?.id ?? "inbox"
+        let directive = BurnBarFleetDirective(
+            id: UUID().uuidString,
+            kind: composeKind,
+            targetAgent: selectedAgentID,
+            sessionRef: sessionRef,
+            payload: payload,
+            state: state,
+            createdAt: Date()
+        )
+        return await service.recordDirective(directive)
+    }
+
+    func designateSelectedThread() async {
+        let sessionRef = selectedThread?.id
+        let designation: BurnBarOrchestratorDesignation
+        if let sessionRef {
+            designation = .agent(id: selectedAgentID, sessionRef: .present(sessionRef))
+        } else {
+            designation = .agent(id: selectedAgentID, sessionRef: .absent)
+        }
+        await setDesignation(designation)
+    }
+
+    func approveAndHandOff(_ directive: BurnBarFleetDirective? = nil) async {
+        let source: BurnBarFleetDirective?
+        if let directive {
+            source = directive
+        } else {
+            source = await queueDirective(state: .proposed)
+        }
+        guard let source else { return }
+        let approved = BurnBarFleetDirective(
+            id: source.id,
+            kind: source.kind,
+            targetAgent: source.targetAgent,
+            sessionRef: source.sessionRef,
+            payload: source.payload,
+            state: .approved,
+            createdAt: source.createdAt,
+            decidedAt: Date()
+        )
+        guard let recorded = await service.recordDirective(approved) else { return }
+        guard let channel = FleetDirectiveChannelRegistry.channel(for: recorded.targetAgent) else {
+            lastHandoffNote = "No documented channel for this CLI."
+            return
+        }
+        let result = await BurnBarFleetDeliveryRunner.run(
+            directive: recorded,
+            channel: channel,
+            record: { candidate in
+                try OpenBurnBarDaemonSocketClient.fleetDirectiveRecord(candidate, at: service.socketURL)
+            }
+        )
+        switch result.outcome {
+        case .delivered:
+            lastHandoffNote = "Delivered to \(recorded.targetAgent?.wireValue ?? "agent") \(recorded.sessionRef ?? "")."
+        case .submitted:
+            lastHandoffNote = "Submitted via inbox for \(recorded.targetAgent?.wireValue ?? "agent") / \(recorded.sessionRef ?? "inbox"). Not a live-TUI inject."
+        case .failed(let reason):
+            lastHandoffNote = "Handoff failed: \(reason)"
+        case .unsupported(let reason):
+            lastHandoffNote = "Unsupported: \(reason)"
+        }
+        refreshNow()
+    }
+
+    func dismissDirective(_ directive: BurnBarFleetDirective) async {
+        let dismissed = BurnBarFleetDirective(
+            id: directive.id,
+            kind: directive.kind,
+            targetAgent: directive.targetAgent,
+            sessionRef: directive.sessionRef,
+            payload: directive.payload,
+            state: .dismissed,
+            createdAt: directive.createdAt,
+            decidedAt: Date(),
+            deliveryChannel: directive.deliveryChannel,
+            deliveryAttemptID: directive.deliveryAttemptID
+        )
+        _ = await service.recordDirective(dismissed)
+        refreshNow()
+    }
+
+    func startNewTurn(_ directive: BurnBarFleetDirective) async {
+        guard let agent = directive.targetAgent,
+              let channel = FleetDirectiveChannelRegistry.oneShot(for: agent)
+        else {
+            lastHandoffNote = "No documented one-shot binary for this CLI. Inbox already holds the command."
+            return
+        }
+        let outcome = await channel.deliver(directive)
+        switch outcome {
+        case .submitted:
+            lastHandoffNote = "Started a new turn with \(channel.binaryName). Not injected into a live TUI."
+        case .unsupported(let reason), .failed(let reason):
+            lastHandoffNote = reason
+        case .delivered:
+            lastHandoffNote = "One-shot cannot be delivered; unexpected ack."
+        }
+    }
+
     // MARK: - Lifecycle
 
     /// Called when the fleet view appears: starts the single poller and
@@ -576,7 +847,8 @@ final class FleetViewModel {
     /// (VAL-DASH-018).
     func viewDisappeared() {
         isVisible = false
-        service.stop()
+        // The dashboard owns the shared FleetService poller so ⌘K, the
+        // chat queue accessory, and the Control Deck tile stay current.
     }
 
     /// Immediate snapshot pull. Used by the daemon-down Retry control so the

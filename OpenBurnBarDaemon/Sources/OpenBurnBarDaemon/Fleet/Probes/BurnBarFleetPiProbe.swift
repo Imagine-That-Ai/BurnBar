@@ -70,7 +70,7 @@ public struct BurnBarFleetPiProbe: BurnBarFleetProbe {
             ? .ok
             : .degraded(reason: healthReasons.joined(separator: " "))
 
-        return Self.classify(
+        let classified = Self.classify(
             agentID: agentID,
             rootPath: rootPath,
             now: now,
@@ -80,6 +80,41 @@ public struct BurnBarFleetPiProbe: BurnBarFleetProbe {
             signals: signals,
             healthState: healthState
         )
+        let threads: [BurnBarFleetThread] = transcripts.compactMap { transcript in
+            guard transcript.malformedReason == nil else { return nil }
+            let member = BurnBarFleetProbeSupport.isThreadMember(
+                liveProcess: false,
+                lastActivity: transcript.mtime,
+                now: now,
+                freshnessSeconds: transcriptFreshnessSeconds
+            )
+            guard member else { return nil }
+            let url = URL(fileURLWithPath: transcript.path)
+            let stem = url.deletingPathExtension().lastPathComponent
+            let projectStem = url.deletingLastPathComponent().lastPathComponent
+            let rawID = "\(projectStem)/\(stem)"
+            let threadID = BurnBarFleetProbeSupport.sanitizedSessionRef(stem)
+                ?? BurnBarFleetProbeSupport.sanitizedSessionRef(rawID.replacingOccurrences(of: "/", with: "--"))
+            guard let threadID else { return nil }
+            let fresh = transcript.mtime.map { now.timeIntervalSince($0) <= transcriptFreshnessSeconds } ?? false
+            return BurnBarFleetThread(
+                id: threadID,
+                agentID: agentID,
+                status: fresh ? .running : .stale,
+                confidence: .logHeartbeat,
+                projectName: transcript.projectName,
+                lastActivityAt: transcript.mtime,
+                signals: [
+                    BurnBarFleetSignalSource(
+                        kind: "log-mtime",
+                        path: transcript.path,
+                        detail: transcript.mtime.map { "mtime \(Int(now.timeIntervalSince($0)))s ago" }
+                    )
+                ],
+                note: "Transcript mtime heuristic; no pid registry exists for Pi."
+            )
+        }
+        return BurnBarFleetProbeSupport.attaching(threads: threads, to: classified)
     }
 
     /// Classifies the row from the newest transcript mtime.

@@ -7,8 +7,11 @@ import Foundation
 /// VAL-ORCH-014/030/036/037). Channels must fail closed: a malformed or
 /// missing acknowledgement never yields `delivered`.
 enum BurnBarFleetDeliveryOutcome: Equatable, Sendable {
-    /// The channel acknowledged delivery of the directive.
+    /// The channel acknowledged delivery of this `directive_id`.
     case delivered
+    /// A documented write succeeded without a typed `directive_id` ack
+    /// (inbox JSONL, CLI exit 0, or OpenAI-shaped HTTP 200).
+    case submitted
     /// The delivery attempt failed with a non-empty reason (transport,
     /// HTTP, or malformed acknowledgement).
     case failed(reason: String)
@@ -196,6 +199,9 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, Sendable {
             return .failed(reason: "malformedAck: response is not valid JSON")
         }
         guard let delivery = ack.burnbarDelivery else {
+            if isOpenAIChatCompletion(data) {
+                return .submitted
+            }
             return .failed(reason: "malformedAck: missing burnbar_delivery acknowledgement")
         }
         guard let ackID = delivery.directiveID else {
@@ -213,6 +219,21 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, Sendable {
         return .delivered
     }
 
+    /// Real Hermes `/v1/chat/completions` returns an OpenAI-shaped body
+    /// without `burnbar_delivery`. That is `submitted`, never `delivered`.
+    static func isOpenAIChatCompletion(_ data: Data) -> Bool {
+        struct Probe: Decodable {
+            let choices: [Choice]
+            struct Choice: Decodable {}
+        }
+        do {
+            _ = try JSONDecoder().decode(Probe.self, from: data)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// The chat-completions request body: the directive is embedded in the
     /// user message as `burnbar_directive: {json}` so the gateway (and the
     /// fixture) can correlate the acknowledgement by directive id.
@@ -221,6 +242,7 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, Sendable {
             id: directive.id,
             kind: directive.kind.rawValue,
             targetAgent: directive.targetAgent?.wireValue,
+            sessionRef: directive.sessionRef,
             payload: directive.payload,
             deliveryAttemptID: directive.deliveryAttemptID
         )
@@ -278,11 +300,12 @@ private struct HermesDirectiveEnvelope: Encodable {
     let id: String
     let kind: String
     let targetAgent: String?
+    let sessionRef: String?
     let payload: String
     let deliveryAttemptID: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, targetAgent, payload, deliveryAttemptID
+        case id, kind, targetAgent, sessionRef, payload, deliveryAttemptID
     }
 
     func encode(to encoder: Encoder) throws {
@@ -293,6 +316,11 @@ private struct HermesDirectiveEnvelope: Encodable {
             try container.encode(targetAgent, forKey: .targetAgent)
         } else {
             try container.encodeNil(forKey: .targetAgent)
+        }
+        if let sessionRef {
+            try container.encode(sessionRef, forKey: .sessionRef)
+        } else {
+            try container.encodeNil(forKey: .sessionRef)
         }
         try container.encode(payload, forKey: .payload)
         if let deliveryAttemptID {

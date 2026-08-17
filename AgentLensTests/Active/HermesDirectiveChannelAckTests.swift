@@ -38,4 +38,12 @@ final class HermesDirectiveChannelAckTests: XCTestCase {
         }
         XCTAssertTrue(reason.contains("missing burnbar_delivery"))
     }
+
+    func test_openAIShaped200IsSubmittedNotDelivered() {
+        let data = Data(#"{"id":"chatcmpl-1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"}}]}"#.utf8)
+        XCTAssertEqual(
+            HermesDirectiveChannel.validateAck(data: data, directiveID: "d1"),
+            .submitted
+        )
+    }
 }

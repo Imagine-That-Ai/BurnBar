@@ -451,4 +451,94 @@ final class BurnBarFleetContractsTests: XCTestCase {
         XCTAssertEqual(BurnBarProtocolVersion.current, 1)
         XCTAssertEqual(BurnBarProtocolVersion.supported, [1])
     }
+
+    // MARK: - Threads + additive snapshot keys
+
+    func test_oldSnapshotJSONWithoutThreadsDecodesEmpty() throws {
+        let original = makeSnapshot()
+        var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any]
+        object?["threads"] = nil
+        object?["recentDirectives"] = nil
+        let data = try JSONSerialization.data(withJSONObject: object ?? [:])
+        let decoded = try JSONDecoder().decode(BurnBarFleetSnapshot.self, from: data)
+        XCTAssertEqual(decoded.threads, [])
+        XCTAssertEqual(decoded.recentDirectives, [])
+        XCTAssertEqual(decoded.runningCount, original.runningCount)
+    }
+
+    func test_threadRoundTrip_preservesSessionRefIdentity() throws {
+        let thread = BurnBarFleetThread(
+            id: "sess-a",
+            agentID: .claudeCode,
+            status: .running,
+            confidence: .exactProcess,
+            projectName: "/tmp/repo",
+            lastActivityAt: Date(timeIntervalSince1970: 1_752_000_000),
+            process: BurnBarFleetProcessInfo(pid: 42)
+        )
+        XCTAssertEqual(try roundTrip(thread), thread)
+    }
+
+    func test_directiveSessionRefAndSubmittedStateRoundTrip() throws {
+        let directive = BurnBarFleetDirective(
+            id: "dir-thread",
+            kind: .askStatus,
+            targetAgent: .codex,
+            sessionRef: "lock-abc",
+            payload: "status",
+            state: .submitted,
+            createdAt: Date(timeIntervalSince1970: 1_752_000_000)
+        )
+        XCTAssertEqual(try roundTrip(directive), directive)
+    }
+
+    func test_snapshotThreadsAndRecentDirectivesRoundTrip() throws {
+        let base = makeSnapshot()
+        let original = BurnBarFleetSnapshot(
+            schemaVersion: base.schemaVersion,
+            generatedAt: base.generatedAt,
+            cadenceSeconds: base.cadenceSeconds,
+            machine: base.machine,
+            agents: base.agents,
+            repos: base.repos,
+            runningCount: 3,
+            countsByAgent: ["claude-code": 3, "grok-bot": 0, "kimi": 0],
+            orchestrator: base.orchestrator,
+            probeHealth: base.probeHealth,
+            persistenceHealth: base.persistenceHealth,
+            threads: [
+                BurnBarFleetThread(
+                    id: "s1",
+                    agentID: .claudeCode,
+                    status: .running,
+                    confidence: .exactProcess
+                ),
+                BurnBarFleetThread(
+                    id: "s2",
+                    agentID: .claudeCode,
+                    status: .running,
+                    confidence: .exactProcess
+                ),
+                BurnBarFleetThread(
+                    id: "s3",
+                    agentID: .claudeCode,
+                    status: .running,
+                    confidence: .exactProcess
+                )
+            ],
+            recentDirectives: [
+                BurnBarFleetDirective(
+                    id: "d1",
+                    kind: .askStatus,
+                    targetAgent: .claudeCode,
+                    sessionRef: "s1",
+                    payload: "status",
+                    state: .proposed,
+                    createdAt: base.generatedAt
+                )
+            ]
+        )
+        XCTAssertEqual(try roundTrip(original), original)
+        XCTAssertEqual(original.threads(for: .claudeCode).count, 3)
+    }
 }

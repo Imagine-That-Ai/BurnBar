@@ -66,6 +66,22 @@ final class BurnBarFleetCursorProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.projectName, "AgentLens")
         XCTAssertEqual(result.health.state, .ok)
         XCTAssertEqual(result.agent.signals.map(\.kind).sorted(), ["log-mtime", "session-registry"])
+        XCTAssertEqual(result.threads.filter { $0.status == .running }.count, 1)
+    }
+
+    func testTwoWorkerIDs_emitTwoRunningThreads() async throws {
+        let now = Date()
+        try writeState(workerIDs: [
+            "RepoA @ host": "worker-1",
+            "RepoB @ host": "worker-2"
+        ])
+        try writeTracking(mtime: now.addingTimeInterval(-10))
+
+        let result = await makeProbe().probe(now: now)
+
+        XCTAssertEqual(result.agent.status, .running)
+        XCTAssertEqual(result.threads.filter { $0.status == .running }.count, 2)
+        XCTAssertEqual(Set(result.threads.map(\.id)), Set(["RepoA @ host", "RepoB @ host"]))
     }
 
     // MARK: - VAL-CONTRACT-017: stale tracking degrades honestly

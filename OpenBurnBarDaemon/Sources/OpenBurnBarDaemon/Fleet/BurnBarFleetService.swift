@@ -228,9 +228,11 @@ public actor BurnBarFleetService {
         persister?.prepareForBuild()
         let orchestratorState = try await controlStore?.currentStateChecked()
             ?? BurnBarOrchestratorState(designation: .none)
+        let recentDirectives = (try? await controlStore?.recentDirectives(limit: 40)) ?? []
         let snapshot = try await builder.build(
             orchestrator: orchestratorState,
-            persistenceHealth: persister?.persistenceHealth() ?? .ok
+            persistenceHealth: persister?.persistenceHealth() ?? .ok,
+            recentDirectives: recentDirectives
         )
         let completedSnapshot = persister?.persist(snapshot: snapshot) ?? snapshot
         completedTickCount += 1

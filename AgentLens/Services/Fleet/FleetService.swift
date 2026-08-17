@@ -76,6 +76,10 @@ final class FleetService {
     /// real `daemon.fleet.orchestrator.set` RPC (M4).
     private let setOrchestratorState: (BurnBarOrchestratorDesignation, URL) throws -> BurnBarOrchestratorState
 
+    /// Directive record closure (injectable for tests). Defaults to
+    /// `daemon.fleet.directive.record`.
+    private let recordDirectiveRPC: (BurnBarFleetDirective, URL) throws -> BurnBarFleetDirective
+
     /// The clock (injectable for deterministic staleness tests).
     private let nowProvider: () -> Date
 
@@ -90,6 +94,13 @@ final class FleetService {
     /// True while a designation set request is in flight (the control
     /// changes only after daemon acknowledgement — VAL-ORCH-034).
     private(set) var isSettingDesignation = false
+    /// True while a directive record/handoff is in flight.
+    private(set) var isRecordingDirective = false
+    /// Last typed error from a Command Well record/handoff.
+    private(set) var directiveActionError: String?
+    /// ⌘K / rail jump consumed by the Command Well once a snapshot is up.
+    private(set) var pendingJumpAgent: BurnBarFleetAgentID?
+    private(set) var pendingJumpThread: String?
     /// True while the poller is active (exactly one poller exists when true).
     private(set) var isPolling = false
     /// Total fleet requests issued since the last `start()` (test seam).
@@ -111,12 +122,16 @@ final class FleetService {
         setOrchestratorState: @escaping (BurnBarOrchestratorDesignation, URL) throws -> BurnBarOrchestratorState = { designation, url in
             try OpenBurnBarDaemonSocketClient.fleetOrchestratorSet(designation, at: url)
         },
+        recordDirective: @escaping (BurnBarFleetDirective, URL) throws -> BurnBarFleetDirective = { directive, url in
+            try OpenBurnBarDaemonSocketClient.fleetDirectiveRecord(directive, at: url)
+        },
         now: @escaping () -> Date = { Date() }
     ) {
         self.socketURL = socketURL
         self.fetchSnapshot = fetchSnapshot
         self.fetchOrchestratorState = fetchOrchestratorState
         self.setOrchestratorState = setOrchestratorState
+        self.recordDirectiveRPC = recordDirective
         self.nowProvider = now
     }
 
@@ -273,6 +288,35 @@ final class FleetService {
             orchestratorStateError = nil
         } catch {
             orchestratorStateError = error.localizedDescription
+        }
+    }
+
+    /// Records a directive with the daemon (approve-before-send). The
+    /// returned record is authoritative.
+    func jumpTo(agent: BurnBarFleetAgentID, threadID: String? = nil) {
+        pendingJumpAgent = agent
+        pendingJumpThread = threadID
+    }
+
+    func consumePendingJump() -> (BurnBarFleetAgentID, String?)? {
+        guard let agent = pendingJumpAgent else { return nil }
+        let thread = pendingJumpThread
+        pendingJumpAgent = nil
+        pendingJumpThread = nil
+        return (agent, thread)
+    }
+
+    func recordDirective(_ directive: BurnBarFleetDirective) async -> BurnBarFleetDirective? {
+        guard !isRecordingDirective else { return nil }
+        isRecordingDirective = true
+        defer { isRecordingDirective = false }
+        do {
+            let recorded = try recordDirectiveRPC(directive, socketURL)
+            directiveActionError = nil
+            return recorded
+        } catch {
+            directiveActionError = error.localizedDescription
+            return nil
         }
     }
 

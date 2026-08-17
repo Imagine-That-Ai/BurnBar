@@ -9,6 +9,7 @@ private struct StubProbe: BurnBarFleetProbe {
     let rootPath: String
     let agent: BurnBarFleetAgent
     let healthState: BurnBarFleetProbeHealthState
+    var threads: [BurnBarFleetThread] = []
 
     func probe(now: Date) async -> BurnBarFleetProbeResult {
         BurnBarFleetProbeResult(
@@ -18,7 +19,8 @@ private struct StubProbe: BurnBarFleetProbe {
                 state: healthState,
                 rootPath: rootPath,
                 checkedAt: now
-            )
+            ),
+            threads: threads
         )
     }
 }
@@ -204,6 +206,36 @@ final class BurnBarFleetSnapshotBuilderTests: XCTestCase {
             let expected = agent.status == .running ? 1 : 0
             XCTAssertEqual(snapshot.countsByAgent[agent.id.wireValue], expected)
         }
+    }
+
+    func testCountsByAgent_usesRunningThreadCount() async throws {
+        let runningAgent = BurnBarFleetAgent(
+            id: .claudeCode,
+            displayName: "Claude Code",
+            status: .running,
+            confidence: .exactProcess
+        )
+        let threads = (1...3).map { index in
+            BurnBarFleetThread(
+                id: "sess-\(index)",
+                agentID: .claudeCode,
+                status: .running,
+                confidence: .exactProcess
+            )
+        }
+        var probes: [BurnBarFleetAgentID: any BurnBarFleetProbe] = [:]
+        probes[.claudeCode] = StubProbe(
+            agentID: .claudeCode,
+            rootPath: "/fixture/claude",
+            agent: runningAgent,
+            healthState: .ok,
+            threads: threads
+        )
+        let snapshot = try await makeBuilder(probes: probes).build()
+        XCTAssertEqual(snapshot.threads.count, 3)
+        XCTAssertEqual(snapshot.countsByAgent["claude-code"], 3)
+        XCTAssertEqual(snapshot.runningCount, 3)
+        XCTAssertEqual(snapshot.threads(for: .codex).count, 0)
     }
 
     // MARK: - Repo grouping

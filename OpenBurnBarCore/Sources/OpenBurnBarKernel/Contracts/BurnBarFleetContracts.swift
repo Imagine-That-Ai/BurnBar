@@ -180,6 +180,20 @@ public enum BurnBarFleetAgentStatus: String, Codable, CaseIterable, Hashable, Se
     case stale
     case unknown
 
+    /// Roll-up rank: running outranks idle, then stale, then unknown.
+    public var rollupRank: Int {
+        switch self {
+        case .running:
+            return 3
+        case .idle:
+            return 2
+        case .stale:
+            return 1
+        case .unknown:
+            return 0
+        }
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let raw = try container.decode(String.self)
@@ -383,6 +397,106 @@ public struct BurnBarFleetAgent: Codable, Hashable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(displayName, forKey: .displayName)
+        try container.encode(status, forKey: .status)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encodeIfPresent(currentTask, forKey: .currentTask)
+        try container.encodeIfPresent(projectName, forKey: .projectName)
+        try container.encodeIfPresent(model, forKey: .model)
+        try container.encodeFleetDateIfPresent(lastActivityAt, forKey: .lastActivityAt)
+        try container.encodeIfPresent(process, forKey: .process)
+        try container.encode(signals, forKey: .signals)
+        try container.encodeIfPresent(note, forKey: .note)
+    }
+}
+
+// MARK: - Thread
+
+/// Hard cap on threads emitted per roster CLI per tick. Older threads
+/// beyond the cap are dropped and the probe notes the truncation.
+public enum BurnBarFleetThreadLimits {
+    public static let maxPerAgent = 50
+}
+
+/// One live-or-fresh session/lock/transcript/worker for a roster CLI.
+///
+/// `id` is the stable `sessionRef` (never a PID alone). The ten agent rows
+/// remain the honesty roll-up; this is the command-center atom.
+public struct BurnBarFleetThread: Codable, Hashable, Sendable {
+    public let id: String
+    public let agentID: BurnBarFleetAgentID
+    public let status: BurnBarFleetAgentStatus
+    public let confidence: BurnBarFleetConfidence
+    public let currentTask: String?
+    public let projectName: String?
+    public let model: String?
+    /// ISO-8601 UTC string on the wire.
+    public let lastActivityAt: Date?
+    public let process: BurnBarFleetProcessInfo?
+    public let signals: [BurnBarFleetSignalSource]
+    public let note: String?
+
+    public init(
+        id: String,
+        agentID: BurnBarFleetAgentID,
+        status: BurnBarFleetAgentStatus,
+        confidence: BurnBarFleetConfidence,
+        currentTask: String? = nil,
+        projectName: String? = nil,
+        model: String? = nil,
+        lastActivityAt: Date? = nil,
+        process: BurnBarFleetProcessInfo? = nil,
+        signals: [BurnBarFleetSignalSource] = [],
+        note: String? = nil
+    ) {
+        self.id = id
+        self.agentID = agentID
+        self.status = status
+        self.confidence = confidence
+        self.currentTask = currentTask
+        self.projectName = projectName
+        self.model = model
+        self.lastActivityAt = lastActivityAt
+        self.process = process
+        self.signals = signals
+        self.note = note
+    }
+
+    @discardableResult
+    public func validateConsistency() throws -> BurnBarFleetThread {
+        switch (status, confidence) {
+        case (.running, .unsupported), (.running, .estimated):
+            throw BurnBarFleetContractError.inconsistentStatusConfidence(status: status, confidence: confidence)
+        case (.unknown, .exactProcess):
+            throw BurnBarFleetContractError.inconsistentStatusConfidence(status: status, confidence: confidence)
+        default:
+            return self
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, agentID, status, confidence, currentTask, projectName,
+             model, lastActivityAt, process, signals, note
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        agentID = try container.decode(BurnBarFleetAgentID.self, forKey: .agentID)
+        status = try container.decode(BurnBarFleetAgentStatus.self, forKey: .status)
+        confidence = try container.decode(BurnBarFleetConfidence.self, forKey: .confidence)
+        currentTask = try container.decodeIfPresent(String.self, forKey: .currentTask)
+        projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        lastActivityAt = try container.decodeFleetDateIfPresent(forKey: .lastActivityAt)
+        process = try container.decodeIfPresent(BurnBarFleetProcessInfo.self, forKey: .process)
+        signals = try container.decodeIfPresent([BurnBarFleetSignalSource].self, forKey: .signals) ?? []
+        note = try container.decodeIfPresent(String.self, forKey: .note)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(agentID, forKey: .agentID)
         try container.encode(status, forKey: .status)
         try container.encode(confidence, forKey: .confidence)
         try container.encodeIfPresent(currentTask, forKey: .currentTask)
@@ -756,18 +870,26 @@ public enum BurnBarFleetDirectiveKind: String, Codable, CaseIterable, Hashable, 
     }
 }
 
-/// Tagged directive state. Non-failure states are bare `{"kind":...}` objects;
-/// failure carries a non-empty reason.
+/// Tagged directive state. Bare `{"kind":...}` objects except failure and
+/// unsupported, which carry a non-empty reason.
 ///
 /// Wire shapes: `{"kind":"proposed"}`, `{"kind":"approved"}`,
-/// `{"kind":"dismissed"}`, `{"kind":"delivered"}`, or
-/// `{"kind":"failed","reason":"<non-empty>"}`.
+/// `{"kind":"submitted"}`, `{"kind":"dismissed"}`, `{"kind":"delivered"}`,
+/// `{"kind":"failed","reason":"<non-empty>"}`, or
+/// `{"kind":"unsupported","reason":"<non-empty>"}`.
+///
+/// `submitted` means a documented channel accepted the write (inbox,
+/// CLI exit 0, or OpenAI-shaped HTTP 200) without a typed
+/// `directive_id` acknowledgement. `delivered` requires that ack.
+/// UI must never paint `submitted` as Delivered.
 public enum BurnBarFleetDirectiveState: Codable, Hashable, Sendable {
     case proposed
     case approved
+    case submitted
     case dismissed
     case delivered
     case failed(reason: String)
+    case unsupported(reason: String)
 
     private enum CodingKeys: String, CodingKey {
         case kind, reason
@@ -781,6 +903,8 @@ public enum BurnBarFleetDirectiveState: Codable, Hashable, Sendable {
             self = .proposed
         case "approved":
             self = .approved
+        case "submitted":
+            self = .submitted
         case "dismissed":
             self = .dismissed
         case "delivered":
@@ -789,6 +913,10 @@ public enum BurnBarFleetDirectiveState: Codable, Hashable, Sendable {
             let reason = try container.decode(String.self, forKey: .reason)
             try BurnBarFleetContractError.validateNonEmptyReason(reason, field: "directive.state.reason")
             self = .failed(reason: reason)
+        case "unsupported":
+            let reason = try container.decode(String.self, forKey: .reason)
+            try BurnBarFleetContractError.validateNonEmptyReason(reason, field: "directive.state.reason")
+            self = .unsupported(reason: reason)
         default:
             throw BurnBarFleetContractError.unknownDirectiveStateKind(kind)
         }
@@ -801,6 +929,8 @@ public enum BurnBarFleetDirectiveState: Codable, Hashable, Sendable {
             try container.encode("proposed", forKey: .kind)
         case .approved:
             try container.encode("approved", forKey: .kind)
+        case .submitted:
+            try container.encode("submitted", forKey: .kind)
         case .dismissed:
             try container.encode("dismissed", forKey: .kind)
         case .delivered:
@@ -808,6 +938,10 @@ public enum BurnBarFleetDirectiveState: Codable, Hashable, Sendable {
         case .failed(let reason):
             try BurnBarFleetContractError.validateNonEmptyReason(reason, field: "directive.state.reason")
             try container.encode("failed", forKey: .kind)
+            try container.encode(reason, forKey: .reason)
+        case .unsupported(let reason):
+            try BurnBarFleetContractError.validateNonEmptyReason(reason, field: "directive.state.reason")
+            try container.encode("unsupported", forKey: .kind)
             try container.encode(reason, forKey: .reason)
         }
     }
@@ -820,6 +954,8 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
     public let id: String
     public let kind: BurnBarFleetDirectiveKind
     public let targetAgent: BurnBarFleetAgentID?
+    /// Thread this directive addresses. Absent on pre-thread records.
+    public let sessionRef: String?
     public let payload: String
     public let state: BurnBarFleetDirectiveState
     public let createdAt: Date
@@ -834,6 +970,7 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
         id: String,
         kind: BurnBarFleetDirectiveKind,
         targetAgent: BurnBarFleetAgentID? = nil,
+        sessionRef: String? = nil,
         payload: String,
         state: BurnBarFleetDirectiveState,
         createdAt: Date,
@@ -844,6 +981,7 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
         self.id = id
         self.kind = kind
         self.targetAgent = targetAgent
+        self.sessionRef = sessionRef
         self.payload = payload
         self.state = state
         self.createdAt = createdAt
@@ -853,7 +991,7 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, kind, targetAgent, payload, state, createdAt, decidedAt, deliveryChannel,
+        case id, kind, targetAgent, sessionRef, payload, state, createdAt, decidedAt, deliveryChannel,
              deliveryAttemptID
     }
 
@@ -862,6 +1000,7 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
         id = try container.decode(String.self, forKey: .id)
         kind = try container.decode(BurnBarFleetDirectiveKind.self, forKey: .kind)
         targetAgent = try container.decodeIfPresent(BurnBarFleetAgentID.self, forKey: .targetAgent)
+        sessionRef = try container.decodeIfPresent(String.self, forKey: .sessionRef)
         payload = try container.decode(String.self, forKey: .payload)
         state = try container.decode(BurnBarFleetDirectiveState.self, forKey: .state)
         createdAt = try container.decodeFleetDate(forKey: .createdAt)
@@ -875,6 +1014,7 @@ public struct BurnBarFleetDirective: Codable, Hashable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(kind, forKey: .kind)
         try container.encodeIfPresent(targetAgent, forKey: .targetAgent)
+        try container.encodeIfPresent(sessionRef, forKey: .sessionRef)
         try container.encode(payload, forKey: .payload)
         try container.encode(state, forKey: .state)
         try container.encodeFleetDate(createdAt, forKey: .createdAt)
@@ -907,6 +1047,11 @@ public struct BurnBarFleetSnapshot: Codable, Hashable, Sendable {
     public let orchestrator: BurnBarOrchestratorState
     public let probeHealth: [BurnBarFleetProbeHealth]
     public let persistenceHealth: BurnBarFleetPersistenceHealth
+    /// Bounded live∪fresh threads across every roster CLI. Missing on
+    /// pre-thread snapshots; decodes as `[]`.
+    public let threads: [BurnBarFleetThread]
+    /// Recent directive records (newest first). Missing decodes as `[]`.
+    public let recentDirectives: [BurnBarFleetDirective]
 
     public init(
         schemaVersion: Int = BurnBarFleetSnapshot.currentSchemaVersion,
@@ -919,7 +1064,9 @@ public struct BurnBarFleetSnapshot: Codable, Hashable, Sendable {
         countsByAgent: [String: Int],
         orchestrator: BurnBarOrchestratorState,
         probeHealth: [BurnBarFleetProbeHealth],
-        persistenceHealth: BurnBarFleetPersistenceHealth
+        persistenceHealth: BurnBarFleetPersistenceHealth,
+        threads: [BurnBarFleetThread] = [],
+        recentDirectives: [BurnBarFleetDirective] = []
     ) {
         self.schemaVersion = schemaVersion
         self.generatedAt = generatedAt
@@ -932,21 +1079,32 @@ public struct BurnBarFleetSnapshot: Codable, Hashable, Sendable {
         self.orchestrator = orchestrator
         self.probeHealth = probeHealth
         self.persistenceHealth = persistenceHealth
+        self.threads = threads
+        self.recentDirectives = recentDirectives
+    }
+
+    /// Threads for one roster CLI, in snapshot order.
+    public func threads(for agentID: BurnBarFleetAgentID) -> [BurnBarFleetThread] {
+        threads.filter { $0.agentID == agentID }
     }
 
     /// Validates the schema-level status/confidence consistency rule across all
-    /// agent rows (encode-side guard; see `BurnBarFleetAgent.validateConsistency`).
+    /// agent rows and threads (encode-side guard).
     @discardableResult
     public func validateConsistency() throws -> BurnBarFleetSnapshot {
         for agent in agents {
             _ = try agent.validateConsistency()
+        }
+        for thread in threads {
+            _ = try thread.validateConsistency()
         }
         return self
     }
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, generatedAt, cadenceSeconds, machine, agents, repos,
-             runningCount, countsByAgent, orchestrator, probeHealth, persistenceHealth
+             runningCount, countsByAgent, orchestrator, probeHealth, persistenceHealth,
+             threads, recentDirectives
     }
 
     public init(from decoder: Decoder) throws {
@@ -969,6 +1127,8 @@ public struct BurnBarFleetSnapshot: Codable, Hashable, Sendable {
         orchestrator = try container.decode(BurnBarOrchestratorState.self, forKey: .orchestrator)
         probeHealth = try container.decode([BurnBarFleetProbeHealth].self, forKey: .probeHealth)
         persistenceHealth = try container.decode(BurnBarFleetPersistenceHealth.self, forKey: .persistenceHealth)
+        threads = try container.decodeIfPresent([BurnBarFleetThread].self, forKey: .threads) ?? []
+        recentDirectives = try container.decodeIfPresent([BurnBarFleetDirective].self, forKey: .recentDirectives) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -990,5 +1150,7 @@ public struct BurnBarFleetSnapshot: Codable, Hashable, Sendable {
         try container.encode(orchestrator, forKey: .orchestrator)
         try container.encode(probeHealth, forKey: .probeHealth)
         try container.encode(persistenceHealth, forKey: .persistenceHealth)
+        try container.encode(threads, forKey: .threads)
+        try container.encode(recentDirectives, forKey: .recentDirectives)
     }
 }

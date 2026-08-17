@@ -257,6 +257,20 @@ public actor BurnBarFleetControlStore {
         return directive
     }
 
+    /// Recent directives, newest first (Command Well + snapshot).
+    public func recentDirectives(limit: Int) throws -> [BurnBarFleetDirective] {
+        observeStoreRecoveryIfNeeded()
+        let records: [BurnBarFleetDirective]
+        if let store, store.isOpen {
+            records = try store.directiveRecords()
+        } else {
+            records = inMemoryRecords
+        }
+        return Array(
+            records.sorted { $0.createdAt > $1.createdAt }.prefix(max(0, limit))
+        )
+    }
+
     // MARK: - Validation
 
     /// Designation validation: `agent` ids must be in the declared ten-ID
@@ -287,10 +301,13 @@ public actor BurnBarFleetControlStore {
         guard !directive.payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw BurnBarFleetControlError.emptyDirectivePayload
         }
-        if case .failed(let reason) = directive.state {
+        switch directive.state {
+        case .failed(let reason), .unsupported(let reason):
             guard !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw BurnBarFleetControlError.emptyDirectiveStateReason
             }
+        case .proposed, .approved, .submitted, .dismissed, .delivered:
+            break
         }
         if let targetAgent = directive.targetAgent {
             guard BurnBarFleetAgentID(wireValue: targetAgent.wireValue) != nil else {
@@ -379,7 +396,7 @@ public actor BurnBarFleetControlStore {
         switch state {
         case .proposed, .approved:
             return true
-        case .dismissed, .delivered, .failed:
+        case .submitted, .dismissed, .delivered, .failed, .unsupported:
             return false
         }
     }
@@ -406,6 +423,15 @@ public actor BurnBarFleetControlStore {
         switch existing.state {
         case .dismissed, .delivered:
             return true
+        case .submitted, .unsupported:
+            // Submitted/unsupported can upgrade to delivered or fail, but
+            // cannot be rewritten back to proposed/approved.
+            switch candidate.state {
+            case .delivered, .failed, .submitted:
+                return false
+            case .proposed, .approved, .dismissed, .unsupported:
+                return true
+            }
         case .failed:
             switch candidate.state {
             case .delivered, .failed:
@@ -420,7 +446,7 @@ public actor BurnBarFleetControlStore {
                     return true
                 }
                 return false
-            case .proposed, .dismissed:
+            case .proposed, .dismissed, .submitted, .unsupported:
                 return true
             }
         case .proposed:
@@ -440,7 +466,7 @@ public actor BurnBarFleetControlStore {
             switch candidate.state {
             case .proposed, .approved:
                 return true
-            case .dismissed, .delivered, .failed:
+            case .dismissed, .delivered, .failed, .submitted, .unsupported:
                 return false
             }
         }

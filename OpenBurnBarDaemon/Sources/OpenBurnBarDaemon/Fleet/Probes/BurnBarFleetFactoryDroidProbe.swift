@@ -98,13 +98,14 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             freshnessSeconds: freshnessSeconds
         )
 
-        return Self.classify(
+        let classified = Self.classify(
             agentID: agentID,
             rootPath: rootPath,
             now: now,
             freshnessSeconds: freshnessSeconds,
             evidence: evidence
         )
+        return Self.withThreads(classified, evidence: evidence, now: now, freshnessSeconds: freshnessSeconds)
     }
 
     /// Collects every evidence source into one set: the declared root itself
@@ -227,6 +228,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             if invocation.isLive(now: now, freshnessSeconds: freshnessSeconds) {
                 liveEvidence.append(
                     Evidence(
+                        id: Self.evidenceID(prefix: "inv", projectName: invocation.cwd, at: invocation.updatedAt),
                         source: .invocation,
                         projectName: invocation.cwd,
                         lastActivityAt: invocation.updatedAt,
@@ -236,6 +238,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             } else if invocation.malformedReason == nil, let updatedAt = invocation.updatedAt {
                 staleEvidence.append(
                     Evidence(
+                        id: Self.evidenceID(prefix: "inv", projectName: invocation.cwd, at: updatedAt),
                         source: .invocation,
                         projectName: invocation.cwd,
                         lastActivityAt: updatedAt,
@@ -257,6 +260,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             if entry.isLive {
                 liveEvidence.append(
                     Evidence(
+                        id: Self.evidenceID(prefix: "bg", projectName: entry.cwd, at: entry.startTime),
                         source: .background,
                         projectName: entry.cwd,
                         lastActivityAt: entry.startTime,
@@ -266,6 +270,7 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             } else if entry.malformedReason == nil, let startTime = entry.startTime {
                 staleEvidence.append(
                     Evidence(
+                        id: Self.evidenceID(prefix: "bg", projectName: entry.cwd, at: startTime),
                         source: .background,
                         projectName: entry.cwd,
                         lastActivityAt: startTime,
@@ -301,6 +306,11 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             if directory.isFresh(now: now, freshnessSeconds: freshnessSeconds) {
                 liveEvidence.append(
                     Evidence(
+                        id: Self.evidenceID(
+                            prefix: kind == "session-directory" ? "sess" : "mission",
+                            projectName: directory.name,
+                            at: directory.mtime
+                        ),
                         source: kind == "session-directory" ? .session : .mission,
                         projectName: projectName,
                         lastActivityAt: directory.mtime,
@@ -310,6 +320,11 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
             } else {
                 staleEvidence.append(
                     Evidence(
+                        id: Self.evidenceID(
+                            prefix: kind == "session-directory" ? "sess" : "mission",
+                            projectName: directory.name,
+                            at: directory.mtime
+                        ),
                         source: kind == "session-directory" ? .session : .mission,
                         projectName: projectName,
                         lastActivityAt: directory.mtime,
@@ -465,10 +480,59 @@ public struct BurnBarFleetFactoryDroidProbe: BurnBarFleetProbe {
     }
 
     private struct Evidence {
+        let id: String
         let source: EvidenceSource
         let projectName: String?
         let lastActivityAt: Date?
         let detail: String
+    }
+
+    private static func evidenceID(prefix: String, projectName: String?, at date: Date?) -> String {
+        let slug = (projectName ?? "unknown")
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
+        let stamp = date.map { String(Int($0.timeIntervalSince1970)) } ?? "na"
+        return BurnBarFleetProbeSupport.sanitizedSessionRef("\(prefix)-\(slug)-\(stamp)")
+            ?? "\(prefix)-\(stamp)"
+    }
+
+    private static func withThreads(
+        _ result: BurnBarFleetProbeResult,
+        evidence: EvidenceSet,
+        now: Date,
+        freshnessSeconds: TimeInterval
+    ) -> BurnBarFleetProbeResult {
+        let candidates = evidence.liveEvidence + evidence.staleEvidence
+        var seen = Set<String>()
+        let threads: [BurnBarFleetThread] = candidates.compactMap { item in
+            let member = evidence.liveEvidence.contains(where: { $0.id == item.id })
+                || BurnBarFleetProbeSupport.isThreadMember(
+                    liveProcess: false,
+                    lastActivity: item.lastActivityAt,
+                    now: now,
+                    freshnessSeconds: freshnessSeconds
+                )
+            guard member else { return nil }
+            guard seen.insert(item.id).inserted else { return nil }
+            let live = evidence.liveEvidence.contains(where: { $0.id == item.id })
+            let fresh = BurnBarFleetProbeSupport.isThreadMember(
+                liveProcess: false,
+                lastActivity: item.lastActivityAt,
+                now: now,
+                freshnessSeconds: freshnessSeconds
+            )
+            let status: BurnBarFleetAgentStatus = live ? .running : (fresh ? .idle : .stale)
+            return BurnBarFleetThread(
+                id: item.id,
+                agentID: result.agent.id,
+                status: status,
+                confidence: .activeSessionFile,
+                projectName: item.projectName,
+                lastActivityAt: item.lastActivityAt,
+                note: item.detail
+            )
+        }
+        return BurnBarFleetProbeSupport.attaching(threads: threads, to: result)
     }
 
     /// Decodes a factory session-dir slug (`-Users-albertonunez-Developer-AgentLens`

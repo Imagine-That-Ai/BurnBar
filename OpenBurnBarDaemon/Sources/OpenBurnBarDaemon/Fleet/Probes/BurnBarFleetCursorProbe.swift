@@ -85,7 +85,7 @@ public struct BurnBarFleetCursorProbe: BurnBarFleetProbe {
             ? .ok
             : .degraded(reason: healthReasons.joined(separator: " "))
 
-        return Self.classify(
+        let classified = Self.classify(
             agentID: agentID,
             rootPath: rootPath,
             now: now,
@@ -95,6 +95,28 @@ public struct BurnBarFleetCursorProbe: BurnBarFleetProbe {
             signals: signals,
             healthState: healthState
         )
+        let trackingFresh = trackingMtime.map { now.timeIntervalSince($0) <= trackingFreshnessSeconds } ?? false
+        let workerIDs = state?.malformedReason == nil ? (state?.workerIDs ?? []) : []
+        let threads: [BurnBarFleetThread] = workerIDs.compactMap { displayName in
+            guard let threadID = BurnBarFleetProbeSupport.sanitizedSessionRef(displayName)
+                ?? BurnBarFleetProbeSupport.sanitizedSessionRef(
+                    displayName.replacingOccurrences(of: "/", with: "--")
+                )
+            else { return nil }
+            return BurnBarFleetThread(
+                id: threadID,
+                agentID: agentID,
+                status: trackingFresh ? .running : .stale,
+                confidence: .activeSessionFile,
+                projectName: Self.projectName(fromDisplayName: displayName),
+                lastActivityAt: trackingMtime,
+                signals: signals,
+                note: trackingFresh
+                    ? "Worker id present with fresh ai-tracking mtime; no pids, partial confidence."
+                    : "Worker id present but ai-tracking mtime is beyond the freshness window."
+            )
+        }
+        return BurnBarFleetProbeSupport.attaching(threads: threads, to: classified)
     }
 
     /// Classifies the row. Running requires worker ids present AND a fresh

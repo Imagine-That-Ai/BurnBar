@@ -11,6 +11,7 @@ struct CommandDeckPalette: View {
     var searchService: SearchService?
     var onNavigate: (DashboardMainRoute) -> Void
     var onSessionJump: (ConversationJumpTarget) -> Void
+    var fleetService: FleetService? = nil
 
     @Environment(\.dismiss) private var dismiss
     @FocusState private var inputFocused: Bool
@@ -65,7 +66,7 @@ struct CommandDeckPalette: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
 
-            TextField("", text: $query, prompt: Text("Jump to section or search sessions…")
+            TextField("", text: $query, prompt: Text("Jump to section, fleet thread, or session…")
                 .foregroundStyle(DesignSystem.Colors.textMuted))
                 .textFieldStyle(.plain)
                 .font(.system(size: 15, weight: .regular, design: .rounded))
@@ -143,6 +144,60 @@ struct CommandDeckPalette: View {
 
     private var hasSessions: Bool { !displaySessions.isEmpty }
 
+    private struct FleetPaletteCommand: Identifiable {
+        let id: String
+        let title: String
+        let subtitle: String
+        let agentID: BurnBarFleetAgentID
+        let threadID: String?
+    }
+
+    private var fleetCommands: [FleetPaletteCommand] {
+        let q = trimmedQuery.lowercased()
+        var commands: [FleetPaletteCommand] = [
+            FleetPaletteCommand(
+                id: "fleet-open",
+                title: "Open Fleet Command Well",
+                subtitle: "All ten CLIs, many threads each",
+                agentID: .claudeCode,
+                threadID: nil
+            )
+        ]
+        for agentID in BurnBarFleetAgentID.declaredRoster {
+            commands.append(
+                FleetPaletteCommand(
+                    id: "fleet-cli-\(agentID.wireValue)",
+                    title: "Jump to \(agentID.wireValue)",
+                    subtitle: "Select this CLI in Fleet",
+                    agentID: agentID,
+                    threadID: nil
+                )
+            )
+        }
+        if let snapshot = fleetService?.loadState.snapshot {
+            for thread in snapshot.threads.prefix(40) {
+                commands.append(
+                    FleetPaletteCommand(
+                        id: "fleet-thread-\(thread.agentID.wireValue)-\(thread.id)",
+                        title: thread.id,
+                        subtitle: "\(thread.agentID.wireValue) · \(thread.projectName ?? "no repo") · \(thread.status.rawValue)",
+                        agentID: thread.agentID,
+                        threadID: thread.id
+                    )
+                )
+            }
+        }
+        guard !q.isEmpty else { return Array(commands.prefix(8)) }
+        return commands.filter {
+            $0.title.lowercased().contains(q)
+                || $0.subtitle.lowercased().contains(q)
+                || $0.agentID.wireValue.contains(q)
+                || q == "fleet"
+                || q == "thread"
+                || q == "command"
+        }
+    }
+
     private var resultsList: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -165,9 +220,28 @@ struct CommandDeckPalette: View {
                         }
                     }
 
+                    if !fleetCommands.isEmpty {
+                        sectionHeader("Fleet")
+                        let fleetOffset = filteredSections.count
+                        ForEach(Array(fleetCommands.enumerated()), id: \.element.id) { index, command in
+                            let flatIndex = fleetOffset + index
+                            paletteRow(
+                                flatIndex: flatIndex,
+                                isSelected: selectedIndex == flatIndex,
+                                icon: "person.3.sequence",
+                                iconColor: DesignSystem.Colors.whimsy,
+                                title: command.title,
+                                subtitle: command.subtitle,
+                                shortcut: nil,
+                                action: { activateFleet(command) }
+                            )
+                            .id(flatIndex)
+                        }
+                    }
+
                     if hasSessions {
                         sectionHeader(trimmedQuery.isEmpty ? "Recent Sessions" : "Sessions")
-                        let sessionOffset = filteredSections.count
+                        let sessionOffset = filteredSections.count + fleetCommands.count
                         ForEach(Array(displaySessions.enumerated()), id: \.element.id) { index, result in
                             let flatIndex = sessionOffset + index
                             paletteRow(
@@ -184,7 +258,7 @@ struct CommandDeckPalette: View {
                         }
                     }
 
-                    if filteredSections.isEmpty && !hasSessions && !trimmedQuery.isEmpty {
+                    if filteredSections.isEmpty && fleetCommands.isEmpty && !hasSessions && !trimmedQuery.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "magnifyingglass")
                                 .font(.system(size: 24, weight: .thin))
@@ -293,18 +367,31 @@ struct CommandDeckPalette: View {
         dismiss()
     }
 
+    private func activateFleet(_ command: FleetPaletteCommand) {
+        if command.id == "fleet-open" {
+            onNavigate(.fleet)
+        } else {
+            fleetService?.jumpTo(agent: command.agentID, threadID: command.threadID)
+            onNavigate(.fleet)
+        }
+        dismiss()
+    }
+
     private func activateSelected() {
         let sections = filteredSections
+        let fleet = fleetCommands
         let sessions = displaySessions
-        let total = sections.count + sessions.count
+        let total = sections.count + fleet.count + sessions.count
         guard selectedIndex >= 0, selectedIndex < total else {
             if let first = sections.first { activate(first) }
             return
         }
         if selectedIndex < sections.count {
             activate(sections[selectedIndex])
+        } else if selectedIndex < sections.count + fleet.count {
+            activateFleet(fleet[selectedIndex - sections.count])
         } else {
-            let sessionIdx = selectedIndex - sections.count
+            let sessionIdx = selectedIndex - sections.count - fleet.count
             if sessionIdx < sessions.count {
                 activateSession(sessions[sessionIdx])
             }
@@ -312,9 +399,7 @@ struct CommandDeckPalette: View {
     }
 
     private func moveSelection(by delta: Int) {
-        let sections = filteredSections
-        let sessions = displaySessions
-        let total = sections.count + sessions.count
+        let total = filteredSections.count + fleetCommands.count + displaySessions.count
         guard total > 0 else { return }
         selectedIndex = min(max(selectedIndex + delta, 0), total - 1)
     }

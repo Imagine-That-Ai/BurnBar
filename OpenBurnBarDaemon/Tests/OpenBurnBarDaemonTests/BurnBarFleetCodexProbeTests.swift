@@ -54,6 +54,20 @@ final class BurnBarFleetCodexProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.lastActivityAt?.timeIntervalSince1970 ?? 0,
                        now.addingTimeInterval(-10).timeIntervalSince1970,
                        accuracy: 1.0)
+        XCTAssertEqual(result.threads.filter { $0.status == .running }.count, 1)
+        XCTAssertEqual(result.threads.first?.id, "thread-1")
+    }
+
+    func testTwoFreshLocks_emitTwoRunningThreads() async throws {
+        let now = Date()
+        try writeLock(named: "thread-a.lock", mtime: now.addingTimeInterval(-8))
+        try writeLock(named: "thread-b.lock", mtime: now.addingTimeInterval(-12))
+
+        let result = await makeProbe().probe(now: now)
+
+        XCTAssertEqual(result.agent.status, .running)
+        XCTAssertEqual(result.threads.filter { $0.status == .running }.count, 2)
+        XCTAssertEqual(Set(result.threads.map(\.id)), Set(["thread-a", "thread-b"]))
     }
 
     // MARK: - VAL-FLEET-006: stale lock → non-running, confidence stays logHeartbeat

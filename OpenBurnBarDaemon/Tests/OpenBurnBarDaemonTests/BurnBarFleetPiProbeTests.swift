@@ -60,6 +60,27 @@ final class BurnBarFleetPiProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.projectName, "/Users/test/RepoA")
         XCTAssertEqual(result.health.state, .ok)
         XCTAssertEqual(result.agent.signals.map(\.kind), ["log-mtime"])
+        XCTAssertEqual(result.threads.filter { $0.status == .running }.count, 1)
+    }
+
+    func testTwoFreshTranscripts_emitTwoRunningThreads() async throws {
+        let now = Date()
+        try writeTranscript(
+            projectDir: "--Users--test--RepoA",
+            name: "one.jsonl",
+            mtime: now.addingTimeInterval(-10)
+        )
+        try writeTranscript(
+            projectDir: "--Users--test--RepoB",
+            name: "two.jsonl",
+            mtime: now.addingTimeInterval(-20)
+        )
+
+        let result = await makeProbe().probe(now: now)
+
+        XCTAssertEqual(result.agent.status, .running)
+        XCTAssertEqual(result.threads.filter { $0.status == .running }.count, 2)
+        XCTAssertEqual(Set(result.threads.map(\.id)), Set(["one", "two"]))
     }
 
     // MARK: - VAL-FLEET-006: stale transcript → non-running, confidence stays logHeartbeat

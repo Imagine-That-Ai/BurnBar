@@ -9,6 +9,7 @@ import Foundation
 /// `unsupported(reason)` — never a fabricated delivery (VAL-ORCH-014/030/037).
 enum ChatDeliveryState: Codable, Equatable, Hashable, Sendable {
     case delivering
+    case submitted
     case delivered
     case failed(reason: String)
     case unsupported(reason: String)
@@ -16,7 +17,7 @@ enum ChatDeliveryState: Codable, Equatable, Hashable, Sendable {
     /// The typed failure/unsupported reason, when one exists.
     var reason: String? {
         switch self {
-        case .delivering, .delivered:
+        case .delivering, .submitted, .delivered:
             return nil
         case .failed(let reason), .unsupported(let reason):
             return reason
@@ -28,7 +29,7 @@ enum ChatDeliveryState: Codable, Equatable, Hashable, Sendable {
         switch self {
         case .failed, .unsupported:
             return true
-        case .delivering, .delivered:
+        case .delivering, .submitted, .delivered:
             return false
         }
     }
@@ -41,6 +42,8 @@ enum ChatDeliveryState: Codable, Equatable, Hashable, Sendable {
         switch self {
         case .delivering:
             return "delivering"
+        case .submitted:
+            return "submitted"
         case .delivered:
             return "delivered"
         case .failed(let reason):
@@ -55,6 +58,8 @@ enum ChatDeliveryState: Codable, Equatable, Hashable, Sendable {
     init?(rawValue: String) {
         if rawValue == "delivering" {
             self = .delivering
+        } else if rawValue == "submitted" {
+            self = .submitted
         } else if rawValue == "delivered" {
             self = .delivered
         } else if rawValue.hasPrefix("failed:") {
@@ -154,6 +159,7 @@ enum BurnBarFleetDeliveryRunner {
             id: directive.id,
             kind: directive.kind,
             targetAgent: directive.targetAgent,
+            sessionRef: directive.sessionRef,
             payload: directive.payload,
             state: .approved,
             createdAt: directive.createdAt,
@@ -186,7 +192,7 @@ enum BurnBarFleetDeliveryRunner {
         switch prepared.state {
         case .approved:
             return .ready(prepared)
-        case .delivered, .failed, .dismissed:
+        case .delivered, .submitted, .failed, .dismissed, .unsupported:
             return handoffFailure(
                 outcome: outcome(from: prepared.state),
                 recorded: prepared,
@@ -231,6 +237,13 @@ enum BurnBarFleetDeliveryRunner {
                 channelName: channel.channelName,
                 record: record
             )
+        case .submitted:
+            return recordTerminal(
+                directive: prepared,
+                state: .submitted,
+                channelName: channel.channelName,
+                record: record
+            )
         case .failed(let reason):
             return recordTerminal(
                 directive: prepared,
@@ -239,13 +252,11 @@ enum BurnBarFleetDeliveryRunner {
                 record: record
             )
         case .unsupported(let reason):
-            // The record stays `approved`; the card shows the typed
-            // unsupported state with copy/retry affordances (VAL-ORCH-037).
-            return RunResult(
-                outcome: outcome,
-                recorded: nil,
-                recordError: nil,
-                requiresReconciliation: false
+            return recordTerminal(
+                directive: prepared,
+                state: .unsupported(reason: reason),
+                channelName: channel.channelName,
+                record: record
             )
         }
     }
@@ -260,6 +271,7 @@ enum BurnBarFleetDeliveryRunner {
             id: directive.id,
             kind: directive.kind,
             targetAgent: directive.targetAgent,
+            sessionRef: directive.sessionRef,
             payload: directive.payload,
             state: state,
             createdAt: directive.createdAt,
@@ -285,7 +297,11 @@ enum BurnBarFleetDeliveryRunner {
                 recordError: error.localizedDescription,
                 // If the channel succeeded, a lost terminal record response
                 // is uncertain. A definite channel failure remains retryable.
-                requiresReconciliation: state == .delivered
+                requiresReconciliation: {
+                    if case .delivered = state { return true }
+                    if case .submitted = state { return true }
+                    return false
+                }()
             )
         }
     }
@@ -294,8 +310,12 @@ enum BurnBarFleetDeliveryRunner {
         switch state {
         case .delivered:
             return .delivered
+        case .submitted:
+            return .submitted
         case .failed(let reason):
             return .failed(reason: reason)
+        case .unsupported(let reason):
+            return .unsupported(reason: reason)
         case .proposed, .approved, .dismissed:
             return .failed(reason: "unexpected terminal state")
         }

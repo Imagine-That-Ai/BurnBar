@@ -15,14 +15,21 @@ public protocol BurnBarFleetProbe: Sendable {
     func probe(now: Date) async -> BurnBarFleetProbeResult
 }
 
-/// The outcome of one probe run: the agent row plus its probe-health entry.
-/// The builder merges these into the snapshot; it never fabricates either.
+/// The outcome of one probe run: the agent roll-up row, its probe-health
+/// entry, and the bounded thread list for that CLI. The builder concatenates
+/// threads across the roster; it never fabricates either.
 public struct BurnBarFleetProbeResult: Sendable {
     public let agent: BurnBarFleetAgent
     public let health: BurnBarFleetProbeHealth
+    public let threads: [BurnBarFleetThread]
 
-    public init(agent: BurnBarFleetAgent, health: BurnBarFleetProbeHealth) {
+    public init(
+        agent: BurnBarFleetAgent,
+        health: BurnBarFleetProbeHealth,
+        threads: [BurnBarFleetThread] = []
+    ) {
         self.agent = agent
         self.health = health
+        self.threads = threads
     }
 }

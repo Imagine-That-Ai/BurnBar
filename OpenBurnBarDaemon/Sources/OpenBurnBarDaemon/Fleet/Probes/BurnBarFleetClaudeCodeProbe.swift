@@ -15,8 +15,9 @@ import Foundation
 /// - **Malformed shape:** valid JSON with a missing/mistyped required key
 ///   (`pid`, `updatedAt`) → typed `unknown`/`stale` row with a `degraded`
 ///   health reason — never fabricated `running`.
-/// - **Multi-session:** one live session drives the row; dead/stale sessions
-///   never mask a live one. `signals[]` reflects every session file read.
+/// - **Multi-session:** every live-pid or fresh session is a thread (cap 50).
+///   The agent row rolls up from the best thread. Dead+stale files are
+///   not emitted. `signals[]` still reflects every session file read.
 /// - **Repo attribution:** `cwd` from the live session file.
 public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
     public let agentID: BurnBarFleetAgentID
@@ -107,12 +108,13 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
             (lhs.updatedAt ?? .distantPast) < (rhs.updatedAt ?? .distantPast)
         }
 
+        let classified: BurnBarFleetProbeResult
         if let live, let updatedAt = live.updatedAt, let livePid = live.pid {
             if now.timeIntervalSince(updatedAt) <= freshnessSeconds {
                 // Running: live pid + fresh updatedAt. Malformed sibling files
                 // degrade the health state but never the row's liveness.
                 let healthState: BurnBarFleetProbeHealthState = degradedReason.map { .degraded(reason: $0) } ?? .ok
-                return BurnBarFleetProbeSupport.result(
+                classified = BurnBarFleetProbeSupport.result(
                     agentID: agentID,
                     rootPath: rootPath,
                     now: now,
@@ -124,32 +126,39 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
                     signals: signals,
                     healthState: healthState
                 )
+            } else {
+                // Live pid but stale updatedAt: freshness downgrade. A malformed
+                // sibling file still surfaces as a typed degraded health reason —
+                // malformed-signal isolation requires the degradation to be
+                // visible even when another session drives the row.
+                classified = BurnBarFleetProbeSupport.result(
+                    agentID: agentID,
+                    rootPath: rootPath,
+                    now: now,
+                    status: .stale,
+                    confidence: .logHeartbeat,
+                    projectName: live.cwd,
+                    lastActivityAt: updatedAt,
+                    signals: signals,
+                    note: "Session pid is live but updatedAt is beyond the freshness window.",
+                    healthState: degradedReason.map { .degraded(reason: $0) } ?? .ok
+                )
             }
-            // Live pid but stale updatedAt: freshness downgrade. A malformed
-            // sibling file still surfaces as a typed degraded health reason —
-            // malformed-signal isolation requires the degradation to be
-            // visible even when another session drives the row.
-            return BurnBarFleetProbeSupport.result(
+        } else {
+            classified = Self.classifyNoLiveSession(
                 agentID: agentID,
                 rootPath: rootPath,
                 now: now,
-                status: .stale,
-                confidence: .logHeartbeat,
-                projectName: live.cwd,
-                lastActivityAt: updatedAt,
+                parsed: parsed,
                 signals: signals,
-                note: "Session pid is live but updatedAt is beyond the freshness window.",
-                healthState: degradedReason.map { .degraded(reason: $0) } ?? .ok
+                degradedReason: degradedReason,
+                freshnessSeconds: freshnessSeconds
             )
         }
-
-        return Self.classifyNoLiveSession(
-            agentID: agentID,
-            rootPath: rootPath,
-            now: now,
+        return Self.withThreads(
+            classified,
             parsed: parsed,
-            signals: signals,
-            degradedReason: degradedReason,
+            now: now,
             freshnessSeconds: freshnessSeconds
         )
     }
@@ -244,6 +253,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
                 parsed.append(
                     ParsedSession(
                         filePath: filePath,
+                        sessionID: nil,
                         pid: nil,
                         updatedAt: nil,
                         cwd: nil,
@@ -260,6 +270,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
 
     private struct ParsedSession {
         let filePath: String
+        let sessionID: String?
         let pid: Int?
         let updatedAt: Date?
         let cwd: String?
@@ -306,9 +317,13 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
             } else {
                 startedAt = nil
             }
+            let sessionID = BurnBarFleetProbeJSON.stringValue(object["sessionId"])
+                ?? BurnBarFleetProbeJSON.stringValue(object["session_id"])
+                ?? URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
             return .success(
                 ParsedSession(
                     filePath: path,
+                    sessionID: sessionID,
                     pid: pid,
                     updatedAt: updatedAt,
                     cwd: BurnBarFleetProbeJSON.stringValue(object["cwd"]),
@@ -323,5 +338,75 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
     private static func signalDetail(for session: ParsedSession) -> String? {
         guard let pid = session.pid else { return nil }
         return "pid \(pid)"
+    }
+
+    private static func withThreads(
+        _ result: BurnBarFleetProbeResult,
+        parsed: [ParsedSession],
+        now: Date,
+        freshnessSeconds: TimeInterval
+    ) -> BurnBarFleetProbeResult {
+        var threads: [BurnBarFleetThread] = []
+        for session in parsed where session.malformedReason == nil {
+            guard let pid = session.pid else { continue }
+            let live = BurnBarFleetProcessLiveness.isLiveProcess(pid: pid, fileStartedAt: session.startedAt)
+            let member = BurnBarFleetProbeSupport.isThreadMember(
+                liveProcess: live,
+                lastActivity: session.updatedAt,
+                now: now,
+                freshnessSeconds: freshnessSeconds
+            )
+            guard member else { continue }
+            guard let threadID = threadID(for: session) else { continue }
+            let status: BurnBarFleetAgentStatus
+            let confidence: BurnBarFleetConfidence
+            let process: BurnBarFleetProcessInfo?
+            let note: String?
+            if live, let updatedAt = session.updatedAt, now.timeIntervalSince(updatedAt) <= freshnessSeconds {
+                status = .running
+                confidence = .exactProcess
+                process = BurnBarFleetProcessInfo(pid: pid)
+                note = nil
+            } else if live {
+                status = .stale
+                confidence = .logHeartbeat
+                process = nil
+                note = "Session pid is live but updatedAt is beyond the freshness window."
+            } else {
+                status = .stale
+                confidence = .activeSessionFile
+                process = nil
+                note = "Session file present but its pid is not alive; confidence downgraded."
+            }
+            threads.append(
+                BurnBarFleetThread(
+                    id: threadID,
+                    agentID: result.agent.id,
+                    status: status,
+                    confidence: confidence,
+                    projectName: session.cwd,
+                    lastActivityAt: session.updatedAt,
+                    process: process,
+                    signals: [
+                        BurnBarFleetSignalSource(
+                            kind: "session-registry",
+                            path: session.filePath,
+                            detail: signalDetail(for: session)
+                        )
+                    ],
+                    note: note
+                )
+            )
+        }
+        return BurnBarFleetProbeSupport.attaching(threads: threads, to: result)
+    }
+
+    private static func threadID(for session: ParsedSession) -> String? {
+        if let sessionID = session.sessionID,
+           let sanitized = BurnBarFleetProbeSupport.sanitizedSessionRef(sessionID) {
+            return sanitized
+        }
+        let stem = URL(fileURLWithPath: session.filePath).deletingPathExtension().lastPathComponent
+        return BurnBarFleetProbeSupport.sanitizedSessionRef(stem)
     }
 }

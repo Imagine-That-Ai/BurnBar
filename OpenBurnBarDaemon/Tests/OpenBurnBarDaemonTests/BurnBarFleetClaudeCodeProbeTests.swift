@@ -163,6 +163,30 @@ final class BurnBarFleetClaudeCodeProbeTests: XCTestCase {
         XCTAssertEqual(result.agent.process?.pid, Int(live.pid))
         XCTAssertEqual(Set(result.agent.signals.map(\.path)), Set([livePath, deadPath]),
                        "signals[] must reflect both evidence sources")
+        XCTAssertGreaterThanOrEqual(result.threads.count, 1)
+        XCTAssertEqual(result.threads.filter { $0.status == .running }.count, 1)
+        XCTAssertTrue(result.threads.contains { $0.id == "session-\(live.pid)" })
+    }
+
+    func testMultiSession_threeLiveSessions_emitsThreeRunningThreads() async throws {
+        let first = try LiveSleepProcess()
+        let second = try LiveSleepProcess()
+        let third = try LiveSleepProcess()
+        liveProcess = first
+        defer {
+            second.terminate()
+            third.terminate()
+        }
+        let now = Date()
+        _ = try writeSession(pid: Int(first.pid), updatedAt: now.addingTimeInterval(-4), cwd: "/tmp/a")
+        _ = try writeSession(pid: Int(second.pid), updatedAt: now.addingTimeInterval(-6), cwd: "/tmp/b")
+        _ = try writeSession(pid: Int(third.pid), updatedAt: now.addingTimeInterval(-8), cwd: "/tmp/c")
+
+        let result = await makeProbe().probe(now: now)
+
+        XCTAssertEqual(result.agent.status, .running)
+        XCTAssertEqual(result.threads.filter { $0.status == .running }.count, 3)
+        XCTAssertEqual(Set(result.threads.map(\.id)).count, 3)
     }
 
     func testMultiSession_killLiveProcess_flipsRowNonRunning() async throws {

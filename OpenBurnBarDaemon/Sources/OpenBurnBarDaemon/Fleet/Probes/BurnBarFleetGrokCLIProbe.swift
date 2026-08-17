@@ -116,12 +116,13 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
             (lhs.openedAt ?? .distantPast) < (rhs.openedAt ?? .distantPast)
         }
 
+        let classified: BurnBarFleetProbeResult
         if let live, let pid = live.pid {
             // Malformed sibling entries degrade the health state but never
             // the row's liveness.
             let healthState: BurnBarFleetProbeHealthState = Self.degradedReason(entries: entries)
                 .map { .degraded(reason: $0) } ?? .ok
-            return BurnBarFleetProbeSupport.result(
+            classified = BurnBarFleetProbeSupport.result(
                 agentID: agentID,
                 rootPath: rootPath,
                 now: now,
@@ -133,14 +134,21 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
                 signals: signals,
                 healthState: healthState
             )
+        } else {
+            classified = Self.classifyNoLiveEntry(
+                agentID: agentID,
+                rootPath: rootPath,
+                now: now,
+                entries: entries,
+                signals: signals,
+                fileMtime: fileMtime,
+                fileFreshnessSeconds: fileFreshnessSeconds
+            )
         }
-
-        return Self.classifyNoLiveEntry(
-            agentID: agentID,
-            rootPath: rootPath,
-            now: now,
+        return Self.withThreads(
+            classified,
             entries: entries,
-            signals: signals,
+            now: now,
             fileMtime: fileMtime,
             fileFreshnessSeconds: fileFreshnessSeconds
         )
@@ -238,6 +246,7 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
 
     private struct ParsedEntry {
         let filePath: String
+        let sessionID: String?
         let pid: Int?
         let cwd: String?
         let openedAt: Date?
@@ -252,15 +261,17 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
                 ?? "Entry is missing a numeric pid."
             return ParsedEntry(
                 filePath: path,
+                sessionID: nil,
                 pid: nil,
                 cwd: nil,
                 openedAt: nil,
                 malformedReason: reason
             )
         }
-        guard BurnBarFleetProbeJSON.stringValue(object["session_id"]) != nil else {
+        guard let sessionID = BurnBarFleetProbeJSON.stringValue(object["session_id"]) else {
             return ParsedEntry(
                 filePath: path,
+                sessionID: nil,
                 pid: nil,
                 cwd: nil,
                 openedAt: nil,
@@ -270,6 +281,7 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
         guard let cwd = BurnBarFleetProbeJSON.stringValue(object["cwd"]) else {
             return ParsedEntry(
                 filePath: path,
+                sessionID: nil,
                 pid: nil,
                 cwd: nil,
                 openedAt: nil,
@@ -284,7 +296,73 @@ public struct BurnBarFleetGrokCLIProbe: BurnBarFleetProbe {
             openedAt = nil
         }
 
-        return ParsedEntry(filePath: path, pid: pid, cwd: cwd, openedAt: openedAt, malformedReason: nil)
+        return ParsedEntry(
+            filePath: path,
+            sessionID: sessionID,
+            pid: pid,
+            cwd: cwd,
+            openedAt: openedAt,
+            malformedReason: nil
+        )
+    }
+
+    private static func withThreads(
+        _ result: BurnBarFleetProbeResult,
+        entries: [ParsedEntry],
+        now: Date,
+        fileMtime: Date?,
+        fileFreshnessSeconds: TimeInterval
+    ) -> BurnBarFleetProbeResult {
+        let fileFresh = fileMtime.map { now.timeIntervalSince($0) <= fileFreshnessSeconds } ?? false
+        let threads: [BurnBarFleetThread] = entries.compactMap { entry in
+            guard entry.malformedReason == nil, let pid = entry.pid else { return nil }
+            let live = BurnBarFleetProcessLiveness.isAlive(pid: pid)
+            let member = BurnBarFleetProbeSupport.isThreadMember(
+                liveProcess: live,
+                lastActivity: entry.openedAt ?? fileMtime,
+                now: now,
+                freshnessSeconds: fileFreshnessSeconds
+            )
+            guard member || (fileFresh && live == false) else { return nil }
+            guard let rawID = entry.sessionID,
+                  let threadID = BurnBarFleetProbeSupport.sanitizedSessionRef(rawID)
+            else { return nil }
+            if live {
+                return BurnBarFleetThread(
+                    id: threadID,
+                    agentID: result.agent.id,
+                    status: .running,
+                    confidence: .exactProcess,
+                    projectName: entry.cwd,
+                    lastActivityAt: entry.openedAt ?? fileMtime,
+                    process: BurnBarFleetProcessInfo(pid: pid),
+                    signals: [
+                        BurnBarFleetSignalSource(
+                            kind: "session-registry",
+                            path: entry.filePath,
+                            detail: "pid \(pid)"
+                        )
+                    ]
+                )
+            }
+            return BurnBarFleetThread(
+                id: threadID,
+                agentID: result.agent.id,
+                status: .stale,
+                confidence: .activeSessionFile,
+                projectName: entry.cwd,
+                lastActivityAt: entry.openedAt ?? fileMtime,
+                signals: [
+                    BurnBarFleetSignalSource(
+                        kind: "session-registry",
+                        path: entry.filePath,
+                        detail: "pid \(pid) not alive"
+                    )
+                ],
+                note: "Registry entry is present but its pid is not alive; confidence downgraded."
+            )
+        }
+        return BurnBarFleetProbeSupport.attaching(threads: threads, to: result)
     }
 
     private func degradedResult(

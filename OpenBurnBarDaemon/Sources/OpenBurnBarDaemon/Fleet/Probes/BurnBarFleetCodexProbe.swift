@@ -89,7 +89,7 @@ public struct BurnBarFleetCodexProbe: BurnBarFleetProbe {
             ? .ok
             : .degraded(reason: healthReasons.joined(separator: " "))
 
-        return Self.classify(
+        let classified = Self.classify(
             agentID: agentID,
             rootPath: rootPath,
             now: now,
@@ -99,6 +99,35 @@ public struct BurnBarFleetCodexProbe: BurnBarFleetProbe {
             signals: signals,
             healthState: healthState
         )
+        let threads: [BurnBarFleetThread] = locks.compactMap { lock in
+            guard lock.malformedReason == nil else { return nil }
+            let member = BurnBarFleetProbeSupport.isThreadMember(
+                liveProcess: false,
+                lastActivity: lock.mtime,
+                now: now,
+                freshnessSeconds: lockFreshnessSeconds
+            )
+            guard member else { return nil }
+            let stem = URL(fileURLWithPath: lock.path).deletingPathExtension().lastPathComponent
+            guard let threadID = BurnBarFleetProbeSupport.sanitizedSessionRef(stem) else { return nil }
+            let fresh = lock.mtime.map { now.timeIntervalSince($0) <= lockFreshnessSeconds } ?? false
+            return BurnBarFleetThread(
+                id: threadID,
+                agentID: agentID,
+                status: fresh ? .running : .stale,
+                confidence: .logHeartbeat,
+                lastActivityAt: lock.mtime,
+                signals: [
+                    BurnBarFleetSignalSource(
+                        kind: "lock-file",
+                        path: lock.path,
+                        detail: lock.mtime.map { "mtime \(Int(now.timeIntervalSince($0)))s ago" }
+                    )
+                ],
+                note: "Lock-file mtime heuristic; no pid registry exists for Codex."
+            )
+        }
+        return BurnBarFleetProbeSupport.attaching(threads: threads, to: classified)
     }
 
     /// Classifies the row from lock mtimes. A fresh lock drives `running`

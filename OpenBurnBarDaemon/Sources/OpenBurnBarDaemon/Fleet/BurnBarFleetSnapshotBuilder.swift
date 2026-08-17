@@ -27,9 +27,10 @@ public enum BurnBarFleetSnapshotBuilderError: Error, Equatable, LocalizedError, 
 /// tick the builder runs every roster probe and merges the results into
 /// exactly one `agents[]` row and one `probeHealth[]` entry per declared ID —
 /// unsupported agents (kimi, gemini-cli) are always present as typed
-/// non-running rows. `runningCount` and `countsByAgent` are derived from the
-/// merged rows, never stored independently. `repos` groups rows by derived
-/// `projectName`.
+/// non-running rows. Bounded `threads[]` are concatenated from every probe.
+/// `countsByAgent` is that CLI's **running thread count** (0 when the CLI
+/// has no threads). `runningCount` is the sum of those counts. `repos`
+/// groups thread (then agent) project names.
 public struct BurnBarFleetSnapshotBuilder: Sendable {
     public let cadenceSeconds: Int
     public let probes: [BurnBarFleetAgentID: any BurnBarFleetProbe]
@@ -70,7 +71,8 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
     public func build(
         now: Date = Date(),
         orchestrator: BurnBarOrchestratorState = BurnBarOrchestratorState(designation: .none),
-        persistenceHealth: BurnBarFleetPersistenceHealth = .ok
+        persistenceHealth: BurnBarFleetPersistenceHealth = .ok,
+        recentDirectives: [BurnBarFleetDirective] = []
     ) async throws -> BurnBarFleetSnapshot {
         let startedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
         defer {
@@ -84,14 +86,16 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
         return try await buildSnapshot(
             now: now,
             orchestrator: orchestrator,
-            persistenceHealth: persistenceHealth
+            persistenceHealth: persistenceHealth,
+            recentDirectives: recentDirectives
         )
     }
 
     private func buildSnapshot(
         now: Date,
         orchestrator: BurnBarOrchestratorState,
-        persistenceHealth: BurnBarFleetPersistenceHealth
+        persistenceHealth: BurnBarFleetPersistenceHealth,
+        recentDirectives: [BurnBarFleetDirective]
     ) async throws -> BurnBarFleetSnapshot {
         if let extraProbe = probes.keys.first(where: { !BurnBarFleetAgentID.declaredRoster.contains($0) }) {
             throw BurnBarFleetSnapshotBuilderError.probeRegisteredOutsideRoster(extraProbe)
@@ -99,6 +103,7 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
 
         var agents: [BurnBarFleetAgent] = []
         var probeHealth: [BurnBarFleetProbeHealth] = []
+        var threads: [BurnBarFleetThread] = []
 
         for agentID in BurnBarFleetAgentID.declaredRoster {
             guard let probe = probes[agentID] else {
@@ -137,13 +142,23 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
             }
             agents.append(result.agent)
             probeHealth.append(result.health)
+            threads.append(contentsOf: result.threads.filter { $0.agentID == agentID })
         }
 
-        let runningCount = agents.filter { $0.status == .running }.count
         var countsByAgent: [String: Int] = [:]
         for agent in agents {
-            countsByAgent[agent.id.wireValue] = agent.status == .running ? 1 : 0
+            let runningThreads = threads.filter { $0.agentID == agent.id && $0.status == .running }.count
+            if runningThreads > 0 {
+                countsByAgent[agent.id.wireValue] = runningThreads
+            } else if agent.status == .running {
+                // Roll-up is running but this CLI has no enumerated thread
+                // identities (honest 1, never a silent 0).
+                countsByAgent[agent.id.wireValue] = 1
+            } else {
+                countsByAgent[agent.id.wireValue] = 0
+            }
         }
+        let runningCount = countsByAgent.values.reduce(0, +)
 
         let snapshot = BurnBarFleetSnapshot(
             schemaVersion: BurnBarFleetSnapshot.currentSchemaVersion,
@@ -151,12 +166,14 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
             cadenceSeconds: cadenceSeconds,
             machine: machineStatusProbe.read(),
             agents: agents,
-            repos: Self.deriveRepoGroups(from: agents),
+            repos: Self.deriveRepoGroups(from: agents, threads: threads),
             runningCount: runningCount,
             countsByAgent: countsByAgent,
             orchestrator: orchestrator,
             probeHealth: probeHealth,
-            persistenceHealth: persistenceHealth
+            persistenceHealth: persistenceHealth,
+            threads: threads,
+            recentDirectives: recentDirectives
         )
 
         // Encode-side guard: running rows never carry unsupported/estimated
@@ -166,16 +183,28 @@ public struct BurnBarFleetSnapshotBuilder: Sendable {
 
     /// Groups agent rows by derived `projectName` (nil project names are
     /// omitted from the grouping). Order is stable: first-appearance order.
-    public static func deriveRepoGroups(from agents: [BurnBarFleetAgent]) -> [BurnBarFleetRepoGroup] {
+    public static func deriveRepoGroups(
+        from agents: [BurnBarFleetAgent],
+        threads: [BurnBarFleetThread] = []
+    ) -> [BurnBarFleetRepoGroup] {
         var groups: [String: [BurnBarFleetAgentID]] = [:]
         var order: [String] = []
 
-        for agent in agents {
-            guard let projectName = agent.projectName, !projectName.isEmpty else { continue }
+        func append(projectName: String?, agentID: BurnBarFleetAgentID) {
+            guard let projectName, !projectName.isEmpty else { return }
             if groups[projectName] == nil {
                 order.append(projectName)
             }
-            groups[projectName, default: []].append(agent.id)
+            if groups[projectName]?.contains(agentID) != true {
+                groups[projectName, default: []].append(agentID)
+            }
+        }
+
+        for thread in threads {
+            append(projectName: thread.projectName, agentID: thread.agentID)
+        }
+        for agent in agents {
+            append(projectName: agent.projectName, agentID: agent.id)
         }
 
         return order.map { BurnBarFleetRepoGroup(projectName: $0, agents: groups[$0] ?? []) }

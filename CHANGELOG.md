@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Fleet Command Well** — thread-first command center for all ten roster
+  CLIs. Probes emit bounded live∪fresh threads (many per CLI, cap 50).
+  `countsByAgent` is running thread count. Directives carry `sessionRef`.
+  BurnBar inbox (`…/fleet-inbox/<agent>/<sessionRef>.jsonl`, 0600) is the
+  write path for every CLI; OpenAI-shaped 200 is `submitted`, never
+  Delivered. Hermes HTTP remains an extra hook, not a privileged surface.
+
 ## [1.0.35] - 2026-08-17
 
 ### Added - `openburnbar app install` / `app update` (npm 0.1.1)

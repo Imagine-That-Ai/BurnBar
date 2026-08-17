@@ -51,6 +51,30 @@ affected roster agent. Logs carry wire id + state + tick + daemon pid —
 never paths, reasons, or exception text. Typed reasons stay on
 `probeHealth` for RPC/file consumers.
 
+## Threads (command center)
+
+The atom is a **thread**, not a vendor card. Each probe emits a bounded
+list (`threads[]`, cap 50 per CLI): live PID ∪ freshness window. Dead and
+stale historical files are not emitted. `countsByAgent` is that CLI's
+running thread count. The ten agent rows remain as a roll-up
+(running > idle > stale > unknown).
+
+Stable `id` / `sessionRef` is never a PID alone: Claude `sessionId` or
+session-file stem, Codex lock stem, Pi transcript stem, Cursor worker
+display name, Grok CLI `session_id`, Factory invocation/session/mission
+slug, Hermes `gateway` plus `processes.json` cwd, Grok Bot `daemon`.
+Kimi and Gemini emit **0** threads until a live signal exists.
+
+## Inbox
+
+Every roster CLI writes
+`~/Library/Application Support/BurnBar/fleet-inbox/<agent>/<sessionRef>.jsonl`
+mode `0600`. A successful write is `submitted`, never `delivered`.
+Hermes HTTP may upgrade to `delivered` only when the response carries
+`burnbar_delivery.directive_id`. An OpenAI-shaped 200 is `submitted`.
+Claude `/tmp/cc-socks` is never used. CLI one-shot is a labeled **new
+turn**, never live TUI inject.
+
 ## Dashboard rendering
 
 - Confidence and status are labeled in text. Color is secondary.

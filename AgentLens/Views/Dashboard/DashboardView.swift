@@ -447,6 +447,8 @@ struct DashboardView: View {
             Task { await refreshPendingMemoryReviewCount() }
             Task { await refreshAIInboxUnreadCount() }
             consumeCoordinatorDashboardRoute()
+            fleetService.start()
+            fleetService.refreshOrchestratorState()
         }
         .onChange(of: navigationCoordinator.dashboardRoute) { _, _ in
             consumeCoordinatorDashboardRoute()
@@ -472,6 +474,10 @@ struct DashboardView: View {
             VStack(spacing: 12) {
                 if mainRoute != .chat {
                     if chatPanelOpen {
+                        FleetQueueAccessory(
+                            directives: fleetService.loadState.snapshot?.recentDirectives ?? [],
+                            onOpenFleet: { navigate(to: .fleet) }
+                        )
                         ChatPanel(
                             controller: chatController,
                             dataStore: dataStore,
@@ -564,7 +570,8 @@ struct DashboardView: View {
                     if mainRoute != .sessionLogs {
                         navigate(to: .sessionLogs)
                     }
-                }
+                },
+                fleetService: fleetService
             )
         }
         .sheet(

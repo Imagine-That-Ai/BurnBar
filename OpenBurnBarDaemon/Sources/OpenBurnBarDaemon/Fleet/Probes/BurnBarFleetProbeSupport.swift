@@ -434,4 +434,81 @@ public enum BurnBarFleetProbeSupport {
         let health = BurnBarFleetProbeHealth(agent: agentID, state: healthState, rootPath: rootPath, checkedAt: now)
         return BurnBarFleetProbeResult(agent: agent, health: health)
     }
+
+    /// Membership for the bounded thread crawl: live PID (when we have one)
+    /// or last activity inside the freshness window. Historical dead+stale
+    /// files are not emitted.
+    public static func isThreadMember(
+        liveProcess: Bool,
+        lastActivity: Date?,
+        now: Date,
+        freshnessSeconds: TimeInterval
+    ) -> Bool {
+        if liveProcess { return true }
+        guard let lastActivity else { return false }
+        return now.timeIntervalSince(lastActivity) <= freshnessSeconds
+    }
+
+    /// Sorts running first, then last activity, and caps at
+    /// `BurnBarFleetThreadLimits.maxPerAgent`.
+    public static func boundThreads(_ threads: [BurnBarFleetThread]) -> [BurnBarFleetThread] {
+        let sorted = threads.sorted { lhs, rhs in
+            if lhs.status.rollupRank != rhs.status.rollupRank {
+                return lhs.status.rollupRank > rhs.status.rollupRank
+            }
+            return (lhs.lastActivityAt ?? .distantPast) > (rhs.lastActivityAt ?? .distantPast)
+        }
+        return Array(sorted.prefix(BurnBarFleetThreadLimits.maxPerAgent))
+    }
+
+    /// Attaches a bounded thread list to a classified probe result. When
+    /// threads are present the agent row is rolled up from the best thread
+    /// (running > idle > stale > unknown) so the ten-row honesty contract
+    /// still holds. Truncation is a typed probeHealth reason.
+    public static func attaching(
+        threads: [BurnBarFleetThread],
+        to result: BurnBarFleetProbeResult
+    ) -> BurnBarFleetProbeResult {
+        let bounded = boundThreads(threads)
+        let dropped = max(0, threads.count - bounded.count)
+        var health = result.health
+        if dropped > 0 {
+            health = BurnBarFleetProbeHealth(
+                agent: health.agent,
+                state: degradedHealth(
+                    health.state,
+                    reason: "Thread list truncated to \(BurnBarFleetThreadLimits.maxPerAgent); dropped \(dropped) older thread(s)."
+                ),
+                rootPath: health.rootPath,
+                checkedAt: health.checkedAt
+            )
+        }
+        guard let best = bounded.first else {
+            return BurnBarFleetProbeResult(agent: result.agent, health: health, threads: [])
+        }
+        let lastActivity = bounded.compactMap(\.lastActivityAt).max() ?? best.lastActivityAt
+        let agent = BurnBarFleetAgent(
+            id: result.agent.id,
+            displayName: result.agent.displayName,
+            status: best.status,
+            confidence: best.confidence,
+            currentTask: best.currentTask ?? result.agent.currentTask,
+            projectName: best.projectName ?? result.agent.projectName,
+            model: best.model ?? result.agent.model,
+            lastActivityAt: lastActivity,
+            process: best.process,
+            signals: result.agent.signals,
+            note: result.agent.note
+        )
+        return BurnBarFleetProbeResult(agent: agent, health: health, threads: bounded)
+    }
+
+    /// Stable filesystem-safe sessionRef. Rejects empty, `.`, `..`, and
+    /// path separators so inbox paths cannot escape the agent directory.
+    public static func sanitizedSessionRef(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != ".", trimmed != ".." else { return nil }
+        guard !trimmed.contains("/"), !trimmed.contains("\\") else { return nil }
+        return trimmed
+    }
 }

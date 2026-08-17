@@ -48,8 +48,14 @@ struct FleetView: View {
             .scrollContentBackground(.hidden)
         }
         .background(Color.clear)
-        .onAppear { viewModel.viewAppeared() }
+        .onAppear {
+            viewModel.viewAppeared()
+            viewModel.consumePendingJump()
+        }
         .onDisappear { viewModel.viewDisappeared() }
+        .onChange(of: viewModel.snapshot?.generatedAt) { _, _ in
+            viewModel.consumePendingJump()
+        }
     }
 
     // MARK: - Header
@@ -62,7 +68,7 @@ struct FleetView: View {
                         .font(DesignSystem.Typography.title)
                         .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                    Text("Watch live agents and machine cost. Designate an orchestrator to propose work.")
+                    Text("Command every roster CLI and every live thread. Inbox first; never a fake inject.")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(DesignSystem.Colors.textSecondary)
                 }
@@ -206,15 +212,30 @@ struct FleetView: View {
 
     @ViewBuilder
     private var dashboardContent: some View {
-        if let snapshot = viewModel.snapshot {
-            watchAndControlBand
+        if viewModel.snapshot != nil {
+            FleetNeedsYouStrip(items: viewModel.needsYouItems)
+            commandCenter
             if case .empty = viewModel.loadState {
                 emptyFleetState
             }
-            providerChips(snapshot: snapshot)
-            agentCards(snapshot: snapshot)
+            watchAndControlBand
             repoGroups
-            probeHealthSection(snapshot: snapshot)
+            if let snapshot = viewModel.snapshot {
+                probeHealthSection(snapshot: snapshot)
+            }
+        }
+    }
+
+    private var commandCenter: some View {
+        HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
+            FleetCLIRail(viewModel: viewModel)
+            FleetThreadList(viewModel: viewModel)
+                .frame(minWidth: 240, maxWidth: 420, alignment: .topLeading)
+            FleetCommandWell(
+                viewModel: viewModel,
+                onOpenOrchestratorChat: onOpenOrchestratorChat
+            )
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
