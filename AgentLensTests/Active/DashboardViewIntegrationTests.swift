@@ -118,7 +118,9 @@ final class DashboardViewIntegrationTests: XCTestCase {
     /// would renumber every existing user's shortcuts, so this must stay eight.
     func test_controlDeckIsNotAPrimarySection() {
         XCTAssertFalse(DashboardMainRoute.primarySections.contains(.controlDeck))
+        XCTAssertFalse(DashboardMainRoute.primarySections.contains(.fleet))
         XCTAssertNil(DashboardMainRoute.controlDeck.primarySectionIndex)
+        XCTAssertNil(DashboardMainRoute.fleet.primarySectionIndex)
         XCTAssertEqual(DashboardMainRoute.primarySections.count, 8)
     }
 

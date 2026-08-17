@@ -209,6 +209,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     /// replacement, so revocations propagate by omission).
     case inboxMemoryExport = "daemon.inbox.memory.export"
     case runResume = "run.resume"
+    /// Live Agent Fleet: observe running agents and send light control.
+    case fleetSnapshot = "daemon.fleet.snapshot"
+    case fleetOrchestratorGet = "daemon.fleet.orchestrator.get"
+    case fleetOrchestratorSet = "daemon.fleet.orchestrator.set"
+    case fleetDirectiveRecord = "daemon.fleet.directive.record"
 }
 
 public struct BurnBarRPCRequestEnvelope: Codable, Hashable, Sendable {

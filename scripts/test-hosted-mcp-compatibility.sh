@@ -18,7 +18,7 @@ for (const kind of ["droid", "kimi", "forge", "generic"]) {
   const raw = execFileSync("node", ["tools/openburnbar-mcp-remote/lib/index.js", "mcp", "install", kind], { encoding: "utf8" });
   const parsed = JSON.parse(raw);
   const server = parsed.mcpServers && parsed.mcpServers.openburnbar;
-  if (!server || server.command !== "openburnbar-mcp-remote" || !Array.isArray(server.args)) {
+  if (!server || server.command !== "openburnbar" || !Array.isArray(server.args)) {
     throw new Error(`invalid ${kind} installer JSON`);
   }
 }
@@ -32,6 +32,10 @@ if [[ "${OPENBURNBAR_MCP_REAL_CLIENTS:-0}" == "1" ]]; then
     fi
   done
 
+  # The real-clients block intentionally exercises the legacy
+  # `openburnbar-mcp-remote` bin alias (same entry point as `openburnbar`,
+  # kept in package.json for existing local configs): it proves the alias
+  # still resolves from a global install in each client's own config format.
   temp_home="$(mktemp -d)"
   cleanup() {
     rm -rf "$temp_home"

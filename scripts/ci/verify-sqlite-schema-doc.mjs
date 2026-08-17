@@ -26,6 +26,9 @@ const sourceSpecs = [
     path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift",
   },
   {
+    path: "AgentLens/Services/DataStore/OpenBurnBarDatabase+UsageMemoryMigrations.swift",
+  },
+  {
     path: "OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift",
   },
   {
@@ -33,8 +36,33 @@ const sourceSpecs = [
   },
 ];
 
+// Migration files that exist as byte-identical AgentLens/OpenBurnBarData
+// pairs. A drifted pair means the app and the Data package migrate to
+// different schemas — fail loudly here rather than at runtime.
+const mirrorPairs = [
+  [
+    "AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+MemoryMigrations.swift",
+  ],
+  [
+    "AgentLens/Services/DataStore/OpenBurnBarDatabase+UsageMemoryMigrations.swift",
+    "OpenBurnBarCore/Sources/OpenBurnBarData/OpenBurnBarDatabase+UsageMemoryMigrations.swift",
+  ],
+];
+
 function readRepoFile(path) {
   return readFileSync(resolve(repoRoot, path), "utf8");
+}
+
+function verifyMirrorPairs() {
+  for (const [left, right] of mirrorPairs) {
+    if (readRepoFile(left) !== readRepoFile(right)) {
+      console.error(
+        `Migration mirror pair drifted (must stay byte-identical):\n  ${left}\n  ${right}`,
+      );
+      process.exit(1);
+    }
+  }
 }
 
 function addMatches(set, text, regex) {
@@ -184,5 +212,7 @@ for (const indexName of [
     `docs/SCHEMA_SQLITE.sql is missing Project Code Memory index ${indexName}`,
   );
 }
+
+verifyMirrorPairs();
 
 console.log(`SQLite schema doc covers ${required.size} migration/source tables and Project Code Memory columns/indexes.`);

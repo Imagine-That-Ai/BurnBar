@@ -185,7 +185,7 @@ test("Functions result pages any failed deploy stage and closes only after full 
   );
   assert.match(
     job,
-    /^    if: \$\{\{ always\(\) && github\.event\.inputs\.dry_run != 'true' \}\}$/m,
+    /^    if: \$\{\{ always\(\) && !inputs\.dry_run \}\}$/m,
     "the result job must run after failed or skipped non-dry-run stages"
   );
 

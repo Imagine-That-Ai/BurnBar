@@ -49,6 +49,17 @@ public sealed partial class WindowsSqlCipherProvisioner
                 WindowsSchemaUpgradeStatement.Always(
                     "CREATE INDEX IF NOT EXISTS token_usage_billing_kind_time_idx ON token_usage(billingKind, startTime)"),
             }),
+
+        // v61_usage_memory — peer of OpenBurnBarDatabase+UsageMemoryMigrations.swift.
+        // Every v61 statement targets chat-memory-authority tables
+        // (memory_usage_candidates, memory_salience, memory_links,
+        // memory_extraction_jobs), which Windows fresh-install provisioning
+        // deliberately does not create (see budgets/migrator-parity-baseline.json),
+        // so there is no DDL to replay here: the step only advances the stamp,
+        // keeping an upgraded database identical to a freshly provisioned one.
+        new WindowsSchemaUpgradeStep(
+            "v61_usage_memory",
+            Array.Empty<WindowsSchemaUpgradeStatement>()),
     };
 
     /// <summary>

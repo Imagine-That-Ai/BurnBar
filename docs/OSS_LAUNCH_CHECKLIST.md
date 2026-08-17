@@ -92,8 +92,8 @@ Re-check every item immediately before changing repository visibility.
 
 ## Confirmed from registry/package metadata on 2026-04-04
 
-- npm package name `openburnbar`: not present in the public npm registry at the time of check
-- VS Marketplace item `openburnbar.openburnbar`: not present (`404`) at the time of check
+- npm package name `openburnbar`: published and owned by the project — `openburnbar@0.1.0` is live on the public npm registry (first publish 2026-08-16)
+- VS Marketplace item `openburnbar.openburnbar`: no public listing yet (the extension remains source-only; there is no VS Marketplace / Open VSX listing or signed VSIX)
 - Annotated source-release tag on remote: `v0.1.0-beta`
 
 ## Re-check snapshot on 2026-05-08
@@ -150,5 +150,5 @@ Re-check every item immediately before changing repository visibility.
 - [ ] Re-review unexpected local source changes and any mid-audit edits to confirm they are intentional to ship
 - [ ] Naming and trademark clearance for broader public distribution under the name `OpenBurnBar`
   (requires explicit counsel/owner sign-off; repository and automated search evidence cannot establish legal clearance)
-- [ ] Consider reserving npm package name `openburnbar` if not already taken
+- [x] npm package name `openburnbar` is published and owned by the project (`openburnbar@0.1.0` on registry.npmjs.org)
 - [ ] Consider setting up a GitHub Pages site for documentation if wiki is disabled

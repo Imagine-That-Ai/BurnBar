@@ -1,0 +1,80 @@
+# Publish the openburnbar Node CLI to the npm public registry.
+# Auth is OIDC trusted publishing only (id-token: write) — no npm tokens
+# anywhere in this workflow. The openburnbar-npm-v* tag family is distinct
+# from app-release v* tags so app releases never trigger npm publish.
+name: Publish openburnbar to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: run ci/lint/test/pack and stop without publishing"
+        type: boolean
+        default: true
+  push:
+    tags:
+      - "openburnbar-npm-v*"
+
+concurrency:
+  group: npm-publish-openburnbar-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: tools/openburnbar-mcp-remote/package-lock.json
+
+      - name: Upgrade npm to the trusted-publishing floor
+        run: npm i -g npm@^11.5.1
+
+      - name: Install dependencies
+        run: npm ci --prefix tools/openburnbar-mcp-remote
+
+      - name: Lint
+        run: npm run lint --prefix tools/openburnbar-mcp-remote
+
+      - name: Test
+        run: npm test --prefix tools/openburnbar-mcp-remote
+
+      - name: Pack (verification)
+        working-directory: tools/openburnbar-mcp-remote
+        run: npm pack --dry-run
+
+      - name: Verify tag version matches package.json
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF#refs/tags/openburnbar-npm-v}"
+          pkg_version="$(node -p "require('./tools/openburnbar-mcp-remote/package.json').version")"
+          if [[ -z "$tag_version" || "$tag_version" == "$GITHUB_REF" ]]; then
+            echo "::error::Ref ${GITHUB_REF} is not an openburnbar-npm-v* tag"
+            exit 1
+          fi
+          if [[ "$tag_version" != "$pkg_version" ]]; then
+            echo "::error::Tag version ${tag_version} does not match package.json version ${pkg_version}"
+            exit 1
+          fi
+          echo "Tag openburnbar-npm-v${tag_version} matches package.json version ${pkg_version}"
+
+      - name: Publish to npm (OIDC trusted publishing)
+        # Tag pushes always publish. Manual runs publish only when the boolean
+        # dry_run input is explicitly false — the inputs context preserves the
+        # declared boolean type, so compare against false, not the string 'false'.
+        if: github.event_name == 'push' || inputs.dry_run == false
+        working-directory: tools/openburnbar-mcp-remote
+        run: npm publish --access public

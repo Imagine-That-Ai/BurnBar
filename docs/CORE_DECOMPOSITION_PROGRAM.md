@@ -568,6 +568,8 @@ another domain cluster. The canonical baseline refresh also records the
 measured 1.25x ceilings for the non-destination targets that received the same
 Linux source wave; it does not raise any main-target or file-count budget.
 
+**Usage-memory PR3 Kernel ceiling (2026-08-16):** Stage-0 candidate gate + SimHash + curation policy land next to existing `OpenBurnBarKernel/Memory` types (3 files / 430 LOC). Kernel measures 47,898 LOC against the prior 47,650 planned ceiling. Those files stay in Kernel because the app, tests, and offline harness share one pure `Sendable` implementation (`MemorySourceKind` already lives here). Ceiling raised narrowly to 48,000 LOC (102 lines of bounded headroom); file ceiling unchanged. Follow-up decompose is a sibling usage-memory leaf, not a same-PR target split.
+
 **Linux-parity integration ceiling adjustment (2026-07-24):** merging the
 parity integration atop the ParserSupport module-move (#1928) and the
 execution-source additions measures `OpenBurnBarParserSupport` at 1,123 LOC
@@ -627,6 +629,8 @@ were cleaned to zero (`UsageAggregator.swift:320` tagged `try?-ok`) and raised t
 respectively (`UsageIngestPersistGate` + `UsageParserPassGate` are cross-queue global
 async-mutex refinements that cannot be runtime-context-injected without reintroducing
 the races they fix); the `@_exported import OpenBurnBarCore` umbrella count stays at 528.
+
+**Usage-memory v61 ceiling adjustment (2026-08-16):** PR #2259 adds the byte-identical `OpenBurnBarDatabase+UsageMemoryMigrations.swift` sibling to `OpenBurnBarData` (21 files / 4,573 LOC). File ceiling moves 20 → 21; LOC ceiling stays 4,920.
 
 ### Whole-program composition proof (verbatim results)
 

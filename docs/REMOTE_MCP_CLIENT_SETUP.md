@@ -27,6 +27,11 @@ openburnbar mcp install forge
 openburnbar mcp install generic
 ```
 
+The same CLI also installs or updates the notarized Mac app from the public
+desktop feed (`https://downloads.burnbar.ai/latest-macos.json`) when you run
+`openburnbar app install` or `openburnbar app update`. That path is opt-in:
+`npm i` never downloads a DMG.
+
 Each installer emits deterministic config for `openburnbar-mcp-remote mcp
 serve`. The direct remote endpoint is always:
 

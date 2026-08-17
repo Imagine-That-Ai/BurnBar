@@ -29,6 +29,27 @@ test("launch-evidence attestation JSON is no-product (honest skip/require)", () 
   }
 });
 
+test("plugins/openburnbar sources select only the cheap web lane", () => {
+  for (const path of [
+    "plugins/openburnbar/scripts/validate.mjs",
+    "plugins/openburnbar/.cursor-plugin/plugin.json",
+    "plugins/openburnbar/skills/openburnbar-operator/SKILL.md",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    assert.equal(result.web, true, path);
+    for (const lane of LANES) {
+      if (lane !== "web") assert.equal(result[lane], false, `${path}:${lane}`);
+    }
+  }
+});
+
+test("a plugin package.json still forces full CI", () => {
+  const result = classifyPaths(["plugins/openburnbar/package.json"]);
+  assert.equal(result.full, true);
+  for (const lane of LANES) assert.equal(result[lane], true);
+});
+
 test("isolated tests select only their owning product", () => {
   const app = classifyPaths(["AgentLensTests/QuotaTests.swift"]);
   assert.equal(app.macos, true);
@@ -88,12 +109,63 @@ test("dependency manifests and security or release workflows force full CI", () 
     ".github/workflows/deploy-production.yml",
     "governance/branch-protection.main.json",
     "windows/tests/managed-runtime/OpenBurnBar.App.ManagedAgentRuntime.Tests.csproj",
+    "packages/libsignal-bridge/package-lock.json",
+    "package-lock.json",
   ]) {
     const result = classifyPaths([path]);
     assert.equal(result.full, true, path);
     for (const lane of LANES)
       assert.equal(result[lane], true, `${path}:${lane}`);
   }
+});
+
+test("signal-envelope-contracts npm lockfile selects functions, not macos", () => {
+  const result = classifyPaths([
+    "packages/signal-envelope-contracts/package-lock.json",
+    "packages/signal-envelope-contracts/package.json",
+  ]);
+  assert.equal(result.full, false);
+  assert.equal(result.reason, "owned-paths");
+  assert.equal(result.functions, true);
+  assert.equal(result.macos, false);
+  assert.equal(result.mobile, false);
+  assert.equal(result.android, false);
+  assert.equal(result.rust, false);
+  assert.equal(result.daemon, false);
+  assert.equal(result.web, false);
+  assert.equal(result.console, false);
+});
+
+test("signal-envelope-contracts non-manifest files stay fail-closed", () => {
+  for (const path of [
+    "packages/signal-envelope-contracts/src/index.ts",
+    "packages/signal-envelope-contracts/src/index.test.ts",
+    "packages/signal-envelope-contracts/eslint.config.mjs",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, true, path);
+    assert.notEqual(result.reason, "owned-paths", path);
+    for (const lane of LANES)
+      assert.equal(result[lane], true, `${path}:${lane}`);
+  }
+});
+
+test("signal-envelope-contracts mixed with AgentLens still wakes macos", () => {
+  const result = classifyPaths([
+    "packages/signal-envelope-contracts/package-lock.json",
+    "AgentLens/Services/LogParser/GrokParser.swift",
+  ]);
+  assert.equal(result.full, false);
+  assert.equal(result.functions, true);
+  assert.equal(result.macos, true);
+  assert.equal(result.mobile, false);
+});
+
+test("this classifier edit still classifies as full", () => {
+  const result = classifyPaths(["scripts/ci/classify-ci-impact.mjs"]);
+  assert.equal(result.full, true);
+  assert.equal(result.reason, "shared-or-sensitive-path");
+  for (const lane of LANES) assert.equal(result[lane], true, lane);
 });
 
 test("unknown and empty classifications fail closed", () => {

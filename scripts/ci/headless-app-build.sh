@@ -7,13 +7,13 @@
 #   K4 / P-16 (the Views -> OpenBurnBarUI extraction) was deferred in the prior
 #   program because there was NO merge-blocking, PR-triggerable signal that the
 #   macOS APP still COMPILES after a UI move. The full app suite
-#   (app-pr-gate.yml `app-build-test`) runs `xcodebuild test` — heavy (a 120 min
+#   (app-pr-gate.yml `app-build-test`) runs `xcodebuild test` — heavy (a 90 min
 #   cap, XCTest host launch, simulator/Firestore lifecycle). P-16 does not need
 #   the tests to RUN; it needs proof the app graph still BUILDS. This script is
 #   that lean, build-only precondition. It is wired into
-#   .github/workflows/headless-app-build.yml on `pull_request` for the paths that
-#   P-16 touches (OpenBurnBarCore/** and AgentLens/**), and each P-16 sub-packet
-#   PR body names this job as a required gate.
+#   .github/workflows/headless-app-build.yml on push-to-main (path-filtered) and
+#   nightly so a broken AgentLens graph is visible without making every PR wait
+#   on hosted macos-26.
 #
 # THE HEADLESS-BUILD RECIPE (repo memory "Headless xcodebuild blocked (Xcode 27
 # Beta)"): a NAIVE `xcodebuild` from a checkout under ~/Documents fails on Xcode
