@@ -76,6 +76,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-flight AgentLens/mobile or headless graph proof; the replacement
   classifier would otherwise skip macos/mobile until nightly.
 
+### Added
+- The Node MCP / resume / memory CLI (in `tools/openburnbar-mcp-remote/`) is now
+  published to **npm** as **`openburnbar` 0.1.0** (AGPL-3.0-only, zero runtime
+  dependencies). Install with `npm i -g openburnbar` or run ad-hoc with
+  `npx -y openburnbar`. It is the Node CLI for the hosted Remote MCP
+  (`mcp serve` / `mcp install` / `mcp doctor` / `mcp login`), session resume
+  (`resume` / `obbresume` / `OBB`), and the Pensieve memory hook (`memory`).
+  The package also keeps a legacy compat bin alias for existing local configs.
+  Distinct from the native daemon operator CLI `openburnbar-cli`, which stays
+  unpublished.
+
 ### Added - Metered usage-memory curation gateway (U4)
 - **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
   token-metered gateway for cloud usage-memory curation inference

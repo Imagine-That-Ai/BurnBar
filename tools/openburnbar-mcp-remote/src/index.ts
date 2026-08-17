@@ -7,6 +7,8 @@ import { writeAccessToken } from "./oauth.js";
 import { basename } from "node:path";
 import { readFileSync } from "node:fs";
 
+const USAGE = "Usage: openburnbar mcp <serve|install|doctor|login> [token] | memory <install|run|sync> | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n";
+
 function looksLikeSessionId(s: string | undefined): boolean {
   if (!s) {return false;}
   return /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s) || /^[A-Za-z0-9_-]{16,}$/.test(s);
@@ -16,6 +18,10 @@ async function main(): Promise<void> {
   const [, , first, second, third] = process.argv;
   const invokedName = basename(process.argv[1] ?? "");
   const obbresumeBinary = invokedName === "obbresume";
+  if (first === "--help" || first === "-h") {
+    process.stdout.write(USAGE);
+    return;
+  }
   if (first === "resume" || first === "obbresume" || first === "Resume" || obbresumeBinary) {
     const asIdx = process.argv.indexOf("--as");
     const modelIdx = process.argv.indexOf("--model");
@@ -100,7 +106,7 @@ Examples:
   if (first === "memory") {
     process.exit(await runMemoryCli(second, third));
   }
-  process.stdout.write("Usage: openburnbar mcp <serve|install|doctor|login> [token] | memory <install|run|sync> | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n");
+  process.stdout.write(USAGE);
 }
 
 async function runMemoryCli(sub: string | undefined, arg: string | undefined): Promise<number> {

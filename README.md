@@ -36,7 +36,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 |------|----------|--------|
 | **Core** | macOS app (`AgentLens/`), `OpenBurnBarCore`, local daemon (`OpenBurnBarDaemon/`), Cursor/VS Code extension (`extensions/openburnbar/`), `OpenBurnBarCLI` | Built and exercised in CI where configured; local-first + daemon RPC are the product spine. |
 | **Experimental** | Optional Firestore sync, sealed cloud collaboration, Cursor connector + tunnel, future sealed iCloud archive support | Best-effort; opt-in; not canonical vs local SQLite/daemon state. Raw iCloud session-file mirroring is disabled in this tree. |
-| **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper, BurnBar Resume, plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim), [`plugins/openburnbar/`](plugins/openburnbar/README.md) (Cursor Marketplace plugin: hosted HTTP MCP + bearer variable) | Developer convenience; not required to run OpenBurnBar. The marketplace plugin is a **distinct Cursor surface** from the editor extension — see [docs/OPENBURNBAR_CURSOR_PLUGIN.md](docs/OPENBURNBAR_CURSOR_PLUGIN.md). |
+| **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper, BurnBar Resume, plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim, published to npm as **`openburnbar`**), [`plugins/openburnbar/`](plugins/openburnbar/README.md) (Cursor Marketplace plugin: hosted HTTP MCP + bearer variable) | Developer convenience; not required to run OpenBurnBar. The marketplace plugin is a **distinct Cursor surface** from the editor extension — see [docs/OPENBURNBAR_CURSOR_PLUGIN.md](docs/OPENBURNBAR_CURSOR_PLUGIN.md). |
 | **Quarantined tests** | `AgentLensTests/Quarantine/` | Stale suites kept as migration reference only; **not compiled** in the active `OpenBurnBarTests` bundle until fixed and moved back to `Active/` — see [AgentLensTests/README.md](AgentLensTests/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md). |
 
 **Cursor deep dives** (for humans and agents):
@@ -94,6 +94,24 @@ Current commands:
 - `mission-approve <missionID> [note]`
 - `simulator-runs [projectSlug]`
 - `simulator-replay <runID>`
+
+### npm CLI: `openburnbar` (Node)
+
+A second, unrelated CLI ships on npm as **`openburnbar`** (`0.1.0`, AGPL-3.0-only).
+It is the Node MCP / resume / memory CLI from [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/):
+an MCP stdio shim to the hosted `https://mcp.burnbar.ai/mcp`, session resume
+(`obbresume`), and the Pensieve chat-memory hook. Zero runtime dependencies.
+
+Install it globally, or run it without installing:
+
+```bash
+npm i -g openburnbar
+npx -y openburnbar --help
+```
+
+Do not confuse the two: the native daemon operator CLI above is `openburnbar-cli`,
+built from the app source and **not published to npm**. The npm `openburnbar`
+package never touches the daemon.
 
 ---
 
