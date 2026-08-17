@@ -128,7 +128,7 @@ Each of these was verified as absent from the entire `cursor.com/docs/origin/*` 
 | **Depot CI has no macOS.** *"Depot CI doesn't provide sandboxes for Arm, macOS, or Windows."* ([depot.dev/docs/ci/overview](https://depot.dev/docs/ci/overview)) | The entire release lane is `macos-26`: Xcode build, Developer ID signing, notarization, stapling. | **Blocker** |
 | **No releases, no artifacts, no package registry.** Zero occurrences of `artifact`, `release asset`, `registry` in Origin docs. | No home for DMG, ZIP, SBOM, Sigstore bundles, checksums, appcast. No npm equivalent. | **Blocker** |
 | **No static site hosting.** | No Pages equivalent. (Vercel app exists for previews.) | Medium |
-| **No secret storage.** Mirroring explicitly excludes *"GitHub Actions workflows and secrets."* | All 57 Actions secrets and 6 environments need a new home. | **Blocker** |
+| **No secret storage.** Mirroring explicitly excludes *"GitHub Actions workflows and secrets."* | All 58 Actions secrets and 6 environments need a new home. | **Blocker** |
 | **No Issues.** | Issue history is not migrated and has no destination. | Medium |
 | **CODEOWNERS not documented.** | Review routing must be manual or rebuilt. | Medium |
 | **API reference is a 404.** `cursor.com/docs/api/origin.md` returns HTTP 404 (verified) while three docs pages link to it. | Cannot design automation against Origin's API. Webhook events, scopes, and check-run reporting are all unspecified. | **High** |
