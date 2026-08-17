@@ -20,6 +20,9 @@ enum DashboardMainRoute: Hashable {
     /// shortcuts. The deck is reachable from the deck strip, the section
     /// switcher, the command palette, ⌘0, and Quick Access.
     case controlDeck
+    /// Live Agent Fleet — watch running agents and send light control.
+    /// Not in `primarySections` so ⌘1–⌘8 stay put.
+    case fleet
     case provider(AgentProvider)
     case model(String)
 
@@ -52,6 +55,7 @@ enum DashboardMainRoute: Hashable {
         case .chat: return "Chat"
         case .quota: return "Quota"
         case .controlDeck: return "Control Deck"
+        case .fleet: return "Fleet"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -72,6 +76,7 @@ enum DashboardMainRoute: Hashable {
             return activeChatBackend == .hermes ? "sparkles" : "bubble.left.and.bubble.right"
         case .quota: return "gauge.with.dots.needle.67percent"
         case .controlDeck: return "slider.horizontal.below.square.filled.and.square"
+        case .fleet: return "rectangle.3.group"
         case .provider: return "cpu"
         case .model: return "cube"
         }
@@ -89,6 +94,8 @@ enum DashboardMainRoute: Hashable {
             return DesignSystem.Colors.ember
         case .controlDeck:
             return DesignSystem.Colors.ember
+        case .fleet:
+            return DesignSystem.Colors.amber
         case .inbox:
             return DesignSystem.Colors.ember
         case .database, .projects, .missions, .sessionLogs, .memoryReview:
@@ -113,6 +120,7 @@ enum DashboardMainRoute: Hashable {
         case .insights: return "Editorial brief & anomalies"
         case .charts: return "Your usage, drawn honestly"
         case .controlDeck: return "Every feature, live, one click deep"
+        case .fleet: return "Watch agents. Steer the one in charge."
         case .provider: return "Provider deep dive"
         case .model: return "Model deep dive"
         }

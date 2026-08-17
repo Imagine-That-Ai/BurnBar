@@ -1257,6 +1257,7 @@ extension DashboardMainRoute {
         case "chat": return .chat
         case "quota": return .quota
         case "controlDeck": return .controlDeck
+        case "fleet": return .fleet
         default: return nil
         }
     }

@@ -40,6 +40,7 @@ struct DashboardView: View {
     var runtimeContext: OpenBurnBarRuntimeContext?
     @State var consentCoordinator: DashboardConsentCoordinator?
     @State var mainRoute: DashboardMainRoute = .overview
+    @State var fleetService = FleetService(socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL)
     @State var routeHistory: [DashboardMainRoute] = []
     @State var selectedTimeRange: TimeRange = .today
     @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
@@ -221,7 +222,7 @@ struct DashboardView: View {
         case .overview, .insights, .charts, .provider, .model:
             return true
         case .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat, .quota,
-             .controlDeck:
+             .controlDeck, .fleet:
             // The Control Deck is a full-width workspace like Inbox and Quota:
             // it is *not* about the provider/model breakdown, so the provider
             // rail would be a third redundant column.
@@ -320,6 +321,7 @@ struct DashboardView: View {
         case .chat: return "Chat"
         case .quota: return "Quota"
         case .controlDeck: return "Control Deck"
+        case .fleet: return "Fleet"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -867,6 +869,9 @@ struct DashboardView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .controlDeck:
                     controlDeckRouteView
+                case .fleet:
+                    FleetView(service: fleetService)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .provider(let provider):
                     ProviderDashboardView(
                         provider: provider,

@@ -51,6 +51,40 @@ struct ControlTileView: View {
         case .appearance: AppearanceTile(settingsManager: settingsManager, onOpenSettings: onOpenSettings)
         case .pets: PetsTile(model: model, onOpenSettings: onOpenSettings)
         case .updates: UpdatesTile(onOpenSettings: onOpenSettings)
+        case .fleet: FleetTile(onNavigate: onNavigate)
+        }
+    }
+}
+
+private struct FleetTile: View {
+    let onNavigate: (DashboardMainRoute) -> Void
+    @State private var runningLabel = "Watching…"
+
+    var body: some View {
+        ControlTileShell(
+            kind: .fleet,
+            state: .on,
+            headline: runningLabel,
+            accessibilityHeadline: runningLabel
+        ) {
+            ControlLinkButton(title: "Open Fleet", help: "Watch running agents and steer the orchestrator.") {
+                onNavigate(.fleet)
+            }
+        } ladder: {
+            ControlStatusChip(
+                label: "Live watch",
+                tint: ControlKind.fleet.accent,
+                help: "The daemon probes which agents are actually running. Nothing is guessed."
+            )
+        }
+        .task {
+            let url = OpenBurnBarDaemonRuntimePaths.live().socketURL
+            if let snapshot = try? OpenBurnBarDaemonSocketClient.fleetSnapshot(at: url) {
+                let running = snapshot.agents.filter { $0.status == .running }.count
+                runningLabel = running == 1 ? "1 agent running" : "\(running) agents running"
+            } else {
+                runningLabel = "Daemon not serving fleet yet"
+            }
         }
     }
 }

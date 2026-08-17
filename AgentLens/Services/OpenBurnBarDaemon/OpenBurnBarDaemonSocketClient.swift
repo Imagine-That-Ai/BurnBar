@@ -55,6 +55,86 @@ enum OpenBurnBarDaemonSocketClient {
         return result
     }
 
+    static func fleetSnapshot(at socketURL: URL) throws -> BurnBarFleetSnapshot {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetSnapshotResponse> = try send(
+            BurnBarRPCRequestEnvelope(method: .fleetSnapshot),
+            socketURL: socketURL
+        )
+        if let error = envelope.error {
+            throw classifyFleetError(error)
+        }
+        guard let result = envelope.result else {
+            throw BurnBarFleetClientError.emptyResponse
+        }
+        return result.snapshot
+    }
+
+    static func fleetOrchestratorGet(at socketURL: URL) throws -> BurnBarOrchestratorState {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetOrchestratorGetResponse> = try send(
+            BurnBarRPCRequestEnvelope(method: .fleetOrchestratorGet),
+            socketURL: socketURL
+        )
+        if let error = envelope.error {
+            throw classifyFleetError(error)
+        }
+        guard let result = envelope.result else {
+            throw BurnBarFleetClientError.emptyResponse
+        }
+        return result.state
+    }
+
+    static func fleetOrchestratorSet(
+        _ designation: BurnBarOrchestratorDesignation,
+        at socketURL: URL
+    ) throws -> BurnBarOrchestratorState {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetOrchestratorSetResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .fleetOrchestratorSet,
+                params: BurnBarFleetOrchestratorSetRequest(
+                    state: BurnBarOrchestratorState(designation: designation)
+                )
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error {
+            throw classifyFleetError(error)
+        }
+        guard let result = envelope.result else {
+            throw BurnBarFleetClientError.emptyResponse
+        }
+        return result.state
+    }
+
+    static func fleetDirectiveRecord(
+        _ directive: BurnBarFleetDirective,
+        at socketURL: URL
+    ) throws -> BurnBarFleetDirective {
+        let envelope: BurnBarRPCResponseEnvelope<BurnBarFleetDirectiveRecordResponse> = try send(
+            BurnBarRPCRequestEnvelopeWithParams(
+                method: .fleetDirectiveRecord,
+                params: BurnBarFleetDirectiveRecordRequest(directive: directive)
+            ),
+            socketURL: socketURL
+        )
+        if let error = envelope.error {
+            throw classifyFleetError(error)
+        }
+        guard let result = envelope.result else {
+            throw BurnBarFleetClientError.emptyResponse
+        }
+        return result.directive
+    }
+
+    private static func classifyFleetError(_ error: BurnBarRPCError) -> BurnBarFleetClientError {
+        if error.code == -32603, error.message.contains("not ready") {
+            return .notReady
+        }
+        if error.code == -32601 || error.code == -32001 {
+            return .protocolMismatch(reason: error.message)
+        }
+        return .rpcError(code: error.code, message: error.message)
+    }
+
     private static func logDaemonFailure(_ error: OpenBurnBarError) {
         AppLogger.daemon.error("daemon_rpc_failed", metadata: error.logMetadata)
     }

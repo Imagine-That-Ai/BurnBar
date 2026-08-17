@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `npm i` does not download the Mac app. There is no `postinstall` hook and
   the tarball does not bake a DMG. Package version is **0.1.1**.
 
+### Added
+- **Live Agent Fleet** — dashboard Fleet view (watch running agents, designate
+  an orchestrator, record directives) over `daemon.fleet.snapshot` /
+  `orchestrator.get|set` / `directive.record`. Not in ⌘1–⌘8; Control Deck
+  tile + section switcher + ⌘K. Honest empty/not-ready states, no fabricated
+  running counts.
+
 ### Added - OpenBurnBar Cursor Marketplace plugin
 - **OpenBurnBar Cursor Marketplace plugin** (`plugins/openburnbar/`): an
   installable Cursor Plugin that connects desktop Customize and Cloud Agents

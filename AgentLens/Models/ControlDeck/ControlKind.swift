@@ -87,6 +87,7 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case appearance
     case pets
     case updates
+    case fleet
 
     var id: String { rawValue }
 
@@ -103,6 +104,7 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .appearance: return "Appearance"
         case .pets: return "Pets"
         case .updates: return "Updates"
+        case .fleet: return "Fleet"
         }
     }
 
@@ -132,6 +134,8 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
             return "A companion on the desktop with a model behind its eyes."
         case .updates:
             return "How this copy of OpenBurnBar finds its next version."
+        case .fleet:
+            return "Which agents are actually running, and which one you steer."
         }
     }
 
@@ -148,12 +152,13 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .appearance: return "paintpalette"
         case .pets: return "pawprint"
         case .updates: return "arrow.triangle.2.circlepath"
+        case .fleet: return "rectangle.3.group"
         }
     }
 
     var group: ControlGroup {
         switch self {
-        case .engineRoom: return .watch
+        case .engineRoom, .fleet: return .watch
         case .modelRouter, .wand: return .cast
         case .textExpansion, .memoryMCP: return .know
         case .aiInbox, .charts, .alerts: return .spend
@@ -201,6 +206,8 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
             return ["companion", "pet", "desktop", "hotkey", "nimbus"]
         case .updates:
             return ["version", "release", "upgrade", "channel", "pre-release"]
+        case .fleet:
+            return ["agents", "running", "orchestrator", "watch", "control", "live"]
         }
     }
 
@@ -222,6 +229,7 @@ enum ControlKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .appearance: return "general.appearance.skin"
         case .pets: return "pets.companion"
         case .updates: return "updates.automaticChecks"
+        case .fleet: return nil
         }
     }
 
