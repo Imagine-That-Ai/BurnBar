@@ -2,7 +2,11 @@
 // swiftlint:disable test_case_accessibility
 import OpenBurnBarKernel
 @testable import OpenBurnBarDaemon
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 import GRDB
 import XCTest

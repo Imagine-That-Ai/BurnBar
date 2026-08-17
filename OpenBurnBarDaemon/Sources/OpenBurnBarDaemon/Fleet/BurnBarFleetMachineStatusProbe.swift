@@ -1,5 +1,9 @@
 import OpenBurnBarKernel
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 /// Reads the machine status block for a fleet snapshot: CPU percent
@@ -40,6 +44,7 @@ public struct BurnBarFleetMachineStatusProbe: Sendable {
     }
 
     private static func readCPUSample() -> BurnBarFleetCPUSample? {
+        #if canImport(Darwin)
         var cpuInfo = host_cpu_load_info()
         var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.stride / MemoryLayout<integer_t>.stride)
         let result = withUnsafeMutablePointer(to: &cpuInfo) { pointer in
@@ -60,9 +65,13 @@ public struct BurnBarFleetMachineStatusProbe: Sendable {
             idle: Double(cpuInfo.cpu_ticks.2),
             nice: Double(cpuInfo.cpu_ticks.3)
         )
+        #else
+        return nil
+        #endif
     }
 
     private static func readMemory() -> (used: Int?, total: Int) {
+        #if canImport(Darwin)
         var stats = vm_statistics64()
         var count = mach_msg_type_number_t(
             MemoryLayout<vm_statistics64_data_t>.stride / MemoryLayout<integer_t>.stride
@@ -89,6 +98,9 @@ public struct BurnBarFleetMachineStatusProbe: Sendable {
         let totalBytes = Int((active + inactive + wire + free) * pageSize)
         let usedBytes = Int((active + inactive + wire) * pageSize)
         return (usedBytes, totalBytes)
+        #else
+        return (nil, 0)
+        #endif
     }
 
     private static func readLoadAverage() -> [Double]? {

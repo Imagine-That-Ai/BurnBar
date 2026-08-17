@@ -1,5 +1,9 @@
 import OpenBurnBarKernel
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 import Foundation
 
 /// Freshness constants pinned in `docs/fleet/BURNBAR_FLEET_SIGNALS.md`.
@@ -52,6 +56,7 @@ public enum BurnBarFleetProcessLiveness: Sendable {
     /// `isAlive` — an out-of-range pid is never converted.
     public static func processStartTime(pid: Int) -> TimeInterval? {
         guard pid > 0, pid <= Int(Int32.max) else { return nil }
+        #if canImport(Darwin)
         var info = proc_bsdinfo()
         let size = MemoryLayout<proc_bsdinfo>.size
         let result = withUnsafeMutablePointer(to: &info) { pointer in
@@ -61,6 +66,9 @@ public enum BurnBarFleetProcessLiveness: Sendable {
         }
         guard result == Int32(size) else { return nil }
         return TimeInterval(info.pbi_start_tvsec) + TimeInterval(info.pbi_start_tvusec) / 1_000_000.0
+        #else
+        return nil
+        #endif
     }
 
     /// Pid-reuse guard (documented in BURNBAR_FLEET_SIGNALS.md): the pid is
