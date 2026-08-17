@@ -289,6 +289,7 @@ struct DashboardView: View {
         case .projects: route = .projects
         case .sessionLogs: route = .sessionLogs
         case .chat: route = .chat
+        case .quota: route = .quota
         case .inbox(let itemID):
             route = .inbox
             // Carried through so a tapped notification opens the exact item.
@@ -780,7 +781,16 @@ struct DashboardView: View {
                         dataStore: dataStore,
                         settingsManager: settingsManager,
                         chatController: chatController,
-                        selectedTimeRange: $selectedTimeRange
+                        selectedTimeRange: $selectedTimeRange,
+                        onOpenSessionLog: { conversationID in
+                            // Same landing the inbox uses: resolve a jump target
+                            // so the click opens the session, then navigate.
+                            Task { @MainActor in
+                                let resolver = InboxConversationJumpResolver(dataStore: dataStore)
+                                sessionLogJumpTarget = await resolver.jumpTarget(conversationID: conversationID)
+                                navigate(to: .sessionLogs)
+                            }
+                        }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .database:

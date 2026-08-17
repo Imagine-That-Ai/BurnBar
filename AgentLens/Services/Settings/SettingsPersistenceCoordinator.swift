@@ -133,6 +133,10 @@ final class SettingsPersistenceCoordinator {
         defaults.object(forKey: key) != nil ? defaults.double(forKey: key) : nil
     }
 
+    func optionalDate(forKey key: String) -> Date? {
+        defaults.object(forKey: key) as? Date
+    }
+
     func objectExists(forKey key: String) -> Bool {
         defaults.object(forKey: key) != nil
     }

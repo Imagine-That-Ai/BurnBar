@@ -69,6 +69,84 @@ extension ControlPlaneStore {
         return id
     }
 
+    /// Sweep the indexed agent corpus for QUIET conversations and enqueue one
+    /// extraction job per content state. This is the wire the product thesis
+    /// runs on: memory learns from all 28 providers' sessions, not only from
+    /// BurnBar's own chat panel.
+    ///
+    /// Debounce is structural, not stateful:
+    ///  - Only conversations whose file has been untouched for `quietInterval`
+    ///    qualify — a session still being written re-queues on a later sweep.
+    ///  - The idempotency key hashes the conversation's content state
+    ///    (`fileModifiedAt` + `messageCount`), so an unchanged conversation
+    ///    collapses onto its existing (possibly completed) job via the enqueue's
+    ///    ON CONFLICT, and a grown one becomes exactly one new job.
+    ///  - `limit` bounds enqueue work per sweep; older sessions surface on
+    ///    subsequent sweeps once the newest are drained.
+    @discardableResult
+    func harvestAgentConversationExtractions(
+        now: Date = Date(),
+        quietInterval: TimeInterval = 30 * 60,
+        limit: Int = 8
+    ) async throws -> Int {
+        let cutoff = now.addingTimeInterval(-quietInterval)
+        struct HarvestRow {
+            let id: String
+            let projectName: String
+            let stateMarker: String
+        }
+        let rows: [HarvestRow] = try await dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, projectName, messageCount, fileModifiedAt
+                FROM conversations
+                WHERE deletedAt IS NULL
+                  AND fullText != ''
+                  AND fileModifiedAt IS NOT NULL
+                  AND fileModifiedAt < ?
+                ORDER BY fileModifiedAt DESC
+                LIMIT ?
+                """,
+                arguments: [cutoff, max(1, limit)]
+            ).compactMap { row in
+                guard let id = row["id"] as? String, id.isEmpty == false else { return nil }
+                let modifiedEpoch = OpenBurnBarDatabase.parseDateValue(row["fileModifiedAt"])
+                    .map { String(Int($0.timeIntervalSince1970)) } ?? "0"
+                let messageCount = (row["messageCount"] as? Int64).map(String.init) ?? "0"
+                return HarvestRow(
+                    id: id,
+                    projectName: (row["projectName"] as? String) ?? "",
+                    stateMarker: "state-\(modifiedEpoch)-\(messageCount)"
+                )
+            }
+        }
+        guard rows.isEmpty == false else { return 0 }
+
+        var enqueued = 0
+        for row in rows {
+            let threadID = AgentConversationExtractionSource.threadID(forConversationID: row.id)
+            let promptVersion = AgentConversationExtractionSource.promptVersion
+            var scope = MemoryScope()
+            scope.projectID = row.projectName.isEmpty ? nil : row.projectName
+            let intent = ExtractionIntent(
+                threadID: threadID,
+                threadLogicalID: threadID,
+                messageID: row.stateMarker,
+                scope: scope,
+                promptVersion: promptVersion,
+                idempotencyKey: MemoryExtraction.idempotencyKey(
+                    threadLogicalID: threadID,
+                    messageID: row.stateMarker,
+                    promptVersion: promptVersion
+                )
+            )
+            _ = try await enqueueMemoryExtraction(intent, now: now)
+            enqueued += 1
+        }
+        return enqueued
+    }
+
     func claimNextMemoryExtractionJob(
         now: Date = Date(),
         maxAttempts: Int = 3,

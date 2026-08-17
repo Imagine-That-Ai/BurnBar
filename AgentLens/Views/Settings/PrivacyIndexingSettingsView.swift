@@ -220,8 +220,9 @@ struct PrivacyIndexingSettingsView: View {
                             .layoutPriority(1)
                         Spacer(minLength: DesignSystem.Spacing.sm)
                         Picker("", selection: $settingsManager.indexEmbeddingProvider) {
-                            Text("OpenBurnBar Local").tag(IndexEmbeddingProviderID.deterministic)
+                            Text("On-device (Apple)").tag(IndexEmbeddingProviderID.appleNL)
                             Text("OpenAI").tag(IndexEmbeddingProviderID.openai)
+                            Text("Hash (testing only)").tag(IndexEmbeddingProviderID.deterministic)
                         }
                         .pickerStyle(.menu)
                         .frame(minWidth: 140, maxWidth: 220)
@@ -258,8 +259,12 @@ struct PrivacyIndexingSettingsView: View {
                         Text(openAIKeySaved ? "OpenAI key saved to Keychain." : "OpenAI powers semantic indexing and query embeddings for the selected index version.")
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(openAIKeySaved ? DesignSystem.Colors.success : DesignSystem.Colors.textMuted)
+                    } else if settingsManager.indexEmbeddingProvider == .appleNL {
+                        Text("Apple's on-device sentence model embeds your index locally. No network, no API key, nothing leaves this Mac.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
                     } else {
-                        Text("OpenBurnBar Local uses the built-in deterministic embedder. It is fully local and requires no network or API key.")
+                        Text("Seeded-hash vectors for tests and CI. Not semantic — similar sentences do not land near each other. Prefer On-device (Apple) for real search.")
                             .font(DesignSystem.Typography.tiny)
                             .foregroundStyle(DesignSystem.Colors.textMuted)
                     }

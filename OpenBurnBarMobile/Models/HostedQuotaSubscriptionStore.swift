@@ -207,6 +207,16 @@ enum OpenBurnBarProductCatalog {
         )
     ]
 
+    /// What the storefront actually SELLS today. The Agent Control and Floo
+    /// relay packs are deliberately withheld: their reserve callables have no
+    /// client callers yet, so a purchased pack would credit units nothing can
+    /// ever spend. They return to sale the day a client calls the reserve.
+    /// The full `topUps` catalog stays intact so prior purchases still
+    /// restore, credit, and display correctly.
+    static let purchasableTopUps = topUps.filter {
+        $0.topUpKind?.hasPrefix("elder_wand_") == true
+    }
+
     static let visibleProducts = subscriptions + topUps
     static let visibleProductIDs = visibleProducts.map(\.id)
     static let entitlementProductIDs: Set<String> = Set(subscriptions.map(\.id)).union([
