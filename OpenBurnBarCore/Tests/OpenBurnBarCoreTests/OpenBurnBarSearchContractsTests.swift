@@ -184,7 +184,7 @@ final class OpenBurnBarSearchContractsTests: XCTestCase {
         XCTAssertEqual(decoded.columns, ["id", "count", "name", "blob_data", "extra"])
         XCTAssertEqual(decoded.rows.count, 2)
         XCTAssertEqual(decoded.rows[0], [.text("row1"), .integer(10), .text("first"), .blob(Data([1, 2])), .null])
-        XCTAssertEqual(decoded.truncated, true)
+        XCTAssertTrue(decoded.truncated)
         XCTAssertEqual(result, decoded)
     }
 
