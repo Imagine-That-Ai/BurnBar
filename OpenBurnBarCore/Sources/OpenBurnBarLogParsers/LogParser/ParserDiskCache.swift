@@ -198,11 +198,18 @@ public struct CompositeFileSignature<Signature: Codable & Equatable & Sendable>:
     public let primary: Signature
     public let settings: Signature?
     public let metadata: Signature?
+    public let transcript: Signature?
 
-    public init(primary: Signature, settings: Signature? = nil, metadata: Signature? = nil) {
+    public init(
+        primary: Signature,
+        settings: Signature? = nil,
+        metadata: Signature? = nil,
+        transcript: Signature? = nil
+    ) {
         self.primary = primary
         self.settings = settings
         self.metadata = metadata
+        self.transcript = transcript
     }
 }
 

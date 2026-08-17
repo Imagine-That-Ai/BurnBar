@@ -44,7 +44,8 @@ extension UsageStore {
         let uniqueSessionIDs = Set(sessionIDs)
         guard !uniqueSessionIDs.isEmpty else { return }
 
-        try await dbQueue.write { db in
+        let changedRows = try await dbQueue.write { db -> Int in
+            let before = db.totalChangesCount
             for sessionID in uniqueSessionIDs {
                 try db.execute(
                     sql: """
@@ -59,7 +60,9 @@ extension UsageStore {
                     arguments: [provider.rawValue, sessionID, sessionID, sessionID]
                 )
             }
+            return db.totalChangesCount - before
         }
+        noteUsageWrite(changedRows: changedRows)
         SearchQueryCache.shared.clear()
     }
 

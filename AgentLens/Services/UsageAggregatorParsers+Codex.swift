@@ -101,7 +101,7 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
                     guard let threadID: String = row["id"],
                           let rolloutPath: String = row["rollout_path"] else { return nil }
                     let expandedPath = (rolloutPath as NSString).expandingTildeInPath
-                    return isCodexSubagentRollout(expandedPath) ? threadID : nil
+                    return OpenBurnBarCore.CodexParser.rolloutPathLooksLikeSubagent(expandedPath) ? threadID : nil
                 })
             } else {
                 subagentSessionIDs = []
@@ -163,39 +163,6 @@ final class CodexParser: OpenBurnBarCore.LogParser, Sendable {
             }
             return (threadRows, subagentSessionIDs.sorted())
         }
-    }
-
-    private func isCodexSubagentRollout(_ path: String) -> Bool {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
-        defer { try? handle.close() } // try?-ok(read-only teardown)
-
-        let prefix: Data
-        do {
-            guard let data = try handle.read(upToCount: 256 * 1024),
-                  !data.isEmpty else { return false }
-            prefix = data
-        } catch {
-            return false
-        }
-
-        let text = String(decoding: prefix, as: UTF8.self)
-        for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
-            guard let data = String(line).data(using: .utf8) else { continue }
-            let json: [String: Any]
-            do {
-                guard let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    continue
-                }
-                json = decoded
-            } catch {
-                continue
-            }
-            guard json["type"] as? String == "session_meta",
-                  let payload = json["payload"] as? [String: Any],
-                  let source = payload["source"] as? [String: Any] else { continue }
-            return source["subagent"] != nil
-        }
-        return false
     }
 }
 

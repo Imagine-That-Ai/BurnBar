@@ -1,7 +1,7 @@
 {
   "settingsAccountSharedReferences": 1,
-  "staticSharedSingletons": 55,
-  "total": 56,
-  "generatedAt": "2026-07-10T20:20:00Z",
-  "note": "Baseline for scripts/debt/check-singleton-budget.sh after the PR #1435 repair removed the AgentToolBroker revocation registry, Computer Use quota usage store, and Computer Use cloud metering service static shared owners. Counts production AgentLens SettingsManager.shared and AccountManager.shared references plus total static let shared singletons, excluding the runtime-context construction site. Lower as singleton paths move to runtime-context injection; staticSharedSingletons remains a guard against adding new global singleton owners."
+  "staticSharedSingletons": 57,
+  "total": 58,
+  "generatedAt": "2026-08-14T00:00:00Z",
+  "note": "Baseline for scripts/debt/check-singleton-budget.sh after the #2240 usage-ingest repair added UsageIngestPersistGate + UsageParserPassGate (live vs catch-up serialization). Each is a narrow async-mutex actor with a static shared owner that serializes stateful parser caches and the usage store; a single runtime-context owner cannot replace a cross-queue global gate without reintroducing the races it fixes. Lower as additional singleton owners move to runtime-context injection."
 }

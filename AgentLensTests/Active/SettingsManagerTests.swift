@@ -1666,6 +1666,25 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "logPath_codex"), "/custom/path")
     }
 
+    func test_logPaths_stripsDuplicatedNewlinePaths() {
+        XCTAssertEqual(
+            ProviderPathSettings.sanitizedLogPath(
+                "/Users/albertonunez/.factory/sessions\n\n/Users/albertonunez/.factory/sessions\n\n"
+            ),
+            "/Users/albertonunez/.factory/sessions"
+        )
+    }
+
+    func test_logPaths_ignoresXAIQuotaSidecarAsSessionRoot() {
+        XCTAssertEqual(
+            ProviderPathSettings.resolvedPersistedLogPath(
+                "~/Library/Application Support/OpenBurnBar/xai",
+                provider: .xAI
+            ),
+            AgentProvider.xAI.logDirectory
+        )
+    }
+
     func test_resetPathsToDefaults_restoresAllProviders() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)

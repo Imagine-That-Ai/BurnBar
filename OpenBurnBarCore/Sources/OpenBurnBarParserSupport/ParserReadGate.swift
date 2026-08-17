@@ -35,6 +35,10 @@ public struct LogParseOptions: Sendable {
     /// Per-parser, path-free scan telemetry. Production registry entries
     /// install a fresh recorder for every parse pass.
     public var metrics: ParserPassMetrics?
+    /// When false, parsers omit cached unchanged rows. Live ingest uses this
+    /// so a 12-hour window does not materialize a lifetime of TokenUsage
+    /// objects already durable in SQLite.
+    public var includeCachedUnchangedUsages: Bool
 
     public static let `default` = LogParseOptions(includeConversationBodies: true)
 
@@ -61,13 +65,15 @@ public struct LogParseOptions: Sendable {
         minimumFileModificationDate: Date? = nil,
         fileDiscoveryTracker: ParserFileDiscoveryTracker? = nil,
         resourceGovernor: ParserResourceGovernor? = nil,
-        metrics: ParserPassMetrics? = nil
+        metrics: ParserPassMetrics? = nil,
+        includeCachedUnchangedUsages: Bool = true
     ) {
         self.includeConversationBodies = includeConversationBodies
         self.minimumFileModificationDate = minimumFileModificationDate
         self.fileDiscoveryTracker = fileDiscoveryTracker
         self.resourceGovernor = resourceGovernor
         self.metrics = metrics
+        self.includeCachedUnchangedUsages = includeCachedUnchangedUsages
     }
 }
 

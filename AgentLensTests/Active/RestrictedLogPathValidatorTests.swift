@@ -56,6 +56,13 @@ final class RestrictedLogPathValidatorTests: XCTestCase {
         )
     }
 
+    func testRestrictedMode_allowsKnownGrokRoot() {
+        XCTAssertEqual(
+            restrictedValidator.resolvePath(customPath: "~/.grok/sessions", providerDefault: "/default"),
+            "~/.grok/sessions"
+        )
+    }
+
     func testRestrictedMode_allowsKnownOpenBurnBarRoot() {
         XCTAssertEqual(
             restrictedValidator.resolvePath(

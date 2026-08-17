@@ -21,6 +21,7 @@ Agent workflow: see [AGENTS.md](../../AGENTS.md) — search before building; ADR
 
 Related operational docs:
 
+- [Usage ingest](../USAGE_INGESTION.md) — live vs catch-up lanes, persist mutex, parser budgets
 - [Observability contract](../OBSERVABILITY.md) — trace fields and structured logging
 - [SLO runbook](../runbooks/slos.md) — latency, availability, error budgets, alert paths
 - [Tech debt strategy](../TECH_DEBT_STRATEGY.md) — phased remediation roadmap

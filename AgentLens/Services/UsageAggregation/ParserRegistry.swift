@@ -62,9 +62,14 @@ private struct RegisteredLogParser: LogParser {
 /// Every legacy parser is wrapped fail-closed until it implements bounded,
 /// options-aware enumeration and reads.
 enum ParserRegistry {
-    static func defaultParsers() -> [AgentProvider: any LogParser] {
+    static func defaultParsers(
+        factorySessionsDirectory: URL? = nil,
+        grokSessionsDirectory: String? = nil
+    ) -> [AgentProvider: any LogParser] {
         var parsers: [AgentProvider: any LogParser] = [:]
-        parsers[.factory] = RegisteredLogParser(FactoryDroidParser())
+        parsers[.factory] = RegisteredLogParser(
+            FactoryDroidParser(sessionsDirectoryOverride: factorySessionsDirectory)
+        )
         parsers[.claudeCode] = RegisteredLogParser(ClaudeCodeParser())
         parsers[.openClaude] = RegisteredLogParser(ClaudeCodeParser(provider: .openClaude))
         parsers[.copilot] = RegisteredLogParser(CopilotParser())
@@ -78,7 +83,9 @@ enum ParserRegistry {
         parsers[.zai] = RegisteredLogParser(ModelFilterParser(modelPattern: "zai", provider: .zai))
         parsers[.minimax] = RegisteredLogParser(ModelFilterParser(modelPattern: "minimax", provider: .minimax))
         parsers[.kimi] = RegisteredLogParser(KimiParser())
-        parsers[.xAI] = RegisteredLogParser(GrokParser())
+        parsers[.xAI] = RegisteredLogParser(
+            GrokParser(logDirectoryOverride: grokSessionsDirectory)
+        )
         parsers[.cline] = RegisteredLogParser(ClineFormatParser(provider: .cline, storagePaths: clineStoragePaths()))
         parsers[.kiloCode] = RegisteredLogParser(ClineFormatParser(provider: .kiloCode, storagePaths: kiloCodeStoragePaths()))
         parsers[.rooCode] = RegisteredLogParser(ClineFormatParser(provider: .rooCode, storagePaths: rooCodeStoragePaths()))

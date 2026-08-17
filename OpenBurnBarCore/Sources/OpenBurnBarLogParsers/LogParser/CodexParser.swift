@@ -109,14 +109,47 @@ public final class CodexParser: LogParser, Sendable {
                 "SELECT id FROM threads WHERE thread_source = 'subagent'"
             ).compactMap { $0.string("id") })
         } else if hasRolloutPath {
-            subagentSessionIDs = Set(try reader.query(
-                "SELECT id, rollout_path FROM threads"
-            ).compactMap { row -> String? in
+            // Legacy databases have no `thread_source`, and path markers alone
+            // miss the common case: subagent rollouts sit at ordinary
+            // date/UUID session paths and declare themselves only in
+            // `session_meta.payload.source.subagent`. Admitting them would
+            // double-count their tokens against the parent and leave already
+            // imported subagent rows uninvalidated.
+            //
+            // Reading every rollout to sniff that metadata used to stall usage
+            // refresh on large ~/.codex trees (hundreds of GB of
+            // tmp/clones/sessions) and starve every later parser, so the
+            // fallback is bounded on all three axes: a small head read per
+            // file (`subagentMetadataHeadByteLimit`), only the first records of
+            // that head (`subagentMetadataSniffLineLimit`), and a per-pass file
+            // cap (`subagentMetadataSniffFileLimit`) spent on live, most
+            // recently updated threads first. Like the metadata probe above,
+            // these classification bytes stay off the rollout byte budget —
+            // worst case is 32MB of file heads, and charging them could
+            // starve the rollout scan they exist to protect.
+            var subagentIDs: Set<String> = []
+            var sniffedFiles = 0
+            let candidates = try reader.query(
+                "SELECT id, rollout_path FROM threads ORDER BY archived ASC, updated_at DESC"
+            )
+            for (index, row) in candidates.enumerated() {
+                if index.isMultiple(of: 128) {
+                    try governor?.checkpoint()
+                }
                 guard let threadID = row.string("id"),
-                      let rolloutPath = row.string("rollout_path") else { return nil }
+                      let rolloutPath = row.string("rollout_path") else { continue }
                 let expandedPath = (rolloutPath as NSString).expandingTildeInPath
-                return isCodexSubagentRollout(expandedPath) ? threadID : nil
-            })
+                if Self.rolloutPathLooksLikeSubagent(expandedPath) {
+                    subagentIDs.insert(threadID)
+                    continue
+                }
+                guard sniffedFiles < Self.subagentMetadataSniffFileLimit else { continue }
+                sniffedFiles += 1
+                if Self.rolloutHeadDeclaresSubagent(atPath: expandedPath) {
+                    subagentIDs.insert(threadID)
+                }
+            }
+            subagentSessionIDs = subagentIDs
         } else {
             subagentSessionIDs = []
         }
@@ -208,23 +241,81 @@ public final class CodexParser: LogParser, Sendable {
         return (parsed.usages, parsed.conversations, invalidations.sorted())
     }
 
-    private func isCodexSubagentRollout(_ path: String) -> Bool {
+    public static func rolloutPathLooksLikeSubagent(_ path: String) -> Bool {
+        let standardized = (path as NSString).standardizingPath.lowercased()
+        let markers = ["/subagents/", "/subagent/", "-subagent-", "_subagent_"]
+        return markers.contains { standardized.contains($0) }
+    }
+
+    /// Bytes read from the head of one rollout when classifying it. The
+    /// subagent keys sit in the `session_meta` preamble — at most ~700B into
+    /// every rollout of a real 974-file ~/.codex corpus — so this leaves 10x
+    /// headroom while staying far cheaper than the record itself, whose
+    /// embedded `base_instructions` push the median first line past 19KB.
+    static let subagentMetadataHeadByteLimit = 8 * 1024
+    /// Records parsed inside that head. `session_meta` is the first record
+    /// Codex writes; the slack absorbs preamble lines without reading bodies.
+    static let subagentMetadataSniffLineLimit = 8
+    /// Rollouts head-read per pass on legacy (no `thread_source`) databases.
+    /// Bounds the fallback at 32MB of I/O against a 16–256MB pass budget, and
+    /// comfortably covers real thread tables (1751 rows on the corpus above,
+    /// head-read in 0.16s). Threads past the cap keep path-marker
+    /// classification for this pass.
+    static let subagentMetadataSniffFileLimit = 4096
+
+    /// Whether a rollout's `session_meta` record declares it a subagent
+    /// thread. Bounded by design — see `subagentMetadataHeadByteLimit` — so
+    /// legacy databases can be classified without opening rollout bodies.
+    public static func rolloutHeadDeclaresSubagent(atPath path: String) -> Bool {
         guard let handle = FileHandle(forReadingAtPath: path) else { return false }
         defer { try? handle.close() } // try?-ok(read-only teardown)
 
-        guard let prefix = try? handle.read(upToCount: 256 * 1024),
-              !prefix.isEmpty else { return false }
+        guard let head = try? handle.read(upToCount: subagentMetadataHeadByteLimit),
+              !head.isEmpty else { return false }
 
-        let text = String(decoding: prefix, as: UTF8.self)
-        for line in text.split(separator: "\n", maxSplits: 15, omittingEmptySubsequences: true) {
+        let text = String(decoding: head, as: UTF8.self)
+        if headDeclaresSubagentKey(text) { return true }
+
+        // Whitespace-formatted or string-tagged variants the raw key scan
+        // cannot match. Only complete lines decode; a first record longer than
+        // the head is exactly the case the scan above already covers.
+        let lines = text
+            .split(
+                separator: "\n",
+                maxSplits: subagentMetadataSniffLineLimit,
+                omittingEmptySubsequences: true
+            )
+            .prefix(subagentMetadataSniffLineLimit)
+        for line in lines {
             guard let data = String(line).data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   json["type"] as? String == "session_meta",
-                  let payload = json["payload"] as? [String: Any],
-                  let source = payload["source"] as? [String: Any] else { continue }
-            return source["subagent"] != nil
+                  let payload = json["payload"] as? [String: Any] else { continue }
+            return payloadDeclaresSubagent(payload)
         }
         return false
+    }
+
+    /// Raw-key scan over the head. Codex writes compact JSON and `session_meta`
+    /// is the first record, but that record is routinely larger than the head,
+    /// so decoding it whole is not an option — these keys are read where they
+    /// lie. A raw `"` never occurs inside JSON string content (it is escaped),
+    /// so a hit can only come from record structure, never from a rollout body
+    /// that merely discusses subagents.
+    private static func headDeclaresSubagentKey(_ text: String) -> Bool {
+        text.contains("\"thread_source\":\"subagent\"")
+            || text.contains("\"source\":{\"subagent\"")
+    }
+
+    private static func payloadDeclaresSubagent(_ payload: [String: Any]) -> Bool {
+        if (payload["thread_source"] as? String)?.lowercased() == "subagent" { return true }
+        // Newer rollouts carry a structured `source` object; older ones a bare
+        // string tag alongside `originator`.
+        if let source = payload["source"] as? [String: Any] {
+            if let subagent = source["subagent"], !(subagent is NSNull) { return true }
+            return (source["type"] as? String)?.lowercased() == "subagent"
+        }
+        return (payload["source"] as? String)?.lowercased() == "subagent"
     }
 
 }

@@ -114,6 +114,246 @@ final class UsageRefreshPipelineTests: XCTestCase {
         }
     }
 
+    func test_perProviderRefreshBudget_keepsAFloorAndDoesNotCollapseToZero() {
+        XCTAssertEqual(
+            ParserResourcePolicy.perProviderRefreshFileByteBudget(providerCount: 1),
+            ParserResourcePolicy.refreshPassFileByteBudget
+        )
+        XCTAssertEqual(
+            ParserResourcePolicy.perProviderRefreshFileByteBudget(providerCount: 4),
+            ParserResourcePolicy.refreshFileByteBudget
+        )
+        let thirty = ParserResourcePolicy.perProviderRefreshFileByteBudget(providerCount: 30)
+        XCTAssertGreaterThanOrEqual(thirty, ParserResourcePolicy.refreshFileByteBudgetFloor)
+        XCTAssertLessThanOrEqual(thirty, ParserResourcePolicy.refreshFileByteBudget)
+    }
+
+    func test_liveLane_dropsHistoricalUsagesAndSetsARecentCutoff() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let stale = ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "old",
+            startTime: Date(timeIntervalSince1970: 1_600_000_000),
+            endTime: Date(timeIntervalSince1970: 1_600_000_060)
+        )
+        let live = ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "live",
+            startTime: Date(),
+            endTime: Date()
+        )
+        let pipeline = UsageRefreshPipeline(
+            parsers: [
+                .factory: RecordingParser(recorder: recorder, usages: [stale, live])
+            ],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        let parsed = try await pipeline.parse(from: pipeline.discover(), lane: .live)
+        XCTAssertEqual(parsed.allUsages.map(\.sessionId), ["live"])
+        let cutoffs = await recorder.minimumDateSnapshot()
+        XCTAssertEqual(cutoffs.count, 1)
+        let cutoff = try XCTUnwrap(cutoffs[0])
+        XCTAssertGreaterThan(cutoff, Date().addingTimeInterval(-UsageIngestionPolicy.liveWindow - 5))
+        XCTAssertLessThan(cutoff, Date())
+    }
+
+    func test_liveLane_doesNotDeleteHistoricalIDsWithoutAPublishedReplacement() async throws {
+        let store = try makeInMemoryDataStore()
+        let staleReplacement = ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "parent#day-100",
+            startTime: Date(timeIntervalSince1970: 1_600_000_000),
+            endTime: Date(timeIntervalSince1970: 1_600_000_060)
+        )
+        let pipeline = UsageRefreshPipeline(
+            parsers: [
+                .codex: RepairParser(replacement: staleReplacement)
+            ],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        let parsed = try await pipeline.parse(from: pipeline.discover(), lane: .live)
+        XCTAssertTrue(parsed.allUsages.isEmpty)
+        XCTAssertTrue(parsed.usageSessionIDsToDeleteByProvider[.codex, default: []].isEmpty)
+    }
+
+    func test_liveLane_appliesDeleteWhenALiveReplacementIsPublished() async throws {
+        let store = try makeInMemoryDataStore()
+        let liveReplacement = ViewTestFixtures.makeUsage(
+            provider: .codex,
+            sessionId: "parent#day-200",
+            startTime: Date(),
+            endTime: Date()
+        )
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.codex: RepairParser(replacement: liveReplacement)],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        let parsed = try await pipeline.parse(from: pipeline.discover(), lane: .live)
+        XCTAssertEqual(parsed.allUsages.map(\.sessionId), ["parent#day-200"])
+        XCTAssertEqual(parsed.usageSessionIDsToDeleteByProvider[.codex], ["parent"])
+    }
+
+    func test_liveLane_omitsCachedUnchangedUsages() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.factory: RecordingParser(recorder: recorder)],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        _ = try await pipeline.parse(from: pipeline.discover(), lane: .live)
+        let liveCached = await recorder.includeCachedSnapshot()
+        XCTAssertEqual(liveCached, [false])
+
+        _ = try await pipeline.parse(from: pipeline.discover(), lane: .catchUp)
+        let catchUpCached = await recorder.includeCachedSnapshot()
+        XCTAssertEqual(catchUpCached, [false, true])
+    }
+
+    func test_persistGate_doesNotInterleaveConcurrentBodies() async {
+        let gate = UsageIngestPersistGate()
+        let counter = PersistGateCounter()
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<8 {
+                group.addTask {
+                    await gate.withLock {
+                        await counter.enter()
+                        try? await Task.sleep(nanoseconds: 15_000_000)
+                        await counter.leave()
+                    }
+                }
+            }
+        }
+        let maxInFlight = await counter.maxInFlight
+        XCTAssertEqual(maxInFlight, 1)
+    }
+
+    func test_deletesSafeForLivePublish_requiresAReplacement() {
+        XCTAssertEqual(
+            UsageIngestionPolicy.deletesSafeForLivePublish(
+                ["parent"],
+                publishedSessionIDs: ["parent#day-200"]
+            ),
+            ["parent"]
+        )
+        XCTAssertEqual(
+            UsageIngestionPolicy.deletesSafeForLivePublish(
+                ["parent"],
+                publishedSessionIDs: ["other"]
+            ),
+            []
+        )
+    }
+
+    func test_catchUpLane_keepsHistoricalUsagesAndDoesNotForceACutoff() async throws {
+        let store = try makeInMemoryDataStore()
+        let recorder = ParseOptionsRecorder()
+        let stale = ViewTestFixtures.makeUsage(
+            provider: .factory,
+            sessionId: "old",
+            startTime: Date(timeIntervalSince1970: 1_600_000_000),
+            endTime: Date(timeIntervalSince1970: 1_600_000_060)
+        )
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.factory: RecordingParser(recorder: recorder, usages: [stale])],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        let parsed = try await pipeline.parse(from: pipeline.discover(), lane: .catchUp)
+        XCTAssertEqual(parsed.allUsages.map(\.sessionId), ["old"])
+        let catchUpDates = await recorder.minimumDateSnapshot()
+        XCTAssertEqual(catchUpDates, [nil])
+    }
+
+    func test_liveLane_parsesSiblingProvidersEvenWhenTheFirstIsSlow() async throws {
+        let store = try makeInMemoryDataStore()
+        let slow = DelayedParser(
+            provider: .claudeCode,
+            delayNanoseconds: 80_000_000,
+            usages: [ViewTestFixtures.makeUsage(provider: .claudeCode, sessionId: "claude-live")]
+        )
+        let fast = DelayedParser(
+            provider: .factory,
+            delayNanoseconds: 0,
+            usages: [ViewTestFixtures.makeUsage(provider: .factory, sessionId: "factory-live")]
+        )
+        let pipeline = UsageRefreshPipeline(
+            parsers: [.claudeCode: slow, .factory: fast],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        let parsed = try await pipeline.parse(from: pipeline.discover(), lane: .live)
+        XCTAssertEqual(
+            Set(parsed.allUsages.map(\.sessionId)),
+            ["claude-live", "factory-live"]
+        )
+    }
+
+    func test_parseStageDoesNotLetOneProviderConsumeTheByteBudgetForEveryone() async throws {
+        let store = try makeInMemoryDataStore()
+        let hogRecorder = BudgetAdmissionRecorder()
+        let siblingRecorder = BudgetAdmissionRecorder()
+        let hog = BudgetRecordingParser(provider: .claudeCode, recorder: hogRecorder)
+        let sibling = BudgetRecordingParser(provider: .factory, recorder: siblingRecorder)
+        let pipeline = UsageRefreshPipeline(
+            parsers: [
+                .claudeCode: hog,
+                .factory: sibling
+            ],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(
+                conversationIndexingEnabled: false,
+                snapshotAPIs: []
+            )
+        )
+
+        _ = try await pipeline.parse(from: pipeline.discover())
+
+        let hogAdmitted = await hogRecorder.admittedSnapshot()
+        let siblingAdmitted = await siblingRecorder.admittedSnapshot()
+        XCTAssertEqual(hogAdmitted, [true], "The first provider must still receive a budget")
+        XCTAssertEqual(
+            siblingAdmitted,
+            [true],
+            "A later provider must keep its own byte budget after Claude spends a full 256MB slice"
+        )
+    }
+
     func test_parseStageCanSkipConversationBodiesForFastUsageImport() async throws {
         let store = try makeInMemoryDataStore()
         let recorder = ParseOptionsRecorder()
@@ -174,6 +414,23 @@ final class UsageRefreshPipelineTests: XCTestCase {
         let recorded = await recorder.watermarkSnapshot()
         XCTAssertEqual(recorded.dates, [nil])
         XCTAssertEqual(recorded.trackersPresent, [false])
+    }
+
+    func test_persist_deleteOnlyRemovesRows() async throws {
+        let store = try makeInMemoryDataStore()
+        try await store.insert(ViewTestFixtures.makeUsage(provider: .codex, sessionId: "gone"))
+        let pipeline = UsageRefreshPipeline(
+            parsers: [:],
+            dataStore: store,
+            orchestrator: makeOrchestrator(store: store),
+            settings: RefreshSettingsSnapshot(conversationIndexingEnabled: false, snapshotAPIs: [])
+        )
+        var parsed = UsageRefreshPipeline.ParsedBatch()
+        parsed.usageSessionIDsToDeleteByProvider = [.codex: ["gone"]]
+        let persisted = await pipeline.persist(parsed: parsed)
+        XCTAssertNil(persisted.persistenceErrorMessage)
+        let remaining = try await store.fetchAllUsage()
+        XCTAssertTrue(remaining.isEmpty)
     }
 
     func test_refreshPipelineReplacesInvalidatedLifetimeAndDayRows() async throws {
@@ -569,14 +826,30 @@ private struct RepairParser: LogParser {
     }
 }
 
+private actor PersistGateCounter {
+    private var inFlight = 0
+    private(set) var maxInFlight = 0
+
+    func enter() {
+        inFlight += 1
+        maxInFlight = max(maxInFlight, inFlight)
+    }
+
+    func leave() {
+        inFlight -= 1
+    }
+}
+
 private actor ParseOptionsRecorder {
     private var values: [Bool] = []
     private var minimumDates: [Date?] = []
+    private var includeCached: [Bool] = []
     private var trackersPresent: [Bool] = []
 
     func record(_ options: LogParseOptions) {
         values.append(options.includeConversationBodies)
         minimumDates.append(options.minimumFileModificationDate)
+        includeCached.append(options.includeCachedUnchangedUsages)
         trackersPresent.append(options.fileDiscoveryTracker != nil)
     }
 
@@ -586,6 +859,55 @@ private actor ParseOptionsRecorder {
 
     func watermarkSnapshot() -> (dates: [Date?], trackersPresent: [Bool]) {
         (minimumDates, trackersPresent)
+    }
+
+    func minimumDateSnapshot() -> [Date?] {
+        minimumDates
+    }
+
+    func includeCachedSnapshot() -> [Bool] {
+        includeCached
+    }
+}
+
+private actor BudgetAdmissionRecorder {
+    private var values: [Bool] = []
+
+    func record(_ admitted: Bool) {
+        values.append(admitted)
+    }
+
+    func admittedSnapshot() -> [Bool] {
+        values
+    }
+}
+
+/// Spends the historical whole-pass 256MB budget, then reports whether the
+/// governor still admitted that charge. Used to prove later providers are
+/// not sharing Claude's slice.
+private struct DelayedParser: LogParser {
+    let provider: AgentProvider
+    let delayNanoseconds: UInt64
+    let usages: [TokenUsage]
+
+    func parse(options _: LogParseOptions) async throws -> ParseResult {
+        if delayNanoseconds > 0 {
+            try await Task.sleep(nanoseconds: delayNanoseconds)
+        }
+        return ParseResult(usages: usages, conversations: [])
+    }
+}
+
+private struct BudgetRecordingParser: LogParser {
+    let provider: AgentProvider
+    let recorder: BudgetAdmissionRecorder
+
+    func parse(options: LogParseOptions) async throws -> ParseResult {
+        let admitted = options.resourceGovernor?.admitFile(
+            estimatedBytes: ParserResourcePolicy.refreshPassFileByteBudget
+        ) ?? false
+        await recorder.record(admitted)
+        return ParseResult(usages: [], conversations: [])
     }
 }
 
