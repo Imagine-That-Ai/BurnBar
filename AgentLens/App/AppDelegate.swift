@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             applyWallpaperAppearance()
             refreshMenuBarIconStyle()
             observeMenuBarIconStyle()
+            observeMenuBarValue()
             updateWallpaperState()
             configureWallpaperActivityPolling()
             syncWallpaperColorDriver()
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var dataStore: DataStore? {
         didSet {
             setupWallpaperObservers()
+            observeMenuBarValue()
             if let dataStore {
                 let dataStoreActor = dataStore.actor
                 Task.detached(priority: .background) {
@@ -72,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var wallpaperPollTimer: Timer?
     var dataStoreObservation: Any?
     var daemonObservation: Any?
+    var menuBarValueObservation: Any?
     var batteryNotificationSource: CFRunLoopSource?
     var wallpaperActivityTimer: Timer?
     var wallpaperAgentStatusObserver: NSObjectProtocol?

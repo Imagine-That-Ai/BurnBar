@@ -860,10 +860,17 @@ final class SettingsManagerTests: XCTestCase {
         XCTAssertEqual(settings.preferredIndexEmbeddingVersionIDValue, "v1.0")
     }
 
-    func test_indexEmbeddingProvider_defaultValue_isDeterministic() {
+    func test_indexEmbeddingProvider_defaultValue_isAppleNL() {
         let defaults = makeIsolatedDefaults()
         let settings = makeSettingsManager(defaults: defaults)
-        XCTAssertEqual(settings.indexEmbeddingProvider, .deterministic)
+        XCTAssertEqual(
+            settings.indexEmbeddingProvider, .appleNL,
+            "Fresh installs must index with real on-device semantic embeddings, never the seeded-hash CI embedder."
+        )
+        XCTAssertTrue(
+            defaults.bool(forKey: "indexEmbeddingProviderNLMigration.v1"),
+            "First launch must stamp the migration flag so a later explicit choice of `deterministic` sticks."
+        )
     }
 
     func test_indexEmbeddingProvider_resolvesFromRawValue() {
@@ -871,6 +878,29 @@ final class SettingsManagerTests: XCTestCase {
         defaults.set("openai", forKey: "indexEmbeddingProvider")
         let settings = makeSettingsManager(defaults: defaults)
         XCTAssertEqual(settings.indexEmbeddingProvider, .openai)
+    }
+
+    func test_indexEmbeddingProvider_migratesLegacyDeterministicDefaultToAppleNL() {
+        // `deterministic` was the silent default before appleNL existed — a stored
+        // value was never a real user choice, so it upgrades exactly once.
+        let defaults = makeIsolatedDefaults()
+        defaults.set("deterministic", forKey: "indexEmbeddingProvider")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.indexEmbeddingProvider, .appleNL)
+        XCTAssertEqual(
+            defaults.string(forKey: "indexEmbeddingProvider"), "appleNL",
+            "The upgrade must persist so pre-observer reads never resurrect the hash embedder."
+        )
+    }
+
+    func test_indexEmbeddingProvider_explicitDeterministicChoiceSurvivesRelaunch() {
+        // After the one-shot migration, re-selecting the hash embedder is an
+        // explicit, informed choice (CI / test rigs) and must stick.
+        let defaults = makeIsolatedDefaults()
+        defaults.set("deterministic", forKey: "indexEmbeddingProvider")
+        defaults.set(true, forKey: "indexEmbeddingProviderNLMigration.v1")
+        let settings = makeSettingsManager(defaults: defaults)
+        XCTAssertEqual(settings.indexEmbeddingProvider, .deterministic)
     }
 
     func test_indexOpenAIModel_defaultValue_isTextEmbedding3Small() {
@@ -1926,13 +1956,15 @@ final class SettingsManagerTests: XCTestCase {
     }
 
     func test_timeRange_dateRange_today() {
-        let range = TimeRange.today.dateRange()
+        let calendar = Calendar.current
+        let now = calendar.date(
+            from: DateComponents(year: 2026, month: 8, day: 16, hour: 14, minute: 30)
+        )!
+        let range = TimeRange.today.dateRange(now: now)
         XCTAssertNotNil(range)
 
-        let calendar = Calendar.current
-        XCTAssertTrue(calendar.isDateInToday(range!.lowerBound))
-        // Upper bound is exclusive — `startOfDay + 1 day == startOfTomorrow`.
-        XCTAssertTrue(calendar.isDateInTomorrow(range!.upperBound))
+        XCTAssertEqual(range!.lowerBound, calendar.startOfDay(for: now))
+        XCTAssertEqual(range!.upperBound, now)
     }
 
     func test_timeRange_dateRange_last7Days() {
@@ -1963,7 +1995,8 @@ final class SettingsManagerTests: XCTestCase {
     // MARK: - IndexEmbeddingProviderID Tests
 
     func test_indexEmbeddingProviderID_allCases() {
-        XCTAssertEqual(IndexEmbeddingProviderID.allCases.count, 2)
+        XCTAssertEqual(IndexEmbeddingProviderID.allCases.count, 3)
+        XCTAssertTrue(IndexEmbeddingProviderID.allCases.contains(.appleNL))
         XCTAssertTrue(IndexEmbeddingProviderID.allCases.contains(.deterministic))
         XCTAssertTrue(IndexEmbeddingProviderID.allCases.contains(.openai))
     }

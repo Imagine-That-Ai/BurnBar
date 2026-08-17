@@ -1482,6 +1482,16 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.search.sql",
+    "caseName": "searchSQL",
+    "domain": "search",
+    "capability": "search",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.search.sql",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.simulator.list",
     "caseName": "simulatorList",
     "domain": "mission_control",
