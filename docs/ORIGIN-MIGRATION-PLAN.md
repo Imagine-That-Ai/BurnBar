@@ -25,7 +25,7 @@ So the plan is deliberately ordered to put value before migration:
 | **E. Prove Origin can carry a macOS release** | Go/no-go on cutover, with evidence | spike |
 | **F. Cut over what Origin can actually carry** | Real migration, per repo | cutover |
 
-Phases A–C are worth doing **even if Origin is never adopted**, and they are exactly the work that makes a later cutover safe. Nothing in Phase A–D touches a live pointer.
+Phases A–C are worth doing **even if Origin is never adopted**, and they are exactly the work that makes a later cutover safe. Only three packets in Phase A–D touch a live pointer, all of them intended ship actions and all ATC-gated (§8); **no Origin packet touches one at all**.
 
 **One definition governs the whole plan** (§4.5): a lane counts as "off GitHub" only when it completes with `api.github.com` and `github.com` blocked at the network layer. Moving the repo is not migration, and Depot or Buildkite on Origin **still run the existing GitHub Actions** — so re-hosting a workflow that calls `api.github.com` changes the executor, not the dependency.
 
@@ -85,7 +85,9 @@ rg -n 'relayLink' functions/scripts/test-hermes.mjs firestore.rules
 
 **FACT** — `Imagine-That-Ai/imaginethat-llc` returns **HTTP 404** to this workspace's credential. `gh api installation/repositories` reports `total_count: 1` — the token is a GitHub App installation token scoped to `Imagine-That-Ai/BurnBar` only.
 
-**UNKNOWN** — Whether `imaginethat-llc` is private, differently named, or under a different owner. A 404 from a single-repo installation token is not evidence of non-existence. **Do not infer the slug.** See §10-U1 for exactly what is needed to close this.
+**Resolved by §1.5** — CI Steward confirms the CubeLove repository is **private** and factory-attested, which explains the 404: a single-repo installation token cannot see it. A 404 was never evidence of non-existence.
+
+**Still UNKNOWN** — the repository's exact owner/name as addressable by a credential that can read it, and everything inside it. **Do not infer the slug**, and do not derive an Origin namespace from it (§2.1). See §10-U1.
 
 **INFERENCE** — The org itself is small (two visible repos). The "what else in the org blocks a ship" question (§5.4) is therefore answered mostly by *non-repo* assets: DNS, Cloudflare R2, Firebase projects, npm, Apple, and Play. Those are the real single points of failure, and none of them are GitHub.
 
@@ -604,7 +606,7 @@ Run the documented `promote=true` path with `expected_live_macos_version=1.0.29`
 Not outage-blocked; the tag was simply never pushed (§3.2). Dry-run via the workflow's `dry_run` input first, then push `openburnbar-npm-v0.1.1`. This is a tag push, not a workflow rerun.
 **Done-check:** `curl -s https://registry.npmjs.org/openburnbar | python3 -c 'import json,sys;print(json.load(sys.stdin)["dist-tags"])'` shows `0.1.1`.
 
-**P7 — Clear the CubeLove blockers, then ship.** *(Builder A; ATC go required)*
+**P7 — Clear the CubeLove blockers, then ship.** *(Builder A; ATC go required; live pointer)*
 Blockers first, in order, per §1.5: (a) do **not** approve production-cutover on run `32051454244` att4; (b) do **not** merge `master` while that run is alive; (c) supply the **three missing cutover env vars** in `deploy.yml`'s Pages step. Only then ship. Because `deploy.yml` has **no `workflow_dispatch`**, there is no manual re-trigger — so if the event-driven path cannot be re-armed cleanly, use the operator break-glass deploy from §5.2 path 1 rather than forcing a rerun.
 **Done-check:** run `32051454244` is resolved or superseded (not approved); the three env vars are present in the Pages step; `curl -s https://cubelove.ai | grep release-sha` returns the intended commit SHA.
 
