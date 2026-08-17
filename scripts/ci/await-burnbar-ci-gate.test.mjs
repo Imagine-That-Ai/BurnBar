@@ -43,8 +43,8 @@ test("umbrella timeout outlives the longest required component", () => {
     new URL("../../.github/workflows/burnbar-ci-gate.yml", import.meta.url),
     "utf8",
   );
-  const appWorkflow = readFileSync(
-    new URL("../../.github/workflows/app-pr-gate.yml", import.meta.url),
+  const domainCore = readFileSync(
+    new URL("../../.github/workflows/domain-core.yml", import.meta.url),
     "utf8",
   );
   const config = JSON.parse(
@@ -56,25 +56,33 @@ test("umbrella timeout outlives the longest required component", () => {
   const umbrellaTimeout = Number(
     workflow.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/mu)?.[1],
   );
-  const appJob = appWorkflow.match(
-    /^\s{2}app-build-test:\n([\s\S]*?)^\s{2}mobile-build-gate:/mu,
+  const domainCoreGate = domainCore.match(
+    /^\s{2}domain-core-pr-gate:\n([\s\S]*)$/mu,
   )?.[1];
-  const appTimeout = Number(
-    appJob?.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/mu)?.[1],
+  const longestRemaining = Number(
+    domainCoreGate?.match(/^\s{4}timeout-minutes:\s*(\d+)\s*$/mu)?.[1],
   );
 
-  assert.ok(Number.isSafeInteger(appTimeout) && appTimeout > 0);
+  assert.ok(Number.isSafeInteger(longestRemaining) && longestRemaining > 0);
   assert.ok(
-    config.timeout_minutes >= appTimeout + 15,
-    "evaluator must outlive the longest component with polling headroom",
+    !config.required_contexts.includes("App build + test (AgentLens)"),
+    "merge-queue inventory must not wait on post-merge AgentLens",
+  );
+  assert.ok(
+    !config.required_contexts.includes("Mobile build + unit test"),
+    "merge-queue inventory must not wait on post-merge mobile",
+  );
+  assert.ok(
+    config.timeout_minutes >= longestRemaining + 15,
+    "evaluator must outlive the longest remaining merge-queue component with polling headroom",
   );
   assert.ok(
     umbrellaTimeout >= config.timeout_minutes + 5,
     "workflow timeout must outlive the evaluator deadline",
   );
   assert.ok(
-    config.component_runtime_budget_minutes >= appTimeout,
-    "started-component budget must cover the longest component's runtime cap",
+    config.component_runtime_budget_minutes >= longestRemaining,
+    "started-component budget must cover the longest remaining component's runtime cap",
   );
   assert.ok(
     umbrellaTimeout > config.timeout_minutes + 15,

@@ -1,23 +1,25 @@
 name: Headless App Build (K4 precursor)
 
-# PR-triggerable, build-only proof that the macOS AgentLens app (scheme
+# Post-merge / nightly build-only proof that the macOS AgentLens app (scheme
 # OpenBurnBar) still COMPILES headlessly — the declared precondition for the
 # Core-decomposition UI extraction (packet P-16 / K4, docs/CORE_DECOMPOSITION_PROGRAM.md).
 #
 # WHY A SEPARATE LANE (not just app-pr-gate.yml):
 #   app-pr-gate.yml's `app-build-test` runs `xcodebuild test` — it launches the
-#   XCTest host and the app's Firestore/daemon lifecycle, capped at 120 min.
-#   P-16 (Views -> OpenBurnBarUI) does not need the app TESTS to run to be
-#   proven safe; it needs proof the app GRAPH still builds after a UI move. This
-#   lane runs `xcodebuild build` only (scripts/ci/headless-app-build.sh), so a
-#   UI-extraction compile break is caught by a fast, focused, merge-blocking
-#   signal without paying for the full app test suite. Each P-16 sub-packet PR
-#   body names THIS job as a required gate.
+#   XCTest host and the app's Firestore/daemon lifecycle. P-16 (Views ->
+#   OpenBurnBarUI) does not need the app TESTS to run to be proven safe; it
+#   needs proof the app GRAPH still builds after a UI move. This lane runs
+#   `xcodebuild build` only (scripts/ci/headless-app-build.sh).
 #
-# PATH FILTER: only the surfaces a UI extraction can break — OpenBurnBarCore/**
-# (the source of the moved Views) and AgentLens/** (the app target that consumes
-# them). Package/project shape changes that alter the app graph ride along via
-# the manifest/pbxproj entries under those trees.
+# This is not a pull_request or merge_group wall. Hosted macos-26 headless
+# builds were 21–30 minutes and are not one of the ten required merge
+# contexts; ALLGREEN on the merge queue still waited for them. Fast Feedback
+# plus the required security/quality contexts remain the merge door. A broken
+# AgentLens graph stays visible on push-to-main and nightly, not silent.
+#
+# PATH FILTER (push only): surfaces a UI extraction can break —
+# OpenBurnBarCore/** and AgentLens/**. Nightly and workflow_dispatch ignore
+# path filters so a quiet day cannot hide a red app graph.
 #
 # The known-good headless recipe (repo memory "Headless xcodebuild blocked
 # (Xcode 27 Beta)") is encoded in the script: a fresh CI runner checks out
@@ -30,9 +32,8 @@ permissions:
   contents: read
 
 on:
-  pull_request:
+  push:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "OpenBurnBarCore/**"
       - "AgentLens/**"
@@ -40,27 +41,33 @@ on:
       - "project.yml"
       - "scripts/ci/headless-app-build.sh"
       - ".github/workflows/headless-app-build.yml"
-  merge_group:
-    branches: [main]
-    types: [checks_requested]
+  schedule:
+    # 10:47 UTC. After the 09:17 App post-merge lane and the 10:17 Linux
+    # nightly so macos-26 runners are not triple-booked.
+    - cron: "47 10 * * *"
+  workflow_dispatch:
 
+# Push runs are the exact-main headless proof: key them by commit and never
+# cancel them. A later main push must not evict an in-flight graph build;
+# path filters do not protect a product SHA whose proof is still running.
+# GitHub also evicts a *pending* run when two jobs share a group, even with
+# cancel-in-progress false, so push groups include the SHA.
 concurrency:
-  group: headless-app-build-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: headless-app-build-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   headless-app-build:
     name: Headless macOS app build (scheme OpenBurnBar)
-    # Routing (cost + security): pull-request and merge-queue candidates may both
-    # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
+    # Routing (cost + security): post-merge main is trusted, but this lane still
+    # uses the isolated hosted macOS pools so MACOS_GATE_POOL / CI_POOL policy
+    # stays unchanged. Set repo var MACOS_GATE_POOL=paid to force the capped
+    # hosted pool for a billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
-    # Build-only (no XCTest host launch), so far lighter than the 120-min
+    # Build-only (no XCTest host launch), so far lighter than the 90-min
     # app-build-test lane; the cap still covers a cold SPM cache + libsignal FFI
     # build on a hosted runner.
     timeout-minutes: 90
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)

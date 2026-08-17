@@ -128,7 +128,7 @@ await completeCliLink({ userCode: codeInput.value.trim() });
 Production `completeCliLink` runs with `enforceAppCheck: true` plus a
 high-risk-action nonce requirement, so the platform rejected the request
 before the handler ran. The fix is **website-only** (no `functions/**`
-changes): `bindAppCheckAttestation` → `getIdToken(true)` → 
+changes): `bindAppCheckAttestation` → `getIdToken(true)` →
 `issueHighRiskActionNonce` → `completeCliLink({ userCode, nonce })`, with a
 rebound path (rebind → refresh → remint) on App Check binding conflicts.
 `enforceAppCheck` is **not** disabled or bypassed anywhere. Details and

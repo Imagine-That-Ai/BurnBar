@@ -560,6 +560,29 @@ export const queueAgentCapabilityGrantRequest = onCallProduction(
 );
 
 /**
+ * Firestore merge written by `respondMissionApproval` after the trusted-device
+ * gate. Approve stays parked in `waiting_for_approval` so the Mac listener can
+ * claim and continue. Deny must leave that status immediately — otherwise the
+ * phone inbox keeps re-hydrating the card from the still-waiting document.
+ */
+export function missionApprovalResolutionWrite(args: {
+  approve: boolean;
+  deviceId: string;
+}): Record<string, unknown> {
+  const approvalStatus = args.approve ? "approved" : "rejected";
+  const write: Record<string, unknown> = {
+    approvalStatus,
+    approvalRespondedAt: FieldValue.serverTimestamp(),
+    approvedByDeviceId: args.deviceId,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (!args.approve) {
+    write.status = "canceled";
+  }
+  return write;
+}
+
+/**
  * Bind a CLI-agent mission approval to the responding device.
  *
  * The decision is written server-side (admin SDK bypasses Firestore rules) only
@@ -633,17 +656,11 @@ export const respondMissionApproval = onCall(
           );
         }
 
-        transaction.set(
-          missionRef,
-          {
-            approvalStatus: approve ? "approved" : "rejected",
-            approvalRespondedAt: FieldValue.serverTimestamp(),
-            approvedByDeviceId: deviceId,
-            updatedAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
-        return { approvalStatus: approve ? "approved" : "rejected" };
+        transaction.set(missionRef, missionApprovalResolutionWrite({ approve, deviceId }), { merge: true });
+        return {
+          approvalStatus: approve ? "approved" : "rejected",
+          status: approve ? "waiting_for_approval" : "canceled",
+        };
       });
 
       logInfo({
@@ -652,8 +669,15 @@ export const respondMissionApproval = onCall(
         request_id: requestId,
         approved_by_device_id: deviceId,
         approval_status: result.approvalStatus,
+        status: result.status,
       });
-      return { ok: true, requestId, approvalStatus: result.approvalStatus, approvedByDeviceId: deviceId };
+      return {
+        ok: true,
+        requestId,
+        approvalStatus: result.approvalStatus,
+        status: result.status,
+        approvedByDeviceId: deviceId,
+      };
     },
   ),
 );

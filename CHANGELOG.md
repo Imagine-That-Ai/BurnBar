@@ -20,6 +20,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (no VS Marketplace / Open VSX listing). Install + auth + sealed-field
   honesty: `docs/OPENBURNBAR_CURSOR_PLUGIN.md`.
 
+### Fixed - iPhone mission-approval Deny now persists
+- Tapping **Deny** on an Approvals-waiting card now leaves `waiting_for_approval`
+  immediately (`respondMissionApproval` writes `status: canceled` plus
+  `approvalStatus: rejected`). Approve still stays parked so the Mac listener
+  can claim it.
+- `MobileMissionConsoleHost` keeps a successful Deny/Approve hidden when the
+  Firestore list listener re-emits the still-waiting document, and a failed
+  callable now stays visible on the Hermes Square inbox instead of being
+  cleared by the next snapshot (the previous silent no-op).
+
+### Removed - iPhone Mission Console floating orb
+- The circular floating Mission Console control (hand icon / "Approve") is gone
+  from iPhone Pulse, Settings, Agents, and every other tab. It no longer
+  auto-restores when Firestore mission approvals are pending.
+- Settings → Experimental no longer has the "Mission Console orb" toggle or
+  its auto-restore footer. The Experimental section is gone with it.
+- `MobileMissionConsoleHost` and Skill Run live stage are unchanged. The
+  console sheet stays in the tree for Hermes / Skill Run; this PR does not
+  add a replacement launcher.
+
+### Fixed - CI impact: Node Signal contracts lockfile no longer wakes macOS
+- `packages/signal-envelope-contracts` `package.json` / lockfile changes used
+  to match the catch-all npm `FULL_PATTERNS` and force every product lane,
+  including App PR Gate. That burned ~90 minutes of macos-26 rebuilding
+  libsignal FFI for a Node eslint bump, then cancelled at the job ceiling
+  (BurnBar #2247). Those two npm manifests now select the functions lane
+  only; other files under the package stay fail-closed. Fast Feedback still
+  runs the contracts tests. Other `packages/*` lockfiles stay fail-closed
+  full.
+
+### Changed - App PR Gate and Headless leave the PR / merge-queue path
+- **AgentLens macos-26 App PR Gate and Headless App Build no longer run on
+  `pull_request`.** Fast Feedback plus the ten required security/quality
+  contexts remain the merge door. Merge-queue ALLGREEN no longer waits 53–69
+  minutes (App) or 21–30 minutes (Headless) on hosted macos-26.
+- **The builds stay real.** App PR Gate runs on push to `main`, nightly at
+  09:17 UTC, and `workflow_dispatch`. Headless runs on path-filtered push to
+  `main`, nightly at 10:47 UTC, and `workflow_dispatch`. A broken AgentLens
+  graph is visible after merge, not silent.
+- **`merge_group` on App PR Gate emits skipped receipts only** so a stale
+  base-SHA BurnBar CI Gate inventory cannot hang the queue. macos-26 jobs do
+  not run on that path. Headless has no `merge_group` trigger.
+- **BurnBar CI Gate's merge-queue inventory no longer lists**
+  `App build + test (AgentLens)` or `Mobile build + unit test`. The ten
+  required branch-protection contexts are unchanged. `CI_POOL` /
+  `MACOS_GATE_POOL` are unchanged.
+- **Domain Core control-plane trusted bytes refreshed** for the two files
+  that inventory change actually edited (`burnbar-ci-gate.yml` and
+  `governance/burnbar-ci-gate.json`). Promotion-contracts still fail closed
+  on helper drift, omitted workflow executables, loaded-identity forgery,
+  Firebase CLI shim swaps, and symlink escapes.
+- **Post-merge App/Headless push proofs are keyed by SHA and never
+  cancelled.** A later docs-only (or any) `main` push cannot evict an
+  in-flight AgentLens/mobile or headless graph proof; the replacement
+  classifier would otherwise skip macos/mobile until nightly.
+
 ### Added - Metered usage-memory curation gateway (U4)
 - **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
   token-metered gateway for cloud usage-memory curation inference

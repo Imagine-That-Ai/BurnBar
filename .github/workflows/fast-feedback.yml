@@ -378,10 +378,15 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
         with:
           filter: blob:none
+          # Directory-level pins (not file pins) so split/renamed migration
+          # files and the AgentLens↔OpenBurnBarData byte-identical mirror
+          # pairs stay visible. File pins missed
+          # OpenBurnBarDatabase+MemoryMigrations.swift after it landed in
+          # OpenBurnBarData (ENOENT on the mirror-pair check).
           sparse-checkout: |
-            AgentLens/Services/DataStore/OpenBurnBarDatabase.swift
-            AgentLens/Services/DataStore/OpenBurnBarDatabase+MemoryMigrations.swift
-            OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory/BurnBarProjectCodeMemoryStore+Database.swift
+            AgentLens/Services/DataStore
+            OpenBurnBarCore/Sources/OpenBurnBarData
+            OpenBurnBarDaemon/Sources/OpenBurnBarDaemon/ProjectCodeMemory
             docs/SCHEMA_SQLITE.sql
             scripts/ci/verify-sqlite-schema-doc.mjs
             tools/openburnbar-mcp/project_code_memory.py

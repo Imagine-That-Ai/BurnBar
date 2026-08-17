@@ -46,6 +46,17 @@ export const LANES = [
   "console",
 ];
 
+// Node Signal envelope contracts are consumed by Functions, hosted MCP, and
+// Hermes relay. Fast Feedback already builds and tests this package. The
+// catch-all npm FULL_PATTERNS below would otherwise treat its package.json /
+// lockfile as a repo-wide graph change and wake every product lane, including
+// a ~90 minute macos-26 libsignal FFI rebuild (BurnBar #2247, 2026-08-15).
+// Only those two npm manifests take the exception. Source, tests, fixtures,
+// and any other file under the package stay fail-closed.
+const NODE_SIGNAL_ENVELOPE_CONTRACTS = Object.freeze([
+  /^packages\/signal-envelope-contracts\/(?:package\.json|package-lock\.json)$/,
+]);
+
 const FULL_PATTERNS = [
   /(^|\/)(Package\.swift|Package\.resolved|Cargo\.toml|Cargo\.lock|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?|gradle\.properties|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|[^/]+\.csproj|[^/]+\.slnx?|Directory\.Build\.(?:props|targets)|global\.json|packages\.lock\.json)$/,
   /^(OpenBurnBar\.xcodeproj|OpenBurnBar\.xcworkspace|tools\/schema-sync|Vendor\/|scripts\/lib\/|scripts\/release\/|scripts\/security\/)/,
@@ -100,6 +111,7 @@ const LANE_PATTERNS = {
     /^functions\//,
     /^firestore-rules-tests\//,
     /^scripts\/(?:test-functions|verify-functions)/,
+    ...NODE_SIGNAL_ENVELOPE_CONTRACTS,
   ],
   web: [/^(website|web|extensions\/openburnbar|plugins\/openburnbar)\//],
   console: [/^(apps\/console|console)\//],
@@ -188,7 +200,13 @@ export function classifyPaths(
       ...allLanes(true),
     };
   }
-  if (cleanPaths.some((path) => matchesAny(path, FULL_PATTERNS))) {
+  if (
+    cleanPaths.some(
+      (path) =>
+        !matchesAny(path, NODE_SIGNAL_ENVELOPE_CONTRACTS) &&
+        matchesAny(path, FULL_PATTERNS),
+    )
+  ) {
     return {
       full: true,
       reason: "shared-or-sensitive-path",

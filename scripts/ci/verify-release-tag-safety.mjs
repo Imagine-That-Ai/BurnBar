@@ -5,16 +5,19 @@
  * Both deploy-production.yml and deploy-cloud-run.yml implement a fail-closed
  * two-phase sequence:
  *
- *   Phase 1 — dry-run (workflow_dispatch + dry_run=true):
- *     The dispatch ref is a non-tag candidate branch/SHA. The operator supplies
- *     candidate_sha (a full 40-char SHA). The resolve step fetches origin/main,
- *     requires candidate_sha == origin/main, checks out that exact commit, and
- *     emits it. The tag string (future v*) is validated as SemVer but must NOT
- *     already exist — no credential or deploy step runs.
+ *   Phase 1 — dry-run (workflow_dispatch + dry_run=true from main):
+ *     The operator supplies candidate_sha (a full 40-char SHA). A future v*
+ *     tag requires that SHA to equal current origin/main. An already-existing
+ *     stable tag may use the one-shot recovery verifier when it is annotated,
+ *     peels to the candidate, remains reachable from origin/main, and has no
+ *     GitHub Release, production deployment, or plane status.
  *
- *   Phase 2 — real deploy (push: v* tag, or manual non-dry-run dispatch):
- *     A v* tag push is the only initial real deploy trigger. Manual non-dry-run
- *     dispatch must run from that existing tag ref. Credentials stay tag-bound.
+ *   Phase 2 — real deploy:
+ *     A v* tag push is the ordinary immutable trigger. Existing-tag recovery
+ *     uses a dedicated main-only existing_tag_retry dispatch that verifies the
+ *     current-main control SHA and both exact dry-run run receipts before the
+ *     immutable tag payload is checked out or executed. Tag-selected manual
+ *     dispatch and rerun are forbidden.
  *
  * This gate enforces the invariants that make both phases fail-closed and
  * symmetric across the two workflows.
@@ -27,6 +30,18 @@ import { fileURLToPath } from "node:url";
 const ROOT =
   process.env.RELEASE_TAG_SAFETY_ROOT ??
   join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const RECOVERY_GATE = join(
+  ROOT,
+  "scripts",
+  "ci",
+  "verify-existing-tag-dry-run-recovery.mjs",
+);
+const ATTESTATION_GATE = join(
+  ROOT,
+  "scripts",
+  "ci",
+  "release-dry-run-attestation.mjs",
+);
 
 const WORKFLOWS = [
   {
@@ -45,6 +60,13 @@ const WORKFLOWS = [
 
 const failures = [];
 const fail = (message) => failures.push(message);
+
+if (!existsSync(RECOVERY_GATE)) {
+  fail(`missing existing-tag recovery gate: ${RECOVERY_GATE}`);
+}
+if (!existsSync(ATTESTATION_GATE)) {
+  fail(`missing release dry-run attestation gate: ${ATTESTATION_GATE}`);
+}
 
 /* ── YAML helpers (same approach as verify-hosting-deploy-boundary.mjs) ── */
 
@@ -205,8 +227,23 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     source,
-    "Full SHA of the release candidate on origin/main (dry_run only)",
-    `[${label}] candidate_sha input must document dry-run-only intent`,
+    "Full immutable release-candidate SHA",
+    `[${label}] candidate_sha input must document immutable candidate semantics`,
+  );
+  requireIncludes(
+    source,
+    "existing_tag_retry:",
+    `[${label}] must define a dedicated existing_tag_retry input`,
+  );
+  requireIncludes(
+    source,
+    'description: "Current-main controlled real retry for an existing stable tag"',
+    `[${label}] existing_tag_retry must be an explicit workflow_dispatch input`,
+  );
+  requireIncludes(
+    source,
+    `run-name: release-control/${label}/`,
+    `[${label}] run-name must expose the exact attestation receipt`,
   );
 
   /* Resolve step must not be conditional */
@@ -229,8 +266,18 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     resolveStep,
+    "INPUT_EXISTING_TAG_RETRY: ${{ inputs.existing_tag_retry }}",
+    `[${label}] resolve step must pass existing_tag_retry through env`,
+  );
+  requireIncludes(
+    resolveStep,
     "EVENT_NAME: ${{ github.event_name }}",
     `[${label}] resolve step must read event name through env`,
+  );
+  requireIncludes(
+    resolveStep,
+    "GITHUB_TOKEN: ${{ github.token }}",
+    `[${label}] resolve step must receive only the scoped GitHub token for recovery reads`,
   );
 
   /* Fail-closed shell */
@@ -246,6 +293,16 @@ for (const wf of WORKFLOWS) {
     'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_DRY_RUN" == "true" ]]; then',
     `[${label}] resolve step must compute IS_DRY_RUN from event + input`,
   );
+  requireIncludes(
+    resolveRun,
+    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$INPUT_EXISTING_TAG_RETRY" == "true" ]]; then',
+    `[${label}] resolve step must compute the dedicated retry mode`,
+  );
+  requireIncludes(
+    resolveRun,
+    'if [[ "$IS_DRY_RUN" == "true" && "$IS_EXISTING_TAG_RETRY" == "true" ]]; then',
+    `[${label}] dry-run and real retry must be mutually exclusive`,
+  );
 
   /* SemVer tag validation (applies in both phases) */
   requireIncludes(
@@ -257,8 +314,8 @@ for (const wf of WORKFLOWS) {
   /* ── Phase 1: dry-run candidate path ── */
   requireIncludes(
     resolveRun,
-    'if [[ "$IS_DRY_RUN" == "true" ]]; then',
-    `[${label}] resolve step must branch on IS_DRY_RUN for phase 1`,
+    'if [[ "$IS_DRY_RUN" == "true" || "$IS_EXISTING_TAG_RETRY" == "true" ]]; then',
+    `[${label}] resolve step must isolate all manual main-only control`,
   );
   requireIncludes(
     resolveRun,
@@ -272,8 +329,8 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     resolveRun,
-    'if [[ "$GITHUB_REF" == "$tag_ref" ]]; then',
-    `[${label}] dry-run must reject running from a tag ref`,
+    'if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/main" || "$REF_NAME" != "main" ]]; then',
+    `[${label}] manual release control must require workflow_dispatch from main`,
   );
   requireIncludes(
     resolveRun,
@@ -283,12 +340,7 @@ for (const wf of WORKFLOWS) {
   requireIncludes(
     resolveRun,
     "git fetch --force --tags origin",
-    `[${label}] dry-run must fetch tags to check if future tag already exists`,
-  );
-  requireIncludes(
-    resolveRun,
-    'if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then',
-    `[${label}] dry-run must reject if future tag already exists`,
+    `[${label}] dry-run must fetch tags before deciding normal vs recovery mode`,
   );
   requireIncludes(
     resolveRun,
@@ -297,8 +349,8 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     resolveRun,
-    'if [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then',
-    `[${label}] dry-run must require candidate_sha == origin/main`,
+    'elif [[ "$INPUT_CANDIDATE_SHA" != "$main_sha" ]]; then',
+    `[${label}] future-tag dry-run must require candidate_sha == origin/main`,
   );
   requireIncludes(
     resolveRun,
@@ -306,7 +358,97 @@ for (const wf of WORKFLOWS) {
     `[${label}] dry-run must emit the candidate commit`,
   );
 
-  /* ── Phase 2: non-dry-run / tag-bound path ── */
+  /* Existing stable-tag recovery */
+  requireIncludes(
+    resolveRun,
+    'if git rev-parse --verify --quiet "$tag_ref" >/dev/null; then',
+    `[${label}] dry-run must isolate existing-tag recovery from the normal future-tag path`,
+  );
+  requireIncludes(
+    resolveRun,
+    'if [[ ! "$TAG" =~ ^v[0-9]{1,3}\\.[0-9]+\\.[0-9]+(\\+[0-9A-Za-z.-]+)?$ ]]; then',
+    `[${label}] existing-tag recovery must reject prerelease tags`,
+  );
+  requireIncludes(
+    resolveRun,
+    'if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/main" || "$REF_NAME" != "main" ]]; then',
+    `[${label}] existing-tag recovery must require workflow_dispatch from main`,
+  );
+  requireIncludes(
+    resolveRun,
+    'if [[ "${GITHUB_SHA:-}" != "$main_sha" ]]; then',
+    `[${label}] manual control must bind the workflow SHA to current main`,
+  );
+  requireIncludes(
+    resolveRun,
+    'if [[ "$(git cat-file -t "$tag_ref")" != "tag" ]]; then',
+    `[${label}] existing-tag recovery must require an annotated tag object`,
+  );
+  requireIncludes(
+    resolveRun,
+    'tag_commit="$(git rev-parse "${tag_ref}^{commit}")"',
+    `[${label}] existing-tag recovery must peel the tag to a commit`,
+  );
+  requireIncludes(
+    resolveRun,
+    'if [[ "$tag_commit" != "$INPUT_CANDIDATE_SHA" ]]; then',
+    `[${label}] existing-tag recovery must require the tag to peel to candidate_sha`,
+  );
+  requireIncludes(
+    resolveRun,
+    'git merge-base --is-ancestor "$tag_commit" origin/main',
+    `[${label}] existing-tag recovery must require tag reachability from origin/main`,
+  );
+  requireIncludes(
+    resolveRun,
+    "node scripts/ci/verify-existing-tag-dry-run-recovery.mjs",
+    `[${label}] existing-tag recovery must run the GitHub-state verifier`,
+  );
+  requireIncludes(
+    resolveRun,
+    `--plane ${label}`,
+    `[${label}] existing-tag recovery must check its own status context`,
+  );
+  requireIncludes(
+    resolveRun,
+    `--plane ${label}\n    else`,
+    `[${label}] dry-run recovery must execute its absence verifier before the real-retry branch`,
+  );
+  requireOrder(
+    resolveRun,
+    'if git rev-parse --verify --quiet "$tag_ref" >/dev/null; then',
+    'elif [[ "$IS_EXISTING_TAG_RETRY" == "true" ]]; then',
+    `[${label}] current-main equality must apply only to the future-tag path`,
+  );
+
+  /* ── Phase 2: existing-tag retry or immutable tag push ── */
+  requireIncludes(
+    resolveRun,
+    "--mode real-retry",
+    `[${label}] existing-tag real retry must recheck GitHub Release absence`,
+  );
+  requireIncludes(
+    resolveRun,
+    'node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify',
+    `[${label}] existing-tag real retry must use the preserved current-main verifier`,
+  );
+  requireIncludes(
+    resolveRun,
+    '--control-sha "$GITHUB_SHA"',
+    `[${label}] existing-tag real retry must bind attestations to the exact control SHA`,
+  );
+  requireOrder(
+    resolveRun,
+    "--mode real-retry",
+    'node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify',
+    `[${label}] retry publication eligibility must be rechecked before attestation authority`,
+  );
+  requireOrder(
+    resolveRun,
+    'node "$RUNNER_TEMP/release-dry-run-attestation.mjs" verify',
+    'commit="$INPUT_CANDIDATE_SHA"',
+    `[${label}] real-retry authority must be verified before candidate selection`,
+  );
   requireIncludes(
     resolveRun,
     'tag_ref="refs/tags/${TAG}"',
@@ -314,8 +456,13 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     resolveRun,
-    'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
-    `[${label}] manual non-dry-run dispatch must require tag ref`,
+    'if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then',
+    `[${label}] ordinary non-dry-run path must reject every manual dispatch`,
+  );
+  requireIncludes(
+    resolveRun,
+    "tag-selected dispatches and reruns are forbidden",
+    `[${label}] tag-selected manual recovery must be explicitly forbidden`,
   );
   requireIncludes(
     resolveRun,
@@ -333,6 +480,16 @@ for (const wf of WORKFLOWS) {
     resolveRun,
     'echo "dry_run=$IS_DRY_RUN"',
     `[${label}] resolve step must emit IS_DRY_RUN (not inline expression)`,
+  );
+  requireIncludes(
+    resolveRun,
+    'echo "existing_tag_retry=$IS_EXISTING_TAG_RETRY"',
+    `[${label}] resolve step must emit dedicated retry mode`,
+  );
+  requireIncludes(
+    resolveRun,
+    'echo "control_sha=${GITHUB_SHA:-}"',
+    `[${label}] resolve step must emit the exact trusted control SHA`,
   );
 
   /* ── Credential/deploy steps must be gated on dry_run != true ── */
@@ -384,7 +541,9 @@ const cloudRun = extractResolveRun("deploy-cloud-run");
 
 /* Extract the two-phase core logic (IS_DRY_RUN block) for symmetry */
 function extractPhaseLogic(run) {
-  const start = run.indexOf('if [[ "$IS_DRY_RUN" == "true" ]]; then');
+  const start = run.indexOf(
+    'if [[ "$IS_DRY_RUN" == "true" || "$IS_EXISTING_TAG_RETRY" == "true" ]]; then',
+  );
   if (start === -1) return "";
   const end = run.indexOf("fi\n\n          {", start);
   if (end === -1) return "";
@@ -400,6 +559,7 @@ if (prodPhase && cloudPhase && prodPhase !== cloudPhase) {
     text
       .replace(/production/gi, "DEPLOY_TARGET")
       .replace(/cloud run/gi, "DEPLOY_TARGET")
+      .replace(/cloud-run/gi, "DEPLOY_TARGET")
       .replace(/Functions/g, "DEPLOY_TARGET")
       .replace(/functions/g, "DEPLOY_TARGET")
       .replace(/firebase/gi, "DEPLOY_TARGET");
@@ -414,6 +574,7 @@ if (prodPhase && cloudPhase && prodPhase !== cloudPhase) {
 /* ── Deploy-job dry_run gating for cloud-run (separate deploy job) ─────── */
 
 const cloudSource = stripYamlComments(readFileSync(WORKFLOWS[1].file, "utf8"));
+const cloudResolveJob = jobBlock(cloudSource, "resolve-release");
 const cloudDeployJob = jobBlock(cloudSource, "deploy-hosted-mcp");
 if (cloudDeployJob) {
   requireIncludes(
@@ -430,7 +591,20 @@ const productionPrepareJob = jobBlock(
   productionSource,
   "prepare-functions-deploy",
 );
+const productionRollbackAuthorizationJob = jobBlock(
+  productionSource,
+  "authorize-domain-core-rollback",
+);
 const productionDeployJob = jobBlock(productionSource, "deploy-functions");
+const productionResultJob = jobBlock(productionSource, "functions-result");
+const productionEvidenceDispatchJob = jobBlock(
+  productionSource,
+  "dispatch-domain-core-functions-evidence",
+);
+const productionEvidenceHandoffJob = jobBlock(
+  productionSource,
+  "retain-domain-core-functions-evidence-handoff",
+);
 requireIncludes(
   productionPrepareJob,
   'if [[ -n "${GITHUB_SHA:-}" && "$commit" != "$GITHUB_SHA" ]]; then',
@@ -442,14 +616,75 @@ requireNoPattern(
   "[deploy-production] prepare-functions-deploy must not receive production credentials",
 );
 requireIncludes(
-  productionDeployJob,
+  productionRollbackAuthorizationJob,
   "needs: prepare-functions-deploy",
-  "[deploy-production] deploy-functions must consume prepare-functions-deploy",
+  "[deploy-production] rollback authorization must follow trusted release preparation",
+);
+requireIncludes(
+  productionRollbackAuthorizationJob,
+  "needs.prepare-functions-deploy.result == 'success'",
+  "[deploy-production] rollback authorization must require successful trusted release preparation",
+);
+requireIncludes(
+  productionRollbackAuthorizationJob,
+  "needs.prepare-functions-deploy.outputs.dry_run != 'true'",
+  "[deploy-production] rollback dry-runs must not enter the protected environment",
+);
+requireIncludes(
+  productionRollbackAuthorizationJob,
+  "needs.prepare-functions-deploy.outputs.domain_core_profile == 'public-production-rollback'",
+  "[deploy-production] rollback authorization must consume the resolved profile",
+);
+requireNoPattern(
+  productionPrepareJob,
+  /needs:\s*authorize-domain-core-rollback/u,
+  "[deploy-production] trusted release preparation must precede rollback authorization",
+);
+requireOrder(
+  productionSource,
+  "prepare-functions-deploy:",
+  "authorize-domain-core-rollback:",
+  "[deploy-production] rollback authorization must be declared after trusted release preparation",
+);
+requireNoPattern(
+  cloudResolveJob,
+  /(?:environment:\s*production|id-token:\s*write|secrets\.|google-github-actions\/auth)/u,
+  "[deploy-cloud-run] resolve-release must not receive production credentials",
+);
+requireIncludes(
+  productionPrepareJob,
+  "deployments: read",
+  "[deploy-production] recovery resolver must have read-only deployment visibility",
+);
+requireIncludes(
+  cloudResolveJob,
+  "deployments: read",
+  "[deploy-cloud-run] recovery resolver must have read-only deployment visibility",
+);
+requireIncludes(
+  cloudResolveJob,
+  "actions: read",
+  "[deploy-cloud-run] main-only retry resolver must have read-only Actions API access",
+);
+requireIncludes(
+  cloudResolveJob,
+  "statuses: read",
+  "[deploy-cloud-run] recovery resolver must have read-only status visibility",
+);
+requireIncludes(
+  productionDeployJob,
+  "needs: [prepare-functions-deploy, authorize-domain-core-rollback]",
+  "[deploy-production] deploy-functions must consume preparation and protected rollback authorization",
 );
 requireIncludes(
   productionDeployJob,
   "needs.prepare-functions-deploy.outputs.dry_run != 'true'",
   "[deploy-production] deploy-functions must be skipped during dry-run",
+);
+requireIncludes(
+  productionDeployJob,
+  "needs.authorize-domain-core-rollback.result == 'success'",
+  "[deploy-production] rollback deploy must require protected authorization",
 );
 requireIncludes(
   productionDeployJob,
@@ -461,6 +696,36 @@ requireNoPattern(
   /actions\/checkout@/u,
   "[deploy-production] credentialed deploy-functions must not check out repository code",
 );
+requireIncludes(
+  productionResultJob,
+  "if: ${{ always() && !inputs.dry_run }}",
+  "[deploy-production] workflow_dispatch booleans must use the typed inputs context",
+);
+requireNoPattern(
+  productionResultJob,
+  /github\.event\.inputs\.dry_run/u,
+  "[deploy-production] workflow_dispatch booleans must not use stringly github.event.inputs",
+);
+requireIncludes(
+  productionEvidenceDispatchJob,
+  "needs.deploy-functions.outputs.existing_tag_retry != 'true'",
+  "[deploy-production] existing-tag retries must not dispatch release evidence before the Release exists",
+);
+for (const marker of [
+  "needs.deploy-functions.outputs.existing_tag_retry == 'true'",
+  "domain-core-functions-release-evidence-handoff.json",
+  "requiresPublishedGitHubRelease: true",
+  "--field deploy_run_id=",
+  "--field deploy_run_attempt=",
+  "--field domain_core_profile=",
+  "actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4",
+]) {
+  requireIncludes(
+    productionEvidenceHandoffJob,
+    marker,
+    `[deploy-production] existing-tag retry evidence handoff is missing ${marker}`,
+  );
+}
 
 /* ── Attestation invariants ────────────────────────────────────────────── */
 
@@ -532,8 +797,8 @@ for (const wf of WORKFLOWS) {
   );
   requireIncludes(
     source,
-    "release-dry-run-attestation.mjs verify",
-    `[${wf.label}] must call attestation verify mode before credentials`,
+    'verify --sha "$ATTEST_SHA" --tag "$ATTEST_TAG"',
+    `[${wf.label}] must call attestation verify mode for the exact tag and SHA before credentials`,
   );
 
   /* Verify must be gated on dry_run != true (only real deploys need verification) */
@@ -579,15 +844,155 @@ for (const wf of WORKFLOWS) {
   }
 }
 
-/* Both workflows must grant statuses: write for attestation */
-for (const wf of WORKFLOWS) {
-  const source = stripYamlComments(readFileSync(wf.file, "utf8"));
+const cloudVerifyAttestationsJob = jobBlock(cloudSource, "verify-attestations");
+const cloudDryRunSummaryJob = jobBlock(
+  cloudSource,
+  "cloud-run-dry-run-summary",
+);
+requireIncludes(
+  productionPrepareJob,
+  "actions: read",
+  "[deploy-production] attestation verify must have read-only Actions API access",
+);
+requireIncludes(
+  productionPrepareJob,
+  "statuses: write",
+  "[deploy-production] attestation publish must have commit-status write access",
+);
+requireIncludes(
+  cloudVerifyAttestationsJob,
+  "actions: read",
+  "[deploy-cloud-run] attestation verify must have read-only Actions API access",
+);
+requireIncludes(
+  cloudVerifyAttestationsJob,
+  "statuses: read",
+  "[deploy-cloud-run] attestation verify must have read-only commit-status access",
+);
+requireNoPattern(
+  cloudVerifyAttestationsJob,
+  /(?:environment:\s*production|id-token:\s*write|secrets\.|google-github-actions\/auth)/u,
+  "[deploy-cloud-run] attestation verify must not receive a production environment, secrets, or OIDC",
+);
+requireNoPattern(
+  cloudVerifyAttestationsJob,
+  /ref:\s*\$\{\{\s*needs\.resolve-release\.outputs\.commit\s*\}\}/u,
+  "[deploy-cloud-run] attestation verification must not check out or execute candidate code",
+);
+requireIncludes(
+  cloudDryRunSummaryJob,
+  "statuses: write",
+  "[deploy-cloud-run] attestation publish must have commit-status write access",
+);
+requireIncludes(
+  productionPrepareJob,
+  "Stage trusted release attestation helper",
+  "[deploy-production] must preserve the workflow-ref attestation helper before checking out the candidate",
+);
+requireIncludes(
+  productionPrepareJob,
+  "persist-credentials: false",
+  "[deploy-production] current-main control checkout must not persist credentials into candidate execution",
+);
+requireOrder(
+  productionPrepareJob,
+  "Stage trusted release attestation helper",
+  'git checkout --detach "$commit"',
+  "[deploy-production] must preserve the current-main helper before candidate checkout",
+);
+requireOrder(
+  productionPrepareJob,
+  '--control-sha "$GITHUB_SHA"',
+  'git checkout --detach "$commit"',
+  "[deploy-production] existing-tag retry authority must be verified before candidate checkout",
+);
+requireIncludes(
+  productionPrepareJob,
+  'node "$RUNNER_TEMP/release-dry-run-attestation.mjs"',
+  "[deploy-production] publish and verify must use the preserved workflow-ref helper",
+);
+for (const [job, label] of [
+  [cloudVerifyAttestationsJob, "verify"],
+  [cloudDryRunSummaryJob, "publish"],
+]) {
   requireIncludes(
-    source,
-    "statuses: write",
-    `[${wf.label}] must grant statuses: write for attestation publish/verify`,
+    job,
+    "Check out trusted release attestation helper",
+    `[deploy-cloud-run] ${label} must check out the workflow-ref attestation helper`,
+  );
+  requireIncludes(
+    job,
+    "ref: ${{ github.sha }}",
+    `[deploy-cloud-run] ${label} helper must bind to the exact workflow run SHA`,
+  );
+  requireIncludes(
+    job,
+    "persist-credentials: false",
+    `[deploy-cloud-run] ${label} helper checkout must not persist credentials`,
+  );
+  requireIncludes(
+    job,
+    ".release-attestation-control/scripts/ci/release-dry-run-attestation.mjs",
+    `[deploy-cloud-run] ${label} must execute the workflow-ref helper`,
   );
 }
+
+const attestationSource = readFileSync(ATTESTATION_GATE, "utf8");
+requireIncludes(
+  attestationSource,
+  "getAllPages(`/commits/${sha}/statuses?per_page=100`)",
+  "[attestation] verify must read every raw commit-status page",
+);
+requireIncludes(
+  attestationSource,
+  "newestExactStatus(statuses, context)",
+  "[attestation] verify must evaluate the newest exact-context status",
+);
+requireIncludes(
+  attestationSource,
+  'status.creator?.login !== "github-actions[bot]"',
+  "[attestation] verify must require the GitHub Actions bot status creator",
+);
+requireIncludes(
+  attestationSource,
+  "`/actions/runs/${runId}`",
+  "[attestation] verify must resolve the attesting Actions run through the API",
+);
+requireIncludes(
+  attestationSource,
+  '"deploy-production": ".github/workflows/deploy-production.yml"',
+  "[attestation] production status must bind the production workflow path",
+);
+requireIncludes(
+  attestationSource,
+  '"deploy-cloud-run": ".github/workflows/deploy-cloud-run.yml"',
+  "[attestation] cloud status must bind the cloud workflow path",
+);
+requireIncludes(
+  attestationSource,
+  "target_url: targetUrl",
+  "[attestation] publish must bind the status to its exact Actions run URL",
+);
+requireIncludes(
+  attestationSource,
+  'run?.head_branch === "main"',
+  "[attestation] verify must bind the attesting run to the main control ref",
+);
+requireIncludes(
+  attestationSource,
+  "run?.head_sha === controlSha",
+  "[attestation] verify must bind the attesting run to the exact trusted control SHA",
+);
+requireIncludes(
+  attestationSource,
+  "run?.display_title === receiptTitle({ plane, tag, sha, controlSha })",
+  "[attestation] verify must bind the exact dispatched plane/tag/candidate/control receipt",
+);
+requireIncludes(
+  attestationSource,
+  "release-control/${plane}/dry-run/${tag}/${sha}/${controlSha}",
+  "[attestation] receipt title must include full plane/tag/candidate/control identities",
+);
 
 /* ── Report ────────────────────────────────────────────────────────────── */
 
@@ -602,5 +1007,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "PASS: both deploy workflows enforce two-phase release tag safety with attestation.",
+  "PASS: both deploy workflows enforce main-controlled existing-tag recovery and real retry.",
 );
