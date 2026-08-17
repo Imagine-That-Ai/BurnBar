@@ -1,6 +1,6 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - The Receipt
 //

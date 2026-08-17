@@ -1,5 +1,6 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
+import OpenBurnBarQuota
 
 // MARK: - First Run Reveal
 //

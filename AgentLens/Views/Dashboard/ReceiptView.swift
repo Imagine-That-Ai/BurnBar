@@ -1,5 +1,4 @@
 import SwiftUI
-import OpenBurnBarCore
 
 // MARK: - The Receipt card
 //

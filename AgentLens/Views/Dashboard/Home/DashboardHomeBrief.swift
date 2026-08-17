@@ -1,5 +1,5 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarInsights
 
 // MARK: - Today's brief
 //

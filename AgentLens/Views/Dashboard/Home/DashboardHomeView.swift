@@ -1,5 +1,5 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarInsights
 import OpenBurnBarKernel
 
 // MARK: - Dashboard Home
