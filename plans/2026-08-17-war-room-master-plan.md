@@ -4,7 +4,7 @@
 **Date:** 2026-08-17
 **Owner:** Alberto
 **Author:** Cursor × Claude Fable 5 (plan mode) — from Alberto's own words, against the real tree
-**Status:** Master plan for review. **No product code ships from this document.** Five product calls are left explicitly open (§14); everything else is specified to build.
+**Status:** Master plan — **all decisions closed** (2026-08-17, per Alberto's directive to close every call, business calls included). **No product code ships from this document.** §14 is the decision record: the five product calls and the business calls (packaging ladder, naming, metrics, rollout), each locked with its profitability and defensibility rationale.
 **Branch baseline:** `main` @ `cf7aa2de` (post v1.0.35 cut — this plan does not touch the release, the tag, or any existing workflow run)
 **Substrate baselines:**
 - Hermes chat + Agent Deck on the Mac dashboard (`AgentLens/Views/Dashboard/DashboardChatWorkspaceView.swift`, `ChatBackendID.hermes`)
@@ -26,7 +26,7 @@
 - **§6–§7 are the engineer's contract**: the fountain inventory with real files, and the `RoutingDecision` / `DistillRecord` / `HermesBody` schemas.
 - **§8–§10 make it concrete and honest**: a day in the life, the empty/offline/dry states, privacy.
 - **§11–§13**: exists-vs-new inventory, phasing with exit criteria, risks — including the one that kills this product if ignored (§13.1, the second-chat-app trap).
-- **§14 is sacred**: five product calls Alberto has not made. They are presented with options and decision inputs and left **OPEN**. Nothing in §2–§13 silently depends on any particular answer.
+- **§14 is the decision record**: the five product calls plus the business calls (packaging, naming, metrics, rollout), each **CLOSED** with the chosen option, the rejected options, and the rationale. §2–§13 read consistently with those decisions.
 
 Vocabulary note: Alberto's words for the aesthetic — *night desk, liquid glass, grain, ember, amber, living flame* — map to real tree assets in §3.4. Two are literal tokens today (`ember` `#FA5053`, `amber` `#FFA800` dark, in `AgentLens/Theme/DesignSystem.swift`); the others name real components (`LiquidGlass.swift`, `GrainOverlay`, `BurnBarLogoFormationView`) and one gap (no living-flame chrome component yet — §3.4 specifies it).
 
@@ -168,8 +168,8 @@ One room per machine. The room answers, at a glance: *what is this computer's He
 
 | Region | Content | Source |
 |---|---|---|
-| **Room header** | Machine-Hermes name ("MacBook Hermes"), presence dot (online / reachable / offline with last-seen), hardware line (`devices.hardwareModel` mapped through `DeviceHardwareIcon`), and the **pulse strip**: CPU %, memory, load, disk-free as compact `monoSmall` gauges | `hermes_bodies` + `BurnBarMachineStatus` (local: `daemon.fleet.snapshot`; remote: over the Wire, §4.5; sampling cadence for remote = **open call #4**) |
-| **Bot shelf** | That machine's Bot Mode roster: named bots with avatars, role line, last-message preview, running/idle state; a cron glyph on bots that own schedules. Selecting a bot scopes the conversation canvas to that bot's thread. **This is content, not navigation** — the shelf never switches machines (§2.1) | Hermes's own data via the relay operations that already exist: `HermesRelayOperation.sessions` / `sessionDetail` / `profiles` / `jobs` (`functions/src/types/legacy/connections.ts`); local bodies read the same shapes from `localhost:8642`. Render = **open call #3** (native vs embed) |
+| **Room header** | Machine-Hermes name ("MacBook Hermes"), presence dot (online / reachable / offline with last-seen), hardware line (`devices.hardwareModel` mapped through `DeviceHardwareIcon`), and the **pulse strip**: CPU %, memory, load, disk-free as compact `monoSmall` gauges | `hermes_bodies` + `BurnBarMachineStatus` (local: `daemon.fleet.snapshot`; remote: over the Wire, §4.5; remote cadence is adaptive — **Decision #4, §14**) |
+| **Bot shelf** | That machine's Bot Mode roster: named bots with avatars, role line, last-message preview, running/idle state; a cron glyph on bots that own schedules. Selecting a bot scopes the conversation canvas to that bot's thread. **This is content, not navigation** — the shelf never switches machines (§2.1) | Hermes's own data via the relay operations that already exist: `HermesRelayOperation.sessions` / `sessionDetail` / `profiles` / `jobs` (`functions/src/types/legacy/connections.ts`); local bodies read the same shapes from `localhost:8642`. Rendered **native** in BurnBar chrome — **Decision #3, §14** |
 | **Conversation canvas** | The selected bot's chat: messages, tool cards, thinking state — in BurnBar chrome: mercury-stroked assistant bubbles, `HermesToolCard`, `HermesThinkingView` mercury pooling | Existing chat pipeline (`ChatSessionController`, `CLIChatStreamEvent`) pointed at the body: local via `CLIBridge.Backend.hermes(baseURL:)`, remote via the Wire relay lane |
 | **Handoff chips** | When bots message each other ("Handoff — sent to agent 'hermes', waiting for reply…" → "[Message from agent 'hermes']"), render as a distinct chip: caduceus glyph, both bot names, waiting/answered state — visually related to the existing `cliUsed` badge family, stroked in `hermesAureate` | Parsed from Hermes session events; cross-**machine** handoffs (one Hermes messaging another over the Wire) get a second glyph showing both machine names |
 | **Cron rhythm rail** (collapsed by default) | Upcoming and recent scheduled runs ("Runs land in their own chat history" — each entry deep-links to that bot's thread) | `HermesRelayOperation.jobs` |
@@ -250,7 +250,7 @@ Total ≤ 520 ms — the same budget as the shipped Pensieve flip (`PensieveToke
 - **Placement:** top-right of faces B and C, adjacent to the face control. A capsule showing the current body's name + presence dot; activating it opens a compact liquid-glass switcher listing **bodies only** (§2.4): name, hardware icon, presence, one-line pulse (CPU/mem), and a per-body ember dot when the Flame has active decisions there.
 - **Data:** `hermes_bodies` where the machine has been seen recently; offline bodies render dimmed with last-seen, selectable (entering an offline room is allowed — you get the offline state, §9, not a dead click).
 - **Keyboard:** `⌘⇧]` / `⌘⇧[` cycle bodies; the switcher is fully keyboard-navigable.
-- **One body only:** the control renders as a static machine label (no chevron). Below the Wire tier, a second paired body renders locked with the standard `FeatureUnlockSheet` upsell (§4.4) — visible, honest, not hidden.
+- **One body only:** the control renders as a static machine label (no chevron). Below the Wire tier, a second paired body renders locked with the standard `FeatureUnlockSheet` upsell (§4.4; Pro carries **2** bodies, Ultra **8** — Decision #1, §14) — visible, honest, not hidden.
 
 ### 3.6 Face-level empty and failure states
 
@@ -268,7 +268,7 @@ Full matrix in §9; the three that shape the faces' first-run experience, writte
 
 The Wire is the machine-to-machine lane of BurnBar Cloud: the encrypted connection over which bodies exchange presence, telemetry, room relays, fleet snapshots, and bot handoffs. Alberto's constraints, verbatim into law:
 
-1. **Tier:** BurnBar Cloud **Pro and Ultra only.** Not Free, not Cloud. (Fleet *caps* within Pro vs Ultra are **open call #1** — the gate itself is not open.)
+1. **Tier:** BurnBar Cloud **Pro and Ultra only.** Not Free, not Cloud. (Fleet caps: Pro pairs **2 bodies**, Ultra **8** — **Decision #1, §14**. The gate itself was never open.)
 2. **Encrypted:** end-to-end between enrolled machines. The relay in the middle forwards ciphertext or nothing — the Horcrux promise (`NAMES.md`, burnbar.ai `/trust`) extended to Mac⇄Mac.
 3. **Fail-closed:** when entitlement, pairing, or encryption cannot be verified, the Wire **does not fall back to anything weaker**. It goes dark and the UI says so (§3.6, §9). There is no plaintext mode, no third-party bridge, no Discord, no Nous cloud.
 
@@ -289,7 +289,7 @@ The Wire is the machine-to-machine lane of BurnBar Cloud: the encrypted connecti
 Three seams, all extensions of the shipped design rather than new machinery:
 
 1. **Multi-host pairing directory.** Today the pairing key registry is a singleton (`iroh_pairing_keys/host`). New: per-device host keys at `users/{uid}/iroh_pairing_keys/{deviceId}` with `host` kept as a legacy alias for the primary Mac. Every enrolled Mac both publishes a signed NodeAddr (which `iroh_pairing/{connectionId}` + `publishedByDeviceId` already supports) and *dials* peers — the dialer role phones already implement, now compiled into the Mac host client (`HermesIrohRelayHostClient` grows an outbound session table alongside its inbound accept loop).
-2. **The `war.*` frame family** on the existing envelope (add cases to `HermesRealtimeRelayFrameType` + `protocol.json`, per the wiki's own modification guide): `war.body.hello` (capability + entitlement proof), `war.body.heartbeat` (presence + pulse summary), `war.fleet.snapshot` (the machine's `BurnBarFleetSnapshot`, §3.3 — the fleet plane stays local; its *snapshot* is relayed), `war.room.relay` (Face B chat/session/profile/jobs ops against a remote body — same `HermesRelayOperation` vocabulary phones use today), `war.handoff` (cross-machine bot handoff envelope), `war.flame.telemetry` (distill-time resource pulls, cadence per open call #4). All payloads HPKE-sealed; iroh QUIC provides transport encryption; signatures provide the audit identity, matching the shipped two-layer story.
+2. **The `war.*` frame family** on the existing envelope (add cases to `HermesRealtimeRelayFrameType` + `protocol.json`, per the wiki's own modification guide): `war.body.hello` (capability + entitlement proof), `war.body.heartbeat` (presence + pulse summary), `war.fleet.snapshot` (the machine's `BurnBarFleetSnapshot`, §3.3 — the fleet plane stays local; its *snapshot* is relayed), `war.room.relay` (Face B chat/session/profile/jobs ops against a remote body — same `HermesRelayOperation` vocabulary phones use today), `war.handoff` (cross-machine bot handoff envelope), `war.flame.telemetry` (distill-time resource pulls; adaptive cadence per Decision #4, §14). All payloads HPKE-sealed; iroh QUIC provides transport encryption; signatures provide the audit identity, matching the shipped two-layer story.
 3. **Wire grants.** A body pair is connected only after an explicit, revocable **wire grant**: on Mac A the user approves "Let MacBook Hermes and Mini Hermes talk," recorded per pair, surfaced in Devices & Sync next to escrow devices, revocable from **either** machine (revocation is honored fail-closed — an unverifiable revocation state reads as revoked). Grant issuance requires both machines to be escrow-enrolled and the account to hold the Wire tier.
 
 **Dispatch does not ride the Wire.** Cross-machine work dispatch stays on the sealed Firestore mission queue (§5.5) — durable across sleep and offline gaps, already approval-gated, already rules-enforced. The Wire is the *nervous system* (presence, telemetry, rooms, handoffs); Firestore remains the *order ledger*. This split is what lets a Mini finish a mission through a 90-second Wire drop (§8) without inventing a second dispatch path.
@@ -298,7 +298,7 @@ Three seams, all extensions of the shipped design rather than new machinery:
 
 - **Gate check:** both ends verify tier at `war.body.hello` (entitlement docs under `users/{uid}/entitlements/*` — `burnbar_pro_max` / `burnbar_ultra` families per `EntitlementArbitration.swift`) and re-verify on a slow cadence and on every reconnect. Server-side, Firestore rules on `hermes_bodies` and wire-grant docs mirror the check, the same defense-in-depth pattern as `wandFanOutCap(userId)` in `firestore.rules`.
 - **Lapse:** Pro/Ultra expires → wire sessions close (fail-closed), bodies remain visible but dimmed with "Wire requires Cloud Pro," swap control renders the locked state via the existing `FeatureUnlockSheet`, Face C shows local rows only, the Flame's fountains lose the remote branches and its `DistillRecord` says so (§7.2 `dryFountains`). Nothing is deleted; the room goes quiet, not blank.
-- **Placement in the ladder:** the Wire sits with its Pro siblings — Floo (Pro), Agent Control (Pro), Hosted MCP (Pro) in `GatedFeatureID` — as a new `GatedFeatureID.wire`-class entry requiring `.pro`. Whether Ultra buys *more wire* (more bodies, more concurrent cross-machine agents) is open call #1.
+- **Placement in the ladder:** the Wire sits with its Pro siblings — Floo (Pro), Agent Control (Pro), Hosted MCP (Pro) in `GatedFeatureID` — as a new `GatedFeatureID.wire`-class entry requiring `.pro`. Ultra buys *more wire*: a body cap of **8** against Pro's **2**, enforced as a `warBodyCap(userId)` rule in `firestore.rules` beside `wandFanOutCap`, plus recurring standing orders (**Decisions #1 and #5, §14**). Wand parallelism stays per-executing-machine on the shipped SSOT — no separate cross-machine concurrency knob, because per-machine caps already bound the total and every extra knob is an un-explainable support state (§13.6).
 
 ### 4.5 What crosses the Wire (schema-level, exhaustive)
 
@@ -341,7 +341,7 @@ prompt/goal ──▶ COLLECT ──▶ DISTILL ──▶ DECIDE ──▶ [appr
 - **Collect** hits every fountain with a per-fountain freshness budget; a fountain that can't answer in budget is recorded **dry**, never guessed (§9).
 - **Distill** normalizes the three quota-confidence vocabularies into one floor (`exact | estimated | unavailable` — the Mac-parity alias set from `ProviderQuotaMacParity.swift`), joins bodies to hardware to live pulse, and writes the immutable `DistillRecord`: *what the Flame saw*.
 - **Decide** scores placements. The scoring frame extends the daemon router's shipped five dimensions (capability / cost / latency / trust / policy-fit, `OpenBurnBarProviderRouter.swift`) with the war dimensions: **quota headroom** (from snapshots + reset clocks), **machine load** (pulse), **machine capability** (hardware + installed harnesses from the fleet roster), **placement policy** (user prefs like "keep Claude for afternoons"), and **agent count** under Wand caps. Output: verdict `dispatch | advise | hold | decline` + ranked plan with fallbacks.
-- **Approval** is the only ground truth — inherited verbatim from Computer Use Decision 1. No silent autopilot. (Whether *scheduled* re-runs of an approved decision re-prompt is part of open call #5.)
+- **Approval** is the only ground truth — inherited verbatim from Computer Use Decision 1. No silent autopilot. (Recurring schedules run under a scoped, revocable **standing order** — a standing approval, §7.6 — and do not re-prompt per emission; every emission is still journaled, attributed, and BudgetGate-checked. **Decision #5, §14**.)
 - **Dispatch** never invents a path (§5.5). **Attribute** stamps the originator (§7.4). **Learn** records the outcome (mission result, actual cost, actual quota draw) against the decision so `flame why` can show predicted-vs-actual — the feedback ledger for tuning weights later; no self-modifying behavior in v1.
 
 ### 5.4 Ancestors (the Flame is a promotion, not an invention)
@@ -362,10 +362,10 @@ The Flame **emits**; it never **executes**. Dispatch rides the rails that alread
 
 | Plan row shape | Rail | What's new on the rail |
 |---|---|---|
-| N parallel workers on machine M | Wand fan-out → mission group (`mission_groups` + N `cli_agent_mission_requests`) | **Machine targeting**: today the queue is account-scoped and "whichever Mac claims wins" — a named gap. New optional `targetDeviceID` on the request doc honored by `CLIAgentMissionRequestListener` claim logic + `firestore.rules`. (Whether *scheduling* also lands on the mission doc is open call #5) |
+| N parallel workers on machine M | Wand fan-out → mission group (`mission_groups` + N `cli_agent_mission_requests`) | **Machine targeting**: today the queue is account-scoped and "whichever Mac claims wins" — a named gap. New optional `targetDeviceID` on the request doc honored by `CLIAgentMissionRequestListener` claim logic + `firestore.rules`. (One-shot scheduling lands as `notBefore` on the mission doc; recurrence is held by the Flame scheduler and emits fresh missions — **Decision #5, §14**) |
 | Single session on machine M | Single mission, same targeting | Same |
 | Local daemon-managed run | `run.create` (RunService, approval-gated) | Originator stamp only |
-| Advise-only (Free tier per open call #2, or verdict `advise`) | No rail — the decision card is the product | — |
+| Advise-only (Free tier — **Decision #2, §14** — or verdict `advise`) | No rail — the decision card is the product | — |
 
 Caps enforced at dispatch, never at decide: Wand parallelism per tier (1/3/8/16 — enforced in all four shipped places), Computer Use budgets if a plan row needs Agent Control, BudgetGate for spend. The Flame showing you a 12-agent plan on a Cloud tier is a bug by definition — Decide reads the caps from the same SSOT (`WandFanOut.maxParallel`) so infeasible plans are never rendered.
 
@@ -375,7 +375,7 @@ The Flame holds no standing authority. Each decision lists which keys it needs a
 
 | Grant | Meaning | Existing substrate |
 |---|---|---|
-| **Wire** | May see and place work on remote bodies | §4.3 wire grants; without it the Flame is a single-machine router (which is still a product — open call #2) |
+| **Wire** | May see and place work on remote bodies | §4.3 wire grants; without it the Flame is a single-machine router (which is still a product: Free ships it advise-only, Cloud dispatches locally — **Decision #2 and ladder B1, §14**) |
 | **Agent Control** | Plan rows that drive browser/system tools | The entire shipped grant apparatus: Pro gate, `controlAgentGrantRequest` frames, `agent_capability_grant_requests` queue, trust modes, scope rules, audit chain. The Flame may *request*, never self-grant — "entitlement alone is not auto-pilot" (`docs/FEATURE_GATING_SPEC.md`) stays true with the Flame in the room |
 | **Wand > 1** | Parallel worker counts | Tier caps (SSOT above); the grant is the tier itself, surfaced per-decision |
 | **Spend** | Estimated cost clearance | `BudgetGate.evaluate(credential:projectName:estimatedCost:)` — the estimate comes from `catalog.json` pricing and is labeled an estimate |
@@ -399,7 +399,7 @@ Alberto named eight fountains. Every one is mapped to what actually exists, how 
 | 5 | **AI Inbox** | Ranked, evidence-bearing suggestions (CI waste, cost anomaly, stuck PR, …) with actions | `BurnBarAIInboxContracts.swift` (kinds, P1–P4, evidence, actions, memory candidates); daemon generator `OpenBurnBarDaemon/.../AIInbox/`; SQLite `ai_inbox_items`; sealed mirror + FCM on P1 (`functions/src/aiInboxNotifications.ts`) | 300 s tick, change-gated | **Off by default; egress `.off` by default** (detector-only) — Distill records `inbox: dry(disabled)` when off; the Flame never nags it on |
 | 6 | **Hermes bodies + computers** | Which machines exist, which run Hermes, bot rosters, session/jobs state | §2 registry (new) joining `hermes_connections` + `devices` + `iroh_pairing` + gateway `hermes_gateway_clients`; roster/session/jobs via `HermesRelayOperation.{sessions,sessionDetail,profiles,jobs}`; liveness via fleet `hermes` probe (120 s window) | Heartbeats 120 s; relay ops on demand | **The registry is the new part** (§2.3); Bot Mode roster shape depends on upstream Hermes Desktop surface — pin a contract version at Face B build time (§13.3) |
 | 7 | **Hardware** | What each machine *is* (chip, cores, RAM size, GPU) | `devices.hardwareModel` (`hw.model` string via `DeviceHardwareIcon.swift`) — icon-grade only | On device registration | **Real inventory does not exist**: no chip/core/RAM-size/GPU registry anywhere (confirmed absence). §7.3 adds `hardware` to `HermesBody` (sysctl-sourced: `machdep.cpu.brand_string`, `hw.memsize`, `hw.perflevel*`); until populated, Distill lists `hardware: dry` and Decide falls back to load-only placement |
-| 8 | **Live resources** | What each machine is *doing right now* (CPU, RAM, load, disk) | `BurnBarFleetMachineStatusProbe` (`host_statistics` CPU, `HOST_VM_INFO64` memory, `getloadavg`, `statfs`) in `BurnBarFleetSnapshot`, 15 s cadence, local-only by contract | 15 s local; remote = **open call #4** | **Thermal/power explicitly `.unavailable`**; **no GPU utilization**; per-agent CPU/RAM usually PID-only (UI already falls back to the labeled token-burn **Proxy**) — the board keeps that exact labeling |
+| 8 | **Live resources** | What each machine is *doing right now* (CPU, RAM, load, disk) | `BurnBarFleetMachineStatusProbe` (`host_statistics` CPU, `HOST_VM_INFO64` memory, `getloadavg`, `statfs`) in `BurnBarFleetSnapshot`, 15 s cadence, local-only by contract | 15 s local; remote = adaptive over the Wire (**Decision #4, §14**) | **Thermal/power explicitly `.unavailable`**; **no GPU utilization**; per-agent CPU/RAM usually PID-only (UI already falls back to the labeled token-burn **Proxy**) — the board keeps that exact labeling |
 
 Reading the table bottom-up is the build order hiding in plain sight: fountains 1–5 flow today and need only normalization; fountain 6 needs the registry; 7 needs a small probe; 8 needs the Wire to travel.
 
@@ -436,7 +436,7 @@ The Flame's output. Immutable once verdict-stamped; dispatch progress lives in `
     "harness": "droid",                        // ChatBackendID rawValue — the shipped vocabulary
     "modelID": "minimax/m2.7",                 // canonical id, resolvable in catalog.json
     "agentCount": 3,                           // ≤ WandFanOut.maxParallel(tier), by construction
-    "schedule": { "kind": "now | window | queued", "notBefore": null, "expiresAt": null },   // semantics pinned by open call #5
+    "schedule": { "kind": "now | window", "notBefore": null, "expiresAt": null },   // recurrence never lives here — it lives on a StandingOrder (§7.6), Decision #5 (§14)
     "estimate": {
       "costUsd": 0.87, "costConfidence": "estimated",          // catalog.json list-price math, labeled
       "quotaDraw": [{ "providerID": "minimax", "accountID": "acc_…", "bucketId": "weekly", "fraction": 0.03, "confidence": "exact" }],
@@ -567,6 +567,32 @@ Landing sites (each is a small, additive change): `CLIAgentMissionRequestDoc` (f
 | Sealed mirror `users/{uid}/flame_decisions/{id}` | Firestore, CloudVault-sealed body + plaintext routing header (verdict, createdAt, bodyIds) | Identical posture to the AI Inbox mirror — phones render decision cards without the cloud reading goals |
 | `hermes_bodies`, wire grants | Firestore + rules | Escrow-device posture |
 
+### 7.6 `StandingOrder` — recurring approval, scoped and revocable *(Decision #5)*
+
+A standing order is how "approval is the only ground truth" survives recurrence without becoming a nag or an autopilot. It is a **standing approval with hard edges**, modeled on the Computer Use trusted-scope precedent (expiring scopes, revocable, fail-closed):
+
+```jsonc
+// daemon-held, event-sourced on the Mission Control JSONL pattern; sealed mirror like flame_decisions
+{
+  "orderId": "so_…",
+  "schemaVersion": 1,
+  "decisionId": "fd_…",                        // the RoutingDecision the user approved as recurring
+  "originator": { "kind": "flame", "…": "…" }, // every emission stamps this
+  "recurrence": { "cron": "0 7 * * 1-5", "timezone": "America/New_York" },
+  "scope": {
+    "expiresAt": "…",                          // hard ceiling: ≤ 30 days from grant; renewal is a fresh approval
+    "maxRuns": 20,                             // hard ceiling on emissions
+    "perRunBudgetUsd": 2.00,                   // BudgetGate-checked per emission, not once
+    "targetBodyIds": ["relay-host-…"]          // placement may not silently widen beyond the approved bodies
+  },
+  "state": "active | paused | revoked | expired | exhausted",
+  "runsEmitted": 3, "lastEmittedAt": "…",
+  "createdAt": "…", "approvedAt": "…", "revokedAt": null
+}
+```
+
+Laws: emissions **never re-prompt** while the order is valid, but each one is journaled, attributed (`originator.kind == "flame"`, order id in the chain), and BudgetGate-checked; an unverifiable order state reads as revoked (fail-closed, same posture as wire grants §4.3); revocation works from Mac **or** phone and halts before the next emission; when the scheduler sees a Hermes cronjob targeting the same body and window (fountain 6's `jobs` op), it defers and says so — two schedulers may coexist on one machine, but they never stack blind, and the board shows both chains via originators. Standing orders are **Ultra-gated** (ladder B1, §14); Pro gets one-shot windows (`notBefore`).
+
 ---
 
 ## 8. A day in the life
@@ -666,7 +692,7 @@ House bar (from the shipped fleet contract): **typed not-ready over fabricated e
 | Dispatch | Mission claim queue (approval-gated, sealed), Wand fan-out (tier caps 1/3/8/16), RunService | **`targetDeviceID` machine targeting**; Flame→mission emission; originator stamping |
 | Spend control | BudgetGate (allow/soft/hard/paused), CU budgets, kill switches | Spend grant embedded per decision; `war_room_kill_switch` |
 | Quotas / accounts / usage / memories / inbox / insights | All shipping (§6) | Confidence normalization at Distill; plan-source tagging; **no new collectors** for fountains 1–5 |
-| Hardware / resources | `hw.model` string; fleet pulse local-only; no GPU/thermal | `HermesBody.hardware` probe (sysctl); pulse over the Wire (cadence = open call #4) |
+| Hardware / resources | `hw.model` string; fleet pulse local-only; no GPU/thermal | `HermesBody.hardware` probe (sysctl); pulse over the Wire (adaptive cadence — Decision #4) |
 | Design system | Tokens, liquid glass, grain (poster-scoped), mercury identity, cascade/flip/matched-geometry precedents, reduce-motion discipline | **Face morph choreography**; `FlameSigilView` (living flame at rest); grain graduated to room texture |
 
 The pattern the tree keeps proving: Mercury built the pipe, Computer Use built the trust — the War Room is the first feature that mostly **joins** what exists instead of building substrate.
@@ -681,13 +707,13 @@ Flags follow the shipped convention (Remote Config + local override). No calenda
 |---|---|---|---|
 | **W0 — Names on doors** | `HermesBody` registry + `Originator` type + TypeSpec emitters + `hardware` probe; bodies listed in Devices & Sync | `tools/schema-sync/`, `OpenBurnBarCore` shared models, `HermesRelayHostService` publish path, one GRDB migration + `docs/SCHEMA_SQLITE.sql` | Both Macs publish joined bodies; new usage/mission/run writes carry originators; zero UI beyond settings; drift check green |
 | **W1 — The Wire** (`war_room_wire`) | Multi-host pairing directory, Mac⇄Mac iroh sessions, `war.body.*` + `war.fleet.snapshot` frames, wire grants UX, entitlement fail-closed both ends + rules | `crates/openburnbar-iroh` consumers, `HermesIrohRelayHostClient` (outbound table), `HermesRealtimeRelayTypes` + `protocol.json`, `firestore.rules`, Devices & Sync | Two enrolled Macs exchange presence + fleet snapshots E2E-sealed; lapse test proves dark-not-degraded; revocation from either end; kill switch verified |
-| **W2 — Face B + swap** (`war_room_face_b`) | Hermes Room (local body first, then remote over `war.room.relay`), computer-swap control, A⇄B and B⇄B choreography, room empty states | `DashboardChatWorkspaceView` + new `AgentLens/Views/WarRoom/`, `ChatSessionController` body scoping, relay op plumbing | Both rooms render with live shelf/cron from relay ops; swap ≤ 400 ms perceived; reduce-motion parity; Hermes-missing and offline states match §9; **embed-vs-native (open call #3) must be decided before W2 build starts** |
+| **W2 — Face B + swap** (`war_room_face_b`) | Hermes Room (local body first, then remote over `war.room.relay`), computer-swap control, A⇄B and B⇄B choreography, room empty states | `DashboardChatWorkspaceView` + new `AgentLens/Views/WarRoom/`, `ChatSessionController` body scoping, relay op plumbing | Both rooms render with live shelf/cron from relay ops; swap ≤ 400 ms perceived; reduce-motion parity; Hermes-missing and offline states match §9; renders **native** per Decision #3 — no embed path is scaffolded, even "temporarily" |
 | **W3 — Face C** (`war_room_face_c`) | Command Board, B⇄C flip, originator column end-to-end, machine grouping + cost strips | New board views reusing `Fleet*` component lineage; run-journal/mission/Hermes-session joins | Board shows both machines' rows with STARTED BY; external rows honest (`inferred`); pre-snapshot/healthy-zero/stale states match the fleet contract; a Wand cast from the phone attributes correctly |
 | **W4 — Flame, advisor** (`flame_advisor`) | Daemon Flame service: Collect/Distill/Decide, advise-only (dispatch disabled); deck sigil + router console; `flame plan/decisions/why` CLI; ledgers + sealed mirror | `OpenBurnBarDaemon` new service + RPC family, `BurnBarCLIRunner`, console UI, JSONL + SQLite + mirror | Decisions render with rationale + dry-fountain honesty; confidence normalization property-tested across all three vocabularies; infeasible plans (over-cap) unrepresentable by construction; `audit-verify` walks the decision chain |
 | **W5 — Flame, dispatch** (`flame_dispatch`) | Verdict `dispatch` live: decision→mission-group emission, `targetDeviceID` honored by listener + rules, grant checklist enforcement, outcome Learn loop | Mission contracts (+1 field), `CLIAgentMissionRequestListener` claim logic, `firestore.rules`, BudgetGate call-site | §8 runs end-to-end on two real Macs: one prompt → targeted cross-machine dispatch → attributed board rows → outcome recorded; missing-grant paths render locked; caps enforced at dispatch in tests |
-| **W6 — Rhythm** | Schedules/queue semantics + cron-collision awareness + predicted-vs-actual surfacing | Per **open calls #4 and #5** — blocked until decided | Defined with the calls |
+| **W6 — Rhythm** (`flame_rhythm`) | Adaptive telemetry (Decision #4) + the Flame scheduler with standing orders (Decision #5): `notBefore` one-shots, recurring emissions, cron-collision deferral, predicted-vs-actual surfacing | Daemon scheduler on the Mission Control JSONL/event-sourcing pattern; `war.flame.telemetry` cadence logic both ends; standing-order approval/revocation UX (Mac + phone card); `firestore.rules` for `notBefore` claims | A standing order emits N attributed missions across real sleep/wake cycles, each BudgetGate-checked, none re-prompting; revocation from either device halts before the next emission (fail-closed); cadence verified continuous with a face open or decision pending, heartbeat-only otherwise; board shows Flame and Hermes-cron chains side by side without blind stacking |
 
-Dependencies: W1 needs W0. W2/W3 need W1 for remote content but ship local-body value alone if the Wire slips. W4 needs only W0 (a single-machine advisor is real product). W5 needs W1+W4. This order front-loads the two things everything else leans on — identity and the Wire — and holds the highest-blast-radius step (autonomous-adjacent dispatch) for last, behind its own flag.
+Dependencies: W1 needs W0. W2/W3 need W1 for remote content but ship local-body value alone if the Wire slips. W4 needs only W0 (a single-machine advisor is real product — and per Decision #2 it is the Free tier's product). W5 needs W1+W4. W6 needs W5 (standing orders emit through the dispatch rail; W1 ships pull-with-cache telemetry semantics behind its flag, W6 completes the adaptive cadence). This order front-loads the two things everything else leans on — identity and the Wire — and holds the highest-blast-radius steps (dispatch, then recurrence) for last, each behind its own flag.
 
 ---
 
@@ -713,7 +739,7 @@ The Flame's credibility dies the first time it routes on an estimate presented a
 
 ### 13.4 Wire operability
 
-New failure surface: sleep/wake flapping, NAT changes, two-Mac clock skew, battery cost of telemetry. Defenses: heartbeat hysteresis before presence flips; stale-labeled last snapshots instead of blanking; dispatch on the durable Firestore ledger so Wire flaps never orphan work (§8's 90-second drop is the acceptance test); telemetry cadence decided with open call #4 with battery as a named input.
+New failure surface: sleep/wake flapping, NAT changes, two-Mac clock skew, battery cost of telemetry. Defenses: heartbeat hysteresis before presence flips; stale-labeled last snapshots instead of blanking; dispatch on the durable Firestore ledger so Wire flaps never orphan work (§8's 90-second drop is the acceptance test); telemetry cadence is adaptive (Decision #4) with battery as a first-class input — heartbeat-only when no face is open and no decision is pending, so a sleeping laptop pays near-zero.
 
 ### 13.5 Dispatch races and targeting
 
@@ -721,37 +747,70 @@ Adding `targetDeviceID` to a claim queue invites races (target offline forever) 
 
 ### 13.6 Entitlement complexity
 
-Wire (Pro+), Agent Control (Pro), Wand caps (per-tier), Ultra deltas (open call #1) can compound into un-explainable states. Defense: the grant checklist on every decision card is the single explanation surface — four named keys with present/missing states (§5.6), reusing `FeatureUnlockSheet` for the upsell path. If support can't explain a locked row from its card alone, the card failed review.
+Wire (Pro+), Agent Control (Pro), Wand caps (per-tier), Ultra deltas (body cap 8 + standing orders — Decisions #1/#5) can compound into un-explainable states. Defense: the grant checklist on every decision card is the single explanation surface — four named keys with present/missing states (§5.6), reusing `FeatureUnlockSheet` for the upsell path. If support can't explain a locked row from its card alone, the card failed review.
 
 ### 13.7 Scope collision with shipped names
 
-"Fleet" (local plane), "Agent Watch" (phone mirror), "Hermes Square" (mobile personas) all sound adjacent. §2.4/§3.3 draw the lines; `NAMES.md` gains War Room / Wire / Flame / Command Board / HermesBody entries in W0 so reviewers and copy never blur them. Public names go through the same `website/src/data/capabilities.ts` SSOT process as Floo/Horcrux.
+"Fleet" (local plane), "Agent Watch" (phone mirror), "Hermes Square" (mobile personas) all sound adjacent. §2.4/§3.3 draw the lines; `NAMES.md` gains War Room / Wire / Flame / Command Board / HermesBody entries in W0 so reviewers and copy never blur them. Public naming is closed in §14 B2: **War Room** and **Flame** go public through the `website/src/data/capabilities.ts` SSOT like Floo/Horcrux; **the Wire stays internal**.
 
 ---
 
-## 14. Open product calls — **left open on purpose**
+## 14. Decisions — **all closed** *(2026-08-17)*
 
-Five decisions are Alberto's to make. Each is presented with options and decision inputs. **Nothing in §2–§13 silently assumes an answer**; the two that gate builds are flagged in §12.
+Alberto's directive: close every call, business calls included, choosing the most profitable and defensible option. Each decision below names the choice, the rejected options, and the rationale on those two axes. The style follows the Computer Use master plan's locked-decisions precedent: decided means decided — a future change is a new decision with a new rationale, not drift.
 
-**#1 — Fleet caps: what does Ultra buy over Pro?**
-Options: (a) same Wire, higher Wand caps only (8→16, already shipped); (b) body count caps (Pro 2 bodies, Ultra 4+/unlimited); (c) concurrency caps (max simultaneous cross-machine dispatches); (d) telemetry richness (Ultra gets finer pulse cadence).
-Inputs: Ultra's current sole differentiator is 10× memory + wand 16 — the Wire is the first feature that naturally *scales with machines owned*; support cost of >2-body topologies; how `wandFanOutCap`-style rules encode a body cap.
+### Decision #1 — Fleet caps: Pro pairs **2 bodies**, Ultra **8**. Wand caps unchanged. — **CLOSED: option (b)**
 
-**#2 — Does Free get a single-machine Flame?**
-Options: (a) no — Flame is Cloud+ (it leans on Wand dispatch anyway); (b) advise-only Flame for Free (verdict `advise`, never `dispatch`) as the top-of-funnel demo of the fountains; (c) Pro-only entirely.
-Inputs: COGS ≈ 0 (all-local collect/decide); conversion story ("see the decision you can't dispatch" is a strong upsell and an honesty risk if it reads as nagging); Wand already gives Free cap 1, so a Free dispatch-to-one-local-agent variant also exists as a middle option.
+The laptop-plus-desktop pair is the dominant real Pro topology — it is the demo, the day-in-the-life, and the shape of Alberto's own setup. Pro at 2 bodies sells that story completely. Ultra becomes **the fleet tier**: up to 8 bodies, which gives Ultra its first *structural* differentiator beyond 10× memory and wand 16 — one that scales with hardware owned. That is the most defensible pricing axis available: a person with three or more Macs running agents is the highest-willingness-to-pay segment in the market, and a competitor cannot discount away the fact that BurnBar is the only thing that can see all of their machines' quotas, sessions, and pulses at once.
 
-**#3 — Face B: native render vs embedded Hermes UI?**
-Options: (a) native SwiftUI from relay/gateway data; (b) embedded Hermes Desktop surface (webview/window) inside our chrome; (c) hybrid — native shelf/header/board, embedded conversation canvas.
-Inputs *(evidence, not a decision)*: the relay already proxies `sessions/sessionDetail/profiles/jobs` — the exact data native needs; Alberto's "our design language" directive; upstream drift cost lands on (a), fidelity/velocity favor (b), MAS review and audit coherence favor (a). **Gates W2.**
+Enforcement is one new knob: `warBodyCap(userId)` in `firestore.rules` beside `wandFanOutCap`, mirrored in `GatedFeature` — Pro 2, Ultra 8. Eight, not unlimited, because caps must be testable and enforceable, 8 is generous past every real topology, and whoever exceeds it is an enterprise conversation, not a rules change.
 
-**#4 — How are Mini resources sampled?**
-Options: (a) reuse the 15 s local fleet cadence, push over the Wire continuously; (b) on-demand pull at Distill + when Face B/C is visible, with a 60 s cache; (c) adaptive — continuous while a face is open or a decision is pending, heartbeat-only otherwise.
-Inputs: battery/network cost on laptops; decision freshness (a stale pulse mis-places work); iroh datagram cost is trivial at these sizes; (c) is more code on both ends. **Gates W6; W1 can ship with (b) semantics behind the flag without prejudice.**
+**Rejected:** (a) wand-only differentiation — leaves Ultra structurally empty, the current weakness; (c) a separate cross-machine concurrency knob — per-machine Wand caps already bound the total, and every extra knob is an un-explainable support state (§13.6); (d) telemetry richness by tier — **honesty is not a SKU**; degrading data quality for lower tiers poisons the Flame's credibility (§13.3) for a weak revenue lever.
 
-**#5 — Scheduling: new queue or missions grown?**
-Options: (a) grow missions — `targetDeviceID` + `notBefore` on the existing claim queue, Flame emits at decide time; (b) daemon-side Flame scheduler that holds decisions and emits missions when due (cron-like, matching Hermes cronjobs); (c) hybrid — missions for "now," scheduler for windows/recurrence.
-Inputs: durability across sleep (Firestore queue survives; a daemon scheduler needs its own persistence — though the Mission Control JSONL/event-sourcing pattern is sitting right there); collision semantics with Hermes's own cronjobs (two schedulers, one machine — the board at least *shows* both via originators); whether recurring approved decisions re-prompt (§5.3's approval law needs an explicit answer here). **Gates W6 and the `schedule.kind` semantics in §7.1.**
+### Decision #2 — Free ships the **advise-only** single-machine Flame. — **CLOSED: option (b)**
+
+The Flame's Collect/Distill/Decide is all-local: COGS ≈ 0. Giving Free the advisor is the cheapest possible demonstration of the moat — the fountains — and every decision card is a native upsell surface, because the card *is* the pitch: "here is the plan built from your quotas, your sessions, your machines." The ladder it creates (see B1) is clean at every rung: Free **sees** the decision, Cloud **dispatches** it locally, Pro dispatches it **across machines**, Ultra makes it **recur**. The nag-risk guardrail is already law (§9): locked remote rows render only when genuinely better, with honest reasons — never as bait.
+
+**Rejected:** (a) Cloud+ only — throws away a zero-cost top-of-funnel demo of the hardest-to-copy asset; (c) Pro-only — same, worse; the Free dispatch-to-one-agent middle option — dispatch is the Cloud tier's rung (`theWand` is Cloud-gated today; the ladder stays aligned with shipped gates).
+
+### Decision #3 — Face B renders **native**. Embed and hybrid are explicit non-goals. — **CLOSED: option (a)**
+
+Alberto's directive — "we have our own design language and token, we use those" — is a requirement, not a preference, and only native satisfies it. The evidence was already decisive: the relay proxies `sessions/sessionDetail/profiles/jobs` — the exact data native needs; native keeps MAS review clean and the audit story coherent; and an embedded Hermes surface would put Nous chrome inside BurnBar, which is both brand dilution and the front door of the second-chat-app trap (§13.1). Defensibility: a native room rendered over our own relay is a surface only BurnBar can build; an embed is a surface anyone can build. Upstream drift — the real cost of native — is already mitigated by the contract-version pin, recorded-fixture tests, and per-capability degradation flags (§13.2).
+
+**Rejected:** (b) embed — velocity now, brand and trap later; (c) hybrid — pays both maintenance bills for neither benefit.
+
+### Decision #4 — Remote telemetry is **adaptive**, same for every tier. — **CLOSED: option (c)**
+
+Continuous 15 s pulse over the Wire while any face is open or a decision is in flight; coarse 60 s summary embedded in existing heartbeats otherwise; Distill pulls on demand with a 60 s cache when idle. Placement quality is the paid product's core promise — a stale pulse mis-places work and erodes the exact trust the Flame monetizes — and battery discipline on laptops is non-negotiable, so neither always-on (a) nor always-lazy (b) survives contact with real usage. Adaptive is more code on both ends, but every component exists (15 s fleet cadence local, heartbeats shipping, iroh datagrams trivially cheap at these sizes). W1 ships pull-with-cache semantics behind its flag as the ramp; W6 completes the adaptive state machine (§12).
+
+**Rejected:** (a) continuous push — battery cost with no eyes on it; (b) pull-only — stale at exactly the decision moments that matter. Telemetry-by-tier was rejected under Decision #1.
+
+### Decision #5 — Missions stay the only dispatch rail; a daemon-side **Flame scheduler** holds time; recurrence runs under **standing orders**. — **CLOSED: option (c), sharpened**
+
+"Now" and windowed one-shots ride the mission doc (`targetDeviceID` + `notBefore` — the durable Firestore ledger survives sleep, flaps, and crashes; §13.4's defense depends on it). Recurrence is held daemon-side by a Flame scheduler built on the Mission Control JSONL/event-sourcing pattern, emitting **fresh missions per run** — never a second dispatch path. The approval law gets its explicit answer in the `StandingOrder` (§7.6): a scoped standing approval — expiry ≤ 30 days, max-runs ceiling, per-emission BudgetGate, placement pinned to approved bodies, revocable from either device, fail-closed when unverifiable — under which emissions do not re-prompt but are always journaled and attributed. Cron collision with Hermes's own jobs is handled by advisory deferral plus board visibility of both chains.
+
+Profitability: "standing orders" is the sellable automation story — the word for what fleet owners actually want — and it is Ultra's second structural differentiator (B1). Defensibility: it reuses the shipped ledger, the shipped journal pattern, and the CU trusted-scope expiry precedent, so the safety posture is inherited, not invented.
+
+**Rejected:** (a) missions-only — recurrence on a claim-queue doc makes the ledger a scheduler, which it is not; (b) scheduler-only — holding "now" work in a daemon queue adds a fragile hop to the 95% case.
+
+### Business decisions
+
+**B1 — Packaging: no new SKU. The ladder sells the upgrades.**
+
+| Tier | War Room capability |
+|---|---|
+| **Free** | Faces A/B/C for the local machine; Flame **advisor** (advise-only) |
+| **Cloud** | + Flame **dispatch** on this machine ("now" plans; Wand cap 3) |
+| **Pro** | + **the Wire**: 2 bodies, multi-machine faces, cross-machine dispatch, windowed one-shots (`notBefore`); Wand 8; sits beside its Pro siblings Floo and Agent Control |
+| **Ultra** | + **the fleet**: 8 bodies, **standing orders** (recurring automation); Wand 16 and 10× memory as today |
+
+Prices unchanged; no separate War Room SKU. The Computer Use precedent (a bolt-on SKU later folded into bundles) bought entitlement complexity that §13.6 is still defending against — not repeating it. The War Room's business job is to make Pro irresistible and give Ultra the structural story it lacks. The upgrade moments are **physical events, not banners**: pairing a second body is the Pro moment; the third body or the first recurring plan is the Ultra moment. Both moments render through the shipped `FeatureUnlockSheet`, with honest copy, exactly where the user already is. This is the most defensible packaging available because the value scales with hardware owned and data accumulated — neither of which a competitor can discount.
+
+**B2 — Naming.** Internal codenames enter `NAMES.md` in W0: **War Room** (the program and the three-face surface), **Wire**, **Flame**, **Command Board**, **HermesBody**. Public names, through the `website/src/data/capabilities.ts` SSOT like Floo/Horcrux: **War Room** (the multi-machine command experience) and **Flame** (the router — brand-native to the logo, ownable, adjacent to no competitor's mark). **The Wire stays internal**: public copy folds it into War Room ("your encrypted BurnBar connection"), per the standing policy that marketing never exposes transport jargon.
+
+**B3 — Metrics.** North star: **weekly dispatched decisions per active account**. Guardrails: decision→approval rate (sustained < 60% means the Flame is guessing — fix Decide before growing anything), median predicted-vs-actual cost error ≤ 25% (§7.1's Learn loop measures it), % of board rows attributed `exact`, wire session uptime. Revenue events: second-body pairing → Pro conversion; standing-order creation → Ultra conversion. The forbidden metric stands (§13.1): **messages sent is never a success metric for this feature.**
+
+**B4 — Rollout.** Ring rollout via `scripts/rollout.mjs` on the §12 flags, `war_room_kill_switch` live from ring 0. Direct download first, MAS follows — nothing in the War Room gates on MAS review (the Wire is MAS-safe; Path C exclusions are unchanged). The launch artifact is §8 executed unscripted on two physical Macs — the demo *is* the marketing, in the exact shape Nous demonstrated Bot Mode.
 
 ---
 
@@ -760,6 +819,8 @@ Inputs: durability across sleep (Firestore queue survives; a daemon scheduler ne
 This plan passes when Alberto reads §1 and §8 and says **"that's my idea."** Concretely, the vision's every named element has a home: machine-bound Hermes identity (§2), the elegant transform into a Grok-Bot-class room in our skin (§3.2, §3.4), back to agents and CLIs (§3.4 back semantics), the computer toggle that never toggles bots (§3.5, §2.4), the CLI dashboard with who-started-it on every row (§3.3, §7.4), the Pro/Ultra encrypted fail-closed wire (§4), and the flame-logo router that drinks the fountains, distills, and decides model/harness/machine/time/agent-count without ever becoming a persona or bypassing a grant (§5–§7).
 
 Per-phase acceptance is in §12's exit criteria. The product-level bar is §8 executed on two physical Macs, unscripted, with the board attributing every row correctly — including the honest `external` one.
+
+Every decision this plan raised is closed in §14 — the five product calls and the business calls — so nothing between here and W0 waits on a meeting. The build order in §12 is executable as written.
 
 ---
 
