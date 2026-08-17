@@ -5,8 +5,9 @@
  * Sets up a temporary git repository with a main branch and candidate commits,
  * then executes the resolve-step script (extracted from the workflow) against
  * various inputs to prove:
- *   - Dry-run succeeds only at exact current-main SHA
- *   - Mismatched/stale/malformed candidate_sha fails
+ *   - Future-tag dry-run succeeds only at exact current-main SHA
+ *   - Existing-tag recovery accepts the immutable tagged ancestor from current main
+ *   - Mismatched/unreachable/malformed candidate_sha fails
  *   - Dry-run cannot deploy (credentials stay skipped)
  *   - Non-dry-run/tag-push stays tag-bound
  *
@@ -107,6 +108,19 @@ function extractResolveScript(workflowFile) {
  * Returns { exitCode, stdout, stderr }.
  */
 function runResolve({ cloneDir, originUrl, env }) {
+  const runnerTemp = join(cloneDir, "_runner_temp");
+  mkdirSync(runnerTemp, { recursive: true });
+  writeFileSync(
+    join(runnerTemp, "release-dry-run-attestation.mjs"),
+    [
+      "#!/usr/bin/env node",
+      'if (process.env.ATTESTATION_GATE_RESULT !== "pass") {',
+      '  console.error("mock attestation verifier denied authority");',
+      "  process.exit(1);",
+      "}",
+      "",
+    ].join("\n"),
+  );
   const script = [
     "set -euo pipefail",
     "",
@@ -140,7 +154,9 @@ function runResolve({ cloneDir, originUrl, env }) {
     ...env,
     GITHUB_OUTPUT: outputFile,
     GITHUB_REF: env.GITHUB_REF || "refs/heads/main",
-    GITHUB_SHA: env.GITHUB_SHA || "",
+    GITHUB_SHA: env.GITHUB_SHA || env.INPUT_CANDIDATE_SHA || "",
+    INPUT_EXISTING_TAG_RETRY: env.INPUT_EXISTING_TAG_RETRY || "false",
+    RUNNER_TEMP: runnerTemp,
   };
 
   try {
@@ -276,7 +292,9 @@ const FULL_SHA = mainSha;
 /* ── Dry-run from a tag ref: fails ── */
 {
   // First create the tag in the repo
-  execSync(`git -C "${cloneDir}" tag ${VALID_TAG}`);
+  execSync(
+    `git -C "${cloneDir}" tag -a ${VALID_TAG} -m "${VALID_TAG} test release"`,
+  );
   execSync(`git -C "${cloneDir}" push origin ${VALID_TAG}`);
 
   const result = runResolve({
@@ -295,7 +313,7 @@ const FULL_SHA = mainSha;
   assert("dry-run from a tag ref fails", result.exitCode !== 0);
 }
 
-/* ── Manual rollback dispatch from the exact tag resolves rollback ── */
+/* ── Manual tag-selected rollback dispatch is forbidden ── */
 {
   const result = runResolve({
     cloneDir,
@@ -304,6 +322,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "false",
+      INPUT_EXISTING_TAG_RETRY: "false",
       INPUT_CANDIDATE_SHA: "",
       INPUT_DOMAIN_CORE_PROFILE: "public-production-rollback",
       REF_NAME: VALID_TAG,
@@ -311,17 +330,10 @@ const FULL_SHA = mainSha;
       GITHUB_SHA: FULL_SHA,
     },
   });
-  const output = readOutput(result.outputFile);
   assert(
-    "manual rollback dispatch from exact tag succeeds",
-    result.exitCode === 0,
+    "manual rollback dispatch from the tag ref is forbidden",
+    result.exitCode !== 0,
   );
-  if (result.exitCode === 0) {
-    assert(
-      "  emits rollback profile",
-      output.includes("domain_core_profile=public-production-rollback"),
-    );
-  }
 }
 
 /* ── Non-dry-run manual dispatch from non-tag ref: fails ── */
@@ -344,7 +356,7 @@ const FULL_SHA = mainSha;
   );
 }
 
-/* ── Non-dry-run manual dispatch from correct tag ref: succeeds ── */
+/* ── Non-dry-run manual dispatch from a tag ref is forbidden ── */
 {
   const result = runResolve({
     cloneDir,
@@ -353,6 +365,7 @@ const FULL_SHA = mainSha;
       EVENT_NAME: "workflow_dispatch",
       INPUT_TAG: VALID_TAG,
       INPUT_DRY_RUN: "false",
+      INPUT_EXISTING_TAG_RETRY: "false",
       INPUT_CANDIDATE_SHA: "",
       INPUT_DOMAIN_CORE_PROFILE: "public-production",
       REF_NAME: VALID_TAG,
@@ -360,19 +373,10 @@ const FULL_SHA = mainSha;
       GITHUB_SHA: FULL_SHA,
     },
   });
-  const output = readOutput(result.outputFile);
   assert(
-    "non-dry-run manual dispatch from tag ref succeeds",
-    result.exitCode === 0,
+    "non-dry-run manual dispatch from tag ref is forbidden",
+    result.exitCode !== 0,
   );
-  if (result.exitCode === 0) {
-    assert("  emits correct tag", output.includes(`tag=${VALID_TAG}`));
-    assert("  emits dry_run=false", output.includes("dry_run=false"));
-    assert(
-      "  emits public production profile",
-      output.includes("domain_core_profile=public-production"),
-    );
-  }
 }
 
 /* ── Tag push event: succeeds (simulated) ── */
@@ -449,7 +453,33 @@ const FULL_SHA = mainSha;
   }
 }
 
-/* ── Dry-run with tag that already exists: fails ── */
+// Simulate the recovery patch landing after the immutable tag was created:
+// workflow_dispatch now runs from a newer main commit while candidate_sha stays
+// bound to the exact tagged ancestor.
+execSync(`git -C "${cloneDir}" checkout main`);
+mkdirSync(join(cloneDir, "scripts", "ci"), { recursive: true });
+writeFileSync(
+  join(cloneDir, "scripts", "ci", "verify-existing-tag-dry-run-recovery.mjs"),
+  [
+    "#!/usr/bin/env node",
+    'if (process.env.RECOVERY_GATE_RESULT !== "pass") {',
+    '  console.error("mock recovery verifier denied eligibility");',
+    "  process.exit(1);",
+    "}",
+    "",
+  ].join("\n"),
+);
+writeFileSync(join(cloneDir, "post-tag-fix.txt"), "recovery workflow fix\n");
+execSync(
+  `git -C "${cloneDir}" add post-tag-fix.txt scripts/ci/verify-existing-tag-dry-run-recovery.mjs`,
+);
+execSync(`git -C "${cloneDir}" commit -m "land recovery workflow fix"`);
+execSync(`git -C "${cloneDir}" push origin main`);
+const workflowMainSha = execSync(`git -C "${cloneDir}" rev-parse HEAD`)
+  .toString()
+  .trim();
+
+/* ── Dry-run recovery for an untouched existing stable tag: succeeds ── */
 {
   // v1.2.3 was created and pushed in the "dry-run from a tag ref" test above
   const result = runResolve({
@@ -462,9 +492,262 @@ const FULL_SHA = mainSha;
       INPUT_CANDIDATE_SHA: FULL_SHA,
       REF_NAME: "main",
       GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: workflowMainSha,
+      RECOVERY_GATE_RESULT: "pass",
     },
   });
-  assert("dry-run with already-existing tag fails", result.exitCode !== 0);
+  const output = readOutput(result.outputFile);
+  assert(
+    "dry-run recovery for untouched existing stable tag succeeds",
+    result.exitCode === 0,
+  );
+  if (result.exitCode === 0) {
+    assert("  emits existing tag", output.includes(`tag=${VALID_TAG}`));
+    assert(
+      "  emits exact tagged commit",
+      output.includes(`commit=${FULL_SHA}`),
+    );
+    assert("  remains dry_run=true", output.includes("dry_run=true"));
+  }
+}
+
+/* ── Main-only existing-tag real retry verifies current control first ── */
+{
+  execSync(`git -C "${cloneDir}" checkout main`);
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "false",
+      INPUT_EXISTING_TAG_RETRY: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      INPUT_DOMAIN_CORE_PROFILE: "public-production",
+      REF_NAME: "main",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: workflowMainSha,
+      RECOVERY_GATE_RESULT: "pass",
+      ATTESTATION_GATE_RESULT: "pass",
+    },
+  });
+  const output = readOutput(result.outputFile);
+  assert(
+    "main-only existing-tag real retry succeeds after trusted attestation verification",
+    result.exitCode === 0,
+  );
+  if (result.exitCode === 0) {
+    assert(
+      "  retry emits immutable tagged commit",
+      output.includes(`commit=${FULL_SHA}`),
+    );
+    assert("  retry emits dry_run=false", output.includes("dry_run=false"));
+    assert(
+      "  retry emits existing_tag_retry=true",
+      output.includes("existing_tag_retry=true"),
+    );
+    assert(
+      "  retry emits exact trusted control SHA",
+      output.includes(`control_sha=${workflowMainSha}`),
+    );
+  }
+}
+
+/* ── Existing-tag real retry fails if attestation authority is denied ── */
+{
+  execSync(`git -C "${cloneDir}" checkout main`);
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "false",
+      INPUT_EXISTING_TAG_RETRY: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      INPUT_DOMAIN_CORE_PROFILE: "public-production",
+      REF_NAME: "main",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: workflowMainSha,
+      RECOVERY_GATE_RESULT: "pass",
+      ATTESTATION_GATE_RESULT: "deny",
+    },
+  });
+  assert(
+    "existing-tag real retry fails before candidate checkout when attestation authority is denied",
+    result.exitCode !== 0,
+  );
+  assert(
+    "  denied retry leaves the trusted control checkout active",
+    execSync(`git -C "${cloneDir}" rev-parse HEAD`).toString().trim() ===
+      workflowMainSha,
+  );
+}
+
+/* ── Existing-tag real retry is main-only ── */
+{
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "false",
+      INPUT_EXISTING_TAG_RETRY: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      INPUT_DOMAIN_CORE_PROFILE: "public-production",
+      REF_NAME: VALID_TAG,
+      GITHUB_REF: `refs/tags/${VALID_TAG}`,
+      GITHUB_SHA: FULL_SHA,
+      ATTESTATION_GATE_RESULT: "pass",
+    },
+  });
+  assert(
+    "existing-tag real retry rejects a tag-selected dispatch",
+    result.exitCode !== 0,
+  );
+}
+
+/* ── Existing-tag recovery must run from the current main workflow SHA ── */
+{
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      REF_NAME: "main",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: FULL_SHA,
+      RECOVERY_GATE_RESULT: "pass",
+    },
+  });
+  assert(
+    "existing-tag recovery rejects a workflow SHA that is not current main",
+    result.exitCode !== 0,
+  );
+}
+
+/* ── Existing-tag recovery propagates GitHub-state verifier denial ── */
+{
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      REF_NAME: "main",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: workflowMainSha,
+      RECOVERY_GATE_RESULT: "deny",
+    },
+  });
+  assert(
+    "existing-tag recovery fails when GitHub-state verifier denies eligibility",
+    result.exitCode !== 0,
+  );
+}
+
+/* ── Existing-tag recovery from a non-main branch: fails ── */
+{
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: VALID_TAG,
+      INPUT_DRY_RUN: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      REF_NAME: "release-candidate",
+      GITHUB_REF: "refs/heads/release-candidate",
+      GITHUB_SHA: workflowMainSha,
+      RECOVERY_GATE_RESULT: "pass",
+    },
+  });
+  assert(
+    "existing-tag recovery from a non-main branch fails",
+    result.exitCode !== 0,
+  );
+}
+
+/* ── Existing lightweight tag: fails immutable annotated-tag guard ── */
+{
+  const lightweightTag = "v1.2.4";
+  execSync(`git -C "${cloneDir}" tag ${lightweightTag}`);
+  execSync(`git -C "${cloneDir}" push origin ${lightweightTag}`);
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: lightweightTag,
+      INPUT_DRY_RUN: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      REF_NAME: "main",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: workflowMainSha,
+      RECOVERY_GATE_RESULT: "pass",
+    },
+  });
+  assert("existing lightweight tag fails recovery", result.exitCode !== 0);
+}
+
+/* ── Existing stable tag that peels away from candidate: fails ── */
+{
+  const mismatchedTag = "v1.2.5";
+  const parentSha = execSync(`git -C "${cloneDir}" rev-parse "${FULL_SHA}^"`)
+    .toString()
+    .trim();
+  execSync(
+    `git -C "${cloneDir}" tag -a ${mismatchedTag} ${parentSha} -m "${mismatchedTag} mismatch"`,
+  );
+  execSync(`git -C "${cloneDir}" push origin ${mismatchedTag}`);
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: mismatchedTag,
+      INPUT_DRY_RUN: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      REF_NAME: "main",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: workflowMainSha,
+      RECOVERY_GATE_RESULT: "pass",
+    },
+  });
+  assert(
+    "existing tag that peels away from candidate_sha fails recovery",
+    result.exitCode !== 0,
+  );
+}
+
+/* ── Existing prerelease tag: fails stable-only recovery guard ── */
+{
+  const prereleaseTag = "v1.2.6-rc.1";
+  execSync(
+    `git -C "${cloneDir}" tag -a ${prereleaseTag} -m "${prereleaseTag} prerelease"`,
+  );
+  execSync(`git -C "${cloneDir}" push origin ${prereleaseTag}`);
+  const result = runResolve({
+    cloneDir,
+    originUrl: originDir,
+    env: {
+      EVENT_NAME: "workflow_dispatch",
+      INPUT_TAG: prereleaseTag,
+      INPUT_DRY_RUN: "true",
+      INPUT_CANDIDATE_SHA: FULL_SHA,
+      REF_NAME: "main",
+      GITHUB_REF: "refs/heads/main",
+      GITHUB_SHA: workflowMainSha,
+      RECOVERY_GATE_RESULT: "pass",
+    },
+  });
+  assert("existing prerelease tag fails recovery", result.exitCode !== 0);
 }
 
 /* ── Dry-run with non-SemVer tag: fails ── */

@@ -36,6 +36,10 @@ final class BurnBarRPCCapabilityTests: XCTestCase {
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .memoryRemember), .memoryWrite)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeSearch), .codeRead)
         XCTAssertEqual(BurnBarRPCCapability.capability(for: .codeIndexProject), .codeWrite)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .fleetSnapshot), .observability)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .fleetOrchestratorGet), .observability)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .fleetOrchestratorSet), .config)
+        XCTAssertEqual(BurnBarRPCCapability.capability(for: .fleetDirectiveRecord), .config)
     }
 
     func test_fullProfilePermitsEveryMethod() {

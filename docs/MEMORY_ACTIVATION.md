@@ -1,11 +1,15 @@
 # Memory Activation — end-to-end flow, kill levers, and the human GO-LIVE runbook
 
-**Status:** The semantic-memory subsystem is **fully wired and dormant.** Every
-component named below is built, tested, and committed on the `memory/activation`
-branch. **Nothing in this document is turned on.** The feature does not write a
-single durable memory row out of the box, and it does not ship a byte of derived
-memory off the device. Flipping it on is a deliberate, human-owned decision,
-gated on the residual list in [§7](#7-residual-go-live-decisions-a-human-must-make).
+**Status:** The semantic-memory subsystem is **fully wired and live behind
+consent.** Every component named below is built, tested, and merged to `main`.
+The go-live flag (G2) was flipped to **true** in `fbce28fce6`
+("fix(memory): enable chat memory authority writes (#1156)"), so the feature
+activates as soon as the user grants consent (G0) with extraction enabled (G1).
+Out of the box it is still dormant **by G0 alone**: consent defaults OFF, so no
+transcript is read, no LLM round-trip runs, no durable row is written, and no
+derived memory leaves the device until the user accepts the consent sheet. The
+residual list in [§7](#7-residual-go-live-decisions-a-human-must-make) records
+the decisions that were still open when the flag flipped.
 
 This is the closing doc for the memory-activation build (Waves A–E of
 [`2026-06-19-memory-activation-integrated-build-plan.md`](../../.gstack/projects/Ajnunezg-LaHormigaDormida/ceo-plans/2026-06-19-memory-activation-integrated-build-plan.md)).
@@ -14,6 +18,13 @@ lives, and what a human still owns before activation.
 
 Related design docs (the "why" and the schema): [`MEMORY_BACKEND_PLAN.md`](MEMORY_BACKEND_PLAN.md),
 [`MEMORY_FRONTEND_PLAN.md`](MEMORY_FRONTEND_PLAN.md), [`MEMORY_STRATEGY_AUDIT.md`](MEMORY_STRATEGY_AUDIT.md).
+
+The passive **usage-memory** lane (Safari asks + agent-session rollouts) builds
+on this substrate with its own consent lattice (G0-U), a Stage 0–3 funnel, and
+a hard v1 invariant — usage memories are local-only and never replicate to any
+cloud lane. That delta is documented in
+[`USAGE_MEMORY_DESIGN.md`](USAGE_MEMORY_DESIGN.md); the gates described below
+are the CHAT lane's.
 
 ---
 
@@ -55,7 +66,11 @@ and no memory row is written, even before the go-live flag matters.
     **default ON** (only meaningful once consent is granted).
   - `MemorySettings.remoteConfigExtractionEnabled` — the Remote Config
     `memory_extraction_enabled` fleet switch, **default true, not user-settable,
-    fail-closed** (a fetch error flips it false).
+    fail-open on transport error**: a fetch error does NOT flip it false — the
+    switch only turns off when a fetched (or previously cached) config value
+    says `false` (`SettingsManager.refreshComputerUseRemoteConfigOnce`). The
+    fleet kill therefore requires the config to actually reach the client at
+    least once.
 - **What it gates:** whether the LLM round-trip runs **at all**. It is the
   instant fleet kill: one Remote Config flip to false halts extraction across
   the fleet on the next pump tick.
@@ -71,10 +86,15 @@ and no memory row is written, even before the go-live flag matters.
   independent dormancy guarantee in isolation.** Dormancy for the full system is
   provided by G0 (outermost) combined with G2.
 
-### Gate 2 (G2) — `chatMemoryAuthorityWritesEnabledByDefault` (the go-live flag, DEFAULT **FALSE**)
+### Gate 2 (G2) — `chatMemoryAuthorityWritesEnabledByDefault` (the go-live flag, DEFAULT **TRUE** since `fbce28fce6`)
 
-- **What it is:** a static Boolean — the **human-owned go-live switch**.
-- **Where it is defined:** `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault = false`
+- **What it is:** a static Boolean — the **human-owned go-live switch**. It was
+  flipped to `true` in `fbce28fce6` (#1156); since then dormancy rests on G0
+  alone. Note this is compile-time state: there is **no runtime kill for durable
+  writes** in the chat lane (only extraction has the Remote Config kill) — the
+  usage-memory lane adds `memory_usage_authority_writes_enabled` to close that
+  gap for its own writes.
+- **Where it is defined:** `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault = true`
   (`AgentLens/Services/DataStore/ControlPlaneStore.swift:10`).
 - **What it gates:** the **durable write AND the LLM call**. The worker gates
   `authorityWritesEnabled()` — which is the kill-switch atomic AND the go-live
@@ -100,11 +120,12 @@ and no memory row is written, even before the go-live flag matters.
 |---|---|---|---|
 | **false (default)** | (any) | (any) | **Fully dormant** — no LLM egress, zero writes. |
 | true | **false** | (any) | No LLM egress, zero writes. |
-| true | true | **false (default)** | **LLM never called** — worker returns `.idle` at pre-claim guard; zero writes. |
-| true | true | true | Extraction is **live**: LLM runs, clean facts persist as `quarantined`. |
+| true | true | **false** | **LLM never called** — worker returns `.idle` at pre-claim guard; zero writes. |
+| true | true | **true (default since `fbce28fce6`)** | Extraction is **live**: LLM runs, clean facts persist as `quarantined`. |
 
-The default ship state is the top row: **fully dormant by G0**. The end-to-end
-test asserts the gate matrix — extraction ON + authority OFF ⇒ 0 writes — in
+The default ship state is the top row: **dormant by G0** (consent OFF). With G2
+now defaulting true, G0 is the load-bearing dormancy gate. The end-to-end test
+asserts the gate matrix — extraction ON + authority OFF ⇒ 0 writes — in
 `MemoryActivationEndToEndTests`.
 
 ### A fourth, independent lever for cloud egress
@@ -396,7 +417,7 @@ See [§5](#5-optional-cloud-sync-lane-pr-e2).
 |---|---|---|
 | **Gate 0 — consent** | `AgentLens/Services/Settings/Stores/MemorySettings.swift` (`consentGranted`, key `"memoryConsentGranted"`) + `SettingsManager.memoryConsentGranted` | outermost AND; default OFF; granted via `MemoryConsentSheet` |
 | **Gate 1** (combined G4 gate) | `AgentLens/Services/SettingsManager.swift:724` + `Settings/Stores/MemorySettings.swift:61` | `isEnabled(consentGranted:automaticExtraction:remoteConfigEnabled:)` — consent ∧ user toggle ∧ Remote Config fleet switch |
-| **Gate 2** (go-live flag) | `AgentLens/Services/DataStore/ControlPlaneStore.swift:10` | static, default false, human-owned |
+| **Gate 2** (go-live flag) | `AgentLens/Services/DataStore/ControlPlaneStore.swift:10` | static, default **true** since `fbce28fce6`, human-owned |
 | Live kill-switch atomic | `AgentLens/Services/Memory/MemoryExtractionPolicy.swift:79` (`MemoryExtractionKillSwitch`) | MainActor→worker bridge for L1 |
 | Settings snapshot + box | `MemoryExtractionSettingsSnapshot.swift`, `MemoryExtractionPolicy.swift:118` | off-main per-drain settings |
 | Policy / safety rails | `AgentLens/Services/Memory/MemoryExtractionPolicy.swift` | caps, deadlines, daily cap |
@@ -488,9 +509,10 @@ is the **last** lane to enable and is itself a residual product decision (§7.5)
    `"memoryConsentGranted"`). G0 — the outermost gate — is OFF by default until
    the user accepts `MemoryConsentSheet`. If this is somehow `true` without a
    user action, investigate before proceeding.
-2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault == false`
-   (`ControlPlaneStore.swift:10`). G2 — the go-live flag. If this is ever `true`,
-   the feature is live once G0 and G1 also allow.
+2. `ControlPlaneStore.chatMemoryAuthorityWritesEnabledByDefault == true`
+   (`ControlPlaneStore.swift:10`). G2 — the go-live flag — has shipped `true`
+   since `fbce28fce6`; the feature is live once G0 and G1 allow. Dormancy is
+   therefore G0's job: check #1 is the load-bearing one.
 3. `MemorySettings.approvedCloudBackupEnabled` default `false`
    (`MemorySettings.swift:32`). No cloud egress.
 4. The engine's worker closure is the **AND** of the live atomic and the go-live
@@ -574,11 +596,229 @@ green.** Cloud-sync (#5) additionally requires #2.
 
 ---
 
-## 8. Keeping this doc honest
+## 8. Usage memory — the G0-U gate lattice (safety architecture)
+
+Usage memory derives memories from two passive exhausts (Safari asks the member
+volunteered, and recorded agent-session rollouts) instead of chat transcripts. It
+reuses this document's authority table, secret gate, review lifecycle, and forget
+machinery — but it carries **its own consent lattice, its own two fleet kill
+switches, and its own worker-facing kill-switch registry**, all defaulting
+dormant.
+
+**Scope of this section:** the *safety wiring* — every lever, its default, where
+it is stored, and how it reaches an off-main worker. The program's *design*
+rationale (why usage kinds ride the one authority table, the Stage 0–3 funnel,
+the v61 sidecars, the CoreWeave provider pin, and the hard **v1 local-only
+replication invariant**) lives in `docs/USAGE_MEMORY_DESIGN.md`, landing with
+[PR #2266](https://github.com/Imagine-That-Ai/BurnBar/pull/2266). Read that for
+"why"; read this for "which lever, what default, which file". Do not duplicate
+either into the other.
+
+Implementation: [`MemorySettings.swift`](../AgentLens/Services/Settings/Stores/MemorySettings.swift)
+(settings + pure gates), [`SettingsManager.swift`](../AgentLens/Services/SettingsManager.swift)
+(Remote Config resolution + combined gates),
+[`MemoryExtractionPolicy.swift`](../AgentLens/Services/Memory/MemoryExtractionPolicy.swift)
+(`UsageMemoryKillSwitchRegistry`). Pinned by
+[`UsageMemoryGateTests`](../AgentLensTests/Active/Security/UsageMemoryGateTests.swift).
+
+### 8.1 The lattice
+
+Three pure gate enums compose the lattice. Each is a plain AND — any lever off
+means the lane is shut — and each is kept free of Firebase and `SettingsManager`
+so the logic is testable in isolation.
+
+| Gate | Expression | Consumers |
+|---|---|---|
+| `UsageMemoryExtractionGate` | `usageConsentGranted && remoteConfigEnabled && remoteConfigResolved` | `SettingsManager.usageMemoryExtractionEnabled`; registry **extraction** lane |
+| `UsageMemoryAuthorityWriteGate` | `remoteConfigEnabled && remoteConfigResolved` | `SettingsManager.usageMemoryAuthorityWritesEnabled`; registry **authority-writes** lane |
+| `UsageMemoryCloudGate` | `extractionEnabled && cloudConsentGranted && placementIsCloud` | `SettingsManager.usageMemoryCloudCurationEnabled` |
+
+Note what is **not** in the extraction gate: the two per-source toggles. They
+select *which* sources feed the pipeline once it is running; they are not safety
+levers and cannot open anything on their own.
+
+The authority-write gate is deliberately **independent of consent** — it is a
+fleet quarantine on durable writes, not a user preference — which is why a fleet
+flip can halt usage *writes* without disturbing extraction or the chat lane. This
+runtime write kill is **new relative to the chat lane**, whose equivalent (G2,
+[§1](#gate-2-g2--chatmemoryauthoritywritesenabledbydefault-the-go-live-flag-default-false))
+is a compile-time static with no runtime channel.
+
+### 8.2 Every settings key and its default
+
+Persisted through `SettingsPersistenceCoordinator` (the `UserDefaults` key is the
+property name in every case):
+
+| Key | Default | What it does |
+|---|---|---|
+| `usageMemoryConsentGranted` | **false** | **G0-U.** The outermost lever. Until true, no Safari ask or session log is read and no usage memory is derived. Granting implies shown (§8.5). |
+| `usageMemoryConsentShown` | **false** | Whether the usage consent prompt has been presented (granted **or** declined), so it is not shown twice. |
+| `usageMemoryCloudCurationConsentGranted` | **false** | Separate opt-in for sending usage-derived material to a cloud curation model. Local extraction consent never implies it. |
+| `usageMemoryModelPlacement` | **`.local`** | Where the curation model runs (§8.4). |
+| `usageMemorySourceSafariAsksEnabled` | **true** | Source selector — inert until consent opens the gate. |
+| `usageMemorySourceAgentSessionsEnabled` | **true** | Source selector — inert until consent opens the gate. |
+
+Session-scoped, **never persisted** (a relaunch always re-derives them):
+
+| Field | Default | What it does |
+|---|---|---|
+| `remoteConfigUsageExtractionEnabled` | true | Mirror of the `memory_usage_extraction_enabled` fleet switch. |
+| `remoteConfigUsageAuthorityWritesEnabled` | true | Mirror of the `memory_usage_authority_writes_enabled` fleet switch. |
+| `hasResolvedUsageRemoteConfig` | **false** | Whether either mirror has actually been filled from Remote Config (§8.3). |
+
+The two mirrors default to the optimistic `true`, so **they are not themselves a
+dormancy guarantee** — `hasResolvedUsageRemoteConfig` is what keeps them inert
+until a real fleet value arrives. Out of the box the feature is dormant several
+times over: no consent, nothing resolved, no cloud consent, placement `.local`.
+
+### 8.3 The two Remote Config keys and their failure semantics
+
+Both are declared in `SettingsManager.commercialRemoteConfigDefaults` with a
+default of `true` (allowed), and both are refreshed by
+`refreshComputerUseRemoteConfigOnce()` on the shared 60 s / 5 min / paused
+`BackgroundCadenceCoordinator` cadence.
+
+| Remote Config key | Mirrors | Kills |
+|---|---|---|
+| `memory_usage_extraction_enabled` | `remoteConfigUsageExtractionEnabled` | All usage extraction, fleet-wide, on the next propagation. |
+| `memory_usage_authority_writes_enabled` | `remoteConfigUsageAuthorityWritesEnabled` | Durable usage authority writes only; extraction and the chat lane are untouched. |
+
+**Resolution is the load-bearing rule: both usage lanes are held CLOSED until a
+Remote Config value has been applied.** The optimistic `true` defaults can never
+open a lane on their own. Three paths resolve them, and only these three:
+
+1. **At init**, from Firebase's **active cached** config —
+   `SettingsManager.activeUsageMemoryRemoteConfigSnapshot()` is injected into
+   `MemorySettings.init(persistence:usageRemoteConfigSeed:)` and applied *before*
+   the first `propagateUsageGates()`. This is what makes a **cached fleet kill
+   beat persisted consent**: a returning member with
+   `usageMemoryConsentGranted == true` never propagates an open lane while a
+   cached `false` sits on disk waiting to be read.
+2. **Before the network fetch** in `refreshComputerUseRemoteConfigOnce()`, from
+   the same active cached config — so a cached kill is not ignored for the
+   duration of a round trip, and so the lanes still resolve when Firebase was
+   configured *after* the settings manager was built (init seed `nil`).
+3. **After a successful `fetchAndActivate`**, from the freshly activated values.
+
+Failure semantics, matching the chat switch's documented posture:
+
+- **Transport error (Firebase unreachable):** whatever the *active cached* config
+  says stands, because step 2 already applied it. **Fail-open when nothing cached
+  says kill** — an offline member who opted in is not stranded — but **a cached
+  `false` remains authoritative**, so a fleet kill survives losing the network.
+- **No activated config yet (fresh install):** `configValue` returns the declared
+  default (`true`), which resolves the lanes to "allowed". Consent is then the
+  only remaining lever, which is the intended posture.
+- **Firebase not configured at all** (no `GoogleService-Info.plist`, so
+  `FirebaseApp.app() == nil`): the seed returns `nil` and the refresh returns
+  early, so **nothing ever resolves and usage memory stays dormant for the whole
+  process.** This is deliberate — fail-closed beats guessing when the fleet has
+  no channel to this build — but it is a real consequence to know about, and it
+  differs from the chat lane, which would run on its local levers alone. Any
+  future non-Firebase resolution path must go through the single seam
+  `SettingsManager.applyUsageMemoryRemoteConfig(extractionEnabled:authorityWritesEnabled:)`.
+
+Writing `usageMemoryExtractionRemoteConfigEnabled` / …`AuthorityWrites`… directly
+sets the mirror but **does not resolve**, so no partial or stray write can
+promote a defaulted `true` into an open lane. `applyUsageRemoteConfig` takes both
+values together for the same reason: the lanes resolve as a pair, never half.
+
+### 8.4 The placement enum
+
+`UsageMemoryModelPlacement` (`String`-raw, `CaseIterable`) decides where curation
+inference runs, and is the third lever of the cloud gate:
+
+| Case | Raw value | `isCloud` | Meaning |
+|---|---|---|---|
+| `.local` | `local` | **false** | **Default.** On-device model; nothing usage-derived leaves the machine. |
+| `.cloudText` | `cloudText` | true | A user-configured cloud text model. |
+| `.burnbarCloud` | `burnbarCloud` | true | The BurnBar-hosted curation service. |
+
+`isCloud` is defined as `self != .local`, so a future case is cloud-by-default —
+adding one cannot silently create a new egress path that skips the cloud gate.
+
+### 8.5 Consent invariants
+
+**Granting implies shown, one way only.** Granting consent marks the prompt
+shown, so a consenting member is never re-prompted; a *shown* prompt never
+implies consent (declining leaves `granted == false` and the loop dormant).
+
+Two mechanisms uphold this across a relaunch:
+
+1. `init` loads `…ConsentShown` **before** `…ConsentGranted`, so a live grant is
+   never overwritten by a stale persisted `shown`.
+2. `normalizeConsentShownInvariants()` runs after every load and repairs a torn
+   state (`granted == true` with `shown` false or absent — e.g. a crash between
+   the coordinator's separate debounced writes). It covers both the usage and
+   chat pairs, and the repair is **persisted**, not just in-memory.
+
+**A macro subtlety worth knowing**, because it is easy to get wrong in review:
+Swift does not run property observers for assignments made from inside an
+initializer — but `MemorySettings` is `@Observable`, and that macro rewrites each
+stored property into a computed property backed by `_property`. An `init`-body
+assignment to a property that already has a default value therefore goes through
+the **setter**, and `didSet` *does* run (the same class without `@Observable`
+behaves the opposite way). So the granted-implies-shown propagation already
+worked — but only as a side effect of macro expansion. Step 2 exists to make the
+invariant explicit and independent of it, pinned by
+`UsageMemoryGateTests.testTornConsentStateIsRepairedOnLoad`. Do not rely on the
+implicit behavior when adding a new consent pair.
+
+### 8.6 How the worker-facing registry lanes are populated
+
+Future usage-memory workers run **off the main actor** and cannot read the
+`@MainActor` combined gates synchronously, so the same push/pull discipline the
+chat lane uses applies here — with two independent lanes instead of one.
+
+`UsageMemoryKillSwitchRegistry` (in `MemoryExtractionPolicy.swift`) holds two
+arrays of **weak** boxes over the shared `NSLock`-guarded
+`MemoryExtractionKillSwitch`, one per lane:
+
+- **Register (worker side).** A worker builds a `MemoryExtractionKillSwitch`
+  (which starts CLOSED) and calls `registerExtraction(_:initiallyAllowed:)` or
+  `registerAuthorityWrites(_:initiallyAllowed:)`, seeding it from the live
+  MainActor gate. Dead entries are swept on every register and set.
+- **Push (settings side).** `MemorySettings.propagateUsageGates()` runs on every
+  relevant `didSet` — consent, either RC mirror, the resolution flag — and on
+  `init`. It recomputes both gates and pushes into both lanes:
+  `setExtraction(UsageMemoryExtractionGate.isEnabled(…))` and
+  `setAuthorityWrites(UsageMemoryAuthorityWriteGate.isEnabled(…))`.
+- **Pull (worker side).** The worker reads `isAllowed()` per drain tick through a
+  `@Sendable () -> Bool` closure. **The gate is never cached** — every tick sees
+  the current value, so a fleet kill takes effect on the next tick.
+
+Unlike the chat registry, there is **no drain-launcher lane**: opening a usage
+gate pushes the value but does not itself kick a drain.
+
+**Consuming these lanes correctly:** a worker must AND the extraction lane before
+reading any source material, and AND the authority-writes lane before any durable
+write — reading the registry, never a cached copy of a settings value.
+
+### 8.7 Verifying usage memory is OFF
+
+Sibling of [§6](#6-how-to-verify-it-is-off-sanity-checks-before-and-after-any-change),
+for the usage lane:
+
+1. `usageMemoryConsentGranted` persisted value is `false` (G0-U). If it is `true`
+   without a member action, investigate before proceeding.
+2. `hasResolvedUsageRemoteConfig` starts `false` on every launch — confirm no code
+   path sets it outside the three resolution paths in §8.3.
+3. `usageMemoryModelPlacement` is `.local` and
+   `usageMemoryCloudCurationConsentGranted` is `false` — zero cloud egress.
+4. `UsageMemoryGateTests` is green, including the exhaustive fail-closed matrices
+   for both gates, the cached-kill-at-init case, and the torn-consent repair.
+5. Usage memories reach **no** cloud lane at all in v1 — see the replication
+   invariant in `docs/USAGE_MEMORY_DESIGN.md` ([PR #2266](https://github.com/Imagine-That-Ai/BurnBar/pull/2266)).
+
+---
+
+## 9. Keeping this doc honest
 
 When any lever default, gate point, or component path above changes, update this
 file in the same PR, and refresh the mem0 / `droid-wiki` mirror on commit (per
 [`AGENTS.md`](../AGENTS.md)). The line references are to the `memory/activation`
 tree at the time of writing; treat them as starting points, not contracts — the
 **names** (`chatMemoryAuthorityWritesEnabledByDefault`, `memoryExtractionEnabled`,
-`MemorySecretPIIGate`, `recallChatMemorySnippets`) are the durable anchors.
+`MemorySecretPIIGate`, `recallChatMemorySnippets`, `UsageMemoryExtractionGate`,
+`UsageMemoryAuthorityWriteGate`, `UsageMemoryKillSwitchRegistry`) are the durable
+anchors.

@@ -108,6 +108,7 @@ No current migration is classified as independently reversible. SQL snippets pri
 | 59 | `v58_ai_inbox` | atomic | unapplied-only | backup-restore | AI Inbox items, delivery state, and routing indexes |
 | 60 | `v59_founder_lens` | atomic | unapplied-only | backup-restore | Founder Lens reply threads, plan ledger, and memory export |
 | 61 | `v60_billing_kind` | atomic | unapplied-only | backup-restore | Billing provenance column (api vs subscription spend) with deterministic backfill |
+| 62 | `v61_usage_memory` | atomic | unapplied-only | backup-restore | Usage-memory substrate: candidate spool, salience sidecar, memory links, extraction-job source_kind |
 <!-- END GENERATED MIGRATION CATALOG -->
 
 Regenerate and verify the table with:

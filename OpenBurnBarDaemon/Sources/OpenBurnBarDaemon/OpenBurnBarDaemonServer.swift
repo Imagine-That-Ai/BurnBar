@@ -73,6 +73,7 @@ public actor BurnBarDaemonServer {
     let computerUseSessionGrantBroker: ComputerUseSessionGrantBroker?
     let computerUseSessionGrantMetadataResolver: ComputerUseSessionGrantMetadataResolver?
     let computerUseSessionGrantReadinessProvider: ComputerUseSessionGrantReadinessProvider?
+    let fleetService: BurnBarFleetService
     #if os(Linux)
     let linuxComputerUseOwnerAuthorizer: LinuxComputerUseOwnerAuthorizer
     let linuxCloudCredentialAuthority: LinuxDaemonCloudCredentialAuthority?
@@ -192,7 +193,8 @@ public actor BurnBarDaemonServer {
         linuxOnboardingService: BurnBarLinuxOnboardingService? = nil,
         linuxPrivacyService: BurnBarLinuxPrivacyService? = nil,
         subscriptionService: BurnBarSubscriptionService? = nil,
-        chatThreadService: (any BurnBarChatThreadServing)? = nil
+        chatThreadService: (any BurnBarChatThreadServing)? = nil,
+        fleetService: BurnBarFleetService? = nil
     ) {
         self.configuration = configuration
         self.logger = logger
@@ -234,6 +236,7 @@ public actor BurnBarDaemonServer {
         )
         self.chatThreadService = chatThreadService
         self.ownsChatThreadService = chatThreadService == nil
+        self.fleetService = fleetService ?? BurnBarFleetServiceFactory.makeDefault(configuration: configuration)
 
         let resolvedConfigStore = configStore ?? BurnBarConfigStore(
             catalog: configuration.catalog,
@@ -1221,6 +1224,8 @@ public actor BurnBarDaemonServer {
         #if os(Linux)
         await linuxCloudSyncRuntime?.startBackgroundLoop()
         #endif
+        await fleetService.start()
+
         if configuration.startsMissionControlBackgroundLoops {
             await missionControlService.startBackgroundLoops()
             // Reuses the mission-control loop flag so in-process test servers do
@@ -1345,6 +1350,7 @@ public actor BurnBarDaemonServer {
             )
         }
         ownership?.release()
+        await fleetService.stop()
         await missionControlService.stopBackgroundLoops()
         #if os(Linux)
         await linuxCloudSyncRuntime?.stopBackgroundLoop()
@@ -1655,6 +1661,12 @@ public actor BurnBarDaemonServer {
                 )
             case .databaseRecoveryStatus, .databaseRecoveryBundleExport, .databaseRecoveryBundleImport:
                 return try await handleDatabaseRecoveryRPC(
+                    method: method,
+                    decoder: decoder,
+                    requestData: requestData
+                )
+            case .fleetSnapshot, .fleetOrchestratorGet, .fleetOrchestratorSet, .fleetDirectiveRecord:
+                return try await handleFleetRPC(
                     method: method,
                     decoder: decoder,
                     requestData: requestData

@@ -218,6 +218,13 @@ enum BurnBarDaemonSocketRPCCoverage {
         .databaseRecoveryBundleImport
     ]
 
+    static let fleet: Set<BurnBarRPCMethod> = [
+        .fleetSnapshot,
+        .fleetOrchestratorGet,
+        .fleetOrchestratorSet,
+        .fleetDirectiveRecord
+    ]
+
     static let inbox: Set<BurnBarRPCMethod> = [
         .inboxList,
         .inboxGet,
@@ -254,6 +261,7 @@ enum BurnBarDaemonSocketRPCCoverage {
             .union(code)
             .union(databaseRecovery)
             .union(inbox)
+            .union(fleet)
     }
 
     static func domain(for method: BurnBarRPCMethod) -> String? {
@@ -275,6 +283,7 @@ enum BurnBarDaemonSocketRPCCoverage {
         if code.contains(method) { return "code" }
         if databaseRecovery.contains(method) { return "database_recovery" }
         if inbox.contains(method) { return "inbox" }
+        if fleet.contains(method) { return "fleet" }
         return nil
     }
 }

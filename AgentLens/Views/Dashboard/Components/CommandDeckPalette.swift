@@ -104,7 +104,7 @@ struct CommandDeckPalette: View {
     /// so typing "accessibility", "snippet", or "daemon" finds the page that
     /// actually carries those controls.
     private var searchableSections: [DashboardMainRoute] {
-        DashboardMainRoute.primarySections + [.controlDeck]
+        DashboardMainRoute.primarySections + [.controlDeck, .fleet]
     }
 
     private var filteredSections: [DashboardMainRoute] {
