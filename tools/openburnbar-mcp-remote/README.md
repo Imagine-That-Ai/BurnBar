@@ -63,9 +63,12 @@ Both commands:
    `Imagine-That-Ai/BurnBar` GitHub Release.
 3. Verify the advertised length, SHA-256, and Sparkle Ed25519 signature
    against the app's pinned `SUPublicEDKey`.
-4. Mount the DMG read-only and require the mounted app to have the exact feed
+4. Require the Mac to satisfy the feed's `minimumSystemVersion`.
+5. Refuse to replace a running app/daemon, a Mac App Store installation, or a
+   Homebrew-managed Caskroom installation.
+6. Mount the DMG read-only and require the mounted app to have the exact feed
    version, build, and `com.openburnbar.app` bundle identifier.
-5. Verify the app code signature and atomically replace
+7. Verify the app code signature and atomically replace
    `/Applications/OpenBurnBar.app`.
 
 `app install` is the first-time path. `app update` refuses when the app is not
@@ -147,6 +150,10 @@ AGPL-3.0-only. The full text ships in [LICENSE](LICENSE) and in the npm tarball.
 ## Releasing (maintainers)
 
 The publish lane is `.github/workflows/npm-publish-openburnbar.yml` in the BurnBar repo. It runs `npm ci` → lint → test → pack, then publishes with OIDC trusted publishing — no tokens in the workflow. For the full update/publish/rollback procedure, see [`docs/NPM_PUBLISH_RUNBOOK.md`](../../docs/NPM_PUBLISH_RUNBOOK.md).
+
+The ordinary `npm test` suite uses injected feed responses and is network
+independent. Run `npm run test:live-feed` for the explicit production-feed
+integration probe.
 
 1. Bump `version` in `tools/openburnbar-mcp-remote/package.json` (and `package-lock.json` in lockstep).
 2. Commit, then tag: `git tag openburnbar-npm-v<x.y.z>`.
