@@ -622,7 +622,12 @@ describe('popup rendering', () => {
     expect(root.querySelector('[data-action="toggle-tools"]')?.getAttribute('aria-expanded')).toBe('true');
     expect(root.querySelector('.agent-select')).toBeNull();
     expect(root.querySelector('.agent-picker-options[role="listbox"]')).not.toBeNull();
-    expect(root.querySelector('.agent-picker-options .model-picker-option')?.textContent).toContain('Vision Model');
+    const pickerOptions = [...root.querySelectorAll('.agent-picker-options .model-picker-option')].map(
+      (option) => option.textContent ?? ''
+    );
+    expect(pickerOptions.some((option) => option.includes('Vision Model'))).toBe(true);
+    /* Text-only models are offered, and are labelled so the choice is informed. */
+    expect(pickerOptions.some((option) => option.includes('Text Model') && option.includes('Text only'))).toBe(true);
     expect(root.querySelector('[data-action="diagnostics-copy"]')?.getAttribute('aria-label')).toContain(
       'privacy-safe'
     );

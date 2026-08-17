@@ -1,3 +1,4 @@
+import { hasVisibleAnswer } from '../shared/answerText';
 import { SafariExtensionError } from '../shared/errors';
 import { isRecord, type PageContext, type SafariBootstrapResponse, type ScreenshotResult } from '../shared/protocol';
 
@@ -231,6 +232,26 @@ export function buildSafariAskBody(request: SafariGatewayAskRequest): Record<str
   };
 }
 
+/*
+ * A model that cannot see does not ignore the image, it rejects the request —
+ * and catalogs lie about vision support. Recognising the rejection lets one
+ * text-only retry rescue the answer instead of failing the member.
+ */
+const IMAGE_REJECTION_SIGNALS = [
+  'image_url',
+  'image url',
+  'unknown variant',
+  'multimodal',
+  'does not support image',
+  'image input',
+  'vision'
+];
+
+function looksLikeImageRejection(detail: string): boolean {
+  const haystack = detail.toLocaleLowerCase();
+  return IMAGE_REJECTION_SIGNALS.some((signal) => haystack.includes(signal));
+}
+
 function recordValue(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
 }
@@ -252,6 +273,15 @@ export function parseGatewaySSEPayload(payload: string): { delta?: string; done:
   if (trimmed === '[DONE]') {
     return { done: true };
   }
+  /*
+   * An empty data frame is a keep-alive, which several OpenAI-compatible
+   * endpoints emit to hold the connection open. Parsing it as JSON threw
+   * mid-stream and truncated the answer at whatever point the keep-alive
+   * happened to land — the "stopped early" everyone was seeing.
+   */
+  if (trimmed === '') {
+    return { done: false };
+  }
   let value: unknown;
   try {
     value = JSON.parse(trimmed);
@@ -262,9 +292,14 @@ export function parseGatewaySSEPayload(payload: string): { delta?: string; done:
   if (gatewayError) {
     throw new SafariExtensionError('gateway_request_failed', gatewayError, { retryable: true });
   }
-  const delta = recordValue(firstChoice(value)?.delta)?.content;
+  const choice = firstChoice(value);
+  const delta = recordValue(choice?.delta)?.content;
+  /* Some endpoints close without ever sending [DONE]; the model saying it has
+     finished is just as authoritative and ends the read cleanly. */
+  const finishReason = choice?.finish_reason;
+  const finished = typeof finishReason === 'string' && finishReason.length > 0;
   return {
-    done: false,
+    done: finished,
     ...(typeof delta === 'string' && delta.length > 0 ? { delta } : {})
   };
 }
@@ -500,8 +535,23 @@ export class SafariGatewayClient {
         redirect: 'error',
         signal: activeRequest.controller.signal
       });
+      if (response.status === 401 || response.status === 403) {
+        /* Stale session credentials, not a provider problem — healable. */
+        throw new SafariExtensionError(
+          'gateway_auth_rejected',
+          'OpenBurnBar’s gateway rejected this Safari session’s credentials.',
+          { retryable: true }
+        );
+      }
       if (!response.ok) {
         const detail = (await readBoundedResponseText(response, 32_000)).trim().slice(0, 2_000);
+        if (request.screenshot && response.status === 400 && looksLikeImageRejection(detail)) {
+          throw new SafariExtensionError(
+            'gateway_image_unsupported',
+            'The selected model cannot read images, so the page screenshot was refused.',
+            { retryable: true, details: detail }
+          );
+        }
         throw new SafariExtensionError(
           'gateway_http_error',
           detail || `OpenBurnBar’s gateway returned HTTP ${response.status}.`,
@@ -577,10 +627,14 @@ export class SafariGatewayClient {
       if (done) {
         await reader.cancel().catch(() => undefined);
       }
-      if (!answer.trim()) {
+      if (!hasVisibleAnswer(answer)) {
+        /* Reasoning-only output is not an answer. Naming that exactly beats a
+           bubble containing the model's scratchpad, or nothing at all. */
         throw new SafariExtensionError(
           'gateway_response_invalid',
-          'OpenBurnBar’s gateway stream completed without an assistant answer.'
+          answer.trim()
+            ? 'The model streamed only its private reasoning and never produced an answer.'
+            : 'OpenBurnBar’s gateway stream completed without an assistant answer.'
         );
       }
       return answer;

@@ -100,7 +100,9 @@ describe('shared utilities', () => {
         supportsVision: false
       }
     ];
-    expect(agentsForMode(agents, 'ask').map((agent) => agent.id)).toEqual(['vision']);
+    /* Ask no longer requires sight: a text-only model answers from the page's
+       text and accessibility snapshot, it just never receives the screenshot. */
+    expect(agentsForMode(agents, 'ask').map((agent) => agent.id)).toEqual(['vision', 'text']);
     expect(agentsForMode(agents, 'agentic').map((agent) => agent.id)).toEqual(['vision', 'text']);
     expect(agentsForMode(agents, 'handoff').map((agent) => agent.id)).toEqual(['codex']);
   });
