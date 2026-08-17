@@ -403,7 +403,13 @@ function renderModelOption(
   const copy = element('span', 'model-picker-copy');
   copy.append(
     element('strong', undefined, agent.displayName),
-    element('span', undefined, `${agent.providerName} · ${agent.cloud ? 'Cloud' : 'Local'}`)
+    /* Say plainly which models cannot see, so choosing one is a decision
+       rather than a surprise when the screenshot is left behind. */
+    element(
+      'span',
+      undefined,
+      `${agent.providerName} · ${agent.cloud ? 'Cloud' : 'Local'}${agent.supportsVision ? '' : ' · Text only'}`
+    )
   );
   option.append(copy);
   if (agent.id === selectedAgentId) {

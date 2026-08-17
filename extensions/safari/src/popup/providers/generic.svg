@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <!--
+    Neutral provider mark, for a provider whose own logo we do not ship.
+
+    Deliberately NOT the OpenBurnBar flame: this file used to be a byte-for-byte
+    copy of openburnbar.svg, so every unrecognised provider wore our brand and
+    claimed models that are not ours. Mid grey reads correctly in both
+    appearances without needing a theme-aware asset.
+  -->
+  <circle cx="128" cy="128" r="84" stroke="#8B8B93" stroke-width="13" opacity="0.5" />
+  <circle cx="128" cy="90" r="14" fill="#8B8B93" />
+  <circle cx="95" cy="149" r="14" fill="#8B8B93" opacity="0.78" />
+  <circle cx="161" cy="149" r="14" fill="#8B8B93" opacity="0.78" />
+  <path
+    d="M128 104 101 143M128 104l27 39M109 152h38"
+    stroke="#8B8B93"
+    stroke-width="9"
+    stroke-linecap="round"
+    opacity="0.6"
+  />
+</svg>

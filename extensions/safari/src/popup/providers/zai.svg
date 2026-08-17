@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <!--
+    Z.ai / GLM. Their palette is not published, so this uses a considered blue
+    rather than a guessed "official" one. The mark reads as both a Z and a
+    bolt — original geometry, replaceable by an official asset of the same name.
+  -->
+  <rect width="256" height="256" rx="58" fill="#1B49C4" />
+  <path d="M84 76h94l-52 58h50l-70 62 22-58H84l30-34-30-28Z" fill="#FFFFFF" />
+</svg>

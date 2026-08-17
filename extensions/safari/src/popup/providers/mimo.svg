@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <!--
+    MiMo (Xiaomi). Mi orange (#FF6900) from their published palette. The glyph
+    is an abstract signal arc, deliberately not the MI wordmark, so nothing here
+    imitates their registered mark.
+  -->
+  <rect width="256" height="256" rx="58" fill="#FF6900" />
+  <circle cx="128" cy="172" r="18" fill="#FFFFFF" />
+  <path d="M83 140a62 62 0 0 1 90 0" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" />
+  <path d="M56 106a100 100 0 0 1 144 0" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" opacity="0.6" />
+</svg>

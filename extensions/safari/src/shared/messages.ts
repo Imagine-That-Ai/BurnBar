@@ -48,6 +48,15 @@ export interface TranscriptEntry {
   createdAt: string;
   streaming?: boolean;
   error?: boolean;
+  /** The run failed, but only after producing an answer worth keeping. */
+  incomplete?: boolean;
+  /**
+   * Who actually answered, stamped when the entry is created. Without it a
+   * bubble could only report the *currently* selected model, which is wrong
+   * the moment someone switches models mid-conversation.
+   */
+  agentLabel?: string;
+  agentProvider?: string;
 }
 
 export interface ApprovalPreview {
@@ -657,8 +666,14 @@ export function agentsForMode(agents: BridgeAgentOption[], mode: SafariMode): Br
   if (mode === 'handoff') {
     return agents.filter((agent) => agent.kind === 'cli' && agent.installed);
   }
-  if (mode === 'ask') {
-    return agents.filter((agent) => agent.kind === 'model' && agent.supportsVision);
-  }
-  return agents.filter((agent) => agent.kind === 'model');
+  /*
+   * Ask accepts text-only models. The page's text and accessibility snapshot
+   * answer most questions on their own; sight is an upgrade, not a
+   * precondition, and a blind model simply never receives the screenshot.
+   *
+   * `installed` is respected for models too: a model no account or provider can
+   * actually serve is not a choice, it is a dead end, and offering it only
+   * produces "No eligible route" after the member has already committed.
+   */
+  return agents.filter((agent) => agent.kind === 'model' && agent.installed);
 }

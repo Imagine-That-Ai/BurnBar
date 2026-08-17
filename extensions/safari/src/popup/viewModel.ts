@@ -1,5 +1,6 @@
 import { agentsForMode, type PopupSnapshot } from '../shared/messages';
 import type { BridgeAgentOption, SafariMode } from '../shared/protocol';
+import { releaseStage } from './preferences';
 import type { PopupLocalState } from './state';
 
 export interface PopupModeOption {
@@ -51,8 +52,22 @@ export interface PopupViewModel {
   permissionSheetNeedsSiteTrust: boolean;
   permissionSheetNeedsCloudDisclosure: boolean;
   stopEnabled: boolean;
+  releaseStage: string;
+  welcomeStep?: number;
+  fullScreenPromptOpen: boolean;
+  fullScreenPromptRemember: boolean;
+  feedbackOpen: boolean;
+  feedbackDraft: string;
+  feedbackIncludeDiagnostics: boolean;
+  feedbackSubmitDisabled: boolean;
+  feedbackNotice?: {
+    tone: 'success' | 'warning' | 'error';
+    text: string;
+  };
   snapshot?: PopupSnapshot;
 }
+
+const MIN_FEEDBACK_CHARACTERS = 4;
 
 const DEFAULT_POPUP_MODE: PopupModeOption = {
   id: 'ask',
@@ -271,6 +286,15 @@ export function buildPopupViewModel(state: PopupLocalState): PopupViewModel {
     permissionSheetNeedsSiteTrust,
     permissionSheetNeedsCloudDisclosure,
     stopEnabled: Boolean(snapshot?.running || snapshot?.busy),
+    releaseStage: releaseStage(),
+    ...(state.welcomeStep === undefined ? {} : { welcomeStep: state.welcomeStep }),
+    fullScreenPromptOpen: state.fullScreenPromptOpen,
+    fullScreenPromptRemember: state.fullScreenPromptRemember,
+    feedbackOpen: state.feedbackOpen,
+    feedbackDraft: state.feedbackDraft,
+    feedbackIncludeDiagnostics: state.feedbackIncludeDiagnostics,
+    feedbackSubmitDisabled: state.feedbackDraft.trim().length < MIN_FEEDBACK_CHARACTERS,
+    ...(state.feedbackNotice ? { feedbackNotice: state.feedbackNotice } : {}),
     ...(snapshot ? { snapshot } : {})
   };
 }

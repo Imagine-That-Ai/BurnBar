@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <!--
+    MiniMax. Coral (#FF5530) on the brand's near-black (#181E25), per their
+    published palette. The glyph is a min-to-max curve — original geometry, not
+    a reproduction of their wordmark, so an official asset can replace this
+    file without any code change.
+  -->
+  <rect width="256" height="256" rx="58" fill="#181E25" />
+  <path
+    d="M52 176 96 176 128 88 160 176 204 176"
+    stroke="#FF5530"
+    stroke-width="22"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

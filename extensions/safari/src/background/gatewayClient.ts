@@ -1,3 +1,4 @@
+import { hasVisibleAnswer } from '../shared/answerText';
 import { SafariExtensionError } from '../shared/errors';
 import { isRecord, type PageContext, type SafariBootstrapResponse, type ScreenshotResult } from '../shared/protocol';
 
@@ -30,7 +31,9 @@ interface SafariGatewayAskRequest {
   agentId: string;
   prompt: string;
   pageContext: PageContext;
-  screenshot: ScreenshotResult;
+  /* Omitted for text-only models. An OpenAI-compatible endpoint that cannot
+     see rejects the whole request rather than ignoring the image part. */
+  screenshot?: ScreenshotResult;
   learnedContext?: string;
 }
 
@@ -175,7 +178,7 @@ export function buildSafariAskBody(request: SafariGatewayAskRequest): Record<str
   if (!agentId || hasControlCharacters(agentId)) {
     throw new SafariExtensionError('agent_missing', 'Choose a valid routed model first.');
   }
-  if (!request.screenshot.dataUrl.startsWith('data:image/jpeg;base64,')) {
+  if (request.screenshot && !request.screenshot.dataUrl.startsWith('data:image/jpeg;base64,')) {
     throw new SafariExtensionError('screenshot_invalid', 'Safari Ask requires a resized JPEG screenshot.');
   }
   const learnedContext = boundedLearnedContext(request.learnedContext);
@@ -207,22 +210,46 @@ export function buildSafariAskBody(request: SafariGatewayAskRequest): Record<str
       },
       {
         role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: userText
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: request.screenshot.dataUrl,
-              detail: 'auto'
-            }
-          }
-        ]
+        /* A plain string, not a one-element part array: the widest shape every
+           OpenAI-compatible endpoint accepts. */
+        content: request.screenshot
+          ? [
+              {
+                type: 'text',
+                text: userText
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: request.screenshot.dataUrl,
+                  detail: 'auto'
+                }
+              }
+            ]
+          : userText
       }
     ]
   };
+}
+
+/*
+ * A model that cannot see does not ignore the image, it rejects the request —
+ * and catalogs lie about vision support. Recognising the rejection lets one
+ * text-only retry rescue the answer instead of failing the member.
+ */
+const IMAGE_REJECTION_SIGNALS = [
+  'image_url',
+  'image url',
+  'unknown variant',
+  'multimodal',
+  'does not support image',
+  'image input',
+  'vision'
+];
+
+function looksLikeImageRejection(detail: string): boolean {
+  const haystack = detail.toLocaleLowerCase();
+  return IMAGE_REJECTION_SIGNALS.some((signal) => haystack.includes(signal));
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
@@ -246,6 +273,15 @@ export function parseGatewaySSEPayload(payload: string): { delta?: string; done:
   if (trimmed === '[DONE]') {
     return { done: true };
   }
+  /*
+   * An empty data frame is a keep-alive, which several OpenAI-compatible
+   * endpoints emit to hold the connection open. Parsing it as JSON threw
+   * mid-stream and truncated the answer at whatever point the keep-alive
+   * happened to land — the "stopped early" everyone was seeing.
+   */
+  if (trimmed === '') {
+    return { done: false };
+  }
   let value: unknown;
   try {
     value = JSON.parse(trimmed);
@@ -256,9 +292,14 @@ export function parseGatewaySSEPayload(payload: string): { delta?: string; done:
   if (gatewayError) {
     throw new SafariExtensionError('gateway_request_failed', gatewayError, { retryable: true });
   }
-  const delta = recordValue(firstChoice(value)?.delta)?.content;
+  const choice = firstChoice(value);
+  const delta = recordValue(choice?.delta)?.content;
+  /* Some endpoints close without ever sending [DONE]; the model saying it has
+     finished is just as authoritative and ends the read cleanly. */
+  const finishReason = choice?.finish_reason;
+  const finished = typeof finishReason === 'string' && finishReason.length > 0;
   return {
-    done: false,
+    done: finished,
     ...(typeof delta === 'string' && delta.length > 0 ? { delta } : {})
   };
 }
@@ -415,6 +456,45 @@ export class SafariGatewayClient {
   async ask(request: SafariGatewayAskRequest, onDelta: (delta: string) => void): Promise<string> {
     this.requireNoActiveRequest();
     await this.ensureProviderConfiguration();
+    /*
+     * Self-healing: a daemon restart rotates the bearer token and briefly
+     * closes the port, which used to strand this session on stale credentials
+     * until Safari itself restarted. When the gateway is unreachable or
+     * rejects our session before any answer text has streamed, re-bootstrap
+     * through the native bridge once and repeat the request. Provider-shape
+     * errors, user Stops, and timeouts are never retried, and neither is a
+     * stream that already delivered text (a retry would duplicate it).
+     */
+    let streamed = false;
+    const guardedOnDelta = (delta: string): void => {
+      streamed = true;
+      onDelta(delta);
+    };
+    try {
+      return await this.performAsk(request, guardedOnDelta);
+    } catch (error) {
+      if (streamed || !(error instanceof SafariExtensionError)) {
+        throw error;
+      }
+      /* The model cannot see. Drop the screenshot and answer from page text
+         rather than failing — the catalog claimed vision and was wrong. */
+      if (error.code === 'gateway_image_unsupported') {
+        const { screenshot: _unused, ...textOnly } = request;
+        return this.performAsk(textOnly, guardedOnDelta);
+      }
+      if (error.code !== 'gateway_unavailable' && error.code !== 'gateway_auth_rejected') {
+        throw error;
+      }
+      this.clear();
+      await this.ensureProviderConfiguration();
+      return this.performAsk(request, guardedOnDelta);
+    }
+  }
+
+  private async performAsk(
+    request: SafariGatewayAskRequest,
+    onDelta: (delta: string) => void
+  ): Promise<string> {
     const configuration = this.configuration;
     if (!configuration) {
       throw new SafariExtensionError(
@@ -455,8 +535,23 @@ export class SafariGatewayClient {
         redirect: 'error',
         signal: activeRequest.controller.signal
       });
+      if (response.status === 401 || response.status === 403) {
+        /* Stale session credentials, not a provider problem — healable. */
+        throw new SafariExtensionError(
+          'gateway_auth_rejected',
+          'OpenBurnBar’s gateway rejected this Safari session’s credentials.',
+          { retryable: true }
+        );
+      }
       if (!response.ok) {
         const detail = (await readBoundedResponseText(response, 32_000)).trim().slice(0, 2_000);
+        if (request.screenshot && response.status === 400 && looksLikeImageRejection(detail)) {
+          throw new SafariExtensionError(
+            'gateway_image_unsupported',
+            'The selected model cannot read images, so the page screenshot was refused.',
+            { retryable: true, details: detail }
+          );
+        }
         throw new SafariExtensionError(
           'gateway_http_error',
           detail || `OpenBurnBar’s gateway returned HTTP ${response.status}.`,
@@ -532,10 +627,14 @@ export class SafariGatewayClient {
       if (done) {
         await reader.cancel().catch(() => undefined);
       }
-      if (!answer.trim()) {
+      if (!hasVisibleAnswer(answer)) {
+        /* Reasoning-only output is not an answer. Naming that exactly beats a
+           bubble containing the model's scratchpad, or nothing at all. */
         throw new SafariExtensionError(
           'gateway_response_invalid',
-          'OpenBurnBar’s gateway stream completed without an assistant answer.'
+          answer.trim()
+            ? 'The model streamed only its private reasoning and never produced an answer.'
+            : 'OpenBurnBar’s gateway stream completed without an assistant answer.'
         );
       }
       return answer;

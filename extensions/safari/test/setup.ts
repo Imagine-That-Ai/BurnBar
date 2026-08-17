@@ -14,6 +14,81 @@ if (typeof globalThis.PointerEvent === 'undefined') {
   });
 }
 
+/* jsdom ships no ResizeObserver. The popup measures its composer with one, so
+   stub it rather than letting the path throw: observation is recorded and the
+   callback can be fired on demand. */
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class TestResizeObserver implements ResizeObserver {
+    private readonly observed = new Set<Element>();
+
+    constructor(private readonly callback: ResizeObserverCallback) {}
+
+    observe(target: Element): void {
+      this.observed.add(target);
+    }
+
+    unobserve(target: Element): void {
+      this.observed.delete(target);
+    }
+
+    disconnect(): void {
+      this.observed.clear();
+    }
+
+    emit(blockSize: number): void {
+      for (const target of this.observed) {
+        this.callback(
+          [{ target, borderBoxSize: [{ blockSize, inlineSize: 0 }] } as unknown as ResizeObserverEntry],
+          this
+        );
+      }
+    }
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    configurable: true,
+    value: TestResizeObserver
+  });
+}
+
+/* jsdom ships no ResizeObserver. The popup measures its composer with one, so
+   stub it rather than skipping the path: observation is recorded, and the
+   callback fires on demand for tests that care about the measurement. */
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class TestResizeObserver implements ResizeObserver {
+    static instances: TestResizeObserver[] = [];
+    readonly observed = new Set<Element>();
+
+    constructor(private readonly callback: ResizeObserverCallback) {
+      TestResizeObserver.instances.push(this);
+    }
+
+    observe(target: Element): void {
+      this.observed.add(target);
+    }
+
+    unobserve(target: Element): void {
+      this.observed.delete(target);
+    }
+
+    disconnect(): void {
+      this.observed.clear();
+    }
+
+    emit(blockSize: number): void {
+      for (const target of this.observed) {
+        this.callback(
+          [{ target, borderBoxSize: [{ blockSize, inlineSize: 0 }] } as unknown as ResizeObserverEntry],
+          this
+        );
+      }
+    }
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', {
+    configurable: true,
+    value: TestResizeObserver
+  });
+}
+
 beforeEach(() => {
   document.documentElement.removeAttribute('data-openburnbar-page-world');
   document.head.replaceChildren();
