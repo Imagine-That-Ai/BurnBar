@@ -196,3 +196,22 @@ Query mem0 for the phase matrix (phases 8–13, capabilities, feature flags), th
 - The audit chain is content-addressed (SHA-256 today, BLAKE3-swappable). Tamper detection covers every entry including the terminal one when `head.json` is supplied.
 - Three independent panic-kill paths halt a session — `⌃⌥⌘.` global hotkey, phone three-finger long-press, the NSWorkspace auth gate (loginwindow / SecurityAgent / screen sleep) — alongside the Remote Config `computer_use_kill_switch`.
 - Path C (Mac System) ships only via direct download with notarization. The MAS build compiles it out via `#if DISTRIBUTION_MAS`.
+
+---
+
+## Cursor Cloud specific instructions
+
+Cloud Agents run on a **Linux** VM (Node 22, Java 21, Rust, Python 3.12 preinstalled). The startup update script runs `npm ci` in `functions/`, `extensions/openburnbar/`, and `website/` — the same three roots the devcontainer bootstraps (`.devcontainer/post-create.sh`). These are the components you can build, lint, test, and run on Linux.
+
+**Not buildable on this Linux VM** (do not attempt these here):
+- The flagship Swift macOS/iOS app and every Xcode target (`AgentLens/`, `OpenBurnBar*`, `project.yml`) — needs Xcode/`xcodebuild`. `make ci`, `make test`, `make bootstrap`, and the SwiftLint/`xcodebuild` Make targets are macOS-only and will fail here. Use the per-package `npm` scripts instead.
+- Android (`android/`) — needs the Android SDK (`ANDROID_HOME` unset, SDK not installed).
+- Tauri native bundling for `apps/linux-desktop` — needs extra GTK/webkit2gtk system libs (the JS/vitest layer works without them).
+
+**Non-obvious caveats:**
+- `functions/` `npm ci` runs a postinstall that builds the local `@openburnbar/signal-envelope-contracts` and `@openburnbar/entitlements` packages (via `scripts/build-*.sh`) and syncs them into `functions/vendor/`. `npm run build` (through `prebuild`/`sync:local-packages`) re-runs this sync, so after pulling changes under `packages/`, rebuild `functions` to re-vendor them.
+- The `firebase` CLI is a **devDependency of `functions/`** (resolved via npm scripts / `npx`), not global.
+- Backend end-to-end check: `npm --prefix functions run test:firestore-rules` boots the Java-based Firebase Firestore emulator and exercises `firestore.rules`. The many `PERMISSION_DENIED` log lines are **expected negative-path assertions**, not failures — trust the final `# pass/# fail` tap summary.
+- Website dev server: `npm --prefix website run dev` (Astro). `predev`/`prebuild` enforce the Node version via `scripts/require-node.mjs`; the repo pins Node `22.22.1` (`.nvmrc`), and the VM's Node 22.x satisfies it.
+
+**Standard commands** (source of truth: each `package.json`): build `npm --prefix <root> run build`; lint `npm --prefix <root> run lint`; unit tests `npm --prefix functions run test:unit`, `npm --prefix extensions/openburnbar run test:unit`, `npm --prefix website test`.
