@@ -154,26 +154,69 @@ export function validateProtectedSignerRun(raw, coordinates, candidateCommit) {
   return coordinates;
 }
 
-export function createCommandRunner(runner = spawnSync) {
-  return (command, args, options = {}) => {
-    const result = runner(command, args, {
-      encoding: "utf8",
-      env: process.env,
-      maxBuffer: 32 * 1024 * 1024,
-      ...options,
-    });
-    if (result.error) throw result.error;
-    if (result.status !== 0) {
+// Every command this gate shells out to is a read-only GitHub or git query, so
+// a transient GitHub 5xx must not invalidate an otherwise immutable candidate.
+// Protected release workflows already encode that contract for `gh api` in
+// `scripts/ci/gh-api-with-retry.sh`; this gate downloads artifacts from Node,
+// so it carries the same bounded retry here. Permanent failures still fail on
+// the first attempt — retrying cannot fix a bad token, a missing run, or a
+// failed attestation verification, and an expired artifact must reach its
+// committed-bundle fallback in `downloadOrMaterializeSourceArtifacts` without
+// first burning the retry budget.
+export function isTransientCommandFailure(detail) {
+  if (isExpiredArtifactDownloadError(detail)) return false;
+  return (
+    /HTTP (?:408|429|5\d{2})\b/u.test(detail) ||
+    /no server is currently available/iu.test(detail) ||
+    /\b(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|EPIPE)\b/u.test(
+      detail,
+    ) ||
+    /(?:connection reset|connection refused|i\/o timeout|unexpected EOF|TLS handshake timeout|temporary failure in name resolution|server error)/iu.test(
+      detail,
+    )
+  );
+}
+
+// `Atomics.wait` is the only reliable synchronous sleep available to this
+// synchronous `spawnSync` pipeline; tests inject their own `sleep` so the
+// retry bound is exercised without real delay.
+function sleepSync(milliseconds) {
+  if (!(milliseconds > 0)) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+export function createCommandRunner(runner = spawnSync, options = {}) {
+  const attempts = options.attempts ?? 5;
+  const baseSleepMs = options.baseSleepMs ?? 2_000;
+  const wait = options.sleep ?? sleepSync;
+  const log = options.log ?? ((message) => console.warn(message));
+  return (command, args, commandOptions = {}) => {
+    for (let attempt = 1; ; attempt += 1) {
+      const result = runner(command, args, {
+        encoding: "utf8",
+        env: process.env,
+        maxBuffer: 32 * 1024 * 1024,
+        ...commandOptions,
+      });
+      if (result.error) throw result.error;
+      if (result.status === 0) return result.stdout;
       const detail = (
         result.stderr ||
         result.stdout ||
         "command failed"
       ).trim();
-      throw new Error(
+      const failure = new Error(
         `${command} ${args.slice(0, 4).join(" ")} failed: ${detail}`,
       );
+      if (attempt >= attempts || !isTransientCommandFailure(detail)) {
+        throw failure;
+      }
+      const delayMs = baseSleepMs * attempt;
+      log(
+        `Transient ${command} failure (attempt ${attempt}/${attempts}), retrying in ${delayMs / 1000}s: ${failure.message}`,
+      );
+      wait(delayMs);
     }
-    return result.stdout;
   };
 }
 

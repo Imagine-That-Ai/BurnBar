@@ -6,6 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  createCommandRunner,
+  isTransientCommandFailure,
   materializeCandidateBoundRollback,
   normalizeProtectedSignerWorkflowPath,
   run,
@@ -373,5 +375,104 @@ test("expired Actions artifacts hydrate from committed promotion evidence", () =
     );
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });
+  }
+});
+
+// Verbatim stderr from release run 32047967821, which lost the v1.0.35 cut on
+// the protected rollback artifact download.
+const OBSERVED_503 =
+  "error downloading domain-core-public-production-rollback-c292cc99244dc716de45d92e47ae74c89f4a1e47-31487272665-1: " +
+  "HTTP 503: No server is currently available to service your request. Sorry about that. Please try resubmitting " +
+  "your request and contact us if the problem persists. " +
+  "(https://api.github.com/repos/Imagine-That-Ai/BurnBar/actions/artifacts/9099629577/zip)";
+
+function recordingRunner(results) {
+  const calls = [];
+  return {
+    calls,
+    runner: (command, args) => {
+      calls.push([command, ...args]);
+      return results[Math.min(calls.length - 1, results.length - 1)];
+    },
+  };
+}
+
+test("transient artifact download failures retry inside the bound", () => {
+  const { calls, runner } = recordingRunner([
+    { status: 1, stdout: "", stderr: OBSERVED_503 },
+    { status: 1, stdout: "", stderr: OBSERVED_503 },
+    { status: 0, stdout: "downloaded", stderr: "" },
+  ]);
+  const delays = [];
+  const command = createCommandRunner(runner, {
+    baseSleepMs: 1_000,
+    sleep: (ms) => delays.push(ms),
+    log: () => {},
+  });
+
+  assert.equal(
+    command("gh", ["run", "download", "31487272665", "--repo"]),
+    "downloaded",
+  );
+  assert.equal(calls.length, 3);
+  assert.deepEqual(delays, [1_000, 2_000]);
+});
+
+test("transient failures still fail closed once the retry bound is spent", () => {
+  const { calls, runner } = recordingRunner([
+    { status: 1, stdout: "", stderr: OBSERVED_503 },
+  ]);
+  const command = createCommandRunner(runner, {
+    attempts: 3,
+    sleep: () => {},
+    log: () => {},
+  });
+
+  assert.throws(
+    () => command("gh", ["run", "download", "31487272665", "--repo"]),
+    /HTTP 503/u,
+  );
+  assert.equal(calls.length, 3);
+});
+
+test("permanent failures fail on the first attempt", () => {
+  for (const stderr of [
+    "HTTP 404: Not Found",
+    "gh: Bad credentials",
+    "failed to verify attestation: no matching attestations found",
+  ]) {
+    const { calls, runner } = recordingRunner([
+      { status: 1, stdout: "", stderr },
+    ]);
+    const command = createCommandRunner(runner, {
+      sleep: () => {
+        throw new Error("permanent failures must not sleep");
+      },
+      log: () => {},
+    });
+    assert.throws(() => command("gh", ["attestation", "verify"]));
+    assert.equal(calls.length, 1, stderr);
+  }
+});
+
+// The expired-artifact path has its own committed-bundle fallback, so it must
+// stay a single fast attempt rather than burning the transient retry budget.
+test("expired artifact downloads bypass the transient retry budget", () => {
+  for (const stderr of [
+    "no valid artifacts found to download",
+    "artifact domain-core-candidate-bundle-abc has expired",
+  ]) {
+    assert.equal(isTransientCommandFailure(stderr), false, stderr);
+    const { calls, runner } = recordingRunner([
+      { status: 1, stdout: "", stderr },
+    ]);
+    const command = createCommandRunner(runner, {
+      sleep: () => {
+        throw new Error("expired artifacts must not sleep");
+      },
+      log: () => {},
+    });
+    assert.throws(() => command("gh", ["run", "download"]));
+    assert.equal(calls.length, 1, stderr);
   }
 });
