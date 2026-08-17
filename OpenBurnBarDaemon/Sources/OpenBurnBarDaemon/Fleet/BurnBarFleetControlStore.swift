@@ -104,6 +104,9 @@ public actor BurnBarFleetControlStore {
     private var inMemoryState: BurnBarOrchestratorState?
     private var inMemoryRecords: [BurnBarFleetDirective] = []
     private var observedRecoveryGeneration: UInt64 = 0
+    /// Last rebuild failure from a malformed control payload. Diagnostic only;
+    /// reads still fail closed to the fresh-daemon default.
+    public private(set) var lastRebuildFailure: String?
 
     public init(store: BurnBarFleetStore? = nil) {
         self.store = store
@@ -321,8 +324,9 @@ public actor BurnBarFleetControlStore {
         do {
             try store.rebuildDatabase(reason: reason)
         } catch {
-            // The store records the typed unavailable health. Reads below
-            // still return the safe fresh-daemon default.
+            // Keep the fail-closed in-memory default below. Surface the
+            // rebuild failure so it is not a silent empty catch.
+            lastRebuildFailure = error.localizedDescription
         }
         observeStoreRecoveryIfNeeded()
         inMemoryState = nil
