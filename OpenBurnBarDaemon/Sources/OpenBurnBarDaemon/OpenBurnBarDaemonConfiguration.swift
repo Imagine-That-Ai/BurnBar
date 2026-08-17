@@ -80,6 +80,14 @@ public enum BurnBarDaemonPaths {
         supportDirectoryURL.appendingPathComponent("controller-projection.json", isDirectory: false)
     }
 
+    public static var defaultFleetStoreURL: URL {
+        supportDirectoryURL.appendingPathComponent("fleet.sqlite", isDirectory: false)
+    }
+
+    public static var defaultFleetSnapshotURL: URL {
+        supportDirectoryURL.appendingPathComponent("fleet-snapshot.json", isDirectory: false)
+    }
+
     public static var defaultControllerActivitySnapshotURL: URL {
         supportDirectoryURL.appendingPathComponent("controller-activity-snapshot.json", isDirectory: false)
     }
@@ -125,7 +133,7 @@ public enum BurnBarDaemonPaths {
 }
 
 public enum BurnBarDaemonVersion {
-    public static let current = "1.0.34"
+    public static let current = "1.0.35"
 }
 
 public enum OpenBurnBarDaemonOllamaEndpointDefaults {
@@ -294,6 +302,10 @@ public struct BurnBarDaemonConfiguration: Sendable {
     /// Production keeps this on; tests and narrow socket harnesses should disable it unless
     /// they explicitly exercise scheduler behavior with isolated Mission Control storage.
     public let startsMissionControlBackgroundLoops: Bool
+    public let fleetStorePath: String
+    public let fleetSnapshotFilePath: String
+    public let fleetEventRetentionSeconds: TimeInterval
+    public let fleetSnapshotRetentionCount: Int
 
     public init(
         socketPath: String = BurnBarDaemonPaths.defaultSocketPath,
@@ -306,7 +318,11 @@ public struct BurnBarDaemonConfiguration: Sendable {
             requestsPerSecond: 60,
             burstCapacity: 100
         ),
-        startsMissionControlBackgroundLoops: Bool = true
+        startsMissionControlBackgroundLoops: Bool = true,
+        fleetStorePath: String? = nil,
+        fleetSnapshotFilePath: String? = nil,
+        fleetEventRetentionSeconds: TimeInterval? = nil,
+        fleetSnapshotRetentionCount: Int = BurnBarFleetPersistenceConstants.defaultSnapshotRetentionCount
     ) {
         self.socketPath = socketPath
         self.socketAuthToken = socketAuthToken?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
@@ -316,6 +332,11 @@ public struct BurnBarDaemonConfiguration: Sendable {
         self.gateway = gateway
         self.socketRateLimit = socketRateLimit
         self.startsMissionControlBackgroundLoops = startsMissionControlBackgroundLoops
+        self.fleetStorePath = fleetStorePath ?? BurnBarDaemonPaths.defaultFleetStoreURL.path
+        self.fleetSnapshotFilePath = fleetSnapshotFilePath ?? BurnBarDaemonPaths.defaultFleetSnapshotURL.path
+        self.fleetEventRetentionSeconds = fleetEventRetentionSeconds
+            ?? BurnBarFleetPersistenceConstants.defaultEventRetentionSeconds
+        self.fleetSnapshotRetentionCount = fleetSnapshotRetentionCount
     }
 
     /// Validates that required configuration is present.

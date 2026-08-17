@@ -19,6 +19,12 @@
   ],
   "versionGroups": [
     {
+      "label": "Published OpenBurnBar CLI owns its npm release version",
+      "dependencies": ["openburnbar"],
+      "dependencyTypes": ["local"],
+      "isIgnored": true
+    },
+    {
       "label": "Local workspace packages use package-relative file: paths",
       "packages": ["**"],
       "dependencies": [

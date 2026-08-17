@@ -2,7 +2,7 @@
 import PlatformGlyph from "./PlatformGlyph.astro";
 import type { PlatformGlyphId } from "../types/platform";
 
-type Platform = "macos" | "linux" | "ios" | "editor" | "android";
+type Platform = "macos" | "linux" | "ios" | "editor" | "cursor-plugin" | "android";
 
 interface Props {
   platform: Platform;
@@ -76,6 +76,10 @@ const glyphId: PlatformGlyphId = platform === "editor" ? "cursor" : platform;
 
   .download-platform-icon--editor {
     --icon-color: #178bbf;
+  }
+
+  .download-platform-icon--cursor-plugin {
+    --icon-color: #f3bd45;
   }
 
   .download-platform-icon.is-compact {

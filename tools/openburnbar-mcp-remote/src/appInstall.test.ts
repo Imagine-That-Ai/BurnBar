@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
@@ -8,12 +8,15 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   APP_BUNDLE_NAME,
+  APP_BUNDLE_ID,
   DEFAULT_APPLICATIONS_DIR,
   DEFAULT_MACOS_FEED_URL,
+  HOMEBREW_CASK_RECEIPT_DIRS,
   SU_PUBLIC_ED_KEY_BASE64,
   compareNumericVersion,
   isAllowedDownloadUrl,
   isAllowedFeedUrl,
+  isAllowedFeedResponseUrl,
   isNewerRelease,
   parseAppCliOptions,
   parseMacOSReleaseFeed,
@@ -30,6 +33,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..");
 const CLI = join(HERE, "index.js");
+const LIVE_FEED_TEST = process.env.OPENBURNBAR_LIVE_FEED_TEST === "1";
 
 type TestKey = {
   publicKeyBase64: string;
@@ -50,7 +54,7 @@ function sha256(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
-function infoPlist(version: string, build: string): string {
+function infoPlist(version: string, build: string, bundleId = APP_BUNDLE_ID): string {
   return [
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
     "<plist version=\"1.0\"><dict>",
@@ -59,16 +63,16 @@ function infoPlist(version: string, build: string): string {
     "<key>CFBundleVersion</key>",
     `<string>${build}</string>`,
     "<key>CFBundleIdentifier</key>",
-    "<string>com.openburnbar.app</string>",
+    `<string>${bundleId}</string>`,
     "</dict></plist>",
     ""
   ].join("\n");
 }
 
-function writeBundle(root: string, version: string, build: string): string {
+function writeBundle(root: string, version: string, build: string, bundleId = APP_BUNDLE_ID): string {
   const app = join(root, APP_BUNDLE_NAME);
   mkdirSync(join(app, "Contents"), { recursive: true });
-  writeFileSync(join(app, "Contents", "Info.plist"), infoPlist(version, build));
+  writeFileSync(join(app, "Contents", "Info.plist"), infoPlist(version, build, bundleId));
   writeFileSync(join(app, "Contents", "MacOS-placeholder"), "app");
   return app;
 }
@@ -93,6 +97,7 @@ function makeRelease(bytes: Buffer, key: TestKey, overrides: Partial<MacOSReleas
     sha256: sha256(bytes),
     length: bytes.length,
     sparkleEdSignature: key.sign(bytes),
+    minimumSystemVersion: "14.0",
     dmg: "OpenBurnBar-1.0.35-macOS.dmg",
     critical: false,
     ...overrides
@@ -105,6 +110,7 @@ function feedJson(release: MacOSReleaseFeed): string {
     build: release.build,
     downloadUrl: release.downloadUrl,
     length: release.length,
+    minimumSystemVersion: release.minimumSystemVersion,
     sha256: release.sha256,
     sparkleEdSignature: release.sparkleEdSignature,
     version: release.version,
@@ -135,7 +141,17 @@ function spawnCli(args: string[]): Promise<{ status: number; stdout: string; std
   });
 }
 
-function harness(bytes: Buffer, release: MacOSReleaseFeed, key: TestKey, installed?: { version: string; build: string }) {
+function harness(
+  bytes: Buffer,
+  release: MacOSReleaseFeed,
+  key: TestKey,
+  installed?: { version: string; build: string; bundleId?: string },
+  mounted: { version: string; build: string; bundleId: string } = {
+    version: release.version,
+    build: release.build,
+    bundleId: APP_BUNDLE_ID
+  }
+) {
   const root = mkdtempSync(join(tmpdir(), "obb-app-install-"));
   const applicationsDir = join(root, "Applications");
   const mountPoint = join(root, "Volumes", "OpenBurnBar");
@@ -143,12 +159,13 @@ function harness(bytes: Buffer, release: MacOSReleaseFeed, key: TestKey, install
   mkdirSync(applicationsDir, { recursive: true });
   mkdirSync(tmp, { recursive: true });
   if (installed) {
-    writeBundle(applicationsDir, installed.version, installed.build);
+    writeBundle(applicationsDir, installed.version, installed.build, installed.bundleId);
   }
   const commands: Array<{ command: string; args: string[] }> = [];
   const logs: string[] = [];
   const errors: string[] = [];
   let downloads = 0;
+  const homebrewReceiptDir = join(root, "homebrew", "Caskroom", "openburnbar");
 
   const deps: Partial<AppInstallDeps> = {
     platform: "darwin",
@@ -156,6 +173,7 @@ function harness(bytes: Buffer, release: MacOSReleaseFeed, key: TestKey, install
     feedUrl: DEFAULT_MACOS_FEED_URL,
     tmpdir: tmp,
     publicKeyBase64: key.publicKeyBase64,
+    homebrewReceiptDirs: [homebrewReceiptDir],
     write: (text) => {
       logs.push(text);
     },
@@ -179,7 +197,7 @@ function harness(bytes: Buffer, release: MacOSReleaseFeed, key: TestKey, install
     run: async (command, args): Promise<CommandResult> => {
       commands.push({ command, args });
       if (command === "/usr/bin/hdiutil" && args[0] === "attach") {
-        writeBundle(mountPoint, release.version, release.build);
+        writeBundle(mountPoint, mounted.version, mounted.build, mounted.bundleId);
         return { status: 0, stdout: mountPlist(mountPoint), stderr: "" };
       }
       if (command === "/usr/bin/hdiutil" && args[0] === "detach") {
@@ -203,6 +221,12 @@ function harness(bytes: Buffer, release: MacOSReleaseFeed, key: TestKey, install
       if (command === "/usr/bin/xattr") {
         return { status: 0, stdout: "", stderr: "" };
       }
+      if (command === "/usr/bin/pgrep") {
+        return { status: 1, stdout: "", stderr: "" };
+      }
+      if (command === "/usr/bin/sw_vers") {
+        return { status: 0, stdout: "14.7.6\n", stderr: "" };
+      }
       return { status: 1, stdout: "", stderr: `unexpected ${command}` };
     }
   };
@@ -214,6 +238,7 @@ function harness(bytes: Buffer, release: MacOSReleaseFeed, key: TestKey, install
     logs,
     errors,
     deps,
+    homebrewReceiptDir,
     downloads: () => downloads,
     cleanup: () => {
       rmSync(root, { recursive: true, force: true });
@@ -225,7 +250,9 @@ test("default feed URL is the desktop updater URL and is not a pinned old versio
   assert.equal(DEFAULT_MACOS_FEED_URL, "https://downloads.burnbar.ai/latest-macos.json");
   assert.equal(DEFAULT_APPLICATIONS_DIR, "/Applications");
   assert.equal(APP_BUNDLE_NAME, "OpenBurnBar.app");
-  assert.equal(SU_PUBLIC_ED_KEY_BASE64, "613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=");
+  assert.equal(APP_BUNDLE_ID, "com.openburnbar.app");
+  assert.ok(HOMEBREW_CASK_RECEIPT_DIRS.some((path) => path.endsWith("/Caskroom/openburnbar")));
+  assert.equal(SU_PUBLIC_ED_KEY_BASE64, "613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI="); // gitleaks:allow
   const source = readFileSync(join(PKG_ROOT, "src/appInstall.ts"), "utf8");
   assert.doesNotMatch(source, /1\.0\.29/);
   assert.doesNotMatch(source, /[a-f0-9]{64}/i);
@@ -251,6 +278,20 @@ test("feed and download URL allowlists match the public Mac door", () => {
   assert.equal(isAllowedFeedUrl("http://downloads.burnbar.ai/latest-macos.json"), false);
   assert.equal(isAllowedFeedUrl("https://evil.example/latest-macos.json"), false);
   assert.equal(isAllowedFeedUrl("https://github.com/evil/BurnBar/releases/latest/download/latest-macos.json"), false);
+  assert.equal(
+    isAllowedFeedResponseUrl(
+      "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json",
+      "https://release-assets.githubusercontent.com/github-production-release-asset/123/latest-macos.json?token=public"
+    ),
+    true
+  );
+  assert.equal(
+    isAllowedFeedResponseUrl(
+      "https://github.com/evil/BurnBar/releases/latest/download/latest-macos.json",
+      "https://release-assets.githubusercontent.com/github-production-release-asset/123/latest-macos.json"
+    ),
+    false
+  );
   assert.equal(isAllowedDownloadUrl("https://downloads.burnbar.ai/OpenBurnBar-1.0.35-macOS.dmg"), true);
   assert.equal(
     isAllowedDownloadUrl("https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/OpenBurnBar-1.0.35-macOS.dmg"),
@@ -273,17 +314,20 @@ test("parseMacOSReleaseFeed accepts generator JSON and refuses a missing signatu
     length: 4096,
     sha256: "ab".repeat(32),
     sparkleEdSignature: "c2lnbmF0dXJl",
+    minimumSystemVersion: "14.0",
     critical: true
   });
   assert.equal(parsed.version, "1.0.35");
   assert.equal(parsed.build, "135");
+  assert.equal(parsed.minimumSystemVersion, "14.0");
   assert.equal(parsed.critical, true);
   assert.throws(() => parseMacOSReleaseFeed({
     version: "1.0.35",
     build: "135",
     downloadUrl: "https://downloads.burnbar.ai/OpenBurnBar-1.0.35-macOS.dmg",
     length: 4096,
-    sha256: "ab".repeat(32)
+    sha256: "ab".repeat(32),
+    minimumSystemVersion: "14.0"
   }), /sparkleEdSignature/);
   assert.throws(() => parseMacOSReleaseFeed({
     version: "0.0.1",
@@ -291,8 +335,18 @@ test("parseMacOSReleaseFeed accepts generator JSON and refuses a missing signatu
     downloadUrl: "https://downloads.burnbar.ai/x.dmg",
     length: 0,
     sha256: "ab".repeat(32),
-    sparkleEdSignature: "c2ln"
+    sparkleEdSignature: "c2ln",
+    minimumSystemVersion: "14.0"
   }), /positive integer/);
+  assert.throws(() => parseMacOSReleaseFeed({
+    version: "1.0.35",
+    build: "135",
+    downloadUrl: "https://downloads.burnbar.ai/OpenBurnBar-1.0.35-macOS.dmg",
+    length: 4096,
+    sha256: "ab".repeat(32),
+    sparkleEdSignature: "c2ln",
+    minimumSystemVersion: "Sonoma"
+  }), /minimumSystemVersion/);
 });
 
 test("version comparison matches the desktop updater", () => {
@@ -346,7 +400,7 @@ test("app install fetches the feed version and copies to Applications", async ()
       },
       readFile: (path) => readFileSync(path)
     });
-    assert.deepEqual(installed, { version: "1.0.35", build: "135" });
+    assert.deepEqual(installed, { version: "1.0.35", build: "135", bundleId: APP_BUNDLE_ID });
     assert.match(env.logs.join(""), /Installed OpenBurnBar 1\.0\.35/);
     assert.ok(env.commands.some((item) => item.command === "/usr/bin/hdiutil" && item.args[0] === "attach"));
     assert.ok(env.commands.some((item) => item.command === "/usr/bin/ditto"));
@@ -392,6 +446,37 @@ test("app install accepts the live GitHub Releases download host used by today's
   }
 });
 
+test("app install accepts the official GitHub feed redirect to its release CDN", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("github-release-feed-and-dmg");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key);
+  const officialFeed = "https://github.com/Imagine-That-Ai/BurnBar/releases/latest/download/latest-macos.json";
+  env.deps.fetch = async (input) => {
+    const url = String(input);
+    if (url === officialFeed) {
+      const response = new Response(feedJson(release), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+      Object.defineProperty(response, "url", {
+        value: "https://release-assets.githubusercontent.com/github-production-release-asset/123/latest-macos.json?token=public"
+      });
+      return response;
+    }
+    if (url === release.downloadUrl) {
+      return new Response(new Uint8Array(bytes), { status: 200 });
+    }
+    return new Response("not found", { status: 404 });
+  };
+  try {
+    const code = await runAppCommand("install", { dryRun: false, feedUrl: officialFeed }, env.deps);
+    assert.equal(code, 0);
+  } finally {
+    env.cleanup();
+  }
+});
+
 test("app install refuses a feed that points at a foreign host before downloading", async () => {
   const key = testKey();
   const bytes = Buffer.from("evil");
@@ -409,6 +494,86 @@ test("app install refuses a feed that points at a foreign host before downloadin
   }
 });
 
+test("app install refuses a mounted app whose bundle identity does not match the feed", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("signed-but-wrong-bundle");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key, undefined, {
+    version: release.version,
+    build: release.build,
+    bundleId: "com.example.not-openburnbar"
+  });
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 1);
+    assert.match(env.errors.join(""), /bundle identifier/);
+    assert.equal(existsSync(join(env.applicationsDir, APP_BUNDLE_NAME)), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install refuses a mounted app whose version or build differs from the feed", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("signed-but-wrong-version");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key, undefined, {
+    version: "1.0.99",
+    build: "199",
+    bundleId: APP_BUNDLE_ID
+  });
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 1);
+    assert.match(env.errors.join(""), /feed advertised/);
+    assert.equal(existsSync(join(env.applicationsDir, APP_BUNDLE_NAME)), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install refuses to replace an existing bundle with the wrong identifier", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("signed-openburnbar-dmg");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key, {
+    version: "1.0.20",
+    build: "20",
+    bundleId: "com.example.not-openburnbar"
+  });
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 1);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.errors.join(""), /Refusing to replace/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install fails closed when codesign rejects the mounted app", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("bad-codesign-dmg");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key);
+  const run = env.deps.run;
+  assert.ok(run);
+  env.deps.run = async (command, args) => {
+    if (command === "/usr/bin/codesign") {
+      return { status: 1, stdout: "", stderr: "code object is not signed at all" };
+    }
+    return run(command, args);
+  };
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 1);
+    assert.match(env.errors.join(""), /code signature did not validate/);
+    assert.equal(existsSync(join(env.applicationsDir, APP_BUNDLE_NAME)), false);
+  } finally {
+    env.cleanup();
+  }
+});
+
 test("checksum failure never mounts or copies into Applications", async () => {
   const key = testKey();
   const bytes = Buffer.from("good-bytes");
@@ -418,7 +583,8 @@ test("checksum failure never mounts or copies into Applications", async () => {
     const code = await runAppCommand("install", { dryRun: false }, env.deps);
     assert.equal(code, 1);
     assert.match(env.errors.join(""), /SHA-256/);
-    assert.equal(env.commands.length, 0);
+    assert.equal(env.commands.some((item) => item.command === "/usr/bin/hdiutil"), false);
+    assert.equal(env.commands.some((item) => item.command === "/usr/bin/ditto"), false);
     assert.equal(readInstalledBundle(env.applicationsDir, {
       exists: () => false,
       readFile: () => Buffer.alloc(0)
@@ -469,6 +635,108 @@ test("app update replaces an older /Applications copy", async () => {
     assert.equal(env.downloads(), 1);
     const installed = readFileSync(join(env.applicationsDir, APP_BUNDLE_NAME, "Contents", "Info.plist"), "utf8");
     assert.match(installed, /1\.0\.35/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app update refuses to replace a running app bundle", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("newer-dmg-running-app");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key, { version: "1.0.20", build: "20" });
+  const run = env.deps.run;
+  assert.ok(run);
+  env.deps.run = async (command, args) => {
+    if (command === "/usr/bin/pgrep" && args[0] === "-x") {
+      return { status: 0, stdout: "1234\n", stderr: "" };
+    }
+    return run(command, args);
+  };
+  try {
+    const code = await runAppCommand("update", { dryRun: false }, env.deps);
+    assert.equal(code, 2);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.errors.join(""), /is running.*Quit OpenBurnBar/s);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app update refuses to replace a running bundled daemon", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("newer-dmg-running-daemon");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key, { version: "1.0.20", build: "20" });
+  const run = env.deps.run;
+  assert.ok(run);
+  env.deps.run = async (command, args) => {
+    if (command === "/usr/bin/pgrep" && args[0] === "-f") {
+      return { status: 0, stdout: "5678\n", stderr: "" };
+    }
+    return run(command, args);
+  };
+  try {
+    const code = await runAppCommand("update", { dryRun: false }, env.deps);
+    assert.equal(code, 2);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.errors.join(""), /bundled OpenBurnBar daemon is running/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app update refuses to replace a Mac App Store installation", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("newer-dmg-mas");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key, { version: "1.0.20", build: "20" });
+  mkdirSync(join(env.applicationsDir, APP_BUNDLE_NAME, "Contents", "_MASReceipt"), { recursive: true });
+  writeFileSync(join(env.applicationsDir, APP_BUNDLE_NAME, "Contents", "_MASReceipt", "receipt"), "receipt");
+  try {
+    const code = await runAppCommand("update", { dryRun: false }, env.deps);
+    assert.equal(code, 2);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.errors.join(""), /Mac App Store installation/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app update refuses to replace a Homebrew-managed installation", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("newer-dmg-homebrew");
+  const release = makeRelease(bytes, key);
+  const env = harness(bytes, release, key, { version: "1.0.20", build: "20" });
+  mkdirSync(env.homebrewReceiptDir, { recursive: true });
+  try {
+    const code = await runAppCommand("update", { dryRun: false }, env.deps);
+    assert.equal(code, 2);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.errors.join(""), /managed by Homebrew/);
+  } finally {
+    env.cleanup();
+  }
+});
+
+test("app install refuses a release that requires a newer macOS version", async () => {
+  const key = testKey();
+  const bytes = Buffer.from("newer-macos-required");
+  const release = makeRelease(bytes, key, { minimumSystemVersion: "15.0" });
+  const env = harness(bytes, release, key);
+  const run = env.deps.run;
+  assert.ok(run);
+  env.deps.run = async (command, args) => {
+    if (command === "/usr/bin/sw_vers") {
+      return { status: 0, stdout: "14.7.6\n", stderr: "" };
+    }
+    return run(command, args);
+  };
+  try {
+    const code = await runAppCommand("install", { dryRun: false }, env.deps);
+    assert.equal(code, 2);
+    assert.equal(env.downloads(), 0);
+    assert.match(env.errors.join(""), /requires macOS 15\.0 or newer/);
   } finally {
     env.cleanup();
   }
@@ -526,14 +794,18 @@ test("CLI help and app usage mention install and update", async () => {
   const app = await spawnCli(["app"]);
   assert.equal(app.status, 2);
   assert.match(app.stderr, /openburnbar app <install\|update>/);
+  assert.match(app.stderr, /--applications-dir <path>/);
 });
 
-test("CLI app install on this host is macOS-only and does not print a pinned marketing version", async () => {
-  const result = await spawnCli(["app", "install"]);
-  assert.equal(result.status, 2);
-  assert.match(result.stderr, /only supports macOS/);
-  assert.doesNotMatch(result.stdout + result.stderr, /1\.0\.29/);
-  assert.doesNotMatch(result.stdout + result.stderr, /1\.0\.35/);
+test("live integration: CLI app install dry-run follows the public feed without downloading a DMG", {
+  skip: !LIVE_FEED_TEST
+}, async () => {
+  const result = await spawnCli(["app", "install", "--dry-run"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, new RegExp(`feed: ${DEFAULT_MACOS_FEED_URL}`));
+  assert.match(result.stdout, /version: \S+/);
+  assert.match(result.stdout, /sha256: [a-f0-9]{64}/);
+  assert.doesNotMatch(result.stderr, /Downloading OpenBurnBar/);
 });
 
 test("artifact verification uses the feed sha256, not a baked digest", () => {
@@ -554,7 +826,9 @@ test("artifact verification uses the feed sha256, not a baked digest", () => {
   assert.doesNotMatch(source, new RegExp(feedSecond.sha256, "i"));
 });
 
-test("live public latest-macos.json supplies the checksum used for verify", async () => {
+test("live integration: public latest-macos.json supplies the checksum used for verify", {
+  skip: !LIVE_FEED_TEST
+}, async () => {
   const response = await fetch(DEFAULT_MACOS_FEED_URL, {
     headers: { Accept: "application/json", "User-Agent": "OpenBurnBar-CLI-test" }
   });

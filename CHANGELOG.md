@@ -99,6 +99,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the copy into a ~150px column at phone widths; the banner now stacks
   (text full-width, buttons on their own row) below sm.
 
+## [1.0.35] - 2026-08-17
+
+### Added - `openburnbar app install` / `app update` (npm 0.1.1)
+- The published npm `openburnbar` CLI (`tools/openburnbar-mcp-remote`) now has
+  explicit `app install` and `app update` commands. They fetch
+  `https://downloads.burnbar.ai/latest-macos.json` — the same public feed the
+  notarized Mac app already uses — then verify SHA-256 + Ed25519 and copy
+  `OpenBurnBar.app` to `/Applications`.
+- The version is whatever that feed currently advertises. The CLI does not
+  pin a marketing version; a newer public build on the feed is what gets
+  installed.
+- `npm i` does not download the Mac app. There is no `postinstall` hook and
+  the tarball does not bake a DMG. Package version is **0.1.1**.
+
+### Added
+- **Live Agent Fleet** — dashboard Fleet view (watch running agents, designate
+  an orchestrator, record directives) over `daemon.fleet.snapshot` /
+  `orchestrator.get|set` / `directive.record`. Not in ⌘1–⌘8; Control Deck
+  tile + section switcher + ⌘K. Honest empty/not-ready states, no fabricated
+  running counts. Control Deck tile distinguishes preparing vs 0-running vs
+  daemon-down. Fleet opens chat through the existing CLI-consent gate.
+  Contract: `docs/fleet/BURNBAR_FLEET_API.md`.
+
+### Added - OpenBurnBar Cursor Marketplace plugin
+- **OpenBurnBar Cursor Marketplace plugin** (`plugins/openburnbar/`): an
+  installable Cursor Plugin that connects desktop Customize and Cloud Agents
+  to hosted Remote MCP at `https://mcp.burnbar.ai/mcp` over Streamable HTTP
+  (protocol `2025-11-25`) with a GitHub-style bearer plugin variable
+  (`OPENBURNBAR_MCP_ACCESS_TOKEN`, short-lived, never committed). Ships
+  skills, commands, rules, agents, and a fail-closed `validate.mjs`; the
+  plugin tree has no `package.json`, and the CI classifier routes
+  `plugins/openburnbar/**` to the cheap web lane with a dedicated
+  `plugin-fast` job. The editor extension remains source-only / load-unpacked
+  (no VS Marketplace / Open VSX listing). Install + auth + sealed-field
+  honesty: `docs/OPENBURNBAR_CURSOR_PLUGIN.md`.
+
+### Fixed - iPhone mission-approval Deny now persists
+- Tapping **Deny** on an Approvals-waiting card now leaves `waiting_for_approval`
+  immediately (`respondMissionApproval` writes `status: canceled` plus
+  `approvalStatus: rejected`). Approve still stays parked so the Mac listener
+  can claim it.
+- `MobileMissionConsoleHost` keeps a successful Deny/Approve hidden when the
+  Firestore list listener re-emits the still-waiting document, and a failed
+  callable now stays visible on the Hermes Square inbox instead of being
+  cleared by the next snapshot (the previous silent no-op).
+
+### Removed - iPhone Mission Console floating orb
+- The circular floating Mission Console control (hand icon / "Approve") is gone
+  from iPhone Pulse, Settings, Agents, and every other tab. It no longer
+  auto-restores when Firestore mission approvals are pending.
+- Settings → Experimental no longer has the "Mission Console orb" toggle or
+  its auto-restore footer. The Experimental section is gone with it.
+- `MobileMissionConsoleHost` and Skill Run live stage are unchanged. The
+  console sheet stays in the tree for Hermes / Skill Run; this PR does not
+  add a replacement launcher.
+
 ### Fixed - CI impact: Node Signal contracts lockfile no longer wakes macOS
 - `packages/signal-envelope-contracts` `package.json` / lockfile changes used
   to match the catch-all npm `FULL_PATTERNS` and force every product lane,
@@ -134,6 +190,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cancelled.** A later docs-only (or any) `main` push cannot evict an
   in-flight AgentLens/mobile or headless graph proof; the replacement
   classifier would otherwise skip macos/mobile until nightly.
+
+### Added
+- The Node MCP / resume / memory CLI (in `tools/openburnbar-mcp-remote/`) is now
+  published to **npm** as **`openburnbar` 0.1.0** (AGPL-3.0-only, zero runtime
+  dependencies). Install with `npm i -g openburnbar` or run ad-hoc with
+  `npx -y openburnbar`. It is the Node CLI for the hosted Remote MCP
+  (`mcp serve` / `mcp install` / `mcp doctor` / `mcp login`), session resume
+  (`resume` / `obbresume` / `OBB`), and the Pensieve memory hook (`memory`).
+  The package also keeps a legacy compat bin alias for existing local configs.
+  Distinct from the native daemon operator CLI `openburnbar-cli`, which stays
+  unpublished.
 
 ### Added - Metered usage-memory curation gateway (U4)
 - **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,

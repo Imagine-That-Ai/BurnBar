@@ -44,6 +44,10 @@ struct DashboardView: View {
     /// window opens on. Users who want the old spend-first landing flip
     /// `AppearanceSettings.dashboardLaunchSurface`.
     @State var mainRoute: DashboardMainRoute = DashboardLaunchSurface.current.route
+    @State var fleetService = FleetService(socketURL: OpenBurnBarDaemonRuntimePaths.live().socketURL)
+    /// True while Fleet asked for orchestrator chat and the CLI consent sheet
+    /// is still outstanding. Deny must not open chat; allow must.
+    @State private var pendingOpenOrchestratorChat = false
     @State var routeHistory: [DashboardMainRoute] = []
     @State var selectedTimeRange: TimeRange = .today
     @AppStorage("dashboardViewMode") var viewMode: DashboardViewMode = .agents
@@ -236,7 +240,7 @@ struct DashboardView: View {
         case .overview, .insights, .charts, .provider, .model:
             return true
         case .home, .database, .projects, .missions, .sessionLogs, .memoryReview, .inbox, .chat,
-             .quota, .controlDeck:
+             .quota, .controlDeck, .fleet:
             // The Control Deck is a full-width workspace like Inbox and Quota:
             // it is *not* about the provider/model breakdown, so the provider
             // rail would be a third redundant column.
@@ -342,6 +346,7 @@ struct DashboardView: View {
         case .chat: return "Chat"
         case .quota: return "Quota"
         case .controlDeck: return "Control Deck"
+        case .fleet: return "Fleet"
         case .provider(let provider): return provider.displayName
         case .model(let modelName): return modelName
         }
@@ -621,7 +626,7 @@ struct DashboardView: View {
         } message: {
             Text("OpenBurnBar can index your conversation history for search and chat. This data stays on your Mac.")
         }
-        .sheet(isPresented: $showCLIConsentSheet) {
+        .sheet(isPresented: $showCLIConsentSheet, onDismiss: handleFleetChatConsentDismissed) {
             CLIAssistantConsentSheet(settingsManager: settingsManager) {
                 showCLIConsentSheet = false
             }
@@ -938,6 +943,18 @@ struct DashboardView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .controlDeck:
                     controlDeckRouteView
+                case .fleet:
+                    FleetView(
+                        service: fleetService,
+                        tokenBurnProvider: { agentID in
+                            FleetTokenBurnEstimator.estimateTokensPerMinute(
+                                usages: dataStore.usages,
+                                agentID: agentID
+                            )
+                        },
+                        onOpenOrchestratorChat: openOrchestratorChat
+                    )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .provider(let provider):
                     ProviderDashboardView(
                         provider: provider,
@@ -1597,6 +1614,43 @@ struct DashboardView: View {
         sessionLogJumpTarget = target
         if mainRoute != .sessionLogs {
             navigate(to: .sessionLogs)
+        }
+    }
+
+    func openOrchestratorChat() {
+        switch FleetChatOpenPolicy.decision(
+            consentShown: settingsManager.cliAssistantConsentShown,
+            requestedMode: .orchestrator
+        ) {
+        case .showConsent:
+            pendingOpenOrchestratorChat = true
+            showCLIConsentSheet = true
+        case .present:
+            presentFleetChat()
+        }
+    }
+
+    func handleFleetChatConsentDismissed() {
+        let continuation = FleetChatOpenPolicy.afterConsent(
+            pendingOrchestrator: pendingOpenOrchestratorChat,
+            allowed: settingsManager.cliAssistantAllowed
+        )
+        pendingOpenOrchestratorChat = false
+        if continuation == .presentOrchestrator {
+            presentFleetChat()
+        }
+    }
+
+    private func presentFleetChat() {
+        Task { await chatController.cliBridge.detect() }
+        if preferMaximizedChat {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                navigate(to: .chat)
+            }
+        } else {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                chatPanelOpen = true
+            }
         }
     }
 }

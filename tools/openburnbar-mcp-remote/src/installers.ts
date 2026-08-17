@@ -1,4 +1,4 @@
-const command = "openburnbar-mcp-remote";
+const command = "openburnbar";
 const endpoint = "https://mcp.burnbar.ai/mcp";
 const tokenEnvVar = "OPENBURNBAR_MCP_ACCESS_TOKEN";
 const localPythonPath = "/absolute/path/to/OpenBurnBar/tools/openburnbar-mcp/.venv/bin/python";

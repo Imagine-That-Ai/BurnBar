@@ -1271,6 +1271,7 @@ extension DashboardMainRoute {
         case "quota": return .quota
         case "controlDeck": return .controlDeck
         case "home": return .home
+        case "fleet": return .fleet
         default: return nil
         }
     }

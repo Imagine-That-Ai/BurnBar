@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir as osTmpdir } from "node:os";
+import { createWriteStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { homedir, tmpdir as osTmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { finished } from "node:stream/promises";
@@ -16,10 +16,17 @@ import { spawn } from "node:child_process";
 export const DEFAULT_MACOS_FEED_URL = "https://downloads.burnbar.ai/latest-macos.json";
 export const DEFAULT_APPLICATIONS_DIR = "/Applications";
 export const APP_BUNDLE_NAME = "OpenBurnBar.app";
+export const APP_BUNDLE_ID = "com.openburnbar.app";
+export const HOMEBREW_CASK_RECEIPT_DIRS = [
+  "/opt/homebrew/Caskroom/openburnbar",
+  "/usr/local/Caskroom/openburnbar",
+  join(homedir(), ".homebrew", "Caskroom", "openburnbar")
+];
 /** Sparkle `SUPublicEDKey` pinned in `AgentLens/Resources/OpenBurnBar-Info.plist`. */
-export const SU_PUBLIC_ED_KEY_BASE64 = "613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI=";
+export const SU_PUBLIC_ED_KEY_BASE64 = "613YSraDEJ54LKsfpqbYhyzYnfYRg7z4QwiEJfoy0TI="; // gitleaks:allow
 
 const SHA256_HEX = /^[a-f0-9]{64}$/u;
+const NUMERIC_VERSION = /^\d+(?:\.\d+){0,3}$/u;
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const MAX_DMG_BYTES = 4 * 1024 * 1024 * 1024;
 const FIRST_PARTY_HOSTS = new Set(["downloads.burnbar.ai", "dl.openburnbar.app"]);
@@ -40,6 +47,7 @@ export type MacOSReleaseFeed = {
   sha256: string;
   length: number;
   sparkleEdSignature: string;
+  minimumSystemVersion: string;
   dmg?: string;
   critical: boolean;
 };
@@ -47,6 +55,7 @@ export type MacOSReleaseFeed = {
 export type InstalledBundle = {
   version: string;
   build: string;
+  bundleId: string;
 };
 
 export type CommandResult = {
@@ -68,13 +77,14 @@ export type AppInstallDeps = {
   feedUrl: string;
   tmpdir: string;
   publicKeyBase64: string;
+  homebrewReceiptDirs: string[];
   write: (text: string) => void;
   writeErr: (text: string) => void;
   exists: (path: string) => boolean;
   mkdir: (path: string) => void;
+  mkdtemp: (prefix: string) => string;
   rm: (path: string) => void;
   readFile: (path: string) => Buffer;
-  writeFile: (path: string, data: Uint8Array) => void;
   readdir: (path: string) => string[];
   rename: (from: string, to: string) => void;
   run: (command: string, args: string[]) => Promise<CommandResult>;
@@ -148,6 +158,27 @@ export function isAllowedDownloadUrl(raw: string): boolean {
   return isAllowedHttpsUrl(raw, "download");
 }
 
+export function isAllowedFeedResponseUrl(originalUrl: string, finalUrl: string): boolean {
+  if (isAllowedFeedUrl(finalUrl)) {
+    return true;
+  }
+  if (!isAllowedFeedUrl(originalUrl)) {
+    return false;
+  }
+  let original: URL;
+  let final: URL;
+  try {
+    original = new URL(originalUrl);
+    final = new URL(finalUrl);
+  } catch {
+    return false;
+  }
+  return original.hostname.toLowerCase() === "github.com"
+    && GITHUB_FEED_ASSET.test(original.pathname)
+    && GITHUB_RELEASE_CDN_HOSTS.has(final.hostname.toLowerCase())
+    && final.pathname.endsWith("/latest-macos.json");
+}
+
 function isAllowedHttpsUrl(raw: string, kind: "feed" | "download"): boolean {
   let url: URL;
   try {
@@ -183,6 +214,7 @@ export function parseMacOSReleaseFeed(json: unknown): MacOSReleaseFeed {
   const sha256 = requiredString(record, "sha256").toLowerCase();
   const length = requiredPositiveInt(record, "length");
   const signature = optionalString(record, "sparkleEdSignature");
+  const minimumSystemVersion = requiredString(record, "minimumSystemVersion");
   if (!signature) {
     throw new AppInstallError("Update feed is missing sparkleEdSignature; refusing to download.");
   }
@@ -192,6 +224,9 @@ export function parseMacOSReleaseFeed(json: unknown): MacOSReleaseFeed {
   if (length > MAX_DMG_BYTES) {
     throw new AppInstallError(`Update feed length ${length} exceeds the ${MAX_DMG_BYTES} byte safety cap.`);
   }
+  if (!NUMERIC_VERSION.test(minimumSystemVersion)) {
+    throw new AppInstallError("Update feed minimumSystemVersion must be a numeric macOS version.");
+  }
   const dmg = optionalString(record, "dmg");
   return {
     version,
@@ -200,6 +235,7 @@ export function parseMacOSReleaseFeed(json: unknown): MacOSReleaseFeed {
     sha256,
     length,
     sparkleEdSignature: signature,
+    minimumSystemVersion,
     dmg: dmg || undefined,
     critical: record.critical === true
   };
@@ -228,7 +264,10 @@ export function compareNumericVersion(left: string, right: string): number {
   return 0;
 }
 
-export function isNewerRelease(remote: Pick<MacOSReleaseFeed, "build" | "version">, local: InstalledBundle): boolean {
+export function isNewerRelease(
+  remote: Pick<MacOSReleaseFeed, "build" | "version">,
+  local: Pick<InstalledBundle, "build" | "version">
+): boolean {
   const remoteBuild = Number.parseInt(remote.build, 10);
   const localBuild = Number.parseInt(local.build, 10);
   if (Number.isFinite(remoteBuild) && Number.isFinite(localBuild) && remoteBuild !== localBuild) {
@@ -261,10 +300,11 @@ export function readInstalledBundle(applicationsDir: string, deps: Pick<AppInsta
   const xml = deps.readFile(plistPath).toString("utf8");
   const version = plistString(xml, "CFBundleShortVersionString");
   const build = plistString(xml, "CFBundleVersion");
-  if (!version || !build) {
+  const bundleId = plistString(xml, "CFBundleIdentifier");
+  if (!version || !build || !bundleId) {
     return null;
   }
-  return { version, build };
+  return { version, build, bundleId };
 }
 
 export function verifyArtifactBytes(
@@ -309,6 +349,7 @@ export function createDefaultDeps(overrides: Partial<AppInstallDeps> = {}): AppI
     feedUrl: DEFAULT_MACOS_FEED_URL,
     tmpdir: osTmpdir(),
     publicKeyBase64: SU_PUBLIC_ED_KEY_BASE64,
+    homebrewReceiptDirs: HOMEBREW_CASK_RECEIPT_DIRS,
     write: (text) => {
       process.stdout.write(text);
     },
@@ -319,13 +360,11 @@ export function createDefaultDeps(overrides: Partial<AppInstallDeps> = {}): AppI
     mkdir: (path) => {
       mkdirSync(path, { recursive: true });
     },
+    mkdtemp: (prefix) => mkdtempSync(prefix),
     rm: (path) => {
       rmSync(path, { recursive: true, force: true });
     },
     readFile: (path) => readFileSync(path),
-    writeFile: (path, data) => {
-      writeFileSync(path, data);
-    },
     readdir: (path) => readdirSync(path),
     rename: renameSync,
     run: runProcess,
@@ -354,6 +393,18 @@ export async function runAppCommand(
     assertWellFormedRelease(release);
     const destination = join(deps.applicationsDir, APP_BUNDLE_NAME);
     const installed = readInstalledBundle(deps.applicationsDir, deps);
+    if (deps.exists(destination) && !installed) {
+      throw new AppInstallError(
+        `${destination} exists but its bundle identity could not be read; refusing to replace it.`,
+        1
+      );
+    }
+    if (installed && installed.bundleId !== APP_BUNDLE_ID) {
+      throw new AppInstallError(
+        `${destination} has bundle identifier ${installed.bundleId}; expected ${APP_BUNDLE_ID}. Refusing to replace it.`,
+        1
+      );
+    }
 
     if (options.dryRun) {
       printPlan(deps, command, release, destination, installed);
@@ -373,8 +424,13 @@ export async function runAppCommand(
       return 0;
     }
 
-    const workDir = join(deps.tmpdir, "OpenBurnBarAppInstall", sanitizePathComponent(release.build));
-    deps.mkdir(workDir);
+    if (installed) {
+      assertReplaceableInstallChannel(destination, deps);
+      await assertInstallProcessesStopped(destination, deps);
+    }
+    await assertSupportedMacOS(release, deps);
+
+    const workDir = deps.mkdtemp(join(deps.tmpdir, "OpenBurnBarAppInstall-"));
     const dmgPath = join(workDir, "OpenBurnBar-update.dmg");
     try {
       deps.writeErr(`Downloading OpenBurnBar ${release.version} (build ${release.build})\n`);
@@ -383,7 +439,7 @@ export async function runAppCommand(
       deps.writeErr("Verifying SHA-256 and Ed25519 signature\n");
       verifyArtifactBytes(bytes, release, deps.publicKeyBase64);
       deps.writeErr(`Installing to ${destination}\n`);
-      await installVerifiedDmg(dmgPath, destination, installed, deps);
+      await installVerifiedDmg(dmgPath, destination, release, installed, deps);
     } finally {
       deps.rm(workDir);
     }
@@ -406,7 +462,7 @@ async function fetchLatestRelease(deps: AppInstallDeps): Promise<MacOSReleaseFee
     throw new AppInstallError(`Update feed returned HTTP ${response.status}.`);
   }
   const finalUrl = response.url && response.url.length > 0 ? response.url : deps.feedUrl;
-  if (!isAllowedFeedUrl(finalUrl)) {
+  if (!isAllowedFeedResponseUrl(deps.feedUrl, finalUrl)) {
     throw new AppInstallError(`Update feed redirected to a disallowed URL: ${finalUrl}`);
   }
   let json: unknown;
@@ -432,11 +488,74 @@ function printPlan(
   deps.write(`dmg: ${release.downloadUrl}\n`);
   deps.write(`sha256: ${release.sha256}\n`);
   deps.write(`length: ${release.length}\n`);
+  deps.write(`minimum macOS: ${release.minimumSystemVersion}\n`);
   deps.write(`destination: ${destination}\n`);
   if (installed) {
     deps.write(`installed: ${installed.version} (build ${installed.build})\n`);
   } else {
     deps.write("installed: none\n");
+  }
+}
+
+function assertReplaceableInstallChannel(destination: string, deps: AppInstallDeps): void {
+  const macAppStoreReceipt = join(destination, "Contents", "_MASReceipt", "receipt");
+  if (deps.exists(macAppStoreReceipt)) {
+    throw new AppInstallError(
+      `${destination} is a Mac App Store installation. Update it through the Mac App Store; the direct-download installer will not replace it.`,
+      2
+    );
+  }
+  const homebrewReceipt = deps.homebrewReceiptDirs.find((path) => deps.exists(path));
+  if (homebrewReceipt) {
+    throw new AppInstallError(
+      `${destination} is managed by Homebrew (${homebrewReceipt}). Run \`brew upgrade --cask openburnbar\`; the direct-download installer will not desynchronize the Caskroom.`,
+      2
+    );
+  }
+}
+
+async function assertInstallProcessesStopped(destination: string, deps: AppInstallDeps): Promise<void> {
+  const checks = [
+    {
+      label: "OpenBurnBar",
+      args: ["-x", "OpenBurnBar"]
+    },
+    {
+      label: "the bundled OpenBurnBar daemon",
+      args: ["-f", join(destination, "Contents", "Helpers", "OpenBurnBarDaemon")]
+    }
+  ];
+  for (const check of checks) {
+    const result = await deps.run("/usr/bin/pgrep", check.args);
+    if (result.status === 0) {
+      throw new AppInstallError(
+        `${check.label} is running. Quit OpenBurnBar completely, then run the command again; the installer will not replace a live app bundle.`,
+        2
+      );
+    }
+    if (result.status !== 1) {
+      throw new AppInstallError(
+        `Could not verify that ${check.label} is stopped. pgrep exited ${result.status}: ${result.stderr || result.stdout}`,
+        1
+      );
+    }
+  }
+}
+
+async function assertSupportedMacOS(release: MacOSReleaseFeed, deps: AppInstallDeps): Promise<void> {
+  const result = await deps.run("/usr/bin/sw_vers", ["-productVersion"]);
+  if (result.status !== 0) {
+    throw new AppInstallError(`Could not determine the installed macOS version. ${result.stderr || result.stdout}`);
+  }
+  const installedVersion = result.stdout.trim();
+  if (!NUMERIC_VERSION.test(installedVersion)) {
+    throw new AppInstallError(`Could not parse the installed macOS version: ${installedVersion || "(empty)"}.`);
+  }
+  if (compareNumericVersion(installedVersion, release.minimumSystemVersion) < 0) {
+    throw new AppInstallError(
+      `OpenBurnBar ${release.version} requires macOS ${release.minimumSystemVersion} or newer; this Mac is running ${installedVersion}.`,
+      2
+    );
   }
 }
 
@@ -503,6 +622,7 @@ async function downloadArtifact(release: MacOSReleaseFeed, destination: string, 
 async function installVerifiedDmg(
   dmgPath: string,
   destination: string,
+  release: MacOSReleaseFeed,
   installed: InstalledBundle | null,
   deps: AppInstallDeps
 ): Promise<void> {
@@ -530,12 +650,22 @@ async function installVerifiedDmg(
   try {
     const appPath = locateApp(mountPoint, deps);
     const codesign = await deps.run("/usr/bin/codesign", ["--verify", "--deep", "--strict", appPath]);
-    if (codesign.status !== 0 && !codesign.stderr.toLowerCase().includes("command not found")) {
+    if (codesign.status !== 0) {
       throw new AppInstallError(`The update's code signature did not validate. ${codesign.stderr || codesign.stdout}`);
     }
     const offered = readBundleAt(appPath, deps);
     if (!offered) {
       throw new AppInstallError("The update's version could not be read from the disk image.");
+    }
+    if (offered.bundleId !== APP_BUNDLE_ID) {
+      throw new AppInstallError(
+        `The update has bundle identifier ${offered.bundleId}; expected ${APP_BUNDLE_ID}.`
+      );
+    }
+    if (offered.version !== release.version || offered.build !== release.build) {
+      throw new AppInstallError(
+        `The mounted app is ${offered.version} (build ${offered.build}) but the feed advertised ${release.version} (build ${release.build}).`
+      );
     }
     if (installed && !isNewerRelease(offered, installed)) {
       throw new AppInstallError(
@@ -569,10 +699,11 @@ function readBundleAt(appPath: string, deps: Pick<AppInstallDeps, "exists" | "re
   const xml = deps.readFile(plistPath).toString("utf8");
   const version = plistString(xml, "CFBundleShortVersionString");
   const build = plistString(xml, "CFBundleVersion");
-  if (!version || !build) {
+  const bundleId = plistString(xml, "CFBundleIdentifier");
+  if (!version || !build || !bundleId) {
     return null;
   }
-  return { version, build };
+  return { version, build, bundleId };
 }
 
 async function replaceBundle(source: string, destination: string, deps: AppInstallDeps): Promise<void> {
@@ -598,11 +729,6 @@ async function replaceBundle(source: string, destination: string, deps: AppInsta
     deps.rm(stage);
     throw error;
   }
-}
-
-function sanitizePathComponent(value: string): string {
-  const cleaned = value.replace(/[^A-Za-z0-9._-]/gu, "_").slice(0, 64);
-  return cleaned.length > 0 ? cleaned : "pending";
 }
 
 function requiredString(record: Record<string, unknown>, key: string): string {

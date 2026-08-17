@@ -51,6 +51,40 @@ struct ControlTileView: View {
         case .appearance: AppearanceTile(settingsManager: settingsManager, onOpenSettings: onOpenSettings)
         case .pets: PetsTile(model: model, onOpenSettings: onOpenSettings)
         case .updates: UpdatesTile(onOpenSettings: onOpenSettings)
+        case .fleet: FleetTile(onNavigate: onNavigate)
+        }
+    }
+}
+
+private struct FleetTile: View {
+    let onNavigate: (DashboardMainRoute) -> Void
+    @State private var headline = FleetTileHeadline.watching
+
+    var body: some View {
+        ControlTileShell(
+            kind: .fleet,
+            state: headline.tileState,
+            headline: headline.label,
+            accessibilityHeadline: headline.label
+        ) {
+            ControlLinkButton(title: "Open Fleet", help: "Watch running agents and steer the orchestrator.") {
+                onNavigate(.fleet)
+            }
+        } ladder: {
+            ControlStatusChip(
+                label: headline.chipLabel,
+                tint: headline.chipTint,
+                help: "The daemon probes which agents are actually running. Nothing is guessed."
+            )
+        }
+        .task {
+            let url = OpenBurnBarDaemonRuntimePaths.live().socketURL
+            do {
+                let snapshot = try OpenBurnBarDaemonSocketClient.fleetSnapshot(at: url)
+                headline = .resolved(fromSnapshot: snapshot)
+            } catch {
+                headline = .resolved(fromError: error)
+            }
         }
     }
 }

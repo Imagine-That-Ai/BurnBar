@@ -1,7 +1,15 @@
 {
-  "name": "openburnbar-mcp-remote",
-  "version": "0.1.0",
-  "private": true,
+  "name": "openburnbar",
+  "version": "0.1.1",
+  "description": "OpenBurnBar Node CLI — MCP stdio shim to the hosted BurnBar MCP, session resume (obbresume), the Pensieve memory hook, and explicit macOS app install/update from the public notarized DMG feed.",
+  "keywords": [
+    "openburnbar",
+    "mcp",
+    "burnbar",
+    "cli",
+    "agents",
+    "macos"
+  ],
   "type": "module",
   "bin": {
     "openburnbar-mcp-remote": "lib/index.js",
@@ -10,13 +18,24 @@
     "OBB": "lib/index.js"
   },
   "engines": {
-    "node": "22"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc",
     "lint": "eslint src --max-warnings=0 && tsc --noEmit",
-    "test": "npm run build && node --test lib/*.test.js"
+    "test": "npm run build && node --test lib/*.test.js",
+    "test:live-feed": "npm run build && OPENBURNBAR_LIVE_FEED_TEST=1 node --test --test-name-pattern='live integration' lib/appInstall.test.js",
+    "prepack": "npm run build && npm test && rm -f lib/*.test.js lib/*.test.d.ts && chmod +x lib/index.js"
   },
+  "files": [
+    "lib/",
+    "vendor/openburnbar-domain-core-wasm/",
+    "README.md",
+    "LICENSE",
+    "!lib/**/*.test.js",
+    "!lib/**/*.test.d.ts",
+    "!**/*.dmg"
+  ],
   "devDependencies": {
     "@eslint/js": "9.39.4",
     "@types/node": "^24.6.0",
@@ -26,6 +45,17 @@
     "typescript-eslint": "8.60.1"
   },
   "license": "AGPL-3.0-only",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Imagine-That-Ai/BurnBar.git",
+    "directory": "tools/openburnbar-mcp-remote"
+  },
+  "homepage": "https://github.com/Imagine-That-Ai/BurnBar/tree/main/tools/openburnbar-mcp-remote",
+  "bugs": "https://github.com/Imagine-That-Ai/BurnBar/issues",
   "overrides": {
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.0.3"

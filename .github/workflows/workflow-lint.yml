@@ -133,6 +133,8 @@ on:
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
       - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/verify-existing-tag-dry-run-recovery.mjs"
+      - "scripts/ci/verify-existing-tag-dry-run-recovery.test.mjs"
       - "scripts/ci/google-play-publication.mjs"
       - "scripts/ci/google-play-publication.test.mjs"
       - "scripts/ci/google-play-safe-retry.mjs"
@@ -269,6 +271,8 @@ on:
       - "scripts/ci/verify-release-tag-safety.mjs"
       - "scripts/ci/verify-release-tag-safety.test.mjs"
       - "scripts/ci/verify-release-tag-safety.functional.test.mjs"
+      - "scripts/ci/verify-existing-tag-dry-run-recovery.mjs"
+      - "scripts/ci/verify-existing-tag-dry-run-recovery.test.mjs"
       - "scripts/ci/google-play-publication.mjs"
       - "scripts/ci/google-play-publication.test.mjs"
       - "scripts/ci/google-play-safe-retry.mjs"
@@ -509,6 +513,9 @@ jobs:
 
       - name: Verify release tag safety
         run: node scripts/ci/verify-release-tag-safety.mjs
+
+      - name: Self-test existing stable-tag dry-run recovery
+        run: node scripts/ci/verify-existing-tag-dry-run-recovery.test.mjs
 
       - name: Self-test release dry-run attestation
         run: node scripts/ci/release-dry-run-attestation.test.mjs
