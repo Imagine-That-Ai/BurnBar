@@ -633,7 +633,10 @@ public enum BurnBarProviderAuthRegistry {
                 kind: .apiKey,
                 displayName: "OpenCode auth.json",
                 summary: "Routes OpenCode Go models; local quota comes from CLI stats.",
-                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, the full auth.json, or just its key value. OpenBurnBar extracts the route key and sends requests to OpenCode Go's OpenAI-compatible gateway. Add one connection per OpenCode Go subscription; each becomes its own BurnBar account.",
+                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, the full "
+                    + "auth.json, or just its key value. OpenBurnBar extracts the route key and sends requests "
+                    + "to OpenCode Go's OpenAI-compatible gateway. Add one connection per OpenCode Go "
+                    + "subscription; each becomes its own BurnBar account.",
                 placeholder: "{\"opencode-go\":{\"type\":\"...\",\"key\":\"...\"}}",
                 dashboardURL: "https://opencode.ai/docs/go/",
                 dashboardLabel: "OpenCode Go docs",
