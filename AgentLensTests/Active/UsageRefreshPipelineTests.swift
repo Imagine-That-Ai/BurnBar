@@ -861,6 +861,10 @@ private actor ParseOptionsRecorder {
         (minimumDates, trackersPresent)
     }
 
+    func minimumDateSnapshot() -> [Date?] {
+        minimumDates
+    }
+
     func includeCachedSnapshot() -> [Bool] {
         includeCached
     }
