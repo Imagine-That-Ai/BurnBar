@@ -1,27 +1,50 @@
 {
+  "legacyKnowledgeChunk" : {
+    "ciphertext" : "mfgGuXeYPeUSp601+C9U8tSk\/RcE+\/\/mRQClMwo+D+FnQOYUhxlaoQ==",
+    "uid" : "console-user",
+    "algorithm" : "AES-256-GCM",
+    "keyVersion" : 1,
+    "tag" : "BL\/7gdM5kF33rMQpmVKy3w==",
+    "vectorId" : "5c2e0918aa734bd6b0f4e73c1d8a6f20",
+    "expectedPlaintext" : "Daemon-sealed chunk with no uid binding.",
+    "nonce" : "ddkoQeq4sL52tFIt"
+  },
   "blob" : {
-    "algorithm" : "AES-256-GCM",
-    "integrityHashVersion" : 1,
-    "createdAt" : "2026-06-04T14:28:03Z",
-    "schemaVersion" : 2,
+    "sealedBoxBase64" : "SUhxjWrGcIhOBEyU1EW2MMGdhajyPWQuOSnju7c8kyJURAdiY0\/QwlJQZUTCQIMjhX1NhYlpdrj4NOwsSQ==",
     "keyVersion" : 1,
-    "plaintextHMAC" : "f020febc72940b7172ca978925a7ecc9d0b69e4e0f8ecad1e36a93a37c4fb8da",
-    "sealedBoxBase64" : "eJBADi7segk59Kj6sEkLqtiq1zoGdoPtDAFxVXSyuXwi\/H0KppUMnyqiyJ7qGg+K8SmAXP4xEv3piYD8AQ==",
+    "createdAt" : "2026-08-15T15:43:44Z",
+    "expectedPlaintext" : "Swift sealed this for the browser",
+    "schemaVersion" : 2,
     "aad" : "OpenBurnBar-CloudVault-aad-v2|console-user|project_memory_snapshots|pm_console_fixture|sealedSnapshot|2|sealedSnapshot",
-    "expectedPlaintext" : "Swift sealed this for the browser"
-  },
-  "text" : {
-    "expectedPlaintext" : "conversation body from swift",
-    "keyVersion" : 1,
-    "ciphertext" : "nPbmkWOhKvTaqYvyUtzyq5AZYtXNRoCwjDiJjA==",
     "algorithm" : "AES-256-GCM",
-    "schemaVersion" : 2,
-    "nonce" : "y4q3GsOTNU3NwAhS",
-    "tag" : "SvoMk0CMfwuXjhXaKAzYEg==",
-    "aad" : "OpenBurnBar-CloudVault-aad-v2|console-user|cloud_search_documents|console_fixture_doc|sealedTitle|2|sealedTitle"
+    "plaintextHMAC" : "a35808cd3fdb01b663608b4c4c0f376aa905c40aba5608add9d8895d4b3fdd0b",
+    "integrityHashVersion" : 1
   },
-  "recipientPublicX963B64" : "BGD8ysUBj9\/KPijFuSV5zgOWKZbbepV8D5a\/fNbodi\/Sfj5O\/TJIGscjyRAxLI0tjyU1EampGyBsrqrGpmNCCFo=",
-  "wrappedVaultKeyB64" : "BBcO4VeqoH7eWl9WbvptAOz0azce4G7Wq\/yttT1VfYLotKEwYsDdb0Woe6t\/wE8qSFETyqjZ5F26iSN+Pc4q9NAwMRuEYPdZuKN6D3bMcKJlXlAcbLNd4Uz8DOylycWJHwU7TdRhMtfWllUJISwwSRUXKie4MM\/JjjJM5Q8=",
-  "recipientPrivatePKCS8B64" : "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg0il\/nwB5mEF8\/t7WZzgZ5CGHZDk\/ok9XpFVMc5NgWkqhRANCAARg\/MrFAY\/fyj4oxbklec4DlimW23qVfA+Wv3zW6HYv0n4+Tv0ySBrHI8kQMSyNLY8lNRGpqRsgbK6qxqZjQgha",
-  "vaultKeyB64" : "O7lq7YV\/HV1fN3chDbxycKzt2Ju1tIHVF3RjvmN0Aw8="
+  "recipientPrivatePKCS8B64" : "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg4OIISCQVixsxoEAb0FnS0S2+Fl3P2i4RZN8A1QtPptuhRANCAAQnkKGP\/MA662imvgtKv1H21+bJY53qHN0fGTZXcVQdU47aYGAGv7t4W\/5U\/ERxI3dD2q1YgiQCkWTTBn+1vZbW",
+  "vaultKeyB64" : "dxHxPk9vVCwsf4HNfUfPjsLpaQdnaHLY1WnRg+\/ZlGM=",
+  "text" : {
+    "aad" : "OpenBurnBar-CloudVault-aad-v2|console-user|cloud_search_documents|console_fixture_doc|sealedTitle|2|sealedTitle",
+    "keyVersion" : 1,
+    "ciphertext" : "FCaNSgiLXyqm97kSp8qw6a\/FHq\/2Um4OdOTMdA==",
+    "schemaVersion" : 2,
+    "algorithm" : "AES-256-GCM",
+    "nonce" : "jWUuMWHL5108qQZm",
+    "tag" : "ggytuTrfqMBppL0RM8c79A==",
+    "expectedPlaintext" : "conversation body from swift"
+  },
+  "wrappedVaultKeyB64" : "BHaQwW1BKNMdqCNHm2R9TesdPr2ZYfSuxJZXcPfPaQ9KQTQJLAE2V1jQRtg4ciRRFQqeLPCdLb7xshct7TNWAbzszHrD74wKJWJdZGYq56rgEEw0RsfNPGxGTjcoKoRmDYynNZbSl8xuVqL3KekZx6CB45khuvgOasM2eGY=",
+  "knowledgeChunk" : {
+    "field" : "sealedCiphertext",
+    "schemaVersion" : 2,
+    "tag" : "SpkrUy51E+Jy3keeEtkEcQ==",
+    "uid" : "console-user",
+    "algorithm" : "AES-256-GCM",
+    "vectorId" : "b7f1c3d5e90a4c2fa1806d4e5f2b39c8",
+    "keyVersion" : 1,
+    "aad" : "OpenBurnBar-CloudVault-aad-v2|console-user|cloud_search_knowledge|b7f1c3d5e90a4c2fa1806d4e5f2b39c8|sealedCiphertext|2|sealedCiphertext",
+    "expectedPlaintext" : "Pensieve remembers: the vault key never leaves the device.",
+    "nonce" : "y3eBH5ojV84O+ihF",
+    "ciphertext" : "YXIGzQApXvJo8HYH\/\/j\/H76obx8MR6Pno8BS1EsljhIjdILvNFjykoo90GCsjjig\/IwynSVu17MEkA=="
+  },
+  "recipientPublicX963B64" : "BCeQoY\/8wDrraKa+C0q\/UfbX5sljneoc3R8ZNldxVB1TjtpgYAa\/u3hb\/lT8RHEjd0ParViCJAKRZNMGf7W9ltY="
 }
