@@ -25,6 +25,11 @@ struct MenuBarPopoverView: View {
     var runtimeContext: OpenBurnBarRuntimeContext?
 
     @AppStorage("hasOnboarded") private var hasOnboarded = false
+    /// The first-run reveal is shown once and dismissed by any means. Kept
+    /// separate from `hasOnboarded` so the reveal's own lifecycle never
+    /// depends on the legacy wizard's completion flag.
+    @AppStorage("firstRun.revealDismissed") private var firstRunRevealDismissed = false
+    @State private var firstRunModel: FirstRunRevealModel?
     @State private var showScanFlash = false
     @State private var listAppeared = false
     @State private var insightSnapshot: WorkflowInsightRollupSnapshot = .unavailable
@@ -160,17 +165,48 @@ struct MenuBarPopoverView: View {
 
     var body: some View {
         Group {
-            if !hasOnboarded && dataStore.totalUsageSessionCount == 0, aggregator != nil {
-                OnboardingView(
-                    settingsManager: settingsManager,
-                    onOpenWizard: {
+            // The first-run reveal. Gated ONLY on its own dismissal flag: the
+            // old gate also required `totalUsageSessionCount == 0`, so the
+            // moment the scan found anything the onboarding vanished forever —
+            // hiding the screen exactly when it finally had something true to
+            // say. Finding data is the reveal's best case, not its exit.
+            if !firstRunRevealDismissed, let firstRunModel {
+                FirstRunReveal(
+                    model: firstRunModel,
+                    detectedProviders: firstRunDetectedProviders,
+                    onOpenQuotaWorkspace: {
+                        // Same path a tapped quota notification takes:
+                        // `AppCommandRouter.handle` is the router's only entry
+                        // point, and `openburnbar://quota` is already wired
+                        // through `NavigationCoordinator.handleDeepLink`.
+                        if let url = URL(string: "openburnbar://quota") {
+                            AppCommandRouter.shared.handle(url)
+                        }
+                        onOpenDashboard()
+                    },
+                    onArmAlert: {
+                        firstRunRevealDismissed = true
+                        dismiss()
+                        onOpenSettings()
+                    },
+                    onShowPathAudit: {
                         dismiss()
                         onOpenOnboardingWizard?()
                     },
-                    onSkip: {
-                        hasOnboarded = true
-                    }
+                    onWatchForFirstSession: { firstRunRevealDismissed = true },
+                    onDismiss: { firstRunRevealDismissed = true }
                 )
+                .task { await driveFirstRunReveal(firstRunModel) }
+            } else if !firstRunRevealDismissed {
+                // Construct on first appearance so the "I looked in N places"
+                // count is read live from the registry rather than hardcoded.
+                Color.clear
+                    .frame(width: 340, height: 1)
+                    .onAppear {
+                        firstRunModel = FirstRunRevealModel(
+                            searchedPathCount: ParserRegistry.defaultParsers().count
+                        )
+                    }
             } else if hermesChatActive, let chatController {
                 AssistantsPopoverChatView(
                     controller: chatController,
@@ -341,6 +377,55 @@ struct MenuBarPopoverView: View {
             .fill(colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.09))
             .frame(height: 0.5)
             .padding(.horizontal, 12)
+    }
+
+    // MARK: - First Run Reveal
+
+    /// Detected agents, rendered as the scan's row list. Comes straight from
+    /// `detectAvailableProviders()`, which resolves in milliseconds because the
+    /// session files are already on disk — the whole structural advantage this
+    /// screen exists to spend.
+    private var firstRunDetectedProviders: [FirstRunReveal.DetectedProvider] {
+        settingsManager.detectAvailableProviders()
+            .filter(\.value)
+            .keys
+            .sorted { $0.displayName < $1.displayName }
+            .prefix(4)
+            .map { provider in
+                FirstRunReveal.DetectedProvider(
+                    displayName: provider.displayName,
+                    path: provider.logDirectory,
+                    state: .resolved
+                )
+            }
+    }
+
+    /// Feeds the reveal real data and holds the 8-second ceiling. Polls rather
+    /// than observes because the first pass is genuinely racing the scan: the
+    /// aggregator, the quota service and the parse watermark all settle
+    /// independently, and the reveal must show the best true thing at each
+    /// moment without waiting for the slowest of them.
+    private func driveFirstRunReveal(_ model: FirstRunRevealModel) async {
+        let startedAt = Date()
+        let service = quotaService ?? ProviderQuotaService.shared
+
+        while model.didReachTerminalPhase == false {
+            let elapsed = Date().timeIntervalSince(startedAt)
+            guard elapsed < FirstRunRevealModel.degradeAfter else {
+                model.degrade()
+                return
+            }
+
+            model.reportProgress(fraction: min(elapsed / FirstRunRevealModel.degradeAfter, 0.95))
+            model.ingest(
+                snapshots: Array(service.snapshotsByProvider.values),
+                monthToDateUSD: dataStore.totalCostThisMonth,
+                sessionCount: dataStore.totalUsageSessionCount,
+                detectedProviderDisplayNames: firstRunDetectedProviders.map(\.displayName)
+            )
+
+            try? await Task.sleep(for: .milliseconds(250))
+        }
     }
 
     // MARK: - Tray Layout
