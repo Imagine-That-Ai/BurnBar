@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - `openburnbar app install` / `app update` (npm 0.1.1)
+- The published npm `openburnbar` CLI (`tools/openburnbar-mcp-remote`) now has
+  explicit `app install` and `app update` commands. They fetch
+  `https://downloads.burnbar.ai/latest-macos.json` — the same public feed the
+  notarized Mac app already uses — then verify SHA-256 + Ed25519 and copy
+  `OpenBurnBar.app` to `/Applications`.
+- The version is whatever that feed currently advertises. The CLI does not
+  pin a marketing version; a newer public build on the feed is what gets
+  installed.
+- `npm i` does not download the Mac app. There is no `postinstall` hook and
+  the tarball does not bake a DMG. Package version is **0.1.1**.
+
 ### Added - OpenBurnBar Cursor Marketplace plugin
 - **OpenBurnBar Cursor Marketplace plugin** (`plugins/openburnbar/`): an
   installable Cursor Plugin that connects desktop Customize and Cloud Agents

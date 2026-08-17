@@ -1,6 +1,10 @@
 # openburnbar
 
-The OpenBurnBar Node CLI — an MCP stdio shim to the hosted BurnBar MCP, session resume (`obbresume`), and the Pensieve memory hook. One small binary, zero runtime dependencies, honest about what touches the network.
+The OpenBurnBar Node CLI — an MCP stdio shim to the hosted BurnBar MCP,
+session resume (`obbresume`), the Pensieve memory hook, and explicit commands
+that install or update the notarized macOS app from its public update feed.
+One small binary, zero runtime dependencies, honest about what touches the
+network.
 
 ## Install
 
@@ -22,13 +26,59 @@ The package ships four bin names, all pointing at the same entry point: `openbur
 
 Requires Node 22+. The package is licensed **AGPL-3.0-only** — see [LICENSE](LICENSE).
 
+`npm i` and `npx` never download the Mac app. There is no `install`,
+`postinstall`, or `prepare` hook. The package only places
+`OpenBurnBar.app` on disk after you explicitly run `openburnbar app install`
+or `openburnbar app update`.
+
 ## What this is — and what it isn't
 
-This npm package is the **Node MCP / resume / memory CLI**. It talks to the hosted BurnBar MCP endpoint, resumes sessions, and installs the Pensieve chat-memory hook.
+This npm package is the **Node MCP / resume / memory / Mac-app-door CLI**. It
+talks to the hosted BurnBar MCP endpoint, resumes sessions, installs the
+Pensieve chat-memory hook, and can fetch the current public notarized macOS
+DMG when you ask it to.
 
-It is **not** the native daemon operator CLI. The OpenBurnBar Mac app ships its own Swift CLI, `openburnbar-cli`, which operates the local daemon with exactly eight commands: `health`, `controller`, `questions`, `followups`, `missions`, `mission-approve`, `simulator-runs`, `simulator-replay`. That CLI is built from the app source and is **not published to npm** — if you want it, build the app. The npm `openburnbar` package never touches the daemon.
+It is **not** the native daemon operator CLI. The OpenBurnBar Mac app ships its
+own Swift CLI, `openburnbar-cli`, which operates the local daemon with exactly
+eight commands: `health`, `controller`, `questions`, `followups`, `missions`,
+`mission-approve`, `simulator-runs`, `simulator-replay`. That CLI is built from
+the app source and is **not published to npm** — if you want it, build the
+app. The npm `openburnbar` package never touches the daemon.
+
+## macOS app install and update
+
+```bash
+openburnbar app install
+openburnbar app update
+openburnbar app install --dry-run
+```
+
+Both commands:
+
+1. Fetch `https://downloads.burnbar.ai/latest-macos.json`, the same public
+   feed used by the notarized desktop updater. The CLI follows whatever
+   version and checksum that feed currently advertises; it does not pin a
+   marketing version or DMG digest.
+2. Download the feed's `downloadUrl` from a first-party host or the official
+   `Imagine-That-Ai/BurnBar` GitHub Release.
+3. Verify the advertised length, SHA-256, and Sparkle Ed25519 signature
+   against the app's pinned `SUPublicEDKey`.
+4. Mount the DMG read-only and require the mounted app to have the exact feed
+   version, build, and `com.openburnbar.app` bundle identifier.
+5. Verify the app code signature and atomically replace
+   `/Applications/OpenBurnBar.app`.
+
+`app install` is the first-time path. `app update` refuses when the app is not
+installed and is a no-op when the installed build is already current.
+`--dry-run` prints the resolved feed plan on any platform and downloads no
+DMG. The actual install/update operation is macOS-only.
 
 ## Commands
+
+### `openburnbar app install` / `openburnbar app update`
+
+Fetch, verify, and install the current public notarized Mac app. Network
+required. No silent download during package installation.
 
 ### `openburnbar mcp serve`
 
@@ -77,6 +127,8 @@ Prints the one-line usage and exits 0. No network.
 
 | Command | Network |
 |---|---|
+| `app install` / `app update` | Yes — `latest-macos.json` plus the feed's DMG URL. Never during `npm i`. |
+| `app install --dry-run` | Yes — feed JSON only |
 | `mcp serve` | Yes — forwards every message to `https://mcp.burnbar.ai/mcp` |
 | `mcp doctor` | Yes — `GET https://mcp.burnbar.ai/readyz` (+ `tools/list` when tokened) |
 | `mcp login` | Yes — device-link start/poll against `https://mcp.burnbar.ai` |

@@ -1,13 +1,14 @@
 {
   "name": "openburnbar",
-  "version": "0.1.0",
-  "description": "OpenBurnBar Node CLI — MCP stdio shim to the hosted BurnBar MCP, session resume (obbresume), and the Pensieve memory hook.",
+  "version": "0.1.1",
+  "description": "OpenBurnBar Node CLI — MCP stdio shim to the hosted BurnBar MCP, session resume (obbresume), the Pensieve memory hook, and explicit macOS app install/update from the public notarized DMG feed.",
   "keywords": [
     "openburnbar",
     "mcp",
     "burnbar",
     "cli",
-    "agents"
+    "agents",
+    "macos"
   ],
   "type": "module",
   "bin": {
@@ -29,7 +30,10 @@
     "lib/",
     "vendor/openburnbar-domain-core-wasm/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "!lib/**/*.test.js",
+    "!lib/**/*.test.d.ts",
+    "!**/*.dmg"
   ],
   "devDependencies": {
     "@eslint/js": "9.39.4",

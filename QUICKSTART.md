@@ -22,6 +22,13 @@ Get up and running with OpenBurnBar in under 2 minutes.
 3. Open the DMG and drag **OpenBurnBar** to **Applications**
 4. Launch OpenBurnBar — look for it in your menu bar
 
+Or install that same current public notarized build from the desktop update
+feed (no hardcoded version; `npm i` does not download the app):
+
+```bash
+npx -y openburnbar app install
+```
+
 ### Option 2: Build from Source (one command)
 
 ```bash
