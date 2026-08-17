@@ -147,7 +147,8 @@ final class FirstRunRevealModel {
         excluding hero: TightestQuotaWindow,
         now: Date
     ) -> [SupportingRow] {
-        snapshots
+        Array(
+            snapshots
             .filter { $0.provider != hero.providerDisplayName }
             .compactMap { snapshot -> SupportingRow? in
                 let buckets = snapshot.displayableQuotaBuckets(relativeTo: now)
@@ -164,7 +165,7 @@ final class FirstRunRevealModel {
             // Three is the whole list. A fourth row turns a glance into reading.
             .sorted { ($0.remainingPercent ?? 101) < ($1.remainingPercent ?? 101) }
             .prefix(3)
-            .map { $0 }
+        )
     }
 
     private static func detailText(for bucket: ProviderQuotaBucket) -> String {

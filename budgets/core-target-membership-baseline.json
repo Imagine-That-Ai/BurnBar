@@ -49,8 +49,9 @@
     },
     "OpenBurnBarKernel": {
       "maxFiles": 185,
-      "maxLines": 48000,
-      "planned": true
+      "maxLines": 48100,
+      "planned": true,
+      "ceilingRationale": "2026-08-17: +100 for the daemon.search.sql RPC surface (BurnBarRPCContracts case + canon entry + BurnBarSQLValue wire types) riding the product-truth program; next Kernel paydown should reclaim this headroom per docs/CORE_DECOMPOSITION_PROGRAM.md."
     },
     "OpenBurnBarParserSupport": {
       "maxFiles": 5,
