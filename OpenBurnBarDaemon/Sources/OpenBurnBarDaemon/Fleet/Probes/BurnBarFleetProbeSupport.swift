@@ -259,7 +259,12 @@ public enum BurnBarFleetProbeJSON {
     /// JSON `true`/`false` bridge to `NSNumber`; never a valid integer or
     /// timestamp signal value.
     private static func isBoolean(_ number: NSNumber) -> Bool {
-        CFGetTypeID(number) == CFBooleanGetTypeID()
+        #if canImport(Darwin)
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
+        #else
+        let type = String(cString: number.objCType)
+        return type == "c" || type == "B"
+        #endif
     }
 
     /// String value (nil when absent, null, or mistyped).
