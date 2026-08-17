@@ -29,6 +29,27 @@ test("launch-evidence attestation JSON is no-product (honest skip/require)", () 
   }
 });
 
+test("plugins/openburnbar sources select only the cheap web lane", () => {
+  for (const path of [
+    "plugins/openburnbar/scripts/validate.mjs",
+    "plugins/openburnbar/.cursor-plugin/plugin.json",
+    "plugins/openburnbar/skills/openburnbar-operator/SKILL.md",
+  ]) {
+    const result = classifyPaths([path]);
+    assert.equal(result.full, false, path);
+    assert.equal(result.web, true, path);
+    for (const lane of LANES) {
+      if (lane !== "web") assert.equal(result[lane], false, `${path}:${lane}`);
+    }
+  }
+});
+
+test("a plugin package.json still forces full CI", () => {
+  const result = classifyPaths(["plugins/openburnbar/package.json"]);
+  assert.equal(result.full, true);
+  for (const lane of LANES) assert.equal(result[lane], true);
+});
+
 test("isolated tests select only their owning product", () => {
   const app = classifyPaths(["AgentLensTests/QuotaTests.swift"]);
   assert.equal(app.macos, true);

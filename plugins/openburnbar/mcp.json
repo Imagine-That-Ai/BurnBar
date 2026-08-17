@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "openburnbar": {
+      "type": "http",
+      "url": "https://mcp.burnbar.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer ${OPENBURNBAR_MCP_ACCESS_TOKEN}"
+      }
+    }
+  }
+}

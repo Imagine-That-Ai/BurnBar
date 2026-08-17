@@ -81,6 +81,23 @@ export const SURFACES: Surface[] = [
     cta: { href: "/download#editor", label: "Editor setup" }
   },
   {
+    id: "cursor-plugin",
+    name: "Cursor Marketplace plugin",
+    platform: "Cursor · desktop + Cloud Agents",
+    status: "review",
+    statusLabel: "Marketplace review pending",
+    description:
+      "A Cursor Marketplace candidate for hosted MCP over HTTP. Publication and live token setup are still pending; the HTTP-only package currently supports spend and capability diagnostics, while conversation and knowledge search require the optional local preprocessing/decrypt shim.",
+    bullets: [
+      "Hosted HTTP MCP at https://mcp.burnbar.ai/mcp, protocol 2025-11-25",
+      "GitHub-style bearer variable OPENBURNBAR_MCP_ACCESS_TOKEN (short-lived, never committed)",
+      "Marketplace publication and the attested /link token-copy path are pending",
+      "Conversation and knowledge search need local preprocessing unavailable in the HTTP-only package",
+      "Distinct from the source-only editor extension — the plugin is the candidate listing"
+    ],
+    cta: { href: "/mcp", label: "See the MCP page" }
+  },
+  {
     id: "daemon",
     name: "Local daemon",
     platform: "Embedded in macOS app",
@@ -158,10 +175,10 @@ export const SURFACES: Surface[] = [
     status: "shipping",
     statusLabel: "Shipping",
     description:
-      "Three Model Context Protocol surfaces let Codex, Claude Code, Cursor, Droid, Kimi, Forge, and Hermes query your OpenBurnBar history as grounded evidence — local SQLite for free, encrypted hosted memory for Pro.",
+      "The three non-plugin Model Context Protocol surfaces let Codex, Claude Code, Cursor, Droid, Kimi, Forge, and Hermes query your OpenBurnBar history as grounded evidence — local SQLite for free, encrypted hosted memory for Pro. (The Cursor Marketplace plugin is a separate surface.)",
     bullets: [
       "Local Python MCP — 26 tools over your OpenBurnBar SQLite, read-mostly by default",
-      "Hosted Remote MCP — live at https://mcp.burnbar.ai/mcp, 8 tools, BurnBar Cloud entitlement",
+      "Hosted Remote MCP — live at https://mcp.burnbar.ai/mcp, 10 tools, BurnBar Cloud entitlement",
       "Local stdio shim — bridges stdio-only clients to the hosted endpoint, decrypts on-device",
       "Default privacy mode is local_decrypt_shim — server never sees plaintext queries or bodies"
     ],
