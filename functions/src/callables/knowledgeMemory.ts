@@ -694,6 +694,7 @@ export const __testing__ = {
   PENSIEVE_LIMITS,
   KNOWLEDGE_VECTOR_DIM,
   MAX_CHUNK_BYTES,
+  SOURCE_KINDS,
   // Retained ONLY as the v0 purge predicate; the write path no longer produces
   // v0 rows and recall never serves them (privacy-leak-remediation-2026-06-02 §3).
   DEDUP_HASH_VERSION_LEGACY_CLEARTEXT,

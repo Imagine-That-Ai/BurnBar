@@ -165,11 +165,24 @@ func makeTestKeychainStore() -> KeychainStore {
     )
 }
 
+/// A `SettingsManager` on isolated defaults and throwaway keychains.
+///
+/// The usage-memory fleet switches are seeded ALLOWING, i.e. the steady state
+/// after a successful Remote Config read. Without a seed the usage lanes are held
+/// CLOSED (no `FirebaseApp` in the test host means no fleet value ever resolves —
+/// see `MemorySettings.hasResolvedUsageRemoteConfig`), which would make every
+/// consent/placement test assert against a permanently shut gate. Tests that are
+/// *about* resolution — cached fleet kills, the pre-Remote-Config launch window —
+/// construct `SettingsManager` directly with their own
+/// `usageMemoryRemoteConfigSeed`; see `UsageMemoryGateTests`.
 @MainActor
 func makeSettingsManager(
     defaults: UserDefaults? = nil,
     controllerSecrets: KeychainStore? = nil,
-    gatewaySecrets: KeychainStore? = nil
+    gatewaySecrets: KeychainStore? = nil,
+    usageMemoryRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = {
+        UsageMemoryRemoteConfigSnapshot(extractionEnabled: true, authorityWritesEnabled: true)
+    }
 ) -> SettingsManager {
     SettingsManager(
         defaults: defaults ?? makeIsolatedDefaults(),
@@ -182,6 +195,7 @@ func makeSettingsManager(
             service: "tests.gateway.\(UUID().uuidString)",
             legacyServices: [],
             backend: SettingsManagerTestKeychainBackend()
-        )
+        ),
+        usageMemoryRemoteConfigSeed: usageMemoryRemoteConfigSeed
     )
 }

@@ -562,7 +562,14 @@ test("Functions preparation is uncredentialed and deploy consumes only a verifie
     /- name: Prepare pinned Sentry CLI\n        if: steps\.tag\.outputs\.dry_run != 'true'/u,
   );
 
-  assert.match(deploy, /needs: prepare-functions-deploy/u);
+  assert.match(
+    deploy,
+    /needs: \[prepare-functions-deploy, authorize-domain-core-rollback\]/u,
+  );
+  assert.match(
+    deploy,
+    /needs\.authorize-domain-core-rollback\.result == 'success'/u,
+  );
   assert.match(deploy, /environment: production/u);
   assert.match(deploy, /id-token: write/u);
   assert.doesNotMatch(deploy, /actions\/checkout@|uses: \\.\//u);

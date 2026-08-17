@@ -70,6 +70,7 @@ public sealed partial class WindowsSqlCipherProvisioner
         "v57_execution_source_attribution",
         "v58_ai_inbox",
         "v59_founder_lens",
+        "v60_billing_kind",
         CurrentMigrationEndpoint,
     };
 

@@ -10,10 +10,19 @@ import OpenBurnBarCore
 /// persists or logs the opened body; the string lives only in `Item.body` for the
 /// lifetime of the view.
 ///
-/// The closures (`loadPage` / `openBody` / `setStatus`) are the seam the integrator
-/// wires to the real `MemoryServing` implementation; keeping them injected lets the
-/// tests drive the model with in-memory fakes. The init signature and public surface
-/// are a frozen contract — coordinate any change with the integrator.
+/// U7: the inbox serves usage memories (`.safariAsk` / `.agentSession`) alongside
+/// chat. Each bucket is loaded once per storage partition — chat with the exact
+/// pre-U7 request/paging semantics, usage kinds with the same semantics over the
+/// `usage:` partition — and merged in page order, so the chat lane stays
+/// byte-identical and neither lane can crowd the other out of its page cap.
+/// A second filter axis (`SourceFilter`) narrows the visible rows by source, and
+/// every review action routes through the source-kind-guarded store methods with
+/// the acted-on row's own kind.
+///
+/// The closures (`loadPage` / `openBody` / `setStatus` / `forget`) are the seam the
+/// integrator wires to the real `MemoryServing` implementation; keeping them injected
+/// lets the tests drive the model with in-memory fakes. The init signature and public
+/// surface are a frozen contract — coordinate any change with the integrator.
 @Observable @MainActor
 final class MemoryReviewInboxModel {
 
@@ -41,26 +50,66 @@ final class MemoryReviewInboxModel {
         var title: String { self == .pending ? "Pending" : "Approved" }
     }
 
-    typealias LoadPage = (MemoryPageRequest) async throws -> MemoryPage
+    /// Second filter axis (U7): which extraction source the rows came from.
+    /// `.all` admits chat plus both usage kinds; the source-chip row binds here.
+    enum SourceFilter: String, CaseIterable, Identifiable {
+        case all, chat, safariAsk, agentSession
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .all: "All"
+            case .chat: "Chat"
+            case .safariAsk: "Safari asks"
+            case .agentSession: "Agent sessions"
+            }
+        }
+
+        /// Kinds this chip admits; `nil` means no restriction.
+        var sourceKinds: Set<MemorySourceKind>? {
+            switch self {
+            case .all: nil
+            case .chat: [.chat]
+            case .safariAsk: [.safariAsk]
+            case .agentSession: [.agentSession]
+            }
+        }
+    }
+
+    typealias LoadPage = (MemoryPageRequest, Set<MemorySourceKind>) async throws -> MemoryPage
     typealias OpenBody = (MemoryID) async throws -> String?
-    typealias SetStatus = (MemoryID, MemoryReviewStatus) async throws -> Bool
+    typealias SetStatus = (MemoryID, MemoryReviewStatus, Set<MemorySourceKind>) async throws -> Bool
+    typealias Forget = (MemoryID, Set<MemorySourceKind>) async throws -> Bool
+
+    /// Every source kind the inbox serves. Daemon-owned `.code` rows are not
+    /// review-inbox material and stay invisible here.
+    static let servedSourceKinds: Set<MemorySourceKind> =
+        Set([MemorySourceKind.chat]).union(MemorySourceKind.usageKinds)
 
     private(set) var pending: [Item] = []
     private(set) var approved: [Item] = []
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     var filter: Filter = .pending
-    var items: [Item] { filter == .pending ? pending : approved }
+    var sourceFilter: SourceFilter
+    var items: [Item] {
+        let bucket = filter == .pending ? pending : approved
+        guard let kinds = sourceFilter.sourceKinds else { return bucket }
+        return bucket.filter { kinds.contains($0.memory.sourceKind) }
+    }
+    /// Pending across every served source — usage rows count toward the badge.
     var pendingCount: Int { pending.count }
 
     private let scope: MemoryScope
     private let loadPage: LoadPage
     private let openBody: OpenBody
     private let setStatus: SetStatus
+    private let forgetRecord: Forget
 
-    /// Largest page we request per bucket. The inbox is a review surface, not a
-    /// paginated browser, so a single generous page keeps the UI simple while still
-    /// bounding the fetch.
+    /// Largest page we request per bucket and per source partition. The inbox is
+    /// a review surface, not a paginated browser, so a single generous page keeps
+    /// the UI simple while still bounding the fetch.
     private let pageSize = 200
 
     private static let defaultErrorMessage = "Something went wrong loading your memories. Please try again."
@@ -68,36 +117,53 @@ final class MemoryReviewInboxModel {
 
     init(
         scope: MemoryScope,
+        sourceFilter: SourceFilter = .all,
         loadPage: @escaping LoadPage,
         openBody: @escaping OpenBody,
-        setStatus: @escaping SetStatus
+        setStatus: @escaping SetStatus,
+        forget: @escaping Forget
     ) {
         self.scope = scope
+        self.sourceFilter = sourceFilter
         self.loadPage = loadPage
         self.openBody = openBody
         self.setStatus = setStatus
+        self.forgetRecord = forget
     }
 
     /// Loads both buckets: pending keeps only `.quarantined` (requesting quarantined
-    /// rows), approved keeps only `.approved`. Each kept memory's sealed body is opened
-    /// best-effort for display. Drives `isLoading` and surfaces failures via
-    /// `errorMessage`.
+    /// rows), approved keeps only `.approved`. Each bucket loads chat and usage
+    /// partitions separately — the chat call is the exact pre-U7 fetch — and merges
+    /// them in page order. Each kept memory's sealed body is opened best-effort for
+    /// display. Drives `isLoading` and surfaces failures via `errorMessage`.
     func load() async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
         do {
-            let pendingItems = try await loadBucket(
+            let pendingChat = try await loadBucket(
+                sourceKinds: [.chat],
                 includeQuarantined: true,
                 keep: .quarantined
             )
-            let approvedItems = try await loadBucket(
+            let pendingUsage = try await loadBucket(
+                sourceKinds: MemorySourceKind.usageKinds,
+                includeQuarantined: true,
+                keep: .quarantined
+            )
+            let approvedChat = try await loadBucket(
+                sourceKinds: [.chat],
                 includeQuarantined: false,
                 keep: .approved
             )
-            pending = pendingItems
-            approved = approvedItems
+            let approvedUsage = try await loadBucket(
+                sourceKinds: MemorySourceKind.usageKinds,
+                includeQuarantined: false,
+                keep: .approved
+            )
+            pending = Self.mergedInPageOrder(pendingChat, pendingUsage)
+            approved = Self.mergedInPageOrder(approvedChat, approvedUsage)
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
@@ -117,18 +183,52 @@ final class MemoryReviewInboxModel {
         await transition(id, to: .rejected)
     }
 
-    // MARK: - Private
-
-    private func transition(_ id: MemoryID, to status: MemoryReviewStatus) async {
+    /// Hard-deletes a memory (member-visible "forget this"): the authority row,
+    /// sealed body, and provenance are removed; an approved row leaves a fact
+    /// tombstone behind so the deletion replicates (PR1 semantics). Reloads so
+    /// the row leaves whichever bucket held it.
+    func forget(_ id: MemoryID) async {
         do {
-            _ = try await setStatus(id, status)
+            _ = try await forgetRecord(id, reviewSourceKinds(for: id))
             await load()
         } catch {
             errorMessage = friendlyMessage(for: error)
         }
     }
 
+    // MARK: - Private
+
+    private func transition(_ id: MemoryID, to status: MemoryReviewStatus) async {
+        do {
+            _ = try await setStatus(id, status, reviewSourceKinds(for: id))
+            await load()
+        } catch {
+            errorMessage = friendlyMessage(for: error)
+        }
+    }
+
+    /// The source-kind guard for an action on `id`: exactly the acted-on row's
+    /// kind, so a usage action can never touch a chat row (or vice versa). Falls
+    /// back to every served kind when the row is no longer loaded — the store's
+    /// own kind guard still applies, and a stale action then no-ops safely.
+    private func reviewSourceKinds(for id: MemoryID) -> Set<MemorySourceKind> {
+        (pending + approved)
+            .first { $0.id == id }
+            .map { [$0.memory.sourceKind] } ?? Self.servedSourceKinds
+    }
+
+    /// Merge two per-partition bucket loads back into page order (updatedAt DESC,
+    /// id ASC) — the same comparator `memoryPage` serves pages in, so a chat-only
+    /// merge is exactly the pre-U7 chat list.
+    private static func mergedInPageOrder(_ lhs: [Item], _ rhs: [Item]) -> [Item] {
+        (lhs + rhs).sorted { a, b in
+            if a.memory.updatedAt == b.memory.updatedAt { return a.id < b.id }
+            return a.memory.updatedAt > b.memory.updatedAt
+        }
+    }
+
     private func loadBucket(
+        sourceKinds: Set<MemorySourceKind>,
         includeQuarantined: Bool,
         keep status: MemoryReviewStatus
     ) async throws -> [Item] {
@@ -143,7 +243,7 @@ final class MemoryReviewInboxModel {
                 pageSize: pageSize,
                 includeQuarantined: includeQuarantined
             )
-            let page = try await loadPage(request)
+            let page = try await loadPage(request, sourceKinds)
             guard page.items.isEmpty == false else { break }
 
             for memory in page.items where memory.reviewStatus == status {

@@ -17,10 +17,10 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
 
     // MARK: - Migrator wiring
 
-    func test_migrator_latestIdentifier_isV60BillingKind() {
+    func test_migrator_latestIdentifier_isV61UsageMemory() {
         XCTAssertEqual(
             OpenBurnBarDatabase.latestMigrationIdentifier,
-            "v60_billing_kind"
+            "v61_usage_memory"
         )
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v56_parser_checkpoint_file_manifest"),
@@ -41,6 +41,10 @@ final class OpenBurnBarDataFTSRowidMigrationTests: XCTestCase {
         XCTAssertTrue(
             OpenBurnBarDatabase.migrator.migrations.contains("v60_billing_kind"),
             "registerBillingKindMigration must be wired into the migrator"
+        )
+        XCTAssertTrue(
+            OpenBurnBarDatabase.migrator.migrations.contains("v61_usage_memory"),
+            "registerUsageMemoryMigration must be wired into the migrator"
         )
     }
 

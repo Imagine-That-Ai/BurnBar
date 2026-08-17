@@ -321,8 +321,10 @@ def validate_cloud_run(text: str) -> None:
 
     for marker in (
         "tag_ref=\"refs/tags/${TAG}\"",
-        'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
-        "production credentials stay tag-bound",
+        'if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/main" || "$REF_NAME" != "main" ]]; then',
+        "tag-selected dispatches and reruns are forbidden",
+        'if [[ "$EVENT_NAME" != "push" || "$GITHUB_REF" != "$tag_ref" ]]; then',
+        '--control-sha "$GITHUB_SHA"',
         "git fetch --force --tags origin \"+${tag_ref}:${tag_ref}\"",
         "git merge-base --is-ancestor \"$commit\" origin/main",
         "[[ ! \"$TAG\" =~ ^v[0-9]{1,3}\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$ ]]",
@@ -449,17 +451,16 @@ def validate_production_functions(text: str) -> None:
         return
 
     for marker in (
-        "inputs.domain_core_profile == 'public-production-rollback'",
+        "needs: prepare-functions-deploy",
+        "needs.prepare-functions-deploy.result == 'success'",
+        "needs.prepare-functions-deploy.outputs.dry_run != 'true'",
+        "needs.prepare-functions-deploy.outputs.domain_core_profile == 'public-production-rollback'",
         "environment: domain-core-promotion",
     ):
         if marker not in authorization_job:
             fail(f"{path} rollback authorization job is missing {marker!r}")
-    for marker in (
-        "needs: authorize-domain-core-rollback",
-        "needs.authorize-domain-core-rollback.result == 'success'",
-    ):
-        if marker not in prepare_job:
-            fail(f"{path} prepare-functions-deploy is missing rollback routing marker {marker!r}")
+    if "needs: authorize-domain-core-rollback" in prepare_job:
+        fail(f"{path} prepare-functions-deploy must run before protected rollback authorization")
     for marker in (
         "default: public-production",
         "- public-production",
@@ -472,9 +473,12 @@ def validate_production_functions(text: str) -> None:
         "EVENT_NAME: ${{ github.event_name }}",
         "INPUT_TAG: ${{ inputs.tag }}",
         "INPUT_DRY_RUN: ${{ inputs.dry_run }}",
+        "INPUT_EXISTING_TAG_RETRY: ${{ inputs.existing_tag_retry }}",
         'tag_ref="refs/tags/${TAG}"',
-        'if [[ "$EVENT_NAME" == "workflow_dispatch" && "${GITHUB_REF}" != "$tag_ref" ]]; then',
-        "production credentials stay tag-bound",
+        'if [[ "$EVENT_NAME" != "workflow_dispatch" || "$GITHUB_REF" != "refs/heads/main" || "$REF_NAME" != "main" ]]; then',
+        "tag-selected dispatches and reruns are forbidden",
+        'if [[ "$EVENT_NAME" != "push" || "$GITHUB_REF" != "$tag_ref" ]]; then',
+        '--control-sha "$GITHUB_SHA"',
         'git fetch --force --tags origin "+${tag_ref}:${tag_ref}"',
         'git fetch --force origin "+refs/heads/main:refs/remotes/origin/main"',
         'git rev-list -n 1 "${tag_ref}^{commit}"',
@@ -497,7 +501,8 @@ def validate_production_functions(text: str) -> None:
             fail(f"{path} prepare-functions-deploy must not contain {forbidden!r}")
 
     for marker in (
-        "needs: prepare-functions-deploy",
+        "needs: [prepare-functions-deploy, authorize-domain-core-rollback]",
+        "needs.authorize-domain-core-rollback.result == 'success'",
         "environment: production",
         "id-token: write",
         "actions/download-artifact@",

@@ -12,8 +12,6 @@
     "Analyze (python)",
     "Android PR Gate",
     "Android ktlint",
-    "App build + test (AgentLens)",
-    "Mobile build + unit test",
     "Automated Code Review",
     "BurnBar AGPL product posture",
     "Console (lint + types + tests + build)",

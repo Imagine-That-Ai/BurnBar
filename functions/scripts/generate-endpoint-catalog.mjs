@@ -33,6 +33,27 @@ function exportedNames() {
 
 /** Endpoint-specific overrides merged onto scaffold defaults during regeneration. */
 const CATALOG_OVERRIDES = {
+  curateUsageMemoryBatch: {
+    trigger: "callable",
+    authMethod: "Firebase Auth with lane-scoped BurnBar Pro / Pro Max entitlement gates",
+    appCheck: "required",
+    tenantSource: "request.auth.uid",
+    objectIdsFromClient: [],
+    ownershipCheck:
+      "handler derives uid from request.auth.uid only; the allowance ledger and reservation paths are built server-side from that uid and candidate payloads carry no cross-tenant object ids",
+    handlerModule: "callables/usageCuration.ts",
+    bolaCoverage: [
+      {
+        file: "functions/src/__tests__/bola/authOnly.bola.test.ts",
+        test: "rejects unauthenticated callable access",
+        kind: "auth-only",
+        covers: ["curateUsageMemoryBatch"],
+        expectedOutcome: "throws",
+        expectedCode: "unauthenticated",
+      },
+    ],
+    highRiskComputerUse: false,
+  },
   googlePlayDeveloperNotifications: {
     trigger: "pubsub-trigger",
     authMethod: "Google Cloud Pub/Sub topic IAM and Firebase Functions platform delivery",

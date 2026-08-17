@@ -12,6 +12,40 @@ extension ControlPlaneStore {
         let body: String
         let citations: [MemoryCitation]
         let createdAt: Date
+        /// One situating sentence produced by usage-memory extraction (A-MEM
+        /// atomic-note shape). Absent on schemaVersion 1 (all chat snapshots).
+        var context: String?
+    }
+
+    /// Storage partition for the `project_id` bucket when the scope has no
+    /// explicit project. Chat keeps its shipped `chat:` prefix byte-identical;
+    /// both usage kinds share `usage:` so cross-source dedup and corroboration
+    /// happen inside the existing project-scoped queries.
+    enum MemoryStoragePartition: String {
+        case chat
+        case usage
+
+        init(_ sourceKind: MemorySourceKind) {
+            self = MemorySourceKind.usageKinds.contains(sourceKind) ? .usage : .chat
+        }
+
+        init(_ sourceKinds: Set<MemorySourceKind>) {
+            let isUsage = sourceKinds.isEmpty == false
+                && sourceKinds.isSubset(of: MemorySourceKind.usageKinds)
+            self = isUsage ? .usage : .chat
+        }
+    }
+
+    /// Split a mixed kind set into per-partition subsets so partition-scoped
+    /// queries (whose `project_id` bucket differs per partition) can run once
+    /// per partition and union the results. Chat-partition kinds come first so
+    /// the fetch order is deterministic; `[.chat]` yields exactly `[[.chat]]`.
+    static func memoryPartitionedSourceKinds(
+        _ kinds: Set<MemorySourceKind>
+    ) -> [Set<MemorySourceKind>] {
+        let usage = kinds.intersection(MemorySourceKind.usageKinds)
+        let chatLike = kinds.subtracting(MemorySourceKind.usageKinds)
+        return [chatLike, usage].filter { $0.isEmpty == false }
     }
 
     static func memorySnapshotSlug(_ id: MemoryID) -> String {
@@ -22,8 +56,33 @@ extension ControlPlaneStore {
         "memory_body_snapshots:\(slug)"
     }
 
-    static func memoryStorageProjectID(for scope: MemoryScope) -> String {
-        scope.projectID ?? "chat:\(scope.userID ?? scope.appID ?? "unscoped")"
+    static func memoryStorageProjectID(
+        for scope: MemoryScope,
+        partition: MemoryStoragePartition = .chat
+    ) -> String {
+        scope.projectID ?? "\(partition.rawValue):\(scope.userID ?? scope.appID ?? "unscoped")"
+    }
+
+    /// `memory_provenance.source_kind` value for citations written through the
+    /// authority add path. `.code` is unreachable here — the daemon owns code
+    /// writes through its own store and never calls this method.
+    static func memoryProvenanceSourceKind(for sourceKind: MemorySourceKind) -> MemoryProvenanceSourceKind {
+        switch sourceKind {
+        case .safariAsk: .safariAsk
+        case .agentSession: .agentSessionEvent
+        case .chat, .code: .chatMessage
+        }
+    }
+
+    /// Deterministic `source_kind IN (…)` fragment (kinds sorted by raw value
+    /// so the SQL text is stable for tests and plan caches).
+    static func memorySourceKindInClause(
+        column: String,
+        kinds: Set<MemorySourceKind>
+    ) -> (sql: String, arguments: [String]) {
+        let ordered = kinds.map(\.rawValue).sorted()
+        let placeholders = Array(repeating: "?", count: max(1, ordered.count)).joined(separator: ", ")
+        return ("\(column) IN (\(placeholders))", ordered)
     }
 
     /// Internal shim exposed for `MemoryExtractionWorker` (which lives outside the extension
@@ -47,18 +106,24 @@ extension ControlPlaneStore {
         body: String,
         bodyHash: String,
         citations: [MemoryCitation],
-        createdAt: Date
+        createdAt: Date,
+        sourceKind: MemorySourceKind = .chat,
+        context: String? = nil
     ) throws -> String {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
+        // schemaVersion 1 stays byte-identical for every chat snapshot (no
+        // `context` key is emitted for nil); version 2 exists only when a
+        // usage extraction supplies a context sentence.
         let payload = MemoryBodySnapshot(
-            schemaVersion: 1,
+            schemaVersion: context == nil ? 1 : 2,
             memoryID: memoryID,
-            sourceKind: .chat,
+            sourceKind: sourceKind,
             bodyHash: bodyHash,
             body: body,
             citations: citations,
-            createdAt: createdAt
+            createdAt: createdAt,
+            context: context
         )
         let data = try encoder.encode(payload)
         guard let json = String(data: data, encoding: .utf8) else {
@@ -205,23 +270,48 @@ extension ControlPlaneStore {
         scope: MemoryScope,
         excludingID: MemoryID
     ) throws -> [Row] {
+        try memoryDuplicateCandidates(
+            db: db,
+            bodyHash: bodyHash,
+            storageProjectID: storageProjectID,
+            kind: kind,
+            scope: scope,
+            excludingID: excludingID,
+            sourceKinds: [.chat]
+        )
+    }
+
+    /// Exact-hash duplicate lookup within one storage partition. `sourceKinds`
+    /// is a set so the two usage kinds dedup against each other (they share the
+    /// `usage:` partition); chat passes `[.chat]` and behaves as before.
+    static func memoryDuplicateCandidates(
+        db: Database,
+        bodyHash: String,
+        storageProjectID: String,
+        kind: MemoryKind,
+        scope: MemoryScope,
+        excludingID: MemoryID,
+        sourceKinds: Set<MemorySourceKind>
+    ) throws -> [Row] {
+        let memoryKindClause = memorySourceKindInClause(column: "m.source_kind", kinds: sourceKinds)
+        let snapshotKindClause = memorySourceKindInClause(column: "s.source_kind", kinds: sourceKinds)
         var predicates = [
-            "m.source_kind = ?",
+            memoryKindClause.sql,
             "m.kind = ?",
             "m.project_id = ?",
             "m.id <> ?",
             "m.valid_to IS NULL",
             "s.body_hash = ?",
-            "s.source_kind = ?"
+            snapshotKindClause.sql
         ]
-        var arguments: [any DatabaseValueConvertible] = [
-            MemorySourceKind.chat.rawValue,
+        var arguments: [any DatabaseValueConvertible] = memoryKindClause.arguments
+        arguments.append(contentsOf: [
             kind.rawValue,
             storageProjectID,
             excludingID,
-            bodyHash,
-            MemorySourceKind.chat.rawValue
-        ]
+            bodyHash
+        ] as [any DatabaseValueConvertible])
+        arguments.append(contentsOf: snapshotKindClause.arguments)
         appendScopePredicates(scope, tableAlias: "m", to: &predicates, arguments: &arguments)
 
         return try Row.fetchAll(
@@ -289,12 +379,42 @@ extension ControlPlaneStore {
         now: Date,
         nowString: String
     ) throws {
+        try mergeDuplicateMemories(
+            db: db,
+            duplicateRows: duplicateRows,
+            newID: newID,
+            winnerID: winnerID,
+            storageProjectID: storageProjectID,
+            sourceKinds: [.chat],
+            now: now,
+            nowString: nowString
+        )
+    }
+
+    /// Supersede exact-duplicate losers inside one partition. The audit
+    /// `source_kind` label joins the sorted raw values of `sourceKinds` — for
+    /// chat that is the shipped `chat` label byte-for-byte; a cross-kind usage
+    /// merge is labeled `agent_session,safari_ask` deterministically.
+    static func mergeDuplicateMemories(
+        db: Database,
+        duplicateRows: [Row],
+        newID: MemoryID,
+        winnerID: MemoryID,
+        storageProjectID: String,
+        sourceKinds: Set<MemorySourceKind>,
+        now: Date,
+        nowString: String
+    ) throws {
         guard duplicateRows.isEmpty == false else { return }
         let duplicateIDs: [MemoryID] = duplicateRows.compactMap { row in row["id"] }
         let loserIDs = (duplicateIDs + [newID]).filter { $0 != winnerID }.uniqued()
         guard loserIDs.isEmpty == false else { return }
 
+        let kindClause = memorySourceKindInClause(column: "source_kind", kinds: sourceKinds)
+        let auditSourceKindLabel = sourceKinds.map(\.rawValue).sorted().joined(separator: ",")
         for loserID in loserIDs {
+            var arguments: [any DatabaseValueConvertible] = [now, winnerID, now, loserID]
+            arguments.append(contentsOf: kindClause.arguments)
             try db.execute(
                 sql: """
                 UPDATE agent_memories
@@ -302,14 +422,14 @@ extension ControlPlaneStore {
                     superseded_by = ?,
                     updated_at = ?
                 WHERE id = ?
-                  AND source_kind = ?
+                  AND \(kindClause.sql)
                 """,
-                arguments: [now, winnerID, now, loserID, MemorySourceKind.chat.rawValue]
+                arguments: StatementArguments(arguments)
             )
             try copyMemoryProvenance(db: db, from: loserID, to: winnerID, now: now)
             let auditLabels = [
                 "reason:duplicate_body_hash",
-                "source_kind:\(MemorySourceKind.chat.rawValue)",
+                "source_kind:\(auditSourceKindLabel)",
                 "winner_id:\(winnerID)"
             ]
             try insertMemoryAuditEvent(
@@ -325,7 +445,7 @@ extension ControlPlaneStore {
         let mergeLabels = [
             "merged_ids:\(loserIDs.joined(separator: ","))",
             "reason:duplicate_body_hash",
-            "source_kind:\(MemorySourceKind.chat.rawValue)",
+            "source_kind:\(auditSourceKindLabel)",
             "winner_id:\(winnerID)"
         ]
         try insertMemoryAuditEvent(

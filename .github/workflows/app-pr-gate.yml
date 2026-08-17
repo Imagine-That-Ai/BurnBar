@@ -1,60 +1,67 @@
 name: App PR Gate (Swift)
 
-# Merge-blocking lane for the macOS AgentLens APP target (and the app-linked
-# OpenBurnBarCore/CloudSync/memory surfaces it compiles). The full Swift XCTest
-# corpus runs post-merge/nightly in openburnbar-pr-harness.yml. This PR lane
-# builds the entire app target, runs the real-process performance gate, and
-# executes the bounded release smoke catalog so app compile errors and the most
-# important app-host regressions cannot merge without making every PR wait on
-# the 3,000+ test corpus.
+# Post-merge / nightly AgentLens + mobile compile proof. This is intentionally
+# not a pull_request wall: hosted macos-26 App builds were 53–69 minutes and
+# made Alberto's 5–10 minute merge door impossible. Fast Feedback plus the
+# ten required security/quality contexts remain the PR merge door.
 #
-# The exact required context is emitted by the always-running aggregate below.
-# The aggregate accepts only successful AgentLens and mobile prerequisite jobs;
-# a missing, skipped, cancelled, or failed prerequisite therefore blocks merge.
+# Real work (macos-26 AgentLens CPU gate + bounded smoke, plus the mobile
+# compile/unit-test gate) runs on:
+#   - push to main (every merge; classifier still selects macos/mobile)
+#   - nightly cron (forced full lanes so a quiet day cannot hide a red app)
+#   - workflow_dispatch (on-demand SHA proof)
 #
-# mobile-build-gate (added 2026-07-07): the same gap existed for the iOS app —
-# PR CI compiled macOS + SwiftPM but never the OpenBurnBarMobile target, so
-# three mobile-only compile breaks reached main in one day during the audit
-# remediation (cross-type private logger access, duplicate DEBUG `line` local;
-# hotfixes #1358/#1378). This lane compiles the mobile app + unit-test bundle
-# (build-for-testing, no test execution — the full mobile XCTest suite stays
-# post-merge in openburnbar-pr-harness.yml for velocity) so an iOS compile
-# error cannot merge again.
+# merge_group stays only so a stale base-SHA BurnBar CI Gate inventory that
+# still lists `App build + test (AgentLens)` / `Mobile build + unit test`
+# observes skipped receipts instead of hanging the queue. Every job below
+# skips on merge_group. Fake-green success without a build is not emitted.
+# The full Swift XCTest corpus stays in openburnbar-pr-harness.yml.
 
 permissions:
   contents: read
 
 on:
-  pull_request:
+  push:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  schedule:
+    # 09:17 UTC. After the 08:37 full harness so macos-26 runners are not
+    # double-booked at the top of the hour.
+    - cron: "17 9 * * *"
+  workflow_dispatch:
   merge_group:
     branches: [main]
     types: [checks_requested]
 
+# Push runs are the exact-main product proof: key them by commit and never
+# cancel them. A later docs-only (or any) main push must not share
+# `app-pr-gate-push-refs/heads/main` and evict a 53–69 minute AgentLens run;
+# the replacement would classify only its own before..after diff and skip
+# macos/mobile. GitHub also evicts a *pending* run when two jobs share a
+# group, even with cancel-in-progress false, so push groups include the SHA.
 concurrency:
-  group: app-pr-gate-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: app-pr-gate-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   classify:
+    if: github.event_name != 'merge_group'
     uses: ./.github/workflows/ci-impact.yml
 
   app-build-test:
     name: AgentLens Rust + Swift build/test prerequisites
-    # Routing (cost + security): pull-request and merge-queue candidates may both
-    # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
+    # Routing (cost + security): post-merge main is trusted, but this lane still
+    # uses the isolated hosted macOS pools so MACOS_GATE_POOL / CI_POOL policy
+    # stays unchanged. Set repo var MACOS_GATE_POOL=paid to force the capped
+    # hosted pool for a billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Cold cache + libsignal FFI + the full app build and bounded smoke catalog
     # routinely take ~55–70 minutes on macos-26 hosted runners (CPU budget gate
-    # alone can take ~30m). Keep a 90m ceiling so the merge-blocking lane does
+    # alone can take ~30m). Keep a 90m ceiling so a post-merge/nightly run does
     # not cancel mid-smoke. The full XCTest corpus belongs to the
     # post-merge/nightly harness, not this lane.
     timeout-minutes: 90
     needs: classify
-    if: needs.classify.outputs.macos == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: github.event_name != 'merge_group' && needs.classify.outputs.macos == 'true'
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -198,10 +205,10 @@ jobs:
 
   mobile-build-gate:
     name: Mobile build + unit test
-    # Routing (cost + security): pull-request and merge-queue candidates may both
-    # contain untrusted PR code, so they run only on isolated hosted macOS pools.
-    # Set repo var MACOS_GATE_POOL=paid to force the capped hosted pool for a
-    # billed fast burst.
+    # Routing (cost + security): post-merge main is trusted, but this lane still
+    # uses the isolated hosted macOS pools so MACOS_GATE_POOL / CI_POOL policy
+    # stays unchanged. Set repo var MACOS_GATE_POOL=paid to force the capped
+    # hosted pool for a billed fast burst.
     runs-on: ${{ vars.MACOS_GATE_POOL == 'fleet' && fromJSON('["self-hosted","macOS","burnbar-swift"]') || vars.MACOS_GATE_POOL == 'paid' && fromJSON('{"group":"burnbar-ci-paid"}') || 'macos-26' }}
     # Compile + unit test execution: Signal FFI + full mobile app-and-tests
     # compile, THEN run the unit-test bundle on a booted simulator.
@@ -214,7 +221,7 @@ jobs:
     # The 120-min cap covers a cold SPM cache + FFI build + focused tests.
     timeout-minutes: 120
     needs: classify
-    if: needs.classify.outputs.mobile == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    if: github.event_name != 'merge_group' && needs.classify.outputs.mobile == 'true'
     steps:
       - name: Check out repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1 (node24-native; June 16 forced-runtime fuse)
@@ -333,7 +340,7 @@ jobs:
       - mobile-build-gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: always()
+    if: always() && github.event_name != 'merge_group'
     steps:
       - name: Require every Rust and Swift prerequisite job
         env:

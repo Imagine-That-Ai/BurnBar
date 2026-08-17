@@ -336,12 +336,6 @@ struct SettingsHubView: View {
                 } header: { groupHeader("AI Environments") }
 
                 Section {
-                    MissionFABResurrectToggle()
-                } header: { groupHeader("Experimental") } footer: {
-                    Text("The Mission Console orb toggle controls the floating action button. The orb auto-restores when an approval is waiting or a mission fails, regardless of this setting.")
-                }
-
-                Section {
                     AnalyticsSettingsToggle()
                         .tint(MobileTheme.ember)
                 } header: { groupHeader("Privacy") } footer: {

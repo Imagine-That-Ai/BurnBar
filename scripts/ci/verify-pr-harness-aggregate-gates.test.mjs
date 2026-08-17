@@ -356,7 +356,7 @@ check("App aggregate emits its exact required context once and binds both prereq
     1,
   );
   assert.deepEqual(jobNeeds(appGate), ["classify", "app-build-test", "mobile-build-gate"]);
-  assert.equal(jobField(appGate, "if"), "always()");
+  assert.equal(jobField(appGate, "if"), "always() && github.event_name != 'merge_group'");
   assert.deepEqual(stepEnvironment(appStep), {
     AGENTLENS_RESULT: "${{ needs.app-build-test.result }}",
     MOBILE_RESULT: "${{ needs.mobile-build-gate.result }}",
@@ -742,7 +742,14 @@ check("desired main branch protection keeps immutable security checks beside the
   assert.equal(protection.required_pull_request_reviews.require_code_owner_reviews, true);
   assert.equal(protection.required_pull_request_reviews.dismiss_stale_reviews, true);
   assert.equal(protection.required_pull_request_reviews.require_last_push_approval, true);
-  assert.ok(gate.required_contexts.includes("Mobile build + unit test"));
+  assert.ok(
+    !gate.required_contexts.includes("App build + test (AgentLens)"),
+    "merge_group full set must not wait on post-merge AgentLens",
+  );
+  assert.ok(
+    !gate.required_contexts.includes("Mobile build + unit test"),
+    "merge_group full set must not wait on post-merge mobile",
+  );
   assert.ok(
     gate.required_contexts.includes("Domain Core PR Gate"),
     "merge_group full set must keep Domain Core PR Gate",
@@ -778,6 +785,54 @@ check("desired main branch protection keeps immutable security checks beside the
     /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.event\.merge_group\.base_sha \|\| github\.sha \}\}/,
   );
   assert.match(umbrella, /persist-credentials: false/);
+});
+
+function workflowOn(source) {
+  const match = /^on:\n([\s\S]*?)^(?:permissions|concurrency|jobs|env|defaults):/mu.exec(
+    source,
+  );
+  assert.ok(match, "missing workflow on: block");
+  return match[1];
+}
+
+check("App and Headless AgentLens builds are post-merge/nightly, not PR walls", () => {
+  const appOn = workflowOn(appWorkflow);
+  const headlessSource = readFileSync(join(REPO_ROOT, HEADLESS_WORKFLOW), "utf8");
+  const headlessOn = workflowOn(headlessSource);
+
+  assert.doesNotMatch(appOn, /^  pull_request:\s*$/mu);
+  assert.doesNotMatch(headlessOn, /^  pull_request:\s*$/mu);
+  assert.doesNotMatch(headlessOn, /^  merge_group:\s*$/mu);
+  assert.match(appOn, /^  push:\s*$/mu);
+  assert.match(appOn, /^  schedule:\s*$/mu);
+  assert.match(appOn, /^  workflow_dispatch:\s*$/mu);
+  assert.match(headlessOn, /^  push:\s*$/mu);
+  assert.match(headlessOn, /^  schedule:\s*$/mu);
+  assert.match(headlessOn, /^  workflow_dispatch:\s*$/mu);
+
+  const classify = workflowJob(appWorkflow, "classify");
+  const appBuild = workflowJob(appWorkflow, "app-build-test");
+  const mobile = workflowJob(appWorkflow, "mobile-build-gate");
+  assert.match(jobField(classify, "if"), /github\.event_name != 'merge_group'/u);
+  assert.match(jobField(appBuild, "if"), /github\.event_name != 'merge_group'/u);
+  assert.match(jobField(mobile, "if"), /github\.event_name != 'merge_group'/u);
+
+  assert.match(
+    appWorkflow,
+    /group: app-pr-gate-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'push' && github\.sha \|\| github\.ref \}\}/u,
+  );
+  assert.match(
+    appWorkflow,
+    /cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/u,
+  );
+  assert.match(
+    headlessSource,
+    /group: headless-app-build-\$\{\{ github\.event_name \}\}-\$\{\{ github\.event_name == 'push' && github\.sha \|\| github\.ref \}\}/u,
+  );
+  assert.match(
+    headlessSource,
+    /cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/u,
+  );
 });
 
 check("macOS gates never run pull-request or merge-group code on persistent self-hosted runners", () => {
