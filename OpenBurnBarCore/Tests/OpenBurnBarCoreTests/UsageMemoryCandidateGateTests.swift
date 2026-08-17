@@ -95,7 +95,8 @@ final class UsageMemoryCandidateGateTests: XCTestCase {
         guard case .accept(let salience) = UsageMemoryCandidateGate.evaluate(
             input("How do I pin a GRDB migration to a version?")
         ) else {
-            return XCTFail("Expected accept")
+            XCTFail("Expected accept")
+            return
         }
         XCTAssertGreaterThanOrEqual(salience, UsageMemoryCurationPolicy.defaults.thresholds.accept)
     }
@@ -108,7 +109,8 @@ final class UsageMemoryCandidateGateTests: XCTestCase {
                 input("No, I meant the SQLCipher database, not the cache.")
             )
         else {
-            return XCTFail("Expected accepts")
+            XCTFail("Expected accepts")
+            return
         }
         XCTAssertGreaterThan(correction, question)
     }
@@ -117,7 +119,8 @@ final class UsageMemoryCandidateGateTests: XCTestCase {
         guard case .accept = UsageMemoryCandidateGate.evaluate(
             input("I prefer dark mode in every editor I use.")
         ) else {
-            return XCTFail("Expected accept")
+            XCTFail("Expected accept")
+            return
         }
     }
 
@@ -132,7 +135,8 @@ final class UsageMemoryCandidateGateTests: XCTestCase {
         guard case .accept(let baseScore) = base,
               case .accept(let boostedScore) = boosted,
               case .accept(let saturatedScore) = saturated else {
-            return XCTFail("Expected accepts")
+            XCTFail("Expected accepts")
+            return
         }
         XCTAssertGreaterThan(boostedScore, baseScore)
         let cap = UsageMemoryCurationPolicy.defaults.salience.repetitionCap
@@ -147,7 +151,8 @@ final class UsageMemoryCandidateGateTests: XCTestCase {
                 role: "workflow"
             )
         ) else {
-            return XCTFail("Expected accept")
+            XCTFail("Expected accept")
+            return
         }
     }
 
@@ -158,7 +163,8 @@ final class UsageMemoryCandidateGateTests: XCTestCase {
                 repetitionCount: 10
             )
         ) else {
-            return XCTFail("Expected accept")
+            XCTFail("Expected accept")
+            return
         }
         XCTAssertLessThanOrEqual(salience, 1.0)
     }

@@ -27,13 +27,14 @@ jobs:
   burnbar-ci-gate:
     name: BurnBar CI Gate
     runs-on: ubuntu-latest
-    # The required AgentLens suite is allowed 240 minutes on a cold hosted
-    # runner, and its timeout clock starts only when the job leaves the runner
-    # queue, which can lag this umbrella's start under dependency and macOS
-    # runner contention. The evaluator re-anchors its deadline to the observed
-    # component start (component_runtime_budget_minutes in
+    # Remaining merge-queue walls (Domain Core, Daemon, Android, Windows)
+    # are allowed 240 minutes of observed runtime on a cold hosted runner,
+    # and a component's timeout clock starts only when it leaves the runner
+    # queue. The evaluator re-anchors its deadline to the observed component
+    # start (component_runtime_budget_minutes in
     # governance/burnbar-ci-gate.json), so this job cap funds that queueing
     # skew while remaining below the 300-minute merge queue response timeout.
+    # AgentLens / Headless are post-merge/nightly and are not in this inventory.
     timeout-minutes: 295
     if: (github.event_name != 'pull_request' && github.event_name != 'pull_request_target') || github.event.pull_request.draft == false
     steps:
@@ -56,7 +57,8 @@ jobs:
           [[ "$BURNBAR_CI_SHA" =~ ^[0-9a-f]{40}$ ]]
           # Fast-gate split: PR eligibility polls the fast set (no Swift/mobile/
           # Windows walls, ~10 min); merge_group candidates still fail-closed on
-          # the full set. Both configs are read from the trusted base-SHA tree.
+          # the full set minus App/Headless (those builds are post-merge/nightly).
+          # Both configs are read from the trusted base-SHA tree.
           CONFIG=governance/burnbar-ci-gate.json
           if [[ "$GITHUB_EVENT_NAME" == pull_request* ]]; then
             CONFIG=governance/burnbar-ci-gate.fast.json

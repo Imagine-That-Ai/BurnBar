@@ -99,6 +99,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the copy into a ~150px column at phone widths; the banner now stacks
   (text full-width, buttons on their own row) below sm.
 
+### Fixed - CI impact: Node Signal contracts lockfile no longer wakes macOS
+- `packages/signal-envelope-contracts` `package.json` / lockfile changes used
+  to match the catch-all npm `FULL_PATTERNS` and force every product lane,
+  including App PR Gate. That burned ~90 minutes of macos-26 rebuilding
+  libsignal FFI for a Node eslint bump, then cancelled at the job ceiling
+  (BurnBar #2247). Those two npm manifests now select the functions lane
+  only; other files under the package stay fail-closed. Fast Feedback still
+  runs the contracts tests. Other `packages/*` lockfiles stay fail-closed
+  full.
+
+### Changed - App PR Gate and Headless leave the PR / merge-queue path
+- **AgentLens macos-26 App PR Gate and Headless App Build no longer run on
+  `pull_request`.** Fast Feedback plus the ten required security/quality
+  contexts remain the merge door. Merge-queue ALLGREEN no longer waits 53–69
+  minutes (App) or 21–30 minutes (Headless) on hosted macos-26.
+- **The builds stay real.** App PR Gate runs on push to `main`, nightly at
+  09:17 UTC, and `workflow_dispatch`. Headless runs on path-filtered push to
+  `main`, nightly at 10:47 UTC, and `workflow_dispatch`. A broken AgentLens
+  graph is visible after merge, not silent.
+- **`merge_group` on App PR Gate emits skipped receipts only** so a stale
+  base-SHA BurnBar CI Gate inventory cannot hang the queue. macos-26 jobs do
+  not run on that path. Headless has no `merge_group` trigger.
+- **BurnBar CI Gate's merge-queue inventory no longer lists**
+  `App build + test (AgentLens)` or `Mobile build + unit test`. The ten
+  required branch-protection contexts are unchanged. `CI_POOL` /
+  `MACOS_GATE_POOL` are unchanged.
+- **Domain Core control-plane trusted bytes refreshed** for the two files
+  that inventory change actually edited (`burnbar-ci-gate.yml` and
+  `governance/burnbar-ci-gate.json`). Promotion-contracts still fail closed
+  on helper drift, omitted workflow executables, loaded-identity forgery,
+  Firebase CLI shim swaps, and symlink escapes.
+- **Post-merge App/Headless push proofs are keyed by SHA and never
+  cancelled.** A later docs-only (or any) `main` push cannot evict an
+  in-flight AgentLens/mobile or headless graph proof; the replacement
+  classifier would otherwise skip macos/mobile until nightly.
+
+### Added - Metered usage-memory curation gateway (U4)
+- **`curateUsageMemoryBatch` Cloud Functions callable**: entitlement-gated,
+  token-metered gateway for cloud usage-memory curation inference
+  (text lane = any active Pro on deepseek-v4-flash; multimodal lane =
+  Pro Max/Ultra on minimax-m3). Reserve-before-spend / settle-to-actual
+  Firestore ledger with monthly + daily lane meters, Remote Config-tunable
+  limits, and a `usage_curation_enabled` kill flag. Every request pins
+  OpenRouter routing to CoreWeave (US) with fallbacks disabled, provider
+  data collection denied, and ZDR required; candidate text rides inside an
+  untrusted-data fence with fence-marker neutralization. See
+  `docs/USAGE_CURATION_METERING.md`.
+
+### Changed - Approved first-run + homepage copy
+- Homepage hero now uses Alberto-approved copy: **Watch your agents. Before the
+  bill.** plus the locked receipt subhead, the real `/brand/logo-*.png` mark, and
+  **Download for Mac — {shipping version}**.
+- macOS first-launch popover (`OnboardingView`) uses the real `AppLogo` brand
+  mark and the locked tip copy: **Look up. That's the app.** / menu-bar receipt /
+  Claude or Codex / **Got it**.
+
+### Added - Spend provenance: real API dollars vs subscription value
+- **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
+  across the macOS/Windows/Linux migrators with deterministic backfill): `api`
+  (per-token dollars leaving a wallet — deepseek, OpenRouter, gateway keys,
+  billing APIs), `subscription` (imputed list-price value of plan-covered
+  harness work — Claude Code on Max, Codex, Cursor, Copilot…), or an honest
+  `unknown` bucket that is never silently folded into either side.
+- **Spend Lens on the burn chart**: liquid-glass `All / Split / Overlay`
+  capsule. Split shows real dollars and plan value side by side; Overlay
+  breaks both out on one shared axis (ember = money, glacier = plan).
+  Persisted per user.
+- **The AI Inbox daily budget now guards real dollars only**: subscription-
+  routed model calls no longer consume `dailyBudgetUSD` (opt back in with the
+  new "Count subscription spend" setting). Budget/status copy stops saying
+  "no model calls" when it means "rule-based fallback".
+
+### Added - AI Inbox Founder Lens: judgment packs, replies, and compounding plans
+- **Founder Lens judgment layer** (`BurnBarFounderLens`): engOps and
+  productStrategy packs distilled from real founder/VC/engineering doctrine
+  (gstack, YC, a16z, Sequoia, Horowitz, 2026 agent-readiness practice) as
+  snapshot-tested code constants — the zero-egress rule-based path carries
+  the same judgment as the model path. Voice ban list enforced by tests;
+  `lens:vN` stamped into item provenance.
+- **NextMoveRouter** (Swift-only): every substantive item ends with exactly
+  one primary next move; refuted/unclear findings lose theirs. Models never
+  author actions.
+- **Reply threads** (`daemon.inbox.thread.get` / `daemon.inbox.reply`): keyed
+  by condition fingerprint so conversations survive item resolve/reopen
+  churn. Fail-closed gate order: feature switches → egress guard → daily
+  budget → NEW per-reply budget (`perReplyBudgetUSD`, default $0.10) → G8
+  `LLMSafeContent` fences on every untrusted surface. Refusals are stated
+  reasons, never silent drops; reply spend lands in the authoritative usage
+  ledger.
+- **Founder Plan Ledger** (migration `v59_founder_lens`): accepted
+  suggestions become durable plans/steps with lifecycle, append-only audit
+  events, and grades (terminal outcomes auto-seed; explicit grades
+  override). Accept/update/grade are human-confirmed config-capability RPCs;
+  the analyst/reply model can only propose.
+- **Execution spine reuse**: Promote to mission (`daemon.mission.create`,
+  `recommendation: review`) and follow-up creation bind `mission_id` /
+  `followup_id` back onto plan steps — no second mission system.
+- **Compounding memory**: Remember routes plan steps through the existing
+  quarantine→approve Chat Memory Authority with `ai-inbox:plan:*`
+  provenance; approved snippets are pushed to the daemon
+  (`daemon.inbox.memory.export`, full-set replacement so revocations
+  propagate by omission) and re-enter every analyst/reply prompt as fenced
+  "standing commitments". Pensieve `chat_memory` sync stays gated on
+  approved + provenance + Pro Max/Ultra.
+- **Mac UI**: Discuss section on item detail (thread, composer, refusal
+  explanations, Accept-into-plan cards with provenance badges).
+- **MCP**: read-only `burnbar_inbox_plans_list` / `burnbar_inbox_plans_get`
+  (fenced, trust-signaled; deliberately no write tool).
+- Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
+
+## [1.0.34] - 2026-08-15
+
 ### Changed - Instant graphics, GRDB, and quota mining
 - **Constellation / logo swarm fills** now batch every live draw path
   (swarm, formed logo, color-driver) by `RGBA.bucketKey` instead of one
@@ -213,70 +325,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `EXPLAIN QUERY PLAN` shows unsynced rows already use
   `token_usage_sync_pending_idx`; no covering-index migration. Production
   `DatabasePool` reader count is 8. Aider stays off `quotaSignalProviders`.
-
-### Changed - Approved first-run + homepage copy
-- Homepage hero now uses Alberto-approved copy: **Watch your agents. Before the
-  bill.** plus the locked receipt subhead, the real `/brand/logo-*.png` mark, and
-  **Download for Mac — {shipping version}**.
-- macOS first-launch popover (`OnboardingView`) uses the real `AppLogo` brand
-  mark and the locked tip copy: **Look up. That's the app.** / menu-bar receipt /
-  Claude or Codex / **Got it**.
-
-### Added - Spend provenance: real API dollars vs subscription value
-- **`billingKind` on every usage row** (migration `v60_billing_kind`, mirrored
-  across the macOS/Windows/Linux migrators with deterministic backfill): `api`
-  (per-token dollars leaving a wallet — deepseek, OpenRouter, gateway keys,
-  billing APIs), `subscription` (imputed list-price value of plan-covered
-  harness work — Claude Code on Max, Codex, Cursor, Copilot…), or an honest
-  `unknown` bucket that is never silently folded into either side.
-- **Spend Lens on the burn chart**: liquid-glass `All / Split / Overlay`
-  capsule. Split shows real dollars and plan value side by side; Overlay
-  breaks both out on one shared axis (ember = money, glacier = plan).
-  Persisted per user.
-- **The AI Inbox daily budget now guards real dollars only**: subscription-
-  routed model calls no longer consume `dailyBudgetUSD` (opt back in with the
-  new "Count subscription spend" setting). Budget/status copy stops saying
-  "no model calls" when it means "rule-based fallback".
-
-### Added - AI Inbox Founder Lens: judgment packs, replies, and compounding plans
-- **Founder Lens judgment layer** (`BurnBarFounderLens`): engOps and
-  productStrategy packs distilled from real founder/VC/engineering doctrine
-  (gstack, YC, a16z, Sequoia, Horowitz, 2026 agent-readiness practice) as
-  snapshot-tested code constants — the zero-egress rule-based path carries
-  the same judgment as the model path. Voice ban list enforced by tests;
-  `lens:vN` stamped into item provenance.
-- **NextMoveRouter** (Swift-only): every substantive item ends with exactly
-  one primary next move; refuted/unclear findings lose theirs. Models never
-  author actions.
-- **Reply threads** (`daemon.inbox.thread.get` / `daemon.inbox.reply`): keyed
-  by condition fingerprint so conversations survive item resolve/reopen
-  churn. Fail-closed gate order: feature switches → egress guard → daily
-  budget → NEW per-reply budget (`perReplyBudgetUSD`, default $0.10) → G8
-  `LLMSafeContent` fences on every untrusted surface. Refusals are stated
-  reasons, never silent drops; reply spend lands in the authoritative usage
-  ledger.
-- **Founder Plan Ledger** (migration `v59_founder_lens`): accepted
-  suggestions become durable plans/steps with lifecycle, append-only audit
-  events, and grades (terminal outcomes auto-seed; explicit grades
-  override). Accept/update/grade are human-confirmed config-capability RPCs;
-  the analyst/reply model can only propose.
-- **Execution spine reuse**: Promote to mission (`daemon.mission.create`,
-  `recommendation: review`) and follow-up creation bind `mission_id` /
-  `followup_id` back onto plan steps — no second mission system.
-- **Compounding memory**: Remember routes plan steps through the existing
-  quarantine→approve Chat Memory Authority with `ai-inbox:plan:*`
-  provenance; approved snippets are pushed to the daemon
-  (`daemon.inbox.memory.export`, full-set replacement so revocations
-  propagate by omission) and re-enter every analyst/reply prompt as fenced
-  "standing commitments". Pensieve `chat_memory` sync stays gated on
-  approved + provenance + Pro Max/Ultra.
-- **Mac UI**: Discuss section on item detail (thread, composer, refusal
-  explanations, Accept-into-plan cards with provenance badges).
-- **MCP**: read-only `burnbar_inbox_plans_list` / `burnbar_inbox_plans_get`
-  (fenced, trust-signaled; deliberately no write tool).
-- Docs: `docs/AI_INBOX_FOUNDER_LENS.md`, `docs/AI_INBOX_FOUNDER_PLANS.md`.
-
-## [1.0.34] - 2026-08-09
 
 ### Fixed - Domain-core protected signer path vs GitHub Actions API
 

@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import re
 import subprocess
@@ -5,6 +6,15 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_release_preflight_module():
+    path = ROOT / "scripts/ci/check_burnbar_release_preflight.py"
+    spec = importlib.util.spec_from_file_location("burnbar_release_preflight_test", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def current_release_tag() -> str:
@@ -70,6 +80,23 @@ def test_current_owner_emergency_packet_is_bound_to_current_release_tag():
     )
 
     assert "owner emergency approval: repo.releaseTag" not in result.stderr
+
+
+def test_owner_emergency_lane_never_claims_normal_release_readiness():
+    module = load_release_preflight_module()
+    stdout_lines, stderr_lines = module.success_posture(
+        source_provenance_only=False,
+        owner_emergency_approval=True,
+        owner_emergency_runtime_hold=True,
+    )
+
+    stdout = "\n".join(stdout_lines)
+    stderr = "\n".join(stderr_lines)
+    assert "emergency artifact release preflight is authorized" in stdout
+    assert "product release preflight is ready" not in stdout
+    assert "not signed external-counsel approval" in stderr
+    assert "Runtime readiness remains HOLD" in stderr
+    assert "Normal BurnBar release readiness still requires" in stderr
 
 
 def test_release_preflight_strictly_validates_claimed_approval(tmp_path):

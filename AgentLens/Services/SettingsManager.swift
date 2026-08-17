@@ -62,12 +62,21 @@ final class SettingsManager {
 
     // MARK: - Init
 
+    /// - Parameter usageMemoryRemoteConfigSeed: the active **cached** usage-memory
+    ///   fleet switches, read synchronously at init so a cached kill is honored
+    ///   before either usage lane can open. Defaults to Firebase's activated
+    ///   config; returns `nil` when Firebase is not configured yet, which leaves
+    ///   both usage lanes CLOSED until the first Remote Config refresh resolves
+    ///   them. Injectable so tests can pin the cached-kill-at-init behavior.
     init(
         defaults: UserDefaults = .standard,
         controllerRuntimeSecrets: KeychainStore = SettingsManager.controllerRuntimeSecrets,
         chatGatewaySecrets: KeychainStore = SettingsManager.chatGatewaySecrets,
         launchAgentGatewayAuthTokenReader: @escaping () -> String? = { GatewaySettings.readLaunchAgentAuthToken() },
-        flushDelayNanoseconds: UInt64 = 100_000_000
+        flushDelayNanoseconds: UInt64 = 100_000_000,
+        usageMemoryRemoteConfigSeed: () -> UsageMemoryRemoteConfigSnapshot? = {
+            SettingsManager.activeUsageMemoryRemoteConfigSnapshot()
+        }
     ) {
         let coordinator = SettingsPersistenceCoordinator(defaults: defaults, flushDelayNanoseconds: flushDelayNanoseconds)
         self.persistence = coordinator
@@ -101,7 +110,10 @@ final class SettingsManager {
         self.crossEncoder = CrossEncoderSettings(persistence: coordinator)
         self.cloudSync = CloudSyncSettings(persistence: coordinator)
         self.cliAssistant = CLIAssistantSettings(persistence: coordinator)
-        self.memory = MemorySettings(persistence: coordinator)
+        self.memory = MemorySettings(
+            persistence: coordinator,
+            usageRemoteConfigSeed: usageMemoryRemoteConfigSeed
+        )
         self.summary = SummarySettings(persistence: coordinator)
         self.quotas = QuotaSettings(persistence: coordinator)
         self.providerPath = ProviderPathSettings(persistence: coordinator)
@@ -264,6 +276,12 @@ final class SettingsManager {
         // errors keep any active cached false authoritative while avoiding
         // stranding opted-in local extraction when no kill is cached.
         "memory_extraction_enabled": NSNumber(value: true),
+        // Usage-memory fleet kill switches. Same posture as memory_extraction_enabled:
+        // default true (allowed); Remote Config sets false to halt usage-memory
+        // extraction / durable authority writes instantly. Fetch transport errors
+        // keep any active cached false authoritative.
+        "memory_usage_extraction_enabled": NSNumber(value: true),
+        "memory_usage_authority_writes_enabled": NSNumber(value: true),
         "media_budget_soft_usd": NSNumber(value: 600),
         "media_budget_hard_usd": NSNumber(value: 1_000),
         "media_normal_file_gb_per_day": NSNumber(value: 5),
@@ -287,10 +305,42 @@ final class SettingsManager {
         "cloud_pro_monthly_relay_gb_cap": NSNumber(value: 300)
     ]
 
+    /// The usage-memory fleet switches from the **active** Remote Config — the
+    /// values already activated on disk, read synchronously with no network call.
+    /// `nil` when Firebase is not configured (no fleet channel exists yet), which
+    /// keeps both usage lanes closed rather than guessing.
+    ///
+    /// This is the seed that makes a cached fleet kill authoritative at init: the
+    /// asynchronous `fetchAndActivate` below cannot land before a returning,
+    /// already-consenting user's gates are first propagated.
+    static func activeUsageMemoryRemoteConfigSnapshot() -> UsageMemoryRemoteConfigSnapshot? {
+        guard FirebaseApp.app() != nil else { return nil }
+        let remoteConfig = RemoteConfig.remoteConfig()
+        remoteConfig.setDefaults(Self.commercialRemoteConfigDefaults)
+        return UsageMemoryRemoteConfigSnapshot(
+            extractionEnabled: remoteConfig.configValue(forKey: "memory_usage_extraction_enabled").boolValue,
+            authorityWritesEnabled: remoteConfig.configValue(
+                forKey: "memory_usage_authority_writes_enabled"
+            ).boolValue
+        )
+    }
+
     private func refreshComputerUseRemoteConfigOnce() async {
         guard FirebaseApp.app() != nil else { return }
         let remoteConfig = RemoteConfig.remoteConfig()
         remoteConfig.setDefaults(Self.commercialRemoteConfigDefaults)
+
+        // Apply the ACTIVE CACHED usage switches BEFORE awaiting the network
+        // fetch. A cached fleet kill must not be ignored for the duration of a
+        // round-trip, and when Firebase was configured after this manager was
+        // built (so the init seed returned nil) this is what first resolves the
+        // usage lanes out of their held-closed state.
+        applyUsageMemoryRemoteConfig(
+            extractionEnabled: remoteConfig.configValue(forKey: "memory_usage_extraction_enabled").boolValue,
+            authorityWritesEnabled: remoteConfig.configValue(
+                forKey: "memory_usage_authority_writes_enabled"
+            ).boolValue
+        )
 
         let fetchResult = await withCheckedContinuation { continuation in
             remoteConfig.fetchAndActivate { status, error in
@@ -298,6 +348,10 @@ final class SettingsManager {
             }
         }
         let activeMemoryExtractionEnabled = remoteConfig.configValue(forKey: "memory_extraction_enabled").boolValue
+        let activeUsageExtractionEnabled = remoteConfig.configValue(forKey: "memory_usage_extraction_enabled").boolValue
+        let activeUsageAuthorityWritesEnabled = remoteConfig.configValue(
+            forKey: "memory_usage_authority_writes_enabled"
+        ).boolValue
         if fetchResult.1 != nil {
             computerUseKillSwitch = true
             hasResolvedComputerUseRemoteConfig = true
@@ -309,6 +363,11 @@ final class SettingsManager {
                 memoryExtractionRemoteConfigEnabled = false
                 NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
             }
+            // The usage switches need no transport-error branch of their own: the
+            // pre-fetch apply above already made this same active config (a cached
+            // fleet kill included) authoritative and resolved both lanes. Same
+            // posture as chat — an unreachable Firebase never strands opted-in
+            // local usage extraction, but an active cached false still wins.
             NotificationCenter.default.post(name: .computerUseRemoteConfigKillSwitchDidFire, object: self)
             return
         }
@@ -341,6 +400,11 @@ final class SettingsManager {
         if !memoryRCEnabled {
             NotificationCenter.default.post(name: .memoryRemoteConfigKillSwitchDidFire, object: self)
         }
+
+        applyUsageMemoryRemoteConfig(
+            extractionEnabled: activeUsageExtractionEnabled,
+            authorityWritesEnabled: activeUsageAuthorityWritesEnabled
+        )
     }
 
     // MARK: - Backward Compatibility (Computed Properties)
@@ -816,6 +880,113 @@ final class SettingsManager {
     var activationChecklistCompletedAt: Date? {
         get { activation.checklistCompletedAt }
         set { activation.checklistCompletedAt = newValue }
+    }
+
+    // MARK: Usage Memory (passive memory from Safari asks + agent session logs)
+
+    /// User consent to usage-memory extraction (default OFF). Setting this true
+    /// also marks the consent prompt as shown. Until granted, the whole usage
+    /// loop is dormant (see `usageMemoryExtractionEnabled`).
+    var usageMemoryConsentGranted: Bool {
+        get { memory.usageMemoryConsentGranted }
+        set { memory.usageMemoryConsentGranted = newValue }
+    }
+
+    /// Whether the usage-memory consent prompt has already been presented.
+    var usageMemoryConsentShown: Bool {
+        get { memory.usageMemoryConsentShown }
+        set { memory.usageMemoryConsentShown = newValue }
+    }
+
+    /// Separate opt-in to CLOUD curation of usage memory (default OFF). Only
+    /// effective when the extraction gate is open AND placement is a cloud model
+    /// (see `usageMemoryCloudCurationEnabled`).
+    var usageMemoryCloudCurationConsentGranted: Bool {
+        get { memory.usageMemoryCloudCurationConsentGranted }
+        set { memory.usageMemoryCloudCurationConsentGranted = newValue }
+    }
+
+    /// Where the usage-memory curation model runs (default `.local`).
+    var usageMemoryModelPlacement: UsageMemoryModelPlacement {
+        get { memory.usageMemoryModelPlacement }
+        set { memory.usageMemoryModelPlacement = newValue }
+    }
+
+    /// Source toggle: Safari asks feed usage memory (default ON, inert until consent).
+    var usageMemorySourceSafariAsksEnabled: Bool {
+        get { memory.usageMemorySourceSafariAsksEnabled }
+        set { memory.usageMemorySourceSafariAsksEnabled = newValue }
+    }
+
+    /// Source toggle: agent session logs feed usage memory (default ON, inert until consent).
+    var usageMemorySourceAgentSessionsEnabled: Bool {
+        get { memory.usageMemorySourceAgentSessionsEnabled }
+        set { memory.usageMemorySourceAgentSessionsEnabled = newValue }
+    }
+
+    /// Remote Config `memory_usage_extraction_enabled`. Not user-settable;
+    /// written by RC refreshes with the same fail-open-on-transport posture as
+    /// `memoryExtractionRemoteConfigEnabled`. Writing this alone does NOT resolve
+    /// the lanes — only `applyUsageMemoryRemoteConfig` does — so a stray `true`
+    /// here can never open a lane on its own.
+    var usageMemoryExtractionRemoteConfigEnabled: Bool {
+        get { memory.remoteConfigUsageExtractionEnabled }
+        set { memory.remoteConfigUsageExtractionEnabled = newValue }
+    }
+
+    /// Remote Config `memory_usage_authority_writes_enabled`. Not user-settable;
+    /// written by RC refreshes with the same fail-open-on-transport posture, and
+    /// with the same "writing it does not resolve the lanes" rule as above.
+    var usageMemoryAuthorityWritesRemoteConfigEnabled: Bool {
+        get { memory.remoteConfigUsageAuthorityWritesEnabled }
+        set { memory.remoteConfigUsageAuthorityWritesEnabled = newValue }
+    }
+
+    /// Whether a Remote Config value (cached or fetched) has been applied to the
+    /// usage fleet switches. Both usage lanes stay CLOSED until this is true.
+    var usageMemoryRemoteConfigResolved: Bool { memory.hasResolvedUsageRemoteConfig }
+
+    /// Apply a resolved Remote Config snapshot to both usage fleet switches at
+    /// once and open the lanes for gating. The only path that resolves them.
+    func applyUsageMemoryRemoteConfig(extractionEnabled: Bool, authorityWritesEnabled: Bool) {
+        memory.applyUsageRemoteConfig(
+            extractionEnabled: extractionEnabled,
+            authorityWritesEnabled: authorityWritesEnabled
+        )
+    }
+
+    /// Combined usage-memory extraction gate: user consent AND the fleet kill
+    /// switch AND that fleet value having been resolved. With consent default OFF
+    /// the whole usage loop is dormant out of the box, and it stays dormant
+    /// through the startup window before Remote Config is read.
+    var usageMemoryExtractionEnabled: Bool {
+        UsageMemoryExtractionGate.isEnabled(
+            usageConsentGranted: memory.usageMemoryConsentGranted,
+            remoteConfigEnabled: memory.remoteConfigUsageExtractionEnabled,
+            remoteConfigResolved: memory.hasResolvedUsageRemoteConfig
+        )
+    }
+
+    /// Combined usage-memory authority-write gate: the dedicated fleet switch AND
+    /// resolution. Independent of consent and of the extraction gate — this is the
+    /// value mirrored into the registry's authority-writes lane.
+    var usageMemoryAuthorityWritesEnabled: Bool {
+        UsageMemoryAuthorityWriteGate.isEnabled(
+            remoteConfigEnabled: memory.remoteConfigUsageAuthorityWritesEnabled,
+            remoteConfigResolved: memory.hasResolvedUsageRemoteConfig
+        )
+    }
+
+    /// Combined cloud-curation gate for usage memory: the extraction gate AND
+    /// the separate cloud consent AND a cloud model placement. Triply dormant by
+    /// default (no consent, no cloud consent, placement `.local`), so there is
+    /// zero usage-derived cloud egress out of the box.
+    var usageMemoryCloudCurationEnabled: Bool {
+        UsageMemoryCloudGate.isEnabled(
+            extractionEnabled: usageMemoryExtractionEnabled,
+            cloudConsentGranted: memory.usageMemoryCloudCurationConsentGranted,
+            placementIsCloud: memory.usageMemoryModelPlacement.isCloud
+        )
     }
 
     // MARK: Chat Backend

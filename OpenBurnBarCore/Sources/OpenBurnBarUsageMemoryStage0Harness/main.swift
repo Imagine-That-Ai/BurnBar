@@ -1,6 +1,8 @@
 import Foundation
 import OpenBurnBarCore
 
+// cov:ignore-start -- never-referenced-leaf executable; package tests do not execute `swift run OpenBurnBarUsageMemoryStage0Harness`, so this file has no coverage-bearing lane
+
 // OpenBurnBarUsageMemoryStage0Harness — offline drop-rate proof for the
 // usage-memory Stage-0 candidate gate.
 //
@@ -126,7 +128,11 @@ fileLoop: for fileURL in rolloutFiles {
         // The 2026-07-16 incident lesson: JSONSerialization piles autoreleased
         // objects across a multi-GB loop — drain per line or the footprint
         // climbs to the governor ceiling and the pass aborts.
-        let shouldContinue: Bool = autoreleasepool {
+        // `parserAutoReleasePool` (OpenBurnBarLogParsers, re-exported through
+        // OpenBurnBarCore) drains on Darwin and is a passthrough on
+        // Linux/Windows, where bare `autoreleasepool` does not exist and
+        // breaks the Windows swift build.
+        let shouldContinue: Bool = parserAutoReleasePool {
             guard let line = reader.nextLine() else { return false }
             do {
                 try governor.checkpoint()
@@ -222,7 +228,7 @@ if options.jsonOutput {
         "accepted": acceptCount,
         "corpus_days": corpusDays,
         "projected_candidates_per_day": projectedPerDay,
-        "elapsed_seconds": elapsed,
+        "elapsed_seconds": elapsed
     ]
     var drops: [String: Int] = [:]
     for (reason, count) in dropCounts { drops[reason.rawValue] = count }
@@ -243,6 +249,7 @@ if options.jsonOutput {
         let count = dropCounts[reason, default: 0]
         guard count > 0 else { continue }
         let share = gatedTotal > 0 ? Double(count) * 100 / Double(gatedTotal) : 0
-        print(String(format: "  %-18s %8d  (%.1f%%)", (reason.rawValue as NSString).utf8String!, count, share))
+        print(String(format: "  %-18@ %8d  (%.1f%%)", reason.rawValue as NSString, count, share))
     }
 }
+// cov:ignore-end

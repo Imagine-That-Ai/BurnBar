@@ -218,7 +218,24 @@ extension ControlPlaneStore {
     }
 
     func chatMemoryPage(_ request: MemoryPageRequest) async throws -> MemoryPage {
-        let records = try await fetchActiveChatMemoryAuthorityRecords(scope: request.scope)
+        try await memoryPage(request, sourceKinds: [.chat])
+    }
+
+    /// Review-inbox page across source kinds (U7). Chat and usage rows live in
+    /// different storage partitions (`chat:` vs `usage:` project buckets), so a
+    /// scoped fetch must run once per partition; the union then goes through the
+    /// exact filter/sort/paginate pipeline `chatMemoryPage` shipped with. With
+    /// `[.chat]` this is a single chat-partition fetch — byte-identical to the
+    /// pre-U7 `chatMemoryPage`.
+    func memoryPage(
+        _ request: MemoryPageRequest,
+        sourceKinds: Set<MemorySourceKind>
+    ) async throws -> MemoryPage {
+        var fetched: [Memory] = []
+        for partitionKinds in Self.memoryPartitionedSourceKinds(sourceKinds) {
+            fetched += try await fetchActiveMemoryAuthorityRecords(sourceKinds: partitionKinds, scope: request.scope)
+        }
+        let records = fetched
             .filter { memory in
                 if memory.reviewStatus == .rejected { return false }
                 return request.includeQuarantined || memory.reviewStatus == .approved
@@ -240,6 +257,16 @@ extension ControlPlaneStore {
 
     func pendingChatMemoryReviewCount(scope: MemoryScope) async throws -> Int {
         try await fetchActiveChatMemoryAuthorityRecords(scope: scope)
+            .filter { $0.reviewStatus == .quarantined }
+            .count
+    }
+
+    /// Pending (quarantined) usage-kind rows for `scope` — the count behind the
+    /// "Usage memory proposals: N pending" link-outs and the usage share of the
+    /// dashboard Memory badge. Mirrors `pendingChatMemoryReviewCount` over the
+    /// `usage:` partition.
+    func pendingUsageMemoryReviewCount(scope: MemoryScope) async throws -> Int {
+        try await fetchActiveMemoryAuthorityRecords(sourceKinds: MemorySourceKind.usageKinds, scope: scope)
             .filter { $0.reviewStatus == .quarantined }
             .count
     }

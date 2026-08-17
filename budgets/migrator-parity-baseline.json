@@ -1,8 +1,8 @@
 {
   "description": "Annotated, exact-set schema divergence baseline for scripts/check-migrator-parity.mjs. Every entry is an intentional, explained divergence between the canonical Swift migrator endpoint schema (OpenBurnBarCore/Sources/OpenBurnBarData) and a mirror surface. New divergences and stale entries both fail CI; keep reasons real.",
   "updateCommand": "node scripts/check-migrator-parity.mjs --update-baseline",
-  "migrationEndpoint": "v56_parser_checkpoint_file_manifest",
-  "migrationCount": 57,
+  "migrationEndpoint": "v61_usage_memory",
+  "migrationCount": 62,
   "divergences": [
     {
       "key": "windows:missing-table:agent_memories",
@@ -85,12 +85,24 @@
       "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_fact_tombstones belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
     },
     {
+      "key": "windows:missing-table:memory_links",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_links holds the v61 usage-memory typed consolidation edges, written only by the Mac-side consolidation worker; the usage-memory pipeline is not ported, so the Windows v61 upgrade step is stamp-only (WindowsSqlCipherProvisioning.Upgrades.cs)."
+    },
+    {
       "key": "windows:missing-table:memory_provenance",
       "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_provenance belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
     },
     {
+      "key": "windows:missing-table:memory_salience",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_salience is the v61 usage-memory salience sidecar, written only by the Mac-side consolidation worker; the usage-memory pipeline is not ported, so the Windows v61 upgrade step is stamp-only (WindowsSqlCipherProvisioning.Upgrades.cs)."
+    },
+    {
       "key": "windows:missing-table:memory_source_tombstones",
       "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_source_tombstones belongs to chat-memory authority (v51-v53), which is not ported; Windows currently reads it only from Mac-transferred databases where the Mac migrator created it."
+    },
+    {
+      "key": "windows:missing-table:memory_usage_candidates",
+      "reason": "Windows fresh-install provisioning mirrors only the shipped Windows subsystems (token usage, conversations + standalone FTS, chat threads/messages, budgets, switcher). Table memory_usage_candidates is the v61 usage-memory Stage-0 candidate spool, written only by the Mac-side session miner; the usage-memory pipeline is not ported, so the Windows v61 upgrade step is stamp-only (WindowsSqlCipherProvisioning.Upgrades.cs)."
     },
     {
       "key": "windows:missing-table:operating_action_history",
