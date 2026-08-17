@@ -151,19 +151,26 @@ async function runLocal() {
 
     // case4/5 — caps: hammering the body:standard bucket (30/min) trips a 429.
     {
-      const token = world.tenantRateLimit.token(scopes);
-      const uri = `burnbar://conversation/${world.conversationIdRateLimit}`;
-      let status = 0;
-      for (let i = 0; i < 40; i += 1) {
-        const res = await callMcp(endpoint, token, rpc("resources/read", { uri }));
-        if (res.body.includes("rate limit") || res.body.includes("rate_limited")) {
-          status = res.status;
-          break;
+      const stableNow = Math.floor(Date.now() / 60_000) * 60_000 + 30_000;
+      const dateNow = Date.now;
+      Date.now = () => stableNow;
+      try {
+        const token = world.tenantRateLimit.token(scopes);
+        const uri = `burnbar://conversation/${world.conversationIdRateLimit}`;
+        let status = 0;
+        for (let i = 0; i < 40; i += 1) {
+          const res = await callMcp(endpoint, token, rpc("resources/read", { uri }));
+          if (res.body.includes("rate limit") || res.body.includes("rate_limited")) {
+            status = res.status;
+            break;
+          }
         }
+        assert(status === 429, "case4/5 body cap did not trip a 429");
+        console.log("PASS case4/5: body:standard cap trips a 429 rate-limit");
+        passed += 1;
+      } finally {
+        Date.now = dateNow;
       }
-      assert(status === 429, "case4/5 body cap did not trip a 429");
-      console.log("PASS case4/5: body:standard cap trips a 429 rate-limit");
-      passed += 1;
     }
 
     // case2 — at-rest: the returned conversation body is sealed (no plaintext).
