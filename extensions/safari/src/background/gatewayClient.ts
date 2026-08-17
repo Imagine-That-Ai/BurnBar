@@ -30,7 +30,9 @@ interface SafariGatewayAskRequest {
   agentId: string;
   prompt: string;
   pageContext: PageContext;
-  screenshot: ScreenshotResult;
+  /* Omitted for text-only models. An OpenAI-compatible endpoint that cannot
+     see rejects the whole request rather than ignoring the image part. */
+  screenshot?: ScreenshotResult;
   learnedContext?: string;
 }
 
@@ -175,7 +177,7 @@ export function buildSafariAskBody(request: SafariGatewayAskRequest): Record<str
   if (!agentId || hasControlCharacters(agentId)) {
     throw new SafariExtensionError('agent_missing', 'Choose a valid routed model first.');
   }
-  if (!request.screenshot.dataUrl.startsWith('data:image/jpeg;base64,')) {
+  if (request.screenshot && !request.screenshot.dataUrl.startsWith('data:image/jpeg;base64,')) {
     throw new SafariExtensionError('screenshot_invalid', 'Safari Ask requires a resized JPEG screenshot.');
   }
   const learnedContext = boundedLearnedContext(request.learnedContext);
@@ -207,19 +209,23 @@ export function buildSafariAskBody(request: SafariGatewayAskRequest): Record<str
       },
       {
         role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: userText
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: request.screenshot.dataUrl,
-              detail: 'auto'
-            }
-          }
-        ]
+        /* A plain string, not a one-element part array: the widest shape every
+           OpenAI-compatible endpoint accepts. */
+        content: request.screenshot
+          ? [
+              {
+                type: 'text',
+                text: userText
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: request.screenshot.dataUrl,
+                  detail: 'auto'
+                }
+              }
+            ]
+          : userText
       }
     ]
   };
@@ -415,6 +421,45 @@ export class SafariGatewayClient {
   async ask(request: SafariGatewayAskRequest, onDelta: (delta: string) => void): Promise<string> {
     this.requireNoActiveRequest();
     await this.ensureProviderConfiguration();
+    /*
+     * Self-healing: a daemon restart rotates the bearer token and briefly
+     * closes the port, which used to strand this session on stale credentials
+     * until Safari itself restarted. When the gateway is unreachable or
+     * rejects our session before any answer text has streamed, re-bootstrap
+     * through the native bridge once and repeat the request. Provider-shape
+     * errors, user Stops, and timeouts are never retried, and neither is a
+     * stream that already delivered text (a retry would duplicate it).
+     */
+    let streamed = false;
+    const guardedOnDelta = (delta: string): void => {
+      streamed = true;
+      onDelta(delta);
+    };
+    try {
+      return await this.performAsk(request, guardedOnDelta);
+    } catch (error) {
+      if (streamed || !(error instanceof SafariExtensionError)) {
+        throw error;
+      }
+      /* The model cannot see. Drop the screenshot and answer from page text
+         rather than failing — the catalog claimed vision and was wrong. */
+      if (error.code === 'gateway_image_unsupported') {
+        const { screenshot: _unused, ...textOnly } = request;
+        return this.performAsk(textOnly, guardedOnDelta);
+      }
+      if (error.code !== 'gateway_unavailable' && error.code !== 'gateway_auth_rejected') {
+        throw error;
+      }
+      this.clear();
+      await this.ensureProviderConfiguration();
+      return this.performAsk(request, guardedOnDelta);
+    }
+  }
+
+  private async performAsk(
+    request: SafariGatewayAskRequest,
+    onDelta: (delta: string) => void
+  ): Promise<string> {
     const configuration = this.configuration;
     if (!configuration) {
       throw new SafariExtensionError(

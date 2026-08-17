@@ -66,7 +66,7 @@ function bootstrap(overrides: Partial<SafariBootstrapResponse> = {}): SafariBoot
   };
 }
 
-function streamResponse(chunks: string[]): Response {
+function streamResponse(chunks: string[], failWith?: Error): Response {
   const encoder = new TextEncoder();
   return new Response(
     new ReadableStream<Uint8Array>({
@@ -74,7 +74,16 @@ function streamResponse(chunks: string[]): Response {
         for (const chunk of chunks) {
           controller.enqueue(encoder.encode(chunk));
         }
-        controller.close();
+        if (!failWith) {
+          controller.close();
+        }
+      },
+      /* Runs only once the queued chunks have been read, so a mid-stream
+         death still delivers the text that came before it. */
+      pull(controller) {
+        if (failWith) {
+          controller.error(failWith);
+        }
       }
     }),
     {
@@ -601,6 +610,268 @@ describe('Safari loopback gateway client', () => {
     ).rejects.toThrow(/unavailable/u);
   });
 
+  it('survives keep-alive frames and ends cleanly on finish_reason', async () => {
+    const fetcher = vi.fn(async () =>
+      streamResponse([
+        'data: {"choices":[{"delta":{"content":"OpenAI announced "}}]}\n\n',
+        /* Keep-alive frames: several OpenAI-compatible endpoints emit these to
+           hold the connection open. Parsing one as JSON used to throw and
+           truncate the answer wherever it happened to land. */
+        'data:\n\n',
+        'data:   \n\n',
+        ': ping\n\n',
+        'data: {"choices":[{"delta":{"content":"Ultrafast mode."}}]}\n\n',
+        /* No [DONE] — the endpoint just reports it finished and closes. */
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
+      ])
+    );
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+
+    const deltas: string[] = [];
+    await expect(
+      client.ask(
+        {
+          agentId: 'kimi-k2.6',
+          prompt: 'Summarize the page',
+          pageContext
+        },
+        (delta) => deltas.push(delta)
+      )
+    ).resolves.toBe('OpenAI announced Ultrafast mode.');
+    expect(deltas).toEqual(['OpenAI announced ', 'Ultrafast mode.']);
+  });
+
+  it('sends plain text to a text-only model instead of a multimodal part array', () => {
+    const body = buildSafariAskBody({
+      agentId: 'deepseek-chat',
+      prompt: 'Summarize the page',
+      pageContext
+    });
+    const messages = requireRecordArray(body.messages, 'messages');
+    const user = messages[1];
+    expect(typeof user?.content).toBe('string');
+    expect(String(user?.content)).toContain('Summarize the page');
+    expect(JSON.stringify(body)).not.toContain('image_url');
+  });
+
+  it('drops the screenshot and answers from page text when the model cannot see', async () => {
+    let fetchCount = 0;
+    const bodies: string[] = [];
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCount += 1;
+      bodies.push(String(init?.body));
+      if (fetchCount === 1) {
+        /* Verbatim shape DeepSeek V4 Flash returns for a multimodal payload. */
+        return new Response(
+          '{"error":{"message":"Failed to deserialize the JSON body into the target type: messages[1]: unknown variant `image_url`, expected `text`","type":"invalid_request_error","code":"invalid_request_error"}}',
+          { status: 400 }
+        );
+      }
+      return streamResponse(['data: {"choices":[{"delta":{"content":"Text-only answer"}}]}\n\n', 'data: [DONE]\n\n']);
+    });
+    const renewer = vi.fn(async () => bootstrap());
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+    client.setConfigurationRenewer(renewer);
+
+    await expect(
+      client.ask(
+        {
+          agentId: 'deepseek-chat',
+          prompt: 'Summarize the page',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).resolves.toBe('Text-only answer');
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    /* The retry is text-only, and it is not a credential re-bootstrap. */
+    expect(bodies[0]).toContain('image_url');
+    expect(bodies[1]).not.toContain('image_url');
+    expect(renewer).not.toHaveBeenCalled();
+  });
+
+  it('heals a stale session by re-bootstrapping once when the gateway rejects its credentials', async () => {
+    let fetchCount = 0;
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return new Response('{"error":"unauthorized"}', { status: 401 });
+      }
+      const headers = new Headers(init?.headers);
+      expect(headers.get('Authorization')).toBe('Bearer rotated-bearer');
+      return streamResponse(['data: {"choices":[{"delta":{"content":"Healed answer"}}]}\n\n', 'data: [DONE]\n\n']);
+    });
+    const renewer = vi.fn(async () => bootstrap({ gatewayBearerToken: 'rotated-bearer' }));
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+    client.setConfigurationRenewer(renewer);
+
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).resolves.toBe('Healed answer');
+    expect(renewer).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('heals an unreachable gateway by re-bootstrapping once before giving up', async () => {
+    let fetchCount = 0;
+    const fetcher = vi.fn(async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        throw new TypeError('Load failed');
+      }
+      return streamResponse(['data: {"choices":[{"delta":{"content":"Recovered"}}]}\n\n', 'data: [DONE]\n\n']);
+    });
+    const renewer = vi.fn(async () => bootstrap());
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+    client.setConfigurationRenewer(renewer);
+
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).resolves.toBe('Recovered');
+    expect(renewer).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('never retries once answer text has streamed, and surfaces the failure instead', async () => {
+    const fetcher = vi.fn(async () =>
+      streamResponse(
+        ['data: {"choices":[{"delta":{"content":"Partial "}}]}\n\n'],
+        new TypeError('The network connection was lost.')
+      )
+    );
+    const renewer = vi.fn(async () => bootstrap());
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+    client.setConfigurationRenewer(renewer);
+
+    const deltas: string[] = [];
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        (delta) => deltas.push(delta)
+      )
+    ).rejects.toMatchObject({ code: 'gateway_unavailable', retryable: true });
+    expect(deltas).toEqual(['Partial ']);
+    expect(renewer).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('heals a stale session by re-bootstrapping once when the gateway rejects its credentials', async () => {
+    let fetchCount = 0;
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return new Response('{"error":"unauthorized"}', { status: 401 });
+      }
+      const headers = new Headers(init?.headers);
+      expect(headers.get('Authorization')).toBe('Bearer rotated-bearer');
+      return streamResponse(['data: {"choices":[{"delta":{"content":"Healed answer"}}]}\n\n', 'data: [DONE]\n\n']);
+    });
+    const renewer = vi.fn(async () => bootstrap({ gatewayBearerToken: 'rotated-bearer' }));
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+    client.setConfigurationRenewer(renewer);
+
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).resolves.toBe('Healed answer');
+    expect(renewer).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('heals an unreachable gateway by re-bootstrapping once before giving up', async () => {
+    let fetchCount = 0;
+    const fetcher = vi.fn(async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        throw new TypeError('Load failed');
+      }
+      return streamResponse(['data: {"choices":[{"delta":{"content":"Recovered"}}]}\n\n', 'data: [DONE]\n\n']);
+    });
+    const renewer = vi.fn(async () => bootstrap());
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+    client.setConfigurationRenewer(renewer);
+
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).resolves.toBe('Recovered');
+    expect(renewer).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('never retries once answer text has streamed, and surfaces the failure instead', async () => {
+    const fetcher = vi.fn(async () =>
+      streamResponse(
+        ['data: {"choices":[{"delta":{"content":"Partial "}}]}\n\n'],
+        new TypeError('The network connection was lost.')
+      )
+    );
+    const renewer = vi.fn(async () => bootstrap());
+    const client = new SafariGatewayClient(fetcher);
+    client.configure(bootstrap());
+    client.setConfigurationRenewer(renewer);
+
+    const deltas: string[] = [];
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        (delta) => deltas.push(delta)
+      )
+    ).rejects.toMatchObject({ code: 'gateway_unavailable', retryable: true });
+    expect(deltas).toEqual(['Partial ']);
+    expect(renewer).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces bounded HTTP and stream errors', async () => {
     const httpClient = new SafariGatewayClient(vi.fn(async () => new Response('Route unavailable', { status: 503 })));
     httpClient.configure(bootstrap());
@@ -631,5 +902,32 @@ describe('Safari loopback gateway client', () => {
         () => undefined
       )
     ).rejects.toMatchObject({ code: 'gateway_response_invalid' });
+  });
+
+  it('treats a reasoning-only completion as no answer and says so', async () => {
+    const client = new SafariGatewayClient(
+      vi.fn(async () =>
+        streamResponse([
+          'data: {"choices":[{"delta":{"content":"<think>The user wants a summary."}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"</think>"}}]}\n\n',
+          'data: [DONE]\n\n'
+        ])
+      )
+    );
+    client.configure(bootstrap());
+    await expect(
+      client.ask(
+        {
+          agentId: 'vision-model',
+          prompt: 'Question',
+          pageContext,
+          screenshot
+        },
+        () => undefined
+      )
+    ).rejects.toMatchObject({
+      code: 'gateway_response_invalid',
+      message: 'The model streamed only its private reasoning and never produced an answer.'
+    });
   });
 });

@@ -159,7 +159,10 @@ public actor BurnBarDaemonServer {
         return "The AI Inbox is not available yet."
     }
     let ownsChatThreadService: Bool
-    private let gatewayServer: BurnBarHTTPGatewayServer?
+    /* Internal, not private: the Safari RPC lives in another file and needs the
+       gateway's routable-model set to avoid advertising models it cannot serve.
+       Swift's `private` is file-scoped, so an extension elsewhere cannot see it. */
+    let gatewayServer: BurnBarHTTPGatewayServer?
     private let rateLimiter: BurnBarRateLimiter?
     private var listenerFileDescriptor: Int32?
     private var socketOwnership: BurnBarDaemonSocketOwnership?

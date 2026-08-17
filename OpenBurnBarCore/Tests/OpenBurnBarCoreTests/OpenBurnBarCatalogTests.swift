@@ -301,4 +301,79 @@ final class BurnBarCatalogTests: XCTestCase {
         let catalog = BurnBarCatalogLoader.bundledCatalog
         XCTAssertEqual(catalog.canonicalModelID(forModelName: "grok-code-fast-1"), "grok-code-fast-1")
     }
+
+    func test_filteredToRoutableModelIDs_keepsOnlyRoutableModelsAndDropsEmptiedProviders() {
+        let catalog = BurnBarCatalog(
+            schemaVersion: 1,
+            providers: [
+                BurnBarCatalogProvider(
+                    id: "alpha",
+                    displayName: "Alpha",
+                    baseURL: "https://alpha.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [
+                        BurnBarCatalogModel(
+                            id: "alpha-pro",
+                            displayName: "Alpha Pro",
+                            visibility: .public,
+                            pricing: .defaultFallback
+                        ),
+                        BurnBarCatalogModel(
+                            id: "alpha-lite",
+                            displayName: "Alpha Lite",
+                            visibility: .public,
+                            pricing: .defaultFallback
+                        )
+                    ]
+                ),
+                BurnBarCatalogProvider(
+                    id: "beta",
+                    displayName: "Beta",
+                    baseURL: "https://beta.example/v1",
+                    visibility: .public,
+                    capabilities: [.routing],
+                    models: [
+                        BurnBarCatalogModel(
+                            id: "beta-pro",
+                            displayName: "Beta Pro",
+                            visibility: .public,
+                            pricing: .defaultFallback
+                        )
+                    ]
+                )
+            ]
+        )
+
+        let filtered = catalog.filteredToRoutableModelIDs(["alpha-pro"])
+
+        /* Beta had nothing routable left, so it disappears rather than showing
+           up as an empty provider the picker would render as a dead heading. */
+        XCTAssertEqual(filtered.providers.map(\.id), ["alpha"])
+        XCTAssertEqual(filtered.provider(id: "alpha")?.models.map(\.id), ["alpha-pro"])
+        XCTAssertEqual(filtered.schemaVersion, catalog.schemaVersion)
+        XCTAssertEqual(filtered.provider(id: "alpha")?.baseURL, "https://alpha.example/v1")
+    }
+
+    func test_filteredToRoutableModelIDs_matchesAliasesAndCanonicalIDsCaseInsensitively() throws {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+        let family = try XCTUnwrap(catalog.provider(id: "anthropic")?.models.first { !$0.aliases.isEmpty })
+        let alias = try XCTUnwrap(family.aliases.first)
+        XCTAssertNotEqual(alias, family.id, "alias must differ from the id for this to prove anything")
+
+        /* Routing spells identifiers its own way, so a family that is reachable
+           under an alias must not be filtered out of the catalog. */
+        let byAlias = catalog.filteredToRoutableModelIDs([alias.uppercased()])
+
+        XCTAssertTrue(byAlias.provider(id: "anthropic")?.models.contains { $0.id == family.id } ?? false)
+    }
+
+    func test_filteredToRoutableModelIDs_withNothingRoutableYieldsAnEmptyCatalog() {
+        let catalog = BurnBarCatalogLoader.bundledCatalog
+
+        let filtered = catalog.filteredToRoutableModelIDs([])
+
+        XCTAssertTrue(filtered.providers.isEmpty)
+        XCTAssertEqual(filtered.schemaVersion, catalog.schemaVersion)
+    }
 }

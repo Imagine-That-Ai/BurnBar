@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" fill="none" viewBox="0 0 256 256">
+  <!--
+    Moonshot AI / Kimi. Black-primary per their branding guide, which publishes
+    no hex values. A crescent — the name's own image — drawn as original
+    geometry rather than a copy of their symbol.
+  -->
+  <rect width="256" height="256" rx="58" fill="#101014" />
+  <path
+    d="M163 74a58 58 0 1 0 0 108 70 70 0 0 1 0-108Z"
+    fill="#FFFFFF"
+    transform="translate(6 0)"
+  />
+  <circle cx="176" cy="92" r="11" fill="#FFFFFF" opacity="0.85" />
+</svg>

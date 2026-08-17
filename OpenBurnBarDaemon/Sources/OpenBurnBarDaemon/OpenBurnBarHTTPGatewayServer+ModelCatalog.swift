@@ -9,6 +9,30 @@ import Network
 
 extension BurnBarHTTPGatewayServer {
 
+    /// Identifiers the gateway can actually route right now.
+    ///
+    /// The same predicate `/v1/models` advertises with, exposed so other
+    /// surfaces (the Safari picker) offer exactly what the gateway will serve
+    /// instead of the full static catalog. Returning an empty set means
+    /// "unknown" — callers must treat that as *do not filter* rather than
+    /// "nothing is routable", so a transient catalog error cannot blank a
+    /// model picker.
+    func routableModelIdentifiers() async -> Set<String> {
+        guard let snapshot = try? await catalogSource.snapshot() else {
+            return []
+        }
+        let catalog = configStore.catalogSupport.catalog
+        var identifiers: Set<String> = []
+        for model in snapshot.models where model.routeEligible && model.advertisementEnabled {
+            guard await catalogSource.canAdvertise(model, catalog: catalog) else { continue }
+            identifiers.insert(model.id)
+            if let baseModelID = model.baseModelID {
+                identifiers.insert(baseModelID)
+            }
+        }
+        return identifiers
+    }
+
     func handleModels(
         includeUnadvertised: Bool = false,
         headers: [String: String] = [:]
