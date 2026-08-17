@@ -266,7 +266,7 @@ jobs:
           # 16GB runners. In-process strategy shares one 6g heap.
           ./gradlew :app:projectHealth --no-daemon --max-workers=2 \
             -Dorg.gradle.jvmargs=-Xmx6g \
-            -Dkotlin.compiler.execution.strategy=in-process \
+            -Pkotlin.compiler.execution.strategy=in-process \
             2>&1 | tee ../android-dep-health.txt || true
           if grep -qE "^BUILD FAILED" ../android-dep-health.txt; then
             echo "::error::Android dependency-analysis buildHealth FAILED. Review android-dep-health artifact."
