@@ -94,12 +94,14 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              // memory export changes what the daemon may cite as approved
              // fact. All operator actions.
              .inboxReply, .inboxPlansAccept, .inboxPlansUpdateStep,
-             .inboxPlansGrade, .inboxMemoryExport:
+             .inboxPlansGrade, .inboxMemoryExport,
+             .fleetOrchestratorSet, .fleetDirectiveRecord:
             return .config
         case .usageRecord, .usageRecent, .usageProjection, .usageRecount,
              .usageHistory, .usageInsights,
              .proxyRouteLogRecent, .proxyRouteLogClear,
              .quotaSignalsRecent, .perfMeasure,
+             .fleetSnapshot, .fleetOrchestratorGet,
              // AI Inbox reads return already-synthesized, already-redacted
              // summaries plus reference-shaped evidence — the same posture as
              // usage/insight reads, so they share the observability group.

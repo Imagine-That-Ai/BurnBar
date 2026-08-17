@@ -352,6 +352,19 @@ This is the normal user path.
    - `Applications`
    - Spotlight: `Cmd+Space`, then type `OpenBurnBar`
 
+Or, from a terminal, fetch that same current public notarized DMG (whatever
+the desktop update feed advertises — not a hardcoded old version) and install
+it to `/Applications`:
+
+```bash
+npx -y openburnbar app install
+# later:
+npx -y openburnbar app update
+```
+
+`npm i -g openburnbar` does **not** download the Mac app. Only `app install`
+/ `app update` do, after checksum + signature verification.
+
 If macOS blocks first launch:
 
 - right-click `OpenBurnBar.app` → `Open` → `Open`

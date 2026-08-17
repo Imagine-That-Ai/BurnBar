@@ -1,0 +1,7 @@
+**/*.dmg
+**/*.app
+**/*.zip
+src
+*.test.ts
+*.test.js
+*.test.d.ts

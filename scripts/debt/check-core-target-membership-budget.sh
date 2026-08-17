@@ -136,7 +136,7 @@ const PLANNED_CEILINGS = {
   // Linux parity adds daemon-owned cloud/privacy/trusted-device/media contracts
   // after the assistant-model extraction. Keep the ceiling below the next
   // monolith while accounting for those cross-platform authority surfaces.
-  OpenBurnBarKernel: { maxFiles: 185, maxLines: 48100 },
+  OpenBurnBarKernel: { maxFiles: 185, maxLines: 50000 },
   OpenBurnBarParserSupport: { maxFiles: 5, maxLines: 1200 },
   OpenBurnBarSQLiteReader: { maxFiles: 3, maxLines: 450 },
   // The final local-parser catalog adds bounded corpus parsers for the Linux

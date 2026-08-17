@@ -195,7 +195,11 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .subscriptionStart: "subscription.start",
         .subscriptionResume: "subscription.resume",
         .subscriptionStop: "subscription.stop",
-        .perfMeasure: "perf.measure"
+        .perfMeasure: "perf.measure",
+        .fleetSnapshot: "daemon.fleet.snapshot",
+        .fleetOrchestratorGet: "daemon.fleet.orchestrator.get",
+        .fleetOrchestratorSet: "daemon.fleet.orchestrator.set",
+        .fleetDirectiveRecord: "daemon.fleet.directive.record"
     ]
 
     func testRPCMethodWireNames_areStableForEveryCase() {
