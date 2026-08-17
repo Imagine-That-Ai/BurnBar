@@ -56,6 +56,7 @@ final class SettingsManager {
     let textExpansion: TextExpansionSettings
     let elderWand: ElderWandSettings
     let visualCapture: VisualCapturePreferences
+    let activation: ActivationSettings
     private var computerUseRemoteConfigTask: Task<Void, Never>?
     private(set) var hasResolvedComputerUseRemoteConfig = false
 
@@ -109,6 +110,7 @@ final class SettingsManager {
         self.textExpansion = TextExpansionSettings(persistence: coordinator)
         self.elderWand = ElderWandSettings(persistence: coordinator)
         self.visualCapture = VisualCapturePreferences(persistence: coordinator)
+        self.activation = ActivationSettings(persistence: coordinator)
 
         // Register periodic flush on app background
         NotificationCenter.default.addObserver(
@@ -794,6 +796,20 @@ final class SettingsManager {
     /// false), so `MemoryCloudSyncDomain` performs zero egress out of the box.
     var memoryApprovedCloudBackupEnabled: Bool {
         memory.approvedCloudBackupEnabled && memory.remoteConfigExtractionEnabled
+    }
+
+    // MARK: Activation Checklist
+
+    /// The user closed the activation checklist by hand; it never returns.
+    var activationChecklistDismissed: Bool {
+        get { activation.checklistDismissed }
+        set { activation.checklistDismissed = newValue }
+    }
+
+    /// When every activation step first read as done. Non-nil retires the card.
+    var activationChecklistCompletedAt: Date? {
+        get { activation.checklistCompletedAt }
+        set { activation.checklistCompletedAt = newValue }
     }
 
     // MARK: Chat Backend

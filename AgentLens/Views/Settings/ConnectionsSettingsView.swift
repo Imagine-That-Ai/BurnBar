@@ -295,6 +295,8 @@ struct ConnectionsSettingsView: View {
                 Spacer()
             }
 
+            MCPInstallCard()
+
             VibeProxyMigrationCard(
                 snapshot: viewModel.vibeProxyMigrationSnapshot,
                 state: viewModel.vibeProxyMigrationState,

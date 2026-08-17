@@ -43,6 +43,14 @@ struct DashboardOverviewView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
                     heroMetricsRow
+                    // The activation path (T1.6): sits right under the hero
+                    // numbers so a fresh install sees its number first, then
+                    // the switches that earn the rest. Self-retiring — renders
+                    // nothing once completed or dismissed.
+                    ActivationChecklistSection(
+                        context: context,
+                        onOpenSettings: onOpenSettings
+                    )
                     liveCostCurve
                     NarrativeCardView(dataStore: dataStore)
                     lanesRow

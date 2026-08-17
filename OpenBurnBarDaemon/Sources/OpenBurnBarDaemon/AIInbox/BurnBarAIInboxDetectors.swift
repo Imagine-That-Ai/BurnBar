@@ -273,10 +273,14 @@ struct BurnBarAIInboxDetectors: Sendable {
                         "branch": workspace.branch ?? "unknown"
                     ],
                     actions: [
+                        // The finding says "an agent claimed done and nothing
+                        // landed" — so the one primary move is to go land it.
+                        // The button names the OUTCOME; the mechanism (resuming
+                        // the session in its CLI) is the vehicle, not the story.
                         BurnBarInboxAction(
                             id: "resume",
                             kind: .resumeConversation,
-                            title: "Resume this session",
+                            title: "Pick it back up and land it",
                             value: conversation.conversationID,
                             isPrimary: true
                         ),

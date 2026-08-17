@@ -153,7 +153,7 @@ public enum BurnBarRPCCapability: String, CaseIterable, Hashable, Sendable, Coda
              .subscriptionStart, .subscriptionResume, .subscriptionStop,
              .workspaceExecuteTool, .workspaceToolResult, .approvalRespond:
             return .run
-        case .searchQuery:
+        case .searchQuery, .searchSQL:
             return .search
         case .memoryRemember, .memoryReviewStatus, .memoryForget:
             return .memoryWrite

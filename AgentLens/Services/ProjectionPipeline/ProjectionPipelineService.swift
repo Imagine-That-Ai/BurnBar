@@ -81,6 +81,16 @@ actor ProjectionPipelineService {
         providerAPIKeyStore: ProviderAPIKeyStore
     ) -> any ChunkEmbeddingProviding {
         switch settingsManager.indexEmbeddingProvider {
+        case .appleNL:
+            // "plain-text-v1" matches the index lane's prompt identity (the
+            // memory lane stamps its own). If the OS model is unavailable the
+            // deterministic fallback keeps projection alive under the ci-v1
+            // version ID, so no drift re-embed churns against a missing model.
+            if let nl = NLEmbeddingProvider(promptVersion: "plain-text-v1") {
+                return nl
+            }
+            AppLogger.search.error("ProjectionPipelineService: NLEmbedding sentence model unavailable, using deterministic fallback")
+            return DeterministicFakeEmbeddingProvider()
         case .deterministic:
             return DeterministicFakeEmbeddingProvider()
         case .openai:

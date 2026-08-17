@@ -75,6 +75,14 @@ final class HostedQuotaSubscriptionStoreTests: XCTestCase {
             "elder_wand_searches_100",
             "elder_wand_searches_500"
         ])
+        // Storefront honesty: only packs whose units something can actually
+        // SPEND are sold. Agent Control and Floo relay reserves have no client
+        // callers yet, so their packs stay off sale (while remaining in the
+        // catalog for restores and credit display).
+        XCTAssertEqual(OpenBurnBarProductCatalog.purchasableTopUps.map(\.topUpKind), [
+            "elder_wand_searches_100",
+            "elder_wand_searches_500"
+        ])
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.hostedQuotaSync.cloud.monthly"))
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.bundle.monthly"))
         XCTAssertFalse(OpenBurnBarProductCatalog.visibleProductIDs.contains("com.openburnbar.proMax.monthly"))
