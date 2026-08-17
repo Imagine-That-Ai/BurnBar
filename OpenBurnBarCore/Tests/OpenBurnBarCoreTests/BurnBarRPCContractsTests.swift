@@ -137,6 +137,7 @@ final class BurnBarRPCContractsTests: XCTestCase {
         .clientClaimControl: "client.claimControl",
         .clientDetach: "client.detach",
         .searchQuery: "daemon.search.query",
+        .searchSQL: "daemon.search.sql",
         .memoryRemember: "daemon.memory.remember",
         .memoryRecall: "daemon.memory.recall",
         .memoryReviewStatus: "daemon.memory.review_status",
