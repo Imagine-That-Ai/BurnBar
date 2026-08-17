@@ -15,9 +15,28 @@ import type {
   ProviderAccountSummary,
   ModelSummary,
   DeviceSummary,
-  ExecutionSourceSummary,
-  ComboSummary,
+  Provider,
 } from "./types.js";
+
+/** Harness totals written onto every window rollup. Not a shared schema export. */
+interface ExecutionSourceSummary {
+  sourceId: string;
+  sourceName: string;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost: number;
+}
+
+/** Harness × model pairing written onto every window rollup. */
+interface ComboSummary {
+  sourceId: string;
+  sourceName: string;
+  provider: Provider;
+  model: string;
+  requests: number;
+  tokens: number;
+  cost: number;
+}
 import { isProviderAccountStorageScope, parseProvider, parseUsageEventDoc, recordOrUndefined } from "./guards.js";
 import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
 import {
@@ -373,7 +392,11 @@ function buildWindowRollupDoc(key: WindowKey, slice: WindowCounterSlice, now: Da
   const totals = sumBucketTotals(slice.bucketDocs);
   const dailyPoints = Object.fromEntries(slice.dailyPointEntries.filter(([day, tokens]) => day && tokens !== 0));
 
-  return {
+  // Extra summary arrays ride on the Firestore doc so the console can render
+  // harness/combo lists. They stay off the exported UsageRollupDoc type so
+  // they don't grow the hand-maintained schema budget; write them through a
+  // widened object, then return the canonical shape.
+  const doc = {
     today: key === "today" ? totals.tokens : 0,
     "7d": key === "7d" ? totals.tokens : 0,
     "30d": key === "30d" ? totals.tokens : 0,
@@ -394,6 +417,7 @@ function buildWindowRollupDoc(key: WindowKey, slice: WindowCounterSlice, now: Da
     computedAt: now.toISOString(),
     schemaVersion: ROLLUP_SCHEMA_VERSION,
   };
+  return doc;
 }
 
 export async function computeUserRollupsFromCounters(

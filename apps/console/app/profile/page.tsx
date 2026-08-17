@@ -100,7 +100,8 @@ function InsightRow({ label, value }: { label: string; value: React.ReactNode })
 
 export default function ProfilePage() {
   const { user } = useAuth();
-  const { rollup, source, loading, error } = useProfileUsage();
+  const { rollup, source, loading, error, reload } = useProfileUsage();
+  const [rebuilding, setRebuilding] = React.useState(false);
   const { data: domainUsage } = useDomainUsage();
   const [mode, setMode] = React.useState<HeatmapMode>("daily");
   // If the IdP / cloud-profile avatar fails to load, fall back to the initial
@@ -167,6 +168,16 @@ export default function ProfilePage() {
   // flash of zeros reads as "you have no usage", which is a lie while loading.
   const pending = loading || !today;
   const num = (v: number) => (pending ? "—" : formatCompact(v));
+
+  const recompute = React.useCallback(() => {
+    if (rebuilding) return;
+    setRebuilding(true);
+    reload(true);
+  }, [rebuilding, reload]);
+
+  React.useEffect(() => {
+    if (!loading) setRebuilding(false);
+  }, [loading]);
 
   return (
     <div className="mx-auto max-w-3xl xl:mx-0 xl:grid xl:max-w-5xl xl:grid-cols-[minmax(0,1fr)_minmax(15rem,18rem)] xl:items-start xl:gap-x-token-12 xl:gap-y-token-10">
@@ -418,6 +429,16 @@ export default function ProfilePage() {
         Only what BurnBar really records — fast mode, reasoning mix, and skill
         usage aren&apos;t tracked yet.
         {updatedLabel && <span className="ml-2">Rollup as of {updatedLabel}.</span>}
+        {user && (
+          <button
+            type="button"
+            onClick={recompute}
+            disabled={rebuilding || pending}
+            className="ml-3 text-content-mute underline-offset-4 transition-colors hover:text-content-bright hover:underline disabled:cursor-wait disabled:no-underline disabled:opacity-50"
+          >
+            {rebuilding ? "Recomputing…" : "Recompute from devices"}
+          </button>
+        )}
       </p>
     </div>
   );

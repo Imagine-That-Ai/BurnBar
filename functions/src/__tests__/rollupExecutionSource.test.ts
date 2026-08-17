@@ -20,7 +20,17 @@ import {
   computeUserRollupsFromCounters,
   rebuildUserRollupCounters,
 } from "../rollupCompute.js";
-import type { UsageEventDoc } from "../types.js";
+import type { UsageEventDoc, UsageRollupDoc } from "../types.js";
+
+/** Runtime extras written onto every window doc; not on the exported schema type. */
+type RollupWithSources = UsageRollupDoc & {
+  executionSourceSummaries: unknown;
+  comboSummaries: unknown;
+};
+
+function withSources(doc: UsageRollupDoc): RollupWithSources {
+  return doc as RollupWithSources;
+}
 
 type Doc = Record<string, unknown>;
 
@@ -378,10 +388,10 @@ describe("buildWindowRollupDoc execution-source summaries (via computeUserRollup
     const rollups = await computeUserRollupsFromCounters(fake.asFirestore(), UID);
 
     expect(rollups.all_time.totals.requests).toBe(4);
-    expect(rollups.all_time.executionSourceSummaries).toEqual([
+    expect(withSources(rollups.all_time).executionSourceSummaries).toEqual([
       { sourceId: "claude-code", sourceName: "Claude Code", totalRequests: 3, totalTokens: 375, totalCost: 0.375 },
     ]);
-    expect(rollups.all_time.comboSummaries).toEqual([
+    expect(withSources(rollups.all_time).comboSummaries).toEqual([
       {
         sourceId: "claude-code",
         sourceName: "Claude Code",
@@ -393,8 +403,8 @@ describe("buildWindowRollupDoc execution-source summaries (via computeUserRollup
       },
     ]);
     // Same-day usage => the today window mirrors all_time.
-    expect(rollups.today.executionSourceSummaries).toHaveLength(1);
-    expect(rollups.today.comboSummaries).toHaveLength(1);
+    expect(withSources(rollups.today).executionSourceSummaries).toHaveLength(1);
+    expect(withSources(rollups.today).comboSummaries).toHaveLength(1);
   });
 
   it("emits empty summaries when no counter docs carry execution sources", async () => {
@@ -405,8 +415,8 @@ describe("buildWindowRollupDoc execution-source summaries (via computeUserRollup
     const rollups = await computeUserRollupsFromCounters(fake.asFirestore(), UID);
 
     for (const key of ["today", "7d", "30d", "90d", "all_time"] as const) {
-      expect(rollups[key].executionSourceSummaries).toEqual([]);
-      expect(rollups[key].comboSummaries).toEqual([]);
+      expect(withSources(rollups[key]).executionSourceSummaries).toEqual([]);
+      expect(withSources(rollups[key]).comboSummaries).toEqual([]);
     }
   });
 });

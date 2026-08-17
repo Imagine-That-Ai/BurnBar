@@ -31,9 +31,7 @@ export type UsageCounterContribution = {
   accountLabel: string;
   storageScope?: string;
   model?: string;
-  deviceId?: string;
-  executionSourceId?: string;
-  executionSourceName?: string;
+  deviceId?: string; executionSourceId?: string; executionSourceName?: string;
   requests: number;
   tokens: number;
   costUsd: number;

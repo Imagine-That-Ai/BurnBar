@@ -44,7 +44,9 @@
         "ProviderSummary",
         "ProviderAccountSummary",
         "ModelSummary",
-        "DeviceSummary"
+        "DeviceSummary",
+        "ExecutionSourceSummary",
+        "ComboSummary"
       ],
       "csharpHandMirror": [
         {

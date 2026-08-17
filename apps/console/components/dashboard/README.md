@@ -13,7 +13,7 @@ the **last reader**, not a new writer:
 
 | Source (owner-readable) | Cards |
 |---|---|
-| `users/{uid}/usage_rollups/{window}` — `totals{requests,tokens,costUsd}`, `providerSummaries`, `modelSummaries`, `deviceSummaries`, `dailyPoints{day:tokens}`, `computedAt` | Burn, Tokens, Requests, Tokens/day, Provider spend, Models, Devices, Formation |
+| `users/{uid}/usage_rollups/{window}` — `totals{requests,tokens,costUsd}`, `providerSummaries`, `modelSummaries`, `deviceSummaries`, `executionSourceSummaries`, `comboSummaries`, `dailyPoints{day:tokens}`, `computedAt` | Burn, Tokens, Requests, Tokens/day, Provider spend, Models, Devices, Formation; Profile harness/combo lists |
 | `users/{uid}/quota_snapshots/*` — `buckets[{used,limit,remaining}]` | Provider limits |
 | `users/{uid}/billing/allowances/months/{monthKey}` — fusion meter | The Wand |
 

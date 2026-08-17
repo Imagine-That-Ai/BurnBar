@@ -43,8 +43,30 @@ model UsageRollupDoc {
   accountSummaries?: ProviderAccountSummary[];
   modelSummaries: ModelSummary[];
   deviceSummaries: DeviceSummary[];
+  /** Per-harness totals. Missing on legacy docs. */
+  executionSourceSummaries?: ExecutionSourceSummary[];
+  /** Harness × model pairings. Missing on legacy docs. */
+  comboSummaries?: ComboSummary[];
   dailyPoints: Record<float32>;
   updatedAt?: string;
+}
+
+model ExecutionSourceSummary {
+  sourceId: string;
+  sourceName: string;
+  totalRequests: int32;
+  totalTokens: int32;
+  totalCost: float32;
+}
+
+model ComboSummary {
+  sourceId: string;
+  sourceName: string;
+  provider: string;
+  `model`: string;
+  requests: int32;
+  tokens: int32;
+  cost: float32;
 }
 
 model ProviderSummary {
