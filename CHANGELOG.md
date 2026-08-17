@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.35] - 2026-08-17
+
 ### Added - `openburnbar app install` / `app update` (npm 0.1.1)
 - The published npm `openburnbar` CLI (`tools/openburnbar-mcp-remote`) now has
   explicit `app install` and `app update` commands. They fetch
