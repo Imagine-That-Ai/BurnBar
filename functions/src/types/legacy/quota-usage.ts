@@ -367,6 +367,24 @@ export interface DeviceSummary {
   tokens: number;
 }
 
+export interface ExecutionSourceSummary {
+  sourceId: string;
+  sourceName: string;
+  totalRequests: number;
+  totalTokens: number;
+  totalCost: number;
+}
+
+export interface ComboSummary {
+  sourceId: string;
+  sourceName: string;
+  provider: Provider;
+  model: string;
+  requests: number;
+  tokens: number;
+  cost: number;
+}
+
 export interface UsageRollupDoc {
   /** Window key: "today", "7d", "30d", "90d", "all_time". */
   today: number;
@@ -389,6 +407,12 @@ export interface UsageRollupDoc {
 
   /** Per-device summaries. */
   deviceSummaries: DeviceSummary[];
+
+  /** Per-execution-source (agent harness) summaries. Missing on legacy docs. */
+  executionSourceSummaries?: ExecutionSourceSummary[];
+
+  /** Per-execution-source × model combo summaries. Missing on legacy docs. */
+  comboSummaries?: ComboSummary[];
 
   /** Sparse daily points for sparkline rendering: YYYY-MM-DD -> value. */
   dailyPoints: Record<string, number>;
@@ -416,6 +440,8 @@ export interface UsageCounterDimensionDoc {
   storageScope?: ProviderAccountStorageScope;
   model?: string;
   deviceId?: string;
+  executionSourceId?: string;
+  executionSourceName?: string;
   updatedAt: string;
   schemaVersion: number;
 }

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Console usage profile** (`apps/console/app/profile`): a Codex/Cursor-style
+  activity page — identity header (avatar, name, handle, joined-ago, real plan
+  badge when the domain-usage callable returns a tier), lifetime stat row
+  (lifetime/peak tokens, total requests, current and longest streaks), a
+  GitHub-style contribution heatmap of daily token activity with Daily /
+  Weekly / Cumulative modes, a 90-day token trend, most-used provider/model
+  insights, and fail-soft "Agent harnesses" + harness × model "Combos" lists
+  (brand logos via `lib/brandLogos.ts`). Every figure comes from the
+  owner-readable `usage_rollups/all_time` doc; untracked dimensions (fast
+  mode, reasoning mix, skills) are stated as untracked, never mocked.
+- **Console command rail + ⌘K palette** (`apps/console/components/nav`): the
+  numbered folio top bar is replaced by a slim left rail that groups
+  destinations by intent (Observe · Vault · System), with the member identity,
+  theme switcher, and a quarantined Panic control in the rail footer. `⌘K` /
+  `Ctrl+K` opens a command palette — every destination, every theme, and
+  sign out. Content routes sit left-aligned in a `max-w-5xl` column beside
+  the rail.
+- **Usage rollup execution sources** (`functions`): daily and all-time
+  counters now accumulate per-harness (`executionSources`) and harness ×
+  model (`combos`) docs from `UsageEventDoc.executionSourceID` /
+  `executionSourceName`. Window rollups expose `executionSourceSummaries`
+  and `comboSummaries`. Legacy events without an execution source still
+  contribute to totals and leave those arrays empty.
+
 ### Fixed - iPhone mission-approval Deny now persists
 - Tapping **Deny** on an Approvals-waiting card now leaves `waiting_for_approval`
   immediately (`respondMissionApproval` writes `status: canceled` plus

@@ -9,7 +9,15 @@
  */
 
 import { FieldPath, type DocumentData, type Firestore } from "firebase-admin/firestore";
-import type { UsageRollupDoc, ProviderSummary, ProviderAccountSummary, ModelSummary, DeviceSummary } from "./types.js";
+import type {
+  UsageRollupDoc,
+  ProviderSummary,
+  ProviderAccountSummary,
+  ModelSummary,
+  DeviceSummary,
+  ExecutionSourceSummary,
+  ComboSummary,
+} from "./types.js";
 import { isProviderAccountStorageScope, parseProvider, parseUsageEventDoc, recordOrUndefined } from "./guards.js";
 import { flushDomainCorePricingShadowEvidence } from "./pricing.js";
 import {
@@ -66,16 +74,20 @@ type CounterBucketDocs = {
   accounts: DocumentData[];
   models: DocumentData[];
   devices: DocumentData[];
+  executionSources: DocumentData[];
+  combos: DocumentData[];
 };
 
 async function fetchCounterBucketDocs(db: Firestore, bucketPaths: string[]): Promise<CounterBucketDocs> {
-  const [providers, accounts, models, devices] = await Promise.all([
+  const [providers, accounts, models, devices, executionSources, combos] = await Promise.all([
     queryCounterDocs(db, "providers", bucketPaths),
     queryCounterDocs(db, "accounts", bucketPaths),
     queryCounterDocs(db, "models", bucketPaths),
     queryCounterDocs(db, "devices", bucketPaths),
+    queryCounterDocs(db, "executionSources", bucketPaths),
+    queryCounterDocs(db, "combos", bucketPaths),
   ]);
-  return { providers, accounts, models, devices };
+  return { providers, accounts, models, devices, executionSources, combos };
 }
 
 /**
@@ -165,6 +177,8 @@ function selectWindowCounters(
       accounts: windowBuckets.flatMap((bucket) => bucket.accounts),
       models: windowBuckets.flatMap((bucket) => bucket.models),
       devices: windowBuckets.flatMap((bucket) => bucket.devices),
+      executionSources: windowBuckets.flatMap((bucket) => bucket.executionSources),
+      combos: windowBuckets.flatMap((bucket) => bucket.combos),
     },
     dailyPointEntries: bucketDocs.map((doc) => [String(doc.day), sumNumber(doc.tokens)] as const),
   };
@@ -291,9 +305,71 @@ function aggregateDeviceSummaries(devices: DocumentData[]): DeviceSummary[] {
   return Array.from(deviceMap.values()).filter((entry) => entry.requests !== 0 || entry.tokens !== 0);
 }
 
+export function aggregateExecutionSourceSummaries(executionSources: DocumentData[]): ExecutionSourceSummary[] {
+  const sourceMap = new Map<string, ExecutionSourceSummary>();
+  for (const doc of executionSources) {
+    const sourceId = typeof doc.executionSourceId === "string" ? doc.executionSourceId : "";
+    if (!sourceId) continue;
+    const sourceName = typeof doc.executionSourceName === "string" ? doc.executionSourceName : "";
+    const existing = sourceMap.get(sourceId);
+    if (existing) {
+      if (!existing.sourceName && sourceName) existing.sourceName = sourceName;
+      existing.totalRequests += sumNumber(doc.requests);
+      existing.totalTokens += sumNumber(doc.tokens);
+      existing.totalCost += sumNumber(doc.costUsd);
+    } else {
+      sourceMap.set(sourceId, {
+        sourceId,
+        sourceName,
+        totalRequests: sumNumber(doc.requests),
+        totalTokens: sumNumber(doc.tokens),
+        totalCost: sumNumber(doc.costUsd),
+      });
+    }
+  }
+  return Array.from(sourceMap.values())
+    .filter((entry) => entry.totalRequests !== 0 || entry.totalTokens !== 0 || entry.totalCost !== 0)
+    .sort((a, b) => b.totalTokens - a.totalTokens || b.totalRequests - a.totalRequests);
+}
+
+export function aggregateComboSummaries(combos: DocumentData[]): ComboSummary[] {
+  const comboMap = new Map<string, ComboSummary>();
+  for (const doc of combos) {
+    const sourceId = typeof doc.executionSourceId === "string" ? doc.executionSourceId : "";
+    if (!sourceId) continue;
+    const providerName = typeof doc.provider === "string" ? doc.provider : "unknown";
+    const provider = parseProvider(providerName);
+    if (!provider) continue;
+    const model = typeof doc.model === "string" ? doc.model : "";
+    if (!model) continue;
+    const sourceName = typeof doc.executionSourceName === "string" ? doc.executionSourceName : "";
+    const id = `${sourceId}:${provider}:${model}`;
+    const existing = comboMap.get(id);
+    if (existing) {
+      if (!existing.sourceName && sourceName) existing.sourceName = sourceName;
+      existing.requests += sumNumber(doc.requests);
+      existing.tokens += sumNumber(doc.tokens);
+      existing.cost += sumNumber(doc.costUsd);
+    } else {
+      comboMap.set(id, {
+        sourceId,
+        sourceName,
+        provider,
+        model,
+        requests: sumNumber(doc.requests),
+        tokens: sumNumber(doc.tokens),
+        cost: sumNumber(doc.costUsd),
+      });
+    }
+  }
+  return Array.from(comboMap.values())
+    .filter((entry) => entry.requests !== 0 || entry.tokens !== 0 || entry.cost !== 0)
+    .sort((a, b) => b.tokens - a.tokens || b.requests - a.requests);
+}
+
 /** Builds one window's rollup doc from its selected counter slice. */
 function buildWindowRollupDoc(key: WindowKey, slice: WindowCounterSlice, now: Date): UsageRollupDoc {
-  const { providers, accounts, models, devices } = slice.counterDocs;
+  const { providers, accounts, models, devices, executionSources, combos } = slice.counterDocs;
   const totals = sumBucketTotals(slice.bucketDocs);
   const dailyPoints = Object.fromEntries(slice.dailyPointEntries.filter(([day, tokens]) => day && tokens !== 0));
 
@@ -312,6 +388,8 @@ function buildWindowRollupDoc(key: WindowKey, slice: WindowCounterSlice, now: Da
     accountSummaries: aggregateAccountSummaries(accounts),
     modelSummaries: aggregateModelSummaries(models),
     deviceSummaries: aggregateDeviceSummaries(devices),
+    executionSourceSummaries: aggregateExecutionSourceSummaries(executionSources),
+    comboSummaries: aggregateComboSummaries(combos),
     dailyPoints,
     computedAt: now.toISOString(),
     schemaVersion: ROLLUP_SCHEMA_VERSION,
