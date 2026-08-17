@@ -626,6 +626,14 @@ test("promotion-contracts executes native release workflow contract tests", () =
     job,
     /node --test \\\n(?:            [^\n]+ \\\n)*            scripts\/ci\/verify-domain-core-native-release-workflows\.test\.mjs \\/u,
   );
+  // The native candidate gate resolves the protected chain before any signing,
+  // so its behavior — including bounded retry of transient GitHub reads — must
+  // be gated on every rust-lane change, not only exercised during a release.
+  assert.match(
+    job,
+    /node --test \\\n(?:            [^\n]+ \\\n)*            scripts\/ci\/prepare-domain-core-native-release-gate\.test\.mjs \\/u,
+    "promotion-contracts must run the native release gate contract tests",
+  );
 });
 
 test("promotion-contracts cleanup removes trusted evaluator after final use and before proof emission", () => {

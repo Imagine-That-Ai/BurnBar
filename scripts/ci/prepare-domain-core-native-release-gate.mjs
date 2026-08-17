@@ -44,6 +44,26 @@ import {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const FULL_SHA = /^[0-9a-f]{40}$/u;
+const DEFAULT_GH_ATTEMPTS = 5;
+const DEFAULT_GH_BASE_SLEEP_SECONDS = 2;
+
+// Transient GitHub transport failures (5xx, throttling, socket/DNS/TLS faults)
+// must not invalidate an otherwise immutable candidate, so `gh` reads retry with
+// the same bounded backoff the protected signer uses via
+// scripts/ci/gh-api-with-retry.sh. Everything else — expired artifacts,
+// permission denials, missing runs, attestation verification failures — stays
+// terminal on the first attempt.
+const TRANSIENT_GH_FAILURE_PATTERNS = [
+  /\bHTTP (?:408|425|429|500|502|503|504)\b/u,
+  /\b(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|EPIPE|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|ENETDOWN)\b/u,
+  /connection reset by peer/iu,
+  /\b(?:TLS|SSL) handshake (?:timeout|failure)/iu,
+  /\bunexpected EOF\b/iu,
+  /\b(?:i\/o timeout|context deadline exceeded|request timed out|timeout awaiting response)\b/iu,
+  /\bserver error\b/iu,
+  /\bservice unavailable\b/iu,
+  /\bsecondary rate limit\b/iu,
+];
 
 function parseJson(text, label) {
   try {
@@ -154,26 +174,77 @@ export function validateProtectedSignerRun(raw, coordinates, candidateCommit) {
   return coordinates;
 }
 
-export function createCommandRunner(runner = spawnSync) {
-  return (command, args, options = {}) => {
-    const result = runner(command, args, {
-      encoding: "utf8",
-      env: process.env,
-      maxBuffer: 32 * 1024 * 1024,
-      ...options,
-    });
-    if (result.error) throw result.error;
-    if (result.status !== 0) {
-      const detail = (
-        result.stderr ||
-        result.stdout ||
-        "command failed"
-      ).trim();
-      throw new Error(
-        `${command} ${args.slice(0, 4).join(" ")} failed: ${detail}`,
+export function isTransientGitHubFailure(detail) {
+  const text = detail instanceof Error ? detail.message : String(detail ?? "");
+  if (isExpiredArtifactDownloadError(text)) return false;
+  return TRANSIENT_GH_FAILURE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export function resolveGhRetryPolicy(env = process.env) {
+  const attempts =
+    env.OPENBURNBAR_GH_API_ATTEMPTS ?? String(DEFAULT_GH_ATTEMPTS);
+  const baseSleepSeconds =
+    env.OPENBURNBAR_GH_API_BASE_SLEEP_SECONDS ??
+    String(DEFAULT_GH_BASE_SLEEP_SECONDS);
+  if (!/^[1-9][0-9]*$/u.test(String(attempts))) {
+    throw new Error("OPENBURNBAR_GH_API_ATTEMPTS must be a positive integer");
+  }
+  if (!/^[0-9]+$/u.test(String(baseSleepSeconds))) {
+    throw new Error(
+      "OPENBURNBAR_GH_API_BASE_SLEEP_SECONDS must be a non-negative integer",
+    );
+  }
+  return {
+    attempts: Number(attempts),
+    baseSleepSeconds: Number(baseSleepSeconds),
+  };
+}
+
+function sleepSecondsSync(seconds) {
+  if (!(seconds > 0)) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
+}
+
+export function createCommandRunner(runner = spawnSync, options = {}) {
+  // `policyEnv` only tunes the retry budget; spawned commands always inherit the
+  // real process environment so `gh` keeps its authenticated token.
+  const { attempts, baseSleepSeconds } = resolveGhRetryPolicy(
+    options.policyEnv ?? process.env,
+  );
+  const sleep = options.sleep ?? sleepSecondsSync;
+  const log = options.log ?? ((message) => process.stderr.write(message));
+  return (command, args, spawnOptions = {}) => {
+    const label = `${command} ${args.slice(0, 4).join(" ")}`;
+    const maxAttempts = command === "gh" ? attempts : 1;
+    for (let attempt = 1; ; attempt += 1) {
+      const result = runner(command, args, {
+        encoding: "utf8",
+        env: process.env,
+        maxBuffer: 32 * 1024 * 1024,
+        ...spawnOptions,
+      });
+      const detail = result.error
+        ? result.error.message
+        : result.status === 0
+          ? null
+          : (result.stderr || result.stdout || "command failed").trim();
+      if (detail === null) return result.stdout;
+      const retryable =
+        attempt < maxAttempts && isTransientGitHubFailure(detail);
+      if (!retryable) {
+        if (result.error) throw result.error;
+        throw new Error(
+          attempt > 1
+            ? `${label} failed after ${attempt} attempts: ${detail}`
+            : `${label} failed: ${detail}`,
+        );
+      }
+      const sleepSeconds = baseSleepSeconds * attempt;
+      log(
+        `${label} attempt ${attempt}/${maxAttempts} failed transiently; retrying in ${sleepSeconds}s: ${detail}\n`,
       );
+      sleep(sleepSeconds);
     }
-    return result.stdout;
   };
 }
 

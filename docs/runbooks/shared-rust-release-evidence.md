@@ -161,6 +161,16 @@ the candidate bundle, verifies the protected signer identity, and binds the
 signer's exact run ID and attempt. The ordinary protected-verification workflow
 artifact is a diagnostic receipt and is not accepted as promotion authority.
 
+Every `gh` read in that gate retries transient GitHub transport failures — 5xx,
+throttling, and socket, DNS, or TLS faults — with bounded backoff, so a GitHub
+outage cannot invalidate an otherwise immutable candidate. `OPENBURNBAR_GH_API_ATTEMPTS`
+(default 5) and `OPENBURNBAR_GH_API_BASE_SLEEP_SECONDS` (default 2) tune the same
+budget the protected signer uses through
+[`scripts/ci/gh-api-with-retry.sh`](../../scripts/ci/gh-api-with-retry.sh). Every
+other failure stays terminal on the first attempt: an expired source artifact
+still falls back to the committed promotion bundle, and permission denials,
+missing runs, and attestation verification failures still fail the gate closed.
+
 ## Generate release evidence
 
 After the artifact is signed or the deployment is healthy, use
