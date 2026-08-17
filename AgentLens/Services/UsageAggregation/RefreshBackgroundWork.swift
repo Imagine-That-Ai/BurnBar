@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import OpenBurnBarAccountIdentity
 import OpenBurnBarCore
 
 // MARK: - Refresh Result Types
@@ -59,6 +60,15 @@ private enum ConversationIndexCheckpointToken {
 
 // MARK: - Refresh Background Work
 
+/// Device-local account attribution shared by both refresh paths.
+///
+/// One instance, so the identity-observation throttle and the on-disk identity
+/// timeline are not duplicated between the full refresh and the
+/// single-provider refresh.
+private let sharedAccountAttributor = ProviderAccountUsageAttributor.live(
+    timelineFileURL: OpenBurnBarCore.OpenBurnBarAppPaths.live().providerAccountIdentityTimelineURL
+)
+
 /// Stateless namespace for off-main-thread refresh work.
 ///
 /// `UsageAggregator` snapshots any `@MainActor` state it needs (settings,
@@ -87,7 +97,8 @@ enum RefreshBackgroundWork {
             parsers: parsers,
             dataStore: dataStore,
             orchestrator: orchestrator,
-            settings: settings
+            settings: settings,
+            accountAttributor: sharedAccountAttributor
         )
 
         // discover → usage-only parse → publish usage → index conversations
@@ -447,10 +458,11 @@ enum RefreshBackgroundWork {
                     resourceGovernor: ParserResourcePolicy.makeRefreshGovernor()
                 )
             )
-            result.usages = parseResult.usages
-            result.health = parseResult.usages.isEmpty
+            sharedAccountAttributor.refreshObservations()
+            result.usages = sharedAccountAttributor.attribute(parseResult.usages)
+            result.health = result.usages.isEmpty
                 ? .empty
-                : .healthy(sessionCount: parseResult.usages.count)
+                : .healthy(sessionCount: result.usages.count)
 
             if !parseResult.usageSessionIDsToDelete.isEmpty {
                 try await dataStore.deleteUsage(
@@ -458,7 +470,7 @@ enum RefreshBackgroundWork {
                     sessionIDs: parseResult.usageSessionIDsToDelete
                 )
             }
-            try await dataStore.insertChunked(parseResult.usages, chunkSize: 500)
+            try await dataStore.insertChunked(result.usages, chunkSize: 500)
         } catch {
             result.health = .failed(error: error.localizedDescription)
             result.error = "Provider refresh failed for \(provider.displayName): \(error.localizedDescription)"

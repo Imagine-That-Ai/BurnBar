@@ -14,14 +14,25 @@ import OpenBurnBarCore
 /// popover visibility, setup-slot classification, the Connections list, and the
 /// removed-slot tombstone sweep. Keep this the only copy.
 enum QuotaCapableProviderMap {
-    /// Providers whose quota endpoint reports **organization-wide** usage, so a
+    /// Providers whose quota source is **not account-scoped**, so a
     /// per-credential-slot fetch would return the same numbers for every slot.
-    /// Fetching per account would triple-count one org in the cumulative merge
-    /// and render N identical cards, so these stay provider-level only.
+    /// Fetching per account would triple-count one source in the cumulative
+    /// merge and render N identical cards, so these stay provider-level only.
     ///
-    /// OpenAI: `/v1/organization/usage/completions` requires an org admin key
-    /// and is scoped to the whole organization, not the key.
-    static let organizationScopedProviders: Set<AgentProvider> = [.openAI]
+    /// Two distinct reasons land a provider here:
+    ///
+    /// - **Organization-scoped.** OpenAI's
+    ///   `/v1/organization/usage/completions` requires an org admin key and is
+    ///   scoped to the whole organization, not the key.
+    /// - **Device-scoped.** OpenCode Go exposes no hosted quota API at all;
+    ///   `OpenCodeQuotaAdapter` derives plan pressure from this machine's
+    ///   `opencode.db` spend and `opencode stats` CLI history, which cover
+    ///   every subscription signed in on the device. A user with three
+    ///   OpenCode Go subscriptions still has exactly one device-wide estimate,
+    ///   so it is reported once. The subscriptions remain separate accounts
+    ///   for routing, failover, and per-account burn attribution — only the
+    ///   quota estimate is shared, because only the estimate is device-wide.
+    static let providerLevelOnlyQuotaProviders: Set<AgentProvider> = [.openAI, .openCode]
 
     /// Every daemon-config provider id accepted for a provider, keyed by
     /// provider so the forward lookup and the reverse (alias sweep) lookup
@@ -72,7 +83,7 @@ enum QuotaCapableProviderMap {
 
     /// Whether per-account quota snapshots are meaningful for `provider`.
     static func supportsPerAccountQuota(_ provider: AgentProvider) -> Bool {
-        !organizationScopedProviders.contains(provider)
+        !providerLevelOnlyQuotaProviders.contains(provider)
     }
 }
 
@@ -120,9 +131,16 @@ enum ProviderQuotaAccountDisplay {
         if let label = nonEmpty(snapshot.accountLabel) { return label }
         if let accountID = nonEmpty(snapshot.accountID) { return accountID }
         guard isRollup(snapshot) else { return snapshot.sourceId }
-        return QuotaCapableProviderMap.organizationScopedProviders.contains(provider)
-            ? "Organization · all keys"
-            : "Default login"
+        // A provider-level rollup means something different depending on why
+        // the provider has no per-account quota: OpenAI's numbers cover an
+        // organization, OpenCode's cover this machine. Saying "Organization"
+        // for a device-wide OpenCode estimate would invent a billing entity
+        // the user does not have.
+        switch provider {
+        case .openAI: return "Organization · all keys"
+        case .openCode: return "This Mac · all subscriptions"
+        default: return "Default login"
+        }
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

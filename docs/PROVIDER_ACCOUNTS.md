@@ -173,6 +173,142 @@ Mac quota command center mirrors Token Plan region / tier / billing cycle into
 `QuotaSettings` so `MimoQuotaAdapter` can fall back to tier caps when the vendor
 remains endpoint returns no buckets.
 
+## OpenCode Go
+
+OpenCode is catalog provider `opencode` (`AgentProvider.openCode`, aliases
+`opencode-go`, `open-code`, `open code go`). **Multiple OpenCode Go
+subscriptions can be connected side by side**, the same as Ollama, Codex, and
+Anthropic.
+
+### Connect one account per subscription
+
+1. Open **Settings → Connections → OpenCode** and choose **OpenCode auth.json**.
+2. Either import the currently signed-in `~/.local/share/opencode/auth.json`, or
+   paste another subscription's `opencode-go` entry, its full `auth.json`, or the
+   bare route key.
+3. Give the account a label (`Work`, `Personal`, `Client`) and save. Repeat per
+   subscription.
+
+Each connection becomes its own daemon credential slot, and therefore its own
+`ProviderAccountDoc` with independent routing, failover, cooldown, and enable or
+disable state. `OpenBurnBarProviderCredentialNormalizer` extracts the route key
+from whichever of the three paste shapes was used.
+
+Credentials are stored **per slot**
+(`provider.opencode.slot.<slotID>.apiKey`). OpenCode previously also mirrored
+each credential into the shared `opencode_auth_json` app-keychain account; that
+account is a singleton, so connecting a second subscription overwrote the
+first one's secret and pinned the provider-level lane to whichever account was
+saved last. The mirror is no longer written. Installs that already have a
+mirrored value keep working — `opencode_auth_json` is still read as a legacy
+fallback, it is just never written again.
+
+### Quota is device-wide, spend is per account
+
+OpenCode Go exposes no hosted per-account quota API. `OpenCodeQuotaAdapter`
+derives plan pressure from this machine's `opencode.db` spend plus
+`opencode stats` CLI history, and both cover every subscription signed in on the
+device. Three subscriptions therefore share **one** device-wide estimate, which
+OpenBurnBar reports once at provider level (labelled *This Mac · all
+subscriptions*) instead of rendering three identical account cards and
+triple-counting one machine in the cumulative merge. This is the same hold-out
+that keeps organization-scoped OpenAI provider-level; the shared list is
+`QuotaCapableProviderMap.providerLevelOnlyQuotaProviders`.
+
+Per-subscription **spend** is attributed wherever BurnBar sees the credential:
+traffic routed through the OpenBurnBar gateway carries its credential slot, so
+each subscription's burn lands on its own account (see
+[Usage Attribution](#usage-attribution-which-account-is-burning)).
+
+OpenCode CLI traffic that bypasses the gateway is the one gap, and it is a
+deliberate one. Unlike Cursor, Codex, and Claude Code — whose local state files
+expose an email or account id — OpenCode's `auth.json` carries only the
+`opencode-go` route key for the signed-in subscription. Identifying which
+subscription produced a locally parsed session would mean fingerprinting that
+key against each daemon slot's stored secret, which would put credential reads
+into the log-parser path. OpenBurnBar does not do that: locally parsed OpenCode
+sessions stay unattributed at provider level. Route OpenCode through the
+BurnBar gateway when you need per-subscription spend.
+
+## Usage Attribution (which account is burning)
+
+Provider accounts answer "which seat is authorized"; usage attribution answers
+"which seat spent the tokens". Every `token_usage` row carries
+`providerAccountID`, `providerAccountLabel`, and `providerAccountSource`, so a
+user with three Cursor seats or three OpenAI accounts can see the burn split per
+account instead of one merged provider total.
+
+Rows get their account from one of three sources:
+
+| Source | How the account is determined |
+|---|---|
+| Local tool sign-in | A resolver reads the tool's own signed-in identity, and the parsed session is matched to whichever account was signed in during that session's time window. |
+| Daemon-routed traffic | The router already picked a credential slot; that slot rides `BurnBarUsageEvent` through the ledger into `token_usage`. |
+| Billing APIs | The account is whatever credential the pull authenticated with. |
+
+### Local identity resolvers
+
+`ProviderAccountIdentityResolving` implementations read only non-secret identity
+metadata from each tool's own state, never OpenBurnBar credentials and never the
+Keychain:
+
+| Provider | Source | Field |
+|---|---|---|
+| Cursor | `state.vscdb` (`ItemTable`) | `cursorAuth/cachedEmail` |
+| Codex | `$CODEX_HOME/auth.json` | `tokens.account_id` + the `email` claim of `id_token` |
+| Claude Code | `.claude.json` (honors `CLAUDE_CONFIG_DIR`) | `oauthAccount.accountUuid` / `.emailAddress` |
+
+The Cursor resolver deliberately does not read `cursorAuth/accessToken`, and the
+Claude resolver keeps the documented posture of never reading the Claude
+Keychain item or `.credentials.json`.
+
+### The identity timeline
+
+Local tools record usage without naming the account, so attribution is
+time-based. `ProviderAccountIdentityTimelineStore` journals which identity was
+signed in for each provider over time
+(`provider_account_identity_timeline.json`, device-local, never synced). A
+parsed session is attributed when its `[startTime, endTime]` interval falls
+inside exactly one identity window; a session spanning an account switch stays
+unattributed rather than guessing.
+
+An identity holds from its first observation until a *different* identity is
+observed, so gaps between refresh ticks do not un-attribute usage.
+
+Usage recorded **before** the first observation stays unattributed on purpose.
+Backdating the first-seen identity across pre-existing history would assign
+every past session to whichever account happened to be signed in when
+attribution first ran — on the multi-seat device this feature exists for, that
+guess is wrong often enough to mislead someone into cancelling the wrong seat.
+Attribution therefore starts empty and fills in as new sessions are recorded;
+older rows keep reporting under the provider's `default` lane. The same
+conservatism applies to a session already in flight at first observation: its
+interval starts before any window, so it stays unattributed until the next
+session begins.
+
+### Privacy
+
+`providerAccountID` is stored as the anonymized `acct_sha256_…` partition token
+(`TokenUsage.providerAccountIdentityPartition`), matching how account identity
+was already hashed before reaching SQLite and Firestore. The raw email or
+account id is used only to derive that token. `providerAccountLabel` holds the
+human-readable seat name for display.
+
+### Transition from unattributed rows
+
+The `token_usage` unique index includes `COALESCE(providerAccountID, '')`, so a
+newly attributed row does not collide with the same session's older
+unattributed row. `deleteUnattributedPredecessorRows` retires that predecessor
+in the same transaction as the insert, so enabling attribution re-keys history
+instead of double-counting it. Rows already attributed to a different account
+are never claimed.
+
+### Surfaces
+
+Per-account burn appears in the dashboard **Credential Ranking** lane, in the
+per-provider **Spend by Account** panel (shown when more than one account has
+usage in the window), and in the org rollup's **credential** group-by.
+
 ## Routing Policy
 
 Provider accounts are the router inventory. Quota snapshots are health signals,
@@ -219,7 +355,9 @@ which specific account is exhausted or cooling down.
 Legacy `provider_connections/{provider}` documents remain readable during the
 transition. The default provider account can mirror the legacy connection so old
 clients still see a safe subset. Local usage rows also keep provider-level data
-when account attribution is unavailable.
+when account attribution is unavailable — providers with no identity resolver,
+sessions that span an account switch, and history recorded before attribution
+shipped all keep reporting under the provider's `default` lane.
 
 ## Deletion
 

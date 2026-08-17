@@ -177,6 +177,12 @@ public struct OpenBurnBarAppPaths: Sendable {
         supportDirectory.appendingPathComponent("claude_code_parser_cache.json")
     }
 
+    /// Device-local journal of which provider account was signed in over time,
+    /// used to attribute parsed usage to the seat that produced it.
+    public var providerAccountIdentityTimelineURL: URL {
+        supportDirectory.appendingPathComponent("provider_account_identity_timeline.json")
+    }
+
     public var factoryDroidParserCacheURL: URL {
         supportDirectory.appendingPathComponent("factory_droid_parser_cache.json")
     }

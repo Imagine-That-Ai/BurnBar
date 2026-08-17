@@ -573,6 +573,10 @@ struct ProviderDashboardView: View {
                     analyticsDeck
                 }
 
+                if accountSummaries.count > 1 {
+                    accountSpendPanel
+                }
+
                 sessionsSection
             }
             .padding(UnifiedDesignSystem.Spacing.xl)
@@ -674,6 +678,32 @@ struct ProviderDashboardView: View {
 
             modelStackPanel
                 .frame(width: 280, alignment: .topLeading)
+        }
+    }
+
+    /// "Which seat is burning?" — one row per signed-in account of this
+    /// provider, ranked by spend, shown only when more than one account has
+    /// usage in the window.
+    private var accountSpendPanel: some View {
+        UnifiedGlassCard {
+            VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.lg) {
+                VStack(alignment: .leading, spacing: UnifiedDesignSystem.Spacing.xs) {
+                    Text("Spend by Account")
+                        .font(UnifiedDesignSystem.Typography.headline)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textPrimary)
+
+                    Text("Which \(provider.displayName) account burned tokens in the selected window.")
+                        .font(UnifiedDesignSystem.Typography.caption)
+                        .foregroundStyle(UnifiedDesignSystem.Colors.textSecondary)
+                }
+
+                VStack(spacing: UnifiedDesignSystem.Spacing.sm) {
+                    ForEach(Array(accountSummaries.enumerated()), id: \.element.id) { index, summary in
+                        CredentialCard(summary: summary, rank: index + 1) {}
+                    }
+                }
+            }
+            .padding(UnifiedDesignSystem.Spacing.lg)
         }
     }
 
@@ -862,6 +892,14 @@ struct ProviderDashboardView: View {
             )
             .prefix(5)
         )
+    }
+
+    /// Per-account spend for this provider, highest first. Multi-seat installs
+    /// (three Cursor seats, three OpenAI accounts) get one row per account. A
+    /// single-account provider yields one row, and the panel hides itself.
+    private var accountSummaries: [CredentialSummary] {
+        UsageStore.makeCredentialSummaries(from: usages)
+            .filter { $0.provider == provider }
     }
 
     private var topModelName: String {

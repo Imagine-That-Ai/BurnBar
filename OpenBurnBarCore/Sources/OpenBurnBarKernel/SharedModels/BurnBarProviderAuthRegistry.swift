@@ -633,18 +633,34 @@ public enum BurnBarProviderAuthRegistry {
                 kind: .apiKey,
                 displayName: "OpenCode auth.json",
                 summary: "Routes OpenCode Go models; local quota comes from CLI stats.",
-                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, the full auth.json, or just its key value. OpenBurnBar extracts the route key and sends requests to OpenCode Go's OpenAI-compatible gateway.",
+                helperText: "Paste the opencode-go entry from ~/.local/share/opencode/auth.json, the full "
+                    + "auth.json, or just its key value. OpenBurnBar extracts the route key and sends requests "
+                    + "to OpenCode Go's OpenAI-compatible gateway. Add one connection per OpenCode Go "
+                    + "subscription; each becomes its own BurnBar account.",
                 placeholder: "{\"opencode-go\":{\"type\":\"...\",\"key\":\"...\"}}",
                 dashboardURL: "https://opencode.ai/docs/go/",
                 dashboardLabel: "OpenCode Go docs",
-                storage: .daemonSlotMirroredToKeychain(account: "opencode_auth_json"),
+                // Per-slot storage, like Ollama and Anthropic. This used to
+                // mirror to the shared `opencode_auth_json` app-keychain
+                // account, which is a singleton: connecting a second OpenCode
+                // Go subscription overwrote the first one's mirrored secret,
+                // so the provider-level lane silently pinned itself to
+                // whichever account was saved last. Nothing needs the mirror —
+                // the quota adapter only uses a credential as an
+                // "is OpenCode signed in" gate (its numbers come from the
+                // local CLI/SQLite), and `resolveDaemonPlanAPIKey` already
+                // resolves the provider-level key from the daemon slot.
+                // Legacy installs keep working: `opencode_auth_json` stays in
+                // `quotaKeyIdentifiers`, so a previously mirrored value is
+                // still read, it just is not written again.
+                storage: .daemonSlot,
                 unlocksProxyRouting: true,
                 unlocksQuotaRefresh: true
             )
         ],
         summary: "OpenCode Go routing, quota, and account tracking.",
         proxyHint: "Routed through OpenCode Go's OpenAI-compatible /zen/go/v1 gateway.",
-        quotaHint: "Local/self-hosted quota refresh reads OpenCode CLI stats; route credentials can be added as separate BurnBar accounts."
+        quotaHint: "Connect one account per OpenCode Go subscription — each routes and bills separately. OpenCode exposes no per-account quota API, so plan pressure is a device-wide estimate from local CLI stats and is reported once for the provider, not duplicated per account."
     )
 
     private static let googleDescriptor = BurnBarProviderAuthDescriptor(

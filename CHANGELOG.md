@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Per-account burn attribution
+
+- Usage rows now record *which* provider account produced them, so an install
+  with several seats of the same provider (three Cursor seats, three OpenAI
+  accounts) can see burn split per account instead of one merged provider
+  total. The `token_usage` account columns have existed since `v35`; nothing
+  filled them for locally parsed usage until now, so no migration is involved.
+- Local identity resolvers read each tool's own signed-in identity — Cursor
+  (`cursorAuth/cachedEmail`), Codex (`auth.json` account id + `id_token` email
+  claim), Claude Code (`.claude.json` `oauthAccount`) — and a device-local
+  identity timeline attributes each parsed session to the account signed in
+  during that session's window. Attribution is deliberately conservative:
+  sessions spanning an account switch, and history recorded before attribution
+  first ran, stay unattributed rather than being guessed onto a seat. Identity
+  values are stored as the existing anonymized `acct_sha256_…` partition token.
+- Daemon-routed traffic carries the router's credential slot through
+  `BurnBarUsageEvent` into `token_usage`, so gateway burn is attributed too.
+- Attributed rows retire their unattributed predecessor on upsert, so turning
+  attribution on re-keys existing history instead of double-counting it.
+- Surfaced in the dashboard Credential Ranking lane and a new per-provider
+  **Spend by Account** panel. See [`docs/PROVIDER_ACCOUNTS.md`](docs/PROVIDER_ACCOUNTS.md).
+
+### Fixed - Multiple OpenCode Go subscriptions
+
+- Connecting a second OpenCode Go subscription no longer overwrites the first.
+  OpenCode mirrored every credential into the shared `opencode_auth_json`
+  app-keychain account — a singleton — so the provider-level lane silently
+  pinned itself to whichever account was saved last. OpenCode now stores
+  per credential slot, matching Ollama and Anthropic. Existing installs keep
+  working: the legacy mirror is still read, just never written again.
+- OpenCode quota no longer renders one identical card per subscription.
+  OpenCode Go exposes no hosted per-account quota API, so `OpenCodeQuotaAdapter`
+  measures this machine (`opencode.db` spend + `opencode stats` history), which
+  covers every subscription signed in on the device. That estimate is now
+  reported once at provider level — labelled *This Mac · all subscriptions* —
+  instead of being fetched per account and triple-counting one machine in the
+  cumulative merge. Subscriptions remain separate accounts for routing,
+  failover, and per-account burn attribution.
+
 ### Fixed - iPhone mission-approval Deny now persists
 - Tapping **Deny** on an Approvals-waiting card now leaves `waiting_for_approval`
   immediately (`respondMissionApproval` writes `status: canceled` plus

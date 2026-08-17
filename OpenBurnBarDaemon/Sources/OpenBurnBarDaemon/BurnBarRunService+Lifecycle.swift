@@ -348,7 +348,9 @@ extension BurnBarRunService {
             executionSourceID: executionSource.id == "unknown" ? nil : executionSource.id,
             executionSourceName: executionSource.id == "unknown" ? nil : executionSource.name,
             executionSourceKind: executionSource.kind == .unknown ? nil : executionSource.kind,
-            executionSourceConfidence: executionSource.id == "unknown" ? nil : .exact
+            executionSourceConfidence: executionSource.id == "unknown" ? nil : .exact,
+            providerAccountID: run.route.credentialSlotID,
+            providerAccountLabel: run.route.credentialSlotLabel
         )
     }
 

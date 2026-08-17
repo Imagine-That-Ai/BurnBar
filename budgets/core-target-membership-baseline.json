@@ -67,6 +67,11 @@
       "maxLines": 16700,
       "planned": true
     },
+    "OpenBurnBarAccountIdentity": {
+      "maxFiles": 8,
+      "maxLines": 630,
+      "planned": false
+    },
     "OpenBurnBarQuota": {
       "maxFiles": 55,
       "maxLines": 13000,

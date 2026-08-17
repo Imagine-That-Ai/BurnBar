@@ -447,6 +447,12 @@ targets:
         product: OpenBurnBarKernel
       - package: OpenBurnBarCore
         product: OpenBurnBarLogParsers
+      # Provider-account usage attribution. Linked explicitly because the
+      # OpenBurnBarCore umbrella does not re-export this sibling — a shim would
+      # mean a new file in the Core main target, which the
+      # core-target-membership deny-gate forbids.
+      - package: OpenBurnBarCore
+        product: OpenBurnBarAccountIdentity
       - package: OpenBurnBarCore
         product: OpenBurnBarUI
       - package: GRDB

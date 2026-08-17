@@ -188,6 +188,45 @@ final class BurnBarProviderAuthRegistryTests: XCTestCase {
         XCTAssertTrue(method?.validate(#"{"opencode-go":{"type":"api"}}"#).isWarning ?? false)
     }
 
+    /// Multiple OpenCode Go subscriptions must be connectable side by side, the
+    /// same way Ollama and Anthropic already are. OpenCode used to mirror its
+    /// credential into the shared `opencode_auth_json` app-keychain account,
+    /// which is a singleton — connecting a second subscription overwrote the
+    /// first one's secret, so the provider-level lane pinned itself to whichever
+    /// account was saved last. Per-slot storage is what keeps N subscriptions
+    /// independent.
+    func test_openCodeStoresPerSlotSoMultipleSubscriptionsDoNotClobberEachOther() {
+        let method = BurnBarProviderAuthRegistry
+            .descriptor(forCatalogProviderID: "opencode")?
+            .method(id: "opencode-auth-json")
+
+        XCTAssertNil(
+            method?.storage.mirrorAccountIdentifier,
+            "A shared mirror account makes the Nth OpenCode Go subscription overwrite the first."
+        )
+        XCTAssertTrue(method?.storage.usesDaemonSlot ?? false)
+
+        // Same storage shape as the providers this parity is measured against.
+        let ollama = BurnBarProviderAuthRegistry
+            .descriptor(forCatalogProviderID: "ollama")?
+            .method(id: "ollama-cloud-key")
+        XCTAssertEqual(method?.storage, ollama?.storage)
+    }
+
+    /// `opencode-go` and its spelling variants must resolve to the same
+    /// descriptor, so a subscription connected under either name lands on one
+    /// provider identity instead of forking into a second, unroutable one.
+    func test_openCodeGoAliasesResolveToTheSameDescriptor() {
+        let canonical = BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: "opencode")
+        for alias in ["opencode-go", "open-code-go", "open code go", "open-code"] {
+            XCTAssertEqual(
+                BurnBarProviderAuthRegistry.descriptor(forCatalogProviderID: alias)?.providerID,
+                canonical?.providerID,
+                "\(alias) should resolve to the canonical OpenCode descriptor"
+            )
+        }
+    }
+
     func test_apiKeyValidation_warnsOnMissingPrefix() {
         let method = BurnBarProviderAuthMethod(
             id: "test",
