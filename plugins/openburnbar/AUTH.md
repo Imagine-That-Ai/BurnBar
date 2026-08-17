@@ -106,6 +106,23 @@ advertised as available. The protected-resource metadata
 (`/.well-known/oauth-protected-resource`) confirms the same four scopes.
 Requires BurnBar Cloud Pro/Ultra.
 
+## HTTP-only marketplace capability boundary
+
+Tool visibility is not the same as a usable plaintext workflow. The hosted
+conversation search handler ignores a plaintext `query` and returns an empty
+`local_decrypt_shim_required` result unless the caller supplies
+vault-key-derived `tokenHashes` or `semanticHashes`. Knowledge search requires
+a correctly cloaked 384-element `queryVector` in addition to
+`knowledge:read`. The HTTP-only marketplace package has no trusted client-side
+code that can derive those values, and this PR does not add a local server.
+
+Therefore the marketplace package currently supports authenticated capability,
+index-status, facet, and recent-usage calls only. Conversation search,
+knowledge search, sealed-body reading, and topic-based resume remain blocked on
+the optional local preprocessing/decrypt shim. Plugin skills and commands stop
+and name this boundary instead of sending plaintext and claiming an empty
+result is a real search.
+
 ## Sealed-field honesty
 
 On the hosted HTTP path, search titles/snippets, conversation bodies, resume
@@ -152,10 +169,12 @@ page):
    strips the hyphen only for its 8-character length gate).
 4. Return to the CLI/terminal after `/link` success. Do not scrape tokens off
    the website and do not print them.
-5. Place the short-lived access token into Cursor's
-   `OPENBURNBAR_MCP_ACCESS_TOKEN` plugin variable (Settings / Remote MCP).
-   The 90-day refresh stays in Keychain via the optional unpublished shim —
-   **not** in the plugin variable.
+5. After BurnBar ships a safe copy/export action, place the short-lived access
+   token into Cursor's `OPENBURNBAR_MCP_ACCESS_TOKEN` plugin variable
+   (Settings / Remote MCP). The current CLI stores the access token in Keychain
+   and does not print it, so this step is blocked today. The 90-day refresh
+   stays in Keychain via the optional unpublished shim — **not** in the plugin
+   variable.
 
 **Do not loop `openburnbar mcp login`** while production `/link` still calls
 `completeCliLink({ userCode })` without a nonce / until PR 1 is on

@@ -280,6 +280,9 @@ jobs:
       - name: Prettier format check
         run: npm run format:check --prefix website
 
+      - name: Link attestation source contract
+        run: npm run test:link-attestation --prefix website
+
   # ── OpenBurnBar Cursor Marketplace plugin: fail-closed structural gate ────
   # Dedicated job (not folded into website-fast / extension-fast) so a
   # plugin-only diff still gets the package validator on the cheap web lane.

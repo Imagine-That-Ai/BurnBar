@@ -1,15 +1,13 @@
 # Update runbook — OpenBurnBar Cursor Marketplace Plugin
 
-Written post-seal (misc-m8, 2026-08-16) so any future agent can take a
+Written post-seal (misc-m8, 2026-08-16) so any future operator can take a
 requested change to the OpenBurnBar Cursor Marketplace plugin from idea to
 published package without re-deriving the mission's locked decisions. This
 file lives inside the plugin package at `plugins/openburnbar/docs/UPDATE.md`;
-the thin public plugin repo already carries this same content. The BurnBar
-`main` copy at `docs/runbooks/openburnbar-cursor-plugin-update.md` is
-**pending PR 2291** (https://github.com/Imagine-That-Ai/BurnBar/pull/2291,
-OPEN, REVIEW_REQUIRED, auto-merge armed): it lands on `main` only after a
-non-author write user APPROVES. While 2291 is OPEN, this file does not
-claim the `main` copy exists.
+the thin public plugin repo carries the same content after a successful
+mirror publication. A companion BurnBar runbook may also exist at
+`docs/runbooks/openburnbar-cursor-plugin-update.md`; verify the current tree
+instead of inferring its presence from an old pull-request snapshot.
 
 ## Goal
 
@@ -17,8 +15,7 @@ When a user asks to change the OpenBurnBar Cursor Marketplace plugin, make
 the change once in the plugin source of truth, prove it with the cheap gate,
 land it on the branch that carries the open plugin PR, and re-mirror the thin
 public repo so the marketplace package and its install docs agree — without
-touching the website-only PR 2286, merging the conflicting PR 2290, or
-putting secrets in git.
+polluting a website-only pull request or putting secrets in git.
 
 ## Success means
 
@@ -26,8 +23,8 @@ putting secrets in git.
   thin public repo is a generated mirror, never edited directly.
 - `node plugins/openburnbar/scripts/validate.mjs` exits 0 from the worktree
   root after the change.
-- The commit is on `feat/cursor-plugin-unit` and pushed to origin. While
-  PR 2286 is OPEN, `feat/cursor-marketplace-plugin` is **not** pushed.
+- The commit is on the branch that owns the plugin PR and pushed to origin.
+  A website-only branch is never used as the plugin push target.
 - `plugins/openburnbar/scripts/publish-mirror.sh` ran, and
   `https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin` carries the
   updated files (including this `docs/UPDATE.md`).
@@ -36,38 +33,36 @@ putting secrets in git.
   only.
 - The manifest version is still `1.0.0` — it changes only together with the
   plugin `CHANGELOG.md` and `scripts/validate.mjs` (see “Version lock”).
-- Human-gated steps are recorded as slots, not claimed: Reload Window /
-  Customize confirm, marketplace Submit, production `/link` confirm after
-  PR 2286 deploys.
+- Operator-gated steps are recorded with their real evidence: Reload Window /
+  Customize confirm, marketplace submission, and production `/link` confirm
+  only after the attestation fix is actually deployed.
 
 ## Stop when
 
 - The cheap gate is green, the commit is pushed on `feat/cursor-plugin-unit`,
   and the thin repo is re-mirrored.
-- PR 2286 is still OPEN at `f90e71ef1` — pushing
-  `feat/cursor-marketplace-plugin` would attach every local commit to that
-  website-only PR, so it does not happen here.
-- PR 2290 (the plugin-unit PR this work rides) is OPEN but CONFLICTING with
-  `main` — it is not merged as part of an update.
-- Human slots stay human: nothing is submitted to the Cursor marketplace and
-  nothing is confirmed on production `/link` by the agent.
+- The plugin validator, relevant targeted checks, and `git diff --check` pass.
+- The plugin PR contains only the intended theme and its review threads are
+  resolved only after the corresponding fixes are present on the exact head.
+- The thin repo is re-mirrored only after the plugin change lands and the
+  source tree validates cleanly.
 
 ## Locked path
 
 | Locked item | Value |
 |---|---|
-| Source of truth | `plugins/openburnbar/` in the implementation checkout `/Users/dewclaw/BurnBar-cursor-plugin` |
+| Source of truth | `plugins/openburnbar/` in an isolated BurnBar worktree |
 | Cheap gate | `node plugins/openburnbar/scripts/validate.mjs` |
-| Push lane while PR 2286 is OPEN | `feat/cursor-plugin-unit` only |
+| Plugin PR branch | Resolve from `gh pr view 2290 --json headRefName,headRefOid` before editing |
 | Re-mirror command | `plugins/openburnbar/scripts/publish-mirror.sh` |
 | Marketplace git URL | `https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin` |
 | Version | `1.0.0`, locked until `.cursor-plugin/plugin.json` + plugin `CHANGELOG.md` + `scripts/validate.mjs` change together |
 | Human slots | Reload Window / Customize (local load), marketplace Submit, production `/link` confirm after 2286 deploys |
 
-## Current PR state — verify before you start
+## Current PR state — always verify before you start
 
-Verify the three PRs before touching anything; the push lane and the
-`main`-copy status depend on them:
+Verify the related PRs before touching anything; branch ownership and the
+`main`-copy status can change:
 
 ```bash
 gh pr view 2286 -R Imagine-That-Ai/BurnBar --json state,headRefOid,mergeable
@@ -75,33 +70,16 @@ gh pr view 2290 -R Imagine-That-Ai/BurnBar --json state,headRefOid,mergeable
 gh pr view 2291 -R Imagine-That-Ai/BurnBar --json state,headRefOid,mergeable,autoMergeRequest
 ```
 
-State as of 2026-08-16:
-
-- PR 2286 (`fix(website): attest completeCliLink with App Check bind + nonce`)
-  is OPEN from `feat/cursor-marketplace-plugin` at `f90e71ef1`, website-only,
-  MERGEABLE. Deploying it is what unblocks a production `/link` grant confirm.
-- PR 2290 (`feat(cursor): OpenBurnBar marketplace plugin`) is OPEN from
-  `feat/cursor-plugin-unit` at `c8c6a7363`, CONFLICTING with `main`
-  (CHANGELOG.md and website MCP copy at minimum). It is the plugin-unit PR;
-  update commits ride it. It is **not** merged here — conflict resolution is
-  a merge-time concern, not an update-time one.
-- PR 2291 (`docs: OpenBurnBar Cursor plugin update runbook`) is OPEN from
-  `docs/openburnbar-plugin-update-runbook` at `e191a1c92`, MERGEABLE but
-  REVIEW_REQUIRED, auto-merge armed. It is the vehicle for the `main` copy
-  at `docs/runbooks/openburnbar-cursor-plugin-update.md`; that file is on
-  `main` only after a non-author write user APPROVES and the queue merges.
-  While 2291 is OPEN, nothing here claims the `main` copy already exists.
-
-If 2286 has merged since this was written, the push-lane constraint below
-lifts: PR 2290 may then use `feat/cursor-marketplace-plugin`, and this
-runbook's locked-path line must be updated in the same commit that changes
-the lane.
+Use PR 2290's returned `headRefName` as the only plugin push lane. PR 2286
+must remain website-only for as long as it exists, regardless of whether it
+is open or merged. PR 2291 only determines whether the companion runbook has
+landed; it never changes the plugin source of truth.
 
 ## Local edit loop
 
-1. Work in `/Users/dewclaw/BurnBar-cursor-plugin` (the only implementation
-   checkout), on `feat/cursor-marketplace-plugin`. Never touch
-   `/Users/dewclaw/BurnBar` — it is an off-limits dirty tree.
+1. Create or reuse an isolated BurnBar worktree on PR 2290's current head
+   branch. Preserve shared or dirty checkouts; do not reset, stash, clean, or
+   edit them.
 2. Edit only `plugins/openburnbar/**` (plus the monorepo docs/website files
    when the change requires them, e.g. `docs/OPENBURNBAR_CURSOR_PLUGIN.md`).
 3. Run the cheap gate after every edit:
@@ -113,10 +91,10 @@ the lane.
    ```bash
    node --test scripts/ci/classify-ci-impact.test.mjs
    ```
-5. Never run `make ci`, `xcodebuild`, Gradle, daemon tests, or
-   `npm run verify --prefix website`. The plugin has no `package.json` and
-   never gains one (a plugin `package.json`/lockfile fails validation and
-   forces full CI). Plugin-only diffs classify onto the cheap web lane.
+5. Do not spend unrelated native or full-suite CI. The plugin has no
+   `package.json` and never gains one (a plugin `package.json`/lockfile fails
+   validation and forces full CI). For website changes, run the targeted
+   website checks selected by the repository's fast-feedback gate.
 6. Commit, then follow “Git and PR discipline” below. One push per logical
    change.
 
@@ -153,18 +131,12 @@ rather than working around it.
 ## Git and PR discipline
 
 - Worktree remote: `https://github.com/Imagine-That-Ai/BurnBar.git`.
-- While PR 2286 is OPEN, push **only** `feat/cursor-plugin-unit`:
-  1. Commit on the worktree branch (`feat/cursor-marketplace-plugin`).
-  2. Fast-forward the local `feat/cursor-plugin-unit` to that commit:
-     `git branch -f feat/cursor-plugin-unit <commit>` (or `git merge --ff-only`).
-  3. `git push origin feat/cursor-plugin-unit`.
-  4. Leave the worktree checked out on `feat/cursor-marketplace-plugin`.
-  Pushing `feat/cursor-marketplace-plugin` would add every local commit to
-  PR 2286 and break its website-only diff.
-- PR 2290 is OPEN but CONFLICTING with `main` — it is the vehicle for this
-  work, but it is **not merged here**. Do not resolve its conflicts as part
-  of an update, do not rebase/force-push the shared branch, and do not merge
-  2286 either.
+- Push only PR 2290's current `headRefName`. Confirm the remote head still
+  equals the SHA you started from immediately before pushing.
+- Never push plugin commits to the website-only branch used by PR 2286.
+- Do not force-push or bypass branch protection. If main has moved, update the
+  plugin branch in an isolated worktree, re-run the targeted gates, and push a
+  normal commit.
 - PRs are labeled `factory-review`; the factory owns review and merge
   babysitting. Leave a clear PR body (what, why, validation run) when a
   change needs one.
@@ -178,10 +150,11 @@ to the thin public repo. Before anything is copied it:
 2. Checks `plugin.json.repository` equals
    `https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin` (the
    monorepo is never the marketplace git URL).
-3. Reuses the sibling clone (`/Users/dewclaw/openburnbar-cursor-plugin` by
-   default) only when its origin URL **and** any configured `pushurl` match
-   the thin repo identity and the working tree is completely clean. Wrong
-   origin, wrong pushurl, or a dirty clone exits 1 before any copy.
+3. Reuses the sibling `openburnbar-cursor-plugin` clone derived from the
+   monorepo location by default, only when its origin URL **and** any
+   configured `pushurl` match the thin repo identity and the working tree is
+   completely clean. Wrong origin, wrong pushurl, or a dirty clone exits 1
+   before any copy.
 4. Fetches and fails closed on fetch/checkout/branch failures; refuses
    unpushed local history; wipes every root entry except `.git` before the
    copy so the staged tree equals exactly the plugin tree.
@@ -211,23 +184,21 @@ the new version from the default branch.
 
 ## Human slots
 
-These steps are human-gated; record the slot, do not perform it:
+These steps require real operator evidence; do not infer completion:
 
 - **Developer: Reload Window / Customize** — local-load confirm that
   Customize → Plugins shows OpenBurnBar. Recorded in
   `plugins/openburnbar/docs/local-load.md` § 3 (awaiting a named human).
-- **Marketplace Submit** — the form at
-  https://cursor.com/marketplace/publish is submitted only by a human; the
-  submission packet (`docs/plans/cursor-plugin-marketplace-submission.md`)
-  ends with the exact remaining click.
+- **Marketplace Submit** — submit the form at
+  https://cursor.com/marketplace/publish only from an authenticated operator
+  session, then record the returned review/listing evidence.
 - **Production `/link` confirm** — after PR 2286 deploys, a human signs in
   at `https://burnbar.ai/link` and confirms a fresh device code; until then
   `AUTH.md` and `docs/probe/link-appcheck.md` name the deploy blocker.
 
 ## Keeping this runbook honest
 
-When a locked value changes (PR 2286 merges, PR 2291 merges and the `main`
-copy at `docs/runbooks/openburnbar-cursor-plugin-update.md` actually
-exists, the version bundle is bumped, the push lane moves), update this
-file in the same commit that makes the change, then re-mirror. The runbook
-is only useful while it matches the repo's real state.
+When a locked value changes (the companion runbook lands, the version bundle
+is bumped, or PR 2290's head branch moves), update this file in the same
+commit that makes the change, then re-mirror. The runbook is only useful
+while it matches the repository's real state.

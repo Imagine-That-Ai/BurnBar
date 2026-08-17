@@ -178,9 +178,13 @@ if (plugin) {
   if (
     !desc ||
     !/hosted\s+mcp/i.test(desc) ||
-    !['spend', 'sessions', 'knowledge', 'resume'].every((w) => desc.toLowerCase().includes(w))
+    !['spend', 'session', 'knowledge', 'resume', 'local preprocessing'].every((w) =>
+      desc.toLowerCase().includes(w),
+    )
   ) {
-    fail('plugin.json description must be non-empty and mention hosted MCP plus spend, sessions, knowledge, resume');
+    fail(
+      'plugin.json description must mention hosted MCP, spend, session/knowledge/resume, and the local preprocessing boundary',
+    );
   }
   if (plugin.homepage !== 'https://burnbar.ai') {
     fail(`plugin.json homepage must be "https://burnbar.ai", got ${JSON.stringify(plugin.homepage)}`);
@@ -251,11 +255,11 @@ if (plugin) {
       const description = prop.description || '';
       if (!title) fail(`${TOKEN_VAR} variable needs a non-empty title`);
       if (!description) fail(`${TOKEN_VAR} variable needs a non-empty description`);
-      const named = ['settings', 'openburnbar mcp login', 'remote mcp'].filter((t) =>
-        description.toLowerCase().includes(t),
-      );
-      if (named.length < 2) {
-        fail(`${TOKEN_VAR} variable description must name at least two of {Settings, openburnbar mcp login, Remote MCP}`);
+      const honestTokens = ['blocked', 'copy/export', 'does not print', 'keychain', 'refresh token'];
+      for (const token of honestTokens) {
+        if (!description.toLowerCase().includes(token)) {
+          fail(`${TOKEN_VAR} variable description must include honest setup boundary token ${JSON.stringify(token)}`);
+        }
       }
       if (Object.prototype.hasOwnProperty.call(prop, 'default')) {
         fail(`${TOKEN_VAR} variable must not ship a default value (no default secret)`);
@@ -634,6 +638,32 @@ if (treeOk) {
     if (VSCODE_REWRITE_RE.test(text)) {
       fail(`VS Code extension rewrite markers in ${f.rel}`);
     }
+  }
+}
+
+for (const rel of [
+  'README.md',
+  'docs/local-load.md',
+  'skills/openburnbar-operator/SKILL.md',
+  'skills/openburnbar-knowledge/SKILL.md',
+  'commands/openburnbar-search.md',
+]) {
+  const text = fs.readFileSync(path.join(root, rel), 'utf8');
+  if (text.includes('/Users/')) {
+    fail(`${rel} must not contain a developer-specific /Users install path`);
+  }
+}
+
+for (const rel of [
+  'README.md',
+  'AUTH.md',
+  'skills/openburnbar-operator/SKILL.md',
+  'skills/openburnbar-knowledge/SKILL.md',
+  'commands/openburnbar-search.md',
+]) {
+  const text = fs.readFileSync(path.join(root, rel), 'utf8').toLowerCase();
+  if (!text.includes('local') || (!text.includes('preprocess') && !text.includes('shim'))) {
+    fail(`${rel} must name the local preprocessing/shim boundary`);
   }
 }
 

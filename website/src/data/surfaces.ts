@@ -84,16 +84,16 @@ export const SURFACES: Surface[] = [
     id: "cursor-plugin",
     name: "Cursor Marketplace plugin",
     platform: "Cursor · desktop + Cloud Agents",
-    status: "shipping",
-    statusLabel: "New · installable Cursor Plugin",
+    status: "review",
+    statusLabel: "Marketplace review pending",
     description:
-      "An installable Cursor Plugin that connects Cursor agents — including Cloud Agents — to hosted MCP over HTTP. A distinct surface from the editor extension: it queries spend, sessions, knowledge, and resume through the hosted endpoint, not the daemon sidebar.",
+      "A Cursor Marketplace candidate for hosted MCP over HTTP. Publication and live token setup are still pending; the HTTP-only package currently supports spend and capability diagnostics, while conversation and knowledge search require the optional local preprocessing/decrypt shim.",
     bullets: [
       "Hosted HTTP MCP at https://mcp.burnbar.ai/mcp, protocol 2025-11-25",
       "GitHub-style bearer variable OPENBURNBAR_MCP_ACCESS_TOKEN (short-lived, never committed)",
-      "Skills, commands, rules, and agents for spend, sessions, knowledge, resume",
-      "Sealed fields stay ciphertext on the HTTP path until the local shim decrypts",
-      "Distinct from the source-only editor extension — the plugin is the new listing"
+      "Marketplace publication and the attested /link token-copy path are pending",
+      "Conversation and knowledge search need local preprocessing unavailable in the HTTP-only package",
+      "Distinct from the source-only editor extension — the plugin is the candidate listing"
     ],
     cta: { href: "/mcp", label: "See the MCP page" }
   },

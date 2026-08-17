@@ -7,27 +7,18 @@ confirmation slot below); workers do not drive Cursor.
 
 ## 1. Symlink command (identical to README Install)
 
-The command below is the **exact `ln -sfn` string from
-[`README.md`](../../README.md) Install**, and it is kept stable for the M4
-install doc (`docs/OPENBURNBAR_CURSOR_PLUGIN.md` is still pending, so the
-plugin README is the current install reference):
+The commands below are the exact thin-repo local-load sequence from
+[`README.md`](../../README.md) Install:
 
 ```bash
-ln -sfn /Users/dewclaw/BurnBar-cursor-plugin/plugins/openburnbar ~/.cursor/plugins/local/openburnbar
+git clone https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin.git
+mkdir -p "$HOME/.cursor/plugins/local"
+ln -sfn "$(pwd)/openburnbar-cursor-plugin" "$HOME/.cursor/plugins/local/openburnbar"
 ```
 
-Current state on this machine (matches the command exactly):
-
-```
-$ ls -l ~/.cursor/plugins/local/openburnbar
-lrwxr-xr-x@ 1 dewclaw staff 56 ... openburnbar -> /Users/dewclaw/BurnBar-cursor-plugin/plugins/openburnbar
-
-$ readlink ~/.cursor/plugins/local/openburnbar
-/Users/dewclaw/BurnBar-cursor-plugin/plugins/openburnbar
-```
-
-Resolved target: `/Users/dewclaw/BurnBar-cursor-plugin/plugins/openburnbar`
-(the implementation checkout — **not** `/Users/dewclaw/BurnBar`).
+The symlink target is the thin repository root, where
+`.cursor-plugin/plugin.json` lives. Never offer the BurnBar monorepo as the
+marketplace or local-load repository.
 
 ## 2. Install-step parity
 
@@ -55,15 +46,15 @@ A first-time operator follows, in order:
 
 1. Read the plugin README (`plugins/openburnbar/README.md`) — Install,
    Auth, Sealed-field honesty, Optional local shim, Plugin vs extension.
-2. Symlink the worktree plugin:
-   `ln -sfn /Users/dewclaw/BurnBar-cursor-plugin/plugins/openburnbar ~/.cursor/plugins/local/openburnbar`
+2. Clone and symlink the thin repository root using the commands above.
 3. Human: **Developer: Reload Window**.
 4. Human: **Settings → Customize → Plugins** and confirm **OpenBurnBar**
    appears.
-5. Set the required variable `OPENBURNBAR_MCP_ACCESS_TOKEN` via BurnBar
-   Settings / `openburnbar mcp login` / Remote MCP
-   (`https://burnbar.ai/link`). The value is a **short-lived (~15 min)
-   access token, not a durable secret**; re-mint it when it expires.
+5. The required `OPENBURNBAR_MCP_ACCESS_TOKEN` is a **short-lived (~15 min)
+   access token, not a durable secret**. Live setup is blocked until the
+   attested `/link` flow is deployed and BurnBar exposes a safe copy/export
+   action. `openburnbar mcp login` stores the token in Keychain and does not
+   print a value to paste.
 6. The plugin MCP server is hosted HTTP:
    `type: "http"`, `url: https://mcp.burnbar.ai/mcp`
    (see `../mcp.json`), with the required variable sent as

@@ -30,7 +30,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 THIN_REPO="${THIN_REPO:-https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin}"
-SIBLING_DIR="${SIBLING_DIR:-/Users/dewclaw/openburnbar-cursor-plugin}"
+MONOREPO_ROOT="$(git -C "${PLUGIN_ROOT}" rev-parse --show-toplevel)"
+SIBLING_DIR="${SIBLING_DIR:-$(dirname "${MONOREPO_ROOT}")/openburnbar-cursor-plugin}"
 
 if [ -z "${SIBLING_DIR}" ] || [ "${SIBLING_DIR}" = "/" ]; then
   echo "publish-mirror: error: SIBLING_DIR must be a real directory path" >&2

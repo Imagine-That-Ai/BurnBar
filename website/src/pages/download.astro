@@ -418,7 +418,7 @@ npm run build</code></pre>
           <span class="tag tag--exact tag--plain mono">Cursor Marketplace · plugin</span>
           <h2>Cursor Marketplace plugin</h2>
           <p class="lead">
-            A separate, installable Cursor Plugin (packaged under{" "}
+            A separate Cursor Marketplace candidate (packaged under{" "}
             <code>plugins/openburnbar/</code>) that connects Cursor agents — including Cloud Agents
             — to hosted Remote MCP over HTTP. This is
             <strong>not</strong> the editor extension: the plugin talks to{" "}
@@ -439,8 +439,9 @@ npm run build</code></pre>
                 >Imagine-That-Ai/openburnbar-cursor-plugin</code
               > is the marketplace git URL). Until then, symlink the package locally:
             </p>
-            <pre><code class="mono">ln -sfn /path/to/BurnBar/plugins/openburnbar \
-  ~/.cursor/plugins/local/openburnbar</code></pre>
+            <pre><code class="mono">git clone https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin.git
+mkdir -p "$HOME/.cursor/plugins/local"
+ln -sfn "$(pwd)/openburnbar-cursor-plugin" "$HOME/.cursor/plugins/local/openburnbar"</code></pre>
             <p>
               Then run <strong>Developer: Reload Window</strong> and open{" "}
               <strong>Settings → Customize → Plugins</strong>. There is no package-install step: the
@@ -453,25 +454,22 @@ npm run build</code></pre>
           <div class="step__card">
             <h3>Set the access-token variable</h3>
             <p>
-              Set the required <code>OPENBURNBAR_MCP_ACCESS_TOKEN</code>{" "}
-              variable in the plugin's settings with a{" "}
-              <strong>short-lived (~15 min) access token</strong> minted from BurnBar Settings / <code
-                >openburnbar mcp login</code
-              > / Remote MCP. It is a session credential, not a durable secret; re-mint it when it expires.
-              The plugin sends it as{" "}
-              <code>Authorization: Bearer $&#123;OPENBURNBAR_MCP_ACCESS_TOKEN&#125;</code>{" "}
-              to <code>https://mcp.burnbar.ai/mcp</code>.
+              The required <code>OPENBURNBAR_MCP_ACCESS_TOKEN</code> is a{" "}
+              <strong>short-lived (~15 min) access token</strong>. Live setup is blocked until the
+              attested <code>/link</code> flow is deployed and BurnBar exposes a safe copy/export action.
+              <code>openburnbar mcp login</code> currently stores the token in Keychain and does not print
+              a value to paste.
             </p>
           </div>
         </li>
         <li class="step">
           <span class="step__num mono">3</span>
           <div class="step__card">
-            <h3>Query spend, sessions, knowledge, resume</h3>
+            <h3>Inspect spend and hosted capabilities</h3>
             <p>
-              The plugin ships skills, commands, rules, and agents for hosted search, usage, resume,
-              and knowledge. On the HTTP path, titles and bodies may stay sealed ciphertext until
-              the optional local decrypt shim runs. Cloud Agents use the same HTTP + bearer path.
+              The HTTP-only package supports spend and capability diagnostics. Conversation and
+              knowledge search require keyed hashes or a cloaked vector from the optional local
+              preprocessing/decrypt shim; the plugin does not fake those searches with plaintext.
             </p>
           </div>
         </li>

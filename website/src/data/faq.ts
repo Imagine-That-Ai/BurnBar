@@ -216,7 +216,7 @@ export const FAQ: FAQItem[] = [
     category: "features",
     question: "What is the Cursor Marketplace plugin, and how is it different from the extension?",
     answer:
-      "The Cursor Marketplace plugin is a separate, installable Cursor Plugin (packaged under plugins/openburnbar/). It connects Cursor agents — desktop Customize and Cloud Agents — to the hosted OpenBurnBar MCP at https://mcp.burnbar.ai/mcp over Streamable HTTP, using the OPENBURNBAR_MCP_ACCESS_TOKEN bearer variable (a short-lived access token, not a durable secret). It ships skills, commands, rules, and agents for spend, sessions, knowledge, and resume.\n\nIt is not the editor extension. The extension is a source-only, load-unpacked daemon sidebar with no VS Marketplace / Open VSX listing; the plugin is the new hosted-MCP listing and does not replace the extension. On the HTTP path, search titles, bodies, resume plans, and knowledge may stay sealed ciphertext until the optional local decrypt shim runs."
+      "The Cursor Marketplace plugin is a separate pending listing packaged under plugins/openburnbar/. It connects Cursor agents — desktop Customize and Cloud Agents — to the hosted OpenBurnBar MCP at https://mcp.burnbar.ai/mcp over Streamable HTTP with a short-lived bearer variable. Marketplace publication and the safe token-copy path are not live yet.\n\nIt is not the editor extension. The extension is a source-only, load-unpacked daemon sidebar with no VS Marketplace / Open VSX listing. The HTTP-only plugin supports spend and capability diagnostics; conversation and knowledge search require vault-key-derived preprocessing from the optional local shim."
   },
   {
     id: "floo",

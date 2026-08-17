@@ -507,8 +507,8 @@ const slo = [
         Thirty-six MCP tools across four channels point any agent that speaks the protocol — Codex,
         Claude Code, Cursor, Droid, Kimi, Forge, Hermes — at your full OpenBurnBar record. Free
         locally over SQLite. Encrypted in the cloud on BurnBar Cloud plans. Never plaintext on the
-        server. The Cursor Marketplace plugin is the newest channel: hosted HTTP + bearer,
-        installable from Cursor.
+        server. The Cursor Marketplace plugin is the newest channel: hosted HTTP + bearer, pending
+        publication in Cursor.
       </p>
 
       {/* signal-flow diagram — the three transport paths converge into ANY CLIENT */}
@@ -695,8 +695,9 @@ const slo = [
           BurnBar Cloud feature with encrypted, multi-device session memory. The stdio shim closes
           the gap for clients that don't yet speak Streamable HTTP — and is the only path that
           decrypts hosted bodies on-device. The Cursor Marketplace plugin is the fourth channel: an
-          installable Cursor Plugin that talks to the hosted endpoint over HTTP with a bearer
-          variable — Cloud-Agent compatible, no local binary.
+          pending Cursor Plugin listing that talks to the hosted endpoint over HTTP with a bearer
+          variable. The HTTP-only package supports spend and capability diagnostics; private search
+          still needs the optional local preprocessing/decrypt shim.
         </p>
       </header>
 

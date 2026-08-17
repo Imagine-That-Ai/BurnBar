@@ -4,10 +4,12 @@ alwaysApply: false
 ---
 
 When the user asks about past agent work, spend, burn, or "what did we do",
-query the OpenBurnBar MCP for session history and spend evidence:
+use OpenBurnBar only for evidence the current client path can actually obtain:
 
 1. Call `burnbar_resolve_capabilities` first and read the returned tool list.
-2. Call `burnbar_search_conversations` for session history and
-   `burnbar_recent_usage` for spend metadata.
-3. Quote titles, snippets, and usage numbers from tool results as evidence.
-4. Name any field still sealed ciphertext instead of inventing its contents.
+2. Call `burnbar_recent_usage` for supported spend metadata.
+3. On the HTTP-only marketplace path, do not send a plaintext topic to
+   `burnbar_search_conversations`; it requires vault-key-derived token or
+   semantic hashes from the optional local preprocessing/decrypt shim.
+4. If trusted preprocessed results are available, quote them and name any
+   field still sealed instead of inventing its contents.
