@@ -578,4 +578,11 @@ final class FleetViewModel {
         isVisible = false
         service.stop()
     }
+
+    /// Immediate snapshot pull. Used by the daemon-down Retry control so the
+    /// user does not wait a full cadence after a reconnect.
+    func refreshNow() {
+        service.fetchOnce()
+        service.refreshOrchestratorState()
+    }
 }

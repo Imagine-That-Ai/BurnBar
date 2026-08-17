@@ -157,7 +157,10 @@ final class FleetService {
     /// Performs one immediate fetch (used by tests and by the poller).
     /// Updates `loadState` from the result.
     func fetchOnce() {
-        _ = applySnapshotFetch(clobberHealthyBoardOnError: true)
+        // The poller must not blank a healthy board on a single timeout.
+        // Staleness is already typed (`isStale` at 2× cadence). First-fetch
+        // failures still go `daemonDown` because there is no snapshot yet.
+        _ = applySnapshotFetch(clobberHealthyBoardOnError: false)
     }
 
     /// Chat/context read. While the Fleet poller owns cadence, reuse the

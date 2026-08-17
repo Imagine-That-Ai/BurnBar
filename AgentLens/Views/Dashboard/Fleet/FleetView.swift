@@ -70,23 +70,15 @@ struct FleetView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
-                    switch viewModel.headerRunningReadout {
-                    case .unavailable:
-                        Text("Unavailable")
-                            .font(DesignSystem.Typography.display)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .accessibilityLabel("Fleet data unavailable")
-                    case .checking:
-                        Text("Checking…")
-                            .font(DesignSystem.Typography.display)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                            .accessibilityLabel("Checking fleet snapshot")
-                    case .running(let count):
-                        Text("\(count) running")
-                            .font(DesignSystem.Typography.display)
-                            .foregroundStyle(DesignSystem.Colors.success)
-                            .accessibilityLabel("\(count) agents running")
-                    }
+                    let readout = viewModel.headerRunningReadout
+                    Text(FleetHeaderCopy.runningReadout(readout))
+                        .font(DesignSystem.Typography.display)
+                        .foregroundStyle(
+                            readout == .unavailable || readout == .checking
+                                ? DesignSystem.Colors.textSecondary
+                                : DesignSystem.Colors.success
+                        )
+                        .accessibilityLabel(FleetHeaderCopy.runningAccessibility(readout))
 
                     if let snapshot = viewModel.snapshot {
                         Text("Updated \(FleetFormatting.formatRelativeTime(snapshot.generatedAt))")
@@ -196,6 +188,12 @@ struct FleetView: View {
                     .font(DesignSystem.Typography.monoTiny)
                     .foregroundStyle(DesignSystem.Colors.textSecondary)
                     .lineLimit(2)
+
+                Button("Retry now") {
+                    viewModel.refreshNow()
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Retry fleet snapshot")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(DesignSystem.Spacing.lg)

@@ -105,6 +105,7 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, @unchecked Sen
         }
         let home = FileManager.default.homeDirectoryForCurrentUser
         let envURL = home.appendingPathComponent(".hermes/.env")
+        // try?-ok(optional hermes env key; missing file means no local key)
         guard let content = try? String(contentsOf: envURL, encoding: .utf8) else {
             return nil
         }
@@ -187,13 +188,16 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, @unchecked Sen
     /// fails closed with a `malformedAck` reason — never `delivered`
     /// (VAL-ORCH-036).
     static func validateAck(data: Data, directiveID: String) -> BurnBarFleetDeliveryOutcome {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        let ack: HermesDeliveryAck
+        do {
+            ack = try JSONDecoder().decode(HermesDeliveryAck.self, from: data)
+        } catch {
             return .failed(reason: "malformedAck: response is not valid JSON")
         }
-        guard let delivery = object["burnbar_delivery"] as? [String: Any] else {
+        guard let delivery = ack.burnbarDelivery else {
             return .failed(reason: "malformedAck: missing burnbar_delivery acknowledgement")
         }
-        guard let ackID = delivery["directive_id"] as? String else {
+        guard let ackID = delivery.directiveID else {
             return .failed(reason: "malformedAck: missing directive_id in acknowledgement")
         }
         guard ackID == directiveID else {
@@ -201,8 +205,8 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, @unchecked Sen
                 reason: "malformedAck: directive id mismatch (expected \(directiveID), got \(ackID))"
             )
         }
-        guard let status = delivery["status"] as? String, status == "delivered" else {
-            let got = (delivery["status"] as? String) ?? "missing"
+        guard let status = delivery.status, status == "delivered" else {
+            let got = delivery.status ?? "missing"
             return .failed(reason: "malformedAck: unknown or contradictory status '\(got)'")
         }
         return .delivered
@@ -212,35 +216,98 @@ final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, @unchecked Sen
     /// user message as `burnbar_directive: {json}` so the gateway (and the
     /// fixture) can correlate the acknowledgement by directive id.
     static func requestBody(for directive: BurnBarFleetDirective) -> Data? {
-        let directiveJSON: [String: Any] = [
-            "id": directive.id,
-            "kind": directive.kind.rawValue,
-            "targetAgent": directive.targetAgent?.wireValue ?? NSNull(),
-            "payload": directive.payload,
-            "deliveryAttemptID": directive.deliveryAttemptID ?? NSNull()
-        ]
-        let body: [String: Any] = [
-            "stream": false,
-            "messages": [
-                [
-                    "role": "system",
-                    "content": "You are the Hermes gateway. A BurnBar directive has been approved "
+        let envelope = HermesDirectiveEnvelope(
+            id: directive.id,
+            kind: directive.kind.rawValue,
+            targetAgent: directive.targetAgent?.wireValue,
+            payload: directive.payload,
+            deliveryAttemptID: directive.deliveryAttemptID
+        )
+        let directiveJSON: String
+        do {
+            let data = try JSONEncoder().encode(envelope)
+            guard let text = String(data: data, encoding: .utf8) else { return nil }
+            directiveJSON = text
+        } catch {
+            return nil
+        }
+        let body = HermesChatCompletionsRequest(
+            stream: false,
+            messages: [
+                HermesChatCompletionsRequest.Message(
+                    role: "system",
+                    content: "You are the Hermes gateway. A BurnBar directive has been approved "
                         + "by the human operator. Execute it for the target agent."
-                ],
-                [
-                    "role": "user",
-                    "content": "burnbar_directive: \(Self.jsonString(directiveJSON))"
-                ]
+                ),
+                HermesChatCompletionsRequest.Message(
+                    role: "user",
+                    content: "burnbar_directive: \(directiveJSON)"
+                )
             ]
-        ]
-        return try? JSONSerialization.data(withJSONObject: body)
+        )
+        do {
+            return try JSONEncoder().encode(body)
+        } catch {
+            return nil
+        }
+    }
+}
+
+// MARK: - Typed Hermes wire payloads
+
+private struct HermesDeliveryAck: Decodable {
+    struct Delivery: Decodable {
+        let directiveID: String?
+        let status: String?
+
+        enum CodingKeys: String, CodingKey {
+            case directiveID = "directive_id"
+            case status
+        }
     }
 
-    private static func jsonString(_ object: [String: Any]) -> String {
-        guard let data = try? JSONSerialization.data(withJSONObject: object),
-              let text = String(data: data, encoding: .utf8) else {
-            return "{}"
-        }
-        return text
+    let burnbarDelivery: Delivery?
+
+    enum CodingKeys: String, CodingKey {
+        case burnbarDelivery = "burnbar_delivery"
     }
+}
+
+private struct HermesDirectiveEnvelope: Encodable {
+    let id: String
+    let kind: String
+    let targetAgent: String?
+    let payload: String
+    let deliveryAttemptID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, targetAgent, payload, deliveryAttemptID
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        if let targetAgent {
+            try container.encode(targetAgent, forKey: .targetAgent)
+        } else {
+            try container.encodeNil(forKey: .targetAgent)
+        }
+        try container.encode(payload, forKey: .payload)
+        if let deliveryAttemptID {
+            try container.encode(deliveryAttemptID, forKey: .deliveryAttemptID)
+        } else {
+            try container.encodeNil(forKey: .deliveryAttemptID)
+        }
+    }
+}
+
+private struct HermesChatCompletionsRequest: Encodable {
+    struct Message: Encodable {
+        let role: String
+        let content: String
+    }
+
+    let stream: Bool
+    let messages: [Message]
 }

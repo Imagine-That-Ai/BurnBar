@@ -59,13 +59,6 @@ extension BurnBarDaemonServer {
 
     func handleFleetOrchestratorGet(requestData: Data, decoder: JSONDecoder) async throws -> Data {
         let typedRequest = try decoder.decode(BurnBarRPCRequestEnvelope.self, from: requestData)
-        if let object = try? JSONSerialization.jsonObject(with: requestData) as? [String: Any],
-           object["params"] != nil {
-            _ = try decoder.decode(
-                BurnBarRPCRequestEnvelopeWithParams<BurnBarFleetOrchestratorGetRequest>.self,
-                from: requestData
-            )
-        }
         return encode(
             BurnBarRPCResponseEnvelope(
                 id: typedRequest.id,

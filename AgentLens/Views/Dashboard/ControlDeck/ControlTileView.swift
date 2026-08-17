@@ -58,32 +58,32 @@ struct ControlTileView: View {
 
 private struct FleetTile: View {
     let onNavigate: (DashboardMainRoute) -> Void
-    @State private var runningLabel = "Watching…"
+    @State private var headline = FleetTileHeadline.watching
 
     var body: some View {
         ControlTileShell(
             kind: .fleet,
-            state: .on,
-            headline: runningLabel,
-            accessibilityHeadline: runningLabel
+            state: headline.tileState,
+            headline: headline.label,
+            accessibilityHeadline: headline.label
         ) {
             ControlLinkButton(title: "Open Fleet", help: "Watch running agents and steer the orchestrator.") {
                 onNavigate(.fleet)
             }
         } ladder: {
             ControlStatusChip(
-                label: "Live watch",
-                tint: ControlKind.fleet.accent,
+                label: headline.chipLabel,
+                tint: headline.chipTint,
                 help: "The daemon probes which agents are actually running. Nothing is guessed."
             )
         }
         .task {
             let url = OpenBurnBarDaemonRuntimePaths.live().socketURL
-            if let snapshot = try? OpenBurnBarDaemonSocketClient.fleetSnapshot(at: url) {
-                let running = snapshot.agents.filter { $0.status == .running }.count
-                runningLabel = running == 1 ? "1 agent running" : "\(running) agents running"
-            } else {
-                runningLabel = "Daemon not serving fleet yet"
+            do {
+                let snapshot = try OpenBurnBarDaemonSocketClient.fleetSnapshot(at: url)
+                headline = .resolved(fromSnapshot: snapshot)
+            } catch {
+                headline = .resolved(fromError: error)
             }
         }
     }

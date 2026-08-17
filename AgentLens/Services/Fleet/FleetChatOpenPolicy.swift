@@ -2,7 +2,7 @@ import Foundation
 
 /// Local chat-open modes Fleet can request. Shipping chat does not yet have a
 /// dedicated orchestrator workspace, so this stays Fleet-owned.
-enum ChatMode: Equatable {
+enum FleetChatMode: Equatable {
     case orchestrator
 }
 
@@ -12,7 +12,7 @@ enum ChatMode: Equatable {
 /// be asserted without standing up DashboardView.
 enum FleetChatOpenDecision: Equatable {
     case showConsent
-    case present(mode: ChatMode?)
+    case present(mode: FleetChatMode?)
 }
 
 enum FleetChatConsentContinuation: Equatable {
@@ -21,7 +21,7 @@ enum FleetChatConsentContinuation: Equatable {
 }
 
 enum FleetChatOpenPolicy {
-    static func decision(consentShown: Bool, requestedMode: ChatMode?) -> FleetChatOpenDecision {
+    static func decision(consentShown: Bool, requestedMode: FleetChatMode?) -> FleetChatOpenDecision {
         if requestedMode == .orchestrator, !consentShown {
             return .showConsent
         }

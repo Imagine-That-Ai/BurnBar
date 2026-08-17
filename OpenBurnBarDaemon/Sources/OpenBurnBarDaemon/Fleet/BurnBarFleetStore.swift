@@ -75,9 +75,9 @@ public final class BurnBarFleetStore: @unchecked Sendable {
             // Already open (idempotent).
             return health
         }
-        if Self.fileIdentity(at: databasePath) == nil,
-           (Self.fileIdentity(at: Self.snapshotPath(for: databasePath)) != nil
-            || Self.fileIdentity(at: Self.initializationMarkerPath(for: databasePath)) != nil) {
+        let snapshotExists = Self.fileIdentity(at: Self.snapshotPath(for: databasePath)) != nil
+        let markerExists = Self.fileIdentity(at: Self.initializationMarkerPath(for: databasePath)) != nil
+        if Self.fileIdentity(at: databasePath) == nil, snapshotExists || markerExists {
             do {
                 try rebuildDatabase(reason: "store path was deleted before daemon restart")
             } catch {

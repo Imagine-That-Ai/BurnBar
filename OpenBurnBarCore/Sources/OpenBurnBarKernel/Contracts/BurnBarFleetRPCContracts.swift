@@ -116,7 +116,7 @@ extension KeyedEncodingContainer {
     }
 
     mutating func encodeFleetDateIfPresent(_ date: Date?, forKey key: Key) throws {
-        if let date = date {
+        if let date {
             try encode(BurnBarFleetDateCoding.encode(date), forKey: key)
         }
     }
