@@ -4,10 +4,12 @@ import { installer, type ClientKind } from "./installers.js";
 import { runResumeCli, type ResumeMode } from "./resume.js";
 import { runStdioShim } from "./shim.js";
 import { writeAccessToken } from "./oauth.js";
+import { parseAppCliOptions, runAppCommand, type AppCommand } from "./appInstall.js";
 import { basename } from "node:path";
 import { readFileSync } from "node:fs";
 
-const USAGE = "Usage: openburnbar mcp <serve|install|doctor|login> [token] | memory <install|run|sync> | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n";
+const USAGE = "Usage: openburnbar mcp <serve|install|doctor|login> [token] | memory <install|run|sync> | resume <sessionId>|--query <memory> [--as <harness>] [--model <model>] [--print|--copy|--open|--spawn] | app <install|update> [--dry-run] | obbresume <memory> [--as <harness>] | OBB Resume <memory>\n";
+const APP_USAGE = "Usage: openburnbar app <install|update> [--dry-run] [--feed-url <https-url>] [--applications-dir <path>]\n";
 
 function looksLikeSessionId(s: string | undefined): boolean {
   if (!s) {return false;}
@@ -21,6 +23,9 @@ async function main(): Promise<void> {
   if (first === "--help" || first === "-h") {
     process.stdout.write(USAGE);
     return;
+  }
+  if (first === "app") {
+    process.exit(await runAppCli(second, process.argv.slice(4)));
   }
   if (first === "resume" || first === "obbresume" || first === "Resume" || obbresumeBinary) {
     const asIdx = process.argv.indexOf("--as");
@@ -107,6 +112,23 @@ Examples:
     process.exit(await runMemoryCli(second, third));
   }
   process.stdout.write(USAGE);
+}
+
+async function runAppCli(sub: string | undefined, argv: string[]): Promise<number> {
+  if (sub === "--help" || sub === "-h" || sub === "help") {
+    process.stdout.write(APP_USAGE);
+    return 0;
+  }
+  if (sub !== "install" && sub !== "update") {
+    process.stderr.write(APP_USAGE);
+    return 2;
+  }
+  try {
+    return await runAppCommand(sub as AppCommand, parseAppCliOptions(argv));
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
 }
 
 async function runMemoryCli(sub: string | undefined, arg: string | undefined): Promise<number> {

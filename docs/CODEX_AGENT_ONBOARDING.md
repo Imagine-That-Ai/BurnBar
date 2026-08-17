@@ -32,10 +32,12 @@ What is not in this onboarding:
 
 ## Setup
 
-1. Install the `openburnbar-mcp-remote` CLI (ships in this repo at
+1. Install the `openburnbar` CLI (published npm name; sources live at
    `tools/openburnbar-mcp-remote/`; build with `npm run build` and link
    with `npm link` to expose `openburnbar` and `openburnbar-mcp-remote`
-   on `PATH`).
+   on `PATH`). `openburnbar app install` / `app update` fetch the current
+   public notarized Mac DMG from the desktop update feed into
+   `/Applications` — they do not run during `npm i`.
 2. Run `./tools/openburnbar-mcp/setup.sh` once to create the local
    Python venv (needed only for Option C).
 3. Mint a hosted bearer from the OpenBurnBar macOS app
