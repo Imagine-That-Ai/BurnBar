@@ -1419,6 +1419,27 @@ and never stops or duplicates another window's polling.
 The FleetView rendering rules are pinned here; the fixed-DTO view-model tests
 assert them (VAL-DASH-002/003/004/005/021/024/025/027/031, VAL-CROSS-003).
 
+**Pinned header vs scrolling roster.** The running-count header, machine-cost
+strip, and stale banner stay pinned. The roster, repo groups, and probe
+health scroll. The header renders `N running` only from a ready/empty
+snapshot. While `loading` it shows "Checking…"; while daemon-down it shows
+"Unavailable". It never renders "0 running" from a missing snapshot
+(VAL-DASH-028).
+
+**Header machine-cost strip.** The pinned strip shows four metrics — CPU,
+Memory, Load, Disk free — from the snapshot's machine block. Absent optional
+metrics render "—" / unavailable, never 0. Thermal and power stay on the
+full Machine panel only, even when those sensors report values.
+
+**Section order.** After a healthy snapshot: orchestrator (designation +
+Open orchestrator chat) and machine/resource panels, then the empty-fleet
+card when `runningCount == 0`, then provider chips, agent cards, repos, and
+probe health.
+
+**On-board orchestrator chat.** Fleet does not host a second messenger. "Open
+orchestrator chat" uses the existing dashboard chat panel in orchestrator
+mode. Directives still require explicit Approve before Hermes delivery.
+
 **Running-count header and per-provider chips (VAL-DASH-002).** The header
 shows the snapshot's `runningCount` ("N running") — never a count that
 includes `idle`/`unknown`/`stale` rows. Per-provider chips render
@@ -1488,14 +1509,16 @@ running/resource totals by construction (they are never `running`).
 ten declared rows present and non-running — never an empty `agents[]`
 payload) renders an explicit empty-fleet card ("No agents are currently
 running") with the next-check cadence, while the machine panel and the
-Kimi/Gemini CLI unsupported rows remain visible.
+Kimi/Gemini CLI unsupported rows remain visible. The empty card sits below
+the watch+control band so designation and Open orchestrator chat stay first.
 
 **Design-token conformance (VAL-DASH-014).** The fleet view files
 (`FleetView.swift`, `FleetViewModel.swift`, `FleetService.swift`,
-`FleetAgentCardViews.swift`, `FleetFormatting.swift`) use named
-`DesignSystem` tokens only — no raw `Color(hex:)` literals, no ad-hoc font
-sizes, no hardcoded colors. Provider accents come from
-`DesignSystem.Colors.primary(for:)` via the `AgentProvider` mapping.
+`FleetAgentCardViews.swift`, `FleetWatchControlViews.swift`,
+`FleetFormatting.swift`) use named `DesignSystem` tokens only — no raw
+`Color(hex:)` literals, no ad-hoc font sizes, no hardcoded colors. Provider
+accents come from `DesignSystem.Colors.primary(for:)` via the
+`AgentProvider` mapping.
 
 **WCAG AA contrast policy (VAL-DASH-021).** Normal text (11pt+) renders at
 ≥4.5:1 against its background; UI components (status dots, badge strokes,

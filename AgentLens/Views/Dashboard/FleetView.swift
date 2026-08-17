@@ -12,28 +12,42 @@ import SwiftUI
 /// fabricated liveness, process, or cost data is ever rendered.
 struct FleetView: View {
     @State private var viewModel: FleetViewModel
+    /// Optional: dashboard wires this to the existing chat panel.
+    private let onOpenOrchestratorChat: (() -> Void)?
 
     init(
         service: FleetService,
-        tokenBurnProvider: @escaping (BurnBarFleetAgentID) -> Double? = { _ in nil }
+        tokenBurnProvider: @escaping (BurnBarFleetAgentID) -> Double? = { _ in nil },
+        onOpenOrchestratorChat: (() -> Void)? = nil
     ) {
         _viewModel = State(initialValue: FleetViewModel(
             service: service,
             tokenBurnProvider: tokenBurnProvider
         ))
+        self.onOpenOrchestratorChat = onOpenOrchestratorChat
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
                 fleetHeader
-                staleBanner
-                loadStateContent
+                if viewModel.isStale {
+                    staleBanner
+                }
             }
-            .padding(DesignSystem.Spacing.xl)
+            .padding(.horizontal, DesignSystem.Spacing.xl)
+            .padding(.top, DesignSystem.Spacing.xl)
+            .padding(.bottom, DesignSystem.Spacing.md)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xl) {
+                    loadStateContent
+                }
+                .padding(DesignSystem.Spacing.xl)
+            }
+            .scrollContentBackground(.hidden)
         }
         .background(Color.clear)
-        .scrollContentBackground(.hidden)
         .onAppear { viewModel.viewAppeared() }
         .onDisappear { viewModel.viewDisappeared() }
     }
@@ -41,40 +55,49 @@ struct FleetView: View {
     // MARK: - Header
 
     private var fleetHeader: some View {
-        HStack(alignment: .center, spacing: DesignSystem.Spacing.lg) {
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
-                Text("Live Agent Fleet")
-                    .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(alignment: .center, spacing: DesignSystem.Spacing.lg) {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.xs) {
+                    Text("Live Agent Fleet")
+                        .font(DesignSystem.Typography.title)
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
 
-                Text("Which agents are running right now, on which repos, at what machine cost.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    Text("Watch live agents and machine cost. Designate an orchestrator to propose work.")
+                        .font(DesignSystem.Typography.caption)
+                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
+                    switch viewModel.headerRunningReadout {
+                    case .unavailable:
+                        Text("Unavailable")
+                            .font(DesignSystem.Typography.display)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .accessibilityLabel("Fleet data unavailable")
+                    case .checking:
+                        Text("Checking…")
+                            .font(DesignSystem.Typography.display)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                            .accessibilityLabel("Checking fleet snapshot")
+                    case .running(let count):
+                        Text("\(count) running")
+                            .font(DesignSystem.Typography.display)
+                            .foregroundStyle(DesignSystem.Colors.success)
+                            .accessibilityLabel("\(count) agents running")
+                    }
+
+                    if let snapshot = viewModel.snapshot {
+                        Text("Updated \(FleetFormatting.formatRelativeTime(snapshot.generatedAt))")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    }
+                }
             }
 
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: DesignSystem.Spacing.xs) {
-                if case .daemonDown = viewModel.loadState {
-                    // No snapshot data is presented as current while the
-                    // daemon is down (VAL-DASH-008): the header shows a
-                    // neutral state instead of the last running count.
-                    Text("Unavailable")
-                        .font(DesignSystem.Typography.display)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .accessibilityLabel("Fleet data unavailable")
-                } else {
-                    Text("\(viewModel.runningCount) running")
-                        .font(DesignSystem.Typography.display)
-                        .foregroundStyle(DesignSystem.Colors.success)
-                        .accessibilityLabel("\(viewModel.runningCount) agents running")
-                }
-
-                if let snapshot = viewModel.snapshot {
-                    Text("Updated \(FleetFormatting.formatRelativeTime(snapshot.generatedAt))")
-                        .font(DesignSystem.Typography.tiny)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                }
+            if !viewModel.headerMachineMetrics.isEmpty {
+                FleetMachineCostStrip(rows: viewModel.headerMachineMetrics)
             }
         }
     }
@@ -185,167 +208,32 @@ struct FleetView: View {
 
     @ViewBuilder
     private var dashboardContent: some View {
-        if case .empty = viewModel.loadState {
-            emptyFleetState
-        }
-
         if let snapshot = viewModel.snapshot {
-            orchestratorSection
+            watchAndControlBand
+            if case .empty = viewModel.loadState {
+                emptyFleetState
+            }
             providerChips(snapshot: snapshot)
             agentCards(snapshot: snapshot)
             repoGroups
-            machinePanel
-            resourceConsumers
             probeHealthSection(snapshot: snapshot)
         }
     }
 
-    // MARK: - Orchestrator designation (M4)
-
-    /// The daemon-authoritative designation control (VAL-ORCH-034): the user
-    /// can select BurnBar-managed, any declared agent, or None. Each action
-    /// sends the corresponding daemon set request; the control/badge changes
-    /// only after daemon acknowledgement. A rejected or unavailable set
-    /// preserves the prior acknowledged state and shows a typed error — no
-    /// optimistic local state.
-    private var orchestratorSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            Text("Orchestrator")
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-            GlassCard {
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
-                    HStack(spacing: DesignSystem.Spacing.sm) {
-                        Image(systemName: "network")
-                            .font(DesignSystem.Typography.caption)
-                            .foregroundStyle(DesignSystem.Colors.whimsy)
-
-                        Text(designationTitle)
-                            .font(DesignSystem.Typography.body)
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                        Spacer()
-
-                        if viewModel.isSettingDesignation {
-                            ProgressView()
-                                .controlSize(.small)
-                                .accessibilityLabel("Updating orchestrator designation")
-                        }
-                    }
-
-                    if !viewModel.isDesignationUnavailable {
-                        Picker("Designation", selection: designationBinding) {
-                            Text("BurnBar-managed").tag(DesignationChoice.burnBarManaged)
-                            ForEach(BurnBarFleetAgentID.declaredRoster, id: \.self) { agentID in
-                                Text(viewModel.providerName(for: agentID))
-                                    .tag(DesignationChoice.agent(agentID))
-                            }
-                            Text("None").tag(DesignationChoice.none)
-                        }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .disabled(viewModel.isSettingDesignation)
-                        .accessibilityLabel("Orchestrator designation")
-                    }
-
-                    if viewModel.orchestratorState == nil, viewModel.orchestratorStateError == nil {
-                        HStack(spacing: DesignSystem.Spacing.xs) {
-                            ProgressView()
-                                .controlSize(.mini)
-                            Text("Loading designation…")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Loading orchestrator designation")
-                    }
-
-                    if let error = viewModel.orchestratorStateError {
-                        HStack(spacing: DesignSystem.Spacing.xs) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 10))
-                                .foregroundStyle(DesignSystem.Colors.error)
-                            Text("Designation unavailable: \(error)")
-                                .font(DesignSystem.Typography.tiny)
-                                .foregroundStyle(DesignSystem.Colors.error)
-                                .lineLimit(2)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Designation unavailable: \(error)")
-                    }
-
-                    if let state = viewModel.orchestratorState, let setAt = state.setAt {
-                        Text(
-                            "\(viewModel.orchestratorStateError == nil ? "Set" : "Last acknowledged") "
-                                + "\(FleetFormatting.formatRelativeTime(setAt)) · "
-                                + "\(state.pendingDirectives) pending directive\(state.pendingDirectives == 1 ? "" : "s")"
-                        )
-                            .font(DesignSystem.Typography.tiny)
-                            .foregroundStyle(DesignSystem.Colors.textSecondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(DesignSystem.Spacing.lg)
+    private var watchAndControlBand: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            FleetOrchestratorSection(
+                viewModel: viewModel,
+                onOpenOrchestratorChat: onOpenOrchestratorChat
+            )
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 280), spacing: DesignSystem.Spacing.md)],
+                spacing: DesignSystem.Spacing.md
+            ) {
+                machinePanel
+                resourceConsumers
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Orchestrator designation control")
         }
-    }
-
-    /// The designation choices offered by the control (VAL-ORCH-034):
-    /// BurnBar-managed, any declared agent, or None.
-    private enum DesignationChoice: Hashable {
-        case burnBarManaged
-        case agent(BurnBarFleetAgentID)
-        case none
-    }
-
-    private var designationTitle: String {
-        guard let designation = viewModel.designationKind else {
-            return viewModel.orchestratorStateError == nil
-                ? "Checking orchestrator…"
-                : "Orchestrator unavailable"
-        }
-        let prefix = viewModel.orchestratorStateError == nil ? "" : "Last acknowledged: "
-        switch designation {
-        case .burnBarManaged:
-            return prefix + "BurnBar-managed"
-        case .agent(let id, _):
-            return prefix + "Designated: \(viewModel.providerName(for: id))"
-        case .none:
-            return prefix + "No orchestrator designated"
-        }
-    }
-
-    private var designationBinding: Binding<DesignationChoice> {
-        Binding(
-            get: {
-                guard let designation = viewModel.designationKind else {
-                    return .none
-                }
-                switch designation {
-                case .burnBarManaged:
-                    return .burnBarManaged
-                case .agent(let id, _):
-                    return .agent(id)
-                case .none:
-                    return .none
-                }
-            },
-            set: { choice in
-                let designation: BurnBarOrchestratorDesignation
-                switch choice {
-                case .burnBarManaged:
-                    designation = .burnBarManaged
-                case .agent(let agentID):
-                    designation = .agent(id: agentID, sessionRef: .absent)
-                case .none:
-                    designation = .none
-                }
-                Task { await viewModel.setDesignation(designation) }
-            }
-        )
     }
 
     private var emptyFleetState: some View {

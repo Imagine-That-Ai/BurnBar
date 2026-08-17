@@ -366,7 +366,7 @@ final class BurnBarFleetPersistenceServiceTests: XCTestCase {
             BurnBarOrchestratorState(designation: .burnBarManaged)
         )
         XCTAssertEqual(designated.designation, .burnBarManaged)
-        let designatedState = await service.orchestratorState()
+        let designatedState = try await service.orchestratorStateChecked()
         XCTAssertEqual(designatedState.designation, .burnBarManaged)
 
         // Unlink only the configured database while the daemon's SQLite

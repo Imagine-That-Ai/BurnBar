@@ -102,14 +102,15 @@ enum FleetTestFixtures {
     static func makeSnapshot(
         generatedAt: Date = Date(timeIntervalSince1970: 1_752_000_000),
         cadenceSeconds: Int = 15,
-        runningCount: Int = 1
+        runningCount: Int = 1,
+        machine: BurnBarMachineStatus = FleetTestFixtures.makeMachine()
     ) -> BurnBarFleetSnapshot {
         let agents = makeHeterogeneousAgents(generatedAt: generatedAt)
         return BurnBarFleetSnapshot(
             schemaVersion: 1,
             generatedAt: generatedAt,
             cadenceSeconds: cadenceSeconds,
-            machine: makeMachine(),
+            machine: machine,
             agents: agents,
             repos: [
                 BurnBarFleetRepoGroup(

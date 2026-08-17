@@ -152,21 +152,8 @@ final class FleetMachinePanelTests: XCTestCase {
     private func makeViewModel(
         machine: BurnBarMachineStatus
     ) -> FleetViewModel {
-        let snapshot = FleetTestFixtures.makeSnapshot()
         let service = FleetService(socketURL: socketURL) { _ in
-            BurnBarFleetSnapshot(
-                schemaVersion: snapshot.schemaVersion,
-                generatedAt: snapshot.generatedAt,
-                cadenceSeconds: snapshot.cadenceSeconds,
-                machine: machine,
-                agents: snapshot.agents,
-                repos: snapshot.repos,
-                runningCount: snapshot.runningCount,
-                countsByAgent: snapshot.countsByAgent,
-                orchestrator: snapshot.orchestrator,
-                probeHealth: snapshot.probeHealth,
-                persistenceHealth: snapshot.persistenceHealth
-            )
+            FleetTestFixtures.makeSnapshot(machine: machine)
         }
         let viewModel = FleetViewModel(service: service)
         service.fetchOnce()
@@ -190,6 +177,14 @@ final class FleetMachinePanelTests: XCTestCase {
         XCTAssertEqual(row(rows, "Disk free")?.value, "500.0 GB")
         XCTAssertEqual(row(rows, "Thermal")?.value, "Unavailable (pmset thermlog empty)")
         XCTAssertEqual(row(rows, "Power")?.value, "Unavailable (no cheap power API)")
+        XCTAssertEqual(
+            viewModel.headerMachineMetrics,
+            Array(rows.prefix(4))
+        )
+        XCTAssertEqual(
+            viewModel.headerMachineMetrics.map(\.label),
+            ["CPU", "Memory", "Load", "Disk free"]
+        )
     }
 
     func test_machineRowsEdgeCases() {

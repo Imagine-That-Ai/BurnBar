@@ -172,14 +172,14 @@ public actor BurnBarFleetService {
 
     /// The live orchestrator state (designation + pendingDirectives) served
     /// by `daemon.fleet.orchestrator.get`. Read-only — never mutates control
-    /// state (VAL-CROSS-009).
-    public func orchestratorState() async -> BurnBarOrchestratorState {
-        (try? await orchestratorStateChecked()) ?? BurnBarOrchestratorState(designation: .none)
-    }
-
+    /// state (VAL-CROSS-009). An unwired store throws; it must not become a
+    /// fabricated `.none` designation.
     public func orchestratorStateChecked() async throws -> BurnBarOrchestratorState {
         persister?.prepareForBuild()
-        return try await controlStore?.currentStateChecked() ?? BurnBarOrchestratorState(designation: .none)
+        guard let controlStore else {
+            throw BurnBarFleetControlError.storeUnavailable("control store is not wired")
+        }
+        return try await controlStore.currentStateChecked()
     }
 
     /// Sets the orchestrator designation with the documented overwrite and

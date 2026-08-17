@@ -32,17 +32,16 @@ struct DashboardView: View {
     @State private var overviewAppeared = false
     @State private var sidebarAppeared = false
     @State private var chatPanelOpen = false
+    @State private var pendingOpenOrchestratorChat = false
     @State private var showIndexingConsent = false
     @State private var showCLIConsentSheet = false
     @State private var showSessionLogCloudConsent = false
     @State private var chatController: ChatSessionController
     @State private var quotaService = ProviderQuotaService.shared
     /// The single fleet service for this dashboard window (M3). Exactly one
-    /// poller exists while the Fleet route is visible; the service is owned
-    /// here so close/reopen cycles never accumulate pollers (VAL-DASH-015/018).
-    @State private var fleetService = FleetService(
-        socketURL: BurnBarDaemonRuntimePaths.live().socketURL
-    )
+    /// poller exists while the Fleet route is visible (VAL-DASH-015/018).
+    /// Chat may share the instance but must not call `start()`.
+    @State private var fleetService: FleetService
 
     init(
         dataStore: DataStore,
@@ -56,7 +55,13 @@ struct DashboardView: View {
         self.accountManager = accountManager
         self.cloudSyncService = cloudSyncService
         self.iCloudSessionMirrorService = iCloudSessionMirrorService
-        _chatController = State(initialValue: ChatSessionController(dataStore: dataStore, settingsManager: SettingsManager.shared))
+        let fleet = FleetService(socketURL: BurnBarDaemonRuntimePaths.live().socketURL)
+        _fleetService = State(initialValue: fleet)
+        _chatController = State(initialValue: ChatSessionController(
+            dataStore: dataStore,
+            settingsManager: SettingsManager.shared,
+            fleetService: fleet
+        ))
     }
 
     private var isScanning: Bool { aggregator?.isRefreshing ?? false }
@@ -173,10 +178,7 @@ struct DashboardView: View {
                                 showCLIConsentSheet = true
                                 return
                             }
-                            Task { await chatController.cliBridge.detect() }
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                chatPanelOpen = true
-                            }
+                            presentChatPanel()
                         }
                     }
                 }
@@ -202,7 +204,7 @@ struct DashboardView: View {
         } message: {
             Text("BurnBar can index your conversation history for search and chat. This data stays on your Mac.")
         }
-        .sheet(isPresented: $showCLIConsentSheet) {
+        .sheet(isPresented: $showCLIConsentSheet, onDismiss: handleCLIConsentSheetDismissed) {
             CLIAssistantConsentSheet(settingsManager: settingsManager) {
                 showCLIConsentSheet = false
             }
@@ -230,6 +232,44 @@ struct DashboardView: View {
     private var hasNewInsightPulse: Bool {
         let n = UserDefaults.standard.integer(forKey: "lastSeenSessionCountForChatBadge")
         return dataStore.usages.count > n && !dataStore.usages.isEmpty
+    }
+
+    private func openOrchestratorChat() {
+        switch FleetChatOpenPolicy.decision(
+            consentShown: settingsManager.cliAssistantConsentShown,
+            requestedMode: .orchestrator
+        ) {
+        case .showConsent:
+            pendingOpenOrchestratorChat = true
+            showCLIConsentSheet = true
+        case .present:
+            presentChatPanel(mode: .orchestrator)
+        }
+    }
+
+    /// Shared open path for FAB, Fleet, and consent follow-up. `mode` nil
+    /// keeps the controller's current mode.
+    private func presentChatPanel(mode: ChatMode? = nil) {
+        Task { await chatController.cliBridge.detect() }
+        if mode == .orchestrator {
+            chatController.prepareOrchestratorChat()
+        } else if let mode {
+            chatController.setMode(mode)
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            chatPanelOpen = true
+        }
+    }
+
+    private func handleCLIConsentSheetDismissed() {
+        let continuation = FleetChatOpenPolicy.afterConsent(
+            pendingOrchestrator: pendingOpenOrchestratorChat,
+            allowed: settingsManager.cliAssistantAllowed
+        )
+        pendingOpenOrchestratorChat = false
+        if continuation == .presentOrchestrator {
+            presentChatPanel(mode: .orchestrator)
+        }
     }
 
     // MARK: - Toolbar
@@ -622,7 +662,8 @@ struct DashboardView: View {
                             usages: dataStore.usages,
                             agentID: agentID
                         )
-                    }
+                    },
+                    onOpenOrchestratorChat: openOrchestratorChat
                 )
             case .provider(let provider):
                 ProviderDashboardView(
@@ -1527,7 +1568,7 @@ private struct SidebarFleetRow: View {
                         .font(DesignSystem.Typography.body)
                         .foregroundStyle(isSelected ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary)
 
-                    Text("Live agents & machine state")
+                    Text("Watch + control live agents")
                         .font(DesignSystem.Typography.tiny)
                         .foregroundStyle(DesignSystem.Colors.textMuted)
                 }

@@ -372,6 +372,25 @@ final class FleetViewModel {
     /// Total running count from the snapshot.
     var runningCount: Int { snapshot?.runningCount ?? 0 }
 
+    /// Pinned-header running readout. A missing snapshot is never shown as
+    /// "0 running" (VAL-DASH-028).
+    enum HeaderRunningReadout: Equatable {
+        case checking
+        case unavailable
+        case running(Int)
+    }
+
+    var headerRunningReadout: HeaderRunningReadout {
+        switch loadState {
+        case .loading:
+            return .checking
+        case .daemonDown:
+            return .unavailable
+        case .ready, .empty:
+            return .running(runningCount)
+        }
+    }
+
     /// Per-provider running counts, ordered by the declared roster order.
     /// Agents with count 0 are included so the view can render explicit
     /// zero-count chips (documented rule: zero-count chips render "0").
@@ -431,6 +450,13 @@ final class FleetViewModel {
     var machineRows: [FleetMachineRow] {
         guard let machine = snapshot?.machine else { return [] }
         return FleetMachineRow.rows(for: machine)
+    }
+
+    /// Header cost-strip labels. Thermal/power stay on the full machine panel.
+    static let headerMachineMetricLabels = ["CPU", "Memory", "Load", "Disk free"]
+
+    var headerMachineMetrics: [FleetMachineRow] {
+        machineRows.filter { Self.headerMachineMetricLabels.contains($0.label) }
     }
 
     /// Derived resource-consumer rows, cached per snapshot (the token-burn

@@ -59,9 +59,9 @@ final class ChatSessionController {
     private let settingsManager: SettingsManager
     let cliBridge: CLIBridge
     /// On-demand fleet snapshot source (M4). This service never starts a
-    /// poller — the dashboard's FleetService owns the single poller; the chat
-    /// controller only calls `fetchOnce()` at send time so the injected
-    /// context is consistent with the live snapshot (VAL-ORCH-009).
+    /// poller — the dashboard's FleetService owns the single poller. Chat
+    /// reads via `fetchSnapshotForContext()` (VAL-ORCH-009): no extra RPC
+    /// while `isPolling`, and a miss must not wipe a healthy board.
     let fleetService: FleetService
     /// Injectable daemon orchestrator-state source (M4). Defaults to the real
     /// `daemon.fleet.orchestrator.get` RPC; tests inject fixed DTOs.
@@ -188,9 +188,20 @@ final class ChatSessionController {
         }
     }
 
-    /// Fetches the daemon-owned orchestrator state + a fresh snapshot for the
-    /// orchestrator status ribbon. Typed failure states are surfaced via
-    /// `orchestratorStateError` — never fabricated (VAL-ORCH-025/035).
+    /// Fleet CTA. Restore a thread only before ChatPanel has ever loaded one
+    /// (still on the unused legacy id). A live or mid-stream transcript is
+    /// not replaced from disk.
+    func prepareOrchestratorChat() {
+        if activeThreadID == DataStore.legacyChatThreadID, !isStreaming {
+            loadPersistedMessages()
+        }
+        setMode(.orchestrator)
+        refreshOrchestratorState()
+    }
+
+    /// Fetches the daemon-owned orchestrator state + a board-safe snapshot
+    /// for the orchestrator status ribbon. Typed failure states are surfaced
+    /// via `orchestratorStateError` — never fabricated (VAL-ORCH-025/035).
     func refreshOrchestratorState() {
         do {
             orchestratorState = try orchestratorStateProvider(fleetService.socketURL)
@@ -198,7 +209,7 @@ final class ChatSessionController {
         } catch {
             orchestratorStateError = error.localizedDescription
         }
-        fleetService.fetchOnce()
+        _ = fleetService.fetchSnapshotForContext()
     }
 
     func performSearch() {
@@ -416,7 +427,8 @@ extension ChatSessionController {
         }
 
         // 3. Live snapshot (consistent with the live snapshot, VAL-ORCH-009).
-        fleetService.fetchOnce()
+        // Context fetch must not start a poller or blank a healthy board.
+        _ = fleetService.fetchSnapshotForContext()
         guard let snapshot = fleetService.loadState.snapshot else {
             appendTypedAssistantMessage(Self.orchestratorUnavailableMessage)
             return

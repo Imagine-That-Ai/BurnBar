@@ -201,18 +201,29 @@ struct FleetMachinePanel: View {
 
             Spacer()
 
-            Text(metricRow.value ?? "—")
-                .font(DesignSystem.Typography.monoSmall)
-                .foregroundStyle(
-                    metricRow.isUnavailable
-                        ? DesignSystem.Colors.textSecondary
-                        : DesignSystem.Colors.textPrimary
-                )
-                .lineLimit(1)
-                .truncationMode(.tail)
+            FleetMachineValueText(row: metricRow)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(metricRow.accessibilityLabel)
+    }
+}
+
+/// The single value renderer for a machine metric, shared by the full panel
+/// and the pinned header strip: absent metrics render "—" muted so the two
+/// surfaces can never disagree about what is unavailable (VAL-DASH-030).
+struct FleetMachineValueText: View {
+    let row: FleetMachineRow
+
+    var body: some View {
+        Text(row.value ?? "—")
+            .font(DesignSystem.Typography.monoSmall)
+            .foregroundStyle(
+                row.isUnavailable
+                    ? DesignSystem.Colors.textSecondary
+                    : DesignSystem.Colors.textPrimary
+            )
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 }
 

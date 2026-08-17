@@ -154,9 +154,24 @@ final class FleetService {
         pollTask = nil
     }
 
-    /// Performs one immediate fetch (used by tests and by the initial
-    /// request). Updates `loadState` from the result.
+    /// Performs one immediate fetch (used by tests and by the poller).
+    /// Updates `loadState` from the result.
     func fetchOnce() {
+        _ = applySnapshotFetch(clobberHealthyBoardOnError: true)
+    }
+
+    /// Chat/context read. While the Fleet poller owns cadence, reuse the
+    /// board snapshot (no extra RPC). A miss must not blank a healthy board
+    /// or overwrite a newer set-ack with a lagging snapshot embed.
+    @discardableResult
+    func fetchSnapshotForContext() -> BurnBarFleetSnapshot? {
+        if isPolling, let snapshot = loadState.snapshot {
+            return snapshot
+        }
+        return applySnapshotFetch(clobberHealthyBoardOnError: false)
+    }
+
+    private func applySnapshotFetch(clobberHealthyBoardOnError: Bool) -> BurnBarFleetSnapshot? {
         requestCount += 1
         lastRequestAt = Date()
         do {
@@ -164,30 +179,47 @@ final class FleetService {
             loadState = snapshot.runningCount > 0
                 ? .ready(snapshot)
                 : .empty(snapshot)
-            // A successful fleet snapshot carries the daemon-authoritative
-            // orchestrator state as well. Re-authorize the retained
-            // designation on recovery so a prior orchestrator RPC failure
-            // cannot leave the Fleet control and badge suppressed forever.
-            if orchestratorState != snapshot.orchestrator {
-                orchestratorState = snapshot.orchestrator
-            }
-            if orchestratorStateError != nil {
-                orchestratorStateError = nil
-            }
+            adoptOrchestratorFromSnapshot(snapshot.orchestrator)
+            return snapshot
         } catch let error as BurnBarFleetClientError {
             switch error {
             case .notReady:
-                // The daemon is alive but its first tick has not completed:
-                // stay in the explicit loading state and retry on the next
-                // poll (VAL-DASH-028) — never a fabricated empty board.
                 if loadState.snapshot == nil {
                     loadState = .loading
                 }
             default:
-                loadState = .daemonDown(reason: error.localizedDescription)
+                applySnapshotFetchFailure(error.localizedDescription, clobberHealthyBoardOnError: clobberHealthyBoardOnError)
             }
+            return loadState.snapshot
         } catch {
-            loadState = .daemonDown(reason: error.localizedDescription)
+            applySnapshotFetchFailure(error.localizedDescription, clobberHealthyBoardOnError: clobberHealthyBoardOnError)
+            return loadState.snapshot
+        }
+    }
+
+    private func applySnapshotFetchFailure(_ reason: String, clobberHealthyBoardOnError: Bool) {
+        if clobberHealthyBoardOnError || !loadState.isHealthy {
+            loadState = .daemonDown(reason: reason)
+        }
+    }
+
+    /// Snapshot embed can lag `orchestrator.set` by one cadence. A stamped
+    /// ack wins until a snapshot carries an equal-or-newer `setAt`. A
+    /// successful snapshot still clears a prior GET error so the picker is
+    /// not left hidden behind a stale `orchestratorStateError`.
+    private func adoptOrchestratorFromSnapshot(_ incoming: BurnBarOrchestratorState) {
+        if orchestratorStateError != nil {
+            orchestratorStateError = nil
+        }
+        if let current = orchestratorState, let currentSetAt = current.setAt {
+            if let incomingSetAt = incoming.setAt {
+                if incomingSetAt < currentSetAt { return }
+            } else {
+                return
+            }
+        }
+        if orchestratorState != incoming {
+            orchestratorState = incoming
         }
     }
 

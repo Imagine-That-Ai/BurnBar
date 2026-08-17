@@ -366,4 +366,168 @@ final class FleetServiceTests: XCTestCase {
             "final state must be one complete accepted payload, got \(String(describing: final))"
         )
     }
+
+    func test_contextFetchWhilePollingDoesNotClobberBoardOrAck() async {
+        let ready = FleetTestFixtures.makeSnapshot()
+        let lagging = FleetTestFixtures.makeSnapshot()
+        let laggingNone = BurnBarFleetSnapshot(
+            schemaVersion: lagging.schemaVersion,
+            generatedAt: lagging.generatedAt.addingTimeInterval(-60),
+            cadenceSeconds: lagging.cadenceSeconds,
+            machine: lagging.machine,
+            agents: lagging.agents,
+            repos: lagging.repos,
+            runningCount: lagging.runningCount,
+            countsByAgent: lagging.countsByAgent,
+            orchestrator: BurnBarOrchestratorState(designation: .none),
+            probeHealth: lagging.probeHealth,
+            persistenceHealth: lagging.persistenceHealth
+        )
+        var nextSnapshot = ready
+        var shouldFail = false
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in
+                if shouldFail {
+                    throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+                }
+                return nextSnapshot
+            },
+            setOrchestratorState: { designation, _ in
+                BurnBarOrchestratorState(
+                    designation: designation,
+                    setAt: Date(timeIntervalSince1970: 1_752_000_100),
+                    pendingDirectives: 0
+                )
+            }
+        )
+        service.start()
+        XCTAssertEqual(service.loadState, .ready(ready))
+        let requestsAfterStart = service.requestCount
+
+        await service.setDesignation(.agent(id: .hermes, sessionRef: .absent))
+        let acknowledged = service.orchestratorState
+
+        nextSnapshot = laggingNone
+        shouldFail = true
+        XCTAssertEqual(service.fetchSnapshotForContext(), ready)
+        XCTAssertEqual(service.requestCount, requestsAfterStart)
+        XCTAssertEqual(service.loadState, .ready(ready))
+        XCTAssertEqual(service.orchestratorState, acknowledged)
+        XCTAssertTrue(service.isPolling)
+
+        shouldFail = false
+        _ = service.fetchSnapshotForContext()
+        XCTAssertEqual(service.loadState, .ready(ready))
+        XCTAssertEqual(service.orchestratorState, acknowledged)
+        XCTAssertTrue(service.isPolling)
+
+        service.stop()
+    }
+
+    func test_contextFetchAfterStopDoesNotStartPollerOrBlankHealthyBoard() {
+        let ready = FleetTestFixtures.makeSnapshot()
+        var shouldFail = false
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in
+                if shouldFail {
+                    throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+                }
+                return ready
+            }
+        )
+        service.fetchOnce()
+        XCTAssertEqual(service.loadState, .ready(ready))
+        shouldFail = true
+        XCTAssertEqual(service.fetchSnapshotForContext(), ready)
+        XCTAssertEqual(service.loadState, .ready(ready))
+        XCTAssertFalse(service.isPolling)
+    }
+
+    func test_fetchOnceKeepsNewerSetAckAgainstLaggingEmbed() async {
+        let ready = FleetTestFixtures.makeSnapshot()
+        let olderNone = snapshot(
+            from: ready,
+            orchestrator: BurnBarOrchestratorState(
+                designation: .none,
+                setAt: Date(timeIntervalSince1970: 1_752_000_000)
+            )
+        )
+        var next = ready
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in next },
+            fetchOrchestratorState: { _ in
+                throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+            },
+            setOrchestratorState: { designation, _ in
+                BurnBarOrchestratorState(
+                    designation: designation,
+                    setAt: Date(timeIntervalSince1970: 1_752_000_100),
+                    pendingDirectives: 0
+                )
+            }
+        )
+        service.fetchOnce()
+        await service.setDesignation(.agent(id: .hermes, sessionRef: .absent))
+        let acknowledged = service.orchestratorState
+        service.refreshOrchestratorState()
+        XCTAssertNotNil(service.orchestratorStateError)
+
+        next = olderNone
+        service.fetchOnce()
+        XCTAssertEqual(service.orchestratorState, acknowledged)
+        XCTAssertNil(service.orchestratorStateError, "successful snapshot must unhide the designation picker")
+        XCTAssertFalse(service.isPolling)
+    }
+
+    func test_fetchOnceAdoptsEqualOrNewerSnapshotSetAt() async {
+        let ready = FleetTestFixtures.makeSnapshot()
+        let newer = snapshot(
+            from: ready,
+            orchestrator: BurnBarOrchestratorState(
+                designation: .burnBarManaged,
+                setAt: Date(timeIntervalSince1970: 1_752_000_200),
+                pendingDirectives: 0
+            )
+        )
+        var next = ready
+        let service = FleetService(
+            socketURL: socketURL,
+            fetchSnapshot: { _ in next },
+            setOrchestratorState: { designation, _ in
+                BurnBarOrchestratorState(
+                    designation: designation,
+                    setAt: Date(timeIntervalSince1970: 1_752_000_100),
+                    pendingDirectives: 0
+                )
+            }
+        )
+        service.fetchOnce()
+        await service.setDesignation(.agent(id: .hermes, sessionRef: .absent))
+        next = newer
+        service.fetchOnce()
+        XCTAssertEqual(service.orchestratorState, newer.orchestrator)
+        XCTAssertFalse(service.isPolling)
+    }
+
+    private func snapshot(
+        from base: BurnBarFleetSnapshot,
+        orchestrator: BurnBarOrchestratorState
+    ) -> BurnBarFleetSnapshot {
+        BurnBarFleetSnapshot(
+            schemaVersion: base.schemaVersion,
+            generatedAt: base.generatedAt,
+            cadenceSeconds: base.cadenceSeconds,
+            machine: base.machine,
+            agents: base.agents,
+            repos: base.repos,
+            runningCount: base.runningCount,
+            countsByAgent: base.countsByAgent,
+            orchestrator: orchestrator,
+            probeHealth: base.probeHealth,
+            persistenceHealth: base.persistenceHealth
+        )
+    }
 }

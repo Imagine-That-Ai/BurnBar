@@ -161,17 +161,20 @@ final class BurnBarFleetContractsPolicyTests: XCTestCase {
 
     func test_unknownAgentID_roundTripsLosslessly() throws {
         let original = makeAgent(id: .unknown("aider"), status: .idle, confidence: .estimated)
-        let data = try JSONEncoder().encode(original)
+        // Default JSONEncoder key order is unspecified; compare decoded
+        // equality and a sorted-key encode so isolated runs are stable.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let data = try encoder.encode(original)
         let json = try XCTUnwrap(String(data: data, encoding: .utf8))
         XCTAssertTrue(json.contains("\"id\":\"aider\""), "unknown id must encode to its original string: \(json)")
 
-        let decoded: BurnBarFleetAgent = try roundTrip(original)
+        let decoded = try JSONDecoder().decode(BurnBarFleetAgent.self, from: data)
         XCTAssertEqual(decoded.id, .unknown("aider"))
         XCTAssertEqual(decoded, original)
 
-        // Re-encode the decoded value: same wire string.
-        let reencoded = try JSONEncoder().encode(decoded)
-        XCTAssertEqual(String(data: reencoded, encoding: .utf8), json)
+        // Re-encode the decoded value: same wire bytes.
+        XCTAssertEqual(try encoder.encode(decoded), data)
     }
 
     func test_unknownAgentID_snapshotRowSurvivesWithCounts() throws {

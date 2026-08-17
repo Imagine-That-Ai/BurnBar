@@ -103,11 +103,12 @@ class ChatSessionControllerOrchestratorTestCase: XCTestCase {
         cliBridge: CLIBridge? = nil,
         cliAllowed: Bool = true,
         now: @escaping () -> Date = { Date() },
+        fleetService: FleetService? = nil,
         deliveryChannelProvider: @escaping (BurnBarFleetAgentID?) -> BurnBarFleetDirectiveChannel? = { _ in nil },
         directiveRecordProvider: ((BurnBarFleetDirective, URL) throws -> BurnBarFleetDirective)? = nil,
         saveChatMessage: ((ChatMessageRecord, String) throws -> Void)? = nil
     ) -> ChatSessionController {
-        let fleetService = FleetService(
+        let fleetService = fleetService ?? FleetService(
             socketURL: socketURL,
             fetchSnapshot: { _ in snapshot },
             now: now

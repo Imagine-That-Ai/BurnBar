@@ -142,6 +142,77 @@ final class FleetViewModelTests: XCTestCase {
         XCTAssertEqual(service.requestCount, 1, "one initial request per cycle")
     }
 
+    func test_headerMachineMetricsAreTheFourCostRows() {
+        let service = FleetService(socketURL: socketURL) { _ in
+            FleetTestFixtures.makeSnapshot()
+        }
+        let viewModel = FleetViewModel(service: service)
+        XCTAssertTrue(viewModel.headerMachineMetrics.isEmpty, "no fabricated machine cost before a snapshot")
+        service.fetchOnce()
+
+        XCTAssertEqual(
+            viewModel.headerMachineMetrics.map(\.label),
+            ["CPU", "Memory", "Load", "Disk free"]
+        )
+        XCTAssertFalse(viewModel.headerMachineMetrics.contains { $0.label == "Thermal" })
+        XCTAssertFalse(viewModel.headerMachineMetrics.contains { $0.label == "Power" })
+        XCTAssertEqual(viewModel.headerMachineMetrics.first { $0.label == "CPU" }?.value, "12.5%")
+    }
+
+    func test_headerRunningReadoutIsNeverZeroBeforeSnapshot() {
+        let service = FleetService(socketURL: socketURL) { _ in
+            FleetTestFixtures.makeSnapshot()
+        }
+        let viewModel = FleetViewModel(service: service)
+        XCTAssertEqual(viewModel.headerRunningReadout, .checking)
+        XCTAssertEqual(viewModel.runningCount, 0)
+
+        service.fetchOnce()
+        XCTAssertEqual(viewModel.headerRunningReadout, .running(1))
+
+        let emptyService = FleetService(socketURL: socketURL) { _ in
+            FleetTestFixtures.makeEmptySnapshot()
+        }
+        let emptyModel = FleetViewModel(service: emptyService)
+        emptyService.fetchOnce()
+        XCTAssertEqual(emptyModel.headerRunningReadout, .running(0))
+
+        let down = FleetService(socketURL: socketURL) { _ in
+            throw BurnBarFleetClientError.daemonUnavailable("connect failed")
+        }
+        let downModel = FleetViewModel(service: down)
+        down.fetchOnce()
+        XCTAssertEqual(downModel.headerRunningReadout, .unavailable)
+    }
+
+    func test_headerMachineMetricsOmitThermalEvenWhenSensorsAvailable() {
+        let service = FleetService(socketURL: socketURL) { _ in
+            FleetTestFixtures.makeSnapshot(machine: FleetTestFixtures.makeMachineSensorsAvailable())
+        }
+        let viewModel = FleetViewModel(service: service)
+        service.fetchOnce()
+
+        XCTAssertEqual(
+            viewModel.headerMachineMetrics.map(\.label),
+            ["CPU", "Memory", "Load", "Disk free"]
+        )
+        XCTAssertTrue(viewModel.machineRows.contains { $0.label == "Thermal" })
+        XCTAssertFalse(viewModel.headerMachineMetrics.contains { $0.label == "Thermal" })
+        XCTAssertFalse(viewModel.headerMachineMetrics.contains { $0.label == "Power" })
+    }
+
+    func test_headerMachineMetricsPreserveUnavailableHonesty() {
+        let service = FleetService(socketURL: socketURL) { _ in
+            FleetTestFixtures.makeSnapshot(machine: FleetTestFixtures.makeMachineAllOptionalAbsent())
+        }
+        let viewModel = FleetViewModel(service: service)
+        service.fetchOnce()
+
+        XCTAssertEqual(viewModel.headerMachineMetrics.count, 4)
+        XCTAssertTrue(viewModel.headerMachineMetrics.allSatisfy(\.isUnavailable))
+        XCTAssertTrue(viewModel.headerMachineMetrics.allSatisfy { $0.value == nil })
+    }
+
     func test_staleStateExposedThroughViewModel() {
         let now = Date()
         let stale = FleetTestFixtures.makeSnapshot(
