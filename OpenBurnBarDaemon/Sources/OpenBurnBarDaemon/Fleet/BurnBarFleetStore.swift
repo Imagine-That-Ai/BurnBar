@@ -30,6 +30,7 @@ import GRDB
 /// next successful persist. Store deletion discards daemon-owned
 /// orchestration history and re-initializes designation to `none` —
 /// disclosed in `docs/fleet/BURNBAR_FLEET_SIGNALS.md`.
+// AUDIT: GRDB DatabaseQueue is the mutable handle. sendable-allowlist: database-handle-wrapper
 public final class BurnBarFleetStore: @unchecked Sendable {
     public let databasePath: String
     public let eventRetentionSeconds: TimeInterval

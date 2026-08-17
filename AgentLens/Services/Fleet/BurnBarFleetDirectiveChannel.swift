@@ -58,7 +58,7 @@ protocol BurnBarFleetDirectiveChannel: Sendable {
 /// The hermetic fixture gateway (`tools/burnbar-fake-hermes-gateway.py`)
 /// implements this contract for validation; the real gateway is the same
 /// documented endpoint.
-final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, @unchecked Sendable {
+final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, Sendable {
     private static let defaultGatewayURL = URL(string: "http://127.0.0.1:8642")!
 
     /// The default gateway base URL. Overridable via

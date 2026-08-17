@@ -116,6 +116,7 @@ struct BurnBarFleetCPUSample: Sendable, Equatable {
     let nice: Double
 }
 
+// AUDIT: previous sample is NSLock-guarded. sendable-allowlist: nslock-protected-storage
 private final class CPUState: @unchecked Sendable {
     private let sampleProvider: @Sendable () -> BurnBarFleetCPUSample?
     private let lock = NSLock()
