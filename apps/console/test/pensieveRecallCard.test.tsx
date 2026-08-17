@@ -120,7 +120,18 @@ async function renderAndSearch() {
   await act(async () => {
     button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
-  // Let the awaited search + decrypt chain settle before asserting.
+  // Let the awaited search + decrypt chain settle before asserting. The WASM
+  // openText is several microtask hops, so a single Promise.resolve() flush is
+  // not enough on a slower runner. The wait has to happen OUTSIDE act — React
+  // does not flush the `busy` state updates until the act scope exits, so
+  // polling inside act never sees "Searching..." clear. Poll until `busy`
+  // clears, then flush once more before asserting.
+  await vi.waitFor(
+    () => {
+      expect(container!.textContent).not.toContain("Searching");
+    },
+    { timeout: 10_000 },
+  );
   await act(async () => {
     await Promise.resolve();
   });
