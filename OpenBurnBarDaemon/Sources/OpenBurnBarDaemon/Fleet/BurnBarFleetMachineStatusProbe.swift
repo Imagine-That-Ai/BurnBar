@@ -111,10 +111,18 @@ public struct BurnBarFleetMachineStatusProbe: Sendable {
     }
 
     private static func readDiskFreeBytes() -> Int? {
+        #if canImport(Darwin)
         var fileSystemStats = statfs()
         let result = statfs("/", &fileSystemStats)
         guard result == 0 else { return nil }
         return Int(fileSystemStats.f_bavail) * Int(fileSystemStats.f_bsize)
+        #else
+        guard let values = try? FileManager.default.attributesOfFileSystem(forPath: "/"),
+              let free = values[.systemFreeSize] as? NSNumber else {
+            return nil
+        }
+        return free.intValue
+        #endif
     }
 }
 
