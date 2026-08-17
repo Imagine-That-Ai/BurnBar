@@ -18,7 +18,7 @@ def step(job: dict, name: str) -> dict:
 
 
 class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
-    def test_deploy_selects_profile_and_authorizes_only_manual_rollback(self) -> None:
+    def test_deploy_resolves_before_authorizing_manual_rollback(self) -> None:
         source = DEPLOY.read_text(encoding="utf-8")
         required = (
             "domain_core_profile:",
@@ -28,11 +28,30 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
             "environment: domain-core-promotion",
             "environment: production",
             'DOMAIN_CORE_PROFILE="public-production"',
+            "needs.prepare-functions-deploy.outputs.domain_core_profile == 'public-production-rollback'",
+            "needs.prepare-functions-deploy.outputs.dry_run != 'true'",
             "needs.authorize-domain-core-rollback.result == 'success'",
         )
         for value in required:
             self.assertIn(value, source)
-        self.assertLess(source.index("authorize-domain-core-rollback:"), source.index("deploy-functions:"))
+        jobs = workflow(DEPLOY)["jobs"]
+        self.assertNotIn("needs", jobs["prepare-functions-deploy"])
+        self.assertEqual(
+            jobs["authorize-domain-core-rollback"]["needs"],
+            "prepare-functions-deploy",
+        )
+        self.assertEqual(
+            set(jobs["deploy-functions"]["needs"]),
+            {"prepare-functions-deploy", "authorize-domain-core-rollback"},
+        )
+        self.assertLess(
+            source.index("prepare-functions-deploy:"),
+            source.index("authorize-domain-core-rollback:"),
+        )
+        self.assertLess(
+            source.index("authorize-domain-core-rollback:"),
+            source.index("deploy-functions:"),
+        )
 
     def test_protected_candidate_is_verified_before_build_or_deploy(self) -> None:
         source = DEPLOY.read_text(encoding="utf-8")
@@ -145,8 +164,40 @@ class DomainCoreFunctionsReleaseWorkflowTests(unittest.TestCase):
             "needs.functions-health-gate.result == 'success'",
             "needs.deploy-functions.outputs.dry_run != 'true'",
             "needs.deploy-functions.outputs.stable_release == 'true'",
+            "needs.deploy-functions.outputs.existing_tag_retry != 'true'",
         ):
             self.assertIn(required_result, dispatch_gate)
+
+        handoff = deploy_jobs["retain-domain-core-functions-evidence-handoff"]
+        self.assertEqual(
+            set(handoff["needs"]),
+            {"deploy-functions", "functions-health-gate"},
+        )
+        handoff_gate = " ".join(handoff["if"].split())
+        for required_result in (
+            "needs.deploy-functions.result == 'success'",
+            "needs.functions-health-gate.result == 'success'",
+            "needs.deploy-functions.outputs.existing_tag_retry == 'true'",
+            "needs.deploy-functions.outputs.reused_existing_evidence != 'true'",
+        ):
+            self.assertIn(required_result, handoff_gate)
+        handoff_step = step(
+            handoff,
+            "Record post-release Functions evidence handoff",
+        )["run"]
+        for marker in (
+            "domain-core-functions-release-evidence-handoff.json",
+            "requiresPublishedGitHubRelease: true",
+            "--field deploy_run_id=",
+            "--field deploy_run_attempt=",
+            "--field domain_core_profile=",
+        ):
+            self.assertIn(marker, handoff_step)
+        upload = step(
+            handoff,
+            "Upload post-release Functions evidence handoff",
+        )
+        self.assertEqual(upload["with"]["retention-days"], "90")
 
         publish = workflow(EVIDENCE)["jobs"]["publish"]
         proof_download = step(publish, "Download exact deployed Functions proof inputs")
