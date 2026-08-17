@@ -83,6 +83,9 @@
   --control-shade: rgba(15, 18, 28, 0.06);
   --composer-fill: rgba(255, 255, 255, 0.1);
   --tools-fill: rgba(255, 255, 255, 0.16);
+  /* Idle brain breath (recovered 2026-08-15 UI-repair session). */
+  --bulb-idle-glow: rgba(255, 82, 158, 0.42);
+  --bulb-idle-glow-bright: rgba(255, 82, 158, 0.78);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -116,6 +119,8 @@
     --control-shade: rgba(0, 0, 0, 0.24);
     --composer-fill: rgba(8, 10, 16, 0.18);
     --tools-fill: rgba(8, 10, 16, 0.32);
+    --bulb-idle-glow: rgba(255, 122, 190, 0.5);
+    --bulb-idle-glow-bright: rgba(255, 122, 190, 0.92);
   }
 }
 
@@ -150,6 +155,9 @@
   --control-shade: rgba(15, 18, 28, 0.06);
   --composer-fill: rgba(255, 255, 255, 0.1);
   --tools-fill: rgba(255, 255, 255, 0.16);
+  /* Idle brain breath (recovered 2026-08-15 UI-repair session). */
+  --bulb-idle-glow: rgba(255, 82, 158, 0.42);
+  --bulb-idle-glow-bright: rgba(255, 82, 158, 0.78);
 }
 
 :root[data-theme='dark'] {
@@ -183,6 +191,8 @@
   --control-shade: rgba(0, 0, 0, 0.24);
   --composer-fill: rgba(8, 10, 16, 0.18);
   --tools-fill: rgba(8, 10, 16, 0.32);
+  --bulb-idle-glow: rgba(255, 122, 190, 0.5);
+  --bulb-idle-glow-bright: rgba(255, 122, 190, 0.92);
 }
 
 * {
@@ -2664,4 +2674,51 @@ select:disabled {
   border-color: var(--danger-soft);
   color: var(--danger);
   background: var(--danger-soft);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Idle brain — recovered from the 2026-08-15 UI-repair session
+
+   At rest the brain glyph breathes a low hot-pink, so it reads as a
+   brain instead of a grey smudge and the control announces what it is.
+
+   The glow is a STATIC filter and only opacity is animated. Animating
+   drop-shadow re-runs a blur every frame for as long as the popup is
+   open, which is what made typing feel like it stuttered — the
+   compositor was repainting the whole popup. Opacity composites free.
+   ───────────────────────────────────────────────────────────── */
+
+.mode-trigger .icon {
+  filter: drop-shadow(0 0 5px var(--bulb-idle-glow));
+  animation: mode-brain-idle 3.4s ease-in-out infinite;
+  will-change: opacity;
+  transition: opacity 160ms var(--ease);
+}
+
+@keyframes mode-brain-idle {
+  0%,
+  100% {
+    opacity: 0.58;
+  }
+
+  50% {
+    opacity: 0.82;
+  }
+}
+
+/* The breath is an "idle" tell, so it stops the moment anything is
+   actually happening, or once the operator is interacting with it. */
+.shell:has(.typing-indicator) .mode-trigger .icon,
+.mode-trigger:hover .icon,
+.mode-trigger:focus-visible .icon,
+.mode-trigger[aria-expanded='true'] .icon {
+  animation: none;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-trigger .icon {
+    animation: none;
+    opacity: 0.82;
+  }
 }
