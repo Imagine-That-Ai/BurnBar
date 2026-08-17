@@ -1742,6 +1742,52 @@ final class MercuryRouterTests: XCTestCase {
         XCTAssertEqual(ack.remoteUnlockState?.lockState, .unlocked)
     }
 
+    func testRemoteUnlockResumePollingDoesNotReprobeReadinessWhileHostStaysLocked() async throws {
+        let now = Date()
+        var snapshotCallCount = 0
+        let readiness = makeRemoteUnlockReadinessService(
+            lockStateProvider: { .loginWindow },
+            snapshotObserver: { snapshotCallCount += 1 }
+        )
+        let (router, sink) = makeRouter(
+            consent: true,
+            remoteUnlockReadiness: readiness,
+            clock: { now }
+        )
+
+        await handleMirrorFrame(
+            mirrorRequestFrame(
+                requestID: "remote-unlock-bounded-resume-poll",
+                viewerID: "viewer-1",
+                viewerDeviceID: "iphone-1",
+                controlAuthorityPeerNodeID: "ios-peer",
+                remoteUnlockSession: remoteUnlockSession(
+                    sessionId: "unlock-session",
+                    peerNodeId: "ios-peer",
+                    viewerDeviceId: "iphone-1",
+                    issuedAt: now
+                )
+            ),
+            router: router,
+            sink: sink
+        )
+
+        let snapshotCallsBeforePoll = snapshotCallCount
+        router.scheduleRemoteUnlockResumePoll(
+            reason: "bounded_readiness_probe_test",
+            initialDelayNanoseconds: 0,
+            maxAttempts: 4
+        )
+        let pollTask = router.remoteUnlockResumeTask
+        await pollTask?.value
+
+        XCTAssertEqual(
+            snapshotCallCount - snapshotCallsBeforePoll,
+            1,
+            "a locked resume poll should validate capabilities once, then use the cheap lock-state probe per tick"
+        )
+    }
+
     func testLockedMirrorWithoutRemoteUnlockSessionRequestsSignedRetry() async throws {
         let readiness = makeRemoteUnlockReadinessService(lockStateProvider: { .loginWindow })
         var startCount = 0
@@ -2404,12 +2450,14 @@ final class MercuryRouterTests: XCTestCase {
     }
 
     private func makeRemoteUnlockReadinessService(
-        lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState
+        lockStateProvider: @escaping @MainActor @Sendable () -> HermesRealtimeRelayMacLockState,
+        snapshotObserver: @escaping @MainActor @Sendable () -> Void = {}
     ) -> MacRemoteUnlockReadinessService {
         MacRemoteUnlockReadinessService(
             defaults: makeIsolatedDefaults(),
             snapshotProvider: {
-                RemoteUnlockReadinessSnapshot(
+                snapshotObserver()
+                return RemoteUnlockReadinessSnapshot(
                     featureFlagEnabled: true,
                     directDownloadBuild: true,
                     daemonInstalled: true,

@@ -107,6 +107,22 @@ extension DataStore {
         try await actor.searchIndexStore.fetchChunks(documentID: documentID)
     }
 
+    func fetchSearchChunkEmbeddingInputs(
+        afterID: String?,
+        limit: Int,
+        embeddingVersionID: String,
+        sourceKind: SearchSourceKind?,
+        sourceID: String?
+    ) async throws -> [SearchChunkEmbeddingInput] {
+        try await actor.searchIndexStore.fetchChunkEmbeddingInputs(
+            afterID: afterID,
+            limit: limit,
+            embeddingVersionID: embeddingVersionID,
+            sourceKind: sourceKind,
+            sourceID: sourceID
+        )
+    }
+
     func fetchSearchChunks(ids: [String]) async throws -> [SearchChunkRecord] {
         try await actor.searchIndexStore.fetchChunks(ids: ids)
     }

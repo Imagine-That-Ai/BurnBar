@@ -776,7 +776,7 @@ final class CursorConnectorManager {
             insertedAny = true
         }
         if insertedAny {
-            await dataStore.refresh()
+            await dataStore.reloadUsagesIfChanged()
         }
     }
 

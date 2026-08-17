@@ -142,7 +142,7 @@ final class DailyDigestManager {
             // startup authorization request never ran.
             await requestAuthorization()
         }
-        scheduleDigest(from: dataStore, at: hour)
+        await scheduleDigestUsingPersistedUsage(from: dataStore, at: hour)
     }
 
     // MARK: - Arming
@@ -155,20 +155,66 @@ final class DailyDigestManager {
     /// sentence computed at launch every day. `activate` re-arms the whole
     /// horizon after each delivery.
     func scheduleDigest(from dataStore: DataStore, at hour: Int = 18) {
+        guard let firstFireDate = firstFireDateForArming(at: hour) else { return }
+        armDigest(usages: dataStore.usages, firstFireDate: firstFireDate)
+    }
+
+    /// Production arming path. Reads only the two calendar days needed by the
+    /// first digest, directly from the indexed SQLite ledger, so daily digest
+    /// remains correct while dashboard presentation is intentionally cold.
+    func scheduleDigestUsingPersistedUsage(from dataStore: DataStore, at hour: Int = 18) async {
+        guard let firstFireDate = firstFireDateForArming(at: hour) else { return }
+        do {
+            let usages = try await persistedDigestUsages(
+                from: dataStore,
+                deliveredAt: firstFireDate
+            )
+            armDigest(usages: usages, firstFireDate: firstFireDate)
+        } catch {
+            // Keep any previously armed notification instead of replacing it
+            // with a confidently wrong empty digest.
+            AppLogger.dataStore.silentFailure("daily_digest_usage_fetch_failed", error: error)
+        }
+    }
+
+    private func firstFireDateForArming(at hour: Int) -> Date? {
         let reference = now()
         if let armedFireDate,
            abs(armedFireDate.timeIntervalSince(reference)) < Self.reArmGuard {
-            return
+            return nil
         }
-        let firstFireDate = nextFireDate(after: reference, at: hour)
+        return nextFireDate(after: reference, at: hour)
+    }
 
+    private func persistedDigestUsages(
+        from dataStore: DataStore,
+        deliveredAt fireDate: Date
+    ) async throws -> [TokenUsage] {
+        let window = InsightEngine.digestWindow(forDeliveryAt: fireDate, calendar: calendar)
+        let priorStart = calendar.date(byAdding: .day, value: -1, to: window.lowerBound)
+            ?? window.lowerBound.addingTimeInterval(-86_400)
+        let usages = try await dataStore.fetchUsage(
+            startingIn: priorStart..<window.upperBound,
+            limit: Int.max
+        )
+        if !usages.isEmpty {
+            return usages
+        }
+
+        // `generateDigestNarrative` distinguishes an empty ledger from a quiet
+        // two-day window. One newest row preserves that wording without
+        // materializing all history.
+        return try await dataStore.fetchRecentUsage(limit: 1)
+    }
+
+    private func armDigest(usages: [TokenUsage], firstFireDate: Date) {
         removePendingDigests()
         for offset in 0..<Self.horizonDays {
             guard let fireDate = calendar.date(byAdding: .day, value: offset, to: firstFireDate) else { continue }
             notificationCenter.add(
                 UNNotificationRequest(
                     identifier: Self.digestIdentifier(dayOffset: offset),
-                    content: digestContent(from: dataStore, deliveredAt: fireDate, dayOffset: offset),
+                    content: digestContent(from: usages, deliveredAt: fireDate, dayOffset: offset),
                     trigger: UNCalendarNotificationTrigger(
                         dateMatching: calendar.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate),
                         repeats: false
@@ -180,7 +226,7 @@ final class DailyDigestManager {
     }
 
     private func digestContent(
-        from dataStore: DataStore,
+        from usages: [TokenUsage],
         deliveredAt fireDate: Date,
         dayOffset: Int
     ) -> UNMutableNotificationContent {
@@ -189,7 +235,7 @@ final class DailyDigestManager {
         content.sound = .default
         if dayOffset == 0 {
             let narrative = InsightEngine.generateDigestNarrative(
-                from: dataStore.usages,
+                from: usages,
                 deliveredAt: fireDate,
                 calendar: calendar
             )

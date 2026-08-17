@@ -116,33 +116,39 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
     func test_runCostTotalsCacheDeduplicatesPeriodsAndReusesSameBucket() async {
         let cache = SmartHubRunCostTotalsCache()
         let now = Date(timeIntervalSince1970: 120)
-        var loadCountByPeriod: [SmartHubTimePeriod: Int] = [:]
+        var loadedBatches: [[SmartHubTimePeriod]] = []
 
         let first = await cache.values(
             for: [.rolling5h, .rolling5h, .rolling7d],
             writeMarker: 41,
             now: now
-        ) { period in
-            loadCountByPeriod[period, default: 0] += 1
-            return [
-                .claudeCode: ProviderRunCostTotals(
-                    sessionCount: Int(period.spanHours),
-                    totalTokens: 100,
-                    totalCost: 1
-                )
-            ]
+        ) { periods in
+            loadedBatches.append(periods)
+            return Dictionary(
+                uniqueKeysWithValues: periods.map { period in
+                    (
+                        period.rawValue,
+                        [
+                            .claudeCode: ProviderRunCostTotals(
+                                sessionCount: Int(period.spanHours),
+                                totalTokens: 100,
+                                totalCost: 1
+                            )
+                        ]
+                    )
+                }
+            )
         }
         let second = await cache.values(
             for: [.rolling7d, .rolling5h],
             writeMarker: 41,
             now: now.addingTimeInterval(10)
-        ) { period in
-            loadCountByPeriod[period, default: 0] += 1
+        ) { periods in
+            loadedBatches.append(periods)
             return [:]
         }
 
-        XCTAssertEqual(loadCountByPeriod[.rolling5h], 1)
-        XCTAssertEqual(loadCountByPeriod[.rolling7d], 1)
+        XCTAssertEqual(loadedBatches, [[.rolling5h, .rolling7d]])
         XCTAssertEqual(first, second)
     }
 
@@ -156,7 +162,8 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
                 for: [.rolling5h],
                 writeMarker: writeMarker,
                 now: now
-            ) { _ in
+            ) { periods in
+                XCTAssertEqual(periods, [.rolling5h])
                 loadCount += 1
                 return [:]
             }
@@ -165,19 +172,20 @@ final class SmartHubBridgeServerSerializationTests: XCTestCase {
         XCTAssertEqual(loadCount, 2)
     }
 
-    func test_runCostTotalsCacheInvalidatesAtThirtySecondBoundary() async {
+    func test_runCostTotalsCacheInvalidatesAtSixtySecondBoundary() async {
         let cache = SmartHubRunCostTotalsCache()
         var loadCount = 0
 
         for now in [
-            Date(timeIntervalSince1970: 149.9),
-            Date(timeIntervalSince1970: 150)
+            Date(timeIntervalSince1970: 179.9),
+            Date(timeIntervalSince1970: 180)
         ] {
             _ = await cache.values(
                 for: [.rolling5h],
                 writeMarker: 41,
                 now: now
-            ) { _ in
+            ) { periods in
+                XCTAssertEqual(periods, [.rolling5h])
                 loadCount += 1
                 return [:]
             }

@@ -32,13 +32,23 @@ import {
   ProportionBar,
   Sparkline,
   formatCompact,
+  formatUsd,
 } from "@/components/dashboard/cards/primitives";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 
 const HEATMAP_MODES: { key: HeatmapMode; label: string }[] = [
   { key: "daily", label: "Daily" },
   { key: "weekly", label: "Weekly" },
   { key: "cumulative", label: "Cumulative" },
+];
+
+/** The rail's breakdown metric — Tokens / Runs / Spend, all from the rollup. */
+type Metric = "tokens" | "runs" | "spend";
+const METRICS: { key: Metric; label: string }[] = [
+  { key: "tokens", label: "Tokens" },
+  { key: "runs", label: "Runs" },
+  { key: "spend", label: "Spend" },
 ];
 
 /** Days between an ISO timestamp and a "YYYY-MM-DD" day key (UTC, floor). */
@@ -49,17 +59,34 @@ function daysSince(iso: string, today: string): number {
   return Math.max(0, Math.floor((end - start) / 86_400_000));
 }
 
+/** Staggered entrance delays for the reveal kit (globals.css .reveal). */
+const REVEAL: Record<"header" | "stats" | "heatmap" | "trend" | "insights" | "footer", React.CSSProperties> = {
+  header: { "--d": "0ms" } as React.CSSProperties,
+  stats: { "--d": "90ms" } as React.CSSProperties,
+  heatmap: { "--d": "180ms" } as React.CSSProperties,
+  trend: { "--d": "270ms" } as React.CSSProperties,
+  insights: { "--d": "360ms" } as React.CSSProperties,
+  footer: { "--d": "450ms" } as React.CSSProperties,
+};
+
 function HeaderStat({
   value,
   label,
   sub,
+  className,
 }: {
   value: React.ReactNode;
   label: string;
   sub?: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1 px-token-4 py-token-5 text-center">
+    <div
+      className={cn(
+        "flex flex-col items-center gap-1 px-token-4 py-token-4 text-center",
+        className,
+      )}
+    >
       <span className="font-display text-2xl leading-none text-content-bright tabular-nums">
         {value}
       </span>
@@ -78,10 +105,70 @@ function InsightRow({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
+/** Accent-fill opacity steps for the provider-mix bar — one hue, quiet ramp. */
+const MIX_OPACITY = [1, 0.66, 0.46, 0.32, 0.22] as const;
+
+/**
+ * Honest empty state: the SHAPE of what's coming (logo tile + share bar),
+ * dimmed — a preview of the layout, never invented numbers.
+ */
+function GhostRows({ rows = 3 }: { rows?: number }) {
+  return (
+    <div aria-hidden className="space-y-token-3 opacity-40">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="size-[18px] shrink-0 rounded-[5px] border border-glass-line bg-mercury-wash" />
+          <span
+            className="h-1.5 rounded-pill bg-mercury-wash"
+            style={{ width: `${86 - i * 18}%` }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Segmented pill toggle — same idiom as the heatmap's mode switch. */
+function MetricToggle({
+  metric,
+  onChange,
+}: {
+  metric: Metric;
+  onChange: (m: Metric) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Breakdown metric"
+      className="flex items-center gap-token-1 rounded-pill border border-glass-line p-0.5"
+    >
+      {METRICS.map((m) => (
+        <button
+          key={m.key}
+          type="button"
+          aria-pressed={metric === m.key}
+          onClick={() => onChange(m.key)}
+          className={cn(
+            "rounded-pill px-token-2 py-0.5 text-[0.68rem] transition-colors duration-150",
+            metric === m.key ? "text-content-bright" : "text-content-dim hover:text-content-mute",
+          )}
+          style={metric === m.key ? { background: "var(--accent-wash)" } : undefined}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { user } = useAuth();
-  const { rollup, source, loading, error } = useProfileUsage();
+  const { rollup, source, loading, syncing, error, reload } = useProfileUsage();
   const [mode, setMode] = React.useState<HeatmapMode>("daily");
+  const [metric, setMetric] = React.useState<Metric>("tokens");
+  // If the IdP avatar fails to load (expired URL, CSP, offline), fall back to
+  // the initial tile instead of a broken image.
+  const [avatarFailed, setAvatarFailed] = React.useState(false);
 
   // "Today" only exists client-side; gating on it keeps the static prerender
   // and the first client render byte-identical (no hydration drift).
@@ -96,12 +183,12 @@ export default function ProfilePage() {
     const peak = peakDay(points);
     const activeDays = activeDayCount(points);
     const totalTokens = rollup.totals.tokens || sumTokens(points);
-    const topProvider = rollup.providerSummaries[0] ?? null;
-    const providerTokens = rollup.providerSummaries.reduce((n, p) => n + p.totalTokens, 0);
+    const topProviders = rollup.providerSummaries.slice(0, 5);
     const topModels = rollup.modelSummaries.slice(0, 5);
-    const modelMax = topModels.length > 0 ? topModels[0].tokens : 0;
-    // Trend: trailing 90 days of the daily series.
-    const cutoff = addDays(today, -90);
+    const topHarnesses = rollup.executionSourceSummaries.slice(0, 5);
+    const topCombos = rollup.comboSummaries.slice(0, 5);
+    // Trend: the trailing 90 days inclusive of today.
+    const cutoff = addDays(today, -89);
     const trend = points.filter((p) => p.day >= cutoff);
     return {
       streaks,
@@ -109,29 +196,64 @@ export default function ProfilePage() {
       activeDays,
       totalTokens,
       avgPerActiveDay: activeDays > 0 ? Math.round(totalTokens / activeDays) : 0,
-      topProvider,
-      topProviderShare:
-        topProvider && providerTokens > 0 ? topProvider.totalTokens / providerTokens : 0,
+      topProviders,
       topModels,
-      modelMax,
+      topHarnesses,
+      topCombos,
       trend,
     };
   }, [rollup, today]);
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Member";
   const handle = user?.email ? `@${user.email.split("@")[0]}` : null;
+
+  // Metric-aware accessors for the rail's breakdown sections (Tokens / Runs /
+  // Spend) — every summary carries all three, so the toggle is pure render.
+  const rail = React.useMemo(() => {
+    if (!stats) return null;
+    const pv = (p: (typeof stats.topProviders)[number]) =>
+      metric === "tokens" ? p.totalTokens : metric === "runs" ? p.totalRequests : p.totalCost;
+    const mv = (m: (typeof stats.topModels)[number]) =>
+      metric === "tokens" ? m.tokens : metric === "runs" ? m.requests : m.cost;
+    const hv = (h: (typeof stats.topHarnesses)[number]) =>
+      metric === "tokens" ? h.totalTokens : metric === "runs" ? h.totalRequests : h.totalCost;
+    const cv = (c: (typeof stats.topCombos)[number]) =>
+      metric === "tokens" ? c.tokens : metric === "runs" ? c.requests : c.cost;
+    return {
+      pv,
+      mv,
+      hv,
+      cv,
+      providerTotal: rollup.providerSummaries.reduce((n, p) => n + pv(p), 0),
+      modelMax: stats.topModels.length ? Math.max(...stats.topModels.map(mv)) : 0,
+      harnessMax: stats.topHarnesses.length ? Math.max(...stats.topHarnesses.map(hv)) : 0,
+      comboMax: stats.topCombos.length ? Math.max(...stats.topCombos.map(cv)) : 0,
+    };
+  }, [stats, metric, rollup.providerSummaries]);
+
+  /** Value + unit under the active metric ("211 runs" / "5.2M tok" / "$12.40"). */
+  const fmtMetric = (v: number): string =>
+    metric === "spend" ? formatUsd(v) : `${formatCompact(v)}${metric === "runs" ? " runs" : " tok"}`;
   const joinedDays =
     today && user?.metadata.creationTime ? daysSince(user.metadata.creationTime, today) : null;
   const initial = displayName.trim().charAt(0).toUpperCase() || "B";
 
+  // Numbers stay as quiet dashes until the rollup has actually landed — a
+  // flash of zeros reads as "you have no usage", which is a lie while loading.
+  const pending = loading || !today;
+  const num = (v: number) => (pending ? "—" : formatCompact(v));
+
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl xl:mx-0 xl:grid xl:max-w-none xl:grid-cols-[minmax(0,42rem)_minmax(15rem,19rem)] xl:gap-token-12">
+      <div className="min-w-0">
       {/* Identity header */}
-      <header className="flex flex-col items-center gap-token-3 text-center">
-        {user?.photoURL ? (
+      <header className="reveal flex flex-col items-center gap-token-3 text-center" style={REVEAL.header}>
+        {user?.photoURL && !avatarFailed ? (
           <img
             src={user.photoURL}
             alt=""
+            referrerPolicy="no-referrer"
+            onError={() => setAvatarFailed(true)}
             className="size-20 rounded-full border border-glass-line object-cover"
           />
         ) : (
@@ -153,38 +275,70 @@ export default function ProfilePage() {
       </header>
 
       {error && (
-        <div role="alert" className="mt-token-6 text-sm" style={{ color: "var(--color-seal-crimson)" }}>
+        <div
+          role="alert"
+          className="mt-token-6 text-sm"
+          style={{ color: "var(--color-seal-crimson)" }}
+        >
           {error}
         </div>
       )}
-      {!error && !loading && source === "empty" && (
+      {syncing && (
+        <p role="status" className="reveal mt-token-6 text-center text-sm text-content-mute">
+          <span className="animate-pulse">Syncing your usage history…</span>{" "}
+          <span className="text-content-dim">first sync counts every historical event.</span>
+        </p>
+      )}
+      {!error && !loading && !syncing && source === "empty" && (
         <p className="mt-token-6 text-center text-sm text-content-mute">
           No usage has synced from your devices yet — this page fills in as the
-          BurnBar app reports usage to your account.
+          BurnBar app reports usage to your account.{" "}
+          <button
+            type="button"
+            onClick={() => reload(true)}
+            className="font-medium text-[color:var(--accent-deep)] underline-offset-2 hover:underline"
+          >
+            Re-sync now
+          </button>
         </p>
       )}
 
-      {/* Lifetime stat row */}
+      {/* Lifetime stat row — a divided bar on sm+, individual tiles on mobile. */}
       <section
         aria-label="Lifetime statistics"
-        className="mt-token-8 grid grid-cols-2 divide-glass-line rounded-lg border border-glass-line sm:grid-cols-5 sm:divide-x"
+        className="reveal mt-token-8 grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-0 sm:divide-x sm:divide-glass-line sm:rounded-lg sm:border sm:border-glass-line"
+        style={REVEAL.stats}
       >
-        <HeaderStat value={formatCompact(rollup.totals.tokens)} label="Lifetime tokens" />
         <HeaderStat
-          value={formatCompact(stats?.peak?.tokens ?? 0)}
+          value={num(rollup.totals.tokens)}
+          label="Lifetime tokens"
+          className="rounded-lg border border-glass-line sm:rounded-none sm:border-0"
+        />
+        <HeaderStat
+          value={num(stats?.peak?.tokens ?? 0)}
           label="Peak tokens"
-          sub={stats?.peak ? formatDayLabel(stats.peak.day) : undefined}
+          sub={!pending && stats?.peak ? formatDayLabel(stats.peak.day) : undefined}
+          className="rounded-lg border border-glass-line sm:rounded-none sm:border-0"
         />
-        <HeaderStat value={formatCompact(rollup.totals.requests)} label="Total requests" />
         <HeaderStat
-          value={`${stats?.streaks.current ?? 0}d`}
-          label="Current streak"
+          value={num(rollup.totals.requests)}
+          label="Total requests"
+          className="rounded-lg border border-glass-line sm:rounded-none sm:border-0"
         />
-        <HeaderStat value={`${stats?.streaks.longest ?? 0}d`} label="Longest streak" />
+        <HeaderStat
+          value={pending ? "—" : `${stats?.streaks.current ?? 0}d`}
+          label="Current streak"
+          className="rounded-lg border border-glass-line sm:rounded-none sm:border-0"
+        />
+        <HeaderStat
+          value={pending ? "—" : `${stats?.streaks.longest ?? 0}d`}
+          label="Longest streak"
+          className="col-span-2 rounded-lg border border-glass-line sm:col-span-1 sm:rounded-none sm:border-0"
+        />
       </section>
 
       {/* Token activity heatmap */}
-      <section aria-label="Token activity" className="mt-token-10">
+      <section aria-label="Token activity" className="reveal mt-token-12" style={REVEAL.heatmap}>
         <div className="mb-token-4 flex items-center justify-between gap-token-4">
           <h2 className="eyebrow">Token activity</h2>
           <div
@@ -212,17 +366,22 @@ export default function ProfilePage() {
           </div>
         </div>
         {today ? (
-          <ContributionHeatmap points={rollup.dailyPoints} mode={mode} today={today} />
+          <ContributionHeatmap
+            points={rollup.dailyPoints}
+            mode={mode}
+            today={today}
+            dailyProviderTokens={rollup.dailyProviderTokens}
+          />
         ) : (
           <div className="h-40 rounded-lg border border-glass-line" aria-hidden />
         )}
       </section>
 
       {/* Token trend */}
-      <section aria-label="Token trend" className="mt-token-10">
+      <section aria-label="Token trend" className="reveal mt-token-12" style={REVEAL.trend}>
         <h2 className="eyebrow mb-token-1">Tokens</h2>
         <p className="font-display text-2xl text-content-bright tabular-nums">
-          {formatCompact(sumTokens(stats?.trend ?? []))} tokens
+          {pending ? "—" : `${formatCompact(sumTokens(stats?.trend ?? []))} tokens`}
           <span className="ml-2 text-sm font-normal text-content-dim">last 90 days</span>
         </p>
         <div className="mt-token-3 h-36">
@@ -233,61 +392,180 @@ export default function ProfilePage() {
           <span>Today</span>
         </div>
       </section>
+      </div>
 
-      {/* Insights */}
-      <section
+      {/* Insights — a right rail on wide screens, stacked below on narrow ones.
+          The harness and combo blocks only appear from md up (they are the
+          "when there is space" detail) and only once the rollup actually
+          carries execution-source data. */}
+      <aside
         aria-label="Activity insights"
-        className="mt-token-10 grid gap-token-8 sm:grid-cols-2"
+        className="reveal mt-token-12 grid content-start gap-token-8 sm:grid-cols-2 xl:mt-0 xl:grid-cols-1"
+        style={REVEAL.insights}
       >
+        <div className="flex items-center justify-between">
+          <span className="eyebrow">Break down by</span>
+          <MetricToggle metric={metric} onChange={setMetric} />
+        </div>
+
+        {/* Provider mix — the graphic anchor of the rail: one accent-led share
+            bar, then legend rows carried by the providers' own brand marks. */}
+        <div>
+          <h2 className="eyebrow mb-token-3">Provider mix</h2>
+          {!pending && stats && rail && stats.topProviders.length > 0 && rail.providerTotal > 0 ? (
+            <>
+              <div
+                role="img"
+                aria-label={stats.topProviders
+                  .map((p) => `${p.provider} ${Math.round((rail.pv(p) / rail.providerTotal) * 100)}%`)
+                  .join(", ")}
+                className="flex h-2 gap-px overflow-hidden rounded-pill"
+              >
+                {stats.topProviders.map((p, i) => (
+                  <span
+                    key={p.provider}
+                    className="h-full"
+                    style={{
+                      width: `${(rail.pv(p) / rail.providerTotal) * 100}%`,
+                      background: "var(--accent)",
+                      opacity: MIX_OPACITY[i] ?? MIX_OPACITY[MIX_OPACITY.length - 1],
+                    }}
+                  />
+                ))}
+              </div>
+              <ul className="mt-token-3 space-y-token-2">
+                {stats.topProviders.map((p) => (
+                  <li key={p.provider} className="flex items-center gap-2 text-sm">
+                    <BrandLogo id={p.provider} label={p.provider} size={18} />
+                    <span className="truncate text-content-bright">{p.provider}</span>
+                    <span className="ml-auto shrink-0 text-content-mute tabular-nums">
+                      {fmtMetric(rail.pv(p))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <>
+              <div aria-hidden className="h-2 rounded-pill bg-mercury-wash opacity-40" />
+              <div className="mt-token-3">
+                <GhostRows rows={3} />
+              </div>
+              {!pending && (
+                <p className="mt-token-3 text-sm text-content-dim">
+                  Your provider mix lands here after the first synced runs.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
         <div>
           <h2 className="eyebrow mb-token-3">Activity insights</h2>
           <div className="divide-y divide-glass-line border-y border-glass-line">
-            <InsightRow label="Active days" value={stats?.activeDays ?? 0} />
+            <InsightRow label="Active days" value={pending ? "—" : (stats?.activeDays ?? 0)} />
+            <InsightRow label="Avg tokens per active day" value={num(stats?.avgPerActiveDay ?? 0)} />
             <InsightRow
-              label="Avg tokens per active day"
-              value={formatCompact(stats?.avgPerActiveDay ?? 0)}
-            />
-            <InsightRow
-              label="Most used provider"
+              label="Most used model"
               value={
-                stats?.topProvider
-                  ? `${stats.topProvider.provider} · ${Math.round(stats.topProviderShare * 100)}%`
-                  : "—"
+                !pending && stats?.topModels[0] ? (
+                  <span className="inline-flex items-center gap-2">
+                    <BrandLogo
+                      id={stats.topModels[0].provider}
+                      label={stats.topModels[0].provider}
+                      size={18}
+                    />
+                    {stats.topModels[0].model}
+                  </span>
+                ) : (
+                  "—"
+                )
               }
             />
             <InsightRow
-              label="Most used model"
-              value={stats?.topModels[0]?.model ?? "—"}
-            />
-            <InsightRow
               label="Lifetime spend"
-              value={`$${rollup.totals.costUsd.toFixed(2)}`}
+              value={pending ? "—" : `$${rollup.totals.costUsd.toFixed(2)}`}
             />
           </div>
         </div>
+
         <div>
           <h2 className="eyebrow mb-token-3">Most used models</h2>
-          {stats && stats.topModels.length > 0 ? (
+          {!pending && stats && rail && stats.topModels.length > 0 ? (
             <ul className="space-y-token-3">
               {stats.topModels.map((m) => (
                 <li key={`${m.provider}/${m.model}`}>
                   <div className="mb-1 flex items-baseline justify-between gap-token-4">
-                    <span className="truncate text-sm text-content-bright">{m.model}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      <BrandLogo id={m.provider} label={m.provider} size={18} />
+                      <span className="truncate text-sm text-content-bright">{m.model}</span>
+                    </span>
                     <span className="shrink-0 text-sm text-content-mute tabular-nums">
-                      {formatCompact(m.requests)} runs
+                      {fmtMetric(rail.mv(m))}
                     </span>
                   </div>
-                  <ProportionBar value={stats.modelMax > 0 ? m.tokens / stats.modelMax : 0} />
+                  <ProportionBar value={rail.modelMax > 0 ? rail.mv(m) / rail.modelMax : 0} />
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-content-dim">Nothing in this window yet.</p>
+            <>
+              <GhostRows rows={4} />
+              {!pending && (
+                <p className="mt-token-3 text-sm text-content-dim">Nothing in this window yet.</p>
+              )}
+            </>
           )}
         </div>
-      </section>
 
-      <p className="folio mt-token-10 text-center text-content-dim">
+        {!pending && stats && rail && stats.topHarnesses.length > 0 && (
+          <div className="hidden md:block">
+            <h2 className="eyebrow mb-token-3">Agent harnesses</h2>
+            <ul className="space-y-token-3">
+              {stats.topHarnesses.map((h) => (
+                <li key={h.sourceId}>
+                  <div className="mb-1 flex items-baseline justify-between gap-token-4">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <BrandLogo id={h.sourceId} label={h.sourceName} />
+                      <span className="truncate text-sm text-content-bright">{h.sourceName}</span>
+                    </span>
+                    <span className="shrink-0 text-sm text-content-mute tabular-nums">
+                      {fmtMetric(rail.hv(h))}
+                    </span>
+                  </div>
+                  <ProportionBar value={rail.harnessMax > 0 ? rail.hv(h) / rail.harnessMax : 0} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {!pending && stats && rail && stats.topCombos.length > 0 && (
+          <div className="hidden md:block">
+            <h2 className="eyebrow mb-token-3">Combos</h2>
+            <ul className="space-y-token-3">
+              {stats.topCombos.map((c) => (
+                <li key={`${c.sourceId}/${c.provider}/${c.model}`}>
+                  <div className="mb-1 flex items-baseline justify-between gap-token-4">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <BrandLogo id={c.sourceId} label={c.sourceName} />
+                      <span className="truncate text-sm text-content-bright">
+                        {c.sourceName} <span className="text-content-dim">×</span> {c.model}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-sm text-content-mute tabular-nums">
+                      {fmtMetric(rail.cv(c))}
+                    </span>
+                  </div>
+                  <ProportionBar value={rail.comboMax > 0 ? rail.cv(c) / rail.comboMax : 0} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </aside>
+
+      <p className="reveal folio mt-token-12 text-center text-content-dim xl:col-span-2" style={REVEAL.footer}>
         Only what BurnBar really records — fast mode, reasoning mix, and skill
         usage aren&apos;t tracked yet.
       </p>

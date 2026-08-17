@@ -228,7 +228,7 @@ class _DaemonCursor:
         self._cursor_position = 0
 
     def fetchall(self) -> list[_DaemonRow]:
-        remaining = self._rows[self._cursor_position:]
+        remaining = self._rows[self._cursor_position :]
         self._cursor_position = len(self._rows)
         return remaining
 
@@ -3585,25 +3585,27 @@ def burnbar_inbox_plans_get(plan_id: str) -> str:
 # dashboards and operators that want the FinOps plane without the corpus.
 # ---------------------------------------------------------------------------
 
-MEMORY_TOOLSET: frozenset[str] = frozenset({
-    "burnbar_resolve_db_path",
-    "burnbar_list_providers",
-    "burnbar_search_conversations",
-    "burnbar_semantic_search_conversations",
-    "burnbar_get_conversation",
-    "burnbar_remember",
-    "burnbar_recall",
-    "burnbar_forget",
-    "burnbar_audit_trail",
-    "burnbar_memory_analytics",
-    "burnbar_search_code",
-    "burnbar_context_pack",
-    "burnbar_code_context_pack",
-    "burnbar_list_project_memory",
-    "burnbar_get_project_memory",
-    "burnbar_list_resumable_conversations",
-    "burnbar_resume_conversation",
-})
+MEMORY_TOOLSET: frozenset[str] = frozenset(
+    {
+        "burnbar_resolve_db_path",
+        "burnbar_list_providers",
+        "burnbar_search_conversations",
+        "burnbar_semantic_search_conversations",
+        "burnbar_get_conversation",
+        "burnbar_remember",
+        "burnbar_recall",
+        "burnbar_forget",
+        "burnbar_audit_trail",
+        "burnbar_memory_analytics",
+        "burnbar_search_code",
+        "burnbar_context_pack",
+        "burnbar_code_context_pack",
+        "burnbar_list_project_memory",
+        "burnbar_get_project_memory",
+        "burnbar_list_resumable_conversations",
+        "burnbar_resume_conversation",
+    }
+)
 
 
 def _apply_toolset_filter(server: Any, toolset_raw: str | None) -> str:

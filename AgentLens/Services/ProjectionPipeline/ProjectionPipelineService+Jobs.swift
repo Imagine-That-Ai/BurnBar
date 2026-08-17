@@ -81,7 +81,7 @@ extension ProjectionPipelineService {
         guard versions.isEmpty == false else { return }
         guard versions.contains(where: { $0.isActive && $0.id == embeddingVersionID }) == false else { return }
         let hasLiveReembed = try await dataStore.hasProjectionJobs(
-            statuses: [.queued, .leased, .running],
+            statuses: [.queued, .failed, .leased, .running],
             jobTypes: [.reembed]
         )
         guard hasLiveReembed == false else { return }
@@ -133,7 +133,9 @@ extension ProjectionPipelineService {
 
         try await ensureBackfillSeededIfNeeded()
         try? await enqueueEmbedderDriftReembedIfNeeded() // try?-ok(drift check retried next sweep)
-        let pendingQueueDepth = try await dataStore.countProjectionJobs(statuses: [.queued, .leased, .running])
+        let pendingQueueDepth = try await dataStore.countProjectionJobs(
+            statuses: [.queued, .failed, .leased, .running]
+        )
         if pendingQueueDepth <= ProjectionPipelineRuntimeTuning.gapRepairQueueDepthThreshold {
             try? await enqueueGapRepairIfNeeded() // try?-ok(self-heal retried next sweep)
         }
@@ -158,16 +160,38 @@ extension ProjectionPipelineService {
             }
 
             do {
-                try await process(leasedJob)
-                let completed = try await dataStore.markProjectionJobCompleted(
-                    id: leasedJob.id,
-                    leaseOwner: leaseOwner,
-                    completedAt: nowProvider()
-                )
-                guard completed else { continue }
-                try await updateSubsystemHealthAfterCompletion(for: leasedJob)
-                report.completedJobs += 1
+                let outcome = try await process(leasedJob)
+                switch outcome {
+                case .completed:
+                    let completed = try await dataStore.markProjectionJobCompleted(
+                        id: leasedJob.id,
+                        leaseOwner: leaseOwner,
+                        completedAt: nowProvider()
+                    )
+                    guard completed else { continue }
+                    try await updateSubsystemHealthAfterCompletion(for: leasedJob)
+                    report.completedJobs += 1
+                case .deferred(let availableAt):
+                    let deferred = try await dataStore.deferProjectionJob(
+                        id: leasedJob.id,
+                        leaseOwner: leaseOwner,
+                        availableAt: availableAt,
+                        updatedAt: nowProvider()
+                    )
+                    guard deferred else { continue }
+                }
             } catch {
+                if error is CancellationError || Task.isCancelled {
+                    let canceledAt = nowProvider()
+                    _ = try await dataStore.deferProjectionJob(
+                        id: leasedJob.id,
+                        leaseOwner: leaseOwner,
+                        availableAt: canceledAt,
+                        updatedAt: canceledAt
+                    )
+                    throw CancellationError()
+                }
+
                 let code = ProjectionPipelineError.code(for: error)
                 let message = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
 
@@ -252,6 +276,7 @@ extension ProjectionPipelineService {
         // Paginate through ALL indexed conversation documents to cover the full corpus.
         // Uses deterministic ordering with stable tie-breaks across pages.
         let repairPageSize = paginationPageSize
+        let revisionToleranceSeconds: TimeInterval = 0.001
         var documentOffset = 0
         var hasProcessedAnyPage = false
 
@@ -277,8 +302,16 @@ extension ProjectionPipelineService {
                 continue
             }
 
-            let conversations = try await dataStore.fetchConversations(ids: sourceIDs)
-            let conversationsByID = Dictionary(uniqueKeysWithValues: conversations.map { ($0.id, $0) })
+            // The steady-state path must not materialize transcript bodies.
+            // `SELECT *` here used to decrypt the full multi-gigabyte corpus
+            // every time the queue became quiet. First compare tiny revision
+            // columns; fetch full rows only for documents that may be stale.
+            let revisions = try await dataStore.fetchConversationProjectionRevisions(ids: sourceIDs)
+            let revisionsByID = Dictionary(uniqueKeysWithValues: revisions.map { ($0.id, $0) })
+            var documentsNeedingHashCheck: [SearchDocumentRecord] = []
+            documentsNeedingHashCheck.reserveCapacity(indexedDocuments.count)
+            var legacyHashesToCache: [String: String] = [:]
+            legacyHashesToCache.reserveCapacity(indexedDocuments.count)
 
             for document in indexedDocuments {
                 guard document.sourceKind == .conversation else {
@@ -287,21 +320,7 @@ extension ProjectionPipelineService {
 
                 let sourceID = document.sourceID
 
-                if let conversation = conversationsByID[sourceID] {
-                    // Conversation exists — check for content hash drift
-                    let currentHash = ProjectionIdentity.conversationContentHash(for: conversation)
-
-                    if currentHash != document.contentHash {
-                        let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
-                        try await enqueueSelectiveReproject(
-                            sourceKind: .conversation,
-                            sourceID: sourceID,
-                            sourceVersionID: sourceVersionID,
-                            jobType: .reproject,
-                            priority: 3  // Lower priority than new indexing but higher than rebuild
-                        )
-                    }
-                } else {
+                guard let revision = revisionsByID[sourceID] else {
                     // Conversation source is missing (deleted without purge event).
                     // Enqueue purge to clean up stale search artifacts.
                     try await enqueueSelectiveReproject(
@@ -311,8 +330,87 @@ extension ProjectionPipelineService {
                         jobType: .purge,
                         priority: 2  // Higher priority than gap repair to free resources
                     )
+                    continue
+                }
+
+                if let currentHash = revision.contentHash {
+                    if currentHash != document.contentHash {
+                        try await enqueueSelectiveReproject(
+                            sourceKind: .conversation,
+                            sourceID: sourceID,
+                            sourceVersionID: ProjectionIdentity.sourceVersion(contentVersion: currentHash),
+                            jobType: .reproject,
+                            priority: 3
+                        )
+                    }
+                    continue
+                }
+
+                let sourceDateChanged: Bool
+                if let documentSourceUpdatedAt = document.sourceUpdatedAt {
+                    sourceDateChanged = abs(
+                        revision.sourceUpdatedAt.timeIntervalSince(documentSourceUpdatedAt)
+                    ) > revisionToleranceSeconds
+                } else {
+                    sourceDateChanged = true
+                }
+                let rowIndexedAfterDocument =
+                    revision.indexedAt.timeIntervalSince(document.indexedAt) > revisionToleranceSeconds
+                let fileModifiedAfterDocument =
+                    revision.fileModifiedAt.map {
+                        $0.timeIntervalSince(document.indexedAt) > revisionToleranceSeconds
+                    } ?? false
+
+                if document.contentHash == nil
+                    || sourceDateChanged
+                    || rowIndexedAfterDocument
+                    || fileModifiedAfterDocument {
+                    documentsNeedingHashCheck.append(document)
+                } else if let contentHash = document.contentHash {
+                    // Existing installations predate the lightweight cache.
+                    // Their indexed hash is the safe baseline until a future
+                    // authoritative conversation write replaces it.
+                    legacyHashesToCache[sourceID] = contentHash
                 }
             }
+
+            let candidateConversations = try await dataStore.fetchConversations(
+                ids: documentsNeedingHashCheck.map(\.sourceID)
+            )
+            let candidateConversationsByID = Dictionary(
+                uniqueKeysWithValues: candidateConversations.map { ($0.id, $0) }
+            )
+
+            for document in documentsNeedingHashCheck {
+                guard let conversation = candidateConversationsByID[document.sourceID] else {
+                    // The row may have been tombstoned after the revision read.
+                    try await enqueueSelectiveReproject(
+                        sourceKind: .conversation,
+                        sourceID: document.sourceID,
+                        sourceVersionID: ProjectionIdentity.deletedSourceVersionID,
+                        jobType: .purge,
+                        priority: 2
+                    )
+                    continue
+                }
+
+                let currentHash = ProjectionIdentity.conversationContentHash(for: conversation)
+                legacyHashesToCache[document.sourceID] = currentHash
+                if currentHash != document.contentHash {
+                    let sourceVersionID = ProjectionIdentity.conversationSourceVersionID(for: conversation)
+                    try await enqueueSelectiveReproject(
+                        sourceKind: .conversation,
+                        sourceID: document.sourceID,
+                        sourceVersionID: sourceVersionID,
+                        jobType: .reproject,
+                        priority: 3  // Lower priority than new indexing but higher than rebuild
+                    )
+                }
+            }
+            try await dataStore.cacheConversationProjectionHashesIfMissing(
+                legacyHashesToCache,
+                updatedAt: nowProvider()
+            )
 
             documentOffset += indexedDocuments.count
             // If we got fewer than requested, we've exhausted the corpus
@@ -320,19 +418,28 @@ extension ProjectionPipelineService {
         }
     }
 
-    internal func process(_ job: ProjectionJobRecord) async throws {
+    internal func process(_ job: ProjectionJobRecord) async throws -> ProjectionJobProcessingOutcome {
         switch job.jobType {
         case .project, .reproject:
             try await processProjection(job)
+            return .completed
         case .purge:
             guard let sourceKind = job.sourceKind, let sourceID = job.sourceID else {
                 throw ProjectionPipelineError.invalidJobPayload("Purge job missing source identity.")
             }
             try await dataStore.deleteSearchDocuments(sourceKind: sourceKind, sourceID: sourceID)
+            return .completed
         case .rebuild:
             try await processRebuild()
+            return .completed
         case .reembed:
-            try await processReembed(job)
+            let result = try await processReembed(job)
+            if result.hasMore {
+                return .deferred(
+                    until: nowProvider().addingTimeInterval(reembedContinuationDelay)
+                )
+            }
+            return .completed
         }
     }
 

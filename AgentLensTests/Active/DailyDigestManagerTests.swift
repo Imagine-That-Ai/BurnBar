@@ -475,6 +475,26 @@ final class DailyDigestManagerTests: XCTestCase {
         XCTAssertFalse(body.lowercased().contains("yesterday"), "got: \(body)")
     }
 
+    func test_persistedDigestArming_readsTwoDaysWithoutHydratingPresentation() async throws {
+        let store = try DataStore.makeInMemoryForTesting()
+        try await store.insert([
+            Self.usage(costUSD: 5.00, at: Self.date(2026, 8, 14, 11, 0)),
+            Self.usage(costUSD: 2.50, at: Self.date(2026, 8, 13, 11, 0))
+        ])
+        XCTAssertFalse(store.debugHasLoadedUsagePresentationForTesting)
+        let manager = makeManager(now: Self.date(2026, 8, 15, 10, 0))
+
+        await manager.scheduleDigestUsingPersistedUsage(from: store, at: 18)
+
+        let body = try XCTUnwrap(mockNotificationCenter.addedRequests.first?.content.body)
+        XCTAssertTrue(body.contains("$5.00"), "expected persisted Friday spend, got: \(body)")
+        XCTAssertTrue(body.contains("Up 100%"), "expected prior-day comparison, got: \(body)")
+        XCTAssertFalse(
+            store.debugHasLoadedUsagePresentationForTesting,
+            "Digest arming must not force the dashboard aggregate snapshot"
+        )
+    }
+
     // MARK: - Horizon (delivery while the app is quit)
 
     func test_scheduleDigest_armsAWeekOfDistinctOneShots() throws {

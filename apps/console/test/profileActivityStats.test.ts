@@ -4,7 +4,6 @@ import {
   activeDayCount,
   addDays,
   computeStreaks,
-  cumulativeSeries,
   dayOfWeek,
   formatDayLabel,
   intensityBucket,
@@ -112,16 +111,6 @@ describe("series math", () => {
       { weekStart: "2026-02-01", tokens: 3 },
       { weekStart: "2026-02-08", tokens: 4 },
     ]);
-  });
-
-  it("cumulativeSeries is a running total over ascending days", () => {
-    expect(cumulativeSeries(pts(["2026-01-03", 3], ["2026-01-01", 1], ["2026-01-02", 2]))).toEqual(
-      [
-        { day: "2026-01-01", tokens: 1 },
-        { day: "2026-01-02", tokens: 3 },
-        { day: "2026-01-03", tokens: 6 },
-      ],
-    );
   });
 });
 

@@ -138,17 +138,6 @@ export function weeklyTotals(points: readonly DailyPoint[]): WeekTotal[] {  cons
     .sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1));
 }
 
-/** Running token total per day, ascending — the Cumulative mode. */
-export function cumulativeSeries(points: readonly DailyPoint[]): DailyPoint[] {
-  let acc = 0;
-  return [...points]
-    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
-    .map((p) => {
-      acc += p.tokens;
-      return { day: p.day, tokens: acc };
-    });
-}
-
 /**
  * Heatmap intensity, 0 (empty) – 4 (hottest). Uses a square-root scale
  * against the series max — the same perceptual trick as the native

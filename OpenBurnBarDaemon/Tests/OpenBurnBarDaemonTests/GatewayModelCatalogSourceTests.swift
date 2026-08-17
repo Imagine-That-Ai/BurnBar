@@ -41,14 +41,16 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
         }
     }
 
-    private func makeConfigStore() throws -> BurnBarConfigStore {
+    private func makeConfigStore(
+        secretStore: any BurnBarProviderSecretStoring = BurnBarInMemorySecretStore()
+    ) throws -> BurnBarConfigStore {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("obb-catalog-source-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return BurnBarConfigStore(
             fileURL: dir.appendingPathComponent("provider-config.json"),
             catalog: BurnBarCatalogLoader.bundledCatalog,
-            secretStore: BurnBarInMemorySecretStore(),
+            secretStore: secretStore,
             logger: BurnBarDaemonLogger(category: "catalog-source-tests")
         )
     }
@@ -138,6 +140,200 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
             first.models.map(\.id).sorted(),
             second.models.map(\.id).sorted(),
             "cached snapshot must be identical to the freshly built one"
+        )
+    }
+
+    func test_repeatedSnapshotsReadEachUnchangedCredentialOncePerConfigurationRevision() async throws {
+        let secretStore = CountingSecretStore(
+            secrets: ["factory.slot.max": "fk-gateway"]
+        )
+        let configStore = try makeConfigStore(secretStore: secretStore)
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "factory",
+                isEnabled: true,
+                baseURL: "factory-droid://local",
+                preferredModelIDs: ["gpt-5.5", "glm-5.1"],
+                preferredCredentialSlotID: "max",
+                credentialSlots: [
+                    BurnBarProviderCredentialSlot(
+                        slotID: "max",
+                        label: "Factory Max",
+                        isEnabled: true,
+                        status: .ready
+                    )
+                ]
+            )
+        )
+        let source = makeSource(
+            configStore: configStore,
+            droidRunner: CountingDroidRunner(),
+            cacheTTL: 600
+        )
+
+        _ = try await source.snapshot()
+        _ = try await source.snapshot()
+
+        let readCounts = await secretStore.readCountsSnapshot()
+        XCTAssertEqual(readCounts["factory.slot.max"], 1)
+        XCTAssertTrue(
+            readCounts.values.allSatisfy { $0 == 1 },
+            "unchanged credential material must be resolved once even though catalog status is reprojected"
+        )
+    }
+
+    func test_concurrentSnapshotsSingleFlightCredentialReads() async throws {
+        let secretStore = CountingSecretStore(
+            secrets: ["factory.slot.max": "fk-gateway"],
+            readDelayNanoseconds: 20_000_000
+        )
+        let configStore = try makeConfigStore(secretStore: secretStore)
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "factory",
+                isEnabled: true,
+                baseURL: "factory-droid://local",
+                preferredModelIDs: ["gpt-5.5", "glm-5.1"],
+                preferredCredentialSlotID: "max",
+                credentialSlots: [
+                    BurnBarProviderCredentialSlot(
+                        slotID: "max",
+                        label: "Factory Max",
+                        isEnabled: true,
+                        status: .ready
+                    )
+                ]
+            )
+        )
+        let source = makeSource(
+            configStore: configStore,
+            droidRunner: CountingDroidRunner(),
+            cacheTTL: 600
+        )
+
+        async let first = source.snapshot()
+        async let second = source.snapshot()
+        _ = try await (first, second)
+
+        let readCounts = await secretStore.readCountsSnapshot()
+        XCTAssertEqual(readCounts["factory.slot.max"], 1)
+        XCTAssertTrue(
+            readCounts.values.allSatisfy { $0 == 1 },
+            "concurrent catalog requests must share in-flight credential reads"
+        )
+    }
+
+    func test_transientStatusAndQuotaReprojectWithoutCredentialRereads() async throws {
+        let secretStore = CountingSecretStore(
+            secrets: ["factory.slot.max": "fk-gateway"]
+        )
+        let configStore = try makeConfigStore(secretStore: secretStore)
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "factory",
+                isEnabled: true,
+                baseURL: "factory-droid://local",
+                preferredModelIDs: ["gpt-5.5", "glm-5.1"],
+                preferredCredentialSlotID: "max",
+                credentialSlots: [
+                    BurnBarProviderCredentialSlot(
+                        slotID: "max",
+                        label: "Factory Max",
+                        isEnabled: true,
+                        status: .ready
+                    )
+                ]
+            )
+        )
+        let source = makeSource(
+            configStore: configStore,
+            droidRunner: CountingDroidRunner(),
+            cacheTTL: 600
+        )
+
+        _ = try await source.snapshot()
+        try await configStore.updateCredentialSlotStatus(
+            providerID: "factory",
+            slotID: "max",
+            status: .coolingDown,
+            cooldownUntil: Date().addingTimeInterval(60),
+            message: "retry later"
+        )
+        let coolingDown = try await source.snapshot()
+        XCTAssertFalse(try factoryModel(in: coolingDown).routeEligible)
+
+        try await configStore.updateCredentialSlotStatus(
+            providerID: "factory",
+            slotID: "max",
+            status: .ready,
+            cooldownUntil: nil,
+            message: nil
+        )
+        try await configStore.updateCredentialSlotQuota(
+            providerID: "factory",
+            slotID: "max",
+            remainingPercent: 80,
+            resetsAt: nil,
+            message: "quota recovered"
+        )
+        let recovered = try await source.snapshot()
+        XCTAssertEqual(try factoryAccount(in: recovered).quotaRemainingPercent, 80)
+        XCTAssertTrue(try factoryModel(in: recovered).routeEligible)
+
+        let readCount = await secretStore.readCount(for: "factory.slot.max")
+        XCTAssertEqual(
+            readCount,
+            1,
+            "mutable status/quota projection must stay fresh without rereading unchanged secrets"
+        )
+    }
+
+    func test_credentialEditInvalidatesCredentialMaterialImmediately() async throws {
+        let secretStore = CountingSecretStore(
+            secrets: ["factory.slot.max": "fk-gateway"]
+        )
+        let configStore = try makeConfigStore(secretStore: secretStore)
+        _ = try await configStore.upsertProvider(
+            BurnBarProviderSettings(
+                providerID: "factory",
+                isEnabled: true,
+                baseURL: "factory-droid://local",
+                preferredModelIDs: ["gpt-5.5", "glm-5.1"],
+                preferredCredentialSlotID: "max",
+                credentialSlots: [
+                    BurnBarProviderCredentialSlot(
+                        slotID: "max",
+                        label: "Factory Max",
+                        isEnabled: true,
+                        status: .ready
+                    )
+                ]
+            )
+        )
+        let source = makeSource(
+            configStore: configStore,
+            droidRunner: CountingDroidRunner(),
+            cacheTTL: 600
+        )
+
+        _ = try await source.snapshot()
+        _ = try await configStore.upsertCredentialSlot(
+            providerID: "factory",
+            slotID: "max",
+            label: "Factory Max",
+            apiKey: "fk-gateway-rotated"
+        )
+        await secretStore.resetReadCounts()
+
+        _ = try await source.snapshot()
+        let resolved = try await configStore.resolvedConfiguration(for: "factory")
+
+        XCTAssertEqual(resolved.apiKey, "fk-gateway-rotated")
+        let readCount = await secretStore.readCount(for: "factory.slot.max")
+        XCTAssertEqual(
+            readCount,
+            1,
+            "credential edits must invalidate material immediately, then reuse the newly resolved value"
         )
     }
 
@@ -369,5 +565,48 @@ final class GatewayModelCatalogSourceTests: XCTestCase {
         XCTAssertEqual(failure?.statusCode, 410)
         XCTAssertEqual(failure?.blockedUntil, now.addingTimeInterval(24 * 60 * 60))
         XCTAssertEqual(failure?.message.contains("retired-model was retired"), true)
+    }
+}
+
+private actor CountingSecretStore: BurnBarProviderSecretStoring {
+    private var secrets: [String: String]
+    private var readCounts: [String: Int] = [:]
+    private let readDelayNanoseconds: UInt64
+
+    init(
+        secrets: [String: String] = [:],
+        readDelayNanoseconds: UInt64 = 0
+    ) {
+        self.secrets = secrets
+        self.readDelayNanoseconds = readDelayNanoseconds
+    }
+
+    func secret(for providerID: String) async throws -> String? {
+        readCounts[providerID, default: 0] += 1
+        if readDelayNanoseconds > 0 {
+            try await Task.sleep(nanoseconds: readDelayNanoseconds)
+        }
+        return secrets[providerID]
+    }
+
+    func setSecret(_ secret: String?, for providerID: String) async throws {
+        let normalized = secret?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalized, !normalized.isEmpty {
+            secrets[providerID] = normalized
+        } else {
+            secrets.removeValue(forKey: providerID)
+        }
+    }
+
+    func readCount(for providerID: String) -> Int {
+        readCounts[providerID, default: 0]
+    }
+
+    func readCountsSnapshot() -> [String: Int] {
+        readCounts
+    }
+
+    func resetReadCounts() {
+        readCounts.removeAll(keepingCapacity: true)
     }
 }

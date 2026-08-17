@@ -17,6 +17,7 @@ actor ProjectionPipelineService {
     let embeddingModelID: String
     let embeddingVersionID: String
     let paginationPageSize: Int
+    let reembedContinuationDelay: TimeInterval
     var isSweeping = false
     var didSeedBackfill = false
 
@@ -63,6 +64,7 @@ actor ProjectionPipelineService {
         chunker: ProjectionChunker = ProjectionChunker(),
         chunkEmbedder: any ChunkEmbeddingProviding = DeterministicFakeEmbeddingProvider(),
         paginationPageSize: Int = 1000,
+        reembedContinuationDelay: TimeInterval = ProjectionPipelineRuntimeTuning.reembedContinuationDelaySeconds,
         reusedEmbeddingWriter: (@Sendable (ChunkEmbeddingRecord) async throws -> Void)? = nil
     ) {
         self.dataStore = dataStore
@@ -73,6 +75,7 @@ actor ProjectionPipelineService {
         self.embeddingModelID = EmbeddingIdentity.modelID(for: chunkEmbedder.descriptor)
         self.embeddingVersionID = EmbeddingIdentity.versionID(for: chunkEmbedder.descriptor)
         self.paginationPageSize = max(1, paginationPageSize)
+        self.reembedContinuationDelay = max(0.001, reembedContinuationDelay)
         self.reusedEmbeddingWriter = reusedEmbeddingWriter
     }
 

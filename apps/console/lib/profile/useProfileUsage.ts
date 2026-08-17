@@ -16,6 +16,9 @@ export interface ProfileUsageResult {
   /** "live" when a rollup doc exists; "empty" when the member has never synced. */
   source: ProfileSource;
   loading: boolean;
+  /** True while a server-side recompute is in flight (auto first-sync or a
+   *  manual re-sync) — the page reads again as soon as it lands. */
+  syncing: boolean;
   error: string | null;
   /** Re-read; pass true to force a server recompute (rebuildUsageRollups) first. */
   reload: (rebuild?: boolean) => void;
@@ -25,6 +28,12 @@ export interface ProfileUsageResult {
  * Reads the member's lifetime usage for the profile page:
  *   users/{uid}/usage_rollups/all_time → totals + full-history daily series
  *
+ * A missing doc almost always means the rollup pipeline has never computed for
+ * this account (history predates the counters), so the first "empty" read of a
+ * session automatically fires the deployed `rebuildUsageRollups` callable and
+ * re-reads once — the page fills itself in instead of sitting at a lying zero.
+ * Guarded by a sessionStorage marker so a failed/slow recompute never loops.
+ *
  * Same fail-soft discipline as useDashboardUsage: a denied or missing doc
  * degrades to a zeroed "empty" state, never throws, never mocks.
  */
@@ -33,6 +42,7 @@ export function useProfileUsage(): ProfileUsageResult {
   const [rollup, setRollup] = useState<UsageRollup>(() => emptyRollup("all_time"));
   const [source, setSource] = useState<ProfileSource>("empty");
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const [rebuildPending, setRebuildPending] = useState(false);
@@ -60,18 +70,37 @@ export function useProfileUsage(): ProfileUsageResult {
     const shouldRebuild = rebuildPending;
     if (shouldRebuild) setRebuildPending(false);
 
+    const readRollup = async (): Promise<UsageRollup | null> => {
+      const snap = await getDoc(doc(db(), "users", uid, "usage_rollups", "all_time"));
+      return snap.exists() ? normalizeRollup(snap.data(), "all_time") : null;
+    };
+
     const run = async () => {
       if (shouldRebuild) {
+        setSyncing(true);
         try {
           await rebuildUsageRollups(true);
         } catch {
           // Recompute is best-effort; fall through to read whatever exists.
         }
       }
-      const snap = await getDoc(doc(db(), "users", uid, "usage_rollups", "all_time"));
+      let result = await readRollup();
+
+      // Auto first-sync, once per session per account.
+      if (!result && !shouldRebuild && !autoSyncDone(uid)) {
+        markAutoSync(uid);
+        if (!cancelled) setSyncing(true);
+        try {
+          await rebuildUsageRollups(true);
+        } catch {
+          // Best-effort; re-read regardless — a partial recompute still counts.
+        }
+        result = await readRollup();
+      }
+
       if (cancelled) return;
-      if (snap.exists()) {
-        setRollup(normalizeRollup(snap.data(), "all_time"));
+      if (result) {
+        setRollup(result);
         setSource("live");
       } else {
         setRollup(emptyRollup("all_time"));
@@ -85,7 +114,10 @@ export function useProfileUsage(): ProfileUsageResult {
           setError(err instanceof Error ? err.message : "Could not load your usage.");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setSyncing(false);
+        }
       });
 
     return () => {
@@ -95,5 +127,27 @@ export function useProfileUsage(): ProfileUsageResult {
     // nonce, so nonce already gates the re-run.
   }, [user, authLoading, nonce]);
 
-  return { rollup, source, loading, error, reload };
+  return { rollup, source, loading, syncing, error, reload };
+}
+
+// ── auto first-sync marker (per session, per account) ───────────────────────
+
+const AUTO_SYNC_PREFIX = "burnbar.profile.autoSync.";
+
+function autoSyncDone(uid: string): boolean {
+  try {
+    return window.sessionStorage.getItem(AUTO_SYNC_PREFIX + uid) === "1";
+  } catch {
+    // sessionStorage blocked (private mode) — treat as done so a failing
+    // recompute can't retry-loop every render.
+    return true;
+  }
+}
+
+function markAutoSync(uid: string): void {
+  try {
+    window.sessionStorage.setItem(AUTO_SYNC_PREFIX + uid, "1");
+  } catch {
+    /* non-fatal */
+  }
 }

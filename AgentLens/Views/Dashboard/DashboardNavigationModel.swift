@@ -1,8 +1,21 @@
+import OpenBurnBarUI
 import SwiftUI
 
 // MARK: - Dashboard Main Route
 
 enum DashboardMainRoute: Hashable {
+    /// The launch surface: the AI Inbox with a live fleet + quota rail beside it.
+    /// Deliberately **not** in `primarySections` for the same reason
+    /// `controlDeck` isn't — that array is positional and drives ⌘1–⌘8, so
+    /// inserting Home at index 0 would shift Inbox to ⌘2 and push
+    /// `memoryReview` off the end of every existing user's keyboard.
+    /// Home is reached by ⌘⇧H, the app logo, the section switcher, the command
+    /// palette, and Quick Access.
+    ///
+    /// Kept separate from `inbox` on purpose: a tapped notification deep-links
+    /// to `inbox(itemID:)` and wants the focused reading pane, not a home whose
+    /// rail is eating 320pt of it.
+    case home
     case overview
     case insights
     case charts
@@ -40,6 +53,7 @@ enum DashboardMainRoute: Hashable {
 
     func title(activeChatBackend: ChatBackendID? = nil) -> String {
         switch self {
+        case .home: return "Home"
         case .overview: return "Overview"
         case .insights: return "Insights"
         case .charts: return "Charts"
@@ -59,6 +73,7 @@ enum DashboardMainRoute: Hashable {
 
     func systemImage(activeChatBackend: ChatBackendID? = nil) -> String {
         switch self {
+        case .home: return "house"
         case .overview: return "chart.bar.xaxis"
         case .insights: return "cpu"
         case .charts: return "chart.xyaxis.line"
@@ -89,7 +104,7 @@ enum DashboardMainRoute: Hashable {
             return DesignSystem.Colors.ember
         case .controlDeck:
             return DesignSystem.Colors.ember
-        case .inbox:
+        case .home, .inbox:
             return DesignSystem.Colors.ember
         case .database, .projects, .missions, .sessionLogs, .memoryReview:
             return DesignSystem.Colors.whimsy
@@ -108,6 +123,7 @@ enum DashboardMainRoute: Hashable {
         case .missions: return "Active runs & tasks"
         case .sessionLogs: return "Indexed conversations"
         case .memoryReview: return "Review what OpenBurnBar learned"
+        case .home: return "What needs you, and what your agents have left"
         case .inbox: return "What needs you right now"
         case .overview: return "All providers + models"
         case .insights: return "Editorial brief & anomalies"
@@ -115,6 +131,20 @@ enum DashboardMainRoute: Hashable {
         case .controlDeck: return "Every feature, live, one click deep"
         case .provider: return "Provider deep dive"
         case .model: return "Model deep dive"
+        }
+    }
+}
+
+// MARK: - Launch Surface Mapping
+
+extension DashboardLaunchSurface {
+    /// The route this launch preference opens. Lives here rather than on the
+    /// enum itself because `DashboardLaunchSurface` ships in `OpenBurnBarUI`
+    /// (shared across platforms) while `DashboardMainRoute` is macOS-only.
+    var route: DashboardMainRoute {
+        switch self {
+        case .home:     return .home
+        case .overview: return .overview
         }
     }
 }

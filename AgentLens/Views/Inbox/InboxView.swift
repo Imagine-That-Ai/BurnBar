@@ -40,12 +40,39 @@ struct InboxView: View {
     /// The category chip a drag is currently hovering.
     @State private var dropTargetCategory: String?
 
+    /// How the inbox splits its space.
+    ///
+    /// The focused `.inbox` route uses `listAndDetail`. The Home surface's
+    /// `triage` mode uses `listOnly`, because at the narrow width band Home's
+    /// detail pane is only ~448pt — half-useless for reading, and the wrong
+    /// shape for clearing thirty items. In `listOnly`, opening an item
+    /// navigates to the focused route rather than presenting a sheet: one
+    /// route, no new modal.
+    enum PaneStyle: Equatable {
+        case listAndDetail
+        case listOnly
+    }
+
+    let paneStyle: PaneStyle
+    /// Posted by the host when daemon-written rows may have changed.
+    ///
+    /// `nil` on surfaces that should stay frozen while being read — the focused
+    /// route passes nil so a re-sort never happens under the user's cursor
+    /// mid-read. Home passes the shared cadence notification.
+    let refreshNotification: Notification.Name?
+    /// Invoked in `listOnly` when a row is activated, so the host can navigate
+    /// to the focused inbox instead of opening a detail pane that isn't there.
+    let onActivateItem: ((String) -> Void)?
+
     init(
         model: InboxModel,
         onOpenSessionLog: @escaping (String) -> Void,
         onOpenSettings: @escaping () -> Void,
         memoryApproval: InboxMemoryApprovalHandler? = nil,
-        openItemID: String? = nil
+        openItemID: String? = nil,
+        paneStyle: PaneStyle = .listAndDetail,
+        refreshNotification: Notification.Name? = nil,
+        onActivateItem: ((String) -> Void)? = nil
     ) {
         // Own the model in `@State` so DashboardView body re-evals that rebuild
         // a throwaway `InboxModel(...)` cannot wipe selection mid-click.
@@ -54,21 +81,36 @@ struct InboxView: View {
         self.onOpenSettings = onOpenSettings
         self.memoryApproval = memoryApproval
         self.openItemID = openItemID
+        self.paneStyle = paneStyle
+        self.refreshNotification = refreshNotification
+        self.onActivateItem = onActivateItem
     }
 
     var body: some View {
         GeometryReader { proxy in
             HStack(spacing: 0) {
                 listPane
-                    .frame(width: Self.listPaneWidth(forTotalWidth: proxy.size.width))
-                    .frame(minHeight: 0, maxHeight: .infinity)
+                    .frame(
+                        width: paneStyle == .listOnly
+                            ? nil
+                            : Self.listPaneWidth(forTotalWidth: proxy.size.width)
+                    )
+                    .frame(
+                        minWidth: 0,
+                        maxWidth: paneStyle == .listOnly ? .infinity : nil,
+                        minHeight: 0,
+                        maxHeight: .infinity
+                    )
 
-                Divider().background(DesignSystem.Colors.border)
+                if paneStyle == .listAndDetail {
+                    Divider().background(DesignSystem.Colors.border)
 
-                detailPane
-                    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                    detailPane
+                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                }
             }
         }
+        .modifier(InboxAutoRefresh(name: refreshNotification) { await model.load() })
         .task {
             await model.load(force: true)
             await model.loadTelemetry()
@@ -734,7 +776,15 @@ struct InboxView: View {
 
     private func rowActions(for id: String) -> InboxRowActions {
         InboxRowActions(
-            click: { intent in model.click(id, intent: intent) },
+            click: { intent in
+                model.click(id, intent: intent)
+                // In `listOnly` there is no detail pane to receive the
+                // selection, so a plain click hands off to the focused route.
+                // Command/shift clicks are multi-select and stay local.
+                if paneStyle == .listOnly, intent == .replace {
+                    onActivateItem?(id)
+                }
+            },
             toggleRead: { Task { await model.toggleRead(id) } },
             togglePin: { model.togglePin(targets(including: id)) },
             toggleSaved: { model.toggleSaved(targets(including: id)) },
@@ -1422,6 +1472,33 @@ private struct InboxRowButtonStyle: ButtonStyle {
     }
 }
 
+// MARK: - Auto refresh
+
+/// Re-reads the inbox when the host says daemon-written rows may have changed.
+///
+/// Applied only when `name` is non-nil, so surfaces that should stay frozen
+/// while being read (the focused `.inbox` route) opt out by passing nil.
+///
+/// The reload is deliberately `load()` and not `load(force: true)`: `load`
+/// short-circuits on an unchanged change marker, so a tick where nothing
+/// happened costs one aggregate query and leaves the list — and the user's
+/// scroll position and selection — completely untouched. Forcing would re-sort
+/// under their cursor every cadence pass.
+struct InboxAutoRefresh: ViewModifier {
+    let name: Notification.Name?
+    let reload: () async -> Void
+
+    func body(content: Content) -> some View {
+        if let name {
+            content.onReceive(NotificationCenter.default.publisher(for: name)) { _ in
+                Task { await reload() }
+            }
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - Empty state
 
 struct InboxEmptyState: View {
@@ -1430,6 +1507,13 @@ struct InboxEmptyState: View {
     let message: String
     var actionTitle: String?
     var action: (() -> Void)?
+    /// Text roles for a host drawn over a live backdrop.
+    ///
+    /// `nil` keeps the historical behavior (flat `DesignSystem` tokens) so the
+    /// focused `.inbox` route is untouched. Home passes its resolved ink,
+    /// because on the dashboard canvas `textSecondary` over a live backdrop is
+    /// the exact failure `BackdropInk` exists to prevent.
+    var ink: BackdropInk?
 
     @State private var glow = false
     /// The empty state is the screen a user sees most — the inbox is quiet by
@@ -1478,11 +1562,11 @@ struct InboxEmptyState: View {
             VStack(spacing: DesignSystem.Spacing.sm) {
                 Text(title)
                     .font(DesignSystem.Typography.title)
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+                    .foregroundStyle(ink?.primary ?? DesignSystem.Colors.textPrimary)
 
                 Text(message)
                     .font(DesignSystem.Typography.body)
-                    .foregroundStyle(DesignSystem.Colors.textSecondary)
+                    .foregroundStyle(ink?.secondary ?? DesignSystem.Colors.textSecondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
                     .fixedSize(horizontal: false, vertical: true)

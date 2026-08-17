@@ -19,7 +19,34 @@ React 19) app — independent of the repo's other subprojects, like `website/`.
   trusted native device → unwrap the vault key in memory → decrypt sealed content).
 - **Account settings** (`/settings`) — signed-in identity, provider readback, and
   passkey enrollment after Apple or Google fallback sign-in.
-- **Panic** (header) — `revokeAllAccess` across MCP / devices / escrow / providers.
+- **Usage profile** (`/profile`) — the member's activity page: lifetime stat row,
+  a contribution heatmap of daily tokens (Daily / Weekly / Cumulative) built from
+  `usage_rollups/all_time.dailyPoints`, streaks, a 90-day trend, and most-used
+  provider/model breakdowns. Hovering a day floats a card with the exact count
+  and (once the rollups carry counter schema v3) the day's per-provider split.
+  The rail's "Break down by" toggle re-bases every section on tokens, runs, or
+  spend. An empty first read auto-triggers `rebuildUsageRollups` once per
+  session (with a syncing banner) and the empty state offers a manual re-sync,
+  so the page self-heals instead of sitting on zeros. On wide screens the
+  insights sit in a right rail that also carries "Agent harnesses" and
+  harness × model "Combos" (brand logos via `lib/brandLogos.ts`); both stay
+  hidden until the rollups carry execution-source data. Pure math lives in
+  `lib/profile/activityStats.ts` (deterministic day-key arithmetic — no `Intl`,
+  so the static prerender and the client always agree). Untracked dimensions
+  are stated as untracked, never mocked.
+- **Command rail** (navigation) — the console's single nav surface: a slim left
+  rail grouping destinations by intent (Observe: Profile, Basin, Studio · Vault:
+  Inventory, Pensieve, Trust · System: Experimental, Settings), with the signed-in
+  identity, theme switcher, and a quarantined Panic control in the rail footer.
+  On mobile the same rail becomes a top bar + slide-over drawer. `⌘K`/`Ctrl+K`
+  opens the command palette (destinations, themes, sign out) from anywhere. The
+  destination model lives in `components/nav/navModel.ts` — one source of truth
+  for both surfaces.
+- **Experimental gallery** — every backdrop kernel rendering live; clicking a
+  tile sets it as the console-wide backdrop and the gallery's own page
+  background becomes the selection instantly (the global backdrop renders
+  behind /experimental like every other route — the preview is the real thing).
+- **Panic** (rail footer) — `revokeAllAccess` across MCP / devices / escrow / providers.
 
 First-run accounts are valid immediately after Firebase sign-in. Until a trusted
 native BurnBar app publishes `users/{uid}/cloud_profile/default` and domain data

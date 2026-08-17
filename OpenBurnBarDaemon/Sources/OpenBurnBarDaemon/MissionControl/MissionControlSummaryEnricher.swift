@@ -6,68 +6,38 @@ struct MissionControlSummaryEnricher {
     let projection: BurnBarMissionControlProjectionFile?
     let cachedEvents: [BurnBarControllerEvent]?
 
+    private struct ProjectAggregate {
+        var pendingQuestionCount = 0
+        var openFollowupCount = 0
+        var activeMissionCount = 0
+        var activeMissionID: BurnBarMissionID?
+        var activeMissionUpdatedAt: Date?
+        var latestDailyReviewAt: Date?
+        var latestWeeklyReviewAt: Date?
+    }
+
+    private static let terminalMissionStatuses: Set<BurnBarMissionStatus> = [
+        .completed,
+        .failed,
+        .cancelled
+    ]
+
     func enrichedProjects() -> [BurnBarReviewProjectSnapshot] {
         let baseProjects = projection.map { Array($0.projects.values) } ?? []
+        let aggregates = projectAggregates()
         return baseProjects
-            .map { base in
-                let pendingQuestions = projection?.questions.values.filter {
-                    $0.projectSlug == base.projectSlug && $0.status == .pending
-                }.count ?? 0
-                let openFollowups = projection?.followups.values.filter {
-                    $0.projectSlug == base.projectSlug && $0.status == .open
-                }.count ?? 0
-                let activeMissions = projection?.missions.values.filter {
-                    $0.projectSlug == base.projectSlug
-                        && ![BurnBarMissionStatus.completed, .failed, .cancelled].contains($0.status)
-                } ?? []
-                let latestDaily = projection?.reviewRuns.values
-                    .filter { $0.projectSlug == base.projectSlug && $0.cadence == .daily }
-                    .min { $0.recordedAt > $1.recordedAt }?.recordedAt
-                let latestWeekly = projection?.reviewRuns.values
-                    .filter { $0.projectSlug == base.projectSlug && $0.cadence == .weekly }
-                    .min { $0.recordedAt > $1.recordedAt }?.recordedAt
-                let freshness = freshnessState(latestReviewAt: [latestDaily, latestWeekly].compactMap { $0 }.max())
-                let nextScheduledReviewAt = nextScheduledReviewAt(
-                    for: base,
-                    latestDailyReviewAt: latestDaily,
-                    latestWeeklyReviewAt: latestWeekly
-                )
-                let status: BurnBarReviewProjectStatus
-                if base.status == .paused {
-                    status = .paused
-                } else if freshness == .stale {
-                    status = .stale
-                } else if pendingQuestions > 0 || openFollowups > 0 || !activeMissions.isEmpty {
-                    status = .needsAttention
-                } else {
-                    status = base.status == .onboarding ? .onboarding : .healthy
-                }
-                return BurnBarReviewProjectSnapshot(
-                    id: base.id,
-                    projectSlug: base.projectSlug,
-                    displayName: base.displayName,
-                    summary: base.summary,
-                    status: status,
-                    preferredCadence: base.preferredCadence,
-                    aliases: base.aliases,
-                    automationMode: base.automationMode,
-                    reviewModelID: base.reviewModelID,
-                    scheduleHourLocal: base.scheduleHourLocal,
-                    scheduleWeekdayLocal: base.scheduleWeekdayLocal,
-                    freshness: freshness,
-                    latestDailyReviewAt: latestDaily,
-                    latestWeeklyReviewAt: latestWeekly,
-                    nextScheduledReviewAt: nextScheduledReviewAt,
-                    pendingQuestionCount: pendingQuestions,
-                    openFollowupCount: openFollowups,
-                    activeMissionCount: activeMissions.count,
-                    activeMissionID: activeMissions.min { $0.updatedAt > $1.updatedAt }?.id,
-                    needsOperatorAttention: pendingQuestions > 0 || openFollowups > 0 || !activeMissions.isEmpty,
-                    ingestionSource: base.ingestionSource,
-                    metadata: base.metadata
-                )
-            }
+            .map { enrichedProject($0, aggregate: aggregates[$0.projectSlug] ?? ProjectAggregate()) }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
+    func enrichedProject(slug: String) -> BurnBarReviewProjectSnapshot? {
+        guard let base = projection?.projects[slug] else {
+            return nil
+        }
+        return enrichedProject(
+            base,
+            aggregate: projectAggregates()[slug] ?? ProjectAggregate()
+        )
     }
 
     func makeSummary(for request: BurnBarControllerSummaryRequest) -> BurnBarControllerSummary {
@@ -194,6 +164,104 @@ struct MissionControlSummaryEnricher {
             return .aging
         }
         return .stale
+    }
+
+    /// Builds every derived per-project count/date in one pass over each
+    /// projection collection. The previous implementation filtered all
+    /// questions, followups, missions, and review runs separately for every
+    /// project, repeatedly copying large mission snapshots.
+    private func projectAggregates() -> [String: ProjectAggregate] {
+        guard let projection else {
+            return [:]
+        }
+
+        var aggregates: [String: ProjectAggregate] = [:]
+        aggregates.reserveCapacity(projection.projects.count)
+
+        for question in projection.questions.values where question.status == .pending {
+            aggregates[question.projectSlug, default: ProjectAggregate()].pendingQuestionCount += 1
+        }
+        for followup in projection.followups.values where followup.status == .open {
+            aggregates[followup.projectSlug, default: ProjectAggregate()].openFollowupCount += 1
+        }
+        for mission in projection.missions.values where !Self.terminalMissionStatuses.contains(mission.status) {
+            var aggregate = aggregates[mission.projectSlug, default: ProjectAggregate()]
+            aggregate.activeMissionCount += 1
+            if let activeMissionUpdatedAt = aggregate.activeMissionUpdatedAt {
+                if mission.updatedAt > activeMissionUpdatedAt {
+                    aggregate.activeMissionID = mission.id
+                    aggregate.activeMissionUpdatedAt = mission.updatedAt
+                }
+            } else {
+                aggregate.activeMissionID = mission.id
+                aggregate.activeMissionUpdatedAt = mission.updatedAt
+            }
+            aggregates[mission.projectSlug] = aggregate
+        }
+        for review in projection.reviewRuns.values {
+            var aggregate = aggregates[review.projectSlug, default: ProjectAggregate()]
+            switch review.cadence {
+            case .daily:
+                aggregate.latestDailyReviewAt = max(aggregate.latestDailyReviewAt ?? .distantPast, review.recordedAt)
+            case .weekly:
+                aggregate.latestWeeklyReviewAt = max(aggregate.latestWeeklyReviewAt ?? .distantPast, review.recordedAt)
+            case .adHoc:
+                break
+            }
+            aggregates[review.projectSlug] = aggregate
+        }
+        return aggregates
+    }
+
+    private func enrichedProject(
+        _ base: BurnBarReviewProjectSnapshot,
+        aggregate: ProjectAggregate
+    ) -> BurnBarReviewProjectSnapshot {
+        let latestDaily = aggregate.latestDailyReviewAt
+        let latestWeekly = aggregate.latestWeeklyReviewAt
+        let freshness = freshnessState(latestReviewAt: [latestDaily, latestWeekly].compactMap { $0 }.max())
+        let nextScheduledReviewAt = nextScheduledReviewAt(
+            for: base,
+            latestDailyReviewAt: latestDaily,
+            latestWeeklyReviewAt: latestWeekly
+        )
+        let needsOperatorAttention = aggregate.pendingQuestionCount > 0
+            || aggregate.openFollowupCount > 0
+            || aggregate.activeMissionCount > 0
+        let status: BurnBarReviewProjectStatus
+        if base.status == .paused {
+            status = .paused
+        } else if freshness == .stale {
+            status = .stale
+        } else if needsOperatorAttention {
+            status = .needsAttention
+        } else {
+            status = base.status == .onboarding ? .onboarding : .healthy
+        }
+        return BurnBarReviewProjectSnapshot(
+            id: base.id,
+            projectSlug: base.projectSlug,
+            displayName: base.displayName,
+            summary: base.summary,
+            status: status,
+            preferredCadence: base.preferredCadence,
+            aliases: base.aliases,
+            automationMode: base.automationMode,
+            reviewModelID: base.reviewModelID,
+            scheduleHourLocal: base.scheduleHourLocal,
+            scheduleWeekdayLocal: base.scheduleWeekdayLocal,
+            freshness: freshness,
+            latestDailyReviewAt: latestDaily,
+            latestWeeklyReviewAt: latestWeekly,
+            nextScheduledReviewAt: nextScheduledReviewAt,
+            pendingQuestionCount: aggregate.pendingQuestionCount,
+            openFollowupCount: aggregate.openFollowupCount,
+            activeMissionCount: aggregate.activeMissionCount,
+            activeMissionID: aggregate.activeMissionID,
+            needsOperatorAttention: needsOperatorAttention,
+            ingestionSource: base.ingestionSource,
+            metadata: base.metadata
+        )
     }
 
     private func nextSuggestedCadence(from projects: [BurnBarReviewProjectSnapshot]) -> BurnBarControllerReviewCadence? {

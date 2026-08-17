@@ -144,6 +144,33 @@ struct AppearanceCorkboardSection: View {
 
                 Divider().background(DesignSystem.Colors.border)
 
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Opens On")
+                            .font(DesignSystem.Typography.body)
+                            .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        Text("Which screen the dashboard window shows when it opens. Home is the inbox with your agent fleet and quota beside it; Overview is the spend dashboard in your chosen layout.")
+                            .font(DesignSystem.Typography.tiny)
+                            .foregroundStyle(DesignSystem.Colors.textMuted)
+                    }
+                    Spacer()
+                    Picker("", selection: $settingsManager.dashboardLaunchSurface) {
+                        ForEach(DashboardLaunchSurface.allCases, id: \.self) { surface in
+                            Label(surface.displayName, systemImage: surface.symbolName).tag(surface)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 220)
+                    .onChange(of: settingsManager.dashboardLaunchSurface) { _, newValue in
+                        Analytics.shared.track(.settingsChanged, [
+                            "setting_key": "dashboard_launch_surface",
+                            "new_value": .string(newValue.rawValue)
+                        ])
+                    }
+                }
+
+                Divider().background(DesignSystem.Colors.border)
+
                 LiquidGlassTransparencyRow()
                     .settingsAnchor(SettingsAnchor.appearanceGlassTransparency)
 

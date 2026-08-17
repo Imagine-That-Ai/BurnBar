@@ -15,7 +15,10 @@ import OpenBurnBarCore
 
 @MainActor
 final class SmartHubRunCostTotalsCache {
-    static let bucketDurationSeconds: TimeInterval = 30
+    // Match the provider refresh cadence. Usage-table writes still invalidate
+    // immediately, while an unchanged seven-day window avoids a second
+    // SQLCipher aggregate halfway through every refresh interval.
+    static let bucketDurationSeconds: TimeInterval = 60
 
     private var activeWriteMarker: Int?
     private var activeTimeBucket: Int64?
@@ -25,7 +28,7 @@ final class SmartHubRunCostTotalsCache {
         for periods: [SmartHubTimePeriod],
         writeMarker: Int,
         now: Date,
-        load: (SmartHubTimePeriod) async -> [AgentProvider: ProviderRunCostTotals]
+        load: ([SmartHubTimePeriod]) async -> [String: [AgentProvider: ProviderRunCostTotals]]
     ) async -> [String: [AgentProvider: ProviderRunCostTotals]] {
         let timeBucket = Int64(
             floor(now.timeIntervalSince1970 / Self.bucketDurationSeconds)
@@ -41,8 +44,12 @@ final class SmartHubRunCostTotalsCache {
             uniquePeriods.append(period)
         }
 
-        for period in uniquePeriods where totalsByPeriod[period.rawValue] == nil {
-            totalsByPeriod[period.rawValue] = await load(period)
+        let missingPeriods = uniquePeriods.filter { totalsByPeriod[$0.rawValue] == nil }
+        if !missingPeriods.isEmpty {
+            let loadedTotals = await load(missingPeriods)
+            for period in missingPeriods {
+                totalsByPeriod[period.rawValue] = loadedTotals[period.rawValue] ?? [:]
+            }
         }
         return totalsByPeriod
     }
@@ -585,10 +592,17 @@ final class SmartHubBridgeController {
             for: [period, .rolling5h, .rolling7d],
             writeMarker: writeMarker,
             now: now
-        ) { [dataStore] requestedPeriod in
+        ) { [dataStore] requestedPeriods in
             guard let dataStore else { return [:] }
-            let range = Self.dateRange(for: requestedPeriod, now: now)
-            return (try? await dataStore.providerRunCostTotals(in: range)) ?? [:]
+            let ranges = requestedPeriods.map { Self.dateRange(for: $0, now: now) }
+            guard let loadedTotals = try? await dataStore.providerRunCostTotals(in: ranges) else {
+                return [:]
+            }
+            return Dictionary(
+                uniqueKeysWithValues: zip(requestedPeriods, loadedTotals).map { period, totals in
+                    (period.rawValue, totals)
+                }
+            )
         }
         let runCostTotals = totalsByPeriod[period.rawValue] ?? [:]
         let quotaProviders = quotaProviders(period: period, runCostTotals: runCostTotals, now: now)

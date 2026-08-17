@@ -11,6 +11,21 @@ extension OpenBurnBarDaemonManager {
     private static let controllerActivityConversationLimit = 10_000
 
     func exportControllerActivitySnapshot() async {
+        if let existingTask = controllerActivitySnapshotExportTask {
+            await existingTask.value
+            return
+        }
+
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performControllerActivitySnapshotExport()
+        }
+        controllerActivitySnapshotExportTask = task
+        await task.value
+        controllerActivitySnapshotExportTask = nil
+    }
+
+    private func performControllerActivitySnapshotExport() async {
         guard let dataStore else { return }
 
         do {
@@ -45,13 +60,19 @@ extension OpenBurnBarDaemonManager {
         // nested filter × slug implementation was O(projects × conversations)
         // and froze the UI when refreshHealth ran during dashboard open with a
         // large history (up to 10k conversations).
-        let conversations = try await dataStore.fetchConversations(limit: Self.controllerActivityConversationLimit)
-        let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date().addingTimeInterval(-7 * 24 * 60 * 60)
-        // Yield so a concurrent Settings navigation can paint before we filter
-        // the in-memory usage cache on the main actor.
-        await Task.yield()
-        let recentUsages = dataStore.usages(in: start...Date())
         let generatedAt = Date()
+        let conversations = try await dataStore.fetchConversationActivitySummaries(
+            limit: Self.controllerActivityConversationLimit
+        )
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: generatedAt)
+            ?? generatedAt.addingTimeInterval(-7 * 24 * 60 * 60)
+        // Controller activity is background state, so read its exact bounded
+        // window directly from the indexed ledger instead of depending on the
+        // dashboard's demand-loaded presentation cache.
+        let recentUsages = try await dataStore.fetchUsage(
+            startingIn: start..<generatedAt,
+            limit: Int.max
+        )
 
         return await Task.detached(priority: .utility) {
             Self.buildControllerActivitySnapshot(
@@ -64,13 +85,13 @@ extension OpenBurnBarDaemonManager {
 
     /// Pure O(n) assembly: slug each row once, group once, emit projects.
     nonisolated static func buildControllerActivitySnapshot(
-        conversations: [OpenBurnBarCore.ConversationRecord],
+        conversations: [ConversationActivitySummary],
         recentUsages: [TokenUsage],
         generatedAt: Date = Date()
     ) -> BurnBarControllerActivitySnapshot {
         struct ConversationBucket {
             var displayName: String
-            var conversations: [OpenBurnBarCore.ConversationRecord] = []
+            var conversations: [ConversationActivitySummary] = []
         }
         struct UsageBucket {
             var usages: [TokenUsage] = []
@@ -188,7 +209,7 @@ extension OpenBurnBarDaemonManager {
         return result
     }
 
-    nonisolated static func activityDate(for conversation: OpenBurnBarCore.ConversationRecord) -> Date {
+    nonisolated static func activityDate(for conversation: ConversationActivitySummary) -> Date {
         conversation.endTime ?? conversation.startTime ?? conversation.indexedAt
     }
 }

@@ -3475,6 +3475,82 @@ final class BurnBarMissionControlServiceTests: XCTestCase {
         XCTAssertEqual(projects.projects.map(\.projectSlug), ["apollo"])
     }
 
+    func testControllerActivityIngestionIgnoresTimestampOnlySnapshotRefreshes() async throws {
+        let now = Date(timeIntervalSince1970: 1_710_002_200)
+        let activityProject = BurnBarControllerActivityProject(
+            projectSlug: "apollo",
+            displayName: "Apollo",
+            summary: "Semantically unchanged activity.",
+            latestActivityAt: now,
+            sessionCountLast7Days: 3,
+            totalCostLast7Days: 1.25,
+            totalTokensLast7Days: 8_000
+        )
+        let harness = try makeHarness(
+            name: "activity-ingestion-timestamp-only-refresh",
+            activitySnapshot: BurnBarControllerActivitySnapshot(
+                generatedAt: now,
+                activeProjectSlug: "apollo",
+                projects: [activityProject]
+            )
+        )
+
+        _ = try await harness.service.controllerProjects(
+            BurnBarControllerProjectsListRequest(includePaused: true, limit: 20)
+        )
+        let eventsFileURL = harness.rootURL.appendingPathComponent("controller-events.jsonl")
+        let firstEventCount = try Data(contentsOf: eventsFileURL).split(separator: 0x0A).count
+
+        let timestampOnlyRefresh = BurnBarControllerActivitySnapshot(
+            generatedAt: now.addingTimeInterval(60),
+            activeProjectSlug: "apollo",
+            projects: [activityProject]
+        )
+        let activitySnapshotURL = harness.rootURL.appendingPathComponent("controller-activity-snapshot.json")
+        try JSONEncoder().encode(timestampOnlyRefresh).write(to: activitySnapshotURL, options: .atomic)
+
+        _ = try await harness.service.controllerProjects(
+            BurnBarControllerProjectsListRequest(includePaused: true, limit: 20)
+        )
+        let secondEventCount = try Data(contentsOf: eventsFileURL).split(separator: 0x0A).count
+
+        XCTAssertEqual(
+            secondEventCount,
+            firstEventCount,
+            "generatedAt-only refreshes must not re-ingest an otherwise identical activity payload"
+        )
+    }
+
+    func testRegistryProjectLookupBypassesDerivedEnrichment() async throws {
+        let harness = try makeHarnessWithStore(name: "registry-project-lookup")
+        _ = try await harness.service.controllerProjectUpsert(
+            BurnBarControllerProjectUpsertRequest(project: project(slug: "apollo"))
+        )
+        _ = try await harness.service.questionCreate(
+            BurnBarQuestionCreateRequest(
+                question: BurnBarPendingQuestionSnapshot(
+                    id: BurnBarQuestionID(rawValue: "question-apollo"),
+                    projectSlug: "apollo",
+                    title: "Apollo decision",
+                    prompt: "Choose the release window.",
+                    status: .pending,
+                    priority: .medium,
+                    askedAt: Date()
+                )
+            )
+        )
+
+        let registryProject = try await harness.store.registryProject(slug: "apollo")
+        let publicProject = try await harness.store.project(slug: "apollo")
+
+        XCTAssertEqual(registryProject?.pendingQuestionCount, 0)
+        XCTAssertEqual(registryProject?.openFollowupCount, 0)
+        XCTAssertFalse(registryProject?.needsOperatorAttention ?? true)
+        XCTAssertEqual(publicProject?.pendingQuestionCount, 1)
+        XCTAssertEqual(publicProject?.openFollowupCount, 1)
+        XCTAssertTrue(publicProject?.needsOperatorAttention ?? false)
+    }
+
     func testVAL_GOV_009_ActivityIngestedQuestionDedupeHoldsAcrossSnapshotDigestChanges() async throws {
         let now = Date(timeIntervalSince1970: 1_710_310_000)
         let activityProject = BurnBarControllerActivityProject(

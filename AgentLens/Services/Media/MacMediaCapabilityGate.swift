@@ -556,12 +556,19 @@ final class MacRemoteUnlockReadinessService {
         let capabilities = capabilities()
         return HermesRealtimeRelayRemoteUnlockState(
             sessionId: sessionId,
-            lockState: lockStateProvider(),
+            lockState: currentLockState(),
             backend: capabilities.activeBackend,
             capabilities: capabilities,
             controlOwnerViewerId: controlOwnerViewerId,
             observedAt: Date()
         )
+    }
+
+    /// Reads only the host lock state. Resume polling must not rebuild the
+    /// complete readiness snapshot on every 350 ms tick: that snapshot performs
+    /// Keychain, launch-daemon, certification-report, and agent-socket probes.
+    func currentLockState() -> HermesRealtimeRelayMacLockState {
+        lockStateProvider()
     }
 
     func validateRemoteUnlockSession(

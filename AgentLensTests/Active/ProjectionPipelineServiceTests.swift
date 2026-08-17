@@ -9,6 +9,38 @@ import GRDB
 @testable import OpenBurnBarLogParsers
 @MainActor
 final class ProjectionPipelineServiceTests: XCTestCase {
+    private func drainPacedReembed(
+        service: ProjectionPipelineService,
+        store: DataStore,
+        clock: OpenBurnBarFakeClock,
+        maxSweeps: Int = 1_000
+    ) async throws -> ProjectionSweepReport {
+        var aggregate = ProjectionSweepReport()
+
+        for _ in 0..<maxSweeps {
+            let report = try await service.runSweep(maxJobs: 10)
+            aggregate.leasedJobs += report.leasedJobs
+            aggregate.completedJobs += report.completedJobs
+            aggregate.retriedJobs += report.retriedJobs
+            aggregate.canceledJobs += report.canceledJobs
+
+            let hasLiveReembed = try await store.hasProjectionJobs(
+                statuses: [.queued, .failed, .leased, .running],
+                jobTypes: [.reembed]
+            )
+            if hasLiveReembed == false {
+                return aggregate
+            }
+
+            _ = clock.advance(
+                seconds: ProjectionPipelineRuntimeTuning.reembedContinuationDelaySeconds + 0.001
+            )
+        }
+
+        XCTFail("Paced re-embed did not finish within \(maxSweeps) sweeps.")
+        return aggregate
+    }
+
     func test_markVectorIndexSnapshotStale_preservesSnapshotCountWithoutEmbeddingRecount() async throws {
         let queue = try DatabaseQueue(configuration: .withQueryTracing())
         let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
@@ -130,6 +162,66 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         }
         let chunks = try await store.fetchSearchChunks(documentID: projectedConversationDocument.id)
         XCTAssertFalse(chunks.isEmpty)
+    }
+
+    func test_projectionWorker_defersSuccessfulSlice_withoutRetryOrBusyLease() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_200_500)
+        let owner = "worker-deferred-slice"
+        let job = ProjectionJobRecord(
+            id: "job-deferred-slice",
+            jobType: .reembed,
+            sourceVersionID: "embedding-v2",
+            status: .queued,
+            priority: 1,
+            attempts: 0,
+            maxAttempts: 5,
+            scheduledAt: base,
+            availableAt: base,
+            createdAt: base,
+            updatedAt: base
+        )
+        try await store.enqueueProjectionJob(job)
+
+        let leasedRecord = try await store.leaseNextProjectionJob(
+            leaseOwner: owner,
+            leaseDuration: 45,
+            now: base
+        )
+        let leased = try XCTUnwrap(leasedRecord)
+        XCTAssertEqual(leased.id, job.id)
+
+        let resumeAt = base.addingTimeInterval(30)
+        let deferred = try await store.deferProjectionJob(
+            id: job.id,
+            leaseOwner: owner,
+            availableAt: resumeAt,
+            updatedAt: base.addingTimeInterval(1)
+        )
+        XCTAssertTrue(deferred)
+
+        let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 10)
+        let queued = try XCTUnwrap(queuedJobs.first(where: { $0.id == job.id }))
+        XCTAssertEqual(queued.attempts, 0, "Cooperative pacing must not consume a failure retry.")
+        XCTAssertNil(queued.leaseOwner)
+        XCTAssertNil(queued.leaseExpiresAt)
+        XCTAssertEqual(queued.availableAt, resumeAt)
+        let nextLeaseOpportunity = try await store.nextProjectionJobLeaseOpportunity()
+        XCTAssertEqual(nextLeaseOpportunity, resumeAt)
+
+        let prematureLease = try await store.leaseNextProjectionJob(
+            leaseOwner: "worker-too-early",
+            leaseDuration: 45,
+            now: resumeAt.addingTimeInterval(-0.001)
+        )
+        XCTAssertNil(prematureLease, "A delayed slice must not be polled back into service early.")
+
+        let resumedLease = try await store.leaseNextProjectionJob(
+            leaseOwner: "worker-on-time",
+            leaseDuration: 45,
+            now: resumeAt
+        )
+        XCTAssertEqual(resumedLease?.id, job.id)
     }
 
     func test_projectionJob_enqueueSuppression_preventsDuplicateRequeueAfterCompletion() async throws {
@@ -573,7 +665,9 @@ final class ProjectionPipelineServiceTests: XCTestCase {
     func test_gapRepair_doesNotReprojectWhenAllConversationsAreCurrent() async throws {
         // VAL-INDEX-003: When no gaps exist, gap repair should be a no-op (zero enqueues).
 
-        let store = try makeDiscoveryInMemoryStore()
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let tracer = OpenBurnBarQueryTracer.shared
         let service = ProjectionPipelineService(dataStore: store, leaseOwner: "worker-no-gap")
         let base = Date(timeIntervalSince1970: 1_742_610_000)
 
@@ -601,7 +695,25 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         let completedBefore = try await store.fetchProjectionJobs(statuses: [.completed], limit: 200).count
 
         // Run another sweep; gap repair should produce zero new jobs
+        tracer.resetLog()
         let noGapReport = try await service.runSweep(maxJobs: 20)
+        let gapRepairQueries = tracer.queryLog.map(\.sql)
+        XCTAssertTrue(
+            gapRepairQueries.contains {
+                $0.contains("c.id AS id")
+                    && $0.contains("c.startTime AS startTime")
+                    && $0.contains("controller_runtime_cache")
+                    && $0.contains("FROM conversations")
+            },
+            "No-gap repair must inspect only lightweight conversation revision columns and cached hashes."
+        )
+        XCTAssertFalse(
+            gapRepairQueries.contains {
+                $0.contains("SELECT * FROM conversations")
+                    && $0.contains("WHERE id IN")
+            },
+            "No-gap repair must never decrypt full transcript rows."
+        )
 
         // No queued gap-repair jobs should exist (priority 3 reproject = gap repair)
         let queuedJobs = try await store.fetchProjectionJobs(statuses: [.queued], limit: 50)
@@ -1553,14 +1665,20 @@ final class ProjectionPipelineServiceTests: XCTestCase {
 
         // Create a new version embedder and trigger re-embed for ALL chunks
         let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "reembed-pg-v2", seed: "reembed-pg-v2-seed")
+        let reembedClock = OpenBurnBarFakeClock(now: base.addingTimeInterval(300))
         let serviceV2 = ProjectionPipelineService(
             dataStore: store,
             leaseOwner: "worker-reembed-v2",
+            nowProvider: { [reembedClock] in reembedClock.now() },
             chunkEmbedder: embedderV2
         )
         try await serviceV2.enqueueReembedJob(reason: "test-reembed-pagination", priority: 1)
 
-        let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
+        let reembedReport = try await drainPacedReembed(
+            service: serviceV2,
+            store: store,
+            clock: reembedClock
+        )
         XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
 
         // Verify all chunks got re-embedded in the new version
@@ -1569,6 +1687,341 @@ final class ProjectionPipelineServiceTests: XCTestCase {
         XCTAssertEqual(
             v2Embeddings.count, allChunks.count,
             "All \(allChunks.count) chunks should have v2 embeddings. Found: \(v2Embeddings.count)"
+        )
+    }
+
+    func test_reembedJob_readsOnlyBoundedEmbeddingInputs_withKeysetPagination() async throws {
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
+        let base = Date(timeIntervalSince1970: 1_742_830_500)
+
+        let eligibleDocument = SearchDocumentRecord(
+            id: "doc-reembed-bounded",
+            sourceKind: .conversation,
+            sourceID: "conv-reembed-bounded",
+            sourceVersionID: "v1",
+            provider: "codex",
+            projectName: "TestProject",
+            title: "Bounded re-embed",
+            subtitle: nil,
+            bodyPreview: "Bounded re-embed fixture.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "bounded-doc-hash",
+            createdAt: base,
+            updatedAt: base
+        )
+        let codeDocument = SearchDocumentRecord(
+            id: "doc-reembed-bounded-code",
+            sourceKind: .code,
+            sourceID: "code-reembed-bounded",
+            sourceVersionID: "v1",
+            provider: "codex",
+            projectName: "TestProject",
+            title: "Local code fixture",
+            subtitle: nil,
+            bodyPreview: "Local-only code.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "bounded-code-doc-hash",
+            createdAt: base,
+            updatedAt: base
+        )
+        try await store.upsertSearchDocument(eligibleDocument)
+        try await store.upsertSearchDocument(codeDocument)
+
+        let eligibleChunks = (0..<5).map { index in
+            SearchChunkRecord(
+                id: "chunk-reembed-bounded-\(index)",
+                documentID: eligibleDocument.id,
+                sourceKind: .conversation,
+                sourceID: eligibleDocument.sourceID,
+                sourceVersionID: eligibleDocument.sourceVersionID,
+                ordinal: index,
+                startOffset: index * 100,
+                endOffset: (index + 1) * 100,
+                text: "Eligible bounded chunk \(index)",
+                contentHash: "bounded-chunk-hash-\(index)",
+                createdAt: base,
+                updatedAt: base
+            )
+        }
+        let codeChunk = SearchChunkRecord(
+            id: "chunk-reembed-bounded-code",
+            documentID: codeDocument.id,
+            sourceKind: .code,
+            sourceID: codeDocument.sourceID,
+            sourceVersionID: codeDocument.sourceVersionID,
+            ordinal: 0,
+            startOffset: 0,
+            endOffset: 100,
+            text: "Local-only code must never reach semantic re-embedding.",
+            contentHash: "bounded-code-chunk-hash",
+            createdAt: base,
+            updatedAt: base
+        )
+        try await store.replaceSearchChunks(
+            documentID: eligibleDocument.id,
+            title: eligibleDocument.title,
+            chunks: eligibleChunks
+        )
+        try await store.replaceSearchChunks(
+            documentID: codeDocument.id,
+            title: codeDocument.title,
+            chunks: [codeChunk]
+        )
+
+        let embedder = RecordingTestEmbeddingProvider(versionTag: "reembed-bounded-v2")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-bounded",
+            chunkEmbedder: embedder,
+            paginationPageSize: 2
+        )
+        let job = ProjectionJobRecord(
+            id: "job-reembed-bounded",
+            jobType: .reembed,
+            sourceVersionID: EmbeddingIdentity.versionID(for: embedder.descriptor)
+        )
+
+        let tracer = OpenBurnBarQueryTracer.shared
+        tracer.resetLog()
+        let result = try await service.processReembed(job)
+
+        let normalizedQueries = tracer.queryLog.map {
+            $0.sql.lowercased().replacingOccurrences(of: "\n", with: " ")
+        }
+        let chunkReads = normalizedQueries.filter {
+            $0.contains("select id, text")
+                && $0.contains("from search_chunks")
+        }
+        XCTAssertEqual(
+            chunkReads.count,
+            1,
+            "One lease must perform exactly one bounded chunk read."
+        )
+        XCTAssertTrue(
+            chunkReads.allSatisfy {
+                $0.contains("sourcekind <>")
+                    && $0.contains("not exists")
+                    && $0.contains("from chunk_embeddings as existing_embedding")
+                    && $0.contains("existing_embedding.chunkid = search_chunks.id")
+                    && $0.contains("existing_embedding.embeddingversionid =")
+                    && $0.contains("order by id asc")
+                    && $0.contains("limit")
+            },
+            "Global re-embed reads must exclude local code, skip completed target-version embeddings, and remain deterministically bounded."
+        )
+        XCTAssertFalse(
+            normalizedQueries.contains {
+                $0.contains("select * from search_chunks")
+                    || ($0.contains("from search_chunks") && $0.contains("createdat"))
+            },
+            "Re-embedding must never load full chunk rows or parse unused date columns."
+        )
+
+        let embeddedTexts = await embedder.capturedEmbeddingTexts()
+        XCTAssertEqual(
+            embeddedTexts,
+            Array(eligibleChunks.prefix(2)).map(\.text),
+            "A lease may embed only one configured slice."
+        )
+        XCTAssertFalse(embeddedTexts.contains(codeChunk.text))
+        XCTAssertEqual(result.indexedChunks, 2)
+        XCTAssertTrue(result.hasMore, "The look-ahead row must persist a delayed continuation.")
+    }
+
+    func test_reembedJob_resumesAfterInterruption_withoutReembeddingCompletedChunks() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_830_750)
+        let document = SearchDocumentRecord(
+            id: "doc-reembed-resume",
+            sourceKind: .conversation,
+            sourceID: "conv-reembed-resume",
+            sourceVersionID: "v1",
+            provider: "codex",
+            projectName: "TestProject",
+            title: "Resumable re-embed",
+            subtitle: nil,
+            bodyPreview: "Interrupted re-embed fixture.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: "resume-doc-hash",
+            createdAt: base,
+            updatedAt: base
+        )
+        let chunks = (0..<3).map { index in
+            SearchChunkRecord(
+                id: "chunk-reembed-resume-\(index)",
+                documentID: document.id,
+                sourceKind: document.sourceKind,
+                sourceID: document.sourceID,
+                sourceVersionID: document.sourceVersionID,
+                ordinal: index,
+                startOffset: index * 100,
+                endOffset: (index + 1) * 100,
+                text: "Resumable chunk \(index)",
+                contentHash: "resume-chunk-hash-\(index)",
+                createdAt: base,
+                updatedAt: base
+            )
+        }
+        try await store.upsertSearchDocument(document)
+        try await store.replaceSearchChunks(
+            documentID: document.id,
+            title: document.title,
+            chunks: chunks
+        )
+
+        let initialEmbedder = RecordingTestEmbeddingProvider(versionTag: "reembed-resume-v2")
+        let initialService = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-resume-initial",
+            chunkEmbedder: initialEmbedder
+        )
+        _ = try await initialService.indexChunkEmbeddingInputs(
+            chunks: chunks.prefix(2).map {
+                SearchChunkEmbeddingInput(id: $0.id, text: $0.text)
+            },
+            strict: true,
+            sourceKind: document.sourceKind,
+            sourceID: document.sourceID
+        )
+
+        let resumedEmbedder = RecordingTestEmbeddingProvider(versionTag: "reembed-resume-v2")
+        let resumedService = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-resume-retry",
+            chunkEmbedder: resumedEmbedder,
+            paginationPageSize: 1
+        )
+        let resumedResult = try await resumedService.processReembed(
+            ProjectionJobRecord(
+                id: "job-reembed-resume",
+                jobType: .reembed,
+                sourceVersionID: EmbeddingIdentity.versionID(for: resumedEmbedder.descriptor)
+            )
+        )
+
+        let resumedTexts = await resumedEmbedder.capturedEmbeddingTexts()
+        XCTAssertEqual(
+            resumedTexts,
+            [chunks[2].text],
+            "A retried re-embed must resume at missing target-version rows instead of recomputing completed chunks."
+        )
+        XCTAssertEqual(resumedResult, ReembedSliceResult(indexedChunks: 1, hasMore: false))
+
+        let targetVersionID = EmbeddingIdentity.versionID(for: resumedEmbedder.descriptor)
+        let embeddings = try await store.fetchChunkEmbeddings(embeddingVersionID: targetVersionID)
+        XCTAssertEqual(
+            Set(embeddings.map(\.chunkID)),
+            Set(chunks.map(\.id)),
+            "The resumed job must leave every chunk embedded exactly once for the target version."
+        )
+    }
+
+    func test_reembedJob_cancellationRequeuesFinalSlice_withoutConsumingRetry() async throws {
+        let store = try makeDiscoveryInMemoryStore()
+        let base = Date(timeIntervalSince1970: 1_742_830_875)
+        let conversation = makeConversation(
+            id: "conv-reembed-cancel-final-slice",
+            fullText: "Cancellation must preserve the final durable re-embed slice.",
+            indexedAt: base
+        )
+        try await store.upsertConversation(conversation)
+        let document = SearchDocumentRecord(
+            id: "doc-reembed-cancel-final-slice",
+            sourceKind: .conversation,
+            sourceID: conversation.id,
+            sourceVersionID: ProjectionIdentity.conversationSourceVersionID(for: conversation),
+            provider: conversation.provider.rawValue,
+            projectName: conversation.projectName,
+            title: conversation.inferredTaskTitle,
+            subtitle: nil,
+            bodyPreview: "Cancellation regression fixture.",
+            sourceUpdatedAt: base,
+            indexedAt: base,
+            contentHash: ProjectionIdentity.conversationContentHash(for: conversation),
+            createdAt: base,
+            updatedAt: base
+        )
+        let chunk = SearchChunkRecord(
+            id: "chunk-reembed-cancel-final-slice",
+            documentID: document.id,
+            sourceKind: document.sourceKind,
+            sourceID: document.sourceID,
+            sourceVersionID: document.sourceVersionID,
+            ordinal: 0,
+            startOffset: 0,
+            endOffset: conversation.fullText.utf8.count,
+            text: conversation.fullText,
+            contentHash: "chunk-hash-reembed-cancel-final-slice",
+            createdAt: base,
+            updatedAt: base
+        )
+        try await store.upsertSearchDocument(document)
+        try await store.replaceSearchChunks(
+            documentID: document.id,
+            title: document.title,
+            chunks: [chunk]
+        )
+
+        let embedder = CancellationBlockingTestEmbeddingProvider(versionTag: "reembed-cancel-v2")
+        let service = ProjectionPipelineService(
+            dataStore: store,
+            leaseOwner: "worker-reembed-cancel-final",
+            chunkEmbedder: embedder
+        )
+        try await service.enqueueReembedJob(reason: "test-cancel-final-slice", priority: 1)
+
+        let canceledSweep = Task {
+            try await service.runSweep(maxJobs: 1)
+        }
+        let startDeadline = Date().addingTimeInterval(5)
+        while Date() < startDeadline, await embedder.hasStarted() == false {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        let embeddingStarted = await embedder.hasStarted()
+        XCTAssertTrue(embeddingStarted, "The test embedder never entered its cancellable work.")
+
+        canceledSweep.cancel()
+        switch await canceledSweep.result {
+        case .success:
+            XCTFail("A canceled embedding pass must propagate cancellation instead of reporting job success.")
+        case .failure(let error):
+            XCTAssertTrue(error is CancellationError)
+        }
+
+        let liveReembedJobs = try await store.fetchProjectionJobs(
+            statuses: [.queued, .failed, .leased, .running],
+            limit: 10
+        ).filter { $0.jobType == .reembed }
+        let requeued = try XCTUnwrap(liveReembedJobs.first)
+        XCTAssertEqual(requeued.status, .queued)
+        XCTAssertEqual(requeued.attempts, 0, "Cooperative cancellation must not consume a failure retry.")
+        XCTAssertNil(requeued.leaseOwner)
+        XCTAssertNil(requeued.leaseExpiresAt)
+        let completedReembedJobs = try await store.fetchProjectionJobs(statuses: [.completed], limit: 10)
+        XCTAssertFalse(
+            completedReembedJobs.contains { $0.jobType == .reembed },
+            "A canceled final slice must never mark the durable re-embed job completed."
+        )
+
+        let targetVersionID = EmbeddingIdentity.versionID(for: embedder.descriptor)
+        let canceledVersionCount = try await store.countChunkEmbeddings(embeddingVersionID: targetVersionID)
+        XCTAssertEqual(canceledVersionCount, 0)
+
+        await embedder.allowCompletion()
+        let recoveryReport = try await service.runSweep(maxJobs: 1)
+        XCTAssertEqual(recoveryReport.completedJobs, 1)
+        let recoveredEmbeddingCount = try await store.countChunkEmbeddings(
+            documentID: document.id,
+            embeddingVersionID: targetVersionID
+        )
+        let projectedChunkCount = try await store.countSearchChunks(documentID: document.id)
+        XCTAssertEqual(
+            recoveredEmbeddingCount,
+            projectedChunkCount
         )
     }
 
@@ -2282,6 +2735,44 @@ private actor RecordingTestEmbeddingProvider: ChunkEmbeddingProviding {
     }
 }
 
+private actor CancellationBlockingTestEmbeddingProvider: ChunkEmbeddingProviding {
+    nonisolated let descriptor: EmbeddingModelDescriptor
+    private var started = false
+    private var shouldBlock = true
+
+    init(versionTag: String) {
+        self.descriptor = EmbeddingModelDescriptor(
+            provider: "test-cancellation-blocking",
+            modelName: "cancellation-blocking-embed-model",
+            dimensions: 8,
+            distanceMetric: .cosine,
+            versionTag: versionTag,
+            chunkerVersion: ProjectionIdentity.chunkerVersion,
+            normalizationVersion: "unit-l2-v1",
+            promptVersion: "plain-text-v1"
+        )
+    }
+
+    func embedding(for text: String) async throws -> [Float] {
+        started = true
+        if shouldBlock {
+            try await Task.sleep(nanoseconds: 30_000_000_000)
+        }
+        var vector = [Float](repeating: 0, count: descriptor.dimensions)
+        vector[0] = 1
+        vector[1] = Float(text.count % 13) / 10
+        return VectorMath.l2Normalized(vector)
+    }
+
+    func hasStarted() -> Bool {
+        started
+    }
+
+    func allowCompletion() {
+        shouldBlock = false
+    }
+}
+
 // MARK: - Failing Test Embedding Provider
 
 /// An embedding provider that always fails, used for testing embedding failure degradation.
@@ -2378,7 +2869,8 @@ extension ProjectionPipelineServiceTests {
 
     func test_applyChunkDiff_identicalContent_noWrites() async throws {
         // When chunks have identical contentHash AND chunkID, diff is a no-op.
-        let store = try makeDiscoveryInMemoryStore()
+        let queue = try DatabaseQueue(configuration: .withQueryTracing())
+        let store = try DataStore(databaseQueue: queue, runMigrations: true, refreshOnInit: false)
         let documentID = "doc-incr-test-2"
         let title = "No-op Test"
         let base = Date(timeIntervalSince1970: 1_743_001_000)
@@ -2412,6 +2904,8 @@ extension ProjectionPipelineServiceTests {
         XCTAssertFalse(firstResult.isNoOp)
 
         // Second projection with IDENTICAL chunks — should be a complete no-op
+        let tracer = OpenBurnBarQueryTracer.shared
+        tracer.resetLog()
         let secondResult = try await store.applySearchChunkDiff(documentID: documentID, title: title, chunks: chunks)
         XCTAssertTrue(secondResult.isNoOp, "Identical chunk set should be a complete no-op.")
         XCTAssertEqual(secondResult.unchanged, 2, "Both chunks should be classified as unchanged.")
@@ -2419,6 +2913,25 @@ extension ProjectionPipelineServiceTests {
         XCTAssertEqual(secondResult.added, 0)
         XCTAssertEqual(secondResult.deleted, 0)
         XCTAssertEqual(secondResult.rekeyed, 0)
+
+        let normalizedQueries = tracer.queryLog.map {
+            $0.sql.lowercased().replacingOccurrences(of: "\n", with: " ")
+        }
+        XCTAssertTrue(
+            normalizedQueries.contains {
+                $0.contains("select id, contenthash")
+                    && $0.contains("from search_chunks")
+                    && $0.contains("where documentid")
+            },
+            "Chunk diffing must read only IDs and content hashes."
+        )
+        XCTAssertFalse(
+            normalizedQueries.contains {
+                $0.contains("select * from search_chunks")
+                    || ($0.contains("from search_chunks") && $0.contains("createdat"))
+            },
+            "Chunk diffing must never decrypt text or parse unused date columns."
+        )
 
         // Verify chunks are still in the store
         let storedChunks = try await store.fetchSearchChunks(documentID: documentID)
@@ -3104,14 +3617,20 @@ extension ProjectionPipelineServiceTests {
 
         // Trigger re-embed with new version — pagination must cover all documents
         let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "reembed-tie-v2", seed: "reembed-tie-v2-seed")
+        let reembedClock = OpenBurnBarFakeClock(now: sharedTimestamp.addingTimeInterval(300))
         let serviceV2 = ProjectionPipelineService(
             dataStore: store,
             leaseOwner: "worker-reembed-tie-v2",
+            nowProvider: { [reembedClock] in reembedClock.now() },
             chunkEmbedder: embedderV2
         )
         try await serviceV2.enqueueReembedJob(reason: "test-reembed-tiebreak", priority: 1)
 
-        let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
+        let reembedReport = try await drainPacedReembed(
+            service: serviceV2,
+            store: store,
+            clock: reembedClock
+        )
         XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
 
         // Verify ALL chunks got re-embedded
@@ -3610,15 +4129,21 @@ extension ProjectionPipelineServiceTests {
 
         // Trigger re-embed with new version — must paginate through all documents
         let embedderV2 = DeterministicFakeEmbeddingProvider(versionTag: "reembed-boundary-v2", seed: "reembed-boundary-v2-seed")
+        let reembedClock = OpenBurnBarFakeClock(now: base.addingTimeInterval(300))
         let serviceV2 = ProjectionPipelineService(
             dataStore: store,
             leaseOwner: "worker-reembed-boundary-v2",
+            nowProvider: { [reembedClock] in reembedClock.now() },
             chunkEmbedder: embedderV2,
             paginationPageSize: 100
         )
         try await serviceV2.enqueueReembedJob(reason: "test-reembed-boundary", priority: 1)
 
-        let reembedReport = try await serviceV2.runSweep(maxJobs: 10)
+        let reembedReport = try await drainPacedReembed(
+            service: serviceV2,
+            store: store,
+            clock: reembedClock
+        )
         XCTAssertEqual(reembedReport.completedJobs, 1, "Re-embed job should complete.")
 
         let versionV2ID = EmbeddingIdentity.versionID(for: embedderV2.descriptor)

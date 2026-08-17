@@ -87,9 +87,18 @@ export function lazyKernel(
               return null as unknown as Kernel;
             }
             real = factory();
-            // If init was called before the module loaded, run it now.
+            // If init was called before the module loaded, run it now — unless
+            // the slot's GL context died while the chunk was in flight (rapid
+            // kernel switching under context-budget pressure). Compiling on a
+            // lost context only produces a spurious shader error; the engine's
+            // own contextlost path is already replacing this slot.
             if (pendingInit) {
-              real.init(pendingInit.ctx, pendingInit.frame);
+              const maybeGl = pendingInit.ctx as WebGL2RenderingContext;
+              const dead =
+                substrate === "webgl2" &&
+                typeof maybeGl.isContextLost === "function" &&
+                maybeGl.isContextLost();
+              if (!dead) real.init(pendingInit.ctx, pendingInit.frame);
               pendingInit = null;
             }
             // Replay a static frame requested during load (reduced-motion path).

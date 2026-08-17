@@ -134,6 +134,47 @@ final class ProjectionStore: Sendable {
         }
     }
 
+    /// Returns the next instant at which any live queue row can be claimed.
+    ///
+    /// Queued/failed work is governed by `availableAt`; abandoned leased/running
+    /// work becomes claimable at lease expiry. This lets the app arm one delayed
+    /// wake instead of polling future work in a tight loop.
+    func nextJobLeaseOpportunity() async throws -> Date? {
+        try await dbQueue.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT CASE
+                    WHEN status IN (?, ?) THEN availableAt
+                    ELSE leaseExpiresAt
+                END AS claimableAt
+                FROM projection_jobs
+                WHERE attempts < maxAttempts
+                  AND (
+                    status IN (?, ?)
+                    OR (
+                        status IN (?, ?)
+                        AND leaseExpiresAt IS NOT NULL
+                    )
+                  )
+                ORDER BY claimableAt ASC
+                LIMIT 1
+                """,
+                arguments: [
+                    ProjectionJobStatus.queued.rawValue,
+                    ProjectionJobStatus.failed.rawValue,
+                    ProjectionJobStatus.queued.rawValue,
+                    ProjectionJobStatus.failed.rawValue,
+                    ProjectionJobStatus.leased.rawValue,
+                    ProjectionJobStatus.running.rawValue
+                ]
+            ) else {
+                return nil
+            }
+            return OpenBurnBarDatabase.parseDateValue(row["claimableAt"])
+        }
+    }
+
     func hasProjectionJobs(
         statuses: [ProjectionJobStatus],
         jobTypes: [ProjectionJobType]
@@ -308,6 +349,42 @@ final class ProjectionStore: Sendable {
                     ProjectionJobStatus.completed.rawValue,
                     completedAt,
                     completedAt,
+                    id,
+                    leaseOwner,
+                    ProjectionJobStatus.leased.rawValue,
+                    ProjectionJobStatus.running.rawValue
+                ]
+            )
+            return (try Int.fetchOne(db, sql: "SELECT changes()") ?? 0) == 1
+        }
+    }
+
+    /// Persists a successfully processed slice back onto the same queue row.
+    ///
+    /// Attempts are intentionally unchanged: this is cooperative pacing, not a
+    /// failure retry. Keeping the same row avoids an unbounded chain of tiny
+    /// continuation jobs while preserving crash/relaunch recovery.
+    @discardableResult
+    func deferJob(
+        id: String,
+        leaseOwner: String,
+        availableAt: Date,
+        updatedAt: Date
+    ) async throws -> Bool {
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: """
+                UPDATE projection_jobs
+                SET status = ?, availableAt = ?, leaseOwner = NULL, leaseExpiresAt = NULL,
+                    completedAt = NULL, lastErrorCode = NULL, lastErrorMessage = NULL, updatedAt = ?
+                WHERE id = ?
+                  AND leaseOwner = ?
+                  AND status IN (?, ?)
+                """,
+                arguments: [
+                    ProjectionJobStatus.queued.rawValue,
+                    availableAt,
+                    updatedAt,
                     id,
                     leaseOwner,
                     ProjectionJobStatus.leased.rawValue,

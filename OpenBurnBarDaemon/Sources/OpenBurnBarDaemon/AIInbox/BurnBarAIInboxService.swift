@@ -318,10 +318,10 @@ actor BurnBarAIInboxService {
         // that end in "nothing changed". So the gate reads a `stat`-only
         // fingerprint, and the real snapshot is taken inside the pipeline, only
         // once the gate has actually opened.
-        let recentPaths = ((try? store.recentConversations(
+        let recentPaths = (try? store.recentConversationWorkingDirectories(
             since: now.addingTimeInterval(-Double(config.lookbackMinutes) * 60),
             limit: BurnBarAIInboxEvidencePackBuilder.maxConversations
-        )) ?? []).compactMap(\.workingDirectory)
+        )) ?? []
 
         let decision = changeGate.decide(
             config: config,

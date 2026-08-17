@@ -52,6 +52,15 @@ function fixtureRollup(): UsageRollup {
   dailyPoints.sort((a, b) => (a.day < b.day ? -1 : 1));
 
   const totalTokens = dailyPoints.reduce((n, p) => n + p.tokens, 0);
+  // Per-day provider split (counter schema v3 shape) — jittered around the
+  // 58/31/11 provider mix so heatmap hover cards have honest variety.
+  const dailyProviderTokens: Record<string, Record<string, number>> = {};
+  for (const p of dailyPoints) {
+    const a = Math.round(p.tokens * (0.5 + rand() * 0.16));
+    const o = Math.round(p.tokens * (0.24 + rand() * 0.12));
+    const m = Math.max(0, p.tokens - a - o);
+    dailyProviderTokens[p.day] = { anthropic: a, openai: o, moonshot: m };
+  }
   return {
     window: "all_time",
     totals: { requests: 6_994, tokens: totalTokens, costUsd: 1_284.17 },
@@ -71,7 +80,22 @@ function fixtureRollup(): UsageRollup {
       { deviceId: "studio-macbook", requests: 5_102, tokens: Math.round(totalTokens * 0.81) },
       { deviceId: "home-mini", requests: 1_892, tokens: Math.round(totalTokens * 0.19) },
     ],
+    executionSourceSummaries: [
+      { sourceId: "claude-code", sourceName: "Claude Code", totalRequests: 3_204, totalTokens: Math.round(totalTokens * 0.52), totalCost: 701.3 },
+      { sourceId: "codex", sourceName: "Codex", totalRequests: 2_106, totalTokens: Math.round(totalTokens * 0.27), totalCost: 342.6 },
+      { sourceId: "kimi", sourceName: "Kimi Code", totalRequests: 981, totalTokens: Math.round(totalTokens * 0.12), totalCost: 118.4 },
+      { sourceId: "cursor", sourceName: "Cursor", totalRequests: 512, totalTokens: Math.round(totalTokens * 0.06), totalCost: 84.2 },
+      { sourceId: "factory", sourceName: "Factory Droid", totalRequests: 191, totalTokens: Math.round(totalTokens * 0.03), totalCost: 37.67 },
+    ],
+    comboSummaries: [
+      { sourceId: "claude-code", sourceName: "Claude Code", provider: "anthropic", model: "claude-opus-4.6", requests: 2_110, tokens: Math.round(totalTokens * 0.33), cost: 498.4 },
+      { sourceId: "codex", sourceName: "Codex", provider: "openai", model: "gpt-5.3-codex", requests: 1_874, tokens: Math.round(totalTokens * 0.24), cost: 301.5 },
+      { sourceId: "claude-code", sourceName: "Claude Code", provider: "anthropic", model: "claude-sonnet-4.6", requests: 1_094, tokens: Math.round(totalTokens * 0.19), cost: 202.9 },
+      { sourceId: "kimi", sourceName: "Kimi Code", provider: "moonshot", model: "kimi-k2.5", requests: 981, tokens: Math.round(totalTokens * 0.11), cost: 112.87 },
+      { sourceId: "cursor", sourceName: "Cursor", provider: "openai", model: "gpt-5.3", requests: 327, tokens: Math.round(totalTokens * 0.07), cost: 57.4 },
+    ],
     dailyPoints,
+    dailyProviderTokens,
     computedAt: "2026-08-16T07:00:00.000Z",
   };
 }
@@ -94,6 +118,7 @@ vi.mock("@/lib/profile/useProfileUsage", () => ({
     rollup: fixtureRollup(),
     source: "live" as const,
     loading: false,
+    syncing: false,
     error: null,
     reload: () => {},
   }),

@@ -10,6 +10,20 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 # Example: OPENBURNBAR_SWIFT_SCRATCH_ROOT=/tmp/openburnbar-swift ./scripts/test-openburnbar-swift.sh
 swift_scratch_root="${OPENBURNBAR_SWIFT_SCRATCH_ROOT:-}"
 
+# SwiftPM links every test target in OpenBurnBarCore into one package-test
+# executable. On macOS that aggregate would otherwise contain both
+# OpenBurnBarIroh.xcframework and BurnBarRemote.xcframework, which are Rust
+# static archives that each export `_rust_eh_personality`. Keep the aggregate
+# suite on the iroh-native graph and exercise the real BurnBarRemote archive in
+# its dedicated one-archive smoke package below. Xcode app builds explicitly
+# clear this seam and continue to resolve their normal production graph.
+if [[ "$(uname -s)" == "Darwin" \
+      && -d "${repo_root}/Vendor/OpenBurnBarIroh.xcframework" \
+      && -d "${repo_root}/Vendor/BurnBarRemote.xcframework" \
+      && -z "${OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK+x}" ]]; then
+  export OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK=1
+fi
+
 # When the focused domain-core consumer job requires the native Rust domain-core
 # artifact but does NOT need libsignal, skip building libsignal-ffi entirely and
 # gate the local LibSignalClient Swift package out of the package graph. This
@@ -127,6 +141,19 @@ run_swift_tests() {
 # the full Core suite on every PR.
 if [[ "${OPENBURNBAR_SKIP_CORE_SWIFT_TESTS:-}" != "1" ]]; then
   run_swift_tests "$repo_root/OpenBurnBarCore" "${OPENBURNBAR_CORE_SWIFT_FILTER:-}"
+
+  # Preserve native BurnBarRemote coverage even though the aggregate Core test
+  # graph scopes out its static archive. Focused non-remote Core filters keep
+  # their cheap behavior; the full gate and remote-focused runs execute this.
+  case "${OPENBURNBAR_CORE_SWIFT_FILTER:-}" in
+    ""|*BurnBarRemoteEngine*)
+      if [[ "$(uname -s)" == "Darwin" \
+            && -d "${repo_root}/Vendor/BurnBarRemote.xcframework" \
+            && "${OPENBURNBAR_SKIP_BURNBAR_REMOTE_SWIFT_SMOKE:-}" != "1" ]]; then
+        "${repo_root}/scripts/test-burnbar-remote-swift-smoke.sh"
+      fi
+      ;;
+  esac
 fi
 if [[ "${OPENBURNBAR_SKIP_DAEMON_SWIFT_TESTS:-}" != "1" ]]; then
   run_swift_tests "$repo_root/OpenBurnBarDaemon" "${OPENBURNBAR_DAEMON_SWIFT_FILTER:-}"

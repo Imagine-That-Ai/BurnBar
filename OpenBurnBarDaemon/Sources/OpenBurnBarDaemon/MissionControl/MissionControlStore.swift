@@ -49,8 +49,16 @@ public actor BurnBarMissionControlStore {
     public func project(slug: String) throws -> BurnBarReviewProjectSnapshot? {
         try ensureLoaded()
         let canonicalSlug = try canonicalProjectSlug(slug)
-        return summaryEnricher.enrichedProjects()
-            .first(where: { $0.projectSlug == canonicalSlug })
+        return summaryEnricher.enrichedProject(slug: canonicalSlug)
+    }
+
+    /// Returns the durable registry value without rebuilding derived Mission
+    /// Control counts. Activity ingestion calls this once per project and only
+    /// needs persisted identity/configuration fields, not a public enrichment.
+    func registryProject(slug: String) throws -> BurnBarReviewProjectSnapshot? {
+        try ensureLoaded()
+        let canonicalSlug = try canonicalProjectSlug(slug)
+        return projection?.projects[canonicalSlug]
     }
 
     public func projects(_ request: BurnBarControllerProjectsListRequest) throws -> [BurnBarReviewProjectSnapshot] {

@@ -285,6 +285,40 @@ final class AIInboxStoreTests: XCTestCase {
         XCTAssertEqual(rows.first?.id, "conv-grdb")
     }
 
+    /// The five-minute change gate only needs workspace paths. A minimal table
+    /// makes this test fail if the query ever starts selecting transcript
+    /// lengths, message bodies, summaries, or other evidence-pack columns.
+    func test_recentConversationWorkingDirectoriesUsesMetadataOnlyQuery() throws {
+        try store.execute(
+            """
+            CREATE TABLE conversations (
+                startTime DATETIME,
+                endTime DATETIME,
+                workingDirectory TEXT
+            )
+            """,
+            []
+        )
+        try store.execute(
+            """
+            INSERT INTO conversations (startTime, endTime, workingDirectory)
+            VALUES (?, ?, ?), (?, ?, NULL)
+            """,
+            [
+                .text("2026-08-04 21:25:00.000"),
+                .text("2026-08-04 21:25:00.000"),
+                .text("/tmp/burnbar"),
+                .text("2026-08-04 21:20:00.000"),
+                .text("2026-08-04 21:20:00.000")
+            ]
+        )
+
+        let since = try XCTUnwrap(Self.date("2026-08-04 19:30:00.000"))
+        let paths = try store.recentConversationWorkingDirectories(since: since, limit: 10)
+
+        XCTAssertEqual(paths, ["/tmp/burnbar"])
+    }
+
     func test_conversationWatermarkSeesGRDBFormattedRows() throws {
         try seedConversation(id: "c1", storedTimestamp: "2026-08-04 21:25:00.000", messageCount: 3)
         let since = try XCTUnwrap(Self.date("2026-08-04 19:30:00.000"))

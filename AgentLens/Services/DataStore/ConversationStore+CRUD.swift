@@ -159,6 +159,12 @@ extension ConversationStore {
                         summaryModelOut
                     ]
                 )
+                try Self.upsertProjectionContentHash(
+                    conversationID: record.id,
+                    contentHash: ProjectionIdentity.conversationContentHash(for: record),
+                    updatedAt: record.indexedAt,
+                    db: db
+                )
             return existing?.deletedAt == nil
         }
 
@@ -209,6 +215,57 @@ extension ConversationStore {
             }
         }
 
+        /// Metadata-only activity feed for the daemon controller snapshot.
+        ///
+        /// Do not widen this projection to `SELECT *`: `fullText` and
+        /// `lastAssistantMessage` can live on thousands of encrypted overflow
+        /// pages. The controller snapshot does not consume those fields, and
+        /// loading them caused startup to decrypt the multi-gigabyte transcript
+        /// corpus into memory.
+        func fetchConversationActivitySummaries(limit: Int) async throws -> [ConversationActivitySummary] {
+            guard limit > 0 else { return [] }
+            return try await dbQueue.read { db in
+                let rows = try Row.fetchAll(
+                    db,
+                    sql: """
+                    SELECT
+                        id,
+                        sessionId,
+                        projectName,
+                        startTime,
+                        endTime,
+                        indexedAt,
+                        inferredTaskTitle,
+                        summary,
+                        summaryTitle
+                    FROM conversations
+                    WHERE deletedAt IS NULL
+                    ORDER BY COALESCE(endTime, startTime, indexedAt) DESC
+                    LIMIT ?
+                    """,
+                    arguments: [limit]
+                )
+                return rows.compactMap { row in
+                    guard let id = row["id"] as? String,
+                          let sessionId = row["sessionId"] as? String,
+                          let projectName = row["projectName"] as? String else {
+                        return nil
+                    }
+                    return ConversationActivitySummary(
+                        id: id,
+                        sessionId: sessionId,
+                        projectName: projectName,
+                        startTime: OpenBurnBarDatabase.parseDateValue(row["startTime"]),
+                        endTime: OpenBurnBarDatabase.parseDateValue(row["endTime"]),
+                        indexedAt: OpenBurnBarDatabase.parseDateValue(row["indexedAt"]) ?? .distantPast,
+                        inferredTaskTitle: (row["inferredTaskTitle"] as? String) ?? "",
+                        summary: row["summary"] as? String,
+                        summaryTitle: row["summaryTitle"] as? String
+                    )
+                }
+            }
+        }
+
         func fetchConversationsSynchronously(limit: Int = 500) throws -> [OpenBurnBarCore.ConversationRecord] {
             try dbQueue.read { db in
                 let rows = try Row.fetchAll(
@@ -252,6 +309,89 @@ extension ConversationStore {
                     arguments: StatementArguments(uniqueIDs)
                 )
                 return rows.compactMap { Self.conversation(from: $0) }
+            }
+        }
+
+        /// Fetches only revision columns, never transcript payloads.
+        ///
+        /// Chunking keeps each `IN` clause below SQLite's conservative
+        /// parameter limit while the enclosing read preserves one snapshot.
+        func fetchConversationProjectionRevisions(
+            ids: [String]
+        ) async throws -> [ConversationProjectionRevision] {
+            guard ids.isEmpty == false else { return [] }
+            let uniqueIDs = Array(Set(ids)).sorted()
+            let chunkSize = 500
+            return try await dbQueue.read { db in
+                var revisions: [ConversationProjectionRevision] = []
+                revisions.reserveCapacity(uniqueIDs.count)
+                for chunkStart in stride(from: 0, to: uniqueIDs.count, by: chunkSize) {
+                    let chunkEnd = min(chunkStart + chunkSize, uniqueIDs.count)
+                    let chunk = Array(uniqueIDs[chunkStart..<chunkEnd])
+                    var arguments = StatementArguments([Self.projectionHashCacheKeyPrefix])
+                    arguments += StatementArguments(chunk)
+                    let rows = try Row.fetchAll(
+                        db,
+                        sql: """
+                        SELECT
+                            c.id AS id,
+                            c.startTime AS startTime,
+                            c.endTime AS endTime,
+                            c.indexedAt AS indexedAt,
+                            c.fileModifiedAt AS fileModifiedAt,
+                            r.payloadJSON AS projectionHashJSON
+                        FROM conversations c
+                        LEFT JOIN controller_runtime_cache r
+                          ON r.cacheKey = ? || c.id
+                        WHERE c.id IN (\(OpenBurnBarDatabase.sqlPlaceholders(count: chunk.count)))
+                          AND c.deletedAt IS NULL
+                        """,
+                        arguments: arguments
+                    )
+                    revisions.append(contentsOf: rows.compactMap { row in
+                        guard let id = row["id"] as? String,
+                              let indexedAt = OpenBurnBarDatabase.parseDateValue(row["indexedAt"]) else {
+                            return nil
+                        }
+                        return ConversationProjectionRevision(
+                            id: id,
+                            startTime: OpenBurnBarDatabase.parseDateValue(row["startTime"]),
+                            endTime: OpenBurnBarDatabase.parseDateValue(row["endTime"]),
+                            indexedAt: indexedAt,
+                            fileModifiedAt: OpenBurnBarDatabase.parseDateValue(row["fileModifiedAt"]),
+                            contentHash: Self.decodeProjectionContentHash(row["projectionHashJSON"] as? String)
+                        )
+                    })
+                }
+                return revisions
+            }
+        }
+
+        /// Seeds projection hashes for rows created before the lightweight
+        /// revision cache existed. `DO NOTHING` is deliberate: a concurrent
+        /// conversation upsert may already have stored a newer authoritative
+        /// hash, and a legacy search-document baseline must never overwrite it.
+        func cacheConversationProjectionHashesIfMissing(
+            _ contentHashesByID: [String: String],
+            updatedAt: Date
+        ) async throws {
+            guard contentHashesByID.isEmpty == false else { return }
+            try await dbQueue.write { db in
+                for conversationID in contentHashesByID.keys.sorted() {
+                    guard let contentHash = contentHashesByID[conversationID] else { continue }
+                    try db.execute(
+                        sql: """
+                        INSERT INTO controller_runtime_cache (cacheKey, payloadJSON, updatedAt)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(cacheKey) DO NOTHING
+                        """,
+                        arguments: [
+                            Self.projectionHashCacheKey(conversationID: conversationID),
+                            try Self.encodeProjectionContentHash(contentHash),
+                            updatedAt
+                        ]
+                    )
+                }
             }
         }
 
@@ -505,6 +645,10 @@ extension ConversationStore {
         func deleteConversation(id: String) async throws {
             try await dbQueue.write { db in
                 try db.execute(sql: "DELETE FROM conversations WHERE id = ?", arguments: [id])
+                try db.execute(
+                    sql: "DELETE FROM controller_runtime_cache WHERE cacheKey = ?",
+                    arguments: [Self.projectionHashCacheKey(conversationID: id)]
+                )
             }
         }
 
@@ -632,6 +776,16 @@ extension ConversationStore {
                 try db.execute(
                     sql: "UPDATE conversations SET fullText = ? WHERE id = ?",
                     arguments: [fullText, id]
+                )
+                guard db.changesCount > 0,
+                      let conversation = try Self.fetchConversationRow(db, id: id) else {
+                    return
+                }
+                try Self.upsertProjectionContentHash(
+                    conversationID: id,
+                    contentHash: ProjectionIdentity.conversationContentHash(for: conversation),
+                    updatedAt: conversation.indexedAt,
+                    db: db
                 )
             }
         }

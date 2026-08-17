@@ -451,6 +451,13 @@ populate_xcodebuild_args() {
     if [[ -n "${OPENBURNBAR_SNAPSHOT_RECORD:-}" ]]; then
         xcodebuild_args+=("TEST_RUNNER_SNAPSHOT_TESTING_RECORD=${OPENBURNBAR_SNAPSHOT_RECORD}")
     fi
+    if [[ "${TEST_RUNNER_OPENBURNBAR_SKIP_SNAPSHOTS:-}" == "true" ]]; then
+        # Exported TEST_RUNNER_* values are not forwarded consistently by
+        # every Xcode/macOS test-host combination. Pass the guard as an
+        # explicit test-runner build setting so the normal full-suite gate
+        # cannot wedge while opening source-tree snapshot references.
+        xcodebuild_args+=("TEST_RUNNER_OPENBURNBAR_SKIP_SNAPSHOTS=true")
+    fi
 }
 
 if [[ "${CI:-}" == "true" ]]; then

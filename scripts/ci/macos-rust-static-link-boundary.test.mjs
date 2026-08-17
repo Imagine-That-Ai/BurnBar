@@ -17,6 +17,10 @@ const corePackageManifest = readFileSync(
   join(repositoryRoot, "OpenBurnBarCore/Package.swift"),
   "utf8",
 );
+const grdbSQLCipherPackageManifest = readFileSync(
+  join(repositoryRoot, "Vendor/GRDB-SQLCipher/Package.swift"),
+  "utf8",
+);
 const remoteEngineSupport = readFileSync(
   join(
     repositoryRoot,
@@ -27,15 +31,24 @@ const remoteEngineSupport = readFileSync(
 const seam = "OPENBURNBAR_DISABLE_BURNBAR_REMOTE_XCFRAMEWORK";
 const remoteFeature = "OPENBURNBAR_HAS_BURNBAR_REMOTE_FFI";
 
-test("standalone daemon builds scope out the second Rust static runtime", () => {
+test("standalone daemon and CLI builds scope out the second Rust static runtime", () => {
   const daemonBuildPattern = new RegExp(
-    `${seam}=1 swift build --package-path \\$\\(DAEMON_PACKAGE\\) -c release`,
+    `${seam}=1 swift build --package-path \\$\\(DAEMON_PACKAGE\\) -c release --product \\$\\(DAEMON_BIN\\)`,
+    "gu",
+  );
+  const cliBuildPattern = new RegExp(
+    `${seam}=1 swift build --package-path \\$\\(DAEMON_PACKAGE\\) -c release --product \\$\\(DAEMON_CLI_BIN\\)`,
     "gu",
   );
   assert.equal(
     [...makefile.matchAll(daemonBuildPattern)].length,
     2,
-    "both build and build-signed must apply the seam only to the standalone daemon",
+    "both build and build-signed must apply the seam to the standalone daemon",
+  );
+  assert.equal(
+    [...makefile.matchAll(cliBuildPattern)].length,
+    2,
+    "both build and build-signed must apply the seam to the signed daemon CLI",
   );
 });
 
@@ -71,10 +84,60 @@ test("release smoke clears the seam before app and release-build proofs", () => 
   );
   assert.ok(
     releaseSmoke.indexOf(`unset ${seam}`)
-      < releaseSmoke.indexOf('make -C "$repo_root" build'),
+      < releaseSmoke.indexOf('make -C "$repo_root" build-signed'),
     "the seam must be cleared before the Release app build",
   );
   assert.doesNotMatch(releaseSmoke, new RegExp(`export ${seam}`, "u"));
+});
+
+test("release smoke exercises the signed daemon through the signed installed-layout CLI", () => {
+  assert.match(
+    releaseSmoke,
+    /OpenBurnBar Release smoke requires an Apple Development code-signing identity/u,
+  );
+  assert.match(releaseSmoke, /make -C "\$repo_root" build-signed/u);
+  assert.match(
+    releaseSmoke,
+    /cli_bin="\$app_path\/Contents\/Helpers\/OpenBurnBarCLI"/u,
+  );
+  assert.match(
+    releaseSmoke,
+    /installed_cli_bin="\$installed_daemon_dir\/OpenBurnBarCLI"/u,
+  );
+  assert.match(releaseSmoke, /--socket-auth-token-file/u);
+  assert.match(
+    releaseSmoke,
+    /OPENBURNBAR_DAEMON_SOCKET_PATH="\$socket_path"/u,
+  );
+  assert.match(releaseSmoke, /python3 - "\$installed_cli_bin"/u);
+  assert.match(releaseSmoke, /\[cli, "health"\]/u);
+  assert.match(
+    releaseSmoke,
+    /Authenticated daemon health RPC passed via installed-layout OpenBurnBarCLI/u,
+  );
+  assert.doesNotMatch(releaseSmoke, /import socket/u);
+  assert.doesNotMatch(releaseSmoke, /"method": "daemon\.health"/u);
+  assert.doesNotMatch(
+    releaseSmoke,
+    /"OPENBURNBAR_DAEMON_SOCKET_AUTH_TOKEN": "\$\{socket_auth_token\}"/u,
+  );
+});
+
+test("Apple daemon builds use the packaged SQLCipher framework without a second system runtime", () => {
+  assert.match(
+    grdbSQLCipherPackageManifest,
+    /pkgConfig: useSystemSQLCipher && explicitSQLCipherLibrary == nil \? "sqlcipher" : nil/u,
+    "pkg-config must be limited to explicit system-SQLCipher builds",
+  );
+  assert.match(
+    grdbSQLCipherPackageManifest,
+    /The SQLCipher\.swift binary target supplies the Apple-platform/u,
+  );
+  assert.doesNotMatch(
+    grdbSQLCipherPackageManifest,
+    /pkgConfig: explicitSQLCipherLibrary == nil \? "sqlcipher" : nil/u,
+    "default Apple builds must not inherit a machine-local Homebrew SQLCipher dylib",
+  );
 });
 
 test("release smoke verifies the core runtime according to the actual Mach-O graph", () => {

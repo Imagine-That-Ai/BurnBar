@@ -53,6 +53,10 @@ extension DataStore {
         try await actor.projectionStore.countProjectionJobsByStatus()
     }
 
+    func nextProjectionJobLeaseOpportunity() async throws -> Date? {
+        try await actor.projectionStore.nextJobLeaseOpportunity()
+    }
+
     func compactConversationProjectionBacklog() async throws -> Int {
         try await actor.projectionStore.compactConversationProjectionBacklog()
     }
@@ -98,6 +102,21 @@ extension DataStore {
     @discardableResult
     func markProjectionJobCompleted(id: String, leaseOwner: String, completedAt: Date = Date()) async throws -> Bool {
         try await actor.projectionStore.markJobCompleted(id: id, leaseOwner: leaseOwner, completedAt: completedAt)
+    }
+
+    @discardableResult
+    func deferProjectionJob(
+        id: String,
+        leaseOwner: String,
+        availableAt: Date,
+        updatedAt: Date = Date()
+    ) async throws -> Bool {
+        try await actor.projectionStore.deferJob(
+            id: id,
+            leaseOwner: leaseOwner,
+            availableAt: availableAt,
+            updatedAt: updatedAt
+        )
     }
 
     @discardableResult

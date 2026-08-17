@@ -27,14 +27,38 @@ function pts(...entries: [string, number][]): DailyPoint[] {
 let container: HTMLDivElement;
 let root: Root;
 
-function render(points: DailyPoint[], mode: "daily" | "weekly" | "cumulative") {
+function render(
+  points: DailyPoint[],
+  mode: "daily" | "weekly" | "cumulative",
+  today = TODAY,
+  dailyProviderTokens?: Record<string, Record<string, number>>,
+) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => {
-    root.render(<ContributionHeatmap points={points} mode={mode} today={TODAY} />);
+    root.render(
+      <ContributionHeatmap
+        points={points}
+        mode={mode}
+        today={today}
+        dailyProviderTokens={dailyProviderTokens}
+      />,
+    );
   });
   return container;
+}
+
+/** Hover a day cell. React synthesizes mouseenter from a bubbling mouseover. */
+function hoverDay(el: HTMLElement, dayLabelPrefix: string) {
+  const rect = [...el.querySelectorAll("rect")].find((r) =>
+    r.getAttribute("aria-label")?.startsWith(dayLabelPrefix),
+  );
+  expect(rect, `cell for ${dayLabelPrefix}`).toBeTruthy();
+  act(() => {
+    rect!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  });
+  return rect!;
 }
 
 afterEach(() => {
@@ -87,5 +111,93 @@ describe("ContributionHeatmap", () => {
     expect(
       [...rects].every((r) => r.getAttribute("fill") === "var(--color-mercury-wash)"),
     ).toBe(true);
+  });
+
+  it("grids from the earliest day even when points arrive unsorted", () => {
+    const el = render(pts(["2026-08-16", 300], ["2026-08-14", 100]), "daily");
+    const labels = [...el.querySelectorAll("rect")].map((r) => r.getAttribute("aria-label"));
+    expect(labels.some((l) => l?.startsWith("Aug 14"))).toBe(true);
+    expect(labels.some((l) => l?.startsWith("Aug 13"))).toBe(false);
+  });
+
+  it("never crowds month labels — a late-month start drops the next label", () => {
+    // Grid starts Sat Aug 29 2026 (column 0 = week of Aug 23, labeled "Aug").
+    // September's first column is only one column over, so "Sep" must not
+    // render cheek-by-jowl with "Aug".
+    const el = render(pts(["2026-08-29", 100]), "daily", "2026-09-01");
+    const texts = [...el.querySelectorAll("text")].map((t) => t.textContent);
+    expect(texts).toContain("Aug");
+    expect(texts).not.toContain("Sep");
+  });
+
+  it("renders the Less→More scale legend with the five grid swatches", () => {
+    const el = render(pts(["2026-08-14", 100]), "daily");
+    const legend = el.querySelector('[aria-label="Heatmap scale from less to more tokens"]');
+    expect(legend).toBeTruthy();
+    expect(legend?.textContent).toBe("LessMore");
+    expect(legend?.querySelectorAll("span[aria-hidden]").length).toBe(5);
+  });
+
+  it("hovering a day opens the card with the exact token count, and leaving closes it", () => {
+    const el = render(pts(["2026-08-14", 123_456]), "daily");
+    expect(el.textContent).not.toContain("123,456");
+    const rect = hoverDay(el, "Aug 14");
+    expect(el.textContent).toContain("123,456");
+    expect(el.textContent).toContain("tokens");
+    // The hovered cell gets the accent-deep stroke ring.
+    expect(rect.getAttribute("stroke")).toBe("var(--accent-deep)");
+    const svg = el.querySelector("svg")!;
+    act(() => {
+      svg.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+    });
+    expect(el.textContent).not.toContain("123,456");
+  });
+
+  it("hover card breaks the day down by provider when the split is present", () => {
+    const el = render(pts(["2026-08-14", 1000]), "daily", TODAY, {
+      "2026-08-14": { anthropic: 500, openai: 300, moonshot: 150, google: 50 },
+    });
+    hoverDay(el, "Aug 14");
+    const card = el.querySelector(".glass-pane--elevated")!;
+    expect(card.textContent).toContain("anthropic");
+    expect(card.textContent).toContain("50%");
+    expect(card.textContent).toContain("openai");
+    expect(card.textContent).toContain("30%");
+    expect(card.textContent).toContain("moonshot");
+    expect(card.textContent).toContain("15%");
+    // Fourth provider folds into "other".
+    expect(card.textContent).not.toContain("google");
+    expect(card.textContent).toContain("other");
+    expect(card.textContent).toContain("5%");
+  });
+
+  it("hover card shows tokens only when the day has no provider split", () => {
+    const el = render(pts(["2026-08-14", 700]), "daily", TODAY, {});
+    hoverDay(el, "Aug 14");
+    const card = el.querySelector(".glass-pane--elevated")!;
+    expect(card.textContent).toContain("700");
+    expect(card.querySelector("ul")).toBeNull();
+  });
+
+  it("provider split stays out of weekly mode even when data exists", () => {
+    const el = render(pts(["2026-08-14", 1000]), "weekly", TODAY, {
+      "2026-08-14": { anthropic: 1000 },
+    });
+    hoverDay(el, "Week of Aug 9");
+    const card = el.querySelector(".glass-pane--elevated")!;
+    expect(card.textContent).toContain("1,000");
+    expect(card.textContent).toContain("tokens that week");
+    expect(card.querySelector("ul")).toBeNull();
+  });
+
+  it("positions the card above mid-grid cells and flips it below the top rows", () => {
+    // 2026-08-16 is a Sunday → row 0; 2026-08-18 is a Tuesday → row 2.
+    const el = render(pts(["2026-08-16", 100], ["2026-08-18", 200]), "daily", "2026-08-22");
+    hoverDay(el, "Aug 16");
+    let card = el.querySelector<HTMLElement>(".glass-pane--elevated")!;
+    expect(card.style.transform).toBe("translate(-50%, 0)"); // flipped below
+    hoverDay(el, "Aug 18");
+    card = el.querySelector<HTMLElement>(".glass-pane--elevated")!;
+    expect(card.style.transform).toBe("translate(-50%, -100%)"); // above
   });
 });
