@@ -181,7 +181,6 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
         let freshest = parsed
             .compactMap { $0.updatedAt }
             .max()
-        let hasMalformed = degradedReason != nil
 
         if let freshest, now.timeIntervalSince(freshest) <= freshnessSeconds {
             // Dead pid but the file is fresh: confidence ladder step-down.
@@ -194,11 +193,11 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
                 lastActivityAt: freshest,
                 signals: signals,
                 note: "Session file present but its pid is not alive; confidence downgraded.",
-                healthState: hasMalformed ? .degraded(reason: degradedReason!) : .ok
+                healthState: degradedReason.map { .degraded(reason: $0) } ?? .ok
             )
         }
 
-        if hasMalformed {
+        if let degradedReason {
             // Valid JSON with a missing/mistyped required key: typed unknown,
             // never fabricated running.
             return BurnBarFleetProbeSupport.result(
@@ -209,7 +208,7 @@ public struct BurnBarFleetClaudeCodeProbe: BurnBarFleetProbe {
                 confidence: .unsupported,
                 signals: signals,
                 note: "Session file(s) present but malformed; status unknown.",
-                healthState: .degraded(reason: degradedReason!)
+                healthState: .degraded(reason: degradedReason)
             )
         }
 

@@ -59,7 +59,8 @@ protocol BurnBarFleetDirectiveChannel: Sendable {
 /// implements this contract for validation; the real gateway is the same
 /// documented endpoint.
 final class HermesDirectiveChannel: BurnBarFleetDirectiveChannel, Sendable {
-    private static let defaultGatewayURL = URL(string: "http://127.0.0.1:8642")!
+    private static let defaultGatewayURL = URL(string: "http://127.0.0.1:8642")
+        ?? URL(fileURLWithPath: "/invalid-hermes-gateway")
 
     /// The default gateway base URL. Overridable via
     /// `BURNBAR_HERMES_GATEWAY_URL` so hermetic validation can point the app

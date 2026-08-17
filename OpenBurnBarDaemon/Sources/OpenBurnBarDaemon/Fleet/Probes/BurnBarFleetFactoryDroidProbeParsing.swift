@@ -84,7 +84,7 @@ extension BurnBarFleetFactoryDroidProbe {
                         malformedReason: "Invocation is missing a string status or numeric updatedAt."
                     )
                 )
-            } else if !isKnownStatus(status!) {
+            } else if let status, !isKnownStatus(status) {
                 // Unknown status strings (e.g. "bogus") are malformed: they
                 // never count as non-terminal and never yield running.
                 malformedCount += 1
@@ -93,7 +93,7 @@ extension BurnBarFleetFactoryDroidProbe {
                         cwd: cwd,
                         updatedAt: updatedAt,
                         status: status,
-                        malformedReason: "Invocation status '\(status!)' is not in the documented vocabulary."
+                        malformedReason: "Invocation status '\(status)' is not in the documented vocabulary."
                     )
                 )
             } else {

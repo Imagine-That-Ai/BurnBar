@@ -60,7 +60,7 @@ public struct BurnBarFleetPiProbe: BurnBarFleetProbe {
             if let reason = transcript.malformedReason {
                 healthReasons.append(reason)
             }
-            if let mtime = transcript.mtime, freshest == nil || mtime > freshest! {
+            if let mtime = transcript.mtime, freshest.map({ mtime > $0 }) ?? true {
                 freshest = mtime
                 freshestProject = transcript.projectName
             }
