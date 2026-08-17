@@ -78,7 +78,8 @@ final class FirstRunRevealModelTests: XCTestCase {
         )
 
         guard case .spend(let hero) = model.phase else {
-            return XCTFail("Cold install with real usage must land on the spend hero, got \(model.phase)")
+            XCTFail("Cold install with real usage must land on the spend hero, got \(model.phase)")
+            return
         }
         XCTAssertEqual(hero.monthToDateUSD, 312.40, accuracy: 0.001)
         XCTAssertEqual(hero.sessionCount, 1_284)
@@ -95,7 +96,8 @@ final class FirstRunRevealModelTests: XCTestCase {
         )
 
         guard case .quota(let window, _) = model.phase else {
-            return XCTFail("A real bucket must land on the quota hero, got \(model.phase)")
+            XCTFail("A real bucket must land on the quota hero, got \(model.phase)")
+            return
         }
         XCTAssertEqual(window.displayPercent, 38, "100 − 62 used = 38 remaining.")
     }
@@ -175,12 +177,14 @@ final class FirstRunRevealModelTests: XCTestCase {
         let model = FirstRunRevealModel(searchedPathCount: 32)
         model.ingest(snapshots: [], monthToDateUSD: 0, sessionCount: 0, detectedProviderDisplayNames: [])
         guard case .scanning = model.phase else {
-            return XCTFail("An empty store keeps scanning until the ceiling fires, got \(model.phase)")
+            XCTFail("An empty store keeps scanning until the ceiling fires, got \(model.phase)")
+            return
         }
 
         model.degrade()
         guard case .empty(let count) = model.phase else {
-            return XCTFail("Expected the empty reveal, got \(model.phase)")
+            XCTFail("Expected the empty reveal, got \(model.phase)")
+            return
         }
         XCTAssertEqual(count, 32, "The 'I looked in N places' count is rendered live.")
     }
@@ -197,7 +201,8 @@ final class FirstRunRevealModelTests: XCTestCase {
         model.degrade()
         model.reportProgress(fraction: 0.2)
         guard case .quota = model.phase else {
-            return XCTFail("A landed reveal must be terminal, got \(model.phase)")
+            XCTFail("A landed reveal must be terminal, got \(model.phase)")
+            return
         }
     }
 
@@ -215,7 +220,8 @@ final class FirstRunRevealModelTests: XCTestCase {
         )
 
         guard case .quota(_, let supporting) = model.phase else {
-            return XCTFail("Expected the quota hero, got \(model.phase)")
+            XCTFail("Expected the quota hero, got \(model.phase)")
+            return
         }
         XCTAssertLessThanOrEqual(supporting.count, 3, "A fourth row turns a glance into reading.")
         XCTAssertFalse(
