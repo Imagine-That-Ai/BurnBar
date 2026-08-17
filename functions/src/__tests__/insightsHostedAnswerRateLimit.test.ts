@@ -238,12 +238,12 @@ describe("insightsHostedAnswer monthly dollar cap", () => {
       inputTokens: 1000,
       outputTokens: 500,
     });
-    expect(ledger?.spentUSD as number).toBeGreaterThan(0);
+    expect(Number(ledger?.spentUSD)).toBeGreaterThan(0);
 
     // And the ops per-day rollup the margin dashboard reads.
     const dayKey = new Date().toISOString().slice(0, 10);
     const rollup = mocks.store.get(`ops/hosted_insights_daily_rollups/days/${dayKey}`);
     expect(rollup).toMatchObject({ dayKey, answerCount: 1 });
-    expect(rollup?.spendUSD as number).toBeCloseTo(ledger?.spentUSD as number, 10);
+    expect(Number(rollup?.spendUSD)).toBeCloseTo(Number(ledger?.spentUSD), 10);
   });
 });

@@ -22,7 +22,7 @@ final class ActivationSettings {
     /// The moment all five steps first read as done. Non-nil retires the card
     /// permanently; kept as a timestamp (not a Bool) so a future funnel can
     /// report time-to-activation without a schema change.
-    var checklistCompletedAt: Date? = nil {
+    var checklistCompletedAt: Date? {
         didSet {
             if let checklistCompletedAt {
                 persistence.set(checklistCompletedAt, forKey: "activationChecklistCompletedAt")

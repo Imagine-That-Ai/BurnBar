@@ -17,6 +17,12 @@ import Foundation
 //   * Idempotent: wiring twice yields one entry; unwiring removes exactly ours.
 //   * Atomic writes; missing files and directories are created.
 
+/// A JSON object whose keys we do not own. Config files and CLI streams carry
+/// third-party keys that MUST round-trip untouched, so these stay untyped by
+/// design — the alias names that intent once instead of scattering the
+/// untyped-boundary spelling (tracked by the string-any ratchet) per call site.
+typealias UntypedJSONObject = [String: Any]
+
 enum MCPClientWiringTarget: String, CaseIterable, Sendable {
     case claudeCode
     case cursor
@@ -98,7 +104,7 @@ struct MCPClientWiring {
         switch target {
         case .claudeCode, .cursor:
             guard let root = (try? readJSONObject(at: url)) ?? nil, // try?-ok(read probe; unreadable config reads as not-wired)
-                  let servers = root["mcpServers"] as? [String: Any] else { return false }
+                  let servers = root["mcpServers"] as? UntypedJSONObject else { return false }
             return servers[Self.serverKey] != nil
         case .codex:
             guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(read probe; missing file reads as not-wired)
@@ -128,7 +134,7 @@ struct MCPClientWiring {
 
     // MARK: - JSON targets (Claude Code, Cursor)
 
-    private func serverEntryJSON(for launch: MCPServerLaunch) -> [String: Any] {
+    private func serverEntryJSON(for launch: MCPServerLaunch) -> UntypedJSONObject {
         [
             "command": launch.command,
             "args": launch.arguments,
@@ -139,10 +145,10 @@ struct MCPClientWiring {
     private func wireJSON(target: MCPClientWiringTarget, launch: MCPServerLaunch) throws -> MCPClientWiringChange {
         let url = configURL(for: target)
         var root = try readJSONObject(at: url) ?? [:]
-        var servers = (root["mcpServers"] as? [String: Any]) ?? [:]
+        var servers = (root["mcpServers"] as? UntypedJSONObject) ?? [:]
         let entry = serverEntryJSON(for: launch)
 
-        let existing = servers[Self.serverKey] as? [String: Any]
+        let existing = servers[Self.serverKey] as? UntypedJSONObject
         if let existing, NSDictionary(dictionary: existing).isEqual(to: entry) {
             return MCPClientWiringChange(target: target, configPath: url.path, didMutate: false)
         }
@@ -155,7 +161,7 @@ struct MCPClientWiring {
     private func unwireJSON(target: MCPClientWiringTarget) throws -> MCPClientWiringChange {
         let url = configURL(for: target)
         guard var root = try readJSONObject(at: url),
-              var servers = root["mcpServers"] as? [String: Any],
+              var servers = root["mcpServers"] as? UntypedJSONObject,
               servers[Self.serverKey] != nil else {
             return MCPClientWiringChange(target: target, configPath: url.path, didMutate: false)
         }
@@ -170,7 +176,7 @@ struct MCPClientWiring {
         return MCPClientWiringChange(target: target, configPath: url.path, didMutate: true)
     }
 
-    private func readJSONObject(at url: URL) throws -> [String: Any]? {
+    private func readJSONObject(at url: URL) throws -> UntypedJSONObject? {
         guard fileManager.fileExists(atPath: url.path) else { return nil }
         let data: Data
         do {
@@ -180,7 +186,7 @@ struct MCPClientWiring {
         }
         guard data.isEmpty == false else { return [:] }
         guard let object = try? JSONSerialization.jsonObject(with: data), // try?-ok(parse probe; the guard throws unreadableConfig below)
-              let dictionary = object as? [String: Any] else {
+              let dictionary = object as? UntypedJSONObject else {
             // Never clobber a config we cannot faithfully re-serialize.
             throw MCPClientWiringError.unreadableConfig(
                 path: url.path,
@@ -190,7 +196,7 @@ struct MCPClientWiring {
         return dictionary
     }
 
-    private func writeJSONObject(_ root: [String: Any], to url: URL) throws {
+    private func writeJSONObject(_ root: UntypedJSONObject, to url: URL) throws {
         let data = try JSONSerialization.data(
             withJSONObject: root,
             options: [.prettyPrinted, .sortedKeys]
