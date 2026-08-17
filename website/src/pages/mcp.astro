@@ -3,7 +3,7 @@ import BaseLayout from "@layouts/BaseLayout.astro";
 import { SITE } from "@data/site";
 
 /* ------------------------------------------------------------------
-   Three MCP surfaces — single source of truth for the channel cards.
+   Four MCP surfaces — single source of truth for the channel cards.
 ------------------------------------------------------------------- */
 const channels = [
   {
@@ -33,30 +33,49 @@ const channels = [
     transport: "Streamable HTTP",
     auth: "Short-lived HMAC bearer (audience-bound)",
     dataPath: "https://mcp.burnbar.ai/mcp",
-    tools: 8,
+    tools: 10,
     accent: "mercury",
     bullet: [
       "Search hits opaque token/semantic hashes — zero Storage reads",
       "Bodies and resume briefings decrypt on-device by default (local_decrypt_shim)",
-      "Per-client grant revoke from the OpenBurnBar app's Cloud Store"
+      "Per-client grant revoke from the OpenBurnBar app's Cloud Store",
+      "tools/list lists ten tools — the two knowledge tools need a knowledge:read grant (default grants lack it)"
     ]
   },
   {
     sigil: "03",
     band: "Bridge · stdio shim",
-    name: "openburnbar-mcp-remote",
-    runtime: "Node 22 · zero runtime deps",
+    name: "openburnbar",
+    runtime: "Node 22 · zero runtime deps · npm i -g openburnbar",
     audience: "Codex · Claude Code · Droid · Kimi · Forge",
     transport: "stdio ⇄ HTTPS",
     auth: "macOS Keychain → 0600 file → env var",
     dataPath: "→ https://mcp.burnbar.ai/mcp",
-    tools: 8,
+    tools: 10,
     accent: "ember",
     bullet: [
       "Bridges stdio-only clients to the hosted endpoint",
       "Performs the on-device decrypt that keeps privacy mode honest",
       "Adds openburnbar resume for print/copy/open handoff flows",
       "openburnbar mcp doctor proves the whole chain in one command"
+    ]
+  },
+  {
+    sigil: "04",
+    band: "Cursor Marketplace · plugin",
+    name: "Cursor Marketplace plugin",
+    runtime: "Cursor plugin · hosted HTTP · 2025-11-25 spec",
+    audience: "Cursor desktop Customize + Cloud Agents",
+    transport: "Streamable HTTP (plugin mcp.json)",
+    auth: "Plugin variable OPENBURNBAR_MCP_ACCESS_TOKEN (short-lived bearer)",
+    dataPath: "https://mcp.burnbar.ai/mcp",
+    tools: 10,
+    accent: "mercury",
+    bullet: [
+      "Installable Cursor Plugin — skills, commands, rules, and agents included",
+      "Cloud-Agent compatible: hosted HTTP + bearer, no local binary required",
+      "Same sealed-field honesty — titles/bodies stay ciphertext until the local shim decrypts",
+      "Distinct from the source-only editor extension (load-unpacked, no marketplace listing)"
     ]
   }
 ];
@@ -114,6 +133,18 @@ const hostedTools = [
     scope: "index:status",
     cost: "metadata",
     desc: "Describe the current user's hosted MCP availability, decrypt mode, scopes, and limits."
+  },
+  {
+    name: "burnbar_search_knowledge",
+    scope: "knowledge:read",
+    cost: "standard",
+    desc: "Search the member's E2EE Pensieve knowledge memory by an on-device-cloaked query vector. Sealed results require the local shim for decryption."
+  },
+  {
+    name: "burnbar_get_knowledge_document",
+    scope: "knowledge:read",
+    cost: "body",
+    desc: "Fetch one encrypted Pensieve knowledge chunk (atomic sealed envelope) for a resource returned by burnbar_search_knowledge."
   }
 ];
 
@@ -289,11 +320,12 @@ const hostedSnippets: Snippet[] = [
     label: "Codex CLI",
     meta: "~/.codex/config.toml — stdio shim, recommended",
     lines: [
-      "$ codex mcp add openburnbar -- openburnbar-mcp-remote mcp serve",
+      "$ npm i -g openburnbar",
+      "$ codex mcp add openburnbar -- openburnbar mcp serve",
       "# or paste this block into ~/.codex/config.toml",
       "",
       "[mcp_servers.openburnbar]",
-      'command = "openburnbar-mcp-remote"',
+      'command = "openburnbar"',
       'args = ["mcp", "serve"]',
       "startup_timeout_sec = 15",
       "tool_timeout_sec = 60"
@@ -318,7 +350,7 @@ const hostedSnippets: Snippet[] = [
       "{",
       '  "mcpServers": {',
       '    "openburnbar": {',
-      '      "command": "openburnbar-mcp-remote",',
+      '      "command": "openburnbar",',
       '      "args": ["mcp", "serve"]',
       "    }",
       "  }",
@@ -333,7 +365,7 @@ const hostedSnippets: Snippet[] = [
       "{",
       '  "mcpServers": {',
       '    "openburnbar": {',
-      '      "command": "openburnbar-mcp-remote",',
+      '      "command": "openburnbar",',
       '      "args": ["mcp", "serve"]',
       "    }",
       "  }",
@@ -348,7 +380,7 @@ const hostedSnippets: Snippet[] = [
       "$ openburnbar mcp install droid",
       "$ droid mcp add < ./openburnbar.droid.json",
       "$ droid mcp list",
-      "→ openburnbar · 8 tools · https://mcp.burnbar.ai/mcp"
+      "→ openburnbar · 10 tools · https://mcp.burnbar.ai/mcp"
     ]
   },
   {
@@ -358,7 +390,7 @@ const hostedSnippets: Snippet[] = [
     lines: [
       "$ openburnbar mcp install kimi",
       "$ kimi mcp test openburnbar",
-      "→ connected · tools: 8"
+      "→ connected · tools: 10"
     ]
   },
   {
@@ -369,7 +401,7 @@ const hostedSnippets: Snippet[] = [
       "$ openburnbar mcp install forge > openburnbar.forge.json",
       "$ forge mcp import openburnbar.forge.json",
       "$ forge mcp list",
-      "→ openburnbar · 8 tools"
+      "→ openburnbar · 10 tools"
     ]
   },
   {
@@ -460,7 +492,7 @@ const slo = [
 
 <BaseLayout
   title="MCP integration — speak the protocol your agents already speak"
-  description="OpenBurnBar's three MCP surfaces: a free local server over your SQLite, the hosted Remote MCP at mcp.burnbar.ai, and a local stdio shim that decrypts."
+  description="OpenBurnBar's four MCP channels: a free local server over your SQLite, the hosted Remote MCP at mcp.burnbar.ai, a local stdio shim that decrypts, and the Cursor Marketplace plugin."
 >
   {/* ────────────────────────── 1 · HERO ────────────────────────── */}
   <section class="mcp-hero" aria-labelledby="mcp-hero-h">
@@ -473,17 +505,18 @@ const slo = [
       </h1>
 
       <p class="lead mcp-hero__lead">
-        Thirty-four MCP tools across three channels point any agent that speaks the protocol —
-        Codex, Claude Code, Cursor, Droid, Kimi, Forge, Hermes — at your full OpenBurnBar record.
-        Free locally over SQLite. Encrypted in the cloud on BurnBar Cloud plans. Never plaintext on
-        the server.
+        Thirty-six MCP tools across four channels point any agent that speaks the protocol — Codex,
+        Claude Code, Cursor, Droid, Kimi, Forge, Hermes — at your full OpenBurnBar record. Free
+        locally over SQLite. Encrypted in the cloud on BurnBar Cloud plans. Never plaintext on the
+        server. The Cursor Marketplace plugin is the newest channel: hosted HTTP + bearer, pending
+        publication in Cursor.
       </p>
 
-      {/* signal-flow diagram — three sources converge into ANY CLIENT */}
+      {/* signal-flow diagram — the three transport paths converge into ANY CLIENT */}
       <figure
         class="signalmap"
         role="img"
-        aria-label="Three OpenBurnBar MCP channels — local SQLite, hosted encrypted memory, and the local stdio shim — converging into any MCP-capable client"
+        aria-label="Signal-flow diagram: the local SQLite server, the hosted Remote MCP, and the stdio shim converge into any MCP-capable client"
       >
         <svg viewBox="0 0 920 320" class="signalmap__svg" aria-hidden="true">
           <defs>
@@ -652,17 +685,20 @@ const slo = [
     </div>
   </section>
 
-  {/* ────────────────────────── 2 · THREE CHANNELS ────────────────────────── */}
+  {/* ────────────────────────── 2 · FOUR CHANNELS ────────────────────────── */}
   <section class="channels" aria-labelledby="channels-h">
     <div class="container container--wide">
       <header class="sec-head">
-        <span class="eyebrow eyebrow--ember">Three channels</span>
-        <h2 id="channels-h">Same tools. Three install paths. Pick the one your client speaks.</h2>
+        <span class="eyebrow eyebrow--ember">Four channels</span>
+        <h2 id="channels-h">Same tools. Four install paths. Pick the one your client speaks.</h2>
         <p class="lead">
           The local stdio server is free and reads your SQLite directly. The hosted Remote MCP is a
           BurnBar Cloud feature with encrypted, multi-device session memory. The stdio shim closes
           the gap for clients that don't yet speak Streamable HTTP — and is the only path that
-          decrypts hosted bodies on-device.
+          decrypts hosted bodies on-device. The Cursor Marketplace plugin is the fourth channel: an
+          pending Cursor Plugin listing that talks to the hosted endpoint over HTTP with a bearer
+          variable. The HTTP-only package supports spend and capability diagnostics; private search
+          still needs the optional local preprocessing/decrypt shim.
         </p>
       </header>
 
@@ -731,7 +767,7 @@ const slo = [
       <header class="sec-head">
         <span class="eyebrow eyebrow--ember">Tool dossier</span>
         <h2 id="dossier-h">
-          Thirty-four tools across three channels. Read-by-default. Writes stay gated by the daemon.
+          Thirty-six tools across four channels. Read-by-default. Writes stay gated by the daemon.
         </h2>
         <p class="lead">
           Every tool is declared with a scope, a cost class, a rate-limit bucket, and an input
@@ -810,8 +846,11 @@ const slo = [
         <span class="eyebrow eyebrow--ember">Install</span>
         <h2 id="install-h">Drop into any client in under a minute.</h2>
         <p class="lead">
-          The hosted path uses the <code>openburnbar-mcp-remote</code> stdio shim (or direct HTTP for
-          clients that speak the 2025-11-25 spec). The local path is one shell script and a JSON snippet.
+          The hosted path uses the <code>openburnbar</code> CLI from npm — install it globally with
+          <code>npm i -g openburnbar</code> so the generated client configs can resolve the bin on your
+          PATH (<code>npx -y openburnbar</code> works for ad-hoc runs, not as a saved config command)
+          — as the stdio shim (or hit direct HTTP if your client speaks the 2025-11-25 spec). The local
+          path is one shell script and a JSON snippet.
         </p>
       </header>
 
@@ -1016,7 +1055,7 @@ $ curl -fsS https://mcp.burnbar.ai/.well-known/oauth-protected-resource
 { "resource": "https://mcp.burnbar.ai/mcp", ... }
 
 $ openburnbar mcp doctor
-PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
+PASS token · PASS endpoint 200 OK · PASS tools/list (10)`}</code></pre>
       </details>
     </div>
   </section>
@@ -1030,7 +1069,11 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
         <p>
           The macOS app and the iPhone/iPad app both ship a Remote MCP card. It pulls the live
           <code>remote_mcp_clients</code> Firestore collection scoped to your user, shows the stdio shim
-          and doctor commands, and lets you revoke any connected agent with one confirmation.
+          and doctor commands, and lets you revoke any connected agent with one confirmation. The card's
+          shim command today prints the legacy
+          <code>openburnbar-mcp-remote mcp serve</code> bin name — the published npm package ships that
+          alias alongside <code>openburnbar</code>, so the copy-paste works either way after
+          <code>npm i -g openburnbar</code>.
         </p>
         <p>
           Revocation hits the <code>revokeRemoteMcpClient</code> callable; the next bearer-token refresh
@@ -1077,6 +1120,10 @@ PASS token · PASS endpoint 200 OK · PASS tools/list (8)`}</code></pre>
           <div><dt>Stdio shim</dt><dd>openburnbar-mcp-remote mcp serve</dd></div>
           <div><dt>Doctor</dt><dd>openburnbar mcp doctor</dd></div>
         </dl>
+        <p class="muted mono">
+          Mirror of the app's card copy today. The npm package ships openburnbar-mcp-remote as a bin
+          alias, so this resolves after npm i -g openburnbar.
+        </p>
 
         <div class="ccmirror__connected">
           <header class="ccmirror__conhead mono">
@@ -1478,7 +1525,7 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
   }
 
   /* ============================================================
-     2 · THREE CHANNELS
+     2 · FOUR CHANNELS
   ============================================================ */
   .channels {
     padding-block: var(--s-9);
@@ -1487,7 +1534,7 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
   .channels__grid {
     display: grid;
     gap: var(--s-5);
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   @media (max-width: 960px) {
     .channels__grid {
@@ -2340,6 +2387,9 @@ $ /abs/path/.venv/bin/python /abs/path/server.py`}</code></pre>
     }
     .channels__grid .channel:nth-child(3) {
       animation-delay: 0.16s;
+    }
+    .channels__grid .channel:nth-child(4) {
+      animation-delay: 0.24s;
     }
     .dossier__grid .tooltile:nth-child(n) {
       animation-delay: calc(var(--i, 0) * 0.04s);

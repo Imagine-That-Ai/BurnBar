@@ -20,20 +20,24 @@ final class MemoryReviewInboxModelTests: XCTestCase {
 
     /// In-memory stand-in for the memory service. Honors `includeQuarantined` the way
     /// the real backend does: quarantined rows are withheld unless explicitly requested.
+    /// Honors the source-kind guard the same way too: rows outside the requested kinds
+    /// are invisible to reads and untouchable by writes.
     private final class FakeStore {
         var rows: [MemoryID: Row]
         var shouldThrowOnLoad = false
         var bodyOpenFailures: Set<MemoryID> = []
         private(set) var setStatusCalls: [(MemoryID, MemoryReviewStatus)] = []
+        private(set) var forgetCalls: [MemoryID] = []
 
         init(rows: [MemoryID: Row]) {
             self.rows = rows
         }
 
-        func loadPage(_ request: MemoryPageRequest) async throws -> MemoryPage {
+        func loadPage(_ request: MemoryPageRequest, sourceKinds: Set<MemorySourceKind>) async throws -> MemoryPage {
             if shouldThrowOnLoad { throw FakeError.load }
             let visible = rows.values.filter { row in
-                request.includeQuarantined || row.status != .quarantined
+                sourceKinds.contains(row.memory.sourceKind)
+                    && (request.includeQuarantined || row.status != .quarantined)
             }
             // Reflect the current status onto the returned records.
             let items = visible.map { row -> Memory in
@@ -58,10 +62,21 @@ final class MemoryReviewInboxModelTests: XCTestCase {
             return rows[id]?.body
         }
 
-        func setStatus(_ id: MemoryID, _ status: MemoryReviewStatus) async throws -> Bool {
+        func setStatus(
+            _ id: MemoryID,
+            _ status: MemoryReviewStatus,
+            _ sourceKinds: Set<MemorySourceKind>
+        ) async throws -> Bool {
             setStatusCalls.append((id, status))
-            guard rows[id] != nil else { return false }
+            guard let row = rows[id], sourceKinds.contains(row.memory.sourceKind) else { return false }
             rows[id]?.status = status
+            return true
+        }
+
+        func forget(_ id: MemoryID, _ sourceKinds: Set<MemorySourceKind>) async throws -> Bool {
+            forgetCalls.append(id)
+            guard let row = rows[id], sourceKinds.contains(row.memory.sourceKind) else { return false }
+            rows[id] = nil
             return true
         }
     }
@@ -116,9 +131,10 @@ final class MemoryReviewInboxModelTests: XCTestCase {
     private func makeModel(store: FakeStore) -> MemoryReviewInboxModel {
         MemoryReviewInboxModel(
             scope: scope,
-            loadPage: { try await store.loadPage($0) },
+            loadPage: { try await store.loadPage($0, sourceKinds: $1) },
             openBody: { try await store.openBody($0) },
-            setStatus: { try await store.setStatus($0, $1) }
+            setStatus: { try await store.setStatus($0, $1, $2) },
+            forget: { try await store.forget($0, $1) }
         )
     }
 
@@ -235,6 +251,21 @@ final class MemoryReviewInboxModelTests: XCTestCase {
         await model.approve("q1")
         XCTAssertEqual(model.pendingCount, 1)
         XCTAssertEqual(model.pendingCount, model.pending.count)
+    }
+
+    func testForgetRemovesRowFromItsBucket() async {
+        let store = makeStore()
+        let model = makeModel(store: store)
+        await model.load()
+        XCTAssertTrue(model.pending.contains { $0.id == "q1" })
+
+        await model.forget("q1")
+
+        XCTAssertEqual(store.forgetCalls, ["q1"])
+        XCTAssertNil(store.rows["q1"])
+        XCTAssertFalse(model.pending.contains { $0.id == "q1" })
+        XCTAssertFalse(model.approved.contains { $0.id == "q1" })
+        XCTAssertNil(model.errorMessage)
     }
 
     func testPendingLoadPagesPastApprovedRows() async {

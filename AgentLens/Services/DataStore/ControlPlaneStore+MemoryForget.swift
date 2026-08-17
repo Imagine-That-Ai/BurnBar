@@ -227,19 +227,28 @@ extension ControlPlaneStore {
     }
 
     func chatMemoryAuthorityDeletionIDs(scope: MemoryScope) async throws -> [MemoryID] {
-        try await dbQueue.read { db in
+        try await memoryAuthorityDeletionIDs(scope: scope, sourceKinds: [.chat])
+    }
+
+    func memoryAuthorityDeletionIDs(
+        scope: MemoryScope,
+        sourceKinds: Set<MemorySourceKind>
+    ) async throws -> [MemoryID] {
+        let kindClause = Self.memorySourceKindInClause(column: "source_kind", kinds: sourceKinds)
+        let partition = MemoryStoragePartition(sourceKinds)
+        return try await dbQueue.read { db in
             var ids: [MemoryID] = []
             var seen = Set<MemoryID>()
 
             func appendIDs(matching targetScope: MemoryScope) throws {
                 var predicates = [
-                    "source_kind = ?",
+                    kindClause.sql,
                     "project_id = ?"
                 ]
-                var arguments: [any DatabaseValueConvertible] = [
-                    MemorySourceKind.chat.rawValue,
-                    Self.memoryExtractionProjectID(for: targetScope)
-                ]
+                var arguments: [any DatabaseValueConvertible] = kindClause.arguments
+                arguments.append(
+                    Self.memoryStorageProjectID(for: targetScope, partition: partition)
+                )
                 Self.appendMemoryExtractionScopePredicates(targetScope, to: &predicates, arguments: &arguments)
                 let rows = try Row.fetchAll(
                     db,

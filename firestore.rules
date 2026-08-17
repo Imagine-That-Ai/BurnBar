@@ -64,18 +64,19 @@ service cloud.firestore {
     }
 
     function hasNoPlaintextSecretFields() {
-      return !("apiKey" in request.resource.data)
-        && !("token" in request.resource.data)
-        && !("refreshToken" in request.resource.data)
-        && !("accessToken" in request.resource.data)
-        && !("idToken" in request.resource.data)
-        && !("cookie" in request.resource.data)
-        && !("password" in request.resource.data)
-        && !("secret" in request.resource.data)
-        && !("secretVersionName" in request.resource.data)
-        && !("authorization" in request.resource.data)
-        && !("bearer" in request.resource.data)
-        && !("credential" in request.resource.data);
+      let d = request.resource.data;
+      return !("apiKey" in d)
+        && !("token" in d)
+        && !("refreshToken" in d)
+        && !("accessToken" in d)
+        && !("idToken" in d)
+        && !("cookie" in d)
+        && !("password" in d)
+        && !("secret" in d)
+        && !("secretVersionName" in d)
+        && !("authorization" in d)
+        && !("bearer" in d)
+        && !("credential" in d);
     }
 
     function ownerWritableNonSecret(userId) {
@@ -85,7 +86,8 @@ service cloud.firestore {
     }
 
     function validComputerUseSessionDocument(userId, sessionId) {
-      return request.resource.data.keys().hasOnly([
+      let d = request.resource.data;
+      return d.keys().hasOnly([
           "id",
           "sessionId",
           "userId",
@@ -105,14 +107,14 @@ service cloud.firestore {
           "schemaVersion",
           "updatedAt"
         ])
-        && (!("id" in request.resource.data) || request.resource.data.id == sessionId)
-        && request.resource.data.sessionId == sessionId
-        && request.resource.data.userId == userId
-        && request.resource.data.mode in ["agent_watch", "browser", "system"]
-        && request.resource.data.trustMode in ["manual", "step", "trusted"]
-        && request.resource.data.startedAt is timestamp
-        && (!("endedAt" in request.resource.data) || request.resource.data.endedAt is timestamp)
-        && (!("endReason" in request.resource.data) || request.resource.data.endReason in [
+        && (!("id" in d) || d.id == sessionId)
+        && d.sessionId == sessionId
+        && d.userId == userId
+        && d.mode in ["agent_watch", "browser", "system"]
+        && d.trustMode in ["manual", "step", "trusted"]
+        && d.startedAt is timestamp
+        && (!("endedAt" in d) || d.endedAt is timestamp)
+        && (!("endReason" in d) || d.endReason in [
           "completed",
           "user_halt",
           "panic_hotkey",
@@ -126,29 +128,30 @@ service cloud.firestore {
           "budget_hard_cap",
           "error"
         ])
-        && request.resource.data.actionCount is int
-        && request.resource.data.actionCount >= 0
-        && request.resource.data.approvalCount is int
-        && request.resource.data.approvalCount >= 0
-        && request.resource.data.rejectionCount is int
-        && request.resource.data.rejectionCount >= 0
-        && request.resource.data.panicHaltCount is int
-        && request.resource.data.panicHaltCount >= 0
-        && request.resource.data.visionSpendUSD is number
-        && request.resource.data.visionSpendUSD >= 0
-        && request.resource.data.manifestHashHex is string
-        && request.resource.data.manifestHashHex.matches("^[A-Fa-f0-9]{64}$")
-        && (!("auditHeadHashHex" in request.resource.data) || (request.resource.data.auditHeadHashHex is string && request.resource.data.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
-        && request.resource.data.macAppVersion is string
-        && request.resource.data.macAppVersion.size() <= 80
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1
-        && request.resource.data.schemaVersion <= 100
-        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
+        && d.actionCount is int
+        && d.actionCount >= 0
+        && d.approvalCount is int
+        && d.approvalCount >= 0
+        && d.rejectionCount is int
+        && d.rejectionCount >= 0
+        && d.panicHaltCount is int
+        && d.panicHaltCount >= 0
+        && d.visionSpendUSD is number
+        && d.visionSpendUSD >= 0
+        && d.manifestHashHex is string
+        && d.manifestHashHex.matches("^[A-Fa-f0-9]{64}$")
+        && (!("auditHeadHashHex" in d) || (d.auditHeadHashHex is string && d.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
+        && d.macAppVersion is string
+        && d.macAppVersion.size() <= 80
+        && d.schemaVersion is int
+        && d.schemaVersion >= 1
+        && d.schemaVersion <= 100
+        && (!("updatedAt" in d) || d.updatedAt is timestamp);
     }
 
     function validComputerUseSessionUpdate(userId, sessionId) {
-      return request.resource.data.keys().hasOnly([
+      let d = request.resource.data;
+      return d.keys().hasOnly([
           "id",
           "sessionId",
           "userId",
@@ -174,7 +177,7 @@ service cloud.firestore {
           "quotaCompletionMeteredDayKey",
           "quotaCompletionMeteredAt"
         ])
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        && d.diff(resource.data).affectedKeys().hasOnly([
           "endedAt",
           "endReason",
           "actionCount",
@@ -185,18 +188,18 @@ service cloud.firestore {
           "auditHeadHashHex",
           "updatedAt"
         ])
-        && (!("id" in request.resource.data) || request.resource.data.id == sessionId)
-        && request.resource.data.sessionId == resource.data.sessionId
-        && request.resource.data.userId == userId
-        && request.resource.data.userId == resource.data.userId
-        && request.resource.data.mode == resource.data.mode
-        && request.resource.data.trustMode == resource.data.trustMode
-        && request.resource.data.startedAt == resource.data.startedAt
-        && request.resource.data.manifestHashHex == resource.data.manifestHashHex
-        && request.resource.data.macAppVersion == resource.data.macAppVersion
-        && request.resource.data.schemaVersion == resource.data.schemaVersion
-        && (!("endedAt" in request.resource.data) || request.resource.data.endedAt is timestamp)
-        && (!("endReason" in request.resource.data) || request.resource.data.endReason in [
+        && (!("id" in d) || d.id == sessionId)
+        && d.sessionId == resource.data.sessionId
+        && d.userId == userId
+        && d.userId == resource.data.userId
+        && d.mode == resource.data.mode
+        && d.trustMode == resource.data.trustMode
+        && d.startedAt == resource.data.startedAt
+        && d.manifestHashHex == resource.data.manifestHashHex
+        && d.macAppVersion == resource.data.macAppVersion
+        && d.schemaVersion == resource.data.schemaVersion
+        && (!("endedAt" in d) || d.endedAt is timestamp)
+        && (!("endReason" in d) || d.endReason in [
           "completed",
           "user_halt",
           "panic_hotkey",
@@ -210,22 +213,23 @@ service cloud.firestore {
           "budget_hard_cap",
           "error"
         ])
-        && request.resource.data.actionCount is int
-        && request.resource.data.actionCount >= resource.data.actionCount
-        && request.resource.data.approvalCount is int
-        && request.resource.data.approvalCount >= resource.data.approvalCount
-        && request.resource.data.rejectionCount is int
-        && request.resource.data.rejectionCount >= resource.data.rejectionCount
-        && request.resource.data.panicHaltCount is int
-        && request.resource.data.panicHaltCount >= resource.data.panicHaltCount
-        && request.resource.data.visionSpendUSD is number
-        && request.resource.data.visionSpendUSD >= resource.data.visionSpendUSD
-        && (!("auditHeadHashHex" in request.resource.data) || (request.resource.data.auditHeadHashHex is string && request.resource.data.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
-        && (!("updatedAt" in request.resource.data) || request.resource.data.updatedAt is timestamp);
+        && d.actionCount is int
+        && d.actionCount >= resource.data.actionCount
+        && d.approvalCount is int
+        && d.approvalCount >= resource.data.approvalCount
+        && d.rejectionCount is int
+        && d.rejectionCount >= resource.data.rejectionCount
+        && d.panicHaltCount is int
+        && d.panicHaltCount >= resource.data.panicHaltCount
+        && d.visionSpendUSD is number
+        && d.visionSpendUSD >= resource.data.visionSpendUSD
+        && (!("auditHeadHashHex" in d) || (d.auditHeadHashHex is string && d.auditHeadHashHex.matches("^[A-Fa-f0-9]{64}$")))
+        && (!("updatedAt" in d) || d.updatedAt is timestamp);
     }
 
     function validComputerUseActionDocument(actionId) {
-      return request.resource.data.keys().hasOnly([
+      let d = request.resource.data;
+      return d.keys().hasOnly([
           "id",
           "sessionId",
           "entryIndex",
@@ -241,32 +245,32 @@ service cloud.firestore {
           "recordedAt",
           "schemaVersion"
         ])
-        && request.resource.data.id == actionId
-        && request.resource.data.sessionId is string
-        && request.resource.data.sessionId.size() > 0
-        && request.resource.data.sessionId.size() <= 200
-        && request.resource.data.entryIndex is int
-        && request.resource.data.entryIndex >= 0
-        && request.resource.data.toolKind is string
-        && request.resource.data.toolKind.size() <= 120
-        && request.resource.data.actionKind is string
-        && request.resource.data.actionKind.size() <= 120
-        && request.resource.data.status in [
+        && d.id == actionId
+        && d.sessionId is string
+        && d.sessionId.size() > 0
+        && d.sessionId.size() <= 200
+        && d.entryIndex is int
+        && d.entryIndex >= 0
+        && d.toolKind is string
+        && d.toolKind.size() <= 120
+        && d.actionKind is string
+        && d.actionKind.size() <= 120
+        && d.status in [
           "executed", "denied", "rejected", "awaiting_approval", "error"
         ]
-        && request.resource.data.approvedBy in [
+        && d.approvedBy in [
           "mac", "phone", "trusted_scope", "step", "denied", "panic"
         ]
-        && (!("scopeRuleId" in request.resource.data) || (request.resource.data.scopeRuleId is string && request.resource.data.scopeRuleId.size() <= 200))
-        && (!("denyReason" in request.resource.data) || (request.resource.data.denyReason is string && request.resource.data.denyReason.size() <= 200))
-        && request.resource.data.parentEntryHashHex is string
-        && request.resource.data.parentEntryHashHex.matches("^[A-Fa-f0-9]{64}$")
-        && (!("approvalLatencyMillis" in request.resource.data) || (request.resource.data.approvalLatencyMillis is int && request.resource.data.approvalLatencyMillis >= 0))
-        && (!("visionTokensCostUSD" in request.resource.data) || (request.resource.data.visionTokensCostUSD is number && request.resource.data.visionTokensCostUSD >= 0 && request.resource.data.visionTokensCostUSD <= 25))
-        && request.resource.data.recordedAt is timestamp
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 1
-        && request.resource.data.schemaVersion <= 100;
+        && (!("scopeRuleId" in d) || (d.scopeRuleId is string && d.scopeRuleId.size() <= 200))
+        && (!("denyReason" in d) || (d.denyReason is string && d.denyReason.size() <= 200))
+        && d.parentEntryHashHex is string
+        && d.parentEntryHashHex.matches("^[A-Fa-f0-9]{64}$")
+        && (!("approvalLatencyMillis" in d) || (d.approvalLatencyMillis is int && d.approvalLatencyMillis >= 0))
+        && (!("visionTokensCostUSD" in d) || (d.visionTokensCostUSD is number && d.visionTokensCostUSD >= 0 && d.visionTokensCostUSD <= 25))
+        && d.recordedAt is timestamp
+        && d.schemaVersion is int
+        && d.schemaVersion >= 1
+        && d.schemaVersion <= 100;
     }
 
     function validRootUserProfileWrite(userId) {
@@ -729,13 +733,14 @@ service cloud.firestore {
     }
 
     function validSessionLogManifestCore(userId, logId) {
+      let d = request.resource.data;
       return validSessionLogManifestKeys()
-        && request.resource.data.get("inferredTaskTitle", "Encrypted session") == "Encrypted session"
-        && (!("sealedTitle" in request.resource.data) || validSessionLogSealedTextAt(userId, logId, "sealedTitle", request.resource.data.sealedTitle))
-        && (!("sealedBodyPreview" in request.resource.data) || validSessionLogSealedTextAt(userId, logId, "sealedBodyPreview", request.resource.data.sealedBodyPreview))
-        && (!("encryption" in request.resource.data) || request.resource.data.encryption is map)
-        && (!("vaultKeyID" in request.resource.data) || validVaultKeyID(request.resource.data.vaultKeyID))
-        && validSessionLogFacets(request.resource.data);
+        && d.get("inferredTaskTitle", "Encrypted session") == "Encrypted session"
+        && (!("sealedTitle" in d) || validSessionLogSealedTextAt(userId, logId, "sealedTitle", d.sealedTitle))
+        && (!("sealedBodyPreview" in d) || validSessionLogSealedTextAt(userId, logId, "sealedBodyPreview", d.sealedBodyPreview))
+        && (!("encryption" in d) || d.encryption is map)
+        && (!("vaultKeyID" in d) || validVaultKeyID(d.vaultKeyID))
+        && validSessionLogFacets(d);
     }
 
     function validSessionLogLifecycleFields(data) {
@@ -1154,6 +1159,10 @@ service cloud.firestore {
       let value = ("signalEnvelope" in request.resource.data)
         ? request.resource.data.signalEnvelope
         : {};
+      let ciphertext = value.ciphertextLayer;
+      let delivery = value.keyDelivery;
+      let binding = value.binding;
+      let sender = value.senderAuth;
       return value is map
         && value.keys().hasOnly([
           "signalEnvelopeFormatVersion", "mode", "relayEncryption",
@@ -1162,46 +1171,40 @@ service cloud.firestore {
         && value.signalEnvelopeFormatVersion == 1
         && value.mode == "at-rest"
         && value.relayEncryption == "signal-hpke-identity-seal-v1"
-        && value.ciphertextLayer is map
-        && value.ciphertextLayer.keys().hasOnly(["payloadCiphertextB64", "payloadAADLabel", "schemaVersion"])
-        && value.ciphertextLayer.payloadCiphertextB64 is string
-        && value.ciphertextLayer.payloadCiphertextB64.size() > 0
-        && value.ciphertextLayer.payloadCiphertextB64.size() <= 1100000
-        && value.ciphertextLayer.payloadCiphertextB64.size() % 4 == 0
-        && value.ciphertextLayer.payloadCiphertextB64.matches("^[A-Za-z0-9+/]*={0,2}$")
-        && value.ciphertextLayer.payloadAADLabel is string
-        && value.ciphertextLayer.payloadAADLabel.size() > 0
-        && value.ciphertextLayer.payloadAADLabel.size() <= 120
-        && value.ciphertextLayer.payloadAADLabel.matches("^[A-Za-z0-9:_-]+$")
-        && value.ciphertextLayer.schemaVersion == 1
-        && value.keyDelivery is map
-        && value.keyDelivery.keys().hasOnly(["scheme", "wraps", "contentKeyLength"])
-        && value.keyDelivery.scheme == "signal-hpke-identity-seal-v1"
-        && value.keyDelivery.contentKeyLength == 32
-        && value.keyDelivery.wraps is list
-        && value.keyDelivery.wraps.size() >= 1
-        && value.keyDelivery.wraps.size() <= 32
-        && value.binding is map
-        && value.binding.keys().hasOnly(["uid", "scope", "collection", "docId", "field", "mode", "formatVersion"])
-        && value.binding.uid == userId
-        && value.binding.scope == "cloudvault"
-        && value.binding.collection == collectionId
-        && value.binding.docId == documentId
-        && value.binding.field == "signalEnvelope"
-        && value.binding.mode == "at-rest"
-        && value.binding.formatVersion == 1
-        && value.senderAuth is map
-        && value.senderAuth.keys().hasOnly(["senderIdentityKeyId", "senderIdentityKeyB64", "signatureB64", "signatureVersion"])
-        && value.senderAuth.senderIdentityKeyId is string
-        && value.senderAuth.senderIdentityKeyId.size() > 0
-        && value.senderAuth.senderIdentityKeyId.size() <= 160
-        && value.senderAuth.senderIdentityKeyB64 is string
-        && value.senderAuth.senderIdentityKeyB64.size() == 44
-        && value.senderAuth.senderIdentityKeyB64.matches("^[A-Za-z0-9+/]*={0,2}$")
-        && value.senderAuth.signatureB64 is string
-        && value.senderAuth.signatureB64.size() == 88
-        && value.senderAuth.signatureB64.matches("^[A-Za-z0-9+/]*={0,2}$")
-        && value.senderAuth.signatureVersion == 1;
+        && ciphertext is map
+        && ciphertext.keys().hasOnly(["payloadCiphertextB64", "payloadAADLabel", "schemaVersion"])
+        && validSignalBase64(ciphertext.payloadCiphertextB64, 1100000)
+        && ciphertext.payloadAADLabel is string
+        && ciphertext.payloadAADLabel.size() > 0
+        && ciphertext.payloadAADLabel.size() <= 120
+        && ciphertext.payloadAADLabel.matches("^[A-Za-z0-9:_-]+$")
+        && ciphertext.schemaVersion == 1
+        && delivery is map
+        && delivery.keys().hasOnly(["scheme", "wraps", "contentKeyLength"])
+        && delivery.scheme == "signal-hpke-identity-seal-v1"
+        && delivery.contentKeyLength == 32
+        && delivery.wraps is list
+        && delivery.wraps.size() >= 1
+        && delivery.wraps.size() <= 32
+        && binding is map
+        && binding.keys().hasOnly(["uid", "scope", "collection", "docId", "field", "mode", "formatVersion"])
+        && binding.uid == userId
+        && binding.scope == "cloudvault"
+        && binding.collection == collectionId
+        && binding.docId == documentId
+        && binding.field == "signalEnvelope"
+        && binding.mode == "at-rest"
+        && binding.formatVersion == 1
+        && sender is map
+        && sender.keys().hasOnly(["senderIdentityKeyId", "senderIdentityKeyB64", "signatureB64", "signatureVersion"])
+        && sender.senderIdentityKeyId is string
+        && sender.senderIdentityKeyId.size() > 0
+        && sender.senderIdentityKeyId.size() <= 160
+        && sender.senderIdentityKeyB64.size() == 44
+        && validSignalBase64(sender.senderIdentityKeyB64, 44)
+        && sender.signatureB64.size() == 88
+        && validSignalBase64(sender.signatureB64, 88)
+        && sender.signatureVersion == 1;
     }
 
     // Fast, collection-scoped validator used only from the ten exact match
@@ -1286,8 +1289,9 @@ service cloud.firestore {
     }
 
     function validRoamingProfileDocument(userId, profileId) {
+      let d = request.resource.data;
       return profileId == "current"
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "uid",
           "schemaVersion",
           "payloadSchemaVersion",
@@ -1295,19 +1299,19 @@ service cloud.firestore {
           "updatedAt",
           "sealedPayload"
         ])
-        && request.resource.data.keys().hasAll([
+        && d.keys().hasAll([
           "uid",
           "schemaVersion",
           "payloadSchemaVersion",
           "updatedAt",
           "sealedPayload"
         ])
-        && request.resource.data.uid == userId
-        && request.resource.data.schemaVersion == 1
-        && request.resource.data.payloadSchemaVersion == 1
-        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160))
-        && request.resource.data.updatedAt is timestamp
-        && validRoamingProfileSealedPayload(userId, request.resource.data.sealedPayload);
+        && d.uid == userId
+        && d.schemaVersion == 1
+        && d.payloadSchemaVersion == 1
+        && (!("sourceDeviceID" in d) || (d.sourceDeviceID is string && d.sourceDeviceID.size() <= 160))
+        && d.updatedAt is timestamp
+        && validRoamingProfileSealedPayload(userId, d.sealedPayload);
     }
 
     // M-007: use this only on writers that already emit path-bound AAD. Today
@@ -1325,8 +1329,9 @@ service cloud.firestore {
     }
 
     function validTextSnippetDoc(userId, snippetId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "id",
           "uid",
           "sourceDeviceID",
@@ -1344,29 +1349,23 @@ service cloud.firestore {
           "schemaVersion",
           "encryption"
         ])
-        && request.resource.data.id == snippetId
-        && request.resource.data.uid == userId
-        && request.resource.data.sourceDeviceID is string
-        && request.resource.data.sourceDeviceID.size() <= 160
-        && request.resource.data.triggerHash is string
-        && request.resource.data.triggerHash.size() <= 128
-        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedTitle", request.resource.data.sealedTitle)
-        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedTrigger", request.resource.data.sealedTrigger)
-        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedBody", request.resource.data.sealedBody)
-        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedScope", request.resource.data.sealedScope)
-        && hasValidEscrowPublicKey(userId, request.resource.data.sourceDeviceID, request.resource.data.sealedTitle.keyVersion)
-        && request.resource.data.mode in ["static", "llm_rewrite"]
-        && request.resource.data.isEnabled is bool
-        && request.resource.data.revision is int
-        && request.resource.data.revision >= 1
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 2;
-    }
-
-    function validCloudSessionStoragePath(userId, documentId, bodyHash, storagePath) {
-      return validCloudHexDigest(bodyHash)
-        && storagePath is string
-        && storagePath.matches("^users/" + userId + "/session_logs/" + documentId + "/bodies/" + bodyHash + "\\.json\\.aesgcm$");
+        && d.id == snippetId
+        && d.uid == userId
+        && d.sourceDeviceID is string
+        && d.sourceDeviceID.size() <= 160
+        && d.triggerHash is string
+        && d.triggerHash.size() <= 128
+        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedTitle", d.sealedTitle)
+        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedTrigger", d.sealedTrigger)
+        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedBody", d.sealedBody)
+        && validCloudSealedTextAt(userId, "text_snippets", snippetId, "sealedScope", d.sealedScope)
+        && hasValidEscrowPublicKey(userId, d.sourceDeviceID, d.sealedTitle.keyVersion)
+        && d.mode in ["static", "llm_rewrite"]
+        && d.isEnabled is bool
+        && d.revision is int
+        && d.revision >= 1
+        && d.schemaVersion is int
+        && d.schemaVersion >= 2;
     }
 
     function chatThreadIncludesBackedUpContent() {
@@ -1430,9 +1429,10 @@ service cloud.firestore {
     }
 
     function relayConnectionWrite(userId, connectionId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "id",
           "displayName",
           "mode",
@@ -1454,28 +1454,29 @@ service cloud.firestore {
           "updatedAt",
           "schemaVersion"
         ])
-        && request.resource.data.mode == "relayLink"
-        && request.resource.data.status in ["online", "offline", "degraded", "unauthorized"]
-        && request.resource.data.schemaVersion is int
-        && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
-        && (!("hostInstallationId" in request.resource.data) || (request.resource.data.hostInstallationId is string && request.resource.data.hostInstallationId.size() <= 256))
-        && (!("replacedByConnectionId" in request.resource.data) || (request.resource.data.replacedByConnectionId is string && request.resource.data.replacedByConnectionId.size() <= 256))
-        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion == 3)
-        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm")
-        && (!("realtimeRelayURL" in request.resource.data) || validRealtimeRelayURL(request.resource.data.realtimeRelayURL))
-        && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"])
-        && (!("realtimeRelayLastSeenAt" in request.resource.data) || (request.resource.data.realtimeRelayLastSeenAt is string && request.resource.data.realtimeRelayLastSeenAt.size() <= 64))
-        && (!("realtimeRelayProtocolVersion" in request.resource.data) || request.resource.data.realtimeRelayProtocolVersion is int)
-        && request.resource.data.id is string
-        && request.resource.data.id == connectionId
-        && request.resource.data.displayName is string
-        && request.resource.data.capabilities is list;
+        && d.mode == "relayLink"
+        && d.status in ["online", "offline", "degraded", "unauthorized"]
+        && d.schemaVersion is int
+        && (!("relayPublicKey" in d) || (d.relayPublicKey is string && d.relayPublicKey.size() <= 256))
+        && (!("hostInstallationId" in d) || (d.hostInstallationId is string && d.hostInstallationId.size() <= 256))
+        && (!("replacedByConnectionId" in d) || (d.replacedByConnectionId is string && d.replacedByConnectionId.size() <= 256))
+        && (!("relayKeyVersion" in d) || d.relayKeyVersion == 3)
+        && (!("relayEncryption" in d) || d.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm")
+        && (!("realtimeRelayURL" in d) || validRealtimeRelayURL(d.realtimeRelayURL))
+        && (!("realtimeRelayStatus" in d) || d.realtimeRelayStatus in ["online", "offline", "degraded"])
+        && (!("realtimeRelayLastSeenAt" in d) || (d.realtimeRelayLastSeenAt is string && d.realtimeRelayLastSeenAt.size() <= 64))
+        && (!("realtimeRelayProtocolVersion" in d) || d.realtimeRelayProtocolVersion is int)
+        && d.id is string
+        && d.id == connectionId
+        && d.displayName is string
+        && d.capabilities is list;
     }
 
     function relayRequestWrite(userId, requestId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "id",
           "connectionId",
           "operation",
@@ -1505,45 +1506,46 @@ service cloud.firestore {
           "completedAt",
           "schemaVersion"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id == requestId
-        && request.resource.data.connectionId is string
-        && request.resource.data.operation in ["chatCompletions", "cliAgentChat", "cliAgentModelCatalog", "models", "sessions", "sessionDetail", "profiles", "jobs"]
-        && request.resource.data.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
-        && request.resource.data.method in ["GET", "POST"]
-        && request.resource.data.chunkCount is int
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 2
-        && (!("claimedBy" in request.resource.data) || request.resource.data.claimedBy == request.resource.data.connectionId)
-        && !("path" in request.resource.data)
-        && !("sessionId" in request.resource.data)
-        && !("body" in request.resource.data)
-        && !("error" in request.resource.data)
-        && request.resource.data.payloadCiphertext is string
-        && request.resource.data.payloadCiphertext.size() <= 900000
-        && request.resource.data.enc is string
-        && request.resource.data.enc.size() <= 4096
-        && request.resource.data.wrappedKey is string
-        && request.resource.data.wrappedKey.size() <= 4096
-        && request.resource.data.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm"
-        && request.resource.data.relayKeyVersion == 3
-        && request.resource.data.senderPublicKey is string
-        && request.resource.data.senderPublicKey.size() >= 80
-        && request.resource.data.senderPublicKey.size() <= 128
-        && request.resource.data.senderDeviceId is string
-        && request.resource.data.senderDeviceId.size() <= 160
-        && request.resource.data.senderPeerNodeId is string
-        && request.resource.data.senderPeerNodeId.size() <= 160
-        && request.resource.data.senderCounter is int
-        && request.resource.data.senderCounter >= 0
-        && request.resource.data.keyId is string
-        && request.resource.data.keyId.matches("^relay-v3-[a-f0-9]{24}$");
+        && d.id is string
+        && d.id == requestId
+        && d.connectionId is string
+        && d.operation in ["chatCompletions", "cliAgentChat", "cliAgentModelCatalog", "models", "sessions", "sessionDetail", "profiles", "jobs"]
+        && d.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
+        && d.method in ["GET", "POST"]
+        && d.chunkCount is int
+        && d.schemaVersion is int
+        && d.schemaVersion >= 2
+        && (!("claimedBy" in d) || d.claimedBy == d.connectionId)
+        && !("path" in d)
+        && !("sessionId" in d)
+        && !("body" in d)
+        && !("error" in d)
+        && d.payloadCiphertext is string
+        && d.payloadCiphertext.size() <= 900000
+        && d.enc is string
+        && d.enc.size() <= 4096
+        && d.wrappedKey is string
+        && d.wrappedKey.size() <= 4096
+        && d.relayEncryption == "hpke-auth-p256-hkdfsha256-aes256gcm"
+        && d.relayKeyVersion == 3
+        && d.senderPublicKey is string
+        && d.senderPublicKey.size() >= 80
+        && d.senderPublicKey.size() <= 128
+        && d.senderDeviceId is string
+        && d.senderDeviceId.size() <= 160
+        && d.senderPeerNodeId is string
+        && d.senderPeerNodeId.size() <= 160
+        && d.senderCounter is int
+        && d.senderCounter >= 0
+        && d.keyId is string
+        && d.keyId.matches("^relay-v3-[a-f0-9]{24}$");
     }
 
     function relayChunkWrite(userId, requestId, chunkId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "id",
           "requestId",
           "sequence",
@@ -1556,25 +1558,26 @@ service cloud.firestore {
           "updatedAt",
           "schemaVersion"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id == chunkId
-        && request.resource.data.requestId is string
-        && request.resource.data.requestId == requestId
-        && request.resource.data.sequence is int
-        && request.resource.data.kind in ["sse", "data", "error"]
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 2
-        && !("data" in request.resource.data)
-        && !("text" in request.resource.data)
-        && !("error" in request.resource.data)
-        && request.resource.data.ciphertext is string
-        && request.resource.data.ciphertext.size() <= 131072;
+        && d.id is string
+        && d.id == chunkId
+        && d.requestId is string
+        && d.requestId == requestId
+        && d.sequence is int
+        && d.kind in ["sse", "data", "error"]
+        && d.schemaVersion is int
+        && d.schemaVersion >= 2
+        && !("data" in d)
+        && !("text" in d)
+        && !("error" in d)
+        && d.ciphertext is string
+        && d.ciphertext.size() <= 131072;
     }
 
     function piRelayConnectionWrite(userId, connectionId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "id",
           "displayName",
           "mode",
@@ -1597,27 +1600,28 @@ service cloud.firestore {
           "updatedAt",
           "schemaVersion"
         ])
-        && request.resource.data.mode == "relayLink"
-        && request.resource.data.status in ["online", "offline", "degraded", "unauthorized"]
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.id is string
-        && request.resource.data.id == connectionId
-        && request.resource.data.displayName is string
-        && request.resource.data.capabilities is list
-        && (!("endpointURL" in request.resource.data) || (request.resource.data.endpointURL is string && request.resource.data.endpointURL.size() <= 2048))
-        && (!("advertisedModel" in request.resource.data) || (request.resource.data.advertisedModel is string && request.resource.data.advertisedModel.size() <= 160))
-        && (!("selectedInstanceID" in request.resource.data) || (request.resource.data.selectedInstanceID is string && request.resource.data.selectedInstanceID.size() <= 160))
-        && (!("relayPublicKey" in request.resource.data) || (request.resource.data.relayPublicKey is string && request.resource.data.relayPublicKey.size() <= 256))
-        && (!("relayKeyVersion" in request.resource.data) || request.resource.data.relayKeyVersion is int)
-        && (!("relayEncryption" in request.resource.data) || request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm")
-        && (!("realtimeRelayURL" in request.resource.data) || validRealtimeRelayURL(request.resource.data.realtimeRelayURL))
-        && (!("realtimeRelayStatus" in request.resource.data) || request.resource.data.realtimeRelayStatus in ["online", "offline", "degraded"]);
+        && d.mode == "relayLink"
+        && d.status in ["online", "offline", "degraded", "unauthorized"]
+        && d.schemaVersion is int
+        && d.id is string
+        && d.id == connectionId
+        && d.displayName is string
+        && d.capabilities is list
+        && (!("endpointURL" in d) || (d.endpointURL is string && d.endpointURL.size() <= 2048))
+        && (!("advertisedModel" in d) || (d.advertisedModel is string && d.advertisedModel.size() <= 160))
+        && (!("selectedInstanceID" in d) || (d.selectedInstanceID is string && d.selectedInstanceID.size() <= 160))
+        && (!("relayPublicKey" in d) || (d.relayPublicKey is string && d.relayPublicKey.size() <= 256))
+        && (!("relayKeyVersion" in d) || d.relayKeyVersion is int)
+        && (!("relayEncryption" in d) || d.relayEncryption == "p256-hkdf-sha256-aesgcm")
+        && (!("realtimeRelayURL" in d) || validRealtimeRelayURL(d.realtimeRelayURL))
+        && (!("realtimeRelayStatus" in d) || d.realtimeRelayStatus in ["online", "offline", "degraded"]);
     }
 
     function piRelayRequestWrite(userId, requestId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "id",
           "connectionId",
           "operation",
@@ -1641,42 +1645,43 @@ service cloud.firestore {
           "completedAt",
           "schemaVersion"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id == requestId
-        && request.resource.data.connectionId is string
-        && request.resource.data.operation in ["chatCompletions", "models", "sessions", "sessionDetail"]
-        && request.resource.data.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
-        && request.resource.data.method in ["GET", "POST"]
-        && request.resource.data.chunkCount is int
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 2
-        && request.resource.data.payloadCiphertext is string
-        && request.resource.data.payloadCiphertext.size() <= 900000
-        && request.resource.data.wrappedKey is string
-        && request.resource.data.wrappedKey.size() <= 4096
-        && request.resource.data.relayEncryption == "p256-hkdf-sha256-aesgcm"
-        && request.resource.data.relayKeyVersion is int
+        && d.id is string
+        && d.id == requestId
+        && d.connectionId is string
+        && d.operation in ["chatCompletions", "models", "sessions", "sessionDetail"]
+        && d.status in ["pending", "claimed", "streaming", "completed", "failed", "cancelled", "expired"]
+        && d.method in ["GET", "POST"]
+        && d.chunkCount is int
+        && d.schemaVersion is int
+        && d.schemaVersion >= 2
+        && d.payloadCiphertext is string
+        && d.payloadCiphertext.size() <= 900000
+        && d.wrappedKey is string
+        && d.wrappedKey.size() <= 4096
+        && d.relayEncryption == "p256-hkdf-sha256-aesgcm"
+        && d.relayKeyVersion is int
         // Sender-authentication parity with the Hermes lane
         // (`relayRequestWrite`): a relay request is sender-bound so a malicious
         // co-tenant cannot forge another device's identity. The lane is v2
         // (schemaVersion >= 2), so we require these strictly rather than keep a
         // legacy-empty backward-compat branch.
-        && request.resource.data.senderPublicKey is string
-        && request.resource.data.senderPublicKey.size() >= 80
-        && request.resource.data.senderPublicKey.size() <= 128
-        && request.resource.data.senderDeviceId is string
-        && request.resource.data.senderDeviceId.size() <= 160
-        && request.resource.data.senderPeerNodeId is string
-        && request.resource.data.senderPeerNodeId.size() <= 160
-        && request.resource.data.senderCounter is int
-        && request.resource.data.senderCounter >= 0
-        && (!("claimedBy" in request.resource.data) || request.resource.data.claimedBy == request.resource.data.connectionId);
+        && d.senderPublicKey is string
+        && d.senderPublicKey.size() >= 80
+        && d.senderPublicKey.size() <= 128
+        && d.senderDeviceId is string
+        && d.senderDeviceId.size() <= 160
+        && d.senderPeerNodeId is string
+        && d.senderPeerNodeId.size() <= 160
+        && d.senderCounter is int
+        && d.senderCounter >= 0
+        && (!("claimedBy" in d) || d.claimedBy == d.connectionId);
     }
 
     function piRelayChunkWrite(userId, requestId, chunkId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
         && hasActiveHostedQuotaEntitlement(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "id",
           "requestId",
           "sequence",
@@ -1686,21 +1691,22 @@ service cloud.firestore {
           "updatedAt",
           "schemaVersion"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id == chunkId
-        && request.resource.data.requestId is string
-        && request.resource.data.requestId == requestId
-        && request.resource.data.sequence is int
-        && request.resource.data.kind in ["sse", "data", "error"]
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 2
-        && request.resource.data.ciphertext is string
-        && request.resource.data.ciphertext.size() <= 131072;
+        && d.id is string
+        && d.id == chunkId
+        && d.requestId is string
+        && d.requestId == requestId
+        && d.sequence is int
+        && d.kind in ["sse", "data", "error"]
+        && d.schemaVersion is int
+        && d.schemaVersion >= 2
+        && d.ciphertext is string
+        && d.ciphertext.size() <= 131072;
     }
 
     function runtimeConnectionPreferenceWrite(userId, preferenceId) {
+      let d = request.resource.data;
       return ownerWritableNonSecret(userId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "id",
           "deviceID",
           "runtimeKind",
@@ -1711,17 +1717,17 @@ service cloud.firestore {
           "updatedAt",
           "schemaVersion"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id == preferenceId
-        && request.resource.data.deviceID is string
-        && request.resource.data.deviceID.size() <= 160
-        && request.resource.data.runtimeKind in ["hermes", "piAgent"]
-        && preferenceId == request.resource.data.deviceID + "_" + request.resource.data.runtimeKind
-        && request.resource.data.selectedConnectionID is string
-        && request.resource.data.selectedConnectionID.size() <= 160
-        && (!("selectedInstanceID" in request.resource.data) || (request.resource.data.selectedInstanceID is string && request.resource.data.selectedInstanceID.size() <= 160))
-        && (!("selectedModelID" in request.resource.data) || (request.resource.data.selectedModelID is string && request.resource.data.selectedModelID.size() <= 240))
-        && request.resource.data.schemaVersion is int;
+        && d.id is string
+        && d.id == preferenceId
+        && d.deviceID is string
+        && d.deviceID.size() <= 160
+        && d.runtimeKind in ["hermes", "piAgent"]
+        && preferenceId == d.deviceID + "_" + d.runtimeKind
+        && d.selectedConnectionID is string
+        && d.selectedConnectionID.size() <= 160
+        && (!("selectedInstanceID" in d) || (d.selectedInstanceID is string && d.selectedInstanceID.size() <= 160))
+        && (!("selectedModelID" in d) || (d.selectedModelID is string && d.selectedModelID.size() <= 240))
+        && d.schemaVersion is int;
     }
 
     // T-AZ-02: bind the `workspaceId` PATH segment to the caller. The canonical
@@ -1752,7 +1758,8 @@ service cloud.firestore {
     }
 
     function sharedArtifactSealedMetadata(artifactId) {
-      return request.resource.data.keys().hasOnly([
+      let d = request.resource.data;
+      return d.keys().hasOnly([
         "artifactID",
         "workspaceID",
         "teamID",
@@ -1770,30 +1777,30 @@ service cloud.firestore {
         "vaultKeyID",
         "sealedPayload"
       ])
-        && request.resource.data.artifactID == artifactId
-        && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 2
-        && matchesCurrentVaultKey(request.auth.uid, request.resource.data.vaultKeyID)
-        && validCloudSealedPayload(request.resource.data.sealedPayload)
-        && request.resource.data.sealedPayload.vaultKeyID == request.resource.data.vaultKeyID
+        && d.artifactID == artifactId
+        && d.contentSealed == true
+        && d.sealedSchemaVersion == 2
+        && matchesCurrentVaultKey(request.auth.uid, d.vaultKeyID)
+        && validCloudSealedPayload(d.sealedPayload)
+        && d.sealedPayload.vaultKeyID == d.vaultKeyID
         && forbidsSealedPlaintextContentFields()
-        && !request.resource.data.keys().hasAny(["relativePath", "contentHash"])
-        && request.resource.data.artifactID is string
-        && request.resource.data.artifactID.size() <= 256
-        && request.resource.data.revisionID is string
-        && request.resource.data.revisionID.size() <= 256
-        && request.resource.data.visibility in ["personal", "shared", "workspace", "team"]
-        && request.resource.data.isDeleted is bool
-        && (!("baseRevisionID" in request.resource.data)
-            || (request.resource.data.baseRevisionID is string && request.resource.data.baseRevisionID.size() <= 256))
-        && (!("updatedByUserID" in request.resource.data)
-            || (request.resource.data.updatedByUserID is string && request.resource.data.updatedByUserID.size() <= 256))
-        && (!("updatedByDeviceID" in request.resource.data)
-            || (request.resource.data.updatedByDeviceID is string && request.resource.data.updatedByDeviceID.size() <= 256))
-        && (!("resolvedConflictRevisionID" in request.resource.data)
-            || (request.resource.data.resolvedConflictRevisionID is string && request.resource.data.resolvedConflictRevisionID.size() <= 256))
-        && (!("updatedAt" in request.resource.data)
-            || request.resource.data.updatedAt is timestamp);
+        && !d.keys().hasAny(["relativePath", "contentHash"])
+        && d.artifactID is string
+        && d.artifactID.size() <= 256
+        && d.revisionID is string
+        && d.revisionID.size() <= 256
+        && d.visibility in ["personal", "shared", "workspace", "team"]
+        && d.isDeleted is bool
+        && (!("baseRevisionID" in d)
+            || (d.baseRevisionID is string && d.baseRevisionID.size() <= 256))
+        && (!("updatedByUserID" in d)
+            || (d.updatedByUserID is string && d.updatedByUserID.size() <= 256))
+        && (!("updatedByDeviceID" in d)
+            || (d.updatedByDeviceID is string && d.updatedByDeviceID.size() <= 256))
+        && (!("resolvedConflictRevisionID" in d)
+            || (d.resolvedConflictRevisionID is string && d.resolvedConflictRevisionID.size() <= 256))
+        && (!("updatedAt" in d)
+            || d.updatedAt is timestamp);
     }
 
     function sharedArtifactSealedOwnerWrite(workspaceId, teamId, artifactId) {
@@ -2047,7 +2054,8 @@ service cloud.firestore {
     // update or delete them — the history is immutable.
     match /users/{userId}/budgetEvents/{eventId} {
       function validBudgetEvent() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id",
           "ruleID",
           "kind",
@@ -2058,23 +2066,24 @@ service cloud.firestore {
           "syncedAt",
           "sourceDeviceID"
         ])
-        && !("detailJSON" in request.resource.data)
-        && request.resource.data.id is string
-        && request.resource.data.id == eventId
-        && request.resource.data.ruleID is string
-        && request.resource.data.ruleID.size() <= 160
-        && request.resource.data.kind in ["warning", "block", "override", "pause", "resume", "ruleCreated", "ruleUpdated", "ruleDeleted"]
-        && (!("source" in request.resource.data) || (request.resource.data.source is string && request.resource.data.source.size() <= 80))
-        && request.resource.data.amountAtEvent is number
-        && request.resource.data.limitAtEvent is number
-        && (!("sourceDeviceID" in request.resource.data) || (request.resource.data.sourceDeviceID is string && request.resource.data.sourceDeviceID.size() <= 160));
+        && !("detailJSON" in d)
+        && d.id is string
+        && d.id == eventId
+        && d.ruleID is string
+        && d.ruleID.size() <= 160
+        && d.kind in ["warning", "block", "override", "pause", "resume", "ruleCreated", "ruleUpdated", "ruleDeleted"]
+        && (!("source" in d) || (d.source is string && d.source.size() <= 80))
+        && d.amountAtEvent is number
+        && d.limitAtEvent is number
+        && (!("sourceDeviceID" in d) || (d.sourceDeviceID is string && d.sourceDeviceID.size() <= 160));
       }
       allow create: if ownerWritableNonSecret(userId) && validBudgetEvent();
     }
 
     match /users/{userId}/conversations/{conversationId} {
       function validConversationMirror() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id",
           "deviceId",
           "provider",
@@ -2093,7 +2102,7 @@ service cloud.firestore {
           "vaultKeyID",
           "sealedPayload"
         ])
-        && !request.resource.data.keys().hasAny([
+        && !d.keys().hasAny([
           "projectName",
           "keyFiles",
           "keyCommands",
@@ -2106,26 +2115,26 @@ service cloud.firestore {
           "summaryProvider",
           "summaryModel"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id.size() <= 512
-        && request.resource.data.deviceId is string
-        && request.resource.data.deviceId.size() <= 160
-        && request.resource.data.provider is string
-        && request.resource.data.provider.size() <= 80
-        && request.resource.data.sessionId is string
-        && request.resource.data.sessionId.size() <= 512
-        && request.resource.data.messageCount is int
-        && request.resource.data.messageCount >= 0
-        && request.resource.data.messageCount <= 200000
-        && request.resource.data.userWordCount is int
-        && request.resource.data.userWordCount >= 0
-        && request.resource.data.assistantWordCount is int
-        && request.resource.data.assistantWordCount >= 0
-        && (!("sourceType" in request.resource.data) || request.resource.data.sourceType is string)
-        && (!("version" in request.resource.data) || request.resource.data.version is int)
-        && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 2
-        && validPathBoundSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload, "conversations", conversationId)
+        && d.id is string
+        && d.id.size() <= 512
+        && d.deviceId is string
+        && d.deviceId.size() <= 160
+        && d.provider is string
+        && d.provider.size() <= 80
+        && d.sessionId is string
+        && d.sessionId.size() <= 512
+        && d.messageCount is int
+        && d.messageCount >= 0
+        && d.messageCount <= 200000
+        && d.userWordCount is int
+        && d.userWordCount >= 0
+        && d.assistantWordCount is int
+        && d.assistantWordCount >= 0
+        && (!("sourceType" in d) || d.sourceType is string)
+        && (!("version" in d) || d.version is int)
+        && d.contentSealed == true
+        && d.sealedSchemaVersion == 2
+        && validPathBoundSealedPayloadForUser(userId, d.vaultKeyID, d.sealedPayload, "conversations", conversationId)
         && forbidsDirectSignalEnvelope();
       }
       allow create, update: if ownerWritableHostedCloudBackup(userId)
@@ -2145,7 +2154,8 @@ service cloud.firestore {
     // also persisted on-device, so Firestore is the cross-device mirror.
     match /users/{userId}/mobile_assistant_chats/{threadId} {
       function validMobileAssistantChatMirror() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id",
           "runtime",
           "createdAt",
@@ -2161,19 +2171,19 @@ service cloud.firestore {
           "lastMessageRole",
           "lastAssistantMessageID"
         ])
-        && request.resource.data.id == threadId
-        && request.resource.data.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
-        && request.resource.data.messageCount is int
-        && request.resource.data.messageCount >= 0
-        && request.resource.data.messageCount <= 5000
-        && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 2
-        && validPathBoundSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload, "mobile_assistant_chats", threadId)
-        && (!("labelColorHex" in request.resource.data) || (request.resource.data.labelColorHex is string && request.resource.data.labelColorHex.size() <= 16))
-        && (!("isPinned" in request.resource.data) || request.resource.data.isPinned is bool)
-        && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)
-        && (!("lastMessageRole" in request.resource.data) || request.resource.data.lastMessageRole in ["user", "assistant", "system", "tool"])
-        && (!("lastAssistantMessageID" in request.resource.data) || (request.resource.data.lastAssistantMessageID is string && request.resource.data.lastAssistantMessageID.size() <= 512))
+        && d.id == threadId
+        && d.runtime in ["hermes", "pi", "piagent", "pi_agent", "codex", "claude", "openclaw", "antigravity", "droid", "factory", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
+        && d.messageCount is int
+        && d.messageCount >= 0
+        && d.messageCount <= 5000
+        && d.contentSealed == true
+        && d.sealedSchemaVersion == 2
+        && validPathBoundSealedPayloadForUser(userId, d.vaultKeyID, d.sealedPayload, "mobile_assistant_chats", threadId)
+        && (!("labelColorHex" in d) || (d.labelColorHex is string && d.labelColorHex.size() <= 16))
+        && (!("isPinned" in d) || d.isPinned is bool)
+        && (!("priorityOrder" in d) || d.priorityOrder is int)
+        && (!("lastMessageRole" in d) || d.lastMessageRole in ["user", "assistant", "system", "tool"])
+        && (!("lastAssistantMessageID" in d) || (d.lastAssistantMessageID is string && d.lastAssistantMessageID.size() <= 512))
         && forbidsSealedPlaintextContentFields()
         && forbidsDirectSignalEnvelope();
       }
@@ -2185,7 +2195,8 @@ service cloud.firestore {
     // Mac CLI agent transcripts mirrored for the mobile Assistants tiles.
     match /users/{userId}/cli_sessions/{sessionId} {
       function validCliSessionMirror() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id",
           "agent",
           "sourceKind",
@@ -2206,20 +2217,20 @@ service cloud.firestore {
           "isPinned",
           "priorityOrder"
         ])
-        && request.resource.data.id == sessionId
-        && request.resource.data.agent in ["codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
-        && (!("sourceKind" in request.resource.data) || request.resource.data.sourceKind in ["live_chat", "archived_log"])
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 2
-        && validPathBoundSealedPayloadForUser(userId, request.resource.data.vaultKeyID, request.resource.data.sealedPayload, "cli_sessions", sessionId)
-        && (!("messageCount" in request.resource.data) || (request.resource.data.messageCount is int && request.resource.data.messageCount >= 0 && request.resource.data.messageCount <= 5000))
-        && (!("lastMessageRole" in request.resource.data) || request.resource.data.lastMessageRole in ["user", "assistant", "system", "tool"])
-        && (!("lastAssistantMessageID" in request.resource.data) || (request.resource.data.lastAssistantMessageID is string && request.resource.data.lastAssistantMessageID.size() <= 512))
-        && (!("encryptedTranscriptAvailable" in request.resource.data) || request.resource.data.encryptedTranscriptAvailable is bool)
-        && (!("labelColorHex" in request.resource.data) || (request.resource.data.labelColorHex is string && request.resource.data.labelColorHex.size() <= 16))
-        && (!("isPinned" in request.resource.data) || request.resource.data.isPinned is bool)
-        && (!("priorityOrder" in request.resource.data) || request.resource.data.priorityOrder is int)
+        && d.id == sessionId
+        && d.agent in ["codex", "claude", "openclaw", "antigravity", "droid", "forge", "grok", "cursorAgent", "cursoragent", "cursor_agent"]
+        && (!("sourceKind" in d) || d.sourceKind in ["live_chat", "archived_log"])
+        && d.schemaVersion is int
+        && d.contentSealed == true
+        && d.sealedSchemaVersion == 2
+        && validPathBoundSealedPayloadForUser(userId, d.vaultKeyID, d.sealedPayload, "cli_sessions", sessionId)
+        && (!("messageCount" in d) || (d.messageCount is int && d.messageCount >= 0 && d.messageCount <= 5000))
+        && (!("lastMessageRole" in d) || d.lastMessageRole in ["user", "assistant", "system", "tool"])
+        && (!("lastAssistantMessageID" in d) || (d.lastAssistantMessageID is string && d.lastAssistantMessageID.size() <= 512))
+        && (!("encryptedTranscriptAvailable" in d) || d.encryptedTranscriptAvailable is bool)
+        && (!("labelColorHex" in d) || (d.labelColorHex is string && d.labelColorHex.size() <= 16))
+        && (!("isPinned" in d) || d.isPinned is bool)
+        && (!("priorityOrder" in d) || d.priorityOrder is int)
         && forbidsSealedPlaintextContentFields();
       }
 
@@ -2444,45 +2455,45 @@ service cloud.firestore {
       function validCliAgentMissionRequest() {
         let d = request.resource.data;
         return validCliAgentMissionRequestKeys()
-        && request.resource.data.id is string
-        && request.resource.data.id.size() <= 512
-        && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 2
-        && matchesCurrentVaultKey(userId, request.resource.data.vaultKeyID)
-        && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, request.resource.data.sealedPayload)
-        && request.resource.data.sealedPayload.vaultKeyID == request.resource.data.vaultKeyID
+        && d.id is string
+        && d.id.size() <= 512
+        && d.contentSealed == true
+        && d.sealedSchemaVersion == 2
+        && matchesCurrentVaultKey(userId, d.vaultKeyID)
+        && validPathBoundCloudSealedPayload(userId, "cli_agent_mission_requests", requestId, d.sealedPayload)
+        && d.sealedPayload.vaultKeyID == d.vaultKeyID
         && (!("sealedStatePayload" in d) || (
-          request.resource.data.sealedStateSchemaVersion == 1
-          && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
-          && validPathBoundCloudSealedPayloadAt(userId, "cli_agent_mission_requests", requestId, "sealedStatePayload", request.resource.data.sealedStatePayload)
-          && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
+          d.sealedStateSchemaVersion == 1
+          && d.sealedStateVaultKeyID == d.vaultKeyID
+          && validPathBoundCloudSealedPayloadAt(userId, "cli_agent_mission_requests", requestId, "sealedStatePayload", d.sealedStatePayload)
+          && d.sealedStatePayload.vaultKeyID == d.vaultKeyID
         ))
-        && validCliMissionKind(request.resource.data.missionKind)
-        && validCliMissionRuntime(request.resource.data.requestedRuntime)
-        && validCliMissionSource(request.resource.data.source)
-        && (!("deliveryMode" in d) || validCliMissionDeliveryMode(request.resource.data.deliveryMode))
-        && (!("presentationMode" in d) || validCliMissionPresentationMode(request.resource.data.presentationMode))
-        && request.resource.data.status is string
-        && request.resource.data.schemaVersion is int
-        && (!("depth" in d) || validCliMissionDepth(request.resource.data.depth))
+        && validCliMissionKind(d.missionKind)
+        && validCliMissionRuntime(d.requestedRuntime)
+        && validCliMissionSource(d.source)
+        && (!("deliveryMode" in d) || validCliMissionDeliveryMode(d.deliveryMode))
+        && (!("presentationMode" in d) || validCliMissionPresentationMode(d.presentationMode))
+        && d.status is string
+        && d.schemaVersion is int
+        && (!("depth" in d) || validCliMissionDepth(d.depth))
         && validCliMissionApprovalControls()
-        && (!("claimedBy" in d) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
-        && (!("selectedRuntime" in d) || validCliMissionRuntime(request.resource.data.selectedRuntime))
-        && (!("approvalStatus" in d) || request.resource.data.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
-        && (!("approvedByDeviceId" in d) || (request.resource.data.approvedByDeviceId is string && request.resource.data.approvedByDeviceId.size() <= 160))
-        && (!("lastEventSequence" in d) || request.resource.data.lastEventSequence is int)
-        && (!("siblingIndex" in d) || (request.resource.data.siblingIndex is int && request.resource.data.siblingIndex >= 0 && request.resource.data.siblingIndex < 16))
-        && (!("siblingCount" in d) || (request.resource.data.siblingCount is int && request.resource.data.siblingCount > 0 && request.resource.data.siblingCount <= 16))
-        && (!("isGroupChild" in d) || request.resource.data.isGroupChild is bool)
-        && (!("sourceSkillID" in d) || validCliMissionMetadataToken(request.resource.data.sourceSkillID, 80))
-        && (!("sourceSurface" in d) || validCliMissionMetadataToken(request.resource.data.sourceSurface, 80))
-        && (!("requestedModelID" in d) || validCliMissionMetadataToken(request.resource.data.requestedModelID, 160))
-        && (!("parentHermesThreadID" in d) || validCliMissionMetadataToken(request.resource.data.parentHermesThreadID, 160))
-        && (!("clientThreadID" in d) || validCliMissionMetadataToken(request.resource.data.clientThreadID, 160))
-        && (!("parentSessionID" in d) || validCliMissionMetadataToken(request.resource.data.parentSessionID, 160))
-        && (!("personaID" in d) || validCliMissionMetadataToken(request.resource.data.personaID, 160))
-        && (!("groupID" in d) || validCliMissionMetadataToken(request.resource.data.groupID, 160))
-        && (!("resumeAction" in d) || validCliMissionResumeAction(request.resource.data.resumeAction))
+        && (!("claimedBy" in d) || (d.claimedBy is string && d.claimedBy.size() <= 256))
+        && (!("selectedRuntime" in d) || validCliMissionRuntime(d.selectedRuntime))
+        && (!("approvalStatus" in d) || d.approvalStatus in ["pending", "approved", "rejected", "canceled", "cancelled"])
+        && (!("approvedByDeviceId" in d) || (d.approvedByDeviceId is string && d.approvedByDeviceId.size() <= 160))
+        && (!("lastEventSequence" in d) || d.lastEventSequence is int)
+        && (!("siblingIndex" in d) || (d.siblingIndex is int && d.siblingIndex >= 0 && d.siblingIndex < 16))
+        && (!("siblingCount" in d) || (d.siblingCount is int && d.siblingCount > 0 && d.siblingCount <= 16))
+        && (!("isGroupChild" in d) || d.isGroupChild is bool)
+        && (!("sourceSkillID" in d) || validCliMissionMetadataToken(d.sourceSkillID, 80))
+        && (!("sourceSurface" in d) || validCliMissionMetadataToken(d.sourceSurface, 80))
+        && (!("requestedModelID" in d) || validCliMissionMetadataToken(d.requestedModelID, 160))
+        && (!("parentHermesThreadID" in d) || validCliMissionMetadataToken(d.parentHermesThreadID, 160))
+        && (!("clientThreadID" in d) || validCliMissionMetadataToken(d.clientThreadID, 160))
+        && (!("parentSessionID" in d) || validCliMissionMetadataToken(d.parentSessionID, 160))
+        && (!("personaID" in d) || validCliMissionMetadataToken(d.personaID, 160))
+        && (!("groupID" in d) || validCliMissionMetadataToken(d.groupID, 160))
+        && (!("resumeAction" in d) || validCliMissionResumeAction(d.resumeAction))
         // The exact hasOnly([...]) allowlist above contains neither plaintext
         // content fields nor signalEnvelope. Repeating either deny check here
         // pushes the full fan-out child payload past Firestore's 1000-expression
@@ -2547,9 +2558,10 @@ service cloud.firestore {
       }
 
       function validTrustedMissionHostUpdate(userId) {
+        let d = request.resource.data;
         return trustedMissionExecutorDevice(userId)
-          && (!("claimedBy" in resource.data) || request.resource.data.claimedBy == resource.data.claimedBy)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          && (!("claimedBy" in resource.data) || d.claimedBy == resource.data.claimedBy)
+          && d.diff(resource.data).affectedKeys().hasOnly([
             "status",
             "claimedBy",
             "selectedRuntime",
@@ -2577,17 +2589,17 @@ service cloud.firestore {
             "approvalMessage",
             "synthesisSummary"
           ])
-          && request.resource.data.status is string
-          && request.resource.data.status.size() <= 80
-          && request.resource.data.claimedBy is string
-          && request.resource.data.claimedBy.size() <= 256
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedRuntime"]) || validCliMissionRuntime(request.resource.data.selectedRuntime))
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedRuntimeName"]) || (request.resource.data.selectedRuntimeName is string && request.resource.data.selectedRuntimeName.size() <= 120))
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["selectedModelID"]) || validCliMissionMetadataToken(request.resource.data.selectedModelID, 160))
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["sessionId"]) || (request.resource.data.sessionId is string && request.resource.data.sessionId.size() <= 512))
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["approvalRequestId"]) || (request.resource.data.approvalRequestId is string && request.resource.data.approvalRequestId.size() <= 160))
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["approvalStatus"]) || request.resource.data.approvalStatus in ["pending", "canceled", "cancelled"])
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["lastEventSequence"]) || request.resource.data.lastEventSequence is int)
+          && d.status is string
+          && d.status.size() <= 80
+          && d.claimedBy is string
+          && d.claimedBy.size() <= 256
+          && (!d.diff(resource.data).affectedKeys().hasAny(["selectedRuntime"]) || validCliMissionRuntime(d.selectedRuntime))
+          && (!d.diff(resource.data).affectedKeys().hasAny(["selectedRuntimeName"]) || (d.selectedRuntimeName is string && d.selectedRuntimeName.size() <= 120))
+          && (!d.diff(resource.data).affectedKeys().hasAny(["selectedModelID"]) || validCliMissionMetadataToken(d.selectedModelID, 160))
+          && (!d.diff(resource.data).affectedKeys().hasAny(["sessionId"]) || (d.sessionId is string && d.sessionId.size() <= 512))
+          && (!d.diff(resource.data).affectedKeys().hasAny(["approvalRequestId"]) || (d.approvalRequestId is string && d.approvalRequestId.size() <= 160))
+          && (!d.diff(resource.data).affectedKeys().hasAny(["approvalStatus"]) || d.approvalStatus in ["pending", "canceled", "cancelled"])
+          && (!d.diff(resource.data).affectedKeys().hasAny(["lastEventSequence"]) || d.lastEventSequence is int)
           // The trusted Mac host may REQUEST approval (approvalStatus "pending")
           // but must NOT RESOLVE it. Flipping approvalStatus to approved/rejected
           // is the human decision and must flow through the App-Check-enforced
@@ -2596,8 +2608,8 @@ service cloud.firestore {
           // Without this, the host branch would let any owner-auth client
           // self-approve a mission claimed by a trusted Mac, bypassing the
           // approvedByDeviceId binding below.
-          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["approvalStatus"])
-              || !(request.resource.data.approvalStatus in ["approved", "rejected"]));
+          && (!d.diff(resource.data).affectedKeys().hasAny(["approvalStatus"])
+              || !(d.approvalStatus in ["approved", "rejected"]));
       }
 
       function validMobileMissionApprovalResponse() {
@@ -2665,23 +2677,24 @@ service cloud.firestore {
       }
 
       function validCliAgentMissionEventSource(userId, requestId, eventId) {
+        let d = request.resource.data;
         return (
-            request.resource.data.source in ["ios", "android", "ios-chat", "android-chat"]
-            && request.resource.data.phase == "queued"
-            && request.resource.data.kind == "status"
-            && request.resource.data.sequence == 1
+            d.source in ["ios", "android", "ios-chat", "android-chat"]
+            && d.phase == "queued"
+            && d.kind == "status"
+            && d.sequence == 1
             && eventId == "000001"
           )
           || (
-            request.resource.data.source == "mac"
-            && request.resource.data.phase == "queued"
-            && request.resource.data.kind == "status"
-            && request.resource.data.sequence == 1
+            d.source == "mac"
+            && d.phase == "queued"
+            && d.kind == "status"
+            && d.sequence == 1
             && eventId == "000001"
-            && request.resource.data.sourceSurface == "mac-wand"
+            && d.sourceSurface == "mac-wand"
           )
           || (
-            request.resource.data.source == "mac"
+            d.source == "mac"
             && trustedMissionExecutorClaim(userId, requestId)
           );
       }
@@ -2700,29 +2713,30 @@ service cloud.firestore {
 
       match /events/{eventId} {
         function validCliAgentMissionEventRewrapUpdate() {
+          let d = request.resource.data;
           return ownerWritableNonSecret(userId)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            && d.diff(resource.data).affectedKeys().hasOnly([
               "sealedPayload",
               "vaultKeyID",
               "vaultGeneration",
               "rewrapJobId",
               "updatedAt"
             ])
-            && request.resource.data.contentSealed == true
-            && request.resource.data.sealedSchemaVersion == 2
+            && d.contentSealed == true
+            && d.sealedSchemaVersion == 2
             && validPathBoundSealedPayloadForUser(
               userId,
-              request.resource.data.vaultKeyID,
-              request.resource.data.sealedPayload,
+              d.vaultKeyID,
+              d.sealedPayload,
               "cli_agent_mission_requests/events",
               requestId + "/" + eventId
             )
-            && request.resource.data.sealedPayload.vaultKeyID == request.resource.data.vaultKeyID
-            && request.resource.data.vaultGeneration is int
-            && request.resource.data.vaultGeneration >= 1
-            && request.resource.data.rewrapJobId is string
-            && request.resource.data.rewrapJobId.size() <= 160
-            && request.resource.data.updatedAt is timestamp;
+            && d.sealedPayload.vaultKeyID == d.vaultKeyID
+            && d.vaultGeneration is int
+            && d.vaultGeneration >= 1
+            && d.rewrapJobId is string
+            && d.rewrapJobId.size() <= 160
+            && d.updatedAt is timestamp;
         }
 
         allow read: if ownsUserNamespace(userId);
@@ -2801,28 +2815,29 @@ service cloud.firestore {
       }
 
       function validAgentImportJob() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id", "selectedHarnesses", "status", "source", "createdAt",
           "updatedAt", "startedAt", "completedAt", "claimedBy",
           "progressMessage", "scannedCount", "importedCount",
           "mirroredSessionCount", "uploadedSessionLogCount",
           "errorMessage", "schemaVersion"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id.size() <= 512
-        && request.resource.data.selectedHarnesses is list
-        && request.resource.data.selectedHarnesses.size() > 0
-        && request.resource.data.selectedHarnesses.size() <= 32
-        && request.resource.data.status in ["pending", "claimed", "scanning", "uploading", "completed", "failed", "canceled", "cancelled"]
-        && request.resource.data.source in ["ios-import", "android-import", "mac-import"]
-        && request.resource.data.schemaVersion is int
-        && (!("claimedBy" in request.resource.data) || (request.resource.data.claimedBy is string && request.resource.data.claimedBy.size() <= 256))
-        && (!("progressMessage" in request.resource.data) || (request.resource.data.progressMessage is string && request.resource.data.progressMessage.size() <= 2048))
-        && (!("errorMessage" in request.resource.data) || (request.resource.data.errorMessage is string && request.resource.data.errorMessage.size() <= 2048))
-        && (!("scannedCount" in request.resource.data) || request.resource.data.scannedCount is int)
-        && (!("importedCount" in request.resource.data) || request.resource.data.importedCount is int)
-        && (!("mirroredSessionCount" in request.resource.data) || request.resource.data.mirroredSessionCount is int)
-        && (!("uploadedSessionLogCount" in request.resource.data) || request.resource.data.uploadedSessionLogCount is int);
+        && d.id is string
+        && d.id.size() <= 512
+        && d.selectedHarnesses is list
+        && d.selectedHarnesses.size() > 0
+        && d.selectedHarnesses.size() <= 32
+        && d.status in ["pending", "claimed", "scanning", "uploading", "completed", "failed", "canceled", "cancelled"]
+        && d.source in ["ios-import", "android-import", "mac-import"]
+        && d.schemaVersion is int
+        && (!("claimedBy" in d) || (d.claimedBy is string && d.claimedBy.size() <= 256))
+        && (!("progressMessage" in d) || (d.progressMessage is string && d.progressMessage.size() <= 2048))
+        && (!("errorMessage" in d) || (d.errorMessage is string && d.errorMessage.size() <= 2048))
+        && (!("scannedCount" in d) || d.scannedCount is int)
+        && (!("importedCount" in d) || d.importedCount is int)
+        && (!("mirroredSessionCount" in d) || d.mirroredSessionCount is int)
+        && (!("uploadedSessionLogCount" in d) || d.uploadedSessionLogCount is int);
       }
 
       function validAgentImportCreate() {
@@ -2878,7 +2893,8 @@ service cloud.firestore {
       }
 
       function validMissionGroup() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id", "title", "prompt", "missionKind", "targetProject",
           "childMissionIDs", "runtimeTokens", "parallelismLimit",
           "mergeStrategy", "phase", "winnerMissionID",
@@ -2887,49 +2903,50 @@ service cloud.firestore {
           "contentSealed", "sealedSchemaVersion", "vaultKeyID", "sealedPayload",
           "sealedStatePayload", "sealedStateSchemaVersion", "sealedStateVaultKeyID"
         ])
-        && !request.resource.data.keys().hasAny(["title", "prompt", "targetProject", "synthesisSummary"])
-        && request.resource.data.contentSealed == true
-        && request.resource.data.sealedSchemaVersion == 2
-        && matchesCurrentVaultKey(userId, request.resource.data.vaultKeyID)
-        && validCloudSealedPayload(request.resource.data.sealedPayload)
-        && request.resource.data.sealedPayload.vaultKeyID == request.resource.data.vaultKeyID
-        && (!("sealedStatePayload" in request.resource.data) || (
-          request.resource.data.sealedStateSchemaVersion == 1
-          && request.resource.data.sealedStateVaultKeyID == request.resource.data.vaultKeyID
-          && validCloudSealedPayload(request.resource.data.sealedStatePayload)
-        && request.resource.data.sealedStatePayload.vaultKeyID == request.resource.data.vaultKeyID
+        && !d.keys().hasAny(["title", "prompt", "targetProject", "synthesisSummary"])
+        && d.contentSealed == true
+        && d.sealedSchemaVersion == 2
+        && matchesCurrentVaultKey(userId, d.vaultKeyID)
+        && validCloudSealedPayload(d.sealedPayload)
+        && d.sealedPayload.vaultKeyID == d.vaultKeyID
+        && (!("sealedStatePayload" in d) || (
+          d.sealedStateSchemaVersion == 1
+          && d.sealedStateVaultKeyID == d.vaultKeyID
+          && validCloudSealedPayload(d.sealedStatePayload)
+        && d.sealedStatePayload.vaultKeyID == d.vaultKeyID
         ))
-        && request.resource.data.id == groupId
-        && request.resource.data.childMissionIDs is list
-        && request.resource.data.childMissionIDs.size() >= 1
-        && request.resource.data.childMissionIDs.size() <= wandFanOutCap(userId)
-        && request.resource.data.runtimeTokens is list
-        && request.resource.data.runtimeTokens.size() == request.resource.data.childMissionIDs.size()
-        && request.resource.data.runtimeTokens.size() <= wandFanOutCap(userId)
-        && request.resource.data.parallelismLimit is int
-        && request.resource.data.parallelismLimit >= 1
-        && request.resource.data.parallelismLimit <= request.resource.data.childMissionIDs.size()
-        && request.resource.data.parallelismLimit <= wandFanOutCap(userId)
-        && validMissionGroupKind(request.resource.data.missionKind)
-        && validMissionGroupSource(request.resource.data.source)
-        && request.resource.data.mergeStrategy in ["pick_one", "keep_all", "synthesize"]
-        && request.resource.data.phase in ["queued", "fanning_out", "awaiting_merge", "merged", "cancelled", "failed"]
-        && request.resource.data.schemaVersion is int;
+        && d.id == groupId
+        && d.childMissionIDs is list
+        && d.childMissionIDs.size() >= 1
+        && d.childMissionIDs.size() <= wandFanOutCap(userId)
+        && d.runtimeTokens is list
+        && d.runtimeTokens.size() == d.childMissionIDs.size()
+        && d.runtimeTokens.size() <= wandFanOutCap(userId)
+        && d.parallelismLimit is int
+        && d.parallelismLimit >= 1
+        && d.parallelismLimit <= d.childMissionIDs.size()
+        && d.parallelismLimit <= wandFanOutCap(userId)
+        && validMissionGroupKind(d.missionKind)
+        && validMissionGroupSource(d.source)
+        && d.mergeStrategy in ["pick_one", "keep_all", "synthesize"]
+        && d.phase in ["queued", "fanning_out", "awaiting_merge", "merged", "cancelled", "failed"]
+        && d.schemaVersion is int;
       }
       function immutableMissionGroupDispatchFields() {
-        return request.resource.data.id == resource.data.id
-          && request.resource.data.childMissionIDs == resource.data.childMissionIDs
-          && request.resource.data.runtimeTokens == resource.data.runtimeTokens
-          && request.resource.data.parallelismLimit == resource.data.parallelismLimit
-          && request.resource.data.missionKind == resource.data.missionKind
-          && request.resource.data.mergeStrategy == resource.data.mergeStrategy
-          && request.resource.data.createdAt == resource.data.createdAt
-          && request.resource.data.source == resource.data.source
-          && request.resource.data.schemaVersion == resource.data.schemaVersion
-          && request.resource.data.contentSealed == resource.data.contentSealed
-          && request.resource.data.sealedSchemaVersion == resource.data.sealedSchemaVersion
-          && request.resource.data.vaultKeyID == resource.data.vaultKeyID
-          && request.resource.data.sealedPayload == resource.data.sealedPayload;
+        let d = request.resource.data;
+        return d.id == resource.data.id
+          && d.childMissionIDs == resource.data.childMissionIDs
+          && d.runtimeTokens == resource.data.runtimeTokens
+          && d.parallelismLimit == resource.data.parallelismLimit
+          && d.missionKind == resource.data.missionKind
+          && d.mergeStrategy == resource.data.mergeStrategy
+          && d.createdAt == resource.data.createdAt
+          && d.source == resource.data.source
+          && d.schemaVersion == resource.data.schemaVersion
+          && d.contentSealed == resource.data.contentSealed
+          && d.sealedSchemaVersion == resource.data.sealedSchemaVersion
+          && d.vaultKeyID == resource.data.vaultKeyID
+          && d.sealedPayload == resource.data.sealedPayload;
       }
       allow create: if ownerWritableNonSecret(userId) && validMissionGroup();
       allow update: if ownerWritableNonSecret(userId)
@@ -2947,24 +2964,25 @@ service cloud.firestore {
     // rows remain readable but may not be re-created through client rules.
     match /users/{userId}/approval_policies/{policyId} {
       function validApprovalPolicy() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "decision", "missionKind", "toolName", "runtimeID",
           "sealedDisplayLabel", "sealedFileGlob", "sealedTargetProject",
           "projectKeyHash", "fileGlobHash",
           "createdAt", "expiresAt", "matchCount", "schemaVersion"
         ])
-        && request.resource.data.decision in ["approve", "deny"]
-        && request.resource.data.schemaVersion is int
-        && request.resource.data.schemaVersion >= 2
-        && validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedDisplayLabel", request.resource.data.sealedDisplayLabel)
-        && (!("missionKind" in request.resource.data) || request.resource.data.missionKind is string)
-        && (!("toolName" in request.resource.data) || request.resource.data.toolName is string)
-        && (!("runtimeID" in request.resource.data) || request.resource.data.runtimeID is string)
-        && (!("sealedFileGlob" in request.resource.data) || validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedFileGlob", request.resource.data.sealedFileGlob))
-        && (!("sealedTargetProject" in request.resource.data) || validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedTargetProject", request.resource.data.sealedTargetProject))
-        && (!("projectKeyHash" in request.resource.data) || request.resource.data.projectKeyHash.matches("^[a-f0-9]{32}$"))
-        && (!("fileGlobHash" in request.resource.data) || request.resource.data.fileGlobHash.matches("^[a-f0-9]{32}$"))
-        && (!("matchCount" in request.resource.data) || request.resource.data.matchCount is int);
+        && d.decision in ["approve", "deny"]
+        && d.schemaVersion is int
+        && d.schemaVersion >= 2
+        && validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedDisplayLabel", d.sealedDisplayLabel)
+        && (!("missionKind" in d) || d.missionKind is string)
+        && (!("toolName" in d) || d.toolName is string)
+        && (!("runtimeID" in d) || d.runtimeID is string)
+        && (!("sealedFileGlob" in d) || validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedFileGlob", d.sealedFileGlob))
+        && (!("sealedTargetProject" in d) || validCloudSealedTextAt(userId, "approval_policies", policyId, "sealedTargetProject", d.sealedTargetProject))
+        && (!("projectKeyHash" in d) || d.projectKeyHash.matches("^[a-f0-9]{32}$"))
+        && (!("fileGlobHash" in d) || d.fileGlobHash.matches("^[a-f0-9]{32}$"))
+        && (!("matchCount" in d) || d.matchCount is int);
       }
       allow create, update: if ownerWritableNonSecret(userId) && validApprovalPolicy();
     }
@@ -3027,18 +3045,19 @@ service cloud.firestore {
     // privacy-leak-remediation.
     match /users/{userId}/agent_identities/{identityId} {
       function validAgentIdentity() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id", "runtimeID", "glyph", "paletteHex", "tier", "availability",
           "installSource", "capabilities", "dispatchTransport",
           "lastSevenDays", "lastRefreshedAt",
           "sealedDisplayName", "sealedTagline", "sealedPersonas", "updatedAt"
         ])
-        && (!("sealedDisplayName" in request.resource.data) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedDisplayName", request.resource.data.sealedDisplayName))
-        && (!("sealedTagline" in request.resource.data) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedTagline", request.resource.data.sealedTagline))
-        && (!("sealedPersonas" in request.resource.data) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedPersonas", request.resource.data.sealedPersonas))
-        && !("displayName" in request.resource.data)
-        && !("tagline" in request.resource.data)
-        && !("personas" in request.resource.data);
+        && (!("sealedDisplayName" in d) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedDisplayName", d.sealedDisplayName))
+        && (!("sealedTagline" in d) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedTagline", d.sealedTagline))
+        && (!("sealedPersonas" in d) || validCloudSealedTextAt(userId, "agent_identities", identityId, "sealedPersonas", d.sealedPersonas))
+        && !("displayName" in d)
+        && !("tagline" in d)
+        && !("personas" in d);
       }
       allow create, update: if ownerWritableNonSecret(userId) && validAgentIdentity();
     }
@@ -3347,9 +3366,10 @@ service cloud.firestore {
 
     match /users/{userId}/cloud_vault_key_wrappers/{wrapperId} {
       function ownerWritableActiveCloudVaultKeyWrapper(wrapperId) {
+        let d = request.resource.data;
         return ownerWritableHostedCloudBackup(userId)
         && validKeyWrapperDocId(wrapperId)
-        && request.resource.data.keys().hasOnly([
+        && d.keys().hasOnly([
           "uid",
           "wrapperId",
           "targetDeviceId",
@@ -3367,32 +3387,32 @@ service cloud.firestore {
           "updatedAt",
           "schemaVersion"
         ])
-        && request.resource.data.uid == userId
-        && (!("wrapperId" in request.resource.data) || request.resource.data.wrapperId == wrapperId)
-        && validVaultKeyID(request.resource.data.vaultKeyID)
-        && matchesCurrentVaultKey(userId, request.resource.data.vaultKeyID)
-        && request.resource.data.targetDeviceId is string
-        && request.resource.data.targetDeviceId.size() <= 256
-        && request.resource.data.sourceDeviceId is string
-        && request.resource.data.sourceDeviceId.size() <= 256
-        && request.resource.data.publicKeyFingerprint is string
-        && request.resource.data.publicKeyFingerprint.size() <= 128
-        && request.resource.data.keyVersion is int
-        && request.resource.data.keyVersion >= 1
-	        && request.resource.data.keyVersion <= 1000
-	        && (!("vaultGeneration" in request.resource.data) || (request.resource.data.vaultGeneration is int && request.resource.data.vaultGeneration >= 1 && request.resource.data.vaultGeneration <= 10000))
-	        && (!("rotationJobId" in request.resource.data) || (request.resource.data.rotationJobId is string && request.resource.data.rotationJobId.size() <= 200))
-	        && (!("revokedByRotationJobId" in request.resource.data) || (request.resource.data.revokedByRotationJobId is string && request.resource.data.revokedByRotationJobId.size() <= 200))
-	        && request.resource.data.wrappedVaultKey is string
-        && request.resource.data.wrappedVaultKey.size() <= 8192
-        && request.resource.data.wrappedVaultKey.matches("^[A-Za-z0-9+/=]+$")
-        && request.resource.data.algorithm == "ECIES-P256-AESGCM"
-        && request.resource.data.status == "active"
-	        && request.resource.data.schemaVersion in [2, 3]
-        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId))
-        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.targetDeviceId)).data.trustState == "trusted"
-        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId))
-        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(request.resource.data.sourceDeviceId)).data.trustState == "trusted";
+        && d.uid == userId
+        && (!("wrapperId" in d) || d.wrapperId == wrapperId)
+        && validVaultKeyID(d.vaultKeyID)
+        && matchesCurrentVaultKey(userId, d.vaultKeyID)
+        && d.targetDeviceId is string
+        && d.targetDeviceId.size() <= 256
+        && d.sourceDeviceId is string
+        && d.sourceDeviceId.size() <= 256
+        && d.publicKeyFingerprint is string
+        && d.publicKeyFingerprint.size() <= 128
+        && d.keyVersion is int
+        && d.keyVersion >= 1
+	        && d.keyVersion <= 1000
+	        && (!("vaultGeneration" in d) || (d.vaultGeneration is int && d.vaultGeneration >= 1 && d.vaultGeneration <= 10000))
+	        && (!("rotationJobId" in d) || (d.rotationJobId is string && d.rotationJobId.size() <= 200))
+	        && (!("revokedByRotationJobId" in d) || (d.revokedByRotationJobId is string && d.revokedByRotationJobId.size() <= 200))
+	        && d.wrappedVaultKey is string
+        && d.wrappedVaultKey.size() <= 8192
+        && d.wrappedVaultKey.matches("^[A-Za-z0-9+/=]+$")
+        && d.algorithm == "ECIES-P256-AESGCM"
+        && d.status == "active"
+	        && d.schemaVersion in [2, 3]
+        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(d.targetDeviceId))
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(d.targetDeviceId)).data.trustState == "trusted"
+        && exists(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(d.sourceDeviceId))
+        && get(/databases/$(database)/documents/users/$(userId)/escrow_devices/$(d.sourceDeviceId)).data.trustState == "trusted";
       }
 	      allow create: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId);
 	      allow update: if ownerWritableActiveCloudVaultKeyWrapper(wrapperId)
@@ -3406,8 +3426,9 @@ service cloud.firestore {
 
 	    match /users/{userId}/cloud_vault_rotation_jobs/{jobId} {
 	      function validCloudVaultRotationJobClientUpdate() {
+	        let d = request.resource.data;
 	        return ownerWritableNonSecret(userId)
-	          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+	          && d.diff(resource.data).affectedKeys().hasOnly([
 	            "status",
 	            "clientDeviceId",
 		            "documentRewrapComplete",
@@ -3423,7 +3444,7 @@ service cloud.firestore {
 		            "failureReason",
 		            "updatedAt"
 	          ])
-	          && (!("status" in request.resource.data) || request.resource.data.status in [
+	          && (!("status" in d) || d.status in [
 	            "queued",
 	            "rewrapping",
 	            "documents_complete",
@@ -3431,42 +3452,42 @@ service cloud.firestore {
 	            "complete",
 	            "failed"
 	          ])
-	          && (!("clientDeviceId" in request.resource.data) || (
-	            request.resource.data.clientDeviceId is string
-	            && request.resource.data.clientDeviceId.size() > 0
-	            && request.resource.data.clientDeviceId.size() <= 128
+	          && (!("clientDeviceId" in d) || (
+	            d.clientDeviceId is string
+	            && d.clientDeviceId.size() > 0
+	            && d.clientDeviceId.size() <= 128
 		          ))
-		          && (!("documentRewrapComplete" in request.resource.data) || request.resource.data.documentRewrapComplete is bool)
-		          && (!("storageRewrapComplete" in request.resource.data) || request.resource.data.storageRewrapComplete is bool)
-		          && (!("storageRewrapPending" in request.resource.data) || request.resource.data.storageRewrapPending is bool)
-		          && (!("processedDocumentCount" in request.resource.data) || (
-		            request.resource.data.processedDocumentCount is int
-		            && request.resource.data.processedDocumentCount >= 0
-	            && request.resource.data.processedDocumentCount <= 10000000
+		          && (!("documentRewrapComplete" in d) || d.documentRewrapComplete is bool)
+		          && (!("storageRewrapComplete" in d) || d.storageRewrapComplete is bool)
+		          && (!("storageRewrapPending" in d) || d.storageRewrapPending is bool)
+		          && (!("processedDocumentCount" in d) || (
+		            d.processedDocumentCount is int
+		            && d.processedDocumentCount >= 0
+	            && d.processedDocumentCount <= 10000000
 	          ))
-	          && (!("rewrappedDocumentCount" in request.resource.data) || (
-	            request.resource.data.rewrappedDocumentCount is int
-	            && request.resource.data.rewrappedDocumentCount >= 0
-	            && request.resource.data.rewrappedDocumentCount <= 10000000
+	          && (!("rewrappedDocumentCount" in d) || (
+	            d.rewrappedDocumentCount is int
+	            && d.rewrappedDocumentCount >= 0
+	            && d.rewrappedDocumentCount <= 10000000
 	          ))
-	          && (!("changedFieldCount" in request.resource.data) || (
-		            request.resource.data.changedFieldCount is int
-		            && request.resource.data.changedFieldCount >= 0
-		            && request.resource.data.changedFieldCount <= 10000000
+	          && (!("changedFieldCount" in d) || (
+		            d.changedFieldCount is int
+		            && d.changedFieldCount >= 0
+		            && d.changedFieldCount <= 10000000
 		          ))
-		          && (!("processedStorageBlobCount" in request.resource.data) || (
-		            request.resource.data.processedStorageBlobCount is int
-		            && request.resource.data.processedStorageBlobCount >= 0
-		            && request.resource.data.processedStorageBlobCount <= 10000000
+		          && (!("processedStorageBlobCount" in d) || (
+		            d.processedStorageBlobCount is int
+		            && d.processedStorageBlobCount >= 0
+		            && d.processedStorageBlobCount <= 10000000
 		          ))
-		          && (!("rewrappedStorageBlobCount" in request.resource.data) || (
-		            request.resource.data.rewrappedStorageBlobCount is int
-		            && request.resource.data.rewrappedStorageBlobCount >= 0
-		            && request.resource.data.rewrappedStorageBlobCount <= 10000000
+		          && (!("rewrappedStorageBlobCount" in d) || (
+		            d.rewrappedStorageBlobCount is int
+		            && d.rewrappedStorageBlobCount >= 0
+		            && d.rewrappedStorageBlobCount <= 10000000
 		          ))
-		          && (!("failureReason" in request.resource.data) || (
-		            request.resource.data.failureReason is string
-		            && request.resource.data.failureReason.size() <= 500
+		          && (!("failureReason" in d) || (
+		            d.failureReason is string
+		            && d.failureReason.size() <= 500
 	          ));
 	      }
 
@@ -4403,7 +4424,8 @@ service cloud.firestore {
         }
 
         function validAuditExportSignerDocument() {
-          return request.resource.data.keys().hasOnly([
+          let d = request.resource.data;
+          return d.keys().hasOnly([
             "id",
             "userId",
             "deviceId",
@@ -4420,46 +4442,47 @@ service cloud.firestore {
             "revokedByDeviceId",
             "schemaVersion"
           ])
-          && request.resource.data.id == signerId
-          && request.resource.data.userId == userId
-          && request.resource.data.deviceId == deviceId
-          && request.resource.data.signerIdentifier is string
-          && request.resource.data.signerIdentifier.size() <= 160
-          && request.resource.data.signerKind == "openburnbar_trusted_device"
-          && request.resource.data.trustRoot == "openburnbar-trusted-device-keychain-v1"
-          && request.resource.data.algorithm == "ed25519"
-          && request.resource.data.publicKeyBase64 is string
-          && request.resource.data.publicKeyBase64.size() >= 32
-          && request.resource.data.publicKeyBase64.size() <= 128
-          && request.resource.data.publicKeySHA256Hex is string
-          && request.resource.data.publicKeySHA256Hex == signerId
-          && request.resource.data.publicKeySHA256Hex.matches("^[0-9a-f]{64}$")
-          && request.resource.data.status in ["active", "revoked"]
-          && request.resource.data.publishedAtMillis is int
-          && request.resource.data.publishedAtMillis > 0
-          && (!("lastReadbackAtMillis" in request.resource.data)
-            || (request.resource.data.lastReadbackAtMillis is int
-              && request.resource.data.lastReadbackAtMillis > 0))
-          && (!("revokedAt" in request.resource.data)
-            || request.resource.data.revokedAt is timestamp)
-          && (!("revokedByDeviceId" in request.resource.data)
-            || (request.resource.data.revokedByDeviceId is string
-              && request.resource.data.revokedByDeviceId.size() <= 160))
-          && request.resource.data.schemaVersion is int
-          && request.resource.data.schemaVersion >= 1;
+          && d.id == signerId
+          && d.userId == userId
+          && d.deviceId == deviceId
+          && d.signerIdentifier is string
+          && d.signerIdentifier.size() <= 160
+          && d.signerKind == "openburnbar_trusted_device"
+          && d.trustRoot == "openburnbar-trusted-device-keychain-v1"
+          && d.algorithm == "ed25519"
+          && d.publicKeyBase64 is string
+          && d.publicKeyBase64.size() >= 32
+          && d.publicKeyBase64.size() <= 128
+          && d.publicKeySHA256Hex is string
+          && d.publicKeySHA256Hex == signerId
+          && d.publicKeySHA256Hex.matches("^[0-9a-f]{64}$")
+          && d.status in ["active", "revoked"]
+          && d.publishedAtMillis is int
+          && d.publishedAtMillis > 0
+          && (!("lastReadbackAtMillis" in d)
+            || (d.lastReadbackAtMillis is int
+              && d.lastReadbackAtMillis > 0))
+          && (!("revokedAt" in d)
+            || d.revokedAt is timestamp)
+          && (!("revokedByDeviceId" in d)
+            || (d.revokedByDeviceId is string
+              && d.revokedByDeviceId.size() <= 160))
+          && d.schemaVersion is int
+          && d.schemaVersion >= 1;
         }
 
         function auditExportSignerImmutableFieldsUnchanged() {
-          return request.resource.data.id == resource.data.id
-            && request.resource.data.userId == resource.data.userId
-            && request.resource.data.deviceId == resource.data.deviceId
-            && request.resource.data.signerIdentifier == resource.data.signerIdentifier
-            && request.resource.data.signerKind == resource.data.signerKind
-            && request.resource.data.trustRoot == resource.data.trustRoot
-            && request.resource.data.algorithm == resource.data.algorithm
-            && request.resource.data.publicKeyBase64 == resource.data.publicKeyBase64
-            && request.resource.data.publicKeySHA256Hex == resource.data.publicKeySHA256Hex
-            && request.resource.data.schemaVersion == resource.data.schemaVersion;
+          let d = request.resource.data;
+          return d.id == resource.data.id
+            && d.userId == resource.data.userId
+            && d.deviceId == resource.data.deviceId
+            && d.signerIdentifier == resource.data.signerIdentifier
+            && d.signerKind == resource.data.signerKind
+            && d.trustRoot == resource.data.trustRoot
+            && d.algorithm == resource.data.algorithm
+            && d.publicKeyBase64 == resource.data.publicKeyBase64
+            && d.publicKeySHA256Hex == resource.data.publicKeySHA256Hex
+            && d.schemaVersion == resource.data.schemaVersion;
         }
 
         allow read: if ownsUserNamespace(userId);
@@ -4504,7 +4527,8 @@ service cloud.firestore {
       }
 
       function validEscrowPublicKeyDocument() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "deviceId",
           "platform",
           "fingerprint",
@@ -4516,30 +4540,30 @@ service cloud.firestore {
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.deviceId is string
-        && request.resource.data.deviceId.size() <= 160
-        && request.resource.data.keyVersion is int
-        && request.resource.data.keyVersion >= 1
-        && request.resource.data.keyVersion <= 1000
-        && request.resource.data.publicKeyData is string
-        && request.resource.data.publicKeyData.matches("^[A-Za-z0-9+/=]{80,128}$")
-        && (!("publicKeyFingerprint" in request.resource.data)
-          || (request.resource.data.publicKeyFingerprint is string
-            && request.resource.data.publicKeyFingerprint.size() <= 128))
-        && (!("fingerprint" in request.resource.data)
-          || (request.resource.data.fingerprint is string
-            && request.resource.data.fingerprint.size() <= 128))
-        && request.resource.data.algorithm == "ECIES-P256-AESGCM"
-        && (!("platform" in request.resource.data) || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80))
-        && (!("publicKeyJwk" in request.resource.data)
-          || (request.resource.data.publicKeyJwk is map
-            && request.resource.data.publicKeyJwk.keys().hasOnly(["kty", "crv", "x", "y", "ext", "key_ops"])
-            && request.resource.data.publicKeyJwk.kty == "EC"
-            && request.resource.data.publicKeyJwk.crv == "P-256"
-            && request.resource.data.publicKeyJwk.x is string
-            && request.resource.data.publicKeyJwk.x.size() <= 80
-            && request.resource.data.publicKeyJwk.y is string
-            && request.resource.data.publicKeyJwk.y.size() <= 80));
+        && d.deviceId is string
+        && d.deviceId.size() <= 160
+        && d.keyVersion is int
+        && d.keyVersion >= 1
+        && d.keyVersion <= 1000
+        && d.publicKeyData is string
+        && d.publicKeyData.matches("^[A-Za-z0-9+/=]{80,128}$")
+        && (!("publicKeyFingerprint" in d)
+          || (d.publicKeyFingerprint is string
+            && d.publicKeyFingerprint.size() <= 128))
+        && (!("fingerprint" in d)
+          || (d.fingerprint is string
+            && d.fingerprint.size() <= 128))
+        && d.algorithm == "ECIES-P256-AESGCM"
+        && (!("platform" in d) || (d.platform is string && d.platform.size() <= 80))
+        && (!("publicKeyJwk" in d)
+          || (d.publicKeyJwk is map
+            && d.publicKeyJwk.keys().hasOnly(["kty", "crv", "x", "y", "ext", "key_ops"])
+            && d.publicKeyJwk.kty == "EC"
+            && d.publicKeyJwk.crv == "P-256"
+            && d.publicKeyJwk.x is string
+            && d.publicKeyJwk.x.size() <= 80
+            && d.publicKeyJwk.y is string
+            && d.publicKeyJwk.y.size() <= 80));
       }
 
       allow create: if ownsUserNamespace(userId)
@@ -4568,21 +4592,23 @@ service cloud.firestore {
       }
 
       function signalIdentityKeyIdMatchesVersion() {
+        let d = request.resource.data;
         return (
-          request.resource.data.keyVersion == 1
-          && (!("keyVersionLabel" in request.resource.data) || request.resource.data.keyVersionLabel == "1")
-          && request.resource.data.identityKeyId == request.resource.data.deviceId + "_1"
+          d.keyVersion == 1
+          && (!("keyVersionLabel" in d) || d.keyVersionLabel == "1")
+          && d.identityKeyId == d.deviceId + "_1"
         ) || (
-          request.resource.data.keyVersion >= 2
-          && request.resource.data.keyVersion <= 10
-          && request.resource.data.keyVersionLabel is string
-          && signalKeyVersionLabelMatchesNumber(request.resource.data.keyVersionLabel, request.resource.data.keyVersion)
-          && request.resource.data.identityKeyId == request.resource.data.deviceId + "_" + request.resource.data.keyVersionLabel
+          d.keyVersion >= 2
+          && d.keyVersion <= 10
+          && d.keyVersionLabel is string
+          && signalKeyVersionLabelMatchesNumber(d.keyVersionLabel, d.keyVersion)
+          && d.identityKeyId == d.deviceId + "_" + d.keyVersionLabel
         );
       }
 
       function validSignalIdentityPublicKeyDocument() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "deviceId",
           "platform",
           "identityKeyId",
@@ -4594,25 +4620,25 @@ service cloud.firestore {
           "createdAt",
           "updatedAt"
         ])
-        && request.resource.data.deviceId is string
-        && request.resource.data.deviceId.size() <= 160
-        && request.resource.data.keyVersion is int
-        && request.resource.data.keyVersion >= 1
-        && request.resource.data.keyVersion <= 10
-        && request.resource.data.identityKeyId is string
+        && d.deviceId is string
+        && d.deviceId.size() <= 160
+        && d.keyVersion is int
+        && d.keyVersion >= 1
+        && d.keyVersion <= 10
+        && d.identityKeyId is string
         // Firestore rules cannot stringify an int. Rotation uses an explicit
         // string `keyVersionLabel` and a bounded label->int map above, so a
         // rotated identity keeps the doc-id/device/key-version binding without
         // lossy prefix matching.
         && signalIdentityKeyIdMatchesVersion()
-        && keyId == request.resource.data.identityKeyId
-        && request.resource.data.publicKeyData is string
-        && request.resource.data.publicKeyData.matches("^[A-Za-z0-9+/=]{40,96}$")
-        && request.resource.data.publicKeyFingerprint is string
-        && request.resource.data.publicKeyFingerprint.size() <= 128
-        && request.resource.data.algorithm == "signal-hpke-identity-seal-v1"
-        && (!("platform" in request.resource.data)
-          || (request.resource.data.platform is string && request.resource.data.platform.size() <= 80));
+        && keyId == d.identityKeyId
+        && d.publicKeyData is string
+        && d.publicKeyData.matches("^[A-Za-z0-9+/=]{40,96}$")
+        && d.publicKeyFingerprint is string
+        && d.publicKeyFingerprint.size() <= 128
+        && d.algorithm == "signal-hpke-identity-seal-v1"
+        && (!("platform" in d)
+          || (d.platform is string && d.platform.size() <= 80));
       }
 
       function signalIdentityMatchesPendingDevice() {
@@ -4677,7 +4703,8 @@ service cloud.firestore {
           );
       }
       function validEscrowGrantCreate() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "sourceDeviceId",
           "targetDeviceId",
           "providerId",
@@ -4685,22 +4712,22 @@ service cloud.firestore {
           "status",
           "grantedAt"
         ])
-        && request.resource.data.sourceDeviceId is string
-        && request.resource.data.sourceDeviceId.size() > 0
-        && request.resource.data.sourceDeviceId.size() <= 160
-        && request.resource.data.targetDeviceId is string
-        && request.resource.data.targetDeviceId.size() > 0
-        && request.resource.data.targetDeviceId.size() <= 160
-        && request.resource.data.providerId is string
-        && request.resource.data.providerId.size() > 0
-        && request.resource.data.providerId.size() <= 80
-        && request.resource.data.credentialKind in [
+        && d.sourceDeviceId is string
+        && d.sourceDeviceId.size() > 0
+        && d.sourceDeviceId.size() <= 160
+        && d.targetDeviceId is string
+        && d.targetDeviceId.size() > 0
+        && d.targetDeviceId.size() <= 160
+        && d.providerId is string
+        && d.providerId.size() > 0
+        && d.providerId.size() <= 80
+        && d.credentialKind in [
           "api_key", "oauth_token", "bearer_token", "unknown"
         ]
-        && request.resource.data.status == "granted"
-        && request.resource.data.grantedAt is timestamp
-        && escrowGrantDeviceTrusted(request.resource.data.sourceDeviceId)
-        && escrowGrantDeviceTrusted(request.resource.data.targetDeviceId);
+        && d.status == "granted"
+        && d.grantedAt is timestamp
+        && escrowGrantDeviceTrusted(d.sourceDeviceId)
+        && escrowGrantDeviceTrusted(d.targetDeviceId);
       }
       // Revoke is a server-side merge patch that touches only status + revokedAt.
       // The affectedKeys() check confines what the client can change on update;
@@ -4728,7 +4755,8 @@ service cloud.firestore {
 
     match /users/{userId}/escrow_envelopes/{envelopeId} {
       function validEscrowEnvelopeDocument() {
-        return request.resource.data.keys().hasOnly([
+        let d = request.resource.data;
+        return d.keys().hasOnly([
           "id",
           "grantId",
           "sourceDeviceId",
@@ -4742,27 +4770,27 @@ service cloud.firestore {
           "metadataBinding",
           "createdAt"
         ])
-        && request.resource.data.id is string
-        && request.resource.data.id == envelopeId
-        && request.resource.data.grantId is string
-        && request.resource.data.grantId.size() <= 160
-        && request.resource.data.sourceDeviceId is string
-        && request.resource.data.sourceDeviceId.size() <= 160
-        && request.resource.data.targetDeviceId is string
-        && request.resource.data.targetDeviceId.size() <= 160
-        && request.resource.data.providerId is string
-        && request.resource.data.providerId.size() <= 80
-        && request.resource.data.credentialKind in ["api_key", "oauth_token", "bearer_token", "unknown"]
-        && (!("accountLabel" in request.resource.data) || (request.resource.data.accountLabel is string && request.resource.data.accountLabel.size() <= 160))
-        && request.resource.data.ciphertext is string
-        && request.resource.data.ciphertext.size() >= 16
-        && request.resource.data.ciphertext.size() <= 20000
-        && request.resource.data.ciphertext.matches("^[A-Za-z0-9+/=_-]*$")
-        && request.resource.data.keyVersion is int
-        && request.resource.data.envelopeVersion is int
-        && (!("metadataBinding" in request.resource.data) || request.resource.data.metadataBinding == "escrow-credential-aad-v1")
-        && (request.resource.data.envelopeVersion < 2 || request.resource.data.metadataBinding == "escrow-credential-aad-v1")
-        && request.resource.data.createdAt is timestamp;
+        && d.id is string
+        && d.id == envelopeId
+        && d.grantId is string
+        && d.grantId.size() <= 160
+        && d.sourceDeviceId is string
+        && d.sourceDeviceId.size() <= 160
+        && d.targetDeviceId is string
+        && d.targetDeviceId.size() <= 160
+        && d.providerId is string
+        && d.providerId.size() <= 80
+        && d.credentialKind in ["api_key", "oauth_token", "bearer_token", "unknown"]
+        && (!("accountLabel" in d) || (d.accountLabel is string && d.accountLabel.size() <= 160))
+        && d.ciphertext is string
+        && d.ciphertext.size() >= 16
+        && d.ciphertext.size() <= 20000
+        && d.ciphertext.matches("^[A-Za-z0-9+/=_-]*$")
+        && d.keyVersion is int
+        && d.envelopeVersion is int
+        && (!("metadataBinding" in d) || d.metadataBinding == "escrow-credential-aad-v1")
+        && (d.envelopeVersion < 2 || d.metadataBinding == "escrow-credential-aad-v1")
+        && d.createdAt is timestamp;
       }
 
       allow create, update: if ownsUserNamespace(userId)

@@ -113,6 +113,8 @@ struct ControlDeckReadout: Equatable, Sendable {
             return inputs.petCompanionEnabled
         case .updates:
             return inputs.updatesAutomaticChecks
+        case .fleet:
+            return inputs.daemonIsHealthy
         }
     }
 }

@@ -18,7 +18,9 @@ https://mcp.burnbar.ai/mcp
   user's namespace.
 - Firebase Storage stores encrypted session bodies only.
 - `tools/openburnbar-mcp-remote` is the local stdio bridge for clients that do
-  not support remote Streamable HTTP MCP or need device-side decrypt.
+  not support remote Streamable HTTP MCP or need device-side decrypt. It ships
+  on npm as **`openburnbar`** — install with `npm i -g openburnbar` (or run
+  ad-hoc with `npx -y openburnbar`).
 
 The hosted service implements the 2025-11-25 MCP Streamable HTTP shape:
 `initialize`, `tools/list`, `tools/call`, `resources/list`, and
@@ -61,7 +63,7 @@ requires `code:read`, a vault-keyed `projectHmac`, and a pinned
 knowledge tools refuse `sourceKind = code` rows.
 
 Hosted resume follows the same rule. The server composes only a sealed resume
-envelope; `openburnbar-mcp-remote resume ...` checks for a local vault key before
+envelope; `openburnbar resume ...` checks for a local vault key before
 the network call, decrypts the envelope on-device, verifies chunk hashes, then
 prints, copies, opens, or explicitly spawns the rendered resume locally. Fuzzy
 resume via `OBB Resume "memory"` sends locally derived opaque query hashes, not

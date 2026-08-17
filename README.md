@@ -5,7 +5,7 @@
 
   > A native macOS app that watches your AI coding agents so you don't have to wonder where all your money went.
 
-  **Status:** Commercial launch candidate — macOS `1.0.34` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; Windows `1.0.34` is the parity release line; iOS `1.0.2` build `82` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
+  **Status:** Commercial launch candidate — macOS `1.0.36` is prepared for Mac App Store review and ships as a Developer ID notarized direct download; Windows `1.0.34` is the parity release line; iOS `1.0.2` build `82` and the Hosted Quota Sync subscription are in Apple review with manual release enabled.
 
 </div>
 
@@ -36,7 +36,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 |------|----------|--------|
 | **Core** | macOS app (`AgentLens/`), `OpenBurnBarCore`, local daemon (`OpenBurnBarDaemon/`), Cursor/VS Code extension (`extensions/openburnbar/`), `OpenBurnBarCLI` | Built and exercised in CI where configured; local-first + daemon RPC are the product spine. |
 | **Experimental** | Optional Firestore sync, sealed cloud collaboration, Cursor connector + tunnel, future sealed iCloud archive support | Best-effort; opt-in; not canonical vs local SQLite/daemon state. Raw iCloud session-file mirroring is disabled in this tree. |
-| **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper, BurnBar Resume, plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim) | Developer convenience; not required to run OpenBurnBar. |
+| **Adjacent tooling** | [`tools/openburnbar-mcp/`](tools/openburnbar-mcp/README.md) (local SQLite MCP helper, BurnBar Resume, plus opt-in hosted encrypted semantic search), [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/) (BurnBar Pro hosted Remote MCP stdio shim, published to npm as **`openburnbar`**), [`plugins/openburnbar/`](plugins/openburnbar/README.md) (Cursor Marketplace plugin: hosted HTTP MCP + bearer variable) | Developer convenience; not required to run OpenBurnBar. The marketplace plugin is a **distinct Cursor surface** from the editor extension — see [docs/OPENBURNBAR_CURSOR_PLUGIN.md](docs/OPENBURNBAR_CURSOR_PLUGIN.md). |
 | **Quarantined tests** | `AgentLensTests/Quarantine/` | Stale suites kept as migration reference only; **not compiled** in the active `OpenBurnBarTests` bundle until fixed and moved back to `Active/` — see [AgentLensTests/README.md](AgentLensTests/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md). |
 
 **Cursor deep dives** (for humans and agents):
@@ -48,6 +48,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - [BurnBar Resume](docs/BURNBAR_RESUME.md)
 - [OpenBurnBar Roadmap](docs/ROADMAP.md)
 - [OpenBurnBar + Cursor Agent Onboarding](docs/OPENBURNBAR_CURSOR_AGENT_ONBOARDING.md)
+- [OpenBurnBar Cursor Marketplace Plugin](docs/OPENBURNBAR_CURSOR_PLUGIN.md)
 - [OpenBurnBar Current Release Architecture](docs/OPENBURNBAR_RELEASE_ARCHITECTURE.md)
 - [The Elder Wand model-fusion router](docs/ELDER_WAND.md)
 - [Threat Model and Permission Model](docs/THREAT_MODEL.md)
@@ -70,6 +71,7 @@ The current architecture canon lives in [OPENBURNBAR_RELEASE_ARCHITECTURE.md](do
 - **Chat panel** — ask questions about *your* usage data inside the dashboard. Meta? A little. Useful? Also a little. Delightful? We think so.
 - **Optional cloud sync** — sign in with **Google or Apple** (Firebase under the hood), and selected OpenBurnBar data can follow you across devices. Usage/cost metadata remains server-readable where needed for sync; chat threads, CLI session mirrors/snapshots, rollback requests, mobile assistant chats, mission prompts/results, text snippets, approval-policy labels/paths, agent identity text, subscription topic labels, and conversation recall metadata are sealed on-device before Firestore receives them. Fully opt-in; flip it off anytime and your local world keeps spinning.
 - **Hosted Remote MCP for BurnBar Pro** — paid users can connect coding agents to OpenBurnBar's hosted MCP endpoint for encrypted hosted session-memory search, with a local shim for stdio-only clients and device-side decrypt.
+- **Cursor Marketplace plugin** — an installable Cursor Plugin (hosted HTTP MCP + `OPENBURNBAR_MCP_ACCESS_TOKEN` bearer variable, Cloud-Agent compatible) for spend, sessions, knowledge, and resume queries. The variable holds a **short-lived (~15 min) access token**, not a durable secret. Distinct from the editor extension and the personal/operator MCP tooling. See [`docs/OPENBURNBAR_CURSOR_PLUGIN.md`](docs/OPENBURNBAR_CURSOR_PLUGIN.md) and [`plugins/openburnbar/README.md`](plugins/openburnbar/README.md).
 - **Optional routed-provider gateway** — route selected **Z.ai**, **MiniMax**, **Ollama Cloud**, and **Factory Droid** models through a local OpenAI-shaped router for Cursor, Factory, and OpenCode (plus `prime-agent` via `node scripts/prime-agent-openburnbar-proxy.mjs` as `openburnbar/*`). Cursor gets a tunnel because it is picky about BYOK targets; local clients use the loopback gateway directly. OpenBurnBar logs those requests so you know where the bits actually went.
 - **Daemon-backed controller runtime** — project registry, questions, followups, missions, scheduled reviews, simulator replay, mission provenance, and auto-takeover now live behind the local daemon instead of a UI-only mirror.
 - **Operational tool plane** — OpenBurnBar exposes daemon-owned connector status/actions for GitHub, Slack, Linear, PostHog, Sentry, and Gmail, plus browser tooling status/actions for the system browser and daemon-side fetch/link extraction.
@@ -92,6 +94,24 @@ Current commands:
 - `mission-approve <missionID> [note]`
 - `simulator-runs [projectSlug]`
 - `simulator-replay <runID>`
+
+### npm CLI: `openburnbar` (Node)
+
+A second, unrelated CLI ships on npm as **`openburnbar`** (`0.1.0`, AGPL-3.0-only).
+It is the Node MCP / resume / memory CLI from [`tools/openburnbar-mcp-remote/`](tools/openburnbar-mcp-remote/):
+an MCP stdio shim to the hosted `https://mcp.burnbar.ai/mcp`, session resume
+(`obbresume`), and the Pensieve chat-memory hook. Zero runtime dependencies.
+
+Install it globally, or run it without installing:
+
+```bash
+npm i -g openburnbar
+npx -y openburnbar --help
+```
+
+Do not confuse the two: the native daemon operator CLI above is `openburnbar-cli`,
+built from the app source and **not published to npm**. The npm `openburnbar`
+package never touches the daemon.
 
 ---
 
@@ -208,6 +228,23 @@ The sidebar today is honest about being a **shell**: health, catalog, workspace 
 
 ## OpenBurnBar in Cursor (and VS Code)
 
+There are **three distinct Cursor surfaces** — do not confuse them:
+
+1. **Editor extension** (`extensions/openburnbar`) — the **source-only**
+   activity-bar panel below. Local-first, daemon-backed, load-unpacked; **no**
+   VS Marketplace / Open VSX listing yet.
+2. **Personal / operator MCP** — the local stdio shim
+   (`tools/openburnbar-mcp-remote`) or local SQLite MCP
+   (`tools/openburnbar-mcp`); adjacent operator tooling, not the marketplace
+   package.
+3. **Marketplace Cursor Plugin** (`plugins/openburnbar/`) — an installable
+   Cursor Plugin that talks to hosted HTTP `https://mcp.burnbar.ai/mcp` with
+   the `OPENBURNBAR_MCP_ACCESS_TOKEN` bearer variable (short-lived token,
+   Cloud-Agent compatible). Install + auth + sealed-field honesty live in
+   [`docs/OPENBURNBAR_CURSOR_PLUGIN.md`](docs/OPENBURNBAR_CURSOR_PLUGIN.md).
+
+### Editor extension
+
 The extension is **local-first** and **daemon-backed**. Think of it as a polite sidecar, not a second brain.
 
 You get:
@@ -314,6 +351,19 @@ This is the normal user path.
 5. Open `OpenBurnBar` from:
    - `Applications`
    - Spotlight: `Cmd+Space`, then type `OpenBurnBar`
+
+Or, from a terminal, fetch that same current public notarized DMG (whatever
+the desktop update feed advertises — not a hardcoded old version) and install
+it to `/Applications`:
+
+```bash
+npx -y openburnbar app install
+# later:
+npx -y openburnbar app update
+```
+
+`npm i -g openburnbar` does **not** download the Mac app. Only `app install`
+/ `app update` do, after checksum + signature verification.
 
 If macOS blocks first launch:
 

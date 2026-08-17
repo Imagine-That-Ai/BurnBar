@@ -652,6 +652,46 @@ export const burnBarRpcIpcCanon = [
     "error": "BurnBarRPCError"
   },
   {
+    "id": "daemon.fleet.directive.record",
+    "caseName": "fleetDirectiveRecord",
+    "domain": "fleet",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable mutation response for daemon.fleet.directive",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.fleet.orchestrator.get",
+    "caseName": "fleetOrchestratorGet",
+    "domain": "fleet",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.fleet.orchestrator",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.fleet.orchestrator.set",
+    "caseName": "fleetOrchestratorSet",
+    "domain": "fleet",
+    "capability": "config",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.fleet.orchestrator.set",
+    "error": "BurnBarRPCError"
+  },
+  {
+    "id": "daemon.fleet.snapshot",
+    "caseName": "fleetSnapshot",
+    "domain": "fleet",
+    "capability": "observability",
+    "owner": "OpenBurnBarDaemon",
+    "params": "BurnBarRPCRequestEnvelopeWithParams<Codable request>",
+    "result": "Codable response for daemon.fleet.snapshot",
+    "error": "BurnBarRPCError"
+  },
+  {
     "id": "daemon.followup.calendar",
     "caseName": "followupCalendar",
     "domain": "mission_control",

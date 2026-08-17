@@ -123,6 +123,7 @@ export {
   requestKnowledgeResync,
   reconcileKnowledgeMemoryDaily,
 } from "./callables/knowledgeSync.js";
+export { curateUsageMemoryBatch } from "./callables/usageCuration.js";
 export {
   publishSignalPrekeyBundle,
   claimSignalPrekeyBundle,

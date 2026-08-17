@@ -1,0 +1,32 @@
+{
+  "name": "openburnbar",
+  "displayName": "OpenBurnBar",
+  "version": "1.0.0",
+  "description": "OpenBurnBar hosted MCP for spend and capability diagnostics. Session, knowledge, and resume tools require the local preprocessing/decrypt shim that is not bundled in this HTTP-only marketplace plugin.",
+  "author": {
+    "name": "OpenBurnBar / Imagine That AI"
+  },
+  "homepage": "https://burnbar.ai",
+  "repository": "https://github.com/Imagine-That-Ai/openburnbar-cursor-plugin",
+  "license": "AGPL-3.0-only",
+  "logo": "assets/logo.svg",
+  "keywords": ["openburnbar", "burnbar", "mcp", "spend", "sessions", "memory", "resume"],
+  "category": "integrations",
+  "tags": ["openburnbar", "burnbar", "mcp", "spend"],
+  "variables": {
+    "type": "object",
+    "properties": {
+      "OPENBURNBAR_MCP_ACCESS_TOKEN": {
+        "type": "string",
+        "title": "OpenBurnBar MCP access token",
+        "description": "Short-lived (~15 min) hosted-MCP access token. Live setup is blocked until the attested burnbar.ai/link flow is deployed and BurnBar exposes a safe copy/export action. `openburnbar mcp login` stores the token in Keychain and does not print a value to paste. Never put a refresh token here."
+      }
+    },
+    "required": ["OPENBURNBAR_MCP_ACCESS_TOKEN"]
+  },
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "rules": "./rules/",
+  "agents": "./agents/",
+  "mcpServers": "./mcp.json"
+}

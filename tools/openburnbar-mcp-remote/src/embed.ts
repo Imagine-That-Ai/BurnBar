@@ -183,8 +183,11 @@ export async function loadDefaultEmbedder(): Promise<Embedder> {
   }
   if (!transformers) {
     throw new Error(
-      "Pensieve embedding model unavailable. Install the on-device embedder:\n" +
+      "Pensieve embedding model unavailable. The openburnbar package ships zero runtime\n" +
+        "dependencies, so the on-device embedder is a separate one-time global install:\n" +
         "  npm install -g @huggingface/transformers\n" +
+        "Then rerun the command. The bge-small-en-v1.5 model itself downloads from\n" +
+        "Hugging Face on first use.\n" +
         `(tried ${TRANSFORMERS_PACKAGES.join(", ")})\n` +
         errors.join("\n"),
     );
