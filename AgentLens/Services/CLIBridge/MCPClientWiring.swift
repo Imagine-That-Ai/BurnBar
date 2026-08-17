@@ -97,11 +97,11 @@ struct MCPClientWiring {
         let url = configURL(for: target)
         switch target {
         case .claudeCode, .cursor:
-            guard let root = (try? readJSONObject(at: url)) ?? nil,
+            guard let root = (try? readJSONObject(at: url)) ?? nil, // try?-ok(read probe; unreadable config reads as not-wired)
                   let servers = root["mcpServers"] as? [String: Any] else { return false }
             return servers[Self.serverKey] != nil
         case .codex:
-            guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return false }
+            guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(read probe; missing file reads as not-wired)
             return contents.contains(Self.codexSentinelBegin)
         }
     }
@@ -179,7 +179,7 @@ struct MCPClientWiring {
             throw MCPClientWiringError.unreadableConfig(path: url.path, detail: error.localizedDescription)
         }
         guard data.isEmpty == false else { return [:] }
-        guard let object = try? JSONSerialization.jsonObject(with: data),
+        guard let object = try? JSONSerialization.jsonObject(with: data), // try?-ok(parse probe; the guard throws unreadableConfig below)
               let dictionary = object as? [String: Any] else {
             // Never clobber a config we cannot faithfully re-serialize.
             throw MCPClientWiringError.unreadableConfig(
@@ -226,7 +226,7 @@ struct MCPClientWiring {
 
     private func wireCodexTOML(launch: MCPServerLaunch) throws -> MCPClientWiringChange {
         let url = configURL(for: .codex)
-        let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? "" // try?-ok(missing config starts empty by design)
         let stripped = removingCodexSentinelBlock(from: existing)
         let block = codexBlock(for: launch)
         var next = stripped.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -245,7 +245,7 @@ struct MCPClientWiring {
 
     private func unwireCodexTOML() throws -> MCPClientWiringChange {
         let url = configURL(for: .codex)
-        guard let existing = try? String(contentsOf: url, encoding: .utf8),
+        guard let existing = try? String(contentsOf: url, encoding: .utf8), // try?-ok(missing file = nothing to unwire)
               existing.contains(Self.codexSentinelBegin) else {
             return MCPClientWiringChange(target: .codex, configPath: url.path, didMutate: false)
         }

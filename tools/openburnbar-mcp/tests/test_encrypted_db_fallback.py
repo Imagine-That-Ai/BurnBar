@@ -9,6 +9,7 @@ every real install. These tests keep a ciphertext fixture in the loop and assert
 the daemon-socket fallback engages, keeps sqlite3.Row semantics, and reports
 honestly through burnbar_resolve_db_path.
 """
+
 from __future__ import annotations
 
 import importlib.util
