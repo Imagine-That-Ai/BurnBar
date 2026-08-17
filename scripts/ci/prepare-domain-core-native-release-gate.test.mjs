@@ -6,8 +6,11 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  createCommandRunner,
+  isTransientGitHubFailure,
   materializeCandidateBoundRollback,
   normalizeProtectedSignerWorkflowPath,
+  resolveGhRetryPolicy,
   run,
   selectCommittedCandidateBundle,
   selectExactSourceRun,
@@ -140,8 +143,10 @@ test("signer lookup binds exact successful protected workflow attempt on main", 
   }
 });
 
-test("full gate resolves the signed public profile against the exact candidate", () => {
-  const outputDirectory = mkdtempSync(join(tmpdir(), "native-gate-run-"));
+// Builds the exact fixture surface `run` reads: a profile catalog, a canonical
+// activation, and a spawnSync-shaped `gh` stub so tests exercise the real
+// command runner (including its bounded transient retry) instead of bypassing it.
+function createGateFixture(outputDirectory) {
   const profileCatalogPath = join(outputDirectory, "profiles.json");
   const profileCatalog = JSON.parse(
     readFileSync("config/domain-core-build-profiles.json", "utf8"),
@@ -254,10 +259,11 @@ test("full gate resolves the signed public profile against the exact candidate",
       },
     },
   ];
-  const command = (program, args, options = {}) => {
+  const ok = (stdout = "") => ({ status: 0, stdout, stderr: "" });
+  const ghRunner = (program, args, options = {}) => {
     assert.equal(program, "gh");
     if (args[0] === "api" && args.includes("--paginate")) {
-      return JSON.stringify([{ workflow_runs: [sourceRun()] }]);
+      return ok(JSON.stringify([{ workflow_runs: [sourceRun()] }]));
     }
     if (args[0] === "run" && args[1] === "download") {
       const directory = args[args.indexOf("--dir") + 1];
@@ -273,58 +279,76 @@ test("full gate resolves the signed public profile against the exact candidate",
           rollback,
         );
       }
-      return "";
+      return ok();
     }
     if (args[0] === "attestation" && args[1] === "download") {
       writeFileSync(
         join(options.cwd, `sha256-${candidateDigest}.jsonl`),
         "protected-attestation",
       );
-      return "";
+      return ok();
     }
     if (args[0] === "attestation" && args[1] === "verify") {
-      return JSON.stringify(verified);
+      return ok(JSON.stringify(verified));
     }
     if (args[0] === "api" && args[1].includes("/actions/runs/987/attempts/3")) {
-      return JSON.stringify({
-        id: 987,
-        run_attempt: 3,
-        event: "workflow_dispatch",
-        status: "completed",
-        conclusion: "success",
-        head_branch: "main",
-        path: ".github/workflows/domain-core-promotion-proof.yml@refs/heads/main",
-      });
+      return ok(
+        JSON.stringify({
+          id: 987,
+          run_attempt: 3,
+          event: "workflow_dispatch",
+          status: "completed",
+          conclusion: "success",
+          head_branch: "main",
+          path: ".github/workflows/domain-core-promotion-proof.yml@refs/heads/main",
+        }),
+      );
     }
-    throw new Error(`unexpected command: ${program} ${args.join(" ")}`);
+    return {
+      status: 1,
+      stdout: "",
+      stderr: `unexpected command: ${program} ${args.join(" ")}`,
+    };
   };
 
+  return {
+    activationPath,
+    profileCatalogPath,
+    ghRunner,
+    gateArguments: [
+      "--candidate-commit",
+      COMMIT,
+      "--release-commit",
+      RELEASE_COMMIT,
+      "--activation",
+      activationPath,
+      "--event-name",
+      "push",
+      "--requested-profile",
+      "public-production",
+      "--output-dir",
+      outputDirectory,
+      "--profile-catalog",
+      profileCatalogPath,
+    ],
+    activationVerifier: () => ({
+      ...JSON.parse(readFileSync(activationPath, "utf8")),
+      releaseCommit: RELEASE_COMMIT,
+    }),
+  };
+}
+
+test("full gate resolves the signed public profile against the exact candidate", () => {
+  const outputDirectory = mkdtempSync(join(tmpdir(), "native-gate-run-"));
+  const fixture = createGateFixture(outputDirectory);
   try {
-    const result = run(
-      [
-        "--candidate-commit",
-        COMMIT,
-        "--release-commit",
-        RELEASE_COMMIT,
-        "--activation",
-        activationPath,
-        "--event-name",
-        "push",
-        "--requested-profile",
-        "public-production",
-        "--output-dir",
-        outputDirectory,
-        "--profile-catalog",
-        profileCatalogPath,
-      ],
-      {
-        command,
-        activationVerifier: () => ({
-          ...JSON.parse(readFileSync(activationPath, "utf8")),
-          releaseCommit: RELEASE_COMMIT,
-        }),
-      },
-    );
+    const result = run(fixture.gateArguments, {
+      command: createCommandRunner(fixture.ghRunner, {
+        sleep: () => {},
+        log: () => {},
+      }),
+      activationVerifier: fixture.activationVerifier,
+    });
     assert.equal(result.profileName, "public-production");
     assert.deepEqual(result.candidate, CANDIDATE);
     assert.equal(result.activation.activationCommit, RELEASE_COMMIT);
@@ -333,6 +357,174 @@ test("full gate resolves the signed public profile against the exact candidate",
         .candidateCommit,
       COMMIT,
     );
+  } finally {
+    rmSync(outputDirectory, { recursive: true, force: true });
+  }
+});
+
+// Verbatim failure that broke the v1.0.35 native candidate gate
+// (OpenBurnBar Release run 32047967821).
+const ARTIFACT_503 =
+  "error downloading domain-core-public-production-rollback-" +
+  "c292cc99244dc716de45d92e47ae74c89f4a1e47-31487272665-1: HTTP 503: " +
+  "No server is currently available to service your request. Sorry about " +
+  "that. Please try resubmitting your request and contact us if the problem " +
+  "persists. (https://api.github.com/repos/Imagine-That-Ai/BurnBar/actions/" +
+  "artifacts/9099629577/zip)";
+
+test("transient GitHub transport failures are separated from terminal ones", () => {
+  for (const detail of [
+    ARTIFACT_503,
+    "HTTP 502: Bad gateway",
+    "HTTP 429: You have exceeded a secondary rate limit",
+    "dial tcp: lookup api.github.com: ECONNRESET",
+    "read tcp 10.1.0.4:443: connection reset by peer",
+    "Post \"https://api.github.com/graphql\": net/http: TLS handshake timeout",
+    "Get \"https://api.github.com\": context deadline exceeded",
+    "GraphQL: something went wrong (server error)",
+  ]) {
+    assert.equal(isTransientGitHubFailure(detail), true, detail);
+  }
+  for (const detail of [
+    "no valid artifacts found to download",
+    "artifact domain-core-candidate-bundle-abc has expired",
+    "HTTP 404: Not Found",
+    "HTTP 403: Resource not accessible by integration",
+    "HTTP 422: Validation Failed",
+    "✗ verification failed: no matching attestations found",
+    "spawnSync gh ENOENT",
+  ]) {
+    assert.equal(isTransientGitHubFailure(detail), false, detail);
+  }
+});
+
+test("gh retry policy defaults to bounded attempts and rejects bad overrides", () => {
+  assert.deepEqual(resolveGhRetryPolicy({}), {
+    attempts: 5,
+    baseSleepSeconds: 2,
+  });
+  assert.deepEqual(
+    resolveGhRetryPolicy({
+      OPENBURNBAR_GH_API_ATTEMPTS: "3",
+      OPENBURNBAR_GH_API_BASE_SLEEP_SECONDS: "0",
+    }),
+    { attempts: 3, baseSleepSeconds: 0 },
+  );
+  assert.throws(
+    () => resolveGhRetryPolicy({ OPENBURNBAR_GH_API_ATTEMPTS: "0" }),
+    /positive integer/u,
+  );
+  assert.throws(
+    () => resolveGhRetryPolicy({ OPENBURNBAR_GH_API_BASE_SLEEP_SECONDS: "-1" }),
+    /non-negative integer/u,
+  );
+});
+
+test("command runner retries transient gh failures with bounded backoff", () => {
+  const calls = [];
+  const sleeps = [];
+  const command = createCommandRunner(
+    (program, args) => {
+      calls.push(`${program} ${args[0]} ${args[1]}`);
+      if (calls.length < 3) {
+        return { status: 1, stdout: "", stderr: ARTIFACT_503 };
+      }
+      return { status: 0, stdout: "downloaded", stderr: "" };
+    },
+    { sleep: (seconds) => sleeps.push(seconds), log: () => {} },
+  );
+  assert.equal(command("gh", ["run", "download", "1", "--repo"]), "downloaded");
+  assert.equal(calls.length, 3);
+  assert.deepEqual(sleeps, [2, 4]);
+});
+
+test("command runner fails closed after exhausting bounded gh attempts", () => {
+  let calls = 0;
+  const notices = [];
+  const command = createCommandRunner(
+    () => {
+      calls += 1;
+      return { status: 1, stdout: "", stderr: ARTIFACT_503 };
+    },
+    {
+      policyEnv: { OPENBURNBAR_GH_API_ATTEMPTS: "4" },
+      sleep: () => {},
+      log: (message) => notices.push(message),
+    },
+  );
+  assert.throws(
+    () => command("gh", ["run", "download", "1", "--repo"]),
+    (error) =>
+      /failed after 4 attempts/u.test(error.message) &&
+      /HTTP 503/u.test(error.message),
+  );
+  assert.equal(calls, 4);
+  assert.equal(notices.length, 3);
+  assert.match(notices[0], /attempt 1\/4 failed transiently; retrying in 2s/u);
+});
+
+test("command runner never retries terminal failures or local commands", () => {
+  let expiredCalls = 0;
+  const expired = createCommandRunner(
+    () => {
+      expiredCalls += 1;
+      return {
+        status: 1,
+        stdout: "",
+        stderr: "no valid artifacts found to download",
+      };
+    },
+    { sleep: () => {}, log: () => {} },
+  );
+  assert.throws(
+    () => expired("gh", ["run", "download", "1", "--repo"]),
+    /no valid artifacts found to download/u,
+  );
+  assert.equal(expiredCalls, 1, "expiry must reach the committed-evidence path");
+
+  let gitCalls = 0;
+  const git = createCommandRunner(
+    () => {
+      gitCalls += 1;
+      return { status: 1, stdout: "", stderr: ARTIFACT_503 };
+    },
+    { sleep: () => {}, log: () => {} },
+  );
+  assert.throws(() => git("git", ["-C", ".", "show", "HEAD"]));
+  assert.equal(gitCalls, 1, "local commands must not inherit gh retries");
+});
+
+test("full gate survives a transient 503 on the rollback artifact download", () => {
+  const outputDirectory = mkdtempSync(join(tmpdir(), "native-gate-503-"));
+  const fixture = createGateFixture(outputDirectory);
+  const sleeps = [];
+  let rollbackAttempts = 0;
+  try {
+    const result = run(fixture.gateArguments, {
+      command: createCommandRunner(
+        (program, args, options) => {
+          const isRollbackDownload =
+            args[0] === "run" &&
+            args[1] === "download" &&
+            String(args[args.indexOf("--name") + 1]).startsWith(
+              "domain-core-public-production-rollback-",
+            );
+          if (isRollbackDownload) {
+            rollbackAttempts += 1;
+            if (rollbackAttempts === 1) {
+              return { status: 1, stdout: "", stderr: ARTIFACT_503 };
+            }
+          }
+          return fixture.ghRunner(program, args, options);
+        },
+        { sleep: (seconds) => sleeps.push(seconds), log: () => {} },
+      ),
+      activationVerifier: fixture.activationVerifier,
+    });
+    assert.equal(rollbackAttempts, 2);
+    assert.deepEqual(sleeps, [2]);
+    assert.deepEqual(result.candidate, CANDIDATE);
+    assert.equal(result.activation.activationCommit, RELEASE_COMMIT);
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });
   }
