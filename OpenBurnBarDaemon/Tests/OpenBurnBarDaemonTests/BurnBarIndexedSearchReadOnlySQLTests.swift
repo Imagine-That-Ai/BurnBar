@@ -517,4 +517,3 @@ final class BurnBarIndexedSearchReadOnlySQLTests: XCTestCase {
         }
     }
 }
-
