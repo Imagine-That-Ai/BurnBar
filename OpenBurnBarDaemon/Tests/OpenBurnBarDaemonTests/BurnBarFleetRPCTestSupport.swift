@@ -1,4 +1,4 @@
-// swiftlint:disable test_case_accessibility
+// swiftlint:disable test_case_accessibility -- reason: XCTest helper base class exposes shared fleet fixtures to subclasses.
 import OpenBurnBarKernel
 @testable import OpenBurnBarDaemon
 import Darwin
