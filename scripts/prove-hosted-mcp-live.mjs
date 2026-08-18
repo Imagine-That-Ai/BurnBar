@@ -86,7 +86,7 @@ async function runLocal() {
   process.env.MCP_ALLOWED_ORIGINS = "https://mcp.burnbar.ai";
   delete process.env.MCP_ALLOW_LEGACY_HMAC_TOKENS;
 
-  const { seedTwoTenantWorld, vec384, PLAINTEXT_MARKERS } = await import(
+  const { freezeProofRateLimitClock, seedTwoTenantWorld, vec384, PLAINTEXT_MARKERS } = await import(
     path.join(LIB, "securityFixtures.js")
   );
   const world = seedTwoTenantWorld();
@@ -149,21 +149,27 @@ async function runLocal() {
       passed += 1;
     }
 
-    // case4/5 — caps: hammering the body:standard bucket (30/min) trips a 429.
+    // case4/5 — caps: body:standard (30/min) must trip 429 on request 31 in one window.
     {
-      const token = world.tenantRateLimit.token(scopes);
-      const uri = `burnbar://conversation/${world.conversationIdRateLimit}`;
-      let status = 0;
-      for (let i = 0; i < 40; i += 1) {
-        const res = await callMcp(endpoint, token, rpc("resources/read", { uri }));
-        if (res.body.includes("rate limit") || res.body.includes("rate_limited")) {
-          status = res.status;
-          break;
+      const proofClock = freezeProofRateLimitClock();
+      try {
+        const token = world.tenantRateLimit.token(scopes);
+        const uri = `burnbar://conversation/${world.conversationIdRateLimit}`;
+        for (let i = 0; i < 30; i += 1) {
+          const res = await callMcp(endpoint, token, rpc("resources/read", { uri }));
+          assert(res.status === 200, `case4/5 request ${i + 1} must succeed within body:standard cap`);
         }
+        const limited = await callMcp(endpoint, token, rpc("resources/read", { uri }));
+        assert(limited.status === 429, "case4/5 request 31 must trip body:standard rate limit (429)");
+        assert(
+          limited.body.includes("rate limit") || limited.body.includes("rate_limited"),
+          `case4/5 expected rate-limit body, got ${limited.body}`,
+        );
+        console.log("PASS case4/5: body:standard cap trips a 429 rate-limit on request 31");
+        passed += 1;
+      } finally {
+        proofClock.restore();
       }
-      assert(status === 429, "case4/5 body cap did not trip a 429");
-      console.log("PASS case4/5: body:standard cap trips a 429 rate-limit");
-      passed += 1;
     }
 
     // case2 — at-rest: the returned conversation body is sealed (no plaintext).
