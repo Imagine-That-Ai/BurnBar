@@ -17,7 +17,11 @@ struct FirstRunReveal: View {
     /// Detected agents shown as rows during the scan. Real detection results.
     let detectedProviders: [DetectedProvider]
     var onOpenQuotaWorkspace: () -> Void = {}
-    var onArmAlert: () -> Void = {}
+    /// Opens the alerts surface. Deliberately NOT named "arm alert": there is no
+    /// quota-percentage alert engine in the product yet, so the button routes to
+    /// the setup surface and says so, rather than leaving the user believing an
+    /// alert is armed that would never fire.
+    var onSetUpAlerts: () -> Void = {}
     var onShowPathAudit: () -> Void = {}
     var onWatchForFirstSession: () -> Void = {}
     var onDismiss: () -> Void = {}
@@ -234,11 +238,10 @@ struct FirstRunReveal: View {
 
     private func actions(seeAllTitle: String) -> some View {
         HStack {
-            // The only decision this screen ever asks for, and it is opt-IN to
-            // being told something useful — which is also what earns the
-            // notification permission, at the moment the user asks for it
-            // rather than before they know what it is for.
-            Button("Tell me at 80%") { onArmAlert() }
+            // The only decision this screen ever asks for. It is an explicit
+            // SETUP flow, not a promise: "Tell me at 80%" implied an armed alert,
+            // and nothing in the product would ever have fired it.
+            Button("Set up alerts →") { onSetUpAlerts() }
                 .buttonStyle(.borderedProminent)
                 .tint(DesignSystem.Colors.blaze)
                 .controlSize(.small)

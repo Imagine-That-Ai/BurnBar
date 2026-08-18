@@ -1438,18 +1438,35 @@ final class BurnBarIndexedSearchService: @unchecked Sendable {
                             row.append(.real(sqlite3_column_double(statement, column)))
                             approximateBytes += 8
                         case SQLITE_TEXT:
+                            // Size FIRST, copy second. `sqlite3_column_bytes` is O(1)
+                            // here, while a single cell can dwarf the whole response
+                            // budget (a large `fullText`, `SELECT randomblob(...)`).
+                            // Materializing before the check made the advertised cap
+                            // bound only the RESPONSE, not the allocation — one
+                            // read-only query could exhaust daemon memory.
+                            let textBytes = Int(sqlite3_column_bytes(statement, column))
+                            if approximateBytes + textBytes > Self.readOnlySQLMaxResponseBytes {
+                                truncated = true
+                                break stepLoop
+                            }
                             let text = sqlite3_column_text(statement, column).map { String(cString: $0) } ?? ""
                             approximateBytes += text.utf8.count
                             row.append(.text(text))
                         case SQLITE_BLOB:
                             let byteCount = Int(sqlite3_column_bytes(statement, column))
+                            // Blobs are base64'd on the wire, so budget the ENCODED size.
+                            let encodedBytes = (byteCount * 4) / 3
+                            if approximateBytes + encodedBytes > Self.readOnlySQLMaxResponseBytes {
+                                truncated = true
+                                break stepLoop
+                            }
                             let data: Data
                             if byteCount > 0, let bytes = sqlite3_column_blob(statement, column) {
                                 data = Data(bytes: bytes, count: byteCount)
                             } else {
                                 data = Data()
                             }
-                            approximateBytes += (byteCount * 4) / 3
+                            approximateBytes += encodedBytes
                             row.append(.blob(data))
                         default:
                             row.append(.null)

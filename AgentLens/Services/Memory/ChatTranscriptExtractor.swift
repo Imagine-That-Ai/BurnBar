@@ -84,6 +84,7 @@ enum AgentConversationExtractionSource {
         var turns: [(role: String, body: String)] = []
         var currentRole: String?
         var currentLines: [String] = []
+        var sawHeading = false
 
         func flush() {
             guard currentRole != nil || currentLines.isEmpty == false else { return }
@@ -99,9 +100,11 @@ enum AgentConversationExtractionSource {
             switch heading {
             case "## You", "## User":
                 flush()
+                sawHeading = true
                 currentRole = "user"
             case "## Assistant":
                 flush()
+                sawHeading = true
                 currentRole = "assistant"
             default:
                 currentLines.append(String(line))
@@ -110,6 +113,19 @@ enum AgentConversationExtractionSource {
         flush()
 
         guard turns.isEmpty == false else { return [] }
+
+        // Providers whose `fullText` carries no role headings would otherwise
+        // become ONE turn holding the entire conversation. The prompt renderer
+        // truncates a single oversized turn from its head, so every later
+        // re-extraction would keep re-reading the same oldest slice and the
+        // durable facts a growing session accumulates would stay permanently
+        // out of the prompt. Chunking on line boundaries keeps the whole
+        // transcript addressable and lets the renderer's newest-first budget do
+        // its job.
+        if sawHeading == false, turns.count == 1 {
+            turns = Self.chunkUnheadedBody(turns[0].body).map { (role: "user", body: $0) }
+        }
+
         return turns.enumerated().map { index, turn in
             ChatTranscriptMessage(
                 id: turnID(conversationID: conversationID, index: index),
@@ -118,6 +134,32 @@ enum AgentConversationExtractionSource {
                 authoredAt: anchoredAt
             )
         }
+    }
+
+    /// Split an unheaded transcript into stable, bounded turns on line
+    /// boundaries. Deterministic: the same text always yields the same chunks,
+    /// so re-extraction collapses onto the same turn ids.
+    static let maxUnheadedTurnChars = 4_000
+
+    static func chunkUnheadedBody(_ body: String) -> [String] {
+        guard body.count > maxUnheadedTurnChars else { return [body] }
+        var chunks: [String] = []
+        var current: [String] = []
+        var currentCount = 0
+        for line in body.split(separator: "\n", omittingEmptySubsequences: false) {
+            let cost = line.count + 1
+            if currentCount + cost > maxUnheadedTurnChars, current.isEmpty == false {
+                chunks.append(current.joined(separator: "\n"))
+                current = []
+                currentCount = 0
+            }
+            current.append(String(line))
+            currentCount += cost
+        }
+        if current.isEmpty == false {
+            chunks.append(current.joined(separator: "\n"))
+        }
+        return chunks.filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
     }
 }
 

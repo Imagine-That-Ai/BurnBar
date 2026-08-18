@@ -29,6 +29,16 @@ struct MenuBarPopoverView: View {
     /// separate from `hasOnboarded` so the reveal's own lifecycle never
     /// depends on the legacy wizard's completion flag.
     @AppStorage("firstRun.revealDismissed") private var firstRunRevealDismissed = false
+
+    /// The reveal is for people who have never onboarded. `firstRun.revealDismissed`
+    /// is absent on every installation that upgraded into this build, so gating on
+    /// it ALONE showed the first-run screen instead of the product to existing
+    /// users. The legacy `hasOnboarded` flag is the migration signal, consulted
+    /// here directly (not just seeded in a task) so there is no window in which
+    /// the wrong screen renders.
+    private var shouldShowFirstRunReveal: Bool {
+        !firstRunRevealDismissed && !hasOnboarded
+    }
     @State private var firstRunModel: FirstRunRevealModel?
     @State private var showScanFlash = false
     @State private var listAppeared = false
@@ -170,7 +180,7 @@ struct MenuBarPopoverView: View {
             // moment the scan found anything the onboarding vanished forever —
             // hiding the screen exactly when it finally had something true to
             // say. Finding data is the reveal's best case, not its exit.
-            if !firstRunRevealDismissed, let firstRunModel {
+            if shouldShowFirstRunReveal, let firstRunModel {
                 FirstRunReveal(
                     model: firstRunModel,
                     detectedProviders: firstRunDetectedProviders,
@@ -184,7 +194,7 @@ struct MenuBarPopoverView: View {
                         }
                         onOpenDashboard()
                     },
-                    onArmAlert: {
+                    onSetUpAlerts: {
                         firstRunRevealDismissed = true
                         dismiss()
                         onOpenSettings()
@@ -197,7 +207,7 @@ struct MenuBarPopoverView: View {
                     onDismiss: { firstRunRevealDismissed = true }
                 )
                 .task { await driveFirstRunReveal(firstRunModel) }
-            } else if !firstRunRevealDismissed {
+            } else if shouldShowFirstRunReveal {
                 // Construct on first appearance so the "I looked in N places"
                 // count is read live from the registry rather than hardcoded.
                 Color.clear
@@ -405,15 +415,26 @@ struct MenuBarPopoverView: View {
     /// aggregator, the quota service and the parse watermark all settle
     /// independently, and the reveal must show the best true thing at each
     /// moment without waiting for the slowest of them.
+    /// Hard ceiling for a still-running first scan. The 8s deadline ends the
+    /// SPINNER; this ends the WAIT, so a pathologically slow corpus still
+    /// resolves the screen instead of spinning forever.
+    private static let firstRunScanHardCeiling: TimeInterval = 60
+
     private func driveFirstRunReveal(_ model: FirstRunRevealModel) async {
         let startedAt = Date()
         let service = quotaService ?? ProviderQuotaService.shared
 
         while model.didReachTerminalPhase == false {
             let elapsed = Date().timeIntervalSince(startedAt)
-            guard elapsed < FirstRunRevealModel.degradeAfter else {
-                model.degrade()
-                return
+            if elapsed >= FirstRunRevealModel.degradeAfter {
+                // `.empty` asserts "nothing on this Mac has burned a token" AND
+                // stops polling permanently. Saying that while the scan is still
+                // reading is a confident lie the screen can never take back, so a
+                // live scan keeps the reveal alive up to the hard ceiling.
+                if dataStore.isLoading == false || elapsed >= Self.firstRunScanHardCeiling {
+                    model.degrade()
+                    return
+                }
             }
 
             model.reportProgress(fraction: min(elapsed / FirstRunRevealModel.degradeAfter, 0.95))
