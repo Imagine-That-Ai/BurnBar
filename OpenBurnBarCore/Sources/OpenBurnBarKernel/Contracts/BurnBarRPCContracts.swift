@@ -218,6 +218,11 @@ public enum BurnBarRPCMethod: String, Codable, CaseIterable, Hashable, Sendable 
     case fleetOrchestratorGet = "daemon.fleet.orchestrator.get"
     case fleetOrchestratorSet = "daemon.fleet.orchestrator.set"
     case fleetDirectiveRecord = "daemon.fleet.directive.record"
+    /// War Room, the Flame: ask which machine should run a unit of work, read
+    /// the decision history, and report what became of a decision.
+    case warFlameRoute = "daemon.war.flame.route"
+    case warFlameDistillList = "daemon.war.flame.distill.list"
+    case warFlameDistillSettle = "daemon.war.flame.distill.settle"
 }
 
 public struct BurnBarRPCRequestEnvelope: Codable, Hashable, Sendable {
