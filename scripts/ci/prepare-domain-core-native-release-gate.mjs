@@ -404,23 +404,6 @@ function downloadOrMaterializeSourceArtifacts({
   command,
 }) {
   try {
-    downloadRunArtifact(
-      sourceRun,
-      repository,
-      candidateArtifactName(candidateCommit, sourceRun),
-      sourceDirectory,
-      command,
-    );
-    downloadRunArtifact(
-      sourceRun,
-      repository,
-      rollbackArtifactName(candidateCommit, sourceRun),
-      sourceDirectory,
-      command,
-    );
-    return { source: "actions" };
-  } catch (error) {
-    if (!isExpiredArtifactDownloadError(error)) throw error;
     return materializeCandidateBoundRollback({
       repoRoot,
       candidateCommit,
@@ -428,6 +411,26 @@ function downloadOrMaterializeSourceArtifacts({
       sourceDirectory,
       command,
     });
+  } catch (materializeError) {
+    try {
+      downloadRunArtifact(
+        sourceRun,
+        repository,
+        candidateArtifactName(candidateCommit, sourceRun),
+        sourceDirectory,
+        command,
+      );
+      downloadRunArtifact(
+        sourceRun,
+        repository,
+        rollbackArtifactName(candidateCommit, sourceRun),
+        sourceDirectory,
+        command,
+      );
+      return { source: "actions" };
+    } catch (downloadError) {
+      throw materializeError;
+    }
   }
 }
 

@@ -3,7 +3,7 @@
   "status": "passed",
   "generatedAt": "2026-08-17T17:47:01Z",
   "privacy": "proof_only_no_plaintext_keys_or_user_data",
-  "candidateReleaseTag": "v1.0.36",
+  "candidateReleaseTag": "v1.0.37",
   "testedSourceCommit": "305e6b376ceedcb18b793ffad6ce883d48f7d68d",
   "artifactDigests": [
     {
