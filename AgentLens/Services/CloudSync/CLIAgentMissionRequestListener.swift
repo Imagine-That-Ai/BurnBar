@@ -8,6 +8,10 @@ final class CLIAgentMissionRequestListener {
     let settingsManager: SettingsManager
     let chatController: ChatSessionController
     let deviceTrustChecker: CLIAgentMissionDeviceTrustChecking
+    /// This Mac's HermesBody id (the relay host connection id), used to honour
+    /// the War Room Flame's routing target. `nil` before the relay host has an
+    /// identity, which reads as "cannot prove I am the target".
+    let localBodyIDProvider: @MainActor () -> String?
     let logger = Logger(subsystem: "com.openburnbar.app", category: "CLIAgentMissionRequestListener")
     var listener: ListenerRegistration?
     var listenerUID: String?
@@ -20,12 +24,28 @@ final class CLIAgentMissionRequestListener {
         accountManager: AccountManaging,
         settingsManager: SettingsManager,
         chatController: ChatSessionController,
-        deviceTrustChecker: CLIAgentMissionDeviceTrustChecking = LiveCLIAgentMissionDeviceTrustChecker()
+        deviceTrustChecker: CLIAgentMissionDeviceTrustChecking = LiveCLIAgentMissionDeviceTrustChecker(),
+        localBodyIDProvider: @escaping @MainActor () -> String? = { nil }
     ) {
         self.accountManager = accountManager
         self.settingsManager = settingsManager
         self.chatController = chatController
         self.deviceTrustChecker = deviceTrustChecker
+        self.localBodyIDProvider = localBodyIDProvider
+    }
+
+    /// The Flame stamps `targetBodyID` on every mission it routes to a specific
+    /// Mac. A machine that is not the target leaves the document alone so the
+    /// chosen machine can claim it; the field is advisory to Firestore (any
+    /// signed-in device could forge it) but binding on the executor, which is
+    /// where the decision belongs.
+    ///
+    /// Fail-closed: an unresolved local body id means this Mac cannot prove it
+    /// is the target, so it declines rather than racing for the claim.
+    static func isRoutedElsewhere(_ data: [String: Any], localBodyID: String?) -> Bool {
+        guard let target = (data["targetBodyID"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !target.isEmpty else { return false }
+        return target != localBodyID
     }
     func start() {
         logger.info("mission listener start requested")

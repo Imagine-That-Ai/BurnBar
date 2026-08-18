@@ -223,6 +223,10 @@ extension CLIAgentMissionRequestListener {
     }
     func handle(document: QueryDocumentSnapshot) async {
         let rawData = document.data()
+        if Self.isRoutedElsewhere(rawData, localBodyID: localBodyIDProvider()) {
+            logger.debug("mission id=\(document.documentID, privacy: .public) is routed to another Mac")
+            return
+        }
         if Self.isParkedPendingApproval(rawData) {
             logger.debug("mission id=\(document.documentID, privacy: .public) remains parked for mobile approval")
             return

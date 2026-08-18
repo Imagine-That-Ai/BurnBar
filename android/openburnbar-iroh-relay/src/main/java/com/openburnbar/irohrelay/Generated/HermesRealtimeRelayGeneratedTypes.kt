@@ -14,6 +14,24 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class HermesRealtimeRelayFrame(
+    val type: HermesRealtimeRelayFrameType,
+    val uid: String,
+    val connectionId: String,
+    val requestId: String? = null,
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault
+    val protocolVersion: Int = HermesRealtimeRelayProtocol.VERSION,
+    val runtime: String? = null,
+    val payload: HermesRealtimeRelayPayload? = null,
+    val media: HermesRealtimeRelayMediaPayload? = null,
+    val control: HermesRealtimeRelayControlPayload? = null,
+    val war: HermesRealtimeRelayWarPayload? = null,
+    val signalSessionCiphertextB64: String? = null,
+    val signalMessageType: Int? = null,
+)
+
+@Serializable
 data class HermesRealtimeRelayControlSealKeyEnvelope(
     val encBase64: String,
     val wrappedKeyBase64: String,
@@ -993,3 +1011,108 @@ data class HermesRealtimeRelayAgentContextTarget(
     val requestedAt: Double,
     val authority: HermesRealtimeRelayAuthorityEnvelope,
 )
+
+@Serializable
+enum class HermesRealtimeRelayWarDenialReason {
+    @SerialName("kill_switch")
+    KILL_SWITCH,
+
+    @SerialName("entitlement")
+    ENTITLEMENT,
+
+    @SerialName("no_grant")
+    NO_GRANT,
+
+    @SerialName("grant_revoked")
+    GRANT_REVOKED,
+
+    @SerialName("grant_mismatch")
+    GRANT_MISMATCH,
+
+    @SerialName("self_dial")
+    SELF_DIAL,
+
+    @SerialName("unidentified")
+    UNIDENTIFIED,
+}
+
+@Serializable
+enum class HermesRealtimeRelayWarRunStatus {
+    @SerialName("accepted")
+    ACCEPTED,
+
+    @SerialName("running")
+    RUNNING,
+
+    @SerialName("succeeded")
+    SUCCEEDED,
+
+    @SerialName("failed")
+    FAILED,
+
+    @SerialName("rejected")
+    REJECTED,
+}
+
+@Serializable
+data class HermesRealtimeRelayWarBodyState(
+    val bodyId: String,
+    val displayName: String,
+    val hermesGatewayReachable: Boolean,
+    val capabilities: List<String>,
+    val activeRunCount: Int,
+    val performanceCores: Int? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayWarDispatchRequest(
+    val dispatchId: String,
+    val instruction: String,
+    val requiredCapabilities: List<String>,
+    val originatorKind: String? = null,
+    val originatorRef: String? = null,
+)
+
+@Serializable
+data class HermesRealtimeRelayWarPayload(
+    val kind: Kind,
+    val bodyId: String? = null,
+    val displayName: String? = null,
+    val capabilities: List<String>? = null,
+    val pairId: String? = null,
+    val fleet: List<HermesRealtimeRelayWarBodyState>? = null,
+    val dispatch: HermesRealtimeRelayWarDispatchRequest? = null,
+    val runId: String? = null,
+    val sequence: Int? = null,
+    val chunk: String? = null,
+    val status: HermesRealtimeRelayWarRunStatus? = null,
+    val denialReason: HermesRealtimeRelayWarDenialReason? = null,
+    val message: String? = null,
+) {
+    @Serializable
+    enum class Kind {
+        @SerialName("hello")
+        HELLO,
+
+        @SerialName("hello_ack")
+        HELLO_ACK,
+
+        @SerialName("fleet_snapshot")
+        FLEET_SNAPSHOT,
+
+        @SerialName("dispatch")
+        DISPATCH,
+
+        @SerialName("dispatch_ack")
+        DISPATCH_ACK,
+
+        @SerialName("stream_chunk")
+        STREAM_CHUNK,
+
+        @SerialName("stream_complete")
+        STREAM_COMPLETE,
+
+        @SerialName("denied")
+        DENIED,
+    }
+}

@@ -25,6 +25,10 @@ final class WarWireHost {
     private(set) var linkedBodyIDs: Set<String> = []
     private(set) var lastPlan: WarWirePlan?
     private(set) var lastRefreshAt: Date?
+    /// Fleet slices received from each connected peer, keyed by the peer body
+    /// id. The local body is deliberately not folded into this map: the
+    /// directory remains the source of truth for this Mac.
+    private(set) var wireFleets: [String: [FleetBodySnapshot]] = [:]
 
     private let directory: HermesBodyDirectory
     private let grantStore: WarWireGrantStore
@@ -35,7 +39,10 @@ final class WarWireHost {
 
     @ObservationIgnored private var links: [String: WarWireLink] = [:]
     @ObservationIgnored private var readers: [String: Task<Void, Never>] = [:]
-    @ObservationIgnored private var loop: Task<Void, Never>?
+    @ObservationIgnored private var started = false
+    @ObservationIgnored private var generation: UInt64 = 0
+    @ObservationIgnored private var refreshInFlight = false
+    private static let cadenceID = "war-wire-refresh"
 
     init(
         directory: HermesBodyDirectory,
@@ -54,29 +61,47 @@ final class WarWireHost {
     }
 
     func start() {
-        guard loop == nil else { return }
+        guard !started else { return }
+        started = true
+        generation &+= 1
         grantStore.start()
-        loop = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.refresh()
-                try? await Task.sleep(for: .seconds(Self.refreshInterval)) // try?-ok(cancellation only; the loop condition handles it)
-            }
-        }
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceID,
+                activeInterval: Self.refreshInterval,
+                backgroundInterval: Self.refreshInterval * 5,
+                sleepInterval: nil,
+                isEnabled: { [weak self] in
+                    self?.accountManager.isCloudSyncEnabled ?? false
+                },
+                fireImmediately: true,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.refresh()
+                }
+            )
+        )
     }
 
     func stop() {
-        loop?.cancel()
-        loop = nil
+        started = false
+        generation &+= 1
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceID)
         grantStore.stop()
-        for bodyID in links.keys { closeLink(to: bodyID) }
-    }
-
-    deinit {
-        loop?.cancel()
+        for bodyID in Array(links.keys) { closeLink(to: bodyID) }
+        wireFleets.removeAll()
     }
 
     /// One pass. Separated from the loop so it can be driven directly.
     func refresh(now: Date = Date()) async {
+        // Direct callers can drive the first pass before `start()` in tests.
+        // Once a started host is stopped, the generation guard below must keep
+        // a late cadence invocation from reopening a lane.
+        guard started || generation == 0 else { return }
+        guard !refreshInFlight else { return }
+        refreshInFlight = true
+        defer { refreshInFlight = false }
+        let refreshGeneration = generation
         lastRefreshAt = now
         guard let localBody = directory.localBody else {
             // Without a published identity for this Mac there is no `localBodyID`
@@ -115,29 +140,97 @@ final class WarWireHost {
             )
         }
 
-        guard !plan.dials.isEmpty, let transport = transportProvider() else { return }
-        let credentials = makeCredentials(localBody: localBody)
-        for intent in plan.dials {
-            await dial(intent, transport: transport, credentials: credentials)
+        if let transport = transportProvider() {
+            let credentials = makeCredentials(localBody: localBody)
+            for intent in plan.dials {
+                guard generation == refreshGeneration, started || refreshGeneration == 0 else { return }
+                await dial(
+                    intent,
+                    transport: transport,
+                    credentials: credentials,
+                    generation: refreshGeneration
+                )
+            }
+        }
+
+        guard generation == refreshGeneration, started || refreshGeneration == 0 else { return }
+        let localFleet = [localFleetSnapshot(localBody)]
+        for (bodyID, link) in links {
+            guard await link.isReady else { continue }
+            do {
+                _ = try await link.pushFleetSnapshot(localFleet)
+            } catch {
+                AppLogger.network.silentFailure(
+                    "war_wire_fleet_snapshot_push_failed",
+                    error: error,
+                    context: ["bodyID": bodyID]
+                )
+            }
         }
     }
 
     private func makeCredentials(localBody: HermesBodyRecord) -> WarWireCredentials {
-        WarWireCredentials(
+        var capabilities = localBody.capabilities
+        if !capabilities.contains(WarWireFrameCodec.capability) {
+            capabilities.append(WarWireFrameCodec.capability)
+        }
+        return WarWireCredentials(
             localBodyID: localBody.id,
             localDisplayName: localBody.displayName,
             uid: accountManager.currentUID ?? "",
-            connectionID: localBody.deviceID,
+            connectionID: localBody.id,
             tier: tierProvider(),
             killSwitchEngaged: killSwitchProvider(),
-            capabilities: localBody.capabilities
+            capabilities: capabilities
         )
+    }
+
+    /// Accept an inbound Wire whose opening hello was consumed by the relay
+    /// request handler for first-frame classification.
+    func acceptInbound(
+        stream: any IrohRelayStream,
+        opening: HermesRealtimeRelayFrame
+    ) async {
+        let acceptGeneration = generation
+        guard let localBody = directory.localBody else {
+            await stream.close()
+            return
+        }
+        let credentials = makeCredentials(localBody: localBody)
+        // The dialer asks for the grant synchronously while folding the hello.
+        // Capture the current MainActor-owned view once, then perform a pure
+        // lookup from the accepted stream's async context.
+        let grants = grantStore.grantsByPairID
+        let outcome = await WarWireDialer.accept(
+            opening: opening,
+            on: stream,
+            credentials: credentials,
+            grantForPeer: { remoteBodyID in
+                grants[WarWireGrant.pairID(credentials.localBodyID, remoteBodyID)]
+            }
+        )
+        guard generation == acceptGeneration, started || acceptGeneration == 0 else {
+            if case let .connected(link) = outcome {
+                await link.close()
+            }
+            return
+        }
+        switch outcome {
+        case let .connected(link):
+            install(link: link, bodyID: await link.remoteBodyID)
+        case let .fallBackToFirestore(closure):
+            AppLogger.network.info(
+                "war_wire_inbound_firestore_fallback",
+                metadata: ["closure": String(describing: closure)]
+            )
+        }
     }
 
     private func dial(
         _ intent: WarWireDialIntent,
         transport: any IrohRelayTransport,
-        credentials: WarWireCredentials
+        credentials: WarWireCredentials,
+        generation dialGeneration: UInt64
     ) async {
         let outcome = await WarWireDialer.dial(
             transport: transport,
@@ -146,13 +239,15 @@ final class WarWireHost {
             grant: grantStore.grant(between: credentials.localBodyID, and: intent.bodyID),
             credentials: credentials
         )
+        guard generation == dialGeneration, started || dialGeneration == 0 else {
+            if case let .connected(link) = outcome {
+                await link.close()
+            }
+            return
+        }
         switch outcome {
         case let .connected(link):
-            links[intent.bodyID] = link
-            linkedBodyIDs.insert(intent.bodyID)
-            readers[intent.bodyID] = Task { [weak self] in
-                await self?.read(link, bodyID: intent.bodyID)
-            }
+            install(link: link, bodyID: intent.bodyID)
         case let .fallBackToFirestore(closure):
             // Not an error. The Wire is an upgrade, never a dependency, so a
             // refused dial means this peer keeps the Firestore relay path.
@@ -163,13 +258,57 @@ final class WarWireHost {
         }
     }
 
+    private func install(link: WarWireLink, bodyID: String) {
+        if links[bodyID] != nil {
+            closeLink(to: bodyID)
+        }
+        links[bodyID] = link
+        linkedBodyIDs.insert(bodyID)
+        readers[bodyID] = Task { [weak self] in
+            await self?.read(link, bodyID: bodyID)
+        }
+    }
+
+    private func localFleetSnapshot(_ localBody: HermesBodyRecord) -> FleetBodySnapshot {
+        FleetBodySnapshot(
+            bodyID: localBody.id,
+            displayName: localBody.displayName,
+            // The receiving Mac owns the local/remote perspective.
+            isLocal: false,
+            isOnline: true,
+            hermesGatewayReachable: localBody.hermesGatewayReachable,
+            wireReachable: true,
+            capabilities: Set(localBody.capabilities),
+            activeRunCount: localBody.botCount ?? 0,
+            performanceCores: localBody.coresPerformance
+        )
+    }
+
     private func read(_ link: WarWireLink, bodyID: String) async {
         while !Task.isCancelled {
             switch await link.next() {
-            case .event, .handled:
+            case let .event(event):
+                switch event {
+                case let .fleetSnapshot(fleet):
+                    if wireFleets[bodyID] != fleet {
+                        wireFleets[bodyID] = fleet
+                    }
+                case let .dispatch(request):
+                    // Work travels on the mission document stamped with
+                    // `targetBodyID`, which every Mac already listens to;
+                    // the Wire carries liveness. Executing an inbound
+                    // dispatch frame here would run the same mission twice.
+                    AppLogger.network.info(
+                        "war_wire_dispatch_ignored_mission_document_is_the_work_road",
+                        metadata: ["dispatchId": request.dispatchId]
+                    )
+                default:
+                    break
+                }
+            case .handled:
                 continue
             case .finished, .closed:
-                await MainActor.run { self.forgetLink(bodyID) }
+                forgetLink(bodyID)
                 return
             }
         }
@@ -189,5 +328,6 @@ final class WarWireHost {
         readers[bodyID] = nil
         links[bodyID] = nil
         linkedBodyIDs.remove(bodyID)
+        wireFleets[bodyID] = nil
     }
 }

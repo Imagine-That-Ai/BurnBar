@@ -69,7 +69,7 @@ struct HermesBodyRecord: Identifiable, Equatable, Sendable {
             botCount: (hermes["botCount"] as? NSNumber)?.intValue,
             irohNodeID: endpoints["irohNodeId"] as? String,
             lastHeartbeatAt: (presence["lastHeartbeatAt"] as? String)
-                .flatMap { ISO8601DateFormatter().date(from: $0) },
+                .flatMap(ThreadSafeISO8601DateFormatter.parse),
             wireReachable: presence["wireReachable"] as? Bool ?? false,
             capabilities: data["capabilities"] as? [String] ?? []
         )
@@ -135,7 +135,7 @@ final class HermesBodyDirectory {
         listener = WarRoomFirestoreGateway.bodies(uid: uid)
             .addSnapshotListener { [weak self] snapshot, error in
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
+                    guard let self, self.listenerUID == uid else { return }
                     if let error {
                         AppLogger.network.silentFailure("hermes_body_directory_listen_failed", error: error)
                         return
@@ -143,14 +143,19 @@ final class HermesBodyDirectory {
                     let records = (snapshot?.documents ?? []).compactMap { document in
                         HermesBodyRecord.fromFirestore(id: document.documentID, data: document.data())
                     }
-                    self.bodies = records.sorted { lhs, rhs in
+                    let sortedRecords = records.sorted { lhs, rhs in
                         // Local body first, then stable name order.
                         let lhsLocal = self.isLocal(lhs)
                         let rhsLocal = self.isLocal(rhs)
                         if lhsLocal != rhsLocal { return lhsLocal }
                         return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
                     }
-                    self.hasLoaded = true
+                    if self.bodies != sortedRecords {
+                        self.bodies = sortedRecords
+                    }
+                    if !self.hasLoaded {
+                        self.hasLoaded = true
+                    }
                 }
             }
     }
@@ -159,6 +164,10 @@ final class HermesBodyDirectory {
         listener?.remove()
         listener = nil
         listenerUID = nil
+        if !bodies.isEmpty {
+            bodies.removeAll()
+        }
+        hasLoaded = false
     }
 
     func rename(bodyID: String, to name: String) async {
@@ -166,7 +175,7 @@ final class HermesBodyDirectory {
         guard !trimmed.isEmpty, trimmed.count <= 120,
               accountManager.isFirebaseAvailable,
               let uid = accountManager.currentUID else { return }
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = ThreadSafeISO8601DateFormatter.formatBasic(Date())
         do {
             try await WarRoomFirestoreGateway.body(uid: uid, bodyID: bodyID)
                 .setData(["displayName": trimmed, "updatedAt": now], merge: true)
@@ -187,12 +196,5 @@ final class HermesBodyDirectory {
         } catch {
             AppLogger.network.silentFailure("hermes_body_remove_failed", error: error)
         }
-    }
-}
-
-private extension String {
-    var nonEmpty: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

@@ -111,7 +111,8 @@ final class WarWireFrameCodecTests: XCTestCase {
             [body("mac-a", runs: 2)], uid: uid, connectionID: connectionID
         )
         guard case let .fleetSnapshot(received) = try parse(frame) else {
-            return XCTFail("expected a fleet snapshot")
+            XCTFail("expected a fleet snapshot")
+            return
         }
         XCTAssertEqual(received.count, 1)
         XCTAssertEqual(received[0].bodyID, "mac-a")
@@ -127,7 +128,8 @@ final class WarWireFrameCodecTests: XCTestCase {
             [body("mac-a")], uid: uid, connectionID: connectionID
         )
         guard case let .fleetSnapshot(received) = try parse(frame) else {
-            return XCTFail("expected a fleet snapshot")
+            XCTFail("expected a fleet snapshot")
+            return
         }
         XCTAssertTrue(received[0].isOnline, "the frame arrived, so the peer is up")
         XCTAssertTrue(received[0].wireReachable, "the frame arrived over the Wire")
@@ -142,7 +144,8 @@ final class WarWireFrameCodecTests: XCTestCase {
             [body("mac-remote")], uid: uid, connectionID: connectionID
         )
         guard case let .fleetSnapshot(received) = try parse(frame) else {
-            return XCTFail("expected a fleet snapshot")
+            XCTFail("expected a fleet snapshot")
+            return
         }
         let decision = FlameRouter.route(
             snapshot: FleetSnapshot(bodies: received),

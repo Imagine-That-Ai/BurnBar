@@ -130,4 +130,34 @@ final class PlasmaPersonaTests: XCTestCase {
         let json = String(data: try JSONEncoder().encode(seats), encoding: .utf8)
         XCTAssertTrue(ChatSessionController.decodeRoster(json).isEmpty)
     }
+
+    // MARK: Seat bounds
+
+    func testAnOverlongSeatNameIsClampedNotRejected() {
+        let clamped = PlasmaSeat.normalizedLabel(String(repeating: "x", count: 400), fallback: "Seat")
+        XCTAssertEqual(clamped.count, PlasmaSeat.labelLimit)
+    }
+
+    func testABlankSeatNameFallsBackToThePersonaName() {
+        XCTAssertEqual(PlasmaSeat.normalizedLabel("   ", fallback: "The Nerd"), "The Nerd")
+        XCTAssertEqual(PlasmaSeat.normalizedLabel("  Reviewer  ", fallback: "The Nerd"), "Reviewer")
+    }
+
+    /// The blob on disk is editable outside the app, so the caps are re-applied
+    /// on load rather than trusted from the write path.
+    func testRosterFromDiskIsClampedInCountAndLabelLength() throws {
+        let persona = PlasmaPersona.all[0].id
+        let seats = (0..<(PlasmaSeat.customSeatLimit + 12)).map { index in
+            PlasmaSeat(
+                id: "seat-\(index)",
+                label: String(repeating: "y", count: 300),
+                personaID: persona,
+                isBuiltIn: false
+            )
+        }
+        let json = String(data: try JSONEncoder().encode(seats), encoding: .utf8)
+        let decoded = ChatSessionController.decodeRoster(json)
+        XCTAssertEqual(decoded.count, PlasmaSeat.customSeatLimit)
+        XCTAssertTrue(decoded.allSatisfy { $0.label.count == PlasmaSeat.labelLimit })
+    }
 }

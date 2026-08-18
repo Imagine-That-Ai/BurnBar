@@ -56,8 +56,10 @@ public enum FlameDispatchPlanner {
         return .success(
             FlameDispatchPlan(
                 // Only a remote decision needs a target: locally, "run it here"
-                // is the same thing as the existing unrouted behaviour.
-                targetBodyID: transport == .wire ? chosen : nil,
+                // is the same thing as the existing unrouted behaviour. Both
+                // remote roads (Wire and Firestore relay) carry the target so
+                // only the chosen machine claims the mission.
+                targetBodyID: transport == .local ? nil : chosen,
                 transport: transport,
                 originator: decision.originator,
                 decisionID: decision.decisionID,

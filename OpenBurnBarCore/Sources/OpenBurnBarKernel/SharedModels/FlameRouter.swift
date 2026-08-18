@@ -1,16 +1,16 @@
 import Foundation
 
-/// The Flame's decision core — "which machine should this run on, and why?"
-/// (§ The Flame of `plans/2026-08-17-war-room-master-plan.md`).
-///
-/// The Flame is a router *with a voice*: it never returns a bare answer. Every
-/// call yields a `RoutingDecision` carrying the chosen body, the rationale, and
-/// every candidate it considered with the reason it was passed over. That
-/// record is what the Command Board renders and what `DistillRecord` archives,
-/// so a routing choice is always explainable after the fact.
-///
-/// Pure and dependency-free on purpose: the daemon service (W4) and the chat
-/// deck (W5) call the same function and cannot disagree.
+// The Flame's decision core — "which machine should this run on, and why?"
+// (§ The Flame of `plans/2026-08-17-war-room-master-plan.md`).
+//
+// The Flame is a router *with a voice*: it never returns a bare answer. Every
+// call yields a `RoutingDecision` carrying the chosen body, the rationale, and
+// every candidate it considered with the reason it was passed over. That
+// record is what the Command Board renders and what `DistillRecord` archives,
+// so a routing choice is always explainable after the fact.
+//
+// Pure and dependency-free on purpose: the daemon service (W4) and the chat
+// deck (W5) call the same function and cannot disagree.
 
 // MARK: - Fleet snapshot
 
@@ -76,8 +76,9 @@ public enum FlameRejection: String, Sendable, Equatable, Codable, CaseIterable {
     case offline
     case gatewayUnreachable = "gateway_unreachable"
     case missingCapability = "missing_capability"
-    /// Remote body with no usable Wire — the router will not silently route
-    /// work it cannot deliver.
+    /// Remote body with no usable Wire. The router no longer emits this —
+    /// such a body now routes over the Firestore relay instead — but the case
+    /// stays so archived decisions from earlier builds still decode.
     case wireUnavailable = "wire_unavailable"
     /// Eligible, but another body scored better.
     case outscored
@@ -103,6 +104,10 @@ public enum FlameTransport: String, Sendable, Equatable, Codable, CaseIterable {
     case local
     /// Remote over the Wire.
     case wire
+    /// Remote over the Firestore relay — the mission-document road every Mac
+    /// already listens to. The Wire is an upgrade, never a dependency, so a
+    /// peer without a live Wire lane still gets its work by this road.
+    case firestore
 }
 
 public struct RoutingDecision: Sendable, Equatable, Codable {
@@ -142,11 +147,13 @@ public struct RoutingDecision: Sendable, Equatable, Codable {
 public enum FlameRouter {
     /// Choose a machine for a unit of work.
     ///
-    /// Eligibility is strict — offline, gateway-down, capability-missing, and
-    /// unreachable-over-the-Wire bodies are all rejected with a named reason
-    /// rather than optimistically tried. Among eligible bodies the order is:
-    /// fewest active runs, then more performance cores, then the local machine
-    /// (no transport to pay for), then body id so the choice is deterministic.
+    /// Eligibility is strict — offline, gateway-down, and capability-missing
+    /// bodies are rejected with a named reason rather than optimistically
+    /// tried. Wire reachability shapes the transport, not eligibility: a
+    /// remote body without a live Wire lane routes over the Firestore relay.
+    /// Among eligible bodies the order is: fewest active runs, then more
+    /// performance cores, then the local machine (no transport to pay for),
+    /// then body id so the choice is deterministic.
     public static func route(
         snapshot: FleetSnapshot,
         requiredCapabilities: Set<String> = [],
@@ -189,10 +196,17 @@ public enum FlameRouter {
         return RoutingDecision(
             decisionID: decisionID,
             chosenBodyID: winner.bodyID,
-            transport: winner.isLocal ? .local : .wire,
+            transport: transport(for: winner),
             rationale: rationale(for: winner, amongEligible: ranked.count),
             candidates: candidates
         )
+    }
+
+    /// The Wire when it is up, the Firestore relay when it is not. Never nil
+    /// for a routed body: the two roads together cover every reachable peer.
+    private static func transport(for body: FleetBodySnapshot) -> FlameTransport {
+        if body.isLocal { return .local }
+        return body.wireReachable ? .wire : .firestore
     }
 
     private static func rejection(
@@ -202,9 +216,9 @@ public enum FlameRouter {
         if !body.isOnline { return .offline }
         if !body.hermesGatewayReachable { return .gatewayUnreachable }
         if !requiredCapabilities.isSubset(of: body.capabilities) { return .missingCapability }
-        // The local machine needs no transport; a remote one does, and the
-        // router refuses to promise delivery it cannot make.
-        if !body.isLocal && !body.wireReachable { return .wireUnavailable }
+        // No transport check: a remote body without a live Wire lane is still
+        // reachable over the Firestore relay, so reachability shapes the
+        // transport choice below rather than eligibility here.
         return nil
     }
 

@@ -87,6 +87,50 @@ final class WarWireDialerTests: XCTestCase {
         await servedLink.close()
     }
 
+    /// The relay host's request handler reads the first frame to classify the
+    /// stream, so the answerer's Wire entry point takes the opening hello it
+    /// already holds. Same handshake, same outcome — only the read is skipped.
+    func test_acceptWithAPreReadOpeningFrameCompletesTheHandshake() async throws {
+        let rendezvous = LoopbackIrohRelayRendezvous()
+        let answerTransport = LoopbackIrohRelayTransport(nodeId: "node-mini", rendezvous: rendezvous)
+        let dialTransport = LoopbackIrohRelayTransport(nodeId: "node-studio", rendezvous: rendezvous)
+        _ = try await answerTransport.start()
+        _ = try await dialTransport.start()
+
+        let answererCredentials = credentials(bodyID: answererBody)
+        let answererGrant = activeGrant()
+        let served = Task<WarWireDialOutcome, Error> {
+            let inbound = try await answerTransport.accept(timeout: 5)
+            let firstFrame = try await inbound.receive()
+            let opening = try XCTUnwrap(firstFrame, "expected the dialer's hello")
+            XCTAssertEqual(opening.type, .warHello)
+            return await WarWireDialer.accept(
+                opening: opening,
+                on: inbound,
+                credentials: answererCredentials,
+                grantForPeer: { _ in answererGrant }
+            )
+        }
+
+        let outcome = await WarWireDialer.dial(
+            transport: dialTransport,
+            target: IrohDialTarget(nodeId: "node-mini"),
+            remoteBodyID: answererBody,
+            grant: activeGrant(),
+            credentials: credentials(bodyID: dialerBody)
+        )
+
+        let link = try XCTUnwrap(outcome.link, "expected a live Wire")
+        let servedOutcome = try await served.value
+        let servedLink = try XCTUnwrap(servedOutcome.link)
+        let ready = await link.isReady
+        let servedReady = await servedLink.isReady
+        XCTAssertTrue(ready)
+        XCTAssertTrue(servedReady)
+        await link.close()
+        await servedLink.close()
+    }
+
     func test_fleetSnapshotCrossesTheWireAndArrivesRoutable() async throws {
         let pair = try await makePair(
             answererCredentials: credentials(bodyID: answererBody),
@@ -117,7 +161,8 @@ final class WarWireDialerTests: XCTestCase {
 
         let inbound = await servedLink.next()
         guard case let .event(.fleetSnapshot(received)) = inbound else {
-            return XCTFail("expected a fleet snapshot, got \(inbound)")
+            XCTFail("expected a fleet snapshot, got \(inbound)")
+            return
         }
         XCTAssertEqual(received.count, 1)
         XCTAssertEqual(received[0].bodyID, dialerBody)
@@ -156,7 +201,8 @@ final class WarWireDialerTests: XCTestCase {
 
         let inbound = await servedLink.next()
         guard case let .event(.dispatch(received)) = inbound else {
-            return XCTFail("expected a dispatch, got \(inbound)")
+            XCTFail("expected a dispatch, got \(inbound)")
+            return
         }
         XCTAssertEqual(received, request)
 

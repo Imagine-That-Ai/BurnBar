@@ -108,7 +108,8 @@ final class StandingOrderRuntimeTests: XCTestCase {
         )
         XCTAssertTrue(result.dispatches.isEmpty)
         guard case .noEligibleMachine = try? XCTUnwrap(result.deferrals.first).reason else {
-            return XCTFail("expected a capability refusal")
+            XCTFail("expected a capability refusal")
+            return
         }
     }
 
@@ -149,7 +150,8 @@ final class StandingOrderRuntimeTests: XCTestCase {
         let result = plan(orders: [order(lastFired: date("2026-08-17T11:00:00Z"))], bodies: [])
         XCTAssertTrue(result.dispatches.isEmpty)
         guard case let .noEligibleMachine(rationale) = try XCTUnwrap(result.deferrals.first).reason else {
-            return XCTFail("expected a routing refusal")
+            XCTFail("expected a routing refusal")
+            return
         }
         XCTAssertFalse(rationale.isEmpty, "a deferral always says why")
     }

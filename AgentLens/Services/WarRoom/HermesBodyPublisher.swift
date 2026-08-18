@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import FirebaseFirestore
+import OpenBurnBarKernel
 
 /// Publishes this Mac's HermesBody — the joined machine-identity record the
 /// War Room navigates by (`users/{uid}/hermes_bodies/{bodyId}`).
@@ -120,7 +121,7 @@ final class HermesBodyPublisher {
             hardware: MacHardwareInventory.probe(),
             hermes: await currentHermesState(),
             irohNodeID: irohNodeIDProvider(),
-            now: ISO8601DateFormatter().string(from: Date())
+            now: ThreadSafeISO8601DateFormatter.formatBasic(Date())
         )
         let ref = WarRoomFirestoreGateway.body(uid: uid, bodyID: bodyID)
         do {
@@ -177,6 +178,9 @@ final class HermesBodyPublisher {
         if input.hermes.gatewayReachable {
             capabilities.append("hermes_chat")
         }
+        if input.irohNodeID != nil {
+            capabilities.append(WarWireFrameCodec.capability)
+        }
 
         var data: [String: Any] = [
             "id": input.bodyID,
@@ -189,7 +193,7 @@ final class HermesBodyPublisher {
             "presence": [
                 "state": "online",
                 "lastHeartbeatAt": input.now,
-                "wireReachable": false
+                "wireReachable": input.irohNodeID != nil
             ],
             "capabilities": capabilities,
             "schemaVersion": 1,

@@ -169,7 +169,7 @@ public final class OpenBurnBarDataLinuxTests: XCTestCase {
 
         let database = try openDatabase(path: dbPath, passphrase: passphrase)
         defer { try? database.close() }
-        XCTAssertEqual(try database.migrationRows().last, "v61_usage_memory")
+        XCTAssertEqual(try database.migrationRows().last, "v64_token_usage_start_time_index")
         XCTAssertEqual(try database.count(sql: "SELECT COUNT(*) FROM provider_accounts WHERE id = 'legacy-provider-account'"), 1)
         XCTAssertEqual(try database.verifyPragmaString("integrity_check"), "ok")
 

@@ -30,6 +30,20 @@ final class HermesRelayHostService {
         (realtimeRelayClient as? HermesIrohRelayHostClient)?.activeTransport
     }
 
+    /// The NodeId this Mac currently advertises, for the HermesBody heartbeat.
+    /// `nil` until the iroh host has published one, which is exactly when the
+    /// body must report itself unreachable over the Wire.
+    var publishedIrohNodeID: String? {
+        (realtimeRelayClient as? HermesIrohRelayHostClient)?.publishedNodeID
+    }
+
+    /// War Room W1 — hand inbound `war.hello` streams to the Wire host. The
+    /// request handler classifies the opening frame and transfers stream
+    /// ownership; without an acceptor an inbound Wire is simply not served.
+    func setWarWireAcceptor(_ acceptor: WarWireStreamAcceptor?) {
+        (realtimeRelayClient as? HermesIrohRelayHostClient)?.warWireAcceptor = acceptor
+    }
+
     private let cliChatDispatcher: CLIAgentRelayChatDispatcher?
     private let cliModelCatalogDispatcher: CLIRuntimeModelCatalogDispatcher?
     private let cliSessionActionDispatcher: CLIAgentSessionActionDispatcher?

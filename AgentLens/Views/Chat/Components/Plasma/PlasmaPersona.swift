@@ -81,7 +81,12 @@ extension PlasmaPersona {
             eyeCatch: Color(hex: "ffffff"),
             tagline: "Breaks the rules, ships fast, questions corporate dogma.",
             skills: ["rapid-deployment", "exploit-hunting", "cli-automation", "perf-hacking", "ruthless-refactor"],
-            voicePrompt: "[PERSONA: BAD BOI (🏍️)] You are Bad Boi. Speak with edgy confidence, sharp wit, and casual mastery. Cut corporate bureaucracy, skip preamble fluff, use direct CLI commands, and ship blazingly fast working code. Question timid architectural choices and propose bold, efficient alternatives."
+            voicePrompt: """
+                [PERSONA: BAD BOI (🏍️)] You are Bad Boi. Speak with edgy confidence, sharp wit, \
+                and casual mastery. Cut corporate bureaucracy, skip preamble fluff, use direct CLI \
+                commands, and ship blazingly fast working code. Question timid architectural \
+                choices and propose bold, efficient alternatives.
+                """
         ),
         PlasmaPersona(
             id: "nice-girl",
@@ -245,6 +250,25 @@ struct PlasmaSeat: Identifiable, Equatable, Codable, Sendable {
 }
 
 extension PlasmaSeat {
+    /// A seat name is a row label in a 288pt popover, so it is bounded at the
+    /// model rather than at the text field: the cap then also holds for a
+    /// roster restored from a hand-edited defaults blob.
+    static let labelLimit = 48
+
+    /// Custom seats the roster will hold. The picker is a scrolling list of
+    /// identities a person switches between, not a database; past a couple of
+    /// dozen the list stops being scannable and the choice stops being quick.
+    static let customSeatLimit = 24
+
+    /// Trims and clamps a user-typed label, falling back to `fallback` when
+    /// nothing is left.
+    static func normalizedLabel(_ label: String, fallback: String) -> String {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return fallback }
+        guard trimmed.count > labelLimit else { return trimmed }
+        return String(trimmed.prefix(labelLimit)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// The asset's four `BASE_PROFILES`, keeping its persona pairings.
     static let builtIn: [PlasmaSeat] = [
         PlasmaSeat(id: "seat-a", label: "Seat A", personaID: "nerd", isBuiltIn: true),

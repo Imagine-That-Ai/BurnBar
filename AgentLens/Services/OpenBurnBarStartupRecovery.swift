@@ -352,7 +352,11 @@ final class OpenBurnBarRuntimeContext {
             hermesBodyPublisher = HermesBodyPublisher(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
-                bodyIDProvider: { hermesRelayHost.connectionID }
+                bodyIDProvider: { hermesRelayHost.connectionID },
+                // The Wire's endpoint is the relay host's published NodeId.
+                // Without this the body advertises no endpoint and every peer
+                // plans `.noEndpoint`, so the Wire would never dial.
+                irohNodeIDProvider: { hermesRelayHost.publishedIrohNodeID }
             )
         }
         hermesBodyPublisher?.start()
@@ -639,7 +643,10 @@ final class OpenBurnBarRuntimeContext {
             missionListener = CLIAgentMissionRequestListener(
                 accountManager: accountManager,
                 settingsManager: settingsManager,
-                chatController: chatController
+                chatController: chatController,
+                // The HermesBody id is the relay host's connection id, so a
+                // mission the Flame routed to another Mac is left for it.
+                localBodyIDProvider: { [weak self] in self?.hermesRelayHostService?.connectionID }
             )
             cliAgentMissionRequestListener = missionListener
         }
@@ -707,6 +714,12 @@ final class OpenBurnBarRuntimeContext {
             warWireHost = wire
         }
         wire.start()
+        // Inbound half of the Wire: the relay host classifies a peer Mac's
+        // opening `war.hello` and hands the stream here, so a lane opens
+        // whichever machine dialled first.
+        hermesRelayHostService?.setWarWireAcceptor { [weak wire] stream, opening in
+            await wire?.acceptInbound(stream: stream, opening: opening)
+        }
     }
 
     /// Boot the durability sentry that keeps Codex / Forge / OpenCode / Droid

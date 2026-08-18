@@ -267,7 +267,26 @@ public enum WarWireDialer {
             await stream.close()
             return .fallBackToFirestore(.transportLost)
         }
+        return await accept(
+            opening: opening,
+            on: stream,
+            credentials: credentials,
+            grantForPeer: grantForPeer
+        )
+    }
 
+    /// Answer an inbound Wire dial whose opening frame was already read.
+    ///
+    /// The relay host's request handler classifies each stream by its first
+    /// frame, so by the time a `war.hello` reaches the Wire the frame is in
+    /// hand. Same gate, same refusal semantics as `accept(on:)` — only the
+    /// read is skipped.
+    public static func accept(
+        opening: HermesRealtimeRelayFrame,
+        on stream: any IrohRelayStream,
+        credentials: WarWireCredentials,
+        grantForPeer: @Sendable (String) -> WarWireGrant?
+    ) async -> WarWireDialOutcome {
         guard
             let event = try? WarWireFrameCodec.event(from: opening),
             case let .hello(hello) = event

@@ -30,6 +30,10 @@ struct PlasmaPersonaPicker: View {
     @State private var draftLabel = ""
     @State private var draftPersonaID = PlasmaPersona.all.first?.id ?? ""
 
+    private var isRosterFull: Bool {
+        roster.filter { !$0.isBuiltIn }.count >= PlasmaSeat.customSeatLimit
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PlasmaStepHeader(step: 1, title: "Persona")
@@ -38,7 +42,7 @@ struct PlasmaPersonaPicker: View {
                 .padding(.bottom, 8)
 
             ScrollView {
-                VStack(spacing: 4) {
+                LazyVStack(spacing: 4) {
                     neutralRow
                     ForEach(roster) { seat in
                         seatRow(seat)
@@ -56,13 +60,17 @@ struct PlasmaPersonaPicker: View {
                 Button {
                     withAnimation(DesignSystem.Animation.gentle) { isCreating = true }
                 } label: {
-                    Label("New seat", systemImage: "plus.circle")
+                    Label(isRosterFull ? "Roster is full" : "New seat", systemImage: "plus.circle")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
+                        .foregroundStyle(
+                            isRosterFull ? DesignSystem.Colors.textMuted : DesignSystem.Colors.textSecondary
+                        )
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(isRosterFull)
+                .help(isRosterFull ? "Delete a seat to make room for another." : "")
                 .padding(.horizontal, 14)
                 .padding(.bottom, 12)
             }
@@ -170,6 +178,13 @@ struct PlasmaPersonaPicker: View {
             TextField("Seat name", text: $draftLabel)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 12, design: .rounded))
+                // Clamped as you type so the row label the seat will carry is
+                // the one you can see in the field.
+                .onChange(of: draftLabel) { _, new in
+                    if new.count > PlasmaSeat.labelLimit {
+                        draftLabel = String(new.prefix(PlasmaSeat.labelLimit))
+                    }
+                }
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -216,7 +231,6 @@ struct PlasmaPersonaPicker: View {
         .padding(.bottom, 12)
     }
 }
-
 
 // MARK: - Atoms
 

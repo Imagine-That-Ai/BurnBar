@@ -59,11 +59,17 @@ extension ChatSessionController {
         PlasmaSeat.builtIn + customPersonaSeats
     }
 
-    func addPersonaSeat(label: String, personaID: String) -> PlasmaSeat {
-        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Adds a seat, or returns `nil` when the roster is full — a refused add
+    /// leaves the current selection alone rather than silently pointing the
+    /// agent at a seat that was never created.
+    func addPersonaSeat(label: String, personaID: String) -> PlasmaSeat? {
+        guard customPersonaSeats.count < PlasmaSeat.customSeatLimit else { return nil }
         let seat = PlasmaSeat(
             id: "seat-\(UUID().uuidString.prefix(8).lowercased())",
-            label: trimmed.isEmpty ? (PlasmaPersona.persona(id: personaID)?.name ?? "New seat") : trimmed,
+            label: PlasmaSeat.normalizedLabel(
+                label,
+                fallback: PlasmaPersona.persona(id: personaID)?.name ?? "New seat"
+            ),
             personaID: personaID,
             isBuiltIn: false
         )
@@ -122,9 +128,19 @@ extension ChatSessionController {
         guard let json, let data = json.data(using: .utf8) else { return [] }
         let decoded = (try? JSONDecoder().decode([PlasmaSeat].self, from: data)) ?? [] // try?-ok(corrupt store → built-ins only)
         // A persisted seat naming a persona this build no longer ships would
-        // render as a blank orb, so it is dropped on load instead.
-        return decoded.filter { seat in
-            !seat.isBuiltIn && PlasmaPersona.persona(id: seat.personaID) != nil
-        }
+        // render as a blank orb, so it is dropped on load instead. The label
+        // and roster caps are re-applied here because the blob on disk is
+        // editable outside the app.
+        return decoded
+            .filter { !$0.isBuiltIn && PlasmaPersona.persona(id: $0.personaID) != nil }
+            .prefix(PlasmaSeat.customSeatLimit)
+            .map { seat in
+                var clamped = seat
+                clamped.label = PlasmaSeat.normalizedLabel(
+                    seat.label,
+                    fallback: PlasmaPersona.persona(id: seat.personaID)?.name ?? "Seat"
+                )
+                return clamped
+            }
     }
 }

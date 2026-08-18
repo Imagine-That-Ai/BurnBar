@@ -116,7 +116,7 @@ final class PlasmaRouteTests: XCTestCase {
 
     func testRemediesNameAConcreteNextAction() {
         // "Something went wrong" is not a remedy.
-        XCTAssertTrue(PlasmaRouteStatus.authRejected.remedy?.contains("Settings") == true)
-        XCTAssertTrue(PlasmaRouteStatus.offline.remedy?.contains("Start") == true)
+        XCTAssertEqual(PlasmaRouteStatus.authRejected.remedy?.contains("Settings"), true)
+        XCTAssertEqual(PlasmaRouteStatus.offline.remedy?.contains("Start"), true)
     }
 }

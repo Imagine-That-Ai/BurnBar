@@ -37,7 +37,6 @@ final class FlameRouterTests: XCTestCase {
         XCTAssertEqual(rationales.count, 1, "one fleet, one explanation: \(rationales)")
     }
 
-
     private func body(
         _ id: String,
         local: Bool = false,
@@ -146,12 +145,19 @@ final class FlameRouterTests: XCTestCase {
         XCTAssertEqual(decision.candidates.first?.rejection, .missingCapability)
     }
 
-    /// The router refuses to promise delivery it cannot make: a remote machine
-    /// without a usable Wire is rejected, never optimistically tried.
-    func test_rejectsRemoteMachinesWithoutTheWire() {
+    /// The Wire is an upgrade, never a dependency: a remote machine without a
+    /// usable Wire routes over the Firestore relay instead of being rejected.
+    func test_remoteMachineWithoutTheWireRoutesOverFirestore() {
         let decision = route([body("mac-a", wire: false)])
-        XCTAssertNil(decision.chosenBodyID)
-        XCTAssertEqual(decision.candidates.first?.rejection, .wireUnavailable)
+        XCTAssertEqual(decision.chosenBodyID, "mac-a")
+        XCTAssertEqual(decision.transport, .firestore)
+    }
+
+    /// A live Wire lane outranks the relay for the same peer.
+    func test_remoteMachineWithTheWireRoutesOverTheWire() {
+        let decision = route([body("mac-a", wire: true)])
+        XCTAssertEqual(decision.chosenBodyID, "mac-a")
+        XCTAssertEqual(decision.transport, .wire)
     }
 
     /// The local machine needs no Wire, so it stays eligible when the lane is

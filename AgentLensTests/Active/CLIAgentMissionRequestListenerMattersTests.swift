@@ -55,6 +55,32 @@ final class CLIAgentMissionRequestListenerMattersTests: XCTestCase {
         )
     }
 
+    // MARK: - War Room routing target
+
+    @MainActor
+    func testUntargetedMissionIsClaimableByAnyMac() {
+        XCTAssertFalse(CLIAgentMissionRequestListener.isRoutedElsewhere([:], localBodyID: "body-a"))
+        XCTAssertFalse(
+            CLIAgentMissionRequestListener.isRoutedElsewhere(["targetBodyID": "  "], localBodyID: "body-a")
+        )
+    }
+
+    @MainActor
+    func testTargetedMissionIsClaimedOnlyByTheTargetedMac() {
+        let mission: [String: Any] = ["targetBodyID": "body-b"]
+        XCTAssertFalse(CLIAgentMissionRequestListener.isRoutedElsewhere(mission, localBodyID: "body-b"))
+        XCTAssertTrue(CLIAgentMissionRequestListener.isRoutedElsewhere(mission, localBodyID: "body-a"))
+    }
+
+    /// Fail-closed: a Mac that cannot resolve its own body id must not race the
+    /// targeted machine for the claim.
+    @MainActor
+    func testTargetedMissionIsDeclinedWhenThisMacHasNoBodyID() {
+        XCTAssertTrue(
+            CLIAgentMissionRequestListener.isRoutedElsewhere(["targetBodyID": "body-b"], localBodyID: nil)
+        )
+    }
+
     // MARK: - Wand routing authority
 
     @MainActor

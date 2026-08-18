@@ -157,6 +157,8 @@ export const DATA_DOMAIN_PATHS: Record<string, DomainPaths> = {
       "iroh_controller_route_challenges",
       "relay_sender_keys",
       "runtime_connection_preferences",
+      "hermes_bodies",
+      "war_wire_grants",
     ],
     storagePrefixes: ["hermes_gateway_attachments"],
   },

@@ -1,3 +1,4 @@
+import OpenBurnBarKernel
 import XCTest
 @testable import OpenBurnBar
 
@@ -90,7 +91,28 @@ final class HermesBodyWarRoomTests: XCTestCase {
         let presence = payload["presence"] as? [String: Any]
         XCTAssertEqual(presence?["state"] as? String, "online")
         XCTAssertEqual(presence?["lastHeartbeatAt"] as? String, "2026-08-17T20:00:00Z")
+        XCTAssertEqual(presence?["wireReachable"] as? Bool, true)
+    }
+
+    /// A body with no published NodeId is not dialable, and says so: peers plan
+    /// `.noEndpoint` for it and keep the Firestore road instead of dialing a
+    /// machine that cannot answer.
+    func test_payloadWithoutAnEndpointReportsTheWireUnreachable() {
+        var input = makeInput()
+        input.irohNodeID = nil
+        let payload = HermesBodyPublisher.payload(input, includeCreationDefaults: false)
+        let presence = payload["presence"] as? [String: Any]
+        let endpoints = payload["endpoints"] as? [String: Any]
         XCTAssertEqual(presence?["wireReachable"] as? Bool, false)
+        XCTAssertNil(endpoints?["irohNodeId"])
+        XCTAssertFalse((payload["capabilities"] as? [String])?.contains(WarWireFrameCodec.capability) ?? true)
+    }
+
+    /// The Wire capability is advertised only by a body that can actually be
+    /// dialled, because the peer's gate refuses a hello without it.
+    func test_payloadAdvertisesTheWireCapabilityWithAnEndpoint() {
+        let payload = HermesBodyPublisher.payload(makeInput(), includeCreationDefaults: false)
+        XCTAssertTrue((payload["capabilities"] as? [String])?.contains(WarWireFrameCodec.capability) ?? false)
     }
 
     func test_payloadEndpointsBlock() {

@@ -15,6 +15,7 @@ final class StandingOrderRuntimeHost {
     /// A minute is fine granularity for a rhythm measured in hours, and it
     /// keeps a sleeping Mac from waking on our account.
     static let tickInterval: TimeInterval = 60
+    private static let cadenceID = "standing-order-runtime"
 
     private(set) var lastTickAt: Date?
     private(set) var lastDispatchCount = 0
@@ -23,7 +24,9 @@ final class StandingOrderRuntimeHost {
     private let store: StandingOrderStore
     private let directory: HermesBodyDirectory
     private let dispatcher: MacWandMissionDispatcher
-    @ObservationIgnored private var loop: Task<Void, Never>?
+    @ObservationIgnored private var started = false
+    @ObservationIgnored private var generation: UInt64 = 0
+    @ObservationIgnored private var tickInFlight = false
 
     init(
         store: StandingOrderStore,
@@ -39,26 +42,37 @@ final class StandingOrderRuntimeHost {
     /// listener is started and stopped by whoever owns it — stopping it here
     /// would starve every other reader.
     func start() {
-        guard loop == nil else { return }
-        loop = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.tick()
-                try? await Task.sleep(for: .seconds(Self.tickInterval)) // try?-ok(cancellation only; the loop condition handles it)
-            }
-        }
+        guard !started else { return }
+        started = true
+        generation &+= 1
+        BackgroundCadenceCoordinator.shared.register(
+            BackgroundCadenceCoordinator.Cadence(
+                id: Self.cadenceID,
+                activeInterval: Self.tickInterval,
+                backgroundInterval: Self.tickInterval * 5,
+                sleepInterval: nil,
+                fireImmediately: true,
+                cancellableInFlight: false,
+                work: { [weak self] in
+                    await self?.tick()
+                }
+            )
+        )
     }
 
     func stop() {
-        loop?.cancel()
-        loop = nil
-    }
-
-    deinit {
-        loop?.cancel()
+        started = false
+        generation &+= 1
+        BackgroundCadenceCoordinator.shared.unregister(id: Self.cadenceID)
     }
 
     /// One pass. Separated from the loop so it can be driven directly.
     func tick(now: Date = Date()) async {
+        guard started || generation == 0 else { return }
+        guard !tickInFlight else { return }
+        tickInFlight = true
+        defer { tickInFlight = false }
+        let tickGeneration = generation
         lastTickAt = now
         let orders: [StandingOrder]
         do {
@@ -67,6 +81,7 @@ final class StandingOrderRuntimeHost {
             AppLogger.dataStore.silentFailure("standing_order_fetch_failed", error: error)
             return
         }
+        guard generation == tickGeneration, started || tickGeneration == 0 else { return }
         guard !orders.isEmpty else {
             lastDispatchCount = 0
             lastDeferralCount = 0
@@ -82,11 +97,17 @@ final class StandingOrderRuntimeHost {
         lastDeferralCount = plan.deferrals.count
 
         for dispatch in plan.dispatches {
-            await fire(dispatch, now: now)
+            guard generation == tickGeneration, started || tickGeneration == 0 else { return }
+            await fire(dispatch, now: now, generation: tickGeneration)
         }
     }
 
-    private func fire(_ dispatch: StandingOrderDispatch, now: Date) async {
+    private func fire(
+        _ dispatch: StandingOrderDispatch,
+        now: Date,
+        generation fireGeneration: UInt64
+    ) async {
+        guard generation == fireGeneration, started || fireGeneration == 0 else { return }
         do {
             _ = try await dispatcher.dispatch(
                 title: dispatch.order.title,
@@ -96,6 +117,7 @@ final class StandingOrderRuntimeHost {
                 originator: dispatch.originator,
                 targetBodyID: dispatch.plan.targetBodyID
             )
+            guard generation == fireGeneration, started || fireGeneration == 0 else { return }
             // Only a mission that was actually created advances the schedule.
             // Marking a failed dispatch as fired would silently skip the cycle
             // the user asked for.

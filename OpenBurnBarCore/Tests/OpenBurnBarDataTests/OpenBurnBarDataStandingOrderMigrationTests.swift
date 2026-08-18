@@ -77,9 +77,9 @@ final class OpenBurnBarDataStandingOrderMigrationTests: XCTestCase {
         let queue = try DatabaseQueue(path: ":memory:")
         try OpenBurnBarDatabase.migrator.migrate(queue, upTo: "v62_war_room_originator")
         let before = try queue.read { db in
-            try Bool.fetchOne(db, sql: "SELECT COUNT(*) > 0 FROM sqlite_master WHERE name = 'token_usage'")
+            try Bool.fetchOne(db, sql: "SELECT COUNT(*) > 0 FROM sqlite_master WHERE name = 'token_usage'") ?? false
         }
-        XCTAssertEqual(before, true)
+        XCTAssertTrue(before)
 
         try OpenBurnBarDatabase.migrator.migrate(queue)
         let after = try queue.read { db -> (usage: Bool, orders: Bool) in

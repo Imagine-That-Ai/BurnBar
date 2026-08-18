@@ -13,26 +13,17 @@ struct CommandBoardDetailView: View {
     let dataStore: DataStore
 
     @State private var store: CommandBoardStore
-    @State private var window: Window = .today
+    @State private var window: TimeRange = .today
 
     init(dataStore: DataStore) {
         self.dataStore = dataStore
         _store = State(wrappedValue: CommandBoardStore(dbQueue: dataStore.actor.dbQueue))
     }
 
-    enum Window: String, CaseIterable, Identifiable {
-        case today = "Today"
-        case week = "7 days"
-
-        var id: String { rawValue }
-
-        var start: Date {
-            switch self {
-            case .today: return Calendar.current.startOfDay(for: Date())
-            case .week: return Date().addingTimeInterval(-7 * 86_400)
-            }
-        }
-    }
+    /// The board reads the app-wide windows so "7 days" means here what it
+    /// means on the dashboard. Only the two the grid is useful over are
+    /// offered; a 30-day scan of every run belongs in reports, not a live board.
+    private static let windows: [TimeRange] = [.today, .last7Days]
 
     var body: some View {
         SettingsDetailContainer(
@@ -60,8 +51,10 @@ struct CommandBoardDetailView: View {
         // whatever was true when the pane opened.
         .task(id: window) {
             while !Task.isCancelled {
-                await store.load(since: window.start)
-                try? await Task.sleep(for: .seconds(Self.refreshInterval))
+                // The window slides with the clock, so the start is recomputed
+                // per pass rather than pinned to when the pane opened.
+                await store.load(since: window.dateRange()?.lowerBound ?? .distantPast)
+                try? await Task.sleep(for: .seconds(Self.refreshInterval)) // try?-ok(cancellation only; the loop condition handles it)
             }
         }
     }
@@ -70,8 +63,8 @@ struct CommandBoardDetailView: View {
 
     private var picker: some View {
         Picker("Window", selection: $window) {
-            ForEach(Window.allCases) { option in
-                Text(option.rawValue).tag(option)
+            ForEach(Self.windows) { option in
+                Text(option.displayName).tag(option)
             }
         }
         .pickerStyle(.segmented)
@@ -79,7 +72,6 @@ struct CommandBoardDetailView: View {
     }
 
     // MARK: - Cards
-
 
     private var totalsCard: some View {
         GlassCard {

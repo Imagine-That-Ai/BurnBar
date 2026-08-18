@@ -45,7 +45,10 @@ final class WarWireSessionTests: XCTestCase {
         var session = session()
         let actions = openAllowed(&session)
         XCTAssertEqual(session.state, .awaitingAck)
-        guard case let .send(frame) = actions.first else { return XCTFail("expected a hello") }
+        guard case let .send(frame) = actions.first else {
+            XCTFail("expected a hello")
+            return
+        }
         XCTAssertEqual(frame.type, .warHello)
         XCTAssertEqual(frame.war?.pairId, WarWireGrant.pairID(local, remote))
     }
@@ -66,6 +69,36 @@ final class WarWireSessionTests: XCTestCase {
         XCTAssertEqual(session.receive(event), [.deliver(event)])
     }
 
+    /// The chunk ordinal is monotonic per run: a duplicate or reordered chunk
+    /// is dropped rather than spliced into the output out of order.
+    func test_staleAndDuplicateStreamChunksAreDropped() {
+        var session = session()
+        _ = openAllowed(&session)
+        _ = session.receive(.helloAck(peerHello()))
+
+        let first = WarWireEvent.streamChunk(runID: "run-1", sequence: 1, text: "a")
+        let second = WarWireEvent.streamChunk(runID: "run-1", sequence: 2, text: "b")
+        XCTAssertEqual(session.receive(first), [.deliver(first)])
+        XCTAssertEqual(session.receive(second), [.deliver(second)])
+
+        XCTAssertEqual(session.receive(.streamChunk(runID: "run-1", sequence: 2, text: "b")), [])
+        XCTAssertEqual(session.receive(.streamChunk(runID: "run-1", sequence: 1, text: "a")), [])
+
+        let next = WarWireEvent.streamChunk(runID: "run-1", sequence: 3, text: "c")
+        XCTAssertEqual(session.receive(next), [.deliver(next)], "the lane recovers once order resumes")
+    }
+
+    /// Runs order independently — a slow run cannot hold back a fast one.
+    func test_chunkOrderingIsTrackedPerRun() {
+        var session = session()
+        _ = openAllowed(&session)
+        _ = session.receive(.helloAck(peerHello()))
+
+        _ = session.receive(.streamChunk(runID: "run-1", sequence: 5, text: "late run"))
+        let other = WarWireEvent.streamChunk(runID: "run-2", sequence: 0, text: "fresh run")
+        XCTAssertEqual(session.receive(other), [.deliver(other)])
+    }
+
     func test_answeringSideAcceptsAndBecomesReady() {
         var session = session(localID: remote, remoteID: local)
         let actions = session.accept(
@@ -75,7 +108,10 @@ final class WarWireSessionTests: XCTestCase {
             grant: grant()
         )
         XCTAssertEqual(session.state, .ready)
-        guard case let .send(frame) = actions.first else { return XCTFail("expected a hello ack") }
+        guard case let .send(frame) = actions.first else {
+            XCTFail("expected a hello ack")
+            return
+        }
         XCTAssertEqual(frame.type, .warHelloAck)
     }
 
@@ -128,7 +164,10 @@ final class WarWireSessionTests: XCTestCase {
             grant: grant(.revoked)
         )
         XCTAssertEqual(session.state, .closed(.refusedLocally(.grantRevoked)))
-        guard case let .send(frame) = actions.first else { return XCTFail("expected a denial frame") }
+        guard case let .send(frame) = actions.first else {
+            XCTFail("expected a denial frame")
+            return
+        }
         XCTAssertEqual(frame.type, .warDenied)
         XCTAssertEqual(frame.war?.denialReason, .grantRevoked)
         XCTAssertEqual(actions.last, .fallBackToFirestore(.refusedLocally(.grantRevoked)))

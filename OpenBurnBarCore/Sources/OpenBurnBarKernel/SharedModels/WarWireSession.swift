@@ -60,6 +60,11 @@ public struct WarWireSession: Sendable, Equatable {
     public let localCapabilities: [String]
     private let uid: String
     private let connectionID: String
+    /// Highest chunk ordinal delivered per run. The wire contract makes the
+    /// ordinal monotonic per run, so a chunk at or below the mark is a
+    /// duplicate or stale reordering — dropped rather than spliced into the
+    /// output out of order. Entries are released when the run completes.
+    private var deliveredChunkHighWaterMarks: [String: Int] = [:]
 
     public init(
         localBodyID: String,
@@ -176,6 +181,15 @@ public struct WarWireSession: Sendable, Equatable {
                 return close(.protocolViolation)
             case let .denied(reason, _):
                 return close(.refusedByPeer(reason))
+            case let .streamChunk(runID, sequence, _):
+                guard sequence > deliveredChunkHighWaterMarks[runID, default: Int.min] else {
+                    return []
+                }
+                deliveredChunkHighWaterMarks[runID] = sequence
+                return [.deliver(event)]
+            case let .streamComplete(runID, _, _):
+                deliveredChunkHighWaterMarks.removeValue(forKey: runID)
+                return [.deliver(event)]
             default:
                 return [.deliver(event)]
             }

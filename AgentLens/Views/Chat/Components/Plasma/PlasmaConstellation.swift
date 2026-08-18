@@ -293,8 +293,11 @@ private struct PlasmaConstellationOrb: View {
 
     private var accessibilityLabel: String {
         var parts = [item.name]
-        if let statusWord = item.statusWord { parts.append(statusWord) }
-        else if let detail = item.detail { parts.append(detail) }
+        if let statusWord = item.statusWord {
+            parts.append(statusWord)
+        } else if let detail = item.detail {
+            parts.append(detail)
+        }
         if isSelected { parts.append("selected") }
         return parts.joined(separator: ", ")
     }

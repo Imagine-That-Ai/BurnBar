@@ -69,7 +69,7 @@ struct ChatEngineModelMenu: View {
                 isThinking: controller.isStreaming,
                 onSelect: selectSeat,
                 onCreate: { label, personaID in
-                    let seat = controller.addPersonaSeat(label: label, personaID: personaID)
+                    guard let seat = controller.addPersonaSeat(label: label, personaID: personaID) else { return }
                     selectSeat(seat)
                 },
                 onDelete: { controller.removePersonaSeat(id: $0) }

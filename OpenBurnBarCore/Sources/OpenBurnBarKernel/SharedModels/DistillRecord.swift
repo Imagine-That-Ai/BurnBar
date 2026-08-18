@@ -142,6 +142,13 @@ public struct DistillLog: Sendable, Equatable {
         at date: Date
     ) -> Bool {
         guard let index = records.firstIndex(where: { $0.id == id }) else { return false }
+        // Settlement is terminal. A late or duplicate RPC must not flip a
+        // settled verdict (success → failure would corrupt the audit history
+        // and `successRate`); an identical retry reports success without
+        // touching the record, so callers can retry safely.
+        if records[index].isSettled {
+            return records[index].outcome == outcome
+        }
         records[index].outcome = outcome
         records[index].settledAt = date
         if let runID {

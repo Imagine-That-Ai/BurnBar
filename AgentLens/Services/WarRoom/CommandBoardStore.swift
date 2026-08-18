@@ -44,11 +44,15 @@ final class CommandBoardStore {
                     .fetchAll(db, sql: Self.sql, arguments: [since, limit])
                     .compactMap { Self.run(from: $0, localMachineName: name, now: now) }
             }
-            summary = CommandBoard.summarize(runs: runs)
+            // The board reloads on a 10s cadence. Republishing an identical
+            // summary would repaint the whole grid for nothing, so an unchanged
+            // read stays invisible to observers.
+            let next = CommandBoard.summarize(runs: runs)
+            if next != summary { summary = next }
         } catch {
             AppLogger.dataStore.silentFailure("command_board_load_failed", error: error)
         }
-        hasLoaded = true
+        if !hasLoaded { hasLoaded = true }
     }
 
     // MARK: - Projection

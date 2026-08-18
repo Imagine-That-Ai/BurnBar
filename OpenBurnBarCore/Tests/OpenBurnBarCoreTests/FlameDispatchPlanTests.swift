@@ -43,6 +43,17 @@ final class FlameDispatchPlanTests: XCTestCase {
         XCTAssertEqual(dispatch.transport, .wire)
     }
 
+    /// The Firestore relay road targets the chosen machine too — only the
+    /// chosen Mac may claim the mission, whichever road delivers it.
+    func test_firestoreRoutedDecisionCarriesTheTargetMachine() throws {
+        var remote = body("mac-b", runs: 0)
+        remote.wireReachable = false
+        let planned = plan([body("mac-a", local: true, runs: 5), remote])
+        let dispatch = try planned.plan.get()
+        XCTAssertEqual(dispatch.targetBodyID, "mac-b")
+        XCTAssertEqual(dispatch.transport, .firestore)
+    }
+
     /// Stamping the local machine's id would make every mission look
     /// Flame-steered on the Command Board and would pin work to an id that only
     /// matters when the work is leaving.
@@ -75,7 +86,8 @@ final class FlameDispatchPlanTests: XCTestCase {
     func test_anUnroutableFleetProducesNoDispatch() {
         let planned = plan([body("mac-a", online: false)])
         guard case let .failure(.noEligibleMachine(rationale)) = planned.plan else {
-            return XCTFail("expected a refusal")
+            XCTFail("expected a refusal")
+            return
         }
         XCTAssertEqual(rationale, planned.decision.rationale)
         XCTAssertTrue(rationale.contains("offline"), "the caller gets the router's own explanation")
@@ -84,7 +96,8 @@ final class FlameDispatchPlanTests: XCTestCase {
     func test_emptyFleetProducesNoDispatch() {
         let planned = plan([])
         guard case .failure(.noEligibleMachine) = planned.plan else {
-            return XCTFail("expected a refusal")
+            XCTFail("expected a refusal")
+            return
         }
     }
 

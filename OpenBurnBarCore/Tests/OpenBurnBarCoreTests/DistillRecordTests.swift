@@ -102,6 +102,40 @@ final class DistillRecordTests: XCTestCase {
         XCTAssertTrue(log.records.isEmpty)
     }
 
+    /// Settlement is terminal: a late RPC cannot flip a settled verdict, so
+    /// the audit history and the success rate stay trustworthy.
+    func test_aSettledVerdictCannotBeRewritten() {
+        var log = DistillLog()
+        log.record(DistillRecord(decision: decision([body("mac-a")]), decidedAt: decidedAt))
+        XCTAssertTrue(log.settle(id: "d-1", outcome: .succeeded, runID: "run-7", at: decidedAt.addingTimeInterval(1)))
+
+        XCTAssertFalse(log.settle(id: "d-1", outcome: .failed, at: decidedAt.addingTimeInterval(9)))
+        let record = log.record(id: "d-1")
+        XCTAssertEqual(record?.outcome, .succeeded)
+        XCTAssertEqual(record?.dwell, 1, "the losing rewrite must not move the settlement time either")
+        XCTAssertEqual(log.successRate, 1.0)
+    }
+
+    /// An identical retry is a duplicate delivery, not a conflict — it reports
+    /// success and leaves the record untouched.
+    func test_settlingTwiceWithTheSameOutcomeIsIdempotent() {
+        var log = DistillLog()
+        log.record(DistillRecord(decision: decision([body("mac-a")]), decidedAt: decidedAt))
+        XCTAssertTrue(log.settle(id: "d-1", outcome: .failed, runID: "run-7", at: decidedAt.addingTimeInterval(2)))
+
+        XCTAssertTrue(log.settle(id: "d-1", outcome: .failed, at: decidedAt.addingTimeInterval(30)))
+        XCTAssertEqual(log.record(id: "d-1")?.dwell, 2)
+    }
+
+    /// An unrouted decision settled at creation stays unrouted — a stray
+    /// success for a decision that dispatched nothing is a lie.
+    func test_anUnroutedDecisionCannotBeSettledIntoASuccess() {
+        var log = DistillLog()
+        log.record(DistillRecord(decision: decision([]), decidedAt: decidedAt))
+        XCTAssertFalse(log.settle(id: "d-1", outcome: .succeeded, at: decidedAt.addingTimeInterval(5)))
+        XCTAssertEqual(log.record(id: "d-1")?.outcome, .unrouted)
+    }
+
     func test_dwellIsNilUntilSettled() {
         let record = DistillRecord(decision: decision([body("mac-a")]), decidedAt: decidedAt)
         XCTAssertNil(record.dwell)
