@@ -20,11 +20,9 @@ final class CommandBoardStore {
     private(set) var hasLoaded = false
 
     /// A run is "running" while usage kept arriving up to this recently. There
-    /// is no end-of-run marker in `token_usage`, so liveness is inferred from
-    /// recency — reusing `FleetWindow.active` rather than picking a second
-    /// threshold, so the board and the fleet surfaces never disagree about
-    /// whether the same machine is working.
-    nonisolated static var livenessWindow: TimeInterval { FleetWindow.active }
+    /// is no end-of-run marker in `token_usage`, so the board infers liveness
+    /// from recency and says so rather than claiming a status it cannot know.
+    nonisolated static let livenessWindow: TimeInterval = 120
 
     private let dbQueue: any DatabaseWriter
     private let localMachineName: String
