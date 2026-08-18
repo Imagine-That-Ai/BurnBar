@@ -20,8 +20,10 @@ import hashlib
 import math
 import os
 import re
+import shutil
 import sqlite3
 import string
+import subprocess
 import struct
 import sys
 import time
@@ -255,6 +257,54 @@ def _sql_value_from_wire(value: Any) -> Any:
     return value
 
 
+def _signed_cli_path() -> str | None:
+    """
+    Locate the first-party signed CLI. Production daemons validate the peer's
+    code signature and admit only OpenBurnBar identities; this Python process
+    can never satisfy that, so encrypted-store reads have to travel through a
+    binary the daemon already trusts.
+    """
+    override = os.environ.get("OPENBURNBAR_CLI_PATH", "").strip()
+    candidates = [override] if override else []
+    candidates += [
+        "/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli",
+        os.path.expanduser("~/Applications/OpenBurnBar.app/Contents/MacOS/openburnbar-cli"),
+        shutil.which("openburnbar-cli") or "",
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def _signed_search_sql(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    Run one read-only query through the signed CLI. Returns None when no signed
+    binary is present, so the caller can fall back to the direct socket (which
+    is what dev builds, where the peer gate is off, actually want).
+    """
+    cli = _signed_cli_path()
+    if not cli:
+        return None
+    try:
+        completed = subprocess.run(
+            [cli, "search-sql"],
+            input=json.dumps(payload).encode("utf-8"),
+            capture_output=True,
+            timeout=20,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        decoded = json.loads(completed.stdout.decode("utf-8", "replace"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
 class _DaemonReadConnection:
     """
     The slice of `sqlite3.Connection` the read tools use, served by the daemon's
@@ -267,11 +317,12 @@ class _DaemonReadConnection:
 
     def execute(self, sql: str, params: Any = ()) -> _DaemonCursor:
         wire_args = [_sql_value_to_wire(value) for value in params]
-        result = pcm.call_daemon(
-            "daemon.search.sql",
-            {"sql": sql, "args": wire_args, "maxRows": 2000},
-            timeout_seconds=15.0,
-        )
+        payload = {"sql": sql, "args": wire_args, "maxRows": 2000}
+        result = _signed_search_sql(payload)
+        if result is None:
+            # Dev/unsigned builds: the daemon's peer gate is not enforced, so the
+            # direct socket still works and is the cheaper path.
+            result = pcm.call_daemon("daemon.search.sql", payload, timeout_seconds=15.0)
         columns = [str(name) for name in (result.get("columns") or [])]
         index_by_name = {name: index for index, name in enumerate(columns)}
         rows = [

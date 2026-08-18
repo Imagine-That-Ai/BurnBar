@@ -594,7 +594,12 @@ export const insightsHostedAnswer = onCall(
         clearTimeout(timer);
       }
 
-      const envelope = sanitizeEnvelope(openRouterContent);
+      // ACCOUNTING BEFORE VALIDATION. OpenRouter has already billed us for the
+      // tokens above; whether the model then returned well-formed JSON is our
+      // problem, not the meter's. Sanitizing first (as this originally did) let
+      // a run of malformed-but-billed answers spend owner funds without ever
+      // touching the monthly cap or the COGS rollup — the advertised dollar cap
+      // was bypassable by making the model produce garbage.
       const completedAtISO = isoNow();
       const inputTokens = openRouterRaw.usage?.prompt_tokens ?? 0;
       const outputTokens = openRouterRaw.usage?.completion_tokens ?? 0;
@@ -659,6 +664,11 @@ export const insightsHostedAnswer = onCall(
           { merge: true },
         );
       });
+
+      // Now that the spend is durably recorded, validate the model output. A
+      // throw from here is a failed answer the user is not charged for in the
+      // product sense, but the owner-side cost is already on the ledger.
+      const envelope = sanitizeEnvelope(openRouterContent);
 
       return {
         envelope,

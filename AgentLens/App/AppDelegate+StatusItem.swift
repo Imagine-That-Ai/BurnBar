@@ -66,6 +66,11 @@ extension AppDelegate {
         guard cost > 0 || tokens > 0 else {
             button.attributedTitle = NSAttributedString(string: "")
             button.imagePosition = .imageOnly
+            // Clear the tooltip too. At the midnight rollover the totals return
+            // to zero and the title goes away, but a stale tooltip left behind
+            // would keep reporting YESTERDAY's number as "today" until new usage
+            // arrived — the one place the icon-only zero state could still lie.
+            button.toolTip = "OpenBurnBar — nothing burned today yet"
             return
         }
         let value = settingsManager.formatUsageMetric(cost: cost, tokens: tokens)

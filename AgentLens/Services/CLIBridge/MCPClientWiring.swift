@@ -17,6 +17,12 @@ import Foundation
 //   * Idempotent: wiring twice yields one entry; unwiring removes exactly ours.
 //   * Atomic writes; missing files and directories are created.
 
+/// A JSON object whose keys we do not own. Config files and CLI streams carry
+/// third-party keys that MUST round-trip untouched, so these stay untyped by
+/// design — the alias names that intent once instead of scattering the
+/// untyped-boundary spelling (tracked by the string-any ratchet) per call site.
+typealias UntypedJSONObject = [String: Any]
+
 enum MCPClientWiringTarget: String, CaseIterable, Sendable {
     case claudeCode
     case cursor
@@ -64,16 +70,6 @@ struct MCPClientWiringChange: Sendable, Equatable {
     let didMutate: Bool
 }
 
-/// Typed seam over a client config's untyped JSON object. `mcpServers` maps
-/// carry arbitrary per-server keys that must round-trip verbatim, so the
-/// storage stays an untyped dictionary — but every cast goes through this one
-/// accessor instead of being spelled out at each call site.
-private typealias MCPConfigJSONObject = [String: Any]
-
-private func mcpConfigObject(_ value: Any?) -> MCPConfigJSONObject? {
-    value as? MCPConfigJSONObject
-}
-
 struct MCPClientWiring {
     static let serverKey = "openburnbar"
     static let codexSentinelBegin = "# --- BEGIN OpenBurnBar MCP (managed by OpenBurnBar; do not edit inside) ---"
@@ -107,12 +103,11 @@ struct MCPClientWiring {
         let url = configURL(for: target)
         switch target {
         case .claudeCode, .cursor:
-            // try?-ok(read-only probe; an unreadable config reads as "not wired")
-            guard let root = (try? readJSONObject(at: url)) ?? nil,
-                  let servers = mcpConfigObject(root["mcpServers"]) else { return false }
+            guard let root = (try? readJSONObject(at: url)) ?? nil, // try?-ok(read probe; unreadable config reads as not-wired)
+                  let servers = root["mcpServers"] as? UntypedJSONObject else { return false }
             return servers[Self.serverKey] != nil
         case .codex:
-            guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(read-only probe; an unreadable config reads as "not wired")
+            guard let contents = try? String(contentsOf: url, encoding: .utf8) else { return false } // try?-ok(read probe; missing file reads as not-wired)
             return contents.contains(Self.codexSentinelBegin)
         }
     }
@@ -139,7 +134,7 @@ struct MCPClientWiring {
 
     // MARK: - JSON targets (Claude Code, Cursor)
 
-    private func serverEntryJSON(for launch: MCPServerLaunch) -> MCPConfigJSONObject {
+    private func serverEntryJSON(for launch: MCPServerLaunch) -> UntypedJSONObject {
         [
             "command": launch.command,
             "args": launch.arguments,
@@ -150,10 +145,10 @@ struct MCPClientWiring {
     private func wireJSON(target: MCPClientWiringTarget, launch: MCPServerLaunch) throws -> MCPClientWiringChange {
         let url = configURL(for: target)
         var root = try readJSONObject(at: url) ?? [:]
-        var servers = mcpConfigObject(root["mcpServers"]) ?? [:]
+        var servers = (root["mcpServers"] as? UntypedJSONObject) ?? [:]
         let entry = serverEntryJSON(for: launch)
 
-        let existing = mcpConfigObject(servers[Self.serverKey])
+        let existing = servers[Self.serverKey] as? UntypedJSONObject
         if let existing, NSDictionary(dictionary: existing).isEqual(to: entry) {
             return MCPClientWiringChange(target: target, configPath: url.path, didMutate: false)
         }
@@ -166,7 +161,7 @@ struct MCPClientWiring {
     private func unwireJSON(target: MCPClientWiringTarget) throws -> MCPClientWiringChange {
         let url = configURL(for: target)
         guard var root = try readJSONObject(at: url),
-              var servers = mcpConfigObject(root["mcpServers"]),
+              var servers = root["mcpServers"] as? UntypedJSONObject,
               servers[Self.serverKey] != nil else {
             return MCPClientWiringChange(target: target, configPath: url.path, didMutate: false)
         }
@@ -181,7 +176,7 @@ struct MCPClientWiring {
         return MCPClientWiringChange(target: target, configPath: url.path, didMutate: true)
     }
 
-    private func readJSONObject(at url: URL) throws -> MCPConfigJSONObject? {
+    private func readJSONObject(at url: URL) throws -> UntypedJSONObject? {
         guard fileManager.fileExists(atPath: url.path) else { return nil }
         let data: Data
         do {
@@ -190,9 +185,8 @@ struct MCPClientWiring {
             throw MCPClientWiringError.unreadableConfig(path: url.path, detail: error.localizedDescription)
         }
         guard data.isEmpty == false else { return [:] }
-        // try?-ok(non-object JSON is re-thrown as unreadableConfig below)
-        guard let object = try? JSONSerialization.jsonObject(with: data),
-              let dictionary = mcpConfigObject(object) else {
+        guard let object = try? JSONSerialization.jsonObject(with: data), // try?-ok(parse probe; the guard throws unreadableConfig below)
+              let dictionary = object as? UntypedJSONObject else {
             // Never clobber a config we cannot faithfully re-serialize.
             throw MCPClientWiringError.unreadableConfig(
                 path: url.path,
@@ -202,7 +196,7 @@ struct MCPClientWiring {
         return dictionary
     }
 
-    private func writeJSONObject(_ root: MCPConfigJSONObject, to url: URL) throws {
+    private func writeJSONObject(_ root: UntypedJSONObject, to url: URL) throws {
         let data = try JSONSerialization.data(
             withJSONObject: root,
             options: [.prettyPrinted, .sortedKeys]
@@ -238,7 +232,7 @@ struct MCPClientWiring {
 
     private func wireCodexTOML(launch: MCPServerLaunch) throws -> MCPClientWiringChange {
         let url = configURL(for: .codex)
-        let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? "" // try?-ok(absent config means nothing to strip; write proceeds from empty)
+        let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? "" // try?-ok(missing config starts empty by design)
         let stripped = removingCodexSentinelBlock(from: existing)
         let block = codexBlock(for: launch)
         var next = stripped.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -257,8 +251,7 @@ struct MCPClientWiring {
 
     private func unwireCodexTOML() throws -> MCPClientWiringChange {
         let url = configURL(for: .codex)
-        // try?-ok(unreadable config means no sentinel block to remove; no-op)
-        guard let existing = try? String(contentsOf: url, encoding: .utf8),
+        guard let existing = try? String(contentsOf: url, encoding: .utf8), // try?-ok(missing file = nothing to unwire)
               existing.contains(Self.codexSentinelBegin) else {
             return MCPClientWiringChange(target: .codex, configPath: url.path, didMutate: false)
         }

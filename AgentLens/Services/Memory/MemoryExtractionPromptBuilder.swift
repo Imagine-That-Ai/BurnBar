@@ -92,7 +92,10 @@ enum MemoryExtractionPromptBuilder {
         var used = 0
         for entry in rendered.reversed() {
             if entry.count > maxChars, kept.isEmpty {
-                kept.append(String(entry.prefix(maxChars)))
+                // Keep the TAIL of a single oversized turn. `prefix` here kept the
+                // OLDEST slice, which inverted this function's whole contract —
+                // the newest text is the reason extraction ran.
+                kept.append(String(entry.suffix(maxChars)))
                 break
             }
             let cost = entry.count + 1 // +1 for the joining newline

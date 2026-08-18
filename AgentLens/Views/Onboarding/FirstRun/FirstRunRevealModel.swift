@@ -147,25 +147,23 @@ final class FirstRunRevealModel {
         excluding hero: TightestQuotaWindow,
         now: Date
     ) -> [SupportingRow] {
-        Array(
-            snapshots
-                .filter { $0.provider != hero.providerDisplayName }
-                .compactMap { snapshot -> SupportingRow? in
-                    let buckets = snapshot.displayableQuotaBuckets(relativeTo: now)
-                    guard buckets.isEmpty == false else { return nil }
-                    let tightest = buckets
-                        .filter { $0.remainingPercent != nil }
-                        .min { ($0.remainingPercent ?? 100) < ($1.remainingPercent ?? 100) }
-                    return SupportingRow(
-                        providerDisplayName: snapshot.provider,
-                        remainingPercent: tightest?.remainingPercent,
-                        detail: tightest.map(Self.detailText) ?? "pool"
-                    )
-                }
-                // Three is the whole list. A fourth row turns a glance into reading.
-                .sorted { ($0.remainingPercent ?? 101) < ($1.remainingPercent ?? 101) }
-                .prefix(3)
-        )
+        let rows = snapshots
+            .filter { $0.provider != hero.providerDisplayName }
+            .compactMap { snapshot -> SupportingRow? in
+                let buckets = snapshot.displayableQuotaBuckets(relativeTo: now)
+                guard buckets.isEmpty == false else { return nil }
+                let tightest = buckets
+                    .filter { $0.remainingPercent != nil }
+                    .min { ($0.remainingPercent ?? 100) < ($1.remainingPercent ?? 100) }
+                return SupportingRow(
+                    providerDisplayName: snapshot.provider,
+                    remainingPercent: tightest?.remainingPercent,
+                    detail: tightest.map(Self.detailText) ?? "pool"
+                )
+            }
+        // Three is the whole list. A fourth row turns a glance into reading.
+        let ranked = rows.sorted { ($0.remainingPercent ?? 101) < ($1.remainingPercent ?? 101) }
+        return Array(ranked.prefix(3))
     }
 
     private static func detailText(for bucket: ProviderQuotaBucket) -> String {

@@ -293,6 +293,31 @@ public struct BurnBarCLIRunner {
         }
     }
 
+    /// `search-sql`: stdin JSON `{sql, args, maxRows}` -> stdout JSON result.
+    ///
+    /// This exists so the local MCP server can read the ENCRYPTED store on a
+    /// production install. The daemon admits only first-party signed peers, and
+    /// the MCP server is a virtualenv `python` that can never carry that
+    /// identity; routing its reads through this signed binary is what makes the
+    /// memory tools work against a real database instead of only in dev builds.
+    /// The daemon still enforces `sqlite3_stmt_readonly` plus the row/byte/VM
+    /// budgets, so this adds a signed courier, never new authority.
+    public func runSearchSQL(input: Data) throws -> String {
+        let request: BurnBarSearchSQLRequest
+        do {
+            request = try JSONDecoder().decode(BurnBarSearchSQLRequest.self, from: input)
+        } catch {
+            throw BurnBarCLIError.missingArgument(
+                "search-sql input must be a JSON object with a `sql` string (optional `args`, `maxRows`)"
+            )
+        }
+        do {
+            return try Self.jsonString(client.searchSQL(request))
+        } catch let error as NSError where error.domain == "OpenBurnBarCLI" {
+            throw BurnBarCLIError.privacyRPCError(code: error.code, message: error.localizedDescription)
+        }
+    }
+
     private func runComputerUseCommand(_ arguments: [String]) throws -> BurnBarCLIInvocationResult {
         guard arguments.first == "panic-halt" else {
             return try BurnBarCLIComputerUseLiveSurface.run(arguments: arguments)

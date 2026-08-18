@@ -1,4 +1,5 @@
 import SwiftUI
+import OpenBurnBarKernel
 
 // MARK: - The Receipt card
 //
@@ -17,6 +18,10 @@ struct ReceiptCardView: View {
 
     @State private var snapshot: ReceiptSnapshot?
     @State private var isBuilding = false
+    /// Set when a rebuild threw. Without this the `try?` swallowed the error and
+    /// left `snapshot` nil, so the body — which keys the spinner off `snapshot`
+    /// alone — showed "Adding up the repeats…" forever and never retried.
+    @State private var buildFailed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
@@ -28,6 +33,8 @@ struct ReceiptCardView: View {
                 } else {
                     ReceiptSnapshotContent(snapshot: snapshot, onOpenConversation: onOpenConversation)
                 }
+            } else if buildFailed {
+                failureState
             } else {
                 loadingState
             }
@@ -46,10 +53,14 @@ struct ReceiptCardView: View {
 
     private func rebuild() async {
         isBuilding = true
+        buildFailed = false
         defer { isBuilding = false }
         let window = timeRange.dateRange()
-        if let built = try? await ReceiptBuilder.build(dataStore: dataStore, window: window) {
-            snapshot = built
+        do {
+            snapshot = try await ReceiptBuilder.build(dataStore: dataStore, window: window)
+        } catch {
+            // A transient database error must not read as "still working".
+            buildFailed = true
         }
     }
 
@@ -72,6 +83,20 @@ struct ReceiptCardView: View {
             Text("Adding up the repeats…")
                 .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(DesignSystem.Colors.textMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, DesignSystem.Spacing.lg)
+    }
+
+    private var failureState: some View {
+        HStack(spacing: DesignSystem.Spacing.md) {
+            Text("Couldn't add up this window.")
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Button("Try again") { Task { await rebuild() } }
+                .buttonStyle(.plain)
+                .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(DesignSystem.Colors.blaze)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, DesignSystem.Spacing.lg)

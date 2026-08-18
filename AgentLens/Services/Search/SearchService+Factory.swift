@@ -60,17 +60,19 @@ extension SearchService {
         private static func makeConversationSearchService(
             dataStore: DataStore,
             accountManager: AccountManager,
-            queryEmbedder: any QueryEmbeddingProviding,
+            queryEmbedder: (any QueryEmbeddingProviding)?,
             preferredVersionID: String?,
             settingsManager: SettingsManager,
             providerAPIKeyStore: ProviderAPIKeyStore,
             nowProvider: @escaping @Sendable () -> Date
         ) -> SearchService {
-            let semanticProvider = VectorSemanticCandidateProvider(
-                dataStore: dataStore,
-                queryEmbedder: queryEmbedder,
-                embeddingVersionID: preferredVersionID
-            )
+            let semanticProvider = queryEmbedder.map { embedder in
+                VectorSemanticCandidateProvider(
+                    dataStore: dataStore,
+                    queryEmbedder: embedder,
+                    embeddingVersionID: preferredVersionID
+                )
+            }
 
             // Construct reranker if cross-encoder is enabled and API key is available
             let reranker: RetrievalRerankProviding? = Self.makeReranker(
@@ -226,10 +228,14 @@ extension SearchService {
         }
 
         @MainActor
+        /// Returns `nil` when no embedder can query the SELECTED lineage's vector
+        /// space. Callers must then run without a semantic provider: lexical search
+        /// still answers, which is honest, where querying the wrong space returns
+        /// confident nonsense.
         private static func makeQueryEmbedder(
             selection: (model: EmbeddingModelRecord, version: EmbeddingVersionRecord)?,
             providerAPIKeyStore: ProviderAPIKeyStore
-        ) -> any QueryEmbeddingProviding {
+        ) -> (any QueryEmbeddingProviding)? {
             guard let selection else {
                 return DeterministicQueryEmbeddingProvider()
             }
@@ -251,6 +257,12 @@ extension SearchService {
                     "search_query_embedder_nl_unavailable_or_dimension_drift",
                     metadata: ["expectedDimensions": "\(selection.model.dimensions)"]
                 )
+                // DISABLE semantic search for this lineage rather than substituting a
+                // descriptor-mimicking deterministic embedder. Matching dimensions and
+                // metadata do NOT put hashed vectors in the Apple model's space, so the
+                // substitute produced meaningless rankings that looked authoritative.
+                // Lexical results are the honest answer until the drift re-embed lands.
+                return nil
             }
 
             if selection.model.provider.caseInsensitiveCompare("openai") == .orderedSame {

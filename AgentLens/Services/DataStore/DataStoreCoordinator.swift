@@ -480,6 +480,17 @@ final class DataStoreCoordinator {
         return true
     }
 
+    /// Hydrate usage data for a presentation surface that is about to appear.
+    ///
+    /// Deliberately "if needed": the menu-bar popover calls this ON THE CLICK
+    /// PATH, so paying for a full fetch every time it opens would be a visible
+    /// stall. Once any refresh has landed, `lastRefresh` is set and this is a
+    /// no-op — the live observers keep the numbers current from there.
+    func loadUsagePresentationIfNeeded() async {
+        guard lastRefresh == nil, isLoading == false else { return }
+        await refresh()
+    }
+
     func refresh() async {
         refreshGeneration += 1
         let generation = refreshGeneration
