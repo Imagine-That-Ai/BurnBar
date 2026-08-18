@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-sync-ownership-v1",
+  "baselineSha": "3f127f7da28f590441c46e0674dac7f27a04b7aa",
+  "rule": "Mac publishes; mobile mirrors. Mobile never becomes the write owner of usage, rollups, or quota snapshots.",
+  "roles": {
+    "mac": "mac-publishes",
+    "ios": "mobile-mirrors-read-only",
+    "ipados": "mobile-mirrors-read-only",
+    "android": "mobile-mirrors-read-only"
+  },
+  "collections": [
+    {
+      "id": "doc.usage",
+      "publisher": "mac",
+      "mobile": "read-mirror"
+    },
+    {
+      "id": "doc.usage_rollups",
+      "publisher": "mac",
+      "mobile": "read-mirror"
+    },
+    {
+      "id": "doc.quota_snapshots",
+      "publisher": "mac",
+      "mobile": "read-mirror"
+    },
+    {
+      "id": "doc.sync_status",
+      "publisher": "mac",
+      "mobile": "read-mirror"
+    },
+    {
+      "id": "doc.provider_accounts",
+      "publisher": "mac-or-callable",
+      "mobile": "read-mirror-or-callable"
+    }
+  ],
+  "freshnessLabels": ["live", "stale", "offline", "empty", "failed", "partial"],
+  "invariants": [
+    "empty is not failed",
+    "failed/offline/empty must never render as a live zero",
+    "canceled refresh must not apply a late snapshot",
+    "process restart must not double-apply a generation",
+    "listeners and caches are scoped to the active UID + generation"
+  ],
+  "code": {
+    "swift": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/MobileSyncOwnershipPolicy.swift",
+    "kotlin": "android/app/src/main/java/com/openburnbar/data/policy/MobileSyncOwnershipPolicy.kt",
+    "vectors": "docs/mobile-parity/fixtures/policy/mobile-policy-vectors.json"
+  }
+}

@@ -75,8 +75,16 @@ final class HermesConversationStateStore {
     /// Restores a chat thread previously saved by the mobile history store.
     /// Used when the user taps an on-device row in the conversation list.
     func loadMobileThread(id: String) {
-        guard let thread = history.thread(id: id),
-              thread.runtime == AssistantRuntimeID.hermes.rawValue else { return }
+        let stored = history.thread(id: id).flatMap { $0.runtime == AssistantRuntimeID.hermes.rawValue ? $0 : nil }
+        let outcome = MobileHermesConversationPolicy.conversationDeepLink(threadId: id, exists: stored != nil)
+        guard outcome == .loaded, let thread = stored else {
+            cancelActiveStream()
+            isStreaming = false
+            messages.removeAll()
+            selectedSessionID = nil
+            lastError = MobileHermesConversationPolicy.missingConversationMessage(outcome)
+            return
+        }
         cancelActiveStream()
         isStreaming = false
         lastError = nil

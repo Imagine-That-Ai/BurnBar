@@ -189,7 +189,7 @@ struct AIInboxRow: View {
             }
 
             Image(systemName: AIInboxPresentation.icon(for: item.record.kind))
-                .font(.system(size: 11, weight: .medium))
+                .font(MobileScaledFont.system(size: 11, weight: .medium))
                 .foregroundStyle(AIInboxPresentation.tint(for: item.record.kind))
 
             Text(AIInboxPresentation.kindLabel(item.record.kind))
@@ -255,14 +255,14 @@ struct AIInboxRow: View {
     }
 
     private var accessibilityLabel: String {
-        var parts: [String] = []
-        if item.isUnread { parts.append("Unread") }
-        parts.append(AIInboxPresentation.kindLabel(item.record.kind))
-        if item.record.priority <= .p2 {
-            parts.append(AIInboxPresentation.priorityLabel(item.record.priority))
-        }
-        parts.append(item.record.title)
-        return parts.joined(separator: ", ")
+        MobileAccessibilityLabelPolicy.inboxRow(
+            unread: item.isUnread,
+            kindLabel: AIInboxPresentation.kindLabel(item.record.kind),
+            priorityLabel: item.record.priority <= .p2
+                ? AIInboxPresentation.priorityLabel(item.record.priority)
+                : nil,
+            title: item.record.title
+        )
     }
 }
 

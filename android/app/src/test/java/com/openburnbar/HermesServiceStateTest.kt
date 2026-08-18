@@ -1,10 +1,12 @@
 package com.openburnbar
 
+import com.openburnbar.data.hermes.ChatTilePreferences
 import com.openburnbar.data.hermes.ConnectionType
 import com.openburnbar.data.hermes.HermesConnection
 import com.openburnbar.data.hermes.HermesConnectionMode
 import com.openburnbar.data.hermes.HermesConnectionRecord
 import com.openburnbar.data.hermes.HermesRelayCapability
+import com.openburnbar.data.hermes.HermesRuntimeModelOption
 import com.openburnbar.data.hermes.HermesService
 import com.openburnbar.data.hermes.HermesServiceEndpointSupport
 import com.openburnbar.data.hermes.addDirectConnection
@@ -232,6 +234,30 @@ class HermesServiceStateTest {
             val connected = service.connectToSuggestedRelay(refresh = false)
             assertTrue(connected)
             assertEquals("mac-relay-1", service.selectedConnection.value.id)
+        } finally {
+            service.destroy()
+        }
+    }
+
+    @Test
+    fun preferenceActionsSelectAndToggleFavoriteModels() {
+        val service = HermesService()
+        try {
+            val option = HermesRuntimeModelOption(
+                providerID = "anthropic",
+                providerName = "Anthropic",
+                modelID = "claude-opus",
+                displayName = "Opus",
+            )
+            service.preferenceActions.selectModel(option)
+            assertEquals("claude-opus", service.selectedModelID.value)
+            service.preferenceActions.toggleFavoriteModel(option)
+            assertTrue(service.favoriteModelIDs.value.contains("claude-opus"))
+            service.preferenceActions.toggleFavoriteModel(option)
+            assertFalse(service.favoriteModelIDs.value.contains("claude-opus"))
+            service.preferenceActions.setChatTilePreferences(ChatTilePreferences(enabledTiles = emptySet()))
+            assertTrue(service.chatTilePreferencesInternal.enabledTiles.isNotEmpty())
+            service.preferenceActions.setToolAtomNavigator(null)
         } finally {
             service.destroy()
         }

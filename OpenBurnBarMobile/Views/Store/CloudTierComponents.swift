@@ -59,7 +59,7 @@ struct CloudBillingPeriodToggle: View {
                     .foregroundStyle(ProTheme.Membership.foilLeaf)
                 Spacer(minLength: 0)
                 Text("APPLE BILLING")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(MobileScaledFont.system(size: 12, weight: .bold, design: .rounded))
                     .tracking(1.4)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -100,7 +100,7 @@ struct CloudBillingPeriodToggle: View {
                     .fontWeight(.semibold)
                 if option == .annual {
                     Text("SAVE 17%")
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .font(MobileScaledFont.system(size: 12, weight: .heavy, design: .rounded))
                         .tracking(0.8)
                         .foregroundStyle(isSelected ? ProTheme.Membership.letterpress : ProTheme.Membership.foilLeaf)
                         .padding(.horizontal, 6)
@@ -437,14 +437,15 @@ struct CloudTierCard: View {
     }
 
     private var priceRow: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        let priceFont = MobileScaledFont.system(size: 34, weight: .heavy, design: .serif, relativeTo: .largeTitle)
+        return VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(priceText)
-                    .font(.system(size: 34, weight: .heavy, design: .serif))
+                    .font(priceFont)
                     .foregroundStyle(ProTheme.Membership.engraving)
                     .overlay(
                         ProTheme.Membership.foilEdge
-                            .mask(Text(priceText).font(.system(size: 34, weight: .heavy, design: .serif)))
+                            .mask(Text(priceText).font(priceFont))
                             .opacity(0.45)
                     )
                 Text(billingPeriod.priceSuffix)
@@ -485,7 +486,7 @@ struct CloudTierCard: View {
                         RoundedRectangle(cornerRadius: 9, style: .continuous)
                             .stroke(ProTheme.Membership.foilLeaf.opacity(0.30), lineWidth: 0.75)
                         Image(systemName: benefit.icon)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(MobileScaledFont.system(size: 14, weight: .bold))
                             .foregroundStyle(ProTheme.Membership.foilLeaf)
                     }
                     .frame(width: 30, height: 30)
@@ -629,7 +630,7 @@ struct CloudTopUpChip: View {
                     Spacer(minLength: 0)
                     if isDisabled {
                         Image(systemName: "lock.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(MobileScaledFont.system(size: 12, weight: .bold))
                             .foregroundStyle(ProTheme.Membership.engravingMuted)
                     }
                 }
@@ -644,10 +645,10 @@ struct CloudTopUpChip: View {
                     .lineLimit(1)
                 HStack(spacing: 4) {
                     Text(priceText)
-                        .font(.system(size: 18, weight: .bold, design: .serif))
+                        .font(MobileScaledFont.system(size: 18, weight: .bold, design: .serif))
                         .foregroundStyle(ProTheme.Membership.engraving)
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(MobileScaledFont.system(size: 14, weight: .bold))
                         .foregroundStyle(isDisabled ? ProTheme.Membership.engravingMuted : ProTheme.Membership.foilLeaf)
                 }
                 .padding(.top, 2)

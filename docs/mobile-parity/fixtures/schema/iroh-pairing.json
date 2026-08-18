@@ -1,0 +1,34 @@
+{
+  "generatedType": "IrohPairingDoc",
+  "pass": [
+    {
+      "id": "happy",
+      "document": {
+        "pairingCodeDigest": "abc",
+        "status": "pending",
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "expiresAt": "2026-08-17T12:10:00.000Z",
+        "platform": "ios"
+      }
+    },
+    {
+      "id": "optional-absent",
+      "document": {
+        "pairingCodeDigest": "abc",
+        "status": "pending",
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "expiresAt": "2026-08-17T12:10:00.000Z"
+      }
+    }
+  ],
+  "fail": [
+    {
+      "id": "missing-status",
+      "document": {
+        "pairingCodeDigest": "abc",
+        "createdAt": "2026-08-17T12:00:00.000Z",
+        "expiresAt": "2026-08-17T12:10:00.000Z"
+      }
+    }
+  ]
+}

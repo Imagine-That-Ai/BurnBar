@@ -58,6 +58,57 @@ final class CloudSyncHealthStoreTests: XCTestCase {
         XCTAssertEqual(store.health, .healthy)
     }
 
+    func testCanceledRefreshDoesNotApplyLateResult() async {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let reader = StubCloudReader(snapshot: CloudSyncStatusSnapshot(
+            lastPublishedAt: now.addingTimeInterval(-5 * 60),
+            lastReadAt: now
+        ))
+        let store = CloudSyncHealthStore(reader: reader)
+        reader.onLoad = { store.cancelRefresh() }
+
+        await store.refresh(now: now)
+
+        XCTAssertEqual(store.health, .syncing)
+        XCTAssertNil(store.lastPublishedAt)
+        XCTAssertNotEqual(store.freshness, .live)
+    }
+
+    func testCacheClearDropsPreviousSnapshot() async {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let reader = StubCloudReader(snapshot: CloudSyncStatusSnapshot(
+            lastPublishedAt: now.addingTimeInterval(-5 * 60),
+            lastReadAt: now
+        ))
+        let store = CloudSyncHealthStore(reader: reader)
+        await store.refresh(now: now)
+        XCTAssertEqual(store.health, .healthy)
+
+        store.clearCache()
+
+        XCTAssertEqual(store.health, .unknown)
+        XCTAssertEqual(store.freshness, .empty)
+        XCTAssertNil(store.lastPublishedAt)
+    }
+
+    func testEmptyAndFailedLoadsAreDistinct() async {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let empty = CloudSyncHealthStore(reader: StubCloudReader(snapshot: CloudSyncStatusSnapshot(
+            lastPublishedAt: nil,
+            lastReadAt: now
+        )))
+        await empty.refresh(now: now)
+        XCTAssertEqual(empty.freshness, .empty)
+
+        let failed = CloudSyncHealthStore(
+            reader: StubCloudReader(error: CloudGatewayError.classified(.networkUnavailable))
+        )
+        await failed.refresh(now: now)
+        XCTAssertEqual(failed.health, .offline)
+        XCTAssertEqual(failed.freshness, .offline)
+        XCTAssertNotEqual(empty.freshness, failed.freshness)
+    }
+
     func testAppCheckFailureStillShowsAppCheckBlocked() async {
         let reader = StubCloudReader(error: CloudGatewayError.classified(.appCheckBlocked))
         let store = CloudSyncHealthStore(reader: reader)
@@ -142,6 +193,7 @@ private final class StubCloudReader: CloudReader {
     private let snapshot: CloudSyncStatusSnapshot?
     private let error: Error?
     private(set) var loadSyncStatusCallCount = 0
+    var onLoad: (() -> Void)?
 
     init(snapshot: CloudSyncStatusSnapshot? = nil, error: Error? = nil) {
         self.snapshot = snapshot
@@ -150,6 +202,7 @@ private final class StubCloudReader: CloudReader {
 
     func loadSyncStatus() async throws -> CloudSyncStatusSnapshot {
         loadSyncStatusCallCount += 1
+        onLoad?()
         if let error { throw error }
         return snapshot ?? CloudSyncStatusSnapshot()
     }

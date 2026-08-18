@@ -24,7 +24,7 @@ struct InsightAutoRotator: View {
         HStack(spacing: MobileTheme.Spacing.sm) {
             if let current {
                 Image(systemName: current.symbolName)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(MobileScaledFont.system(size: 14, weight: .bold))
                     .foregroundStyle(toneColor(current.tone))
                     .frame(width: 22)
 

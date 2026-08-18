@@ -1,0 +1,1162 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-schema-boundary-v1",
+  "baselineSha": "3f127f7da28f590441c46e0674dac7f27a04b7aa",
+  "inventoriedFrom": [
+    "OpenBurnBarMobile/",
+    "android/app/src/main/java/com/openburnbar/",
+    "tools/schema-sync/manifest.json",
+    "functions/src/types/legacy/",
+    "functions/src/types/generated/"
+  ],
+  "note": "Every mobile Firestore collection and callable must appear here. TypeSpec rows are canon. Legacy rows are temporary and must name a removal condition. M1 does not migrate TypeSpec; it records and ratchets consumers.",
+  "documents": [
+    {
+      "id": "doc.usage",
+      "collection": "usage",
+      "path": "users/{uid}/usage/{docId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "usage-quota",
+      "generatedType": "UsageEventDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.usage_rollups",
+      "collection": "usage_rollups",
+      "path": "users/{uid}/usage_rollups/{windowKey}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.usage-rollups",
+      "typeName": "UsageRollupDoc",
+      "sourceFile": "functions/src/types/legacy/quota-usage.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "UsageRollupDoc is tspOnly in usage-quota TypeSpec; emit it and switch mobile rollup decoders to generated types."
+    },
+    {
+      "id": "doc.quota_snapshots",
+      "collection": "quota_snapshots",
+      "path": "users/{uid}/quota_snapshots/{snapshotId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "usage-quota",
+      "generatedType": "QuotaSnapshotDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.provider_accounts",
+      "collection": "provider_accounts",
+      "path": "users/{uid}/provider_accounts/{accountID}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "provider-account",
+      "generatedType": "ProviderAccountDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.provider_account_device_links",
+      "collection": "provider_account_device_links",
+      "path": "users/{uid}/provider_account_device_links/{linkId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "device-links",
+      "generatedType": "ProviderAccountDeviceLinkDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.hermes_relay_requests",
+      "collection": "hermes_relay_requests",
+      "path": "users/{uid}/hermes_relay_requests/{requestId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "hermes-relay",
+      "generatedType": "HermesRelayRequestDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.hermes_gateway_clients",
+      "collection": "hermes_gateway_clients",
+      "path": "users/{uid}/hermes_gateway_clients/{clientId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "generatedType": "HermesGatewayClientDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.hermes_gateway_messages",
+      "collection": "hermes_gateway_messages",
+      "path": "users/{uid}/hermes_gateway_messages/{messageId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "generatedType": "HermesGatewayMessageDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.hermes_gateway_attachments",
+      "collection": "hermes_gateway_attachments",
+      "path": "users/{uid}/hermes_gateway_attachments/{attachmentId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "generatedType": "HermesGatewayAttachmentManifestDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.hermes_gateway_approvals",
+      "collection": "hermes_gateway_approvals",
+      "path": "users/{uid}/hermes_gateway_approvals/{approvalId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "generatedType": "HermesGatewayApprovalDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.insight_canvases",
+      "collection": "insight_canvases",
+      "path": "users/{uid}/insight_canvases/{canvasId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "insights",
+      "generatedType": "InsightCanvasDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.entitlements",
+      "collection": "entitlements",
+      "path": "users/{uid}/entitlements/{docId}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.hosted-quota-entitlement-docs",
+      "typeName": "HostedQuotaEntitlementDoc",
+      "sourceFile": "functions/src/types/legacy/config.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit HostedQuotaEntitlementDoc from hosted-quota TypeSpec; generated EntitlementBindingDoc covers the binding sub-collection only."
+    },
+    {
+      "id": "doc.escrow_devices",
+      "collection": "escrow_devices",
+      "path": "users/{uid}/escrow_devices/{deviceId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "entitlements",
+      "generatedType": "EscrowDeviceDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.escrow_envelopes",
+      "collection": "escrow_envelopes",
+      "path": "users/{uid}/escrow_envelopes/{envelopeId}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.escrow-envelopes",
+      "typeName": "EscrowEnvelopeDoc",
+      "sourceFile": "tools/schema-sync/typespec/domains/entitlements.tsp",
+      "owner": "mobile-apps",
+      "removalCondition": "EscrowEnvelopeDoc is tspOnly; emit it from entitlements TypeSpec and switch credential-transfer consumers."
+    },
+    {
+      "id": "doc.iroh_pairing",
+      "collection": "iroh_pairing",
+      "path": "users/{uid}/iroh_pairing/{pairingId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "iroh-pairing",
+      "generatedType": "IrohPairingDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.model_benchmark_snapshots",
+      "collection": "model_benchmark_snapshots",
+      "path": "model_benchmark_snapshots/{snapshotId}",
+      "access": "read-write",
+      "kind": "typespec",
+      "domainId": "model-benchmarks",
+      "generatedType": "ModelBenchmarkSnapshotDoc",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "doc.computer_use_quota_usage",
+      "collection": "computer_use_quota_usage",
+      "path": "users/{uid}/computer_use_quota_usage/{day}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.computer-use-quota-usage",
+      "typeName": "ComputerUseQuotaUsageDoc",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit ComputerUseQuotaUsageDoc from computer-use or media-analytics TypeSpec and switch mobile consumers."
+    },
+    {
+      "id": "doc.session_logs",
+      "collection": "session_logs",
+      "path": "users/{uid}/session_logs/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.session-logs",
+      "typeName": "SessionLogManifestDoc",
+      "sourceFile": "functions/src/types/legacy/quota-usage.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add a TypeSpec session-logs domain for SessionLogManifestDoc + chunks; migrate iOS/Android decode to generated types."
+    },
+    {
+      "id": "doc.chunks",
+      "collection": "chunks",
+      "path": "users/{uid}/chunks/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.session-log-chunks",
+      "typeName": "SessionLogManifestDoc.chunks",
+      "sourceFile": "functions/src/types/legacy/quota-usage.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit session-log chunk documents from TypeSpec once session-logs is a domain."
+    },
+    {
+      "id": "doc.provider_connections",
+      "collection": "provider_connections",
+      "path": "users/{uid}/provider_connections/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.provider-connections",
+      "typeName": "ProviderConnectionDoc",
+      "sourceFile": "functions/src/types/legacy/providers.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Fold ProviderConnectionDoc into provider-account TypeSpec or retire the collection."
+    },
+    {
+      "id": "doc.devices",
+      "collection": "devices",
+      "path": "users/{uid}/devices/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.devices",
+      "typeName": "device presence/FCM token",
+      "sourceFile": "functions/src/types/legacy/config.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add a TypeSpec devices domain covering FCM token + presence fields mobile writes."
+    },
+    {
+      "id": "doc.text_snippets",
+      "collection": "text_snippets",
+      "path": "users/{uid}/text_snippets/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.text-snippets",
+      "typeName": "TextExpansionSnippetDoc",
+      "sourceFile": "functions/src/types/legacy/quota-usage.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec text-expansion domain; mobile already seals snippet bodies."
+    },
+    {
+      "id": "doc.projects",
+      "collection": "projects",
+      "path": "users/{uid}/projects/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.projects",
+      "typeName": "project wiki/memory",
+      "sourceFile": "functions/src/types/legacy/quota-usage.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec projects domain or map remaining fields onto project_memory_snapshots."
+    },
+    {
+      "id": "doc.ai_inbox_items",
+      "collection": "ai_inbox_items",
+      "path": "users/{uid}/ai_inbox_items/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.ai-inbox",
+      "typeName": "AIInbox sealed mirror",
+      "sourceFile": "OpenBurnBarCore/Sources/OpenBurnBarInboxModels",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec ai-inbox domain for the sealed Cloud Vault inbox mirror."
+    },
+    {
+      "id": "doc.budgetRules",
+      "collection": "budgetRules",
+      "path": "users/{uid}/budgetRules/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.budget-rules",
+      "typeName": "BudgetRule",
+      "sourceFile": "android/app/src/main/java/com/openburnbar/data/models/BudgetModels.kt",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec budget domain shared by iOS BudgetRulesStore and Android FirestoreBudgetRepository."
+    },
+    {
+      "id": "doc.budgetEvents",
+      "collection": "budgetEvents",
+      "path": "users/{uid}/budgetEvents/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.budget-events",
+      "typeName": "BudgetEvent",
+      "sourceFile": "android/app/src/main/java/com/openburnbar/data/models/BudgetModels.kt",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit budget events from the same TypeSpec budget domain."
+    },
+    {
+      "id": "doc.cli_sessions",
+      "collection": "cli_sessions",
+      "path": "users/{uid}/cli_sessions/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cli-sessions",
+      "typeName": "CLI session / Hermes Square",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec cli-session domain covering Square inbox and rollback snapshots."
+    },
+    {
+      "id": "doc.snapshots",
+      "collection": "snapshots",
+      "path": "users/{uid}/snapshots/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cli-session-snapshots",
+      "typeName": "rollback snapshot",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Include child snapshots in the cli-session TypeSpec domain."
+    },
+    {
+      "id": "doc.cli_agent_mission_requests",
+      "collection": "cli_agent_mission_requests",
+      "path": "users/{uid}/cli_agent_mission_requests/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cli-agent-missions",
+      "typeName": "CLIAgentMissionRequestDoc",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Missions TypeSpec already exists; migrate this collection onto generated MissionModels."
+    },
+    {
+      "id": "doc.events",
+      "collection": "events",
+      "path": "users/{uid}/events/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.mission-events",
+      "typeName": "CLIAgentMissionEventDoc",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Migrate mission events onto the missions TypeSpec domain."
+    },
+    {
+      "id": "doc.mission_groups",
+      "collection": "mission_groups",
+      "path": "users/{uid}/mission_groups/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.mission-groups",
+      "typeName": "mission group",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Fold mission groups into the missions TypeSpec domain."
+    },
+    {
+      "id": "doc.rollback_requests",
+      "collection": "rollback_requests",
+      "path": "users/{uid}/rollback_requests/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.rollback-requests",
+      "typeName": "rollback request",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add rollback request to missions TypeSpec or retire in favor of mission events."
+    },
+    {
+      "id": "doc.agent_import_jobs",
+      "collection": "agent_import_jobs",
+      "path": "users/{uid}/agent_import_jobs/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.agent-import-jobs",
+      "typeName": "agent import job",
+      "sourceFile": "OpenBurnBarMobile/Services/AgentHarnessImportStore.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec agent-import domain or fold into missions."
+    },
+    {
+      "id": "doc.agent_identities",
+      "collection": "agent_identities",
+      "path": "users/{uid}/agent_identities/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.agent-identities",
+      "typeName": "AgentIdentity",
+      "sourceFile": "OpenBurnBarMobile/Services/AgentIdentityRegistry.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec agent-identity domain for Square brand zone."
+    },
+    {
+      "id": "doc.agent_notification_events",
+      "collection": "agent_notification_events",
+      "path": "users/{uid}/agent_notification_events/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.agent-notification-events",
+      "typeName": "agent notification event",
+      "sourceFile": "OpenBurnBarMobile/Services/AgentReplyNotificationService.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec notifications domain covering agent reply events."
+    },
+    {
+      "id": "doc.approval_policies",
+      "collection": "approval_policies",
+      "path": "users/{uid}/approval_policies/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.approval-policies",
+      "typeName": "ApprovalPolicyDoc",
+      "sourceFile": "tools/schema-sync/typespec/domains/missions.tsp",
+      "owner": "mobile-apps",
+      "removalCondition": "Missions TypeSpec already lists ApprovalPolicyDoc as tspOnly; emit it and switch mobile consumers."
+    },
+    {
+      "id": "doc.subscription_topics",
+      "collection": "subscription_topics",
+      "path": "users/{uid}/subscription_topics/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.subscription-topics",
+      "typeName": "SubscriptionTopicDoc",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec subscription-topics domain for Square folders."
+    },
+    {
+      "id": "doc.mobile_assistant_chats",
+      "collection": "mobile_assistant_chats",
+      "path": "users/{uid}/mobile_assistant_chats/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.mobile-assistant-chats",
+      "typeName": "mobile assistant thread",
+      "sourceFile": "android/app/src/main/java/com/openburnbar/data/assistants/AssistantChatHistoryStore.kt",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec mobile-assistant-chats domain shared by iOS/Android."
+    },
+    {
+      "id": "doc.hermes_connections",
+      "collection": "hermes_connections",
+      "path": "users/{uid}/hermes_connections/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.hermes-connections",
+      "typeName": "HermesConnectionDoc",
+      "sourceFile": "functions/src/types/legacy/connections.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Fold HermesConnectionDoc into hermes-relay or hermes-gateway TypeSpec."
+    },
+    {
+      "id": "doc.hermes_relay_connections",
+      "collection": "hermes_relay_connections",
+      "path": "users/{uid}/hermes_relay_connections/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.hermes-relay-connections",
+      "typeName": "HermesConnectionDoc",
+      "sourceFile": "functions/src/types/legacy/connections.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Unify with hermes_connections under generated hermes-relay types."
+    },
+    {
+      "id": "doc.iroh_pairing_keys",
+      "collection": "iroh_pairing_keys",
+      "path": "users/{uid}/iroh_pairing_keys/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.iroh-pairing-keys",
+      "typeName": "IrohPairingPublicKeyDoc",
+      "sourceFile": "functions/src/types/legacy/connections.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add IrohPairingPublicKeyDoc to iroh-pairing TypeSpec and emit."
+    },
+    {
+      "id": "doc.iroh_audit_events",
+      "collection": "iroh_audit_events",
+      "path": "users/{uid}/iroh_audit_events/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.iroh-audit-events",
+      "typeName": "IrohTransportAuditEventDoc",
+      "sourceFile": "functions/src/types/legacy/connections.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit iroh audit events from media-analytics or iroh-pairing TypeSpec."
+    },
+    {
+      "id": "doc.media_attachment_manifests",
+      "collection": "media_attachment_manifests",
+      "path": "users/{uid}/media_attachment_manifests/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.media-attachment-manifests",
+      "typeName": "MediaAttachmentManifestDoc",
+      "sourceFile": "functions/src/types/legacy/media.ts",
+      "owner": "mobile-apps",
+      "removalCondition": "Add MediaAttachmentManifestDoc to media-analytics TypeSpec emit."
+    },
+    {
+      "id": "doc.escrow_grants",
+      "collection": "escrow_grants",
+      "path": "users/{uid}/escrow_grants/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.escrow-grants",
+      "typeName": "escrow grant",
+      "sourceFile": "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add escrow grants to entitlements TypeSpec."
+    },
+    {
+      "id": "doc.escrow_public_keys",
+      "collection": "escrow_public_keys",
+      "path": "users/{uid}/escrow_public_keys/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.escrow-public-keys",
+      "typeName": "escrow public key",
+      "sourceFile": "android/app/src/main/java/com/openburnbar/data/stores/DevicesStore.kt",
+      "owner": "mobile-apps",
+      "removalCondition": "Add escrow public keys to entitlements TypeSpec."
+    },
+    {
+      "id": "doc.escrow_audit_events",
+      "collection": "escrow_audit_events",
+      "path": "users/{uid}/escrow_audit_events/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.escrow-audit-events",
+      "typeName": "escrow audit",
+      "sourceFile": "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add escrow audit events to entitlements or computer-use TypeSpec."
+    },
+    {
+      "id": "doc.cloud_vault_state",
+      "collection": "cloud_vault_state",
+      "path": "users/{uid}/cloud_vault_state/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cloud-vault-state",
+      "typeName": "cloud vault state",
+      "sourceFile": "android/app/src/main/java/com/openburnbar/data/inbox/AIInboxStore.kt",
+      "owner": "mobile-apps",
+      "removalCondition": "Add Cloud Vault state docs to an entitlements/cloud-vault TypeSpec domain."
+    },
+    {
+      "id": "doc.cloud_vault_key_wrappers",
+      "collection": "cloud_vault_key_wrappers",
+      "path": "users/{uid}/cloud_vault_key_wrappers/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cloud-vault-key-wrappers",
+      "typeName": "vault key wrapper",
+      "sourceFile": "OpenBurnBarMobile/Services/MobileCloudVaultKeyAccess.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit CloudVault key-wrapper docs from TypeSpec."
+    },
+    {
+      "id": "doc.cloud_vault_rotation_jobs",
+      "collection": "cloud_vault_rotation_jobs",
+      "path": "users/{uid}/cloud_vault_rotation_jobs/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cloud-vault-rotation-jobs",
+      "typeName": "vault rotation job",
+      "sourceFile": "OpenBurnBarMobile/Services/MobileCloudVaultRotationRewrapWorker.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit Cloud Vault rotation jobs from TypeSpec."
+    },
+    {
+      "id": "doc.cloud_vault_rotation_requirements",
+      "collection": "cloud_vault_rotation_requirements",
+      "path": "users/{uid}/cloud_vault_rotation_requirements/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cloud-vault-rotation-requirements",
+      "typeName": "vault rotation requirement",
+      "sourceFile": "OpenBurnBarMobile/Services/MobileCloudVaultRevocationRotation.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit rotation requirements from the same TypeSpec domain."
+    },
+    {
+      "id": "doc.checkpoints",
+      "collection": "checkpoints",
+      "path": "users/{uid}/checkpoints/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.vault-rotation-checkpoints",
+      "typeName": "rotation checkpoint",
+      "sourceFile": "OpenBurnBarMobile/Services/MobileCloudVaultRotationRewrapWorker.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Include rotation checkpoints in the Cloud Vault TypeSpec domain."
+    },
+    {
+      "id": "doc.sync_status",
+      "collection": "sync_status",
+      "path": "users/{uid}/sync_status/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.sync-status",
+      "typeName": "cloud sync status",
+      "sourceFile": "OpenBurnBarMobile/Models/CloudSyncHealthStore.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec sync-status domain or drop if unused."
+    },
+    {
+      "id": "doc.smart_hub_config",
+      "collection": "smart_hub_config",
+      "path": "users/{uid}/smart_hub_config/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.smart-hub-config",
+      "typeName": "SmartHubConfig",
+      "sourceFile": "OpenBurnBarCore/Sources/OpenBurnBarKernel/SharedModels/SmartHubConfig.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec smart-hub domain if mobile continues to sync this doc."
+    },
+    {
+      "id": "doc.remote_mcp_clients",
+      "collection": "remote_mcp_clients",
+      "path": "users/{uid}/remote_mcp_clients/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.remote-mcp-clients",
+      "typeName": "remote MCP client",
+      "sourceFile": "android/app/src/main/java/com/openburnbar/data/stores/RemoteMcpClientStore.kt",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec remote-mcp domain."
+    },
+    {
+      "id": "doc.signal_identity_public_keys",
+      "collection": "signal_identity_public_keys",
+      "path": "users/{uid}/signal_identity_public_keys/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.signal-identity-keys",
+      "typeName": "Signal identity public key",
+      "sourceFile": "OpenBurnBarMobile/Services/ComputerUse/ComputerUseSecurityCallableClient.swift",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec signal-identity domain or emit from hermes-gateway Signal types."
+    },
+    {
+      "id": "doc.cast_actions",
+      "collection": "cast_actions",
+      "path": "users/{uid}/cast_actions/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cast-actions",
+      "typeName": "Smart Display cast action",
+      "sourceFile": "android/app/src/main/java/com/openburnbar/ui/smartdisplay",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec smart-display domain or keep as Android-only companion with an expiry."
+    },
+    {
+      "id": "doc.cast_discovery_results",
+      "collection": "cast_discovery_results",
+      "path": "users/{uid}/cast_discovery_results/{id}",
+      "access": "read-write",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.cast-discovery",
+      "typeName": "Smart Display discovery",
+      "sourceFile": "android/app/src/main/java/com/openburnbar/ui/smartdisplay",
+      "owner": "mobile-apps",
+      "removalCondition": "Same as cast_actions: TypeSpec or accepted Android-only companion."
+    }
+  ],
+  "callables": [
+    {
+      "id": "call.adoptProviderAccountForDevice",
+      "name": "adoptProviderAccountForDevice",
+      "kind": "typespec",
+      "domainId": "device-links",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.backfillProviderAccountDeviceLinks",
+      "name": "backfillProviderAccountDeviceLinks",
+      "kind": "typespec",
+      "domainId": "device-links",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.revokeProviderAccountDeviceLink",
+      "name": "revokeProviderAccountDeviceLink",
+      "kind": "typespec",
+      "domainId": "device-links",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.deleteProviderCredential",
+      "name": "deleteProviderCredential",
+      "kind": "typespec",
+      "domainId": "provider-account",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.refreshProviderQuota",
+      "name": "refreshProviderQuota",
+      "kind": "typespec",
+      "domainId": "usage-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.refreshProviderAccountQuota",
+      "name": "refreshProviderAccountQuota",
+      "kind": "typespec",
+      "domainId": "usage-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.uploadProviderQuotaSnapshot",
+      "name": "uploadProviderQuotaSnapshot",
+      "kind": "typespec",
+      "domainId": "usage-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.rebuildUsageRollups",
+      "name": "rebuildUsageRollups",
+      "kind": "typespec",
+      "domainId": "usage-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.beginEntitlementBinding",
+      "name": "beginEntitlementBinding",
+      "kind": "typespec",
+      "domainId": "hosted-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.verifyHostedQuotaEntitlement",
+      "name": "verifyHostedQuotaEntitlement",
+      "kind": "typespec",
+      "domainId": "hosted-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.restoreHostedQuotaEntitlement",
+      "name": "restoreHostedQuotaEntitlement",
+      "kind": "typespec",
+      "domainId": "hosted-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.verifyCloudProTopUp",
+      "name": "verifyCloudProTopUp",
+      "kind": "typespec",
+      "domainId": "hosted-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.approveHermesGatewayDeviceGrant",
+      "name": "approveHermesGatewayDeviceGrant",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.listHermesGatewayClients",
+      "name": "listHermesGatewayClients",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.revokeHermesGatewayClient",
+      "name": "revokeHermesGatewayClient",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.getHermesGatewayAttachmentDownloadUrl",
+      "name": "getHermesGatewayAttachmentDownloadUrl",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.enqueueHermesGatewayEvent",
+      "name": "enqueueHermesGatewayEvent",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.setHermesGatewayOversightMode",
+      "name": "setHermesGatewayOversightMode",
+      "kind": "typespec",
+      "domainId": "hermes-gateway",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.createHermesPairing",
+      "name": "createHermesPairing",
+      "kind": "typespec",
+      "domainId": "hermes-relay",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.listHermesConnections",
+      "name": "listHermesConnections",
+      "kind": "typespec",
+      "domainId": "hermes-relay",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.revokeHermesConnection",
+      "name": "revokeHermesConnection",
+      "kind": "typespec",
+      "domainId": "hermes-relay",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.createPiAgentPairing",
+      "name": "createPiAgentPairing",
+      "kind": "typespec",
+      "domainId": "pi-agent-relay",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.listPiAgentConnections",
+      "name": "listPiAgentConnections",
+      "kind": "typespec",
+      "domainId": "pi-agent-relay",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.revokePiAgentConnection",
+      "name": "revokePiAgentConnection",
+      "kind": "typespec",
+      "domainId": "pi-agent-relay",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.updatePiAgentConnectionStatus",
+      "name": "updatePiAgentConnectionStatus",
+      "kind": "typespec",
+      "domainId": "pi-agent-relay",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.registerEscrowDevice",
+      "name": "registerEscrowDevice",
+      "kind": "typespec",
+      "domainId": "entitlements",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.approveEscrowDeviceTrust",
+      "name": "approveEscrowDeviceTrust",
+      "kind": "typespec",
+      "domainId": "entitlements",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.revokeEscrowDeviceTrust",
+      "name": "revokeEscrowDeviceTrust",
+      "kind": "typespec",
+      "domainId": "entitlements",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.publishRelaySenderKey",
+      "name": "publishRelaySenderKey",
+      "kind": "typespec",
+      "domainId": "computer-use",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.publishAgentGrantAuthority",
+      "name": "publishAgentGrantAuthority",
+      "kind": "typespec",
+      "domainId": "computer-use",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.bindAppCheckAttestation",
+      "name": "bindAppCheckAttestation",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.bind-app-check",
+      "owner": "mobile-apps",
+      "removalCondition": "Keep as auth/App Check callable; add TypeSpec request/response when auth domain is authored."
+    },
+    {
+      "id": "call.issueHighRiskActionNonce",
+      "name": "issueHighRiskActionNonce",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.high-risk-nonce",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec high-risk nonce request/response under computer-use or entitlements."
+    },
+    {
+      "id": "call.issueTrustedSignalIdentityRepairChallenge",
+      "name": "issueTrustedSignalIdentityRepairChallenge",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.signal-repair-challenge",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit Signal identity repair types from hermes-gateway or a signal domain."
+    },
+    {
+      "id": "call.repairTrustedSignalIdentity",
+      "name": "repairTrustedSignalIdentity",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.signal-repair",
+      "owner": "mobile-apps",
+      "removalCondition": "Same as issueTrustedSignalIdentityRepairChallenge."
+    },
+    {
+      "id": "call.writeSignalAtRestDocument",
+      "name": "writeSignalAtRestDocument",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.write-signal-at-rest",
+      "owner": "mobile-apps",
+      "removalCondition": "Already pinned to generated Signal envelope types; drop this boundary when callables are TypeSpec-defined."
+    },
+    {
+      "id": "call.beginEncryptedSessionBlobUpload",
+      "name": "beginEncryptedSessionBlobUpload",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.encrypted-blob-upload",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec encrypted-session-blob domain."
+    },
+    {
+      "id": "call.getEncryptedSessionBlobDownloadUrl",
+      "name": "getEncryptedSessionBlobDownloadUrl",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.encrypted-blob-download",
+      "owner": "mobile-apps",
+      "removalCondition": "Same encrypted-session-blob domain."
+    },
+    {
+      "id": "call.deleteEncryptedSessionBlob",
+      "name": "deleteEncryptedSessionBlob",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.encrypted-blob-delete",
+      "owner": "mobile-apps",
+      "removalCondition": "Same encrypted-session-blob domain."
+    },
+    {
+      "id": "call.commitEncryptedSearchIndexBatch",
+      "name": "commitEncryptedSearchIndexBatch",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.encrypted-search-index",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec encrypted-search domain."
+    },
+    {
+      "id": "call.searchEncryptedConversationIndex",
+      "name": "searchEncryptedConversationIndex",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.search-encrypted-index",
+      "owner": "mobile-apps",
+      "removalCondition": "Same encrypted-search domain."
+    },
+    {
+      "id": "call.searchStreams",
+      "name": "searchStreams",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.search-streams",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec streams-search request/response."
+    },
+    {
+      "id": "call.queryConversations",
+      "name": "queryConversations",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.query-conversations",
+      "owner": "mobile-apps",
+      "removalCondition": "Same streams-search domain."
+    },
+    {
+      "id": "call.rotateCloudVaultKey",
+      "name": "rotateCloudVaultKey",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.rotate-vault-key",
+      "owner": "mobile-apps",
+      "removalCondition": "Emit Cloud Vault rotation callables from TypeSpec."
+    },
+    {
+      "id": "call.listPendingCloudVaultRotationRequirements",
+      "name": "listPendingCloudVaultRotationRequirements",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.list-vault-rotation",
+      "owner": "mobile-apps",
+      "removalCondition": "Same Cloud Vault TypeSpec domain."
+    },
+    {
+      "id": "call.getDataDomainUsage",
+      "name": "getDataDomainUsage",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.data-domain-usage",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec data-vault/control-center domain."
+    },
+    {
+      "id": "call.getAuditLog",
+      "name": "getAuditLog",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.get-audit-log",
+      "owner": "mobile-apps",
+      "removalCondition": "Same data-vault domain."
+    },
+    {
+      "id": "call.verifyAuditLog",
+      "name": "verifyAuditLog",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.verify-audit-log",
+      "owner": "mobile-apps",
+      "removalCondition": "Same data-vault domain."
+    },
+    {
+      "id": "call.listRecovery",
+      "name": "listRecovery",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.list-recovery",
+      "owner": "mobile-apps",
+      "removalCondition": "Same data-vault domain."
+    },
+    {
+      "id": "call.setupRecovery",
+      "name": "setupRecovery",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.setup-recovery",
+      "owner": "mobile-apps",
+      "removalCondition": "Same data-vault domain."
+    },
+    {
+      "id": "call.confirmRecovery",
+      "name": "confirmRecovery",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.confirm-recovery",
+      "owner": "mobile-apps",
+      "removalCondition": "Same data-vault domain."
+    },
+    {
+      "id": "call.commitKnowledgeBatch",
+      "name": "commitKnowledgeBatch",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.commit-knowledge",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec pensieve/knowledge domain."
+    },
+    {
+      "id": "call.searchKnowledge",
+      "name": "searchKnowledge",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.search-knowledge",
+      "owner": "mobile-apps",
+      "removalCondition": "Same pensieve/knowledge domain."
+    },
+    {
+      "id": "call.getProfileAvatarDownloadUrl",
+      "name": "getProfileAvatarDownloadUrl",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.profile-avatar",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec profile-avatar callable contract or keep as non-schema media helper with expiry."
+    },
+    {
+      "id": "call.submitAgentNotificationReply",
+      "name": "submitAgentNotificationReply",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.agent-notification-reply",
+      "owner": "mobile-apps",
+      "removalCondition": "Add TypeSpec notifications domain covering reply callables."
+    },
+    {
+      "id": "call.addProviderConnection",
+      "name": "addProviderConnection",
+      "kind": "typespec",
+      "domainId": "provider-account",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.refreshQuota",
+      "name": "refreshQuota",
+      "kind": "typespec",
+      "domainId": "usage-quota",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.createCredentialTransfer",
+      "name": "createCredentialTransfer",
+      "kind": "typespec",
+      "domainId": "entitlements",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.completeCredentialTransfer",
+      "name": "completeCredentialTransfer",
+      "kind": "typespec",
+      "domainId": "entitlements",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.consumeCredentialTransfer",
+      "name": "consumeCredentialTransfer",
+      "kind": "typespec",
+      "domainId": "entitlements",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.cancelCredentialTransfer",
+      "name": "cancelCredentialTransfer",
+      "kind": "typespec",
+      "domainId": "entitlements",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.issueIrohControllerRouteChallenge",
+      "name": "issueIrohControllerRouteChallenge",
+      "kind": "typespec",
+      "domainId": "iroh-pairing",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.registerIrohControllerRoute",
+      "name": "registerIrohControllerRoute",
+      "kind": "typespec",
+      "domainId": "iroh-pairing",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.revokeIrohControllerRoute",
+      "name": "revokeIrohControllerRoute",
+      "kind": "typespec",
+      "domainId": "iroh-pairing",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.publishPhoneControlAuthority",
+      "name": "publishPhoneControlAuthority",
+      "kind": "typespec",
+      "domainId": "computer-use",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.queueAgentCapabilityGrantRequest",
+      "name": "queueAgentCapabilityGrantRequest",
+      "kind": "typespec",
+      "domainId": "computer-use",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "call.submitDomainCoreShadowSamples",
+      "name": "submitDomainCoreShadowSamples",
+      "kind": "legacy-boundary",
+      "legacyId": "legacy.call.domain-core-shadow",
+      "owner": "mobile-apps",
+      "removalCondition": "Domain-core shadow samples are evidence, not a product contract; keep until the shadow channel is retired."
+    }
+  ]
+}

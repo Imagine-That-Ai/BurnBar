@@ -35,11 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openburnbar.data.models.TokenUsage
 import com.openburnbar.data.models.UsageDisplayMode
+import com.openburnbar.data.policy.MobileAccessibilityLabelPolicy
 import com.openburnbar.ui.burn.ProviderAuroraAvatar
 import com.openburnbar.ui.components.AuroraGlassCard
 import com.openburnbar.ui.components.BreathingDot
@@ -286,8 +289,21 @@ internal fun PulseHeroBurnCardBody(metrics: PulseHeroCardMetrics) {
 @Composable
 private fun PulseHeroBurnCardGlass(metrics: PulseHeroCardMetrics, derived: PulseHeroDerivedState, burnRateText: String?) {
     val topProvider = metrics.topProvider
+    val heroText =
+        if (metrics.displayMode == UsageDisplayMode.CURRENCY) {
+            Formatting.formatCurrency(metrics.value)
+        } else {
+            Formatting.formatTokens(metrics.tokenValue)
+        }
+    val displayMode = if (metrics.displayMode == UsageDisplayMode.CURRENCY) "currency" else "tokens"
     AuroraGlassCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+        Modifier
+            .fillMaxWidth()
+            .semantics {
+                contentDescription =
+                    MobileAccessibilityLabelPolicy.heroBurn(displayMode, heroText, burnRateText)
+            },
         cornerRadius = AuroraRadius.XL,
         contentPadding = AuroraSpacing.LG.dp,
     ) {

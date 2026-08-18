@@ -9,7 +9,7 @@ internal object FirestoreQuotaBucketParser {
         mergeMetaFields(raw, meta)
         val name = readName(raw) ?: return null
         val unit = readUnit(raw, meta)?.lowercase()
-        val values = FirestoreQuotaBucketValues.resolve(raw, meta, unit)
+        val values = FirestoreQuotaBucketValues.resolve(raw, meta, unit) ?: return null
         return QuotaBucket(
             name = name,
             used = values.used,
@@ -78,11 +78,14 @@ private object FirestoreQuotaBucketMeta {
 private object FirestoreQuotaBucketValues {
     data class Resolved(val used: Double, val limit: Double, val remaining: Double)
 
-    fun resolve(raw: Map<*, *>, meta: MutableMap<String, Any?>, unit: String?): Resolved {
+    fun resolve(raw: Map<*, *>, meta: MutableMap<String, Any?>, unit: String?): Resolved? {
         var used = numberValue(raw, "used", "usedValue")
         var limit = numberValue(raw, "limit", "limitValue")
         var remaining = numberValue(raw, "remaining", "remainingValue")
         val usedPercent = numberValue(raw, "usedPercent") ?: numberValue(meta["usedPercent"])
+        if (used == null && limit == null && remaining == null && usedPercent == null) {
+            return null
+        }
 
         applyNegativeLimit(used, limit, remaining, meta).also {
             used = it.used

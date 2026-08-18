@@ -1,0 +1,929 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-route-map-v1",
+  "scheme": "burnbar",
+  "iosSource": "OpenBurnBarMobile/Views/Navigation/AuroraNavigationIcons.swift",
+  "ipadSource": "OpenBurnBarMobile/Models/AppCustomization.swift",
+  "androidSource": "android/app/src/main/java/com/openburnbar/ui/navigation/BurnBarNavHost.kt",
+  "destinationCatalog": {
+    "canonicalIds": [
+      "pulse",
+      "burn",
+      "insights",
+      "streams",
+      "hermes",
+      "you",
+      "inbox",
+      "settings",
+      "devices",
+      "providers",
+      "store",
+      "computer-use",
+      "paired-mac",
+      "control-center",
+      "auth",
+      "onboarding"
+    ],
+    "bindings": [
+      {
+        "canonicalId": "pulse",
+        "iosDestinationId": "pulse",
+        "ipadDestinationId": "pulse",
+        "androidDestinationId": "pulse",
+        "iosEnum": "AuroraNavDestination.pulse",
+        "ipadEnum": "AppDestination.pulse",
+        "androidEnum": "BurnBarTab.PULSE"
+      },
+      {
+        "canonicalId": "burn",
+        "iosDestinationId": "burn",
+        "ipadDestinationId": "burn",
+        "androidDestinationId": "burn",
+        "iosEnum": "AuroraNavDestination.burn",
+        "ipadEnum": "AppDestination.burn",
+        "androidEnum": "BurnBarTab.BURN"
+      },
+      {
+        "canonicalId": "insights",
+        "iosDestinationId": "insights",
+        "ipadDestinationId": "insights",
+        "androidDestinationId": "insights",
+        "iosEnum": "AuroraNavDestination.insights",
+        "ipadEnum": "AppDestination.insights",
+        "androidEnum": "BurnBarTab.INSIGHTS",
+        "acceptedDivergenceId": "divergence.insights-tab-label"
+      },
+      {
+        "canonicalId": "streams",
+        "iosDestinationId": "streams",
+        "ipadDestinationId": "streams",
+        "androidDestinationId": "streams",
+        "iosEnum": "AuroraNavDestination.streams",
+        "ipadEnum": "AppDestination.streams",
+        "androidEnum": "BurnBarTab.STREAMS"
+      },
+      {
+        "canonicalId": "hermes",
+        "iosDestinationId": "hermes",
+        "ipadDestinationId": "agents",
+        "androidDestinationId": "hermes",
+        "iosEnum": "AuroraNavDestination.hermes",
+        "ipadEnum": "AppDestination.agents",
+        "androidEnum": "BurnBarTab.HERMES",
+        "acceptedMappingId": "mapping.ipad-agents-is-hermes",
+        "acceptedDivergenceId": "divergence.hermes-label"
+      },
+      {
+        "canonicalId": "you",
+        "iosDestinationId": "you",
+        "ipadDestinationId": "you",
+        "androidDestinationId": "you",
+        "iosEnum": "AuroraNavDestination.you",
+        "ipadEnum": "AppDestination.you",
+        "androidEnum": "BurnBarTab.YOU",
+        "acceptedDivergenceId": "divergence.you-store-label"
+      },
+      {
+        "canonicalId": "inbox",
+        "iosDestinationId": null,
+        "ipadDestinationId": null,
+        "androidDestinationId": "inbox",
+        "androidEnum": "BurnBarTab.INBOX",
+        "acceptedDivergenceId": "divergence.inbox-primary-android"
+      },
+      {
+        "canonicalId": "settings",
+        "iosDestinationId": "settings",
+        "ipadDestinationId": "settings",
+        "androidDestinationId": "settings",
+        "ipadEnum": "AppDestination.settings",
+        "acceptedDivergenceId": "divergence.ipad-sidebar-secondary"
+      },
+      {
+        "canonicalId": "devices",
+        "iosDestinationId": "devices",
+        "ipadDestinationId": "devices",
+        "androidDestinationId": "devices",
+        "ipadEnum": "AppDestination.devices",
+        "acceptedDivergenceId": "divergence.ipad-sidebar-secondary"
+      },
+      {
+        "canonicalId": "providers",
+        "iosDestinationId": "providers",
+        "ipadDestinationId": "providers",
+        "androidDestinationId": "providers",
+        "ipadEnum": "AppDestination.providers",
+        "acceptedDivergenceId": "divergence.ipad-sidebar-secondary"
+      },
+      {
+        "canonicalId": "store",
+        "iosDestinationId": "cloud-store",
+        "ipadDestinationId": "cloud-store",
+        "androidDestinationId": "cloud_store",
+        "acceptedMappingId": "mapping.store-route-tokens"
+      },
+      {
+        "canonicalId": "computer-use",
+        "iosDestinationId": "computer-use",
+        "ipadDestinationId": "computer-use",
+        "androidDestinationId": "computer_use",
+        "acceptedMappingId": "mapping.computer-use-route-tokens"
+      },
+      {
+        "canonicalId": "paired-mac",
+        "iosDestinationId": "paired-mac",
+        "ipadDestinationId": "paired-mac",
+        "androidDestinationId": "paired_mac",
+        "acceptedMappingId": "mapping.paired-mac-route-tokens"
+      },
+      {
+        "canonicalId": "control-center",
+        "iosDestinationId": "data-vault",
+        "ipadDestinationId": "data-vault",
+        "androidDestinationId": "control_center",
+        "acceptedMappingId": "mapping.control-center-names"
+      },
+      {
+        "canonicalId": "auth",
+        "iosDestinationId": "auth-gate",
+        "ipadDestinationId": "auth-gate",
+        "androidDestinationId": "login",
+        "acceptedMappingId": "mapping.auth-gate-names"
+      },
+      {
+        "canonicalId": "onboarding",
+        "iosDestinationId": "onboarding",
+        "ipadDestinationId": "onboarding",
+        "androidDestinationId": "onboarding"
+      }
+    ]
+  },
+  "shells": {
+    "ios": {
+      "formFactor": "iphone",
+      "primary": [
+        "pulse",
+        "burn",
+        "insights",
+        "streams",
+        "hermes",
+        "you"
+      ],
+      "secondary": [
+        "settings",
+        "devices",
+        "providers",
+        "inbox",
+        "computer-use",
+        "store",
+        "control-center"
+      ],
+      "notes": "AuroraNavDestination.allCases. Inbox is reached from Streams, not a primary tab."
+    },
+    "ipados": {
+      "formFactor": "ipad",
+      "primary": [
+        "pulse",
+        "burn",
+        "insights",
+        "streams",
+        "agents"
+      ],
+      "secondary": [
+        "you",
+        "providers",
+        "devices",
+        "settings"
+      ],
+      "notes": "AppDestination defaults. agents maps to hermes."
+    },
+    "android": {
+      "formFactor": "phone-or-tablet",
+      "primary": [
+        "pulse",
+        "burn",
+        "inbox",
+        "insights",
+        "streams",
+        "hermes",
+        "you"
+      ],
+      "secondary": [
+        "cloud_store",
+        "control_center",
+        "computer_use",
+        "paired_mac",
+        "settings",
+        "devices",
+        "providers"
+      ],
+      "notes": "BurnBarTab.allCandidates. Inbox is a primary tab. You tray label is Store."
+    }
+  },
+  "routes": [
+    {
+      "routeId": "route.auth.sign-in",
+      "capabilityId": "auth.sign-in",
+      "canonicalDestinationId": "auth",
+      "kind": "gated",
+      "authGate": "signed-out",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "auth-gate",
+      "ipadDestinationId": "auth-gate",
+      "androidDestinationId": "login",
+      "labels": {
+        "ios": "Sign in",
+        "ipados": "Sign in",
+        "android": "Sign in"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": []
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.auth.onboarding",
+      "capabilityId": "auth.onboarding",
+      "canonicalDestinationId": "onboarding",
+      "kind": "gated",
+      "authGate": "signed-out-or-first-run",
+      "coldLaunch": true,
+      "warmLaunch": false,
+      "iosDestinationId": "onboarding",
+      "ipadDestinationId": "onboarding",
+      "androidDestinationId": "onboarding",
+      "labels": {
+        "ios": "Onboarding",
+        "ipados": "Onboarding",
+        "android": "Onboarding"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": []
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.shell.pulse",
+      "capabilityId": "pulse.overview",
+      "canonicalDestinationId": "pulse",
+      "kind": "primary-shell",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "pulse",
+      "ipadDestinationId": "pulse",
+      "androidDestinationId": "pulse",
+      "labels": {
+        "ios": "Pulse",
+        "ipados": "Pulse",
+        "android": "Pulse"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://dashboard",
+          "burnbar://pulse"
+        ],
+        "android": [
+          "burnbar://pulse",
+          "burnbar://dashboard"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [
+        "com.openburnbar.app.widget"
+      ],
+      "intents": []
+    },
+    {
+      "routeId": "route.shell.burn",
+      "capabilityId": "burn.overview",
+      "canonicalDestinationId": "burn",
+      "kind": "primary-shell",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "burn",
+      "ipadDestinationId": "burn",
+      "androidDestinationId": "burn",
+      "labels": {
+        "ios": "Burn",
+        "ipados": "Burn",
+        "android": "Burn"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://burn",
+          "burnbar://quota"
+        ],
+        "android": [
+          "burnbar://burn"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.shell.insights",
+      "capabilityId": "insights.agent-insights",
+      "canonicalDestinationId": "insights",
+      "kind": "primary-shell",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "insights",
+      "ipadDestinationId": "insights",
+      "androidDestinationId": "insights",
+      "labels": {
+        "ios": "Insights",
+        "ipados": "Insights",
+        "android": "Budget & Insights"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://insights",
+          "burnbar://insights/{slug}"
+        ],
+        "android": [
+          "burnbar://insights",
+          "burnbar://insights/{slug}"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [
+        "com.openburnbar.app.insightstoday"
+      ],
+      "intents": []
+    },
+    {
+      "routeId": "route.shell.streams",
+      "capabilityId": "streams.activity",
+      "canonicalDestinationId": "streams",
+      "kind": "primary-shell",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "streams",
+      "ipadDestinationId": "streams",
+      "androidDestinationId": "streams",
+      "labels": {
+        "ios": "Streams",
+        "ipados": "Streams",
+        "android": "Streams"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://streams",
+          "burnbar://search"
+        ],
+        "android": [
+          "burnbar://streams",
+          "burnbar://search"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.shell.hermes",
+      "capabilityId": "hermes.assistants-landing",
+      "canonicalDestinationId": "hermes",
+      "kind": "primary-shell",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "hermes",
+      "ipadDestinationId": "agents",
+      "androidDestinationId": "hermes",
+      "labels": {
+        "ios": "Agents",
+        "ipados": "Agents",
+        "android": "Assistants"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://hermes",
+          "burnbar://chat",
+          "burnbar://pi",
+          "burnbar://assistants"
+        ],
+        "android": [
+          "burnbar://hermes",
+          "burnbar://chat",
+          "burnbar://assistants"
+        ]
+      },
+      "pushTaps": [
+        "burnbar://assistants/{runtime}"
+      ],
+      "widgets": [],
+      "intents": [
+        "BurnBarStatusIntent"
+      ]
+    },
+    {
+      "routeId": "route.shell.you",
+      "capabilityId": "settings.hub",
+      "canonicalDestinationId": "you",
+      "kind": "primary-shell",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "you",
+      "ipadDestinationId": "you",
+      "androidDestinationId": "you",
+      "labels": {
+        "ios": "You",
+        "ipados": "You",
+        "android": "Store"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://settings"
+        ],
+        "android": [
+          "burnbar://you"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.shell.inbox",
+      "capabilityId": "inbox.list",
+      "canonicalDestinationId": "inbox",
+      "kind": "platform-primary",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": null,
+      "ipadDestinationId": null,
+      "androidDestinationId": "inbox",
+      "labels": {
+        "ios": "Inbox (inside Streams)",
+        "ipados": "Inbox (inside Streams)",
+        "android": "Inbox"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://inbox",
+          "burnbar://inbox/{itemId}"
+        ],
+        "android": [
+          "burnbar://inbox",
+          "burnbar://inbox/{itemId}"
+        ]
+      },
+      "pushTaps": [
+        "burnbar://inbox/{itemId}"
+      ],
+      "widgets": [],
+      "intents": [],
+      "acceptedDivergenceId": "divergence.inbox-primary-android"
+    },
+    {
+      "routeId": "route.shell.settings",
+      "capabilityId": "settings.hub",
+      "canonicalDestinationId": "settings",
+      "kind": "secondary",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "settings",
+      "ipadDestinationId": "settings",
+      "androidDestinationId": "settings",
+      "labels": {
+        "ios": "Settings",
+        "ipados": "Settings",
+        "android": "Settings"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://settings"
+        ],
+        "android": []
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.shell.devices",
+      "capabilityId": "devices.list",
+      "canonicalDestinationId": "devices",
+      "kind": "secondary",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "devices",
+      "ipadDestinationId": "devices",
+      "androidDestinationId": "devices",
+      "labels": {
+        "ios": "Devices",
+        "ipados": "Devices",
+        "android": "Devices"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": []
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.shell.providers",
+      "capabilityId": "providers.connections",
+      "canonicalDestinationId": "providers",
+      "kind": "secondary",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "providers",
+      "ipadDestinationId": "providers",
+      "androidDestinationId": "providers",
+      "labels": {
+        "ios": "Providers",
+        "ipados": "Providers",
+        "android": "Providers"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": []
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.store.cloud",
+      "capabilityId": "store.cloud-store",
+      "canonicalDestinationId": "store",
+      "kind": "gated",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "cloud-store",
+      "ipadDestinationId": "cloud-store",
+      "androidDestinationId": "cloud_store",
+      "labels": {
+        "ios": "Cloud Store",
+        "ipados": "Cloud Store",
+        "android": "Cloud Store"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": [
+          "burnbar://cloud"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.control.center",
+      "capabilityId": "control-center.data-vault",
+      "canonicalDestinationId": "control-center",
+      "kind": "gated",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "data-vault",
+      "ipadDestinationId": "data-vault",
+      "androidDestinationId": "control_center",
+      "labels": {
+        "ios": "Data Vault",
+        "ipados": "Data Vault",
+        "android": "Control Center"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": [
+          "burnbar://data"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.computer-use.watch",
+      "capabilityId": "computer-use.watch",
+      "canonicalDestinationId": "computer-use",
+      "kind": "gated",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "computer-use",
+      "ipadDestinationId": "computer-use",
+      "androidDestinationId": "computer_use",
+      "labels": {
+        "ios": "Computer Use",
+        "ipados": "Computer Use",
+        "android": "Computer Use"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://computer-use",
+          "burnbar://agent-watch",
+          "burnbar://agent-live"
+        ],
+        "android": [
+          "burnbar://computer-use"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.mercury.paired-mac",
+      "capabilityId": "mercury.paired-mac",
+      "canonicalDestinationId": "paired-mac",
+      "kind": "gated",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "paired-mac",
+      "ipadDestinationId": "paired-mac",
+      "androidDestinationId": "paired_mac",
+      "labels": {
+        "ios": "Paired Mac",
+        "ipados": "Paired Mac",
+        "android": "Paired Mac"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": [
+          "burnbar://paired-mac",
+          "burnbar://paired-mac/{connectionId}"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.mercury.call",
+      "capabilityId": "mercury.call",
+      "canonicalDestinationId": "paired-mac",
+      "kind": "deep-link",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "mercury-call",
+      "ipadDestinationId": "mercury-call",
+      "androidDestinationId": "mercury/call",
+      "labels": {
+        "ios": "Call",
+        "ipados": "Call",
+        "android": "Call"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": [
+          "burnbar://mercury/call/{connectionId}"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.hermes.assistants-thread",
+      "capabilityId": "hermes.streaming-chat",
+      "canonicalDestinationId": "hermes",
+      "kind": "deep-link",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "assistants",
+      "ipadDestinationId": "assistants",
+      "androidDestinationId": "assistants",
+      "labels": {
+        "ios": "Assistants thread",
+        "ipados": "Assistants thread",
+        "android": "Assistants thread"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://assistants/{runtime}?threadId={threadId}"
+        ],
+        "android": [
+          "burnbar://assistants/{runtime}?threadId={threadId}"
+        ]
+      },
+      "pushTaps": [
+        "burnbar://assistants/{runtime}?threadId={threadId}"
+      ],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.hermes.agent-brand",
+      "capabilityId": "hermes.square",
+      "canonicalDestinationId": "hermes",
+      "kind": "deep-link",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "agent-brand",
+      "ipadDestinationId": "agent-brand",
+      "androidDestinationId": "agent",
+      "labels": {
+        "ios": "Agent brand zone",
+        "ipados": "Agent brand zone",
+        "android": "Agent brand zone"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": [
+          "burnbar://agent/{uri}"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.insights.agent",
+      "capabilityId": "insights.agent-insights",
+      "canonicalDestinationId": "insights",
+      "kind": "deep-link",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "insights",
+      "ipadDestinationId": "insights",
+      "androidDestinationId": "agent_insights",
+      "labels": {
+        "ios": "Agent insights",
+        "ipados": "Agent insights",
+        "android": "Agent insights"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://insights/{slug}"
+        ],
+        "android": [
+          "burnbar://insights/{slug}"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.insights.workspace",
+      "capabilityId": "insights.canvas",
+      "canonicalDestinationId": "insights",
+      "kind": "gated",
+      "authGate": "signed-in",
+      "coldLaunch": false,
+      "warmLaunch": true,
+      "iosDestinationId": "insights-workspace",
+      "ipadDestinationId": "insights-workspace",
+      "androidDestinationId": "insights_workspace",
+      "labels": {
+        "ios": "Insights workspace",
+        "ipados": "Insights workspace",
+        "android": "Insights workspace"
+      },
+      "deepLinks": {
+        "ios": [],
+        "android": []
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.inbox.item",
+      "capabilityId": "inbox.detail",
+      "canonicalDestinationId": "inbox",
+      "kind": "deep-link",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "inbox-item",
+      "ipadDestinationId": "inbox-item",
+      "androidDestinationId": "inbox",
+      "labels": {
+        "ios": "Inbox item",
+        "ipados": "Inbox item",
+        "android": "Inbox item"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://inbox/{itemId}"
+        ],
+        "android": [
+          "burnbar://inbox/{itemId}"
+        ]
+      },
+      "pushTaps": [
+        "burnbar://inbox/{itemId}"
+      ],
+      "widgets": [],
+      "intents": []
+    },
+    {
+      "routeId": "route.dashboard.alias",
+      "capabilityId": "pulse.overview",
+      "canonicalDestinationId": "pulse",
+      "kind": "alias",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "dashboard",
+      "ipadDestinationId": "dashboard",
+      "androidDestinationId": "dashboard",
+      "labels": {
+        "ios": "Dashboard alias → Pulse",
+        "ipados": "Dashboard alias → Pulse",
+        "android": "Dashboard alias → Pulse"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://dashboard"
+        ],
+        "android": [
+          "burnbar://dashboard"
+        ]
+      },
+      "pushTaps": [],
+      "widgets": [
+        "com.openburnbar.app.widget"
+      ],
+      "intents": []
+    },
+    {
+      "routeId": "route.settings.hub",
+      "capabilityId": "settings.hub",
+      "canonicalDestinationId": "settings",
+      "kind": "secondary",
+      "authGate": "signed-in",
+      "coldLaunch": true,
+      "warmLaunch": true,
+      "iosDestinationId": "settings",
+      "ipadDestinationId": "settings",
+      "androidDestinationId": "settings",
+      "labels": {
+        "ios": "Settings hub",
+        "ipados": "Settings hub",
+        "android": "Settings hub"
+      },
+      "deepLinks": {
+        "ios": [
+          "burnbar://settings"
+        ],
+        "android": []
+      },
+      "pushTaps": [],
+      "widgets": [],
+      "intents": []
+    }
+  ],
+  "acceptedRouteDivergences": [
+    {
+      "id": "divergence.inbox-primary-android",
+      "capabilityId": "divergence.inbox-primary-android",
+      "summary": "Android Inbox is a primary tab; iOS/iPadOS Inbox is secondary inside Streams.",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "divergence.you-store-label",
+      "capabilityId": "divergence.you-store-label",
+      "summary": "You destination tray label is Store on both platforms; Android tab label is Store.",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "divergence.hermes-label",
+      "capabilityId": "divergence.hermes-label",
+      "summary": "iOS surfaces Agents; Android surfaces Assistants / tray Agents. Destination id stays hermes.",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "divergence.insights-tab-label",
+      "capabilityId": "divergence.insights-tab-label",
+      "summary": "Android Insights tab label is Budget & Insights.",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "divergence.ipad-sidebar-secondary",
+      "capabilityId": "divergence.ipad-sidebar-secondary",
+      "summary": "iPad lists Settings, Devices, and Providers as first-class sidebar destinations.",
+      "owner": "mobile-apps"
+    }
+  ]
+}

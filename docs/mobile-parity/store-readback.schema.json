@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-store-readback-schema-v1",
+  "note": "ASC/TestFlight and Play closed-test readback. Empty or blocked until authorized collection on a clean candidate. Cannot close VAL-MOB-015.",
+  "requiredPlatforms": ["apple", "google"],
+  "requiredFields": [
+    "version",
+    "build",
+    "artifactDigest",
+    "track",
+    "reviewState",
+    "testerAvailability"
+  ],
+  "closingRequires": [
+    "status === fresh",
+    "version",
+    "build",
+    "artifactDigest",
+    "track",
+    "reviewState",
+    "testerAvailability",
+    "candidateSha matches a clean fingerprint"
+  ],
+  "rejectionRules": [
+    "empty required fields used as PASS",
+    "placeholder text",
+    "dirty candidate",
+    "VAL-MOB-015 validated without both apple and google readbacks"
+  ]
+}

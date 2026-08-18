@@ -21,6 +21,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.openburnbar.data.firebase.FunctionsRepository
+import com.openburnbar.data.policy.MobileStoreEntitlementPolicy
 import com.openburnbar.ui.pro.CloudTier
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -46,7 +47,6 @@ data class HostedQuotaStoreProduct(
     val id: String,
     val productType: String,
     val role: HostedQuotaStoreProductRole,
-    val fallbackPrice: String,
     val basePlanID: String? = null,
     val offerID: String? = null,
 )
@@ -99,62 +99,53 @@ class HostedQuotaSubscriptionStore(
                     PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION,
-                    "$7.99",
                     basePlanID = "monthly",
                 ),
                 HostedQuotaStoreProduct(
                     CLOUD_ANNUAL_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_SUBSCRIPTION,
-                    "$79",
                     basePlanID = "annual",
                 ),
                 HostedQuotaStoreProduct(
                     CLOUD_PRO_MONTHLY_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION,
-                    "$24.99",
                     basePlanID = "monthly",
                 ),
                 HostedQuotaStoreProduct(
                     CLOUD_PRO_ANNUAL_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_PRO_SUBSCRIPTION,
-                    "$249",
                     basePlanID = "annual",
                 ),
                 HostedQuotaStoreProduct(
                     CLOUD_ULTRA_MONTHLY_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION,
-                    "$59.99",
                     basePlanID = "p1m",
                 ),
                 HostedQuotaStoreProduct(
                     CLOUD_ULTRA_ANNUAL_PRODUCT_ID,
                     BillingClient.ProductType.SUBS,
                     HostedQuotaStoreProductRole.CLOUD_ULTRA_SUBSCRIPTION,
-                    "$599",
                     basePlanID = "p1y",
                 ),
                 HostedQuotaStoreProduct(
                     AGENT_CONTROL_TOP_UP_PRODUCT_ID,
                     BillingClient.ProductType.INAPP,
                     HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP,
-                    "$4.99",
                 ),
-                HostedQuotaStoreProduct(FLOO_RELAY_TOP_UP_PRODUCT_ID, BillingClient.ProductType.INAPP, HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP, "$4.99"),
+                HostedQuotaStoreProduct(FLOO_RELAY_TOP_UP_PRODUCT_ID, BillingClient.ProductType.INAPP, HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP),
                 HostedQuotaStoreProduct(
                     FUSION_SEARCH_100_TOP_UP_PRODUCT_ID,
                     BillingClient.ProductType.INAPP,
                     HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP,
-                    "$4.99",
                 ),
                 HostedQuotaStoreProduct(
                     FUSION_SEARCH_500_TOP_UP_PRODUCT_ID,
                     BillingClient.ProductType.INAPP,
                     HostedQuotaStoreProductRole.CLOUD_PRO_TOP_UP,
-                    "$19.99",
                 ),
             )
         private val STORE_PRODUCT_BY_ID = STORE_PRODUCTS.associateBy { it.id }
@@ -364,6 +355,9 @@ class HostedQuotaSubscriptionStore(
                         .document(uid)
                         .collection("entitlements")
                         .addSnapshotListener { snap, error ->
+                            if (firebaseAuth.currentUser?.uid != uid) {
+                                return@addSnapshotListener
+                            }
                             if (error != null) {
                                 Log.w(LOG_TAG, "cloud entitlement listener failed: ${error.localizedMessage}")
                                 return@addSnapshotListener
@@ -410,7 +404,9 @@ class HostedQuotaSubscriptionStore(
         if (_productDetailsByID.value.isNotEmpty()) return
         _productDetailsByID.value =
             STORE_PRODUCTS.associate { storeProduct ->
-                storeProduct.id to HostedQuotaProductDetails(formattedPrice = storeProduct.fallbackPrice)
+                storeProduct.id to HostedQuotaProductDetails(
+                    formattedPrice = MobileStoreEntitlementPolicy.UNAVAILABLE_PRICE_LABEL,
+                )
             }
         _productDetails.value = _productDetailsByID.value[PRODUCT_ID]
     }
@@ -579,7 +575,7 @@ class HostedQuotaSubscriptionStore(
                 val formattedPrice =
                     detailsByID[storeProduct.id]?.let {
                         HostedQuotaBillingSupport.formattedPrice(it, storeProduct)
-                    } ?: storeProduct.fallbackPrice
+                    } ?: MobileStoreEntitlementPolicy.UNAVAILABLE_PRICE_LABEL
                 storeProduct.id to HostedQuotaProductDetails(formattedPrice = formattedPrice)
             }
         _productDetails.value = _productDetailsByID.value[PRODUCT_ID]

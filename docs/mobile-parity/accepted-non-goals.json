@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-accepted-non-goals-v1",
+  "signedOffBy": "mobile-parity-m0-inventory",
+  "signedOffAt": "2026-08-17",
+  "items": [
+    {
+      "id": "nongoal.pixel-identical-ui",
+      "reason": "Native iOS/iPadOS/Android presentation may differ while the user-visible contract stays equivalent.",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "nongoal.desktop-only-daemon",
+      "reason": "Daemon, tray, and Mac-host-only chrome are out of mobile scope unless listed as accepted companion behavior.",
+      "owner": "mobile-apps"
+    },
+    {
+      "id": "nongoal.linux-windows-ports",
+      "reason": "Linux and Windows port programs have their own ledgers and are not mobile capabilities.",
+      "owner": "mobile-parity"
+    },
+    {
+      "id": "nongoal.store-submission-m0",
+      "reason": "M0 freezes inventory and evidence rules only. Store submission and provider mutation are M8 and out of scope.",
+      "owner": "mobile-parity"
+    },
+    {
+      "id": "nongoal.schema-migration-m0",
+      "reason": "M0/M1 inventory is complete. Remaining tspOnly emit (UsageRollupDoc, EscrowEnvelopeDoc) stays on the schema boundary until TypeSpec matches live window-scoped documents; do not emit the stale multi-window rollup shape.",
+      "owner": "mobile-parity"
+    }
+  ]
+}

@@ -44,18 +44,41 @@ final class CloudSyncHealthStore {
     /// Whether Firestore's live network was deliberately disabled this launch
     /// (`AppDelegate.isFirestoreNetworkDisabled`). Injectable for tests.
     private let isNetworkDisabledOnThisDevice: @MainActor () -> Bool
+    private let currentEpoch: @MainActor () -> MobileAuthSessionEpoch
+    private var refreshGeneration = 0
     private(set) var health: CloudSyncHealth = .unknown
+    private(set) var freshness: MobileSyncFreshness = .empty
     private(set) var lastPublishedAt: Date?
     private(set) var lastReadAt: Date?
     private(set) var publisher: CloudPublisherDevice?
     private(set) var isLoading = false
+    private(set) var boundUid: String?
 
     init(
         reader: CloudReader = LiveCloudReader(),
-        isNetworkDisabledOnThisDevice: @escaping @MainActor () -> Bool = { AppDelegate.isFirestoreNetworkDisabled }
+        isNetworkDisabledOnThisDevice: @escaping @MainActor () -> Bool = { AppDelegate.isFirestoreNetworkDisabled },
+        currentEpoch: @escaping @MainActor () -> MobileAuthSessionEpoch = { MobileAuthSessionEpoch(uid: nil, generation: 0) },
+        scopedCaches: MobileUIDScopedCacheRegistry = .shared
     ) {
         self.reader = reader
         self.isNetworkDisabledOnThisDevice = isNetworkDisabledOnThisDevice
+        self.currentEpoch = currentEpoch
+        scopedCaches.register { [weak self] in self?.clearCache() }
+    }
+
+    func cancelRefresh() {
+        refreshGeneration = MobileSyncOwnershipPolicy.nextGeneration(refreshGeneration)
+    }
+
+    func clearCache() {
+        cancelRefresh()
+        lastPublishedAt = nil
+        lastReadAt = nil
+        publisher = nil
+        boundUid = nil
+        health = .unknown
+        freshness = .empty
+        isLoading = false
     }
 
     func refresh(now: Date = Date()) async {
@@ -64,26 +87,66 @@ final class CloudSyncHealthStore {
         // "Mac last seen: never". Say what is actually going on instead.
         guard !isNetworkDisabledOnThisDevice() else {
             health = .networkDisabledOnThisDevice
+            freshness = .offline
             return
         }
-        isLoading = true; health = .syncing; defer { isLoading = false }
+        refreshGeneration = MobileSyncOwnershipPolicy.nextGeneration(refreshGeneration)
+        let generation = refreshGeneration
+        let epoch = currentEpoch()
+        isLoading = true
+        health = .syncing
+        defer {
+            if generation == refreshGeneration {
+                isLoading = false
+            }
+        }
         do {
             let s = try await reader.loadSyncStatus()
-            lastPublishedAt = s.lastPublishedAt; lastReadAt = s.lastReadAt; publisher = s.publisher
+            guard shouldApply(generation: generation, epoch: epoch) else { return }
+            lastPublishedAt = s.lastPublishedAt
+            lastReadAt = s.lastReadAt
+            publisher = s.publisher
+            boundUid = epoch.uid
             if let c = s.lastErrorClassification {
                 health = map(c)
                 trackHandledError(c)
-            } else if isStale(now: now) { health = .macNotSyncing } else { health = .healthy }
+            } else if isStale(now: now) {
+                health = .macNotSyncing
+            } else {
+                health = .healthy
+            }
+            freshness = freshnessForHealth(health, now: now)
         } catch let CloudGatewayError.classified(c) {
+            guard shouldApply(generation: generation, epoch: epoch) else { return }
             health = map(c)
+            freshness = freshnessForHealth(health, now: now)
             trackHandledError(c)
         } catch {
+            guard shouldApply(generation: generation, epoch: epoch) else { return }
             health = .degraded(reason: .other(message: error.localizedDescription))
-            // Handled error — bounded category only, no raw message.
+            freshness = .failed
             MobileAnalytics.shared.track(.errorHandled, [
                 "error_category": "other",
                 "surface": "cloud_sync"
             ])
+        }
+    }
+
+    private func shouldApply(generation: Int, epoch: MobileAuthSessionEpoch) -> Bool {
+        MobileSyncOwnershipPolicy.shouldApply(
+            startedGeneration: generation,
+            currentGeneration: refreshGeneration,
+            cancelled: false
+        ) && MobileAuthSessionPolicy.isCurrent(expected: epoch, current: currentEpoch())
+    }
+
+    private func freshnessForHealth(_ health: CloudSyncHealth, now: Date) -> MobileSyncFreshness {
+        switch health {
+        case .healthy: return .live
+        case .macNotSyncing: return lastPublishedAt == nil ? .empty : .stale
+        case .offline, .networkDisabledOnThisDevice: return .offline
+        case .degraded, .permissionDenied, .appCheckBlocked, .firebaseUnavailable: return .failed
+        case .syncing, .unknown: return lastPublishedAt == nil ? .empty : (isStale(now: now) ? .stale : .partial)
         }
     }
 

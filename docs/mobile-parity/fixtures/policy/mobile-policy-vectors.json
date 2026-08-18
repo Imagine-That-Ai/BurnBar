@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-policy-vectors-v1",
+  "source": "OpenBurnBarCore EntitlementArbitration, RollupWindowKey, ChunkReassemblyValidator, quota remaining, error taxonomy",
+  "suites": {
+    "usageWindows": {
+      "valid": ["today", "7d", "30d", "90d", "all_time"],
+      "invalid": ["", "yesterday", "1d", "TODAY"]
+    },
+    "quotaStatus": [
+      { "id": "remaining-from-used-limit", "used": 25, "limit": 100, "expectedRemaining": 75, "expectedPressure": 0.25 },
+      { "id": "unlimited-negative-limit", "used": 10, "limit": -1, "expectedRemaining": null, "expectedPressure": null },
+      { "id": "exhausted", "used": 100, "limit": 100, "expectedRemaining": 0, "expectedPressure": 1 },
+      { "id": "missing-numbers-fail-closed", "used": null, "limit": null, "expectedRemaining": null, "expectedPressure": null, "failClosed": true }
+    ],
+    "entitlementGates": [
+      {
+        "id": "active-cloud-doc-wins-over-storekit",
+        "now": "2026-06-15T12:00:00Z",
+        "cloud": [{ "key": "hostedQuota", "active": true, "expiry": "2026-08-01T00:00:00Z", "fallbackTier": "cloud" }],
+        "storeKit": [{ "productID": "com.openburnbar.ultra.monthly", "uidBound": true, "revoked": false, "expiry": "2026-08-15T00:00:00Z" }],
+        "expectedTier": "cloud"
+      },
+      {
+        "id": "storekit-unbound-fails-closed-to-free",
+        "now": "2026-06-15T12:00:00Z",
+        "cloud": [],
+        "storeKit": [{ "productID": "com.openburnbar.ultra.monthly", "uidBound": false, "revoked": false, "expiry": "2026-08-15T00:00:00Z" }],
+        "expectedTier": "none"
+      },
+      {
+        "id": "storekit-revoked-fails-closed-to-free",
+        "now": "2026-06-15T12:00:00Z",
+        "cloud": [],
+        "storeKit": [{ "productID": "com.openburnbar.ultra.monthly", "uidBound": true, "revoked": true, "expiry": "2026-08-15T00:00:00Z" }],
+        "expectedTier": "none"
+      },
+      {
+        "id": "ultra-implies-pro-and-cloud",
+        "now": "2026-06-15T12:00:00Z",
+        "cloud": [{ "key": "ultra", "active": true, "expiry": "2026-09-01T00:00:00Z", "fallbackTier": "ultra" }],
+        "storeKit": [],
+        "expectedTier": "ultra"
+      }
+    ],
+    "deviceTrust": [
+      { "id": "known-active", "trustState": "trusted", "deviceId": "phone-1", "ok": true },
+      { "id": "empty-device-fail-closed", "trustState": "trusted", "deviceId": "", "ok": false },
+      { "id": "unknown-state-fail-closed", "trustState": "maybe", "deviceId": "phone-1", "ok": false },
+      { "id": "revoked", "trustState": "revoked", "deviceId": "phone-1", "ok": false }
+    ],
+    "envelopeAad": [
+      { "id": "match", "expected": "openburnbar.vault.v1", "observed": "openburnbar.vault.v1", "ok": true },
+      { "id": "mismatch-fail-closed", "expected": "openburnbar.vault.v1", "observed": "openburnbar.vault.v2", "ok": false },
+      { "id": "missing-fail-closed", "expected": "openburnbar.vault.v1", "observed": null, "ok": false }
+    ],
+    "relayChunks": [
+      { "id": "complete-0-1-2", "sequences": [0, 1, 2], "declaredChunkCount": 3, "ok": true },
+      { "id": "duplicate-idempotent", "sequences": [0, 1, 1, 2], "declaredChunkCount": 3, "ok": true },
+      { "id": "gap-fail-closed", "sequences": [0, 2], "declaredChunkCount": 3, "ok": false },
+      { "id": "negative-sequence-fail-closed", "sequences": [-1], "declaredChunkCount": 1, "ok": false },
+      { "id": "missing-declared-count", "sequences": [0], "declaredChunkCount": 0, "ok": false }
+    ],
+    "errorClasses": [
+      { "id": "auth", "code": "unauthenticated", "expected": "auth" },
+      { "id": "app-check", "code": "app-check-failed", "expected": "app-check" },
+      { "id": "denied", "code": "permission-denied", "expected": "denied" },
+      { "id": "expired", "code": "deadline-exceeded", "expected": "expired" },
+      { "id": "offline", "code": "unavailable", "expected": "offline" },
+      { "id": "malformed", "code": "invalid-argument", "expected": "malformed" },
+      { "id": "unknown-fail-closed", "code": "something-else", "expected": "malformed" }
+    ],
+    "cancellationLegacy": [
+      { "id": "explicit-cancel", "status": "cancelled", "legacyFallback": false, "expected": "cancelled" },
+      { "id": "legacy-fallback-classified", "status": "failed", "legacyFallback": true, "expected": "legacy-fallback" },
+      { "id": "failed-not-legacy", "status": "failed", "legacyFallback": false, "expected": "failed" }
+    ],
+    "authSession": [
+      { "id": "firebase-unavailable-not-signed-out", "firebaseAvailable": false, "signedIn": false, "expected": "firebase-unavailable" },
+      { "id": "signed-out", "firebaseAvailable": true, "signedIn": false, "expected": "signed-out" },
+      { "id": "signed-in", "firebaseAvailable": true, "signedIn": true, "expected": "signed-in" }
+    ],
+    "authErrors": [
+      { "id": "app-check", "code": "app-check-failed", "expected": "app-check" },
+      { "id": "revoked", "code": "user-disabled", "expected": "revoked-account" },
+      { "id": "expired", "code": "id-token-expired", "expected": "expired" },
+      { "id": "account-switch", "code": "account-switch", "expected": "account-switch" },
+      { "id": "denied", "code": "permission-denied", "expected": "permission-denied" }
+    ],
+    "uidCache": [
+      { "id": "same-uid-generation", "cacheUid": "a", "activeUid": "a", "cacheGeneration": 2, "activeGeneration": 2, "ok": true },
+      { "id": "account-switch-fail-closed", "cacheUid": "a", "activeUid": "b", "cacheGeneration": 2, "activeGeneration": 3, "ok": false },
+      { "id": "sign-out-fail-closed", "cacheUid": "a", "activeUid": null, "cacheGeneration": 2, "activeGeneration": 3, "ok": false }
+    ],
+    "syncFreshness": [
+      { "id": "empty", "hasData": false, "failed": false, "offline": false, "stale": false, "partial": false, "expected": "empty" },
+      { "id": "failed", "hasData": false, "failed": true, "offline": false, "stale": false, "partial": false, "expected": "failed" },
+      { "id": "offline", "hasData": true, "failed": false, "offline": true, "stale": false, "partial": false, "expected": "offline" },
+      { "id": "live", "hasData": true, "failed": false, "offline": false, "stale": false, "partial": false, "expected": "live" }
+    ],
+    "syncRefresh": [
+      { "id": "apply-current", "startedGeneration": 4, "currentGeneration": 4, "cancelled": false, "ok": true },
+      { "id": "late-after-cancel", "startedGeneration": 4, "currentGeneration": 5, "cancelled": false, "ok": false },
+      { "id": "explicit-cancel", "startedGeneration": 4, "currentGeneration": 4, "cancelled": true, "ok": false }
+    ],
+    "providerConnectivity": [
+      { "id": "local-only", "storageScope": "local_only", "expected": "local-only" },
+      { "id": "device-keychain", "storageScope": "device_keychain", "expected": "local-only" },
+      { "id": "cloud-refreshable", "storageScope": "cloud_refreshable", "expected": "cloud-connected" }
+    ],
+    "escrowImport": [
+      { "id": "wrong-device", "targetDeviceId": "phone-b", "currentDeviceId": "phone-a", "grantStatus": "granted", "grantExpiresAtMs": 2, "nowMs": 1, "hasPrivateKey": true, "envelopeWellFormed": true, "expected": "wrong-device" },
+      { "id": "expired-grant", "targetDeviceId": "phone-a", "currentDeviceId": "phone-a", "grantStatus": "granted", "grantExpiresAtMs": 1, "nowMs": 2, "hasPrivateKey": true, "envelopeWellFormed": true, "expected": "expired-grant" },
+      { "id": "revoked-grant", "targetDeviceId": "phone-a", "currentDeviceId": "phone-a", "grantStatus": "revoked", "grantExpiresAtMs": 3, "nowMs": 1, "hasPrivateKey": true, "envelopeWellFormed": true, "expected": "revoked-grant" },
+      { "id": "missing-key", "targetDeviceId": "phone-a", "currentDeviceId": "phone-a", "grantStatus": "granted", "grantExpiresAtMs": 3, "nowMs": 1, "hasPrivateKey": false, "envelopeWellFormed": true, "expected": "missing-key" },
+      { "id": "malformed", "targetDeviceId": "phone-a", "currentDeviceId": "phone-a", "grantStatus": "granted", "grantExpiresAtMs": 3, "nowMs": 1, "hasPrivateKey": true, "envelopeWellFormed": false, "expected": "malformed-envelope" },
+      { "id": "ok", "targetDeviceId": "phone-a", "currentDeviceId": "phone-a", "grantStatus": "granted", "grantExpiresAtMs": 3, "nowMs": 1, "hasPrivateKey": true, "envelopeWellFormed": true, "expected": null }
+    ],
+    "storePrices": [
+      { "id": "live-play-price", "livePrice": "$7.99", "expected": "$7.99" },
+      { "id": "missing-catalog-not-a-price", "livePrice": null, "expected": "Price unavailable" },
+      { "id": "empty-not-a-price", "livePrice": "", "expected": "Price unavailable" }
+    ],
+    "storeEntitlements": [
+      { "id": "missing-catalog", "catalogPresent": false, "restoring": false, "revoked": false, "refunded": false, "expired": false, "active": false, "expected": "missing-catalog" },
+      { "id": "restore-pending", "catalogPresent": true, "restoring": true, "revoked": false, "refunded": false, "expired": false, "active": false, "expected": "restore-pending" },
+      { "id": "revoked", "catalogPresent": true, "restoring": false, "revoked": true, "refunded": false, "expired": false, "active": true, "expected": "revoked" },
+      { "id": "refunded", "catalogPresent": true, "restoring": false, "revoked": false, "refunded": true, "expired": false, "active": true, "expected": "refunded" },
+      { "id": "expired", "catalogPresent": true, "restoring": false, "revoked": false, "refunded": false, "expired": true, "active": false, "expected": "expired" }
+    ]
+  }
+}

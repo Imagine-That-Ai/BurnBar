@@ -11,6 +11,7 @@ import com.openburnbar.BurnBarApplication
 import com.openburnbar.data.firebase.FirestoreRepository
 import com.openburnbar.data.firebase.FunctionsRepository
 import com.openburnbar.data.models.ProviderAccount
+import com.openburnbar.services.media.AgentReplyNotificationState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -148,6 +149,11 @@ class AccountStore(
 
     fun signOut() {
         viewModelScope.launch {
+            if (BurnBarApplication.isAppContextInitialized && auth.currentUser != null) {
+                AgentReplyNotificationState.tombstoneCurrentDevice(
+                    BurnBarApplication.appContext,
+                )
+            }
             BurnBarApplication.signOutSafely(auth)
             resetSessionState()
         }

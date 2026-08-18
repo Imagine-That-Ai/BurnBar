@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-evidence-bundle-status-v1",
+  "status": "blocked",
+  "freshness": "blocked",
+  "empty": true,
+  "closable": false,
+  "missingPrerequisite": "clean candidate fingerprint, named devices, and authorized store readback"
+}

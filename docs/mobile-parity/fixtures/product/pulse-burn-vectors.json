@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "id": "openburnbar-mobile-pulse-burn-vectors-v1",
+  "sourceOracle": "OpenBurnBarMobile/Views/Pulse/PulseWindowMetrics.swift PulseWindowMetricBuilder.metrics / liveQueryStart",
+  "note": "1D is a rolling 24h window (now-24h), not local midnight. liveQueryStart floors the Firestore query to the hour; metrics still filter the exact 24h window.",
+  "now": "2026-05-13T12:00:00.000Z",
+  "nowMs": 1778673600000,
+  "vectors": [
+    {
+      "id": "pulse.minute-hour-day-windows",
+      "kind": "window",
+      "now": "2026-05-13T12:00:00.000Z",
+      "nowMs": 1778673600000,
+      "timeZone": "UTC",
+      "usages": [
+        { "id": "in-minute", "costUsd": 1.25, "tokens": 125, "startMs": 1778673570000, "endMs": 1778673570000 },
+        { "id": "in-hour", "costUsd": 2.5, "tokens": 250, "startMs": 1778671800000, "endMs": 1778671800000 },
+        { "id": "in-day", "costUsd": 4.0, "tokens": 400, "startMs": 1778666400000, "endMs": 1778666400000 }
+      ],
+      "rollups": {
+        "today": { "requests": 99, "tokens": 99000, "costUsd": 99 },
+        "7d": { "requests": 700, "tokens": 700000, "costUsd": 700 },
+        "30d": { "requests": 3000, "tokens": 3000000, "costUsd": 3000 },
+        "90d": { "requests": 9000, "tokens": 9000000, "costUsd": 9000 }
+      },
+      "expected": {
+        "minute": { "requests": 1, "tokens": 125, "costUsd": 1.25, "trailingCostUsd": 700 },
+        "hour": { "requests": 2, "tokens": 375, "costUsd": 3.75, "trailingCostUsd": 700 },
+        "day": { "requests": 3, "tokens": 775, "costUsd": 7.75, "trailingCostUsd": 700 }
+      }
+    },
+    {
+      "id": "pulse.week-month-rollups-ignore-raw",
+      "kind": "window",
+      "nowMs": 1778673600000,
+      "timeZone": "UTC",
+      "usages": [
+        { "id": "decoy", "costUsd": 999, "tokens": 999, "startMs": 1778673599000, "endMs": 1778673599000 }
+      ],
+      "rollups": {
+        "7d": { "requests": 70, "tokens": 700000, "costUsd": 700 },
+        "30d": { "requests": 300, "tokens": 3000000, "costUsd": 3000 },
+        "90d": { "requests": 900, "tokens": 9000000, "costUsd": 9000 }
+      },
+      "expected": {
+        "week": { "requests": 70, "tokens": 700000, "costUsd": 700, "trailingCostUsd": 3000, "trailingTokens": 3000000 },
+        "month": { "requests": 300, "tokens": 3000000, "costUsd": 3000, "trailingCostUsd": 9000, "trailingTokens": 9000000 }
+      }
+    },
+    {
+      "id": "pulse.day-rolling-24h",
+      "kind": "window",
+      "now": "2026-01-13T06:20:00.000Z",
+      "nowMs": 1768285200000,
+      "timeZone": "America/Chicago",
+      "usages": [
+        { "id": "outside", "costUsd": 10, "tokens": 1000, "startMs": 1768198799999, "endMs": 1768198799999 },
+        { "id": "inside", "costUsd": 2, "tokens": 200, "startMs": 1768260000000, "endMs": 1768260000000 }
+      ],
+      "rollups": {
+        "7d": { "requests": 7, "tokens": 700, "costUsd": 7 }
+      },
+      "expected": {
+        "day": { "requests": 1, "tokens": 200, "costUsd": 2, "trailingCostUsd": 7 }
+      }
+    },
+    {
+      "id": "pulse.live-query-start-hour-floor",
+      "kind": "liveQueryStart",
+      "now": "2026-01-13T06:20:30.000Z",
+      "nowMs": 1768285230000,
+      "timeZone": "America/Chicago",
+      "expected": {
+        "startMs": 1768197600000,
+        "minute": 0,
+        "second": 0,
+        "coversRollingDay": true
+      }
+    },
+    {
+      "id": "pulse.negative-cost-tokens-clamped",
+      "kind": "window",
+      "nowMs": 1778673600000,
+      "timeZone": "UTC",
+      "usages": [
+        { "id": "negative", "costUsd": -4.5, "tokens": -80, "startMs": 1778673570000, "endMs": 1778673570000 },
+        { "id": "positive", "costUsd": 1.25, "tokens": 125, "startMs": 1778673580000, "endMs": 1778673580000 }
+      ],
+      "rollups": {},
+      "expected": {
+        "minute": { "requests": 2, "tokens": 125, "costUsd": 1.25 }
+      }
+    },
+    {
+      "id": "pulse.empty-window",
+      "kind": "window",
+      "nowMs": 1778673600000,
+      "timeZone": "UTC",
+      "usages": [],
+      "rollups": {},
+      "expected": {
+        "minute": { "requests": 0, "tokens": 0, "costUsd": 0 },
+        "day": { "requests": 0, "tokens": 0, "costUsd": 0 }
+      }
+    },
+    {
+      "id": "pulse.end-time-advances-row",
+      "kind": "window",
+      "nowMs": 1778673600000,
+      "timeZone": "UTC",
+      "usages": [
+        { "id": "advancing", "costUsd": 4, "tokens": 400, "startMs": 1778668200000, "endMs": 1778673570000 }
+      ],
+      "rollups": {},
+      "expected": {
+        "minute": { "requests": 1, "tokens": 400, "costUsd": 4 },
+        "hour": { "requests": 1, "tokens": 400, "costUsd": 4 }
+      }
+    },
+    {
+      "id": "pulse.updated-at-is-not-live",
+      "kind": "window",
+      "nowMs": 1778673600000,
+      "timeZone": "UTC",
+      "usages": [
+        { "id": "old-event-fresh-sync", "costUsd": 4, "tokens": 400, "startMs": 1778666400000, "endMs": 1778666400000, "updatedAtMs": 1778673570000 }
+      ],
+      "rollups": {},
+      "expected": {
+        "minute": { "requests": 0, "tokens": 0, "costUsd": 0 }
+      }
+    },
+    {
+      "id": "pulse.failed-load-not-live-zero",
+      "kind": "loadPresentation",
+      "isLoading": false,
+      "failed": true,
+      "hasCachedData": false,
+      "expected": { "presentation": "failed", "looksLikeLiveZero": false }
+    },
+    {
+      "id": "pulse.empty-load-not-failed",
+      "kind": "loadPresentation",
+      "isLoading": false,
+      "failed": false,
+      "hasCachedData": false,
+      "expected": { "presentation": "empty", "looksLikeLiveZero": false }
+    },
+    {
+      "id": "pulse.stale-refresh-keeps-cache",
+      "kind": "loadPresentation",
+      "isLoading": false,
+      "failed": true,
+      "hasCachedData": true,
+      "expected": { "presentation": "stale-refresh-failed", "looksLikeLiveZero": false }
+    },
+    {
+      "id": "pulse.live-zero-after-empty-success",
+      "kind": "loadPresentation",
+      "isLoading": false,
+      "failed": false,
+      "hasCachedData": true,
+      "expected": { "presentation": "live", "looksLikeLiveZero": true }
+    },
+    {
+      "id": "pulse.currency-vs-tokens",
+      "kind": "display",
+      "costUsd": 7.75,
+      "tokens": 775,
+      "requests": 3,
+      "expected": {
+        "currencyHero": "$7.75",
+        "tokensHero": "775",
+        "currencySubtitleContains": "775",
+        "tokensSubtitleContains": "$7.75"
+      }
+    },
+    {
+      "id": "burn.quota-group-sort",
+      "kind": "quotaGroup",
+      "snapshots": [
+        { "provider": "openai", "accountId": "acct-z", "accountLabel": "zeta", "updatedAt": "2026-05-13T11:00:00.000Z", "fetchedAt": "2026-05-13T11:00:00.000Z" },
+        { "provider": "openai", "accountId": "acct-z", "accountLabel": "zeta", "updatedAt": "2026-05-13T10:00:00.000Z", "fetchedAt": "2026-05-13T10:00:00.000Z" },
+        { "provider": "claude-code", "accountId": "acct-a", "accountLabel": "alpha", "updatedAt": "2026-05-13T12:00:00.000Z", "fetchedAt": "2026-05-13T12:00:00.000Z" }
+      ],
+      "expected": {
+        "keys": ["claude-code::acct-a", "openai::acct-z"],
+        "labels": ["alpha", "zeta"]
+      }
+    }
+  ]
+}

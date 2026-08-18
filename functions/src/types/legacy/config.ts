@@ -319,17 +319,13 @@ export interface HostedQuotaEntitlementDoc {
   updatedAt: string;
 }
 
-export interface EntitlementBindingDoc {
+export type EntitlementBindingDoc = import("../generated/hosted-quota.js").EntitlementBindingDoc & {
   id: string;
-  uid: string;
-  /** StoreKit 2 app account token minted at purchase time (schema-sync canon). */
-  appAccountToken: string;
   productID: string;
   clientPlatform?: "ios" | "ipados" | "macos";
   consumedAt?: string;
-  createdAt: string;
   schemaVersion: number;
-}
+};
 
 export interface EntitlementEventDoc {
   id: string;

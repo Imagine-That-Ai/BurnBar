@@ -176,10 +176,10 @@ struct MembershipSeal: View {
         HStack(spacing: 5) {
             if let systemImage {
                 Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .heavy))
+                    .font(MobileScaledFont.system(size: 12, weight: .heavy))
             }
             Text(text)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .font(MobileScaledFont.system(size: 12, weight: .heavy, design: .rounded))
                 .tracking(1.4)
         }
         // Dark ink in BOTH modes: the prominent fill is bright foil (gold in

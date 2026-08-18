@@ -159,13 +159,13 @@ export const SURFACES: Surface[] = [
     name: "Android companion",
     platform: "Android 8+",
     status: "beta",
-    statusLabel: "Feature-complete · Play Store pending",
+    statusLabel: "Remediation in progress · Play Store pending",
     description:
-      "Everything the iPhone app does, now on Android — your burn, your sessions, the assistant, and Floo. Built and tested; not yet on the Play Store.",
+      "Android companion is in active mobile-parity remediation. Source coverage is broad; physical-device, store, and VoiceOver evidence is still blocked. See docs/mobile-parity/mobile-parity-ledger.md.",
     bullets: [
-      "Full parity with the iPhone & iPad app, screen for screen",
-      "Floo media and the assistant, same as on iOS",
-      "Not yet distributed through the Play Store — that's the last step"
+      "Parity is not claimed — productParityClaim stays false",
+      "Pulse, Burn, Hermes, and Floo ship in source; store/physical rows stay blocked",
+      "Not yet distributed through the Play Store"
     ]
   },
   {

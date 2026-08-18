@@ -174,7 +174,61 @@ class InboxMarkdownTest {
     fun `the accessibility label leads with unread and urgency`() {
         val unread = AIInboxRow(item = item(priority = AIInboxPriority.P1))
 
-        assertTrue(inboxRowAccessibilityLabel(unread, now).startsWith("Unread. Urgent. "))
+        assertTrue(inboxRowAccessibilityLabel(unread).startsWith("Unread, "))
+        assertTrue(inboxRowAccessibilityLabel(unread).contains("Urgent"))
+    }
+
+    @Test
+    fun `inbox row accessibility matches shared a11y vectors`() {
+        val vectors = a11yVectors().filter { it.getString("id").startsWith("a11y.inbox-row") }
+        assertTrue(vectors.isNotEmpty())
+        for (vector in vectors) {
+            val expected = vector.getJSONObject("expected").getString("label")
+            val unread = vector.getBoolean("unread")
+            val kind = kindFromLabel(vector.getString("kindLabel"))
+            val priority = if (vector.isNull("priorityLabel")) AIInboxPriority.P3 else AIInboxPriority.P1
+            val row =
+                AIInboxRow(
+                    item = item(
+                        priority = priority,
+                        kind = kind,
+                        title = vector.getString("title"),
+                    ),
+                    userState =
+                    if (unread) {
+                        null
+                    } else {
+                        AIInboxItemUserState(id = "i", readAtEpoch = now, updatedAtEpoch = now)
+                    },
+                )
+            assertEquals(vector.getString("id"), expected, inboxRowAccessibilityLabel(row))
+        }
+    }
+
+    private fun kindFromLabel(label: String): AIInboxItemKind = AIInboxItemKind.entries.first { InboxPresentation.kindLabel(it) == label }
+
+    private fun a11yVectors(): List<org.json.JSONObject> {
+        val file = locateA11y("docs/mobile-parity/fixtures/product/a11y-contract-vectors.json")
+        val root = org.json.JSONObject(file.readText())
+        val array = root.optJSONArray("vectors") ?: root.optJSONArray("cases")
+        if (array != null) {
+            return (0 until array.length()).map { array.getJSONObject(it) }
+        }
+        return emptyList()
+    }
+
+    private fun locateA11y(relative: String): java.io.File {
+        val cwd = System.getProperty("user.dir").orEmpty().ifBlank { "." }
+        val anchors = listOf(java.io.File(cwd), java.io.File(cwd, "../.."), java.io.File(cwd, ".."))
+        for (anchor in anchors) {
+            var dir: java.io.File? = anchor.absoluteFile
+            while (dir != null) {
+                val candidate = java.io.File(dir, relative)
+                if (candidate.isFile) return candidate
+                dir = dir.parentFile
+            }
+        }
+        error("could not locate $relative")
     }
 
     // ── Provenance ──
@@ -221,17 +275,19 @@ class InboxMarkdownTest {
         provenance: String = "local-rules",
         verdict: AIInboxVerdict? = null,
         reason: String? = null,
+        kind: AIInboxItemKind = AIInboxItemKind.CI_WASTE,
+        title: String = "CI is burning cycles",
     ) = AIInboxItem(
         id = "i",
         fingerprint = "fp",
-        kind = AIInboxItemKind.CI_WASTE,
+        kind = kind,
         priority = priority,
         state = state,
         occurrenceCount = occurrenceCount,
         firstSeenAtEpoch = now - 86_400_000,
         lastSeenAtEpoch = now - 3_600_000,
         modelProvenance = provenance,
-        title = "CI is burning cycles",
+        title = title,
         projectName = "BurnBar",
         payload =
         AIInboxItemPayload(

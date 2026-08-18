@@ -17,6 +17,7 @@ final class ActivityStore {
 
     private(set) var isLoading = false
     private(set) var isSearching = false
+    private(set) var searchFailed = false
     private(set) var error: String?
     private(set) var rawUsages: [TokenUsage] = []
     private(set) var liveUsages: [TokenUsage] = []
@@ -185,10 +186,12 @@ final class ActivityStore {
             searchHits = []
             cloudSearchHits = []
             isSearching = false
+            searchFailed = false
             return
         }
 
         isSearching = true
+        searchFailed = false
         searchHits = []
         cloudSearchHits = []
         defer {
@@ -202,19 +205,38 @@ final class ActivityStore {
             guard lastSearchQuery == trimmed else { return }
             async let streamHits = functions.searchStreams(query: trimmed, limit: Self.serverSearchLimit)
             async let cloudHits = searchEncryptedCloudIndex(query: trimmed)
-            let resolvedStreamHits = (try? await streamHits) ?? []
-            let resolvedCloudHits = (try? await cloudHits) ?? []
+            var streamFailure: Error?
+            var cloudFailure: Error?
+            let resolvedStreamHits: [StreamSearchHit]
+            do {
+                resolvedStreamHits = try await streamHits
+            } catch {
+                streamFailure = error
+                resolvedStreamHits = []
+            }
+            let resolvedCloudHits: [CloudConversationSearchRow]
+            do {
+                resolvedCloudHits = try await cloudHits
+            } catch {
+                cloudFailure = error
+                resolvedCloudHits = []
+            }
             guard lastSearchQuery == trimmed else { return }
             searchHits = resolvedStreamHits
             cloudSearchHits = resolvedCloudHits
+            // Only a total failure is a failure — one leg finding nothing is a real empty.
+            searchFailed = streamFailure != nil && cloudFailure != nil
+            if searchFailed, let streamFailure {
+                self.error = streamFailure.localizedDescription
+            }
         } catch is CancellationError {
             return
         } catch {
-            // Both search legs are already try?-guarded, so this is a defensive
-            // backstop — clear stale hits but log so a real failure is traceable.
             Self.log.warning("search: failed for active query: \(error.localizedDescription, privacy: .public)")
             searchHits = []
             cloudSearchHits = []
+            searchFailed = true
+            self.error = error.localizedDescription
         }
     }
 
