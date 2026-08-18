@@ -1,5 +1,5 @@
 import XCTest
-@testable import AgentLens
+@testable import OpenBurnBar
 
 /// Pins the HermesBodyPublisher payload contract against the firestore.rules
 /// `hermesBodyWrite` key allowlist, and the HermesBodyRecord reader-derived
