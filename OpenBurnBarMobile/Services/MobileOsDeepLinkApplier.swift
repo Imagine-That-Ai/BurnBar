@@ -1,5 +1,6 @@
 import Foundation
-import OpenBurnBarCore
+import OpenBurnBarAnalytics
+import OpenBurnBarKernel
 
 /// Applies an already-routed BurnBar destination in-process.
 /// Never opens an arbitrary payload URL.
