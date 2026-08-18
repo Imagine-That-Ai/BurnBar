@@ -21,6 +21,7 @@ import type { Server } from "node:http";
 
 import { MCP_PROTOCOL_VERSION } from "./config.js";
 import {
+  freezeProofRateLimitClock,
   seedTwoTenantWorld,
   vec384,
   PLAINTEXT_MARKERS,
@@ -214,26 +215,28 @@ test("scope gate: a token without knowledge:read is denied burnbar_search_knowle
 
 // Case 4/5 — Caps/rate-limits trigger: hammering past the body:standard bucket
 // (30/min) must surface a 429 rate-limit error, not silently overflow.
-test("case4/5 caps: hammering the body bucket past its cap surfaces rate_limited (429)", async (context) => {
-  // Freeze wall clock mid-window so a CI runner that starts this case on a
-  // minute boundary cannot split the 40 hammer requests across two rate-limit
-  // windows (each capped at 30/min) and falsely pass without ever tripping 429.
-  const stableNow = Math.floor(Date.now() / 60_000) * 60_000 + 30_000;
-  context.mock.timers.enable({ apis: ["Date"], now: stableNow });
-  // Use the dedicated rate-limit tenant so exhausting its body:standard bucket
-  // never poisons tenant B's bucket (the at-rest proof reuses tenant B).
-  const token = world.tenantRateLimit.token(KNOWLEDGE_SCOPES);
-  const uri = `burnbar://conversation/${world.conversationIdRateLimit}`;
-  let rateLimitedStatus = 0;
-  // body:standard cap is 30/min; 40 calls in the same window must trip it.
-  for (let i = 0; i < 40; i += 1) {
-    const res = await callMcp(token, rpc("resources/read", { uri }));
-    if (res.body.includes("rate limit") || res.body.includes("rate_limited")) {
-      rateLimitedStatus = res.status;
-      break;
+test("case4/5 caps: hammering the body bucket past its cap surfaces rate_limited (429)", async () => {
+  // Fixture-injected proof clock: enforceRateLimit() must stay in one 60s window
+  // so request 31 trips the real 30/min body:standard cap (not a split-window flake).
+  const proofClock = freezeProofRateLimitClock();
+  try {
+    // Use the dedicated rate-limit tenant so exhausting its body:standard bucket
+    // never poisons tenant B's bucket (the at-rest proof reuses tenant B).
+    const token = world.tenantRateLimit.token(KNOWLEDGE_SCOPES);
+    const uri = `burnbar://conversation/${world.conversationIdRateLimit}`;
+    for (let i = 0; i < 30; i += 1) {
+      const res = await callMcp(token, rpc("resources/read", { uri }));
+      assert.equal(res.status, 200, `expected request ${i + 1} to succeed within the body:standard cap`);
     }
+    const limited = await callMcp(token, rpc("resources/read", { uri }));
+    assert.equal(limited.status, 429, "expected request 31 to trip the body:standard rate limit (429)");
+    assert.ok(
+      limited.body.includes("rate limit") || limited.body.includes("rate_limited"),
+      `expected a rate-limit error body, got ${limited.body}`,
+    );
+  } finally {
+    proofClock.restore();
   }
-  assert.equal(rateLimitedStatus, 429, "expected the body:standard cap to trip a 429 rate-limit error");
 });
 
 // Case 2 — At-rest sealed: the body the server returns is ciphertext-only; no

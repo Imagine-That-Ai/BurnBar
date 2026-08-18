@@ -19,6 +19,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { MCP_RESOURCE } from "./config.js";
 import { mintEd25519Token, type AccessTokenClaims } from "./auth.js";
+import { freezeRateLimitClockForProof, restoreRateLimitClockFromProof } from "./rateLimits.js";
 import type { HostedMcpFirestore, McpCollectionRef, McpDocRef, McpTransaction } from "./firestoreTypes.js";
 import { cosineSimilarity, KNOWLEDGE_VECTOR_DIM } from "./knowledgeVector.js";
 import type { StorageBodyDownloader } from "./resources.js";
@@ -218,6 +219,23 @@ export function sealedSessionBody(uid: string, docId: string): string {
  * into a stored doc). The at-rest proof asserts none of these reach the wire.
  */
 export const PLAINTEXT_MARKERS = ["TENANT_B_PLAINTEXT_SECRET", "TENANT_A_PLAINTEXT_SECRET"] as const;
+
+const BODY_STANDARD_WINDOW_MS = 60_000;
+
+/** Mid-window millis so local proofs cannot straddle adjacent rate-limit windows. */
+export function midWindowProofMillis(referenceMs = Date.now()): number {
+  return Math.floor(referenceMs / BODY_STANDARD_WINDOW_MS) * BODY_STANDARD_WINDOW_MS + BODY_STANDARD_WINDOW_MS / 2;
+}
+
+export interface ProofRateLimitClockHandle {
+  restore(): void;
+}
+
+/** Freeze enforceRateLimit() to one wall-clock window for deterministic in-process proofs. */
+export function freezeProofRateLimitClock(referenceMs = Date.now()): ProofRateLimitClockHandle {
+  freezeRateLimitClockForProof(midWindowProofMillis(referenceMs));
+  return { restore: restoreRateLimitClockFromProof };
+}
 
 export interface SeededTenant {
   uid: string;
