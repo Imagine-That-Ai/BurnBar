@@ -37,6 +37,9 @@ const appFiles = [
   "OpenBurnBarDatabase+MigrationV59.swift",
   "OpenBurnBarDatabase+MigrationV60.swift",
   "OpenBurnBarDatabase+UsageMemoryMigrations.swift",
+  "OpenBurnBarDatabase+MigrationV62.swift",
+  "OpenBurnBarDatabase+StandingOrderMigrations.swift",
+  "OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
 ];
 const sharedFiles = [
   "OpenBurnBarDatabase.swift",
@@ -51,6 +54,9 @@ const sharedFiles = [
   "OpenBurnBarDatabase+DataMigrationV59.swift",
   "OpenBurnBarDatabase+DataMigrationV60.swift",
   "OpenBurnBarDatabase+UsageMemoryMigrations.swift",
+  "OpenBurnBarDatabase+DataMigrationV62.swift",
+  "OpenBurnBarDatabase+StandingOrderMigrations.swift",
+  "OpenBurnBarDatabase+CommandBoardIndexMigration.swift",
 ];
 
 function copyFiles(sourceDirectory, destinationDirectory, files) {
@@ -118,12 +124,12 @@ test("extracts only complete migration contracts", () => {
 });
 
 test("current migration surfaces, catalog, and generated documentation agree", () => {
-  // 62 as of v61_usage_memory. This literal is a deliberate tripwire, not a
-  // derived value: pinning it means adding a migration cannot quietly pass by
-  // agreeing with itself, and forces the author past every mirror. Bump it
-  // ONLY together with the migrator, the rollback catalog, the Windows
-  // endpoint/count, and the byte-compat vector.
-  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 62);
+  // 65 as of v64_token_usage_start_time_index. This literal is a deliberate
+  // tripwire, not a derived value: pinning it means adding a migration cannot
+  // quietly pass by agreeing with itself, and forces the author past every
+  // mirror. Bump it ONLY together with the migrator, the rollback catalog, the
+  // Windows endpoint/count, and the byte-compat vector.
+  assert.equal(verifyMigrationRollbackCatalog(repoRoot), 65);
 });
 
 test("registration reorder fails closed", (t) => {
