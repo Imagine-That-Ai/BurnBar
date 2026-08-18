@@ -237,6 +237,22 @@ class MobileProductParityTest {
         assertFalse(MobileProductSurfacePolicy.mayEnforceBudget(state))
     }
 
+    @Test
+    fun surfaceRemovesDecorativeAndUnknownActions() {
+        assertEquals(MobileProductCardDisposition.REMOVED, MobileProductSurfacePolicy.disposition("decorative.stop"))
+        assertEquals(MobileProductCardDisposition.REMOVED, MobileProductSurfacePolicy.disposition("fake.cancel"))
+        assertEquals(MobileProductCardDisposition.REMOVED, MobileProductSurfacePolicy.disposition("silent.discard"))
+        assertEquals(MobileProductCardDisposition.REMOVED, MobileProductSurfacePolicy.disposition("unknown.action"))
+        assertEquals(
+            MobileProductCardDisposition.REMOVED,
+            MobileProductSurfacePolicy.disposition("store.purchase", catalogPresent = false),
+        )
+        assertEquals(
+            MobileProductCardDisposition.GATED,
+            MobileProductSurfacePolicy.disposition("budget.enforce", entitlement = MobileStoreEntitlementState.NONE),
+        )
+    }
+
     private fun classify(vector: JSONObject): MobileStoreEntitlementState = MobileStoreEntitlementPolicy.classify(
         catalogPresent = vector.getBoolean("catalogPresent"),
         restoring = vector.getBoolean("restoring"),

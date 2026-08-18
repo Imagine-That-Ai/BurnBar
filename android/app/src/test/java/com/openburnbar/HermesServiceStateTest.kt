@@ -257,6 +257,7 @@ class HermesServiceStateTest {
             assertFalse(service.favoriteModelIDs.value.contains("claude-opus"))
             service.preferenceActions.setChatTilePreferences(ChatTilePreferences(enabledTiles = emptySet()))
             assertTrue(service.chatTilePreferencesInternal.enabledTiles.isNotEmpty())
+            service.preferenceActions.setToolAtomNavigator(null)
         } finally {
             service.destroy()
         }

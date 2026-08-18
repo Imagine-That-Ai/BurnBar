@@ -145,8 +145,12 @@ public enum MobilePulseWindowPolicy {
         cacheReadTokens: Int,
         reasoningTokens: Int
     ) -> Int64 {
-        let billed = Int64(max(0, inputTokens) + max(0, outputTokens) + max(0, cacheCreationTokens)
-            + max(0, cacheReadTokens) + max(0, reasoningTokens))
+        let input = Int64(max(0, inputTokens))
+        let output = Int64(max(0, outputTokens))
+        let cacheCreation = Int64(max(0, cacheCreationTokens))
+        let cacheRead = Int64(max(0, cacheReadTokens))
+        let reasoning = Int64(max(0, reasoningTokens))
+        let billed = input + output + cacheCreation + cacheRead + reasoning
         let raw = totalTokens != 0 ? Int64(totalTokens) : billed
         return max(0, raw)
     }
