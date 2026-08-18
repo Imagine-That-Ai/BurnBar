@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OpenBurnBarKernel
 @preconcurrency import FirebaseFirestore
 
 /// A rendered HermesBody row: one machine-bound Hermes (§2 identity law).
@@ -99,6 +100,27 @@ final class HermesBodyDirectory {
 
     func isLocal(_ record: HermesBodyRecord) -> Bool {
         record.deviceID == accountManager.deviceId
+    }
+
+    /// The roster in the Kernel's fleet vocabulary, so the Hermes Room, the
+    /// Flame, and the Wire all reason about the same shape. `activeRunCount` is
+    /// zero here: the directory publishes machines, not workloads, and a made-up
+    /// load figure would silently steer routing.
+    func fleetSnapshot(now: Date = Date()) -> FleetSnapshot {
+        FleetSnapshot(
+            bodies: bodies.map { record in
+                FleetBodySnapshot(
+                    bodyID: record.id,
+                    displayName: record.displayName,
+                    isLocal: isLocal(record),
+                    isOnline: record.presence(now: now) == .online,
+                    hermesGatewayReachable: record.hermesGatewayReachable,
+                    wireReachable: record.wireReachable,
+                    capabilities: Set(record.capabilities),
+                    activeRunCount: 0
+                )
+            }
+        )
     }
 
     func start() {

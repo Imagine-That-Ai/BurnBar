@@ -173,6 +173,32 @@ struct DevicesAndSyncSettingsView: View {
                         )
                     }
                     .settingsAnchor(SettingsAnchor.hermesBodies)
+
+                    NavigationLink {
+                        HermesRoomDetailView()
+                    } label: {
+                        SettingsDrillRow(
+                            icon: "person.2.badge.gearshape",
+                            iconTint: DesignSystem.Colors.hermesAureate,
+                            title: "Hermes Room",
+                            subtitle: "Pick which Mac serves Hermes — the others stay linked and ready"
+                        )
+                    }
+                    .settingsAnchor(SettingsAnchor.hermesRoom)
+
+                    if let dataStore = runtimeContext?.dataStore {
+                        NavigationLink {
+                            CommandBoardDetailView(dataStore: dataStore)
+                        } label: {
+                            SettingsDrillRow(
+                                icon: "square.grid.3x2.fill",
+                                iconTint: DesignSystem.Colors.hermesAureate,
+                                title: "Command Board",
+                                subtitle: "Every run across every machine, with who started it and what it cost"
+                            )
+                        }
+                        .settingsAnchor(SettingsAnchor.commandBoard)
+                    }
                 } header: {
                     Text("Devices")
                 } footer: {
