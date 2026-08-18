@@ -1,5 +1,5 @@
 import SwiftUI
-import OpenBurnBarCore
+import OpenBurnBarKernel
 
 // MARK: - Rung 1: the route
 //

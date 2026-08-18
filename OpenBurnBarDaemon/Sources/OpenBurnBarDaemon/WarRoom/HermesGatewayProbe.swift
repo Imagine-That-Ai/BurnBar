@@ -32,7 +32,14 @@ public struct HermesGatewayProbe: Sendable {
     /// answer this function cannot give instantly is an answer the caller
     /// should not be blocked for.
     static func isListening(onLoopbackPort port: UInt16) -> Bool {
-        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+        // Glibc types the SOCK_* constants as `__socket_type`; Darwin types
+        // them as the `Int32` that `socket(_:_:_:)` wants.
+        #if canImport(Glibc)
+        let streamType = Int32(SOCK_STREAM.rawValue)
+        #else
+        let streamType = SOCK_STREAM
+        #endif
+        let descriptor = socket(AF_INET, streamType, 0)
         guard descriptor >= 0 else { return false }
         defer { close(descriptor) }
 

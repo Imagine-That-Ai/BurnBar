@@ -1,6 +1,5 @@
 import Foundation
 import GRDB
-import OpenBurnBarCore
 import OpenBurnBarKernel
 
 /// Local persistence for War Room standing orders (W6, the rhythm).
